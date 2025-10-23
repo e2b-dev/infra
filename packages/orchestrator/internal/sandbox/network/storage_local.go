@@ -3,164 +3,171 @@ package network
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
-	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+const maxAttempts = 25
+
+var (
+	ErrNoSlotFound = fmt.Errorf("failed to acquire IP slot")
+
+	meter = otel.GetMeterProvider().Meter(
+		"orchestrator.internal.sandbox.network.storage.local",
+	)
+	acquisitions = utils.Must(meter.Int64Counter("orchestrator.sandbox.network.ns_acquisitions",
+		metric.WithDescription("number of network namespace acquisitions"),
+	))
+	acquisitionRetries = utils.Must(meter.Int64Counter("orchestrator.sandbox.network.ns_acquisition_retries",
+		metric.WithDescription("number of network namespace acquisition retries"),
+	))
+	releases = utils.Must(meter.Int64Counter("orchestrator.sandbox.network.ns_releases",
+		metric.WithDescription("number of network namespace releases"),
+	))
 )
 
 type StorageLocal struct {
-	config       Config
-	slotsSize    int
-	foreignNs    map[string]struct{}
-	acquiredNs   map[string]struct{}
+	config   Config
+	maxSlots int
+
+	// these are only to improve performance,
+	// we rely on the files to prevent us from doing bad things
+	acquiredNs   map[int]struct{}
 	acquiredNsMu sync.Mutex
+
+	pid int
 }
 
-const netNamespacesDir = "/var/run/netns"
-
-func NewStorageLocal(slotsSize int, config Config) (*StorageLocal, error) {
-	// get namespaces that we want to always skip
-	foreignNs, err := getForeignNamespaces()
-	if err != nil {
-		return nil, fmt.Errorf("error getting already used namespaces: %w", err)
-	}
-
-	foreignNsMap := make(map[string]struct{})
-	for _, ns := range foreignNs {
-		foreignNsMap[ns] = struct{}{}
-		zap.L().Info(fmt.Sprintf("Found foreign namespace: %s", ns))
+func NewStorageLocal(config Config) (*StorageLocal, error) {
+	if err := os.MkdirAll(config.LocalNamespaceStorageDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create storage dir: %w", err)
 	}
 
 	return &StorageLocal{
-		config:       config,
-		foreignNs:    foreignNsMap,
-		slotsSize:    slotsSize,
-		acquiredNs:   make(map[string]struct{}, slotsSize),
-		acquiredNsMu: sync.Mutex{},
+		config:   config,
+		maxSlots: config.GetVirtualSlotsSize(),
+
+		acquiredNs: make(map[int]struct{}),
+		pid:        os.Getpid(),
 	}, nil
 }
 
 func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
-	spanCtx, span := tracer.Start(ctx, "network-namespace-acquire")
+	ctx, span := tracer.Start(ctx, "network-namespace-acquire")
 	defer span.End()
 
-	acquireTimeoutCtx, acquireCancel := context.WithTimeout(spanCtx, time.Millisecond*500)
-	defer acquireCancel()
-
-	s.acquiredNsMu.Lock()
-	defer s.acquiredNsMu.Unlock()
-
-	// we skip the first slot because it's the host slot
-	slotIdx := 1
-
-	for {
+	for attempt := range maxAttempts {
 		select {
-		case <-acquireTimeoutCtx.Done():
-			return nil, fmt.Errorf("failed to acquire IP slot: timeout")
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		default:
-			if len(s.acquiredNs) > s.slotsSize {
-				return nil, fmt.Errorf("failed to acquire IP slot: no empty slots found")
-			}
+		}
 
-			slotIdx++
-			slotName := getSlotName(slotIdx)
+		if attempt != 0 {
+			acquisitionRetries.Add(ctx, 1)
+		}
 
-			// skip the slot if it's already in use by foreign program
-			if _, found := s.foreignNs[slotName]; found {
-				continue
-			}
+		slotIdx := rand.Intn(s.maxSlots) + 1
 
-			// skip the slot if it's already acquired
-			if _, found := s.acquiredNs[slotName]; found {
-				continue
-			}
-
-			// check if the slot can be acquired
-			available, err := isNamespaceAvailable(slotName)
-			if err != nil {
-				return nil, fmt.Errorf("error checking if namespace is available: %w", err)
-			}
-
-			if !available {
-				s.foreignNs[slotName] = struct{}{}
-				zap.L().Debug("Skipping slot because not available", zap.String("slot", slotName))
-
-				continue
-			}
-
-			s.acquiredNs[slotName] = struct{}{}
-			slotKey := getLocalKey(slotIdx)
-
-			return NewSlot(slotKey, slotIdx, s.config)
+		if slot, ok := s.tryAcquire(ctx, slotIdx); ok {
+			return slot, nil
 		}
 	}
+
+	return nil, ErrNoSlotFound
 }
 
-func (s *StorageLocal) Release(ips *Slot) error {
+func (s *StorageLocal) tryAcquire(ctx context.Context, slotIdx int) (*Slot, bool) {
 	s.acquiredNsMu.Lock()
 	defer s.acquiredNsMu.Unlock()
 
-	slotName := getSlotName(ips.Idx)
-	delete(s.acquiredNs, slotName)
+	// skip the slot if it's already acquired
+	if _, found := s.acquiredNs[slotIdx]; found {
+		return nil, false
+	}
+
+	if err := s.lockSlot(slotIdx); err != nil {
+		zap.L().Warn("failed to reserve network slot",
+			zap.Error(err),
+			zap.Int("slotIdx", slotIdx),
+		)
+
+		return nil, false
+	}
+
+	slotName := s.getSlotName(slotIdx)
+	slot, err := NewSlot(slotName, slotIdx, s.config)
+	if err != nil {
+		s.unlockSlot(slotIdx)
+		zap.L().Warn("failed to create network slot",
+			zap.Error(err),
+			zap.Int("slotIdx", slotIdx),
+			zap.String("slotName", slotName),
+		)
+
+		return nil, false
+	}
+
+	s.acquiredNs[slotIdx] = struct{}{}
+
+	acquisitions.Add(ctx, 1)
+
+	return slot, true
+}
+
+func (s *StorageLocal) createPidFilename(slotIdx int) string {
+	return filepath.Join(s.config.LocalNamespaceStorageDir, fmt.Sprintf("%d.pid", slotIdx))
+}
+
+func (s *StorageLocal) lockSlot(slotIdx int) error {
+	fullPath := s.createPidFilename(slotIdx)
+	fileContent := []byte(fmt.Sprintf("%d", s.pid))
+
+	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to open file %q: %w", fullPath, err)
+	}
+	defer file.Close()
+
+	if _, err = file.Write(fileContent); err != nil {
+		return fmt.Errorf("failed to write to file %q: %w", fullPath, err)
+	}
 
 	return nil
 }
 
-func isNamespaceAvailable(name string) (bool, error) {
-	nsPath := filepath.Join(netNamespacesDir, name)
-	_, err := os.Stat(nsPath)
+func (s *StorageLocal) unlockSlot(slotIdx int) {
+	fullPath := s.createPidFilename(slotIdx)
 
-	if os.IsNotExist(err) {
-		// Namespace does not exist, so it's available
-		return true, nil
-	} else if err != nil {
-		// Some other error
-		return false, err
+	if err := os.Remove(fullPath); err != nil {
+		zap.L().Warn("failed to remove file",
+			zap.Error(err),
+			zap.String("fullPath", fullPath),
+		)
 	}
-
-	// File exists so namespace is in use.
-	return false, nil
 }
 
-func getForeignNamespaces() ([]string, error) {
-	var ns []string
+func (s *StorageLocal) Release(ctx context.Context, ips *Slot) error {
+	releases.Add(ctx, 1)
 
-	files, err := os.ReadDir(netNamespacesDir)
-	if err != nil {
-		// Folder does not exist, so we can assume no namespaces are in use
-		if os.IsNotExist(err) {
-			return ns, nil
-		}
+	s.acquiredNsMu.Lock()
+	defer s.acquiredNsMu.Unlock()
 
-		return nil, fmt.Errorf("error reading netns directory: %w", err)
-	}
+	delete(s.acquiredNs, ips.Idx)
 
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
+	s.unlockSlot(ips.Idx)
 
-		name := file.Name()
-		if name == "host" {
-			continue
-		}
-
-		ns = append(ns, name)
-	}
-
-	return ns, nil
+	return nil
 }
 
-func getSlotName(slotIdx int) string {
-	slotIdxStr := strconv.Itoa(slotIdx)
-
-	return fmt.Sprintf("ns-%s", slotIdxStr)
-}
-
-func getLocalKey(slotIdx int) string {
-	return strconv.Itoa(slotIdx)
+func (s *StorageLocal) getSlotName(slotIdx int) string {
+	return fmt.Sprintf("ns-%d-%d", s.pid, slotIdx)
 }
