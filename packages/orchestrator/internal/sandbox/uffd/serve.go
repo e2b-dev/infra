@@ -210,7 +210,7 @@ outerLoop:
 				telemetry.ReportEvent(ctx,
 					"uffd page served",
 					attribute.Int64("slice_duration_ms", cpyStartTime.Sub(sliceStartTime).Milliseconds()),
-					attribute.Int64("uffd_copy_duration_ms", time.Now().Sub(cpyStartTime).Milliseconds()),
+					attribute.Int64("uffd_copy_duration_ms", time.Since(cpyStartTime).Milliseconds()),
 				)
 			}
 
