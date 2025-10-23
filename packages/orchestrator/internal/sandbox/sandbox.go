@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -605,8 +606,13 @@ func (f *Factory) ResumeSandbox(
 
 func startExecutionSpan(ctx context.Context) (context.Context, trace.Span) {
 	parentSpan := trace.SpanFromContext(ctx)
-
 	ctx = context.WithoutCancel(ctx)
+
+	// this should make debugging much easier
+	if env.IsDevelopment() {
+		return ctx, parentSpan
+	}
+
 	ctx, span := tracer.Start(ctx, "execute sandbox", //nolint:spancheck // this is still just a helper method
 		trace.WithNewRoot(),
 	)
