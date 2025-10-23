@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"syscall"
+	"time"
 	"unsafe"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
@@ -34,6 +36,7 @@ func Serve(
 	src block.Slicer,
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
+	logPagefaults chan struct{},
 ) error {
 	ctx, serveSpan := tracer.Start(ctx, "serve uffd")
 	defer serveSpan.End()
@@ -157,10 +160,9 @@ outerLoop:
 				}
 			}()
 
-			serveCtx, serveSpan := tracer.Start(ctx, "serve uffd — goroutine")
-			defer serveSpan.End()
+			start := time.Now()
 
-			b, err := src.Slice(serveCtx, offset, pagesize)
+			b, err := src.Slice(ctx, offset, pagesize)
 			if err != nil {
 				signalErr := fdExit.SignalExit()
 
@@ -171,7 +173,9 @@ outerLoop:
 				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
-			telemetry.ReportEvent(serveCtx, "got memory slice")
+			if _, ok := <-logPagefaults; !ok {
+				telemetry.ReportEvent(ctx, "pagefault slice finished", attribute.Int64("duration_ms", time.Since(start).Milliseconds()))
+			}
 
 			cpy := userfaultfd.NewUffdioCopy(
 				b,
@@ -180,6 +184,8 @@ outerLoop:
 				0,
 				0,
 			)
+
+			start = time.Now()
 
 			if _, _, errno := syscall.Syscall(
 				syscall.SYS_IOCTL,
@@ -203,7 +209,9 @@ outerLoop:
 				return fmt.Errorf("failed uffdio copy %w", joinedErr)
 			}
 
-			telemetry.ReportEvent(serveCtx, "copied page to UFFD")
+			if _, ok := <-logPagefaults; !ok {
+				telemetry.ReportEvent(ctx, "uffdio copy finished", attribute.Int64("duration_ms", time.Since(start).Milliseconds()))
+			}
 
 			return nil
 		})

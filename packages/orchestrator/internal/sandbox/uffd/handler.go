@@ -30,8 +30,9 @@ const (
 )
 
 type Uffd struct {
-	exit    *utils.ErrorOnce
-	readyCh chan struct{}
+	exit          *utils.ErrorOnce
+	readyCh       chan struct{}
+	logPagefaults chan struct{}
 
 	fdExit *fdexit.FdExit
 
@@ -159,12 +160,17 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		u.memfile,
 		u.fdExit,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
+		u.logPagefaults,
 	)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}
 
 	return nil
+}
+
+func (u *Uffd) StopLoggingPagefaults() {
+	close(u.logPagefaults)
 }
 
 func (u *Uffd) Stop() error {

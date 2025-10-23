@@ -46,6 +46,8 @@ func (m *NoopMemory) Start(context.Context, string) error {
 	return nil
 }
 
+func (m *NoopMemory) StopLoggingPagefaults() {}
+
 func (m *NoopMemory) Stop() error {
 	return m.exit.SetSuccess()
 }

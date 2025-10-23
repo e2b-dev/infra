@@ -573,6 +573,8 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
+	fcUffd.StopLoggingPagefaults()
+
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
 	go sbx.Checks.Start(execCtx)
