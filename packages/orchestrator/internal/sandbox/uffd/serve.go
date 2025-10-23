@@ -37,7 +37,7 @@ func Serve(
 	src block.Slicer,
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
-	logPagefaultsEnabled atomic.Bool,
+	logPageFaultsEnabled *atomic.Bool,
 ) error {
 	ctx, serveSpan := tracer.Start(ctx, "serve uffd")
 	defer serveSpan.End()
@@ -206,11 +206,11 @@ outerLoop:
 				return fmt.Errorf("failed uffdio copy %w", joinedErr)
 			}
 
-			if logPagefaultsEnabled.Load() {
+			if logPageFaultsEnabled.Load() {
 				telemetry.ReportEvent(ctx,
 					"uffd page served",
 					attribute.Int64("slice_duration_ms", cpyStartTime.Sub(sliceStartTime).Milliseconds()),
-					attribute.Int64("uffd_copy_duration_ms", time.Now().Sub(cpyStartTime).Milliseconds()),
+					attribute.Int64("uffd_copy_duration_ms", time.Since(cpyStartTime).Milliseconds()),
 				)
 			}
 

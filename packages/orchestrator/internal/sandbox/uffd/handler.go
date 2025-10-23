@@ -161,7 +161,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		u.memfile,
 		u.fdExit,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
-		u.logPagefaultsEnabled,
+		&u.logPagefaultsEnabled,
 	)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)

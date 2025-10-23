@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/metric/noop"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -37,7 +39,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -76,19 +77,25 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		return utils.Must(filepath.Abs(s))
 	}
 
+	// set up tracing and metrics
+	var spanExporter sdktrace.SpanExporter
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint != "" {
-		spanExporter, err := telemetry.NewSpanExporter(b.Context(),
+		spanExporter, err = otlptracegrpc.New(b.Context(),
+			otlptracegrpc.WithInsecure(),
 			otlptracegrpc.WithEndpoint(endpoint),
 		)
-		defer func() {
-			err := spanExporter.Shutdown(b.Context())
+		b.Cleanup(func() {
+			ctx := context.WithoutCancel(b.Context())
+			err := spanExporter.Shutdown(ctx)
 			assert.NoError(b, err)
-		}()
+		})
 		require.NoError(b, err)
-		resource, err := telemetry.GetResource(b.Context(), "node-id", "BenchmarkBaseImageLaunch", "service-commit", "service-version", "service-instance-id")
-		require.NoError(b, err)
-		tracerProvider := telemetry.NewTracerProvider(spanExporter, resource)
+		spanProcessor := sdktrace.NewSimpleSpanProcessor(spanExporter)
+		tracerProvider := sdktrace.NewTracerProvider(
+			sdktrace.WithSampler(sdktrace.AlwaysSample()),
+			sdktrace.WithSpanProcessor(spanProcessor),
+		)
 		otel.SetTracerProvider(tracerProvider)
 	}
 
@@ -222,10 +229,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		err := sandboxProxy.Start(b.Context())
 		assert.ErrorIs(b, http.ErrServerClosed, err)
 	}()
-	defer func() {
+	b.Cleanup(func() {
 		err := sandboxProxy.Close(b.Context())
 		assert.NoError(b, err)
-	}()
+	})
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
 	require.NoError(b, err)
@@ -288,7 +295,9 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	}
 
 	for b.Loop() {
-		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
+		ctx, span := tracer.Start(b.Context(), "testOneItem")
+		tc.testOneItem(ctx, b, buildID, kernelVersion, fcVersion)
+		span.End()
 	}
 }
 
@@ -312,11 +321,8 @@ type testContainer struct {
 	runtime        sandbox.RuntimeMetadata
 }
 
-func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVersion string) {
+func (tc *testContainer) testOneItem(ctx context.Context, b *testing.B, buildID, kernelVersion, fcVersion string) {
 	b.Helper()
-
-	ctx, span := tracer.Start(b.Context(), "testOneItem")
-	defer span.End()
 
 	sbx, err := tc.sandboxFactory.ResumeSandbox(
 		ctx,
