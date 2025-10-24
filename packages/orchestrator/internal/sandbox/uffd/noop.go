@@ -6,6 +6,7 @@ import (
 	"github.com/bits-and-blooms/bitset"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -45,6 +46,10 @@ func (m *NoopMemory) Dirty(context.Context) (*block.Tracker, error) {
 
 func (m *NoopMemory) Start(context.Context, string) error {
 	return nil
+}
+
+func (m *NoopMemory) Mapping(context.Context) (*memory.Mapping, error) {
+	return nil, nil
 }
 
 func (m *NoopMemory) Stop() error {

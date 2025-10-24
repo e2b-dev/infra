@@ -218,3 +218,12 @@ func (u *Uffd) Dirty(ctx context.Context) (*block.Tracker, error) {
 
 	return uffd.Dirty(ctx)
 }
+
+func (u *Uffd) Mapping(ctx context.Context) (*memory.Mapping, error) {
+	uffd, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	return uffd.Mapping(), nil
+}
