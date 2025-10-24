@@ -524,7 +524,7 @@ func TestUffdParallelWriteWithPrefault(t *testing.T) {
 }
 
 func TestUffdParallelMissing(t *testing.T) {
-	parallelOperations := 100_0000
+	parallelOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
