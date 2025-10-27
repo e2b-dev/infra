@@ -50,6 +50,7 @@ func (o *Orchestrator) UpdateSandbox(
 		}
 
 		err = utils.UnwrapGRPCError(err)
+
 		return fmt.Errorf("failed to update sandbox '%s': %w", sandboxID, err)
 	}
 
