@@ -7,6 +7,9 @@ package queries
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 const getTemplateByID = `-- name: GetTemplateByID :one
@@ -29,6 +32,50 @@ func (q *Queries) GetTemplateByID(ctx context.Context, id string) (Env, error) {
 		&i.TeamID,
 		&i.CreatedBy,
 		&i.ClusterID,
+	)
+	return i, err
+}
+
+const getTemplateByIDWithAliases = `-- name: GetTemplateByIDWithAliases :one
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, al.aliases
+FROM "public"."envs" e
+CROSS JOIN LATERAL (
+    SELECT array_agg(alias)::text[] AS aliases
+    FROM public.env_aliases
+    WHERE env_id = e.id
+) AS al
+WHERE e.id = $1
+`
+
+type GetTemplateByIDWithAliasesRow struct {
+	ID            string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	Public        bool
+	BuildCount    int32
+	SpawnCount    int64
+	LastSpawnedAt *time.Time
+	TeamID        uuid.UUID
+	CreatedBy     *uuid.UUID
+	ClusterID     *uuid.UUID
+	Aliases       []string
+}
+
+func (q *Queries) GetTemplateByIDWithAliases(ctx context.Context, id string) (GetTemplateByIDWithAliasesRow, error) {
+	row := q.db.QueryRow(ctx, getTemplateByIDWithAliases, id)
+	var i GetTemplateByIDWithAliasesRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Public,
+		&i.BuildCount,
+		&i.SpawnCount,
+		&i.LastSpawnedAt,
+		&i.TeamID,
+		&i.CreatedBy,
+		&i.ClusterID,
+		&i.Aliases,
 	)
 	return i, err
 }

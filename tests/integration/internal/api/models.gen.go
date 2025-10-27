@@ -711,6 +711,45 @@ type Template struct {
 // TemplateBuild defines model for TemplateBuild.
 type TemplateBuild struct {
 	// BuildID Identifier of the build
+	BuildID openapi_types.UUID `json:"buildID"`
+
+	// CpuCount CPU cores for the sandbox
+	CpuCount CPUCount `json:"cpuCount"`
+
+	// CreatedAt Time when the build was created
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB *DiskSizeMB `json:"diskSizeMB,omitempty"`
+
+	// EnvdVersion Version of the envd running in the sandbox
+	EnvdVersion *EnvdVersion `json:"envdVersion,omitempty"`
+
+	// FinishedAt Time when the build was finished
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+
+	// MemoryMB Memory for the sandbox in MiB
+	MemoryMB MemoryMB `json:"memoryMB"`
+
+	// Status Status of the template build
+	Status TemplateBuildStatus `json:"status"`
+
+	// UpdatedAt Time when the build was last updated
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// TemplateBuildFileUpload defines model for TemplateBuildFileUpload.
+type TemplateBuildFileUpload struct {
+	// Present Whether the file is already present in the cache
+	Present bool `json:"present"`
+
+	// Url Url where the file should be uploaded to
+	Url *string `json:"url,omitempty"`
+}
+
+// TemplateBuildInfo defines model for TemplateBuildInfo.
+type TemplateBuildInfo struct {
+	// BuildID Identifier of the build
 	BuildID string `json:"buildID"`
 
 	// LogEntries Build logs structured
@@ -725,15 +764,6 @@ type TemplateBuild struct {
 
 	// TemplateID Identifier of the template
 	TemplateID string `json:"templateID"`
-}
-
-// TemplateBuildFileUpload defines model for TemplateBuildFileUpload.
-type TemplateBuildFileUpload struct {
-	// Present Whether the file is already present in the cache
-	Present bool `json:"present"`
-
-	// Url Url where the file should be uploaded to
-	Url *string `json:"url,omitempty"`
 }
 
 // TemplateBuildRequest defines model for TemplateBuildRequest.
@@ -892,6 +922,33 @@ type TemplateStep struct {
 type TemplateUpdateRequest struct {
 	// Public Whether the template is public or only accessible by the team
 	Public *bool `json:"public,omitempty"`
+}
+
+// TemplateWithBuilds defines model for TemplateWithBuilds.
+type TemplateWithBuilds struct {
+	// Aliases Aliases of the template
+	Aliases []string `json:"aliases"`
+
+	// Builds List of builds for the template
+	Builds []TemplateBuild `json:"builds"`
+
+	// CreatedAt Time when the template was created
+	CreatedAt time.Time `json:"createdAt"`
+
+	// LastSpawnedAt Time when the template was last used
+	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
+
+	// Public Whether the template is public or only accessible by the team
+	Public bool `json:"public"`
+
+	// SpawnCount Number of times the template was used
+	SpawnCount int64 `json:"spawnCount"`
+
+	// TemplateID Identifier of the template
+	TemplateID string `json:"templateID"`
+
+	// UpdatedAt Time when the template was last updated
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // UpdateTeamAPIKey defines model for UpdateTeamAPIKey.
