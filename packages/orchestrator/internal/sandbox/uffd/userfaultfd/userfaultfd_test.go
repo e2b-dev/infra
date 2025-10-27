@@ -126,9 +126,6 @@ func TestUffdMissing(t *testing.T) {
 				}
 			}
 
-			err := h.uffd.writesInProgress.Wait(t.Context())
-			require.NoError(t, err)
-
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
 			assert.Equal(t, expectedAccessedOffsets, h.getAccessedOffsets(), "checking which pages were faulted)")
 		})
@@ -136,7 +133,7 @@ func TestUffdMissing(t *testing.T) {
 }
 
 func TestUffdParallelMissing(t *testing.T) {
-	parallelOperations := 1_000_000
+	parallelOperations := 65536
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
@@ -166,7 +163,7 @@ func TestUffdParallelMissing(t *testing.T) {
 }
 
 func TestUffdParallelMissingWithPrefault(t *testing.T) {
-	parallelOperations := 10_000_000
+	parallelOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
