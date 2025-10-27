@@ -13,13 +13,13 @@ import (
 )
 
 // flags: syscall.O_CLOEXEC|syscall.O_NONBLOCK
-func newUserfaultfd(flags uintptr, src block.Slicer, pagesize int64, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
+func newUserfaultfd(flags uintptr, src block.Slicer, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
 	uffd, _, errno := syscall.Syscall(NR_userfaultfd, flags, 0, 0)
 	if errno != 0 {
 		return nil, fmt.Errorf("userfaultfd syscall failed: %w", errno)
 	}
 
-	return NewUserfaultfdFromFd(uffd, src, pagesize, m, logger)
+	return NewUserfaultfdFromFd(uffd, src, m, logger)
 }
 
 // features: UFFD_FEATURE_MISSING_HUGETLBFS

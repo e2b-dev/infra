@@ -38,7 +38,6 @@ type Uffd struct {
 	socketPath string
 	memfile    *block.TrackedSliceDevice
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
-	blockSize  int64
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
@@ -61,7 +60,6 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		socketPath: socketPath,
 		memfile:    trackedMemfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
-		blockSize:  blockSize,
 	}, nil
 }
 
@@ -148,7 +146,6 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	uffd, err := userfaultfd.NewUserfaultfdFromFd(
 		uintptr(fds[0]),
 		u.memfile,
-		u.blockSize,
 		m,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)

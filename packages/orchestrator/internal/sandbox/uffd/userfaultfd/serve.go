@@ -120,6 +120,16 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
+		// Handle write to missing page (WRITE flag)
+		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize)
+			if err != nil {
+				return fmt.Errorf("failed to handle missing write: %w", err)
+			}
+
+			continue
+		}
+
 		// Handle read to missing page ("MISSING" flag)
 		if flags == 0 {
 			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize)
@@ -130,7 +140,7 @@ outerLoop:
 			continue
 		}
 
-		u.logger.Error("UFFD serve unexpected event type", zap.Any("event_type", flags))
+		return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
 	}
 }
 
@@ -141,18 +151,13 @@ func (u *Userfaultfd) handleMissing(
 	offset int64,
 	pagesize uint64,
 ) error {
-	if !u.missingRequests.Add(offset) {
+	if _, ok := u.missingRequests[offset]; ok {
 		return nil
 	}
 
-	err := u.workerSem.Acquire(ctx, 1)
-	if err != nil {
-		return fmt.Errorf("failed to acquire semaphore: %w", err)
-	}
+	u.missingRequests[offset] = struct{}{}
 
 	u.wg.Go(func() error {
-		defer u.workerSem.Release(1)
-
 		defer func() {
 			if r := recover(); r != nil {
 				u.logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
