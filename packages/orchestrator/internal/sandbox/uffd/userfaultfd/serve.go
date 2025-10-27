@@ -122,7 +122,7 @@ outerLoop:
 
 		// Handle read to missing page ("MISSING" flag)
 		if flags == 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize)
 			if err != nil {
 				return fmt.Errorf("failed to handle missing: %w", err)
 			}
@@ -140,7 +140,6 @@ func (u *Userfaultfd) handleMissing(
 	addr uintptr,
 	offset int64,
 	pagesize uint64,
-	write bool,
 ) error {
 	if !u.missingRequests.Add(offset) {
 		return nil
