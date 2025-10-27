@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
-	"github.com/bits-and-blooms/bitset"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
