@@ -80,11 +80,6 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("failed to upsert token: %w", err)
 	}
 
-	// create user token
-	if err = upsertUserToken(ctx, sqlcDB, user, keys.AccessTokenPrefix, userTokenValue); err != nil {
-		return fmt.Errorf("failed to upsert token: %w", err)
-	}
-
 	// create team token
 	if err = upsertTeamAPIKey(ctx, sqlcDB, team, keys.ApiKeyPrefix, teamTokenValue); err != nil {
 		return fmt.Errorf("failed to upsert token: %w", err)
