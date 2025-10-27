@@ -31,7 +31,7 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 		featureflags.BuildProvisionVersion,
 		featureflags.TemplateContext(bb.Config.TemplateID),
 		featureflags.TeamContext(bb.Config.TeamID),
-	); err == nil {
+	); val != featureflags.BuildProvisionVersion.Fallback() && err == nil {
 		provisionVersion = strconv.FormatInt(int64(val), 10)
 	}
 

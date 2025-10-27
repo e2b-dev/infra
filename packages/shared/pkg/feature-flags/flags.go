@@ -95,5 +95,5 @@ var (
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
 	// that can be used before the cache starts evicting items.
 	BuildCacheMaxUsagePercentage = newIntFlag("build-cache-max-usage-percentage", 85)
-	BuildProvisionVersion        = newIntFlag("build-provision-version", 1)
+	BuildProvisionVersion        = newIntFlag("build-provision-version", 0)
 )
