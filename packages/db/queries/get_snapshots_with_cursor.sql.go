@@ -37,13 +37,10 @@ WHERE
         -- And NULL does not match with empty json
         s.metadata @> $3 OR $3 = '{}'::jsonb
     )
-    AND (
-        s.sandbox_started_at < $4
-        OR
-        (s.sandbox_started_at = $4 AND s.sandbox_id > $5)
-    )
+    -- The order here is important, we want started_at descending, but sandbox_id ascending
+    AND (s.sandbox_started_at, $4) < ($5, s.sandbox_id)
     AND NOT (s.sandbox_id = ANY ($6::text[]))
-ORDER BY s.sandbox_started_at DESC, s.sandbox_id
+ORDER BY s.sandbox_started_at DESC, s.sandbox_id ASC
 LIMIT $1
 `
 
@@ -51,8 +48,8 @@ type GetSnapshotsWithCursorParams struct {
 	Limit                 int32
 	TeamID                uuid.UUID
 	Metadata              types.JSONBStringMap
+	CursorID              pgtype.Timestamptz
 	CursorTime            pgtype.Timestamptz
-	CursorID              string
 	SnapshotExcludeSbxIds []string
 }
 
@@ -67,8 +64,8 @@ func (q *Queries) GetSnapshotsWithCursor(ctx context.Context, arg GetSnapshotsWi
 		arg.Limit,
 		arg.TeamID,
 		arg.Metadata,
-		arg.CursorTime,
 		arg.CursorID,
+		arg.CursorTime,
 		arg.SnapshotExcludeSbxIds,
 	)
 	if err != nil {
