@@ -1,4 +1,0 @@
-flowchart TD
-A[missing page] -- write (WRITE flag) --> B(COPY) --> C[dirty page]
-A -- read (MISSING flag) --> D(COPY + MODE_WP) --> E[faulted page]
-E -- write (WP flag) --> F(remove MODE_WP) --> C
