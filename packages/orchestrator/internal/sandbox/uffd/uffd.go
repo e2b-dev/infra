@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
@@ -35,16 +36,22 @@ type Uffd struct {
 	fdExit     *fdexit.FdExit
 	lis        *net.UnixListener
 	socketPath string
-	memfile    block.ReadonlyDevice
+	memfile    *block.TrackedSliceDevice
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
+	blockSize  int64
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
 
-func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
+func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
 	fdExit, err := fdexit.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create fd exit: %w", err)
+	}
+
+	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
 	}
 
 	return &Uffd{
@@ -52,8 +59,9 @@ func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 		readyCh:    make(chan struct{}, 1),
 		fdExit:     fdExit,
 		socketPath: socketPath,
-		memfile:    memfile,
+		memfile:    trackedMemfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
+		blockSize:  blockSize,
 	}, nil
 }
 
@@ -140,7 +148,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	uffd, err := userfaultfd.NewUserfaultfdFromFd(
 		uintptr(fds[0]),
 		u.memfile,
-		u.memfile.BlockSize(),
+		u.blockSize,
 		m,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
@@ -156,21 +164,6 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
-
-	for _, region := range m.Regions {
-		// Mark the memory region as write protected.
-		// It seems the memory in FC is by default configured with the WP flag capability:
-		// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
-		// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
-		err := uffd.Register(
-			region.BaseHostVirtAddr+region.Offset,
-			uint64(region.Size),
-			userfaultfd.UFFDIO_REGISTER_MODE_WP|userfaultfd.UFFDIO_REGISTER_MODE_MISSING,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
-		}
-	}
 
 	u.readyCh <- struct{}{}
 
@@ -193,28 +186,14 @@ func (u *Uffd) Ready() chan struct{} {
 	return u.readyCh
 }
 
-func (u *Uffd) Disable(ctx context.Context) error {
-	uffd, err := u.handler.WaitWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get uffd: %w", err)
-	}
+func (u *Uffd) Disable() error {
+	return u.memfile.Disable()
+}
 
-	uffd.Disable()
-
-	return nil
+func (u *Uffd) Dirty() *bitset.BitSet {
+	return u.memfile.Dirty()
 }
 
 func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
-}
-
-// Dirty waits for all the requests in flight to be finished and then returns clone of the dirty tracker.
-// Call *after* pausing the firecracker process—to let the uffd process all the requests.
-func (u *Uffd) Dirty(ctx context.Context) (*block.Tracker, error) {
-	uffd, err := u.handler.WaitWithContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get uffd: %w", err)
-	}
-
-	return uffd.Dirty(ctx)
 }

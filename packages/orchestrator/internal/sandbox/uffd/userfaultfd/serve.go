@@ -11,7 +11,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 func (u *Userfaultfd) Serve(
@@ -121,26 +120,6 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		// Handle write to write protected page (WP flag)
-		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
-			err := u.handleWriteProtection(ctx, addr, offset, pagesize)
-			if err != nil {
-				return fmt.Errorf("failed to handle write protection: %w", err)
-			}
-
-			continue
-		}
-
-		// Handle write to missing page (WRITE flag)
-		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, true)
-			if err != nil {
-				return fmt.Errorf("failed to handle missing write: %w", err)
-			}
-
-			continue
-		}
-
 		// Handle read to missing page ("MISSING" flag)
 		if flags == 0 {
 			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
@@ -151,7 +130,7 @@ outerLoop:
 			continue
 		}
 
-		u.logger.Warn("UFFD serve unexpected event type", zap.Any("event_type", flags))
+		u.logger.Error("UFFD serve unexpected event type", zap.Any("event_type", flags))
 	}
 }
 
@@ -163,9 +142,7 @@ func (u *Userfaultfd) handleMissing(
 	pagesize uint64,
 	write bool,
 ) error {
-	if write {
-		u.writesInProgress.Add()
-	} else if !u.missingRequests.Add(offset) {
+	if !u.missingRequests.Add(offset) {
 		return nil
 	}
 
@@ -183,35 +160,18 @@ func (u *Userfaultfd) handleMissing(
 			}
 		}()
 
-		defer func() {
-			if write {
-				u.writesInProgress.Done()
-			}
-		}()
+		b, sliceErr := u.src.Slice(ctx, offset, int64(pagesize))
+		if sliceErr != nil {
+			signalErr := onFailure()
 
-		var b []byte
+			joinedErr := errors.Join(sliceErr, signalErr)
 
-		if u.disabled.Load() {
-			b = header.EmptyHugePage[:pagesize]
-		} else {
-			sliceB, sliceErr := u.src.Slice(ctx, offset, int64(pagesize))
-			if sliceErr != nil {
-				signalErr := onFailure()
+			u.logger.Error("UFFD serve slice error", zap.Error(joinedErr))
 
-				joinedErr := errors.Join(sliceErr, signalErr)
-
-				u.logger.Error("UFFD serve slice error", zap.Error(joinedErr))
-
-				return fmt.Errorf("failed to read from source: %w", joinedErr)
-			}
-
-			b = sliceB
+			return fmt.Errorf("failed to read from source: %w", joinedErr)
 		}
+
 		var copyMode CULong
-
-		if !write {
-			copyMode |= UFFDIO_COPY_MODE_WP
-		}
 
 		copyErr := u.copy(addr, b, pagesize, copyMode)
 		if errors.Is(copyErr, unix.EEXIST) {
@@ -229,44 +189,6 @@ func (u *Userfaultfd) handleMissing(
 
 			return fmt.Errorf("failed uffdio copy %w", joinedErr)
 		}
-
-		// We mark the page as dirty if it was a write to a page that was not already mapped.
-		if write {
-			u.dirty.Add(offset)
-		}
-
-		return nil
-	})
-
-	return nil
-}
-
-func (u *Userfaultfd) handleWriteProtection(ctx context.Context, addr uintptr, offset int64, pagesize uint64) error {
-	err := u.workerSem.Acquire(ctx, 1)
-	if err != nil {
-		return fmt.Errorf("failed to acquire semaphore: %w", err)
-	}
-
-	u.writesInProgress.Add()
-
-	u.wg.Go(func() error {
-		defer u.workerSem.Release(1)
-
-		defer func() {
-			if r := recover(); r != nil {
-				u.logger.Error("UFFD remove write protection panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
-			}
-		}()
-
-		defer u.writesInProgress.Done()
-
-		wpErr := u.RemoveWriteProtection(addr, pagesize)
-		if wpErr != nil {
-			return fmt.Errorf("error removing write protection from page %d", addr)
-		}
-
-		// We mark the page as dirty if it was a write to a page that was already mapped.
-		u.dirty.Add(offset)
 
 		return nil
 	})
