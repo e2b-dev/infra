@@ -38,7 +38,7 @@ WHERE
         s.metadata @> $3 OR $3 = '{}'::jsonb
     )
     -- The order here is important, we want started_at descending, but sandbox_id ascending
-    AND (s.sandbox_started_at, $4) < ($5, s.sandbox_id)
+    AND (s.sandbox_started_at, $4::text) < ($5, s.sandbox_id)
     AND NOT (s.sandbox_id = ANY ($6::text[]))
 ORDER BY s.sandbox_started_at DESC, s.sandbox_id ASC
 LIMIT $1
@@ -48,7 +48,7 @@ type GetSnapshotsWithCursorParams struct {
 	Limit                 int32
 	TeamID                uuid.UUID
 	Metadata              types.JSONBStringMap
-	CursorID              pgtype.Timestamptz
+	CursorID              string
 	CursorTime            pgtype.Timestamptz
 	SnapshotExcludeSbxIds []string
 }

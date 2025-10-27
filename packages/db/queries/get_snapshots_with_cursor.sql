@@ -23,7 +23,7 @@ WHERE
         s.metadata @> @metadata OR @metadata = '{}'::jsonb
     )
     -- The order here is important, we want started_at descending, but sandbox_id ascending
-    AND (s.sandbox_started_at, @cursor_id) < (@cursor_time, s.sandbox_id)
+    AND (s.sandbox_started_at, @cursor_id::text) < (@cursor_time, s.sandbox_id)
     AND NOT (s.sandbox_id = ANY (@snapshot_exclude_sbx_ids::text[]))
 ORDER BY s.sandbox_started_at DESC, s.sandbox_id ASC
 LIMIT $1;
