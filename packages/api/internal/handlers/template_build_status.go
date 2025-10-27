@@ -109,6 +109,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if err != nil {
 		telemetry.ReportError(ctx, "error when comparing versions", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when processing build logs")
+
 		return
 	}
 

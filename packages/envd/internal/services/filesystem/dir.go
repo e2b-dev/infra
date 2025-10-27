@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -135,7 +136,7 @@ func checkIfDirectory(path string) error {
 
 // walkDir walks the directory tree starting from dirPath up to the specified depth (doesn't follow symlinks).
 func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.EntryInfo, err error) {
-	err = filepath.WalkDir(dirPath, func(path string, entry os.DirEntry, err error) error {
+	err = filepath.WalkDir(dirPath, func(path string, _ os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -157,7 +158,13 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 		}
 
 		entryInfo, err := entryInfo(path)
-		if entry == nil {
+		if err != nil {
+			var notFoundErr *connect.Error
+			if errors.As(err, &notFoundErr) && notFoundErr.Code() == connect.CodeNotFound {
+				// Skip entries that don't exist anymore
+				return nil
+			}
+
 			return err
 		}
 

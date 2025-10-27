@@ -314,7 +314,7 @@ type NewSandbox struct {
 	EnvVars   *EnvVars `json:"envVars,omitempty"`
 
 	// Mcp MCP configuration for the sandbox
-	Mcp      *Mcp             `json:"mcp,omitempty"`
+	Mcp      *Mcp             `json:"mcp"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
 	// Secure Secure all system communication with sandbox
@@ -667,6 +667,9 @@ type Template struct {
 	// BuildID Identifier of the last successful build for given template
 	BuildID string `json:"buildID"`
 
+	// BuildStatus Status of the template build
+	BuildStatus TemplateBuildStatus `json:"buildStatus"`
+
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
 
@@ -711,15 +714,12 @@ type TemplateBuild struct {
 	Logs   []string           `json:"logs"`
 	Reason *BuildStatusReason `json:"reason,omitempty"`
 
-	// Status Status of the template
+	// Status Status of the template build
 	Status TemplateBuildStatus `json:"status"`
 
 	// TemplateID Identifier of the template
 	TemplateID string `json:"templateID"`
 }
-
-// TemplateBuildStatus Status of the template
-type TemplateBuildStatus string
 
 // TemplateBuildFileUpload defines model for TemplateBuildFileUpload.
 type TemplateBuildFileUpload struct {
@@ -790,6 +790,9 @@ type TemplateBuildStartV2 struct {
 	// Steps List of steps to execute in the template build
 	Steps *[]TemplateStep `json:"steps,omitempty"`
 }
+
+// TemplateBuildStatus Status of the template build
+type TemplateBuildStatus string
 
 // TemplateStep Step in the template build process
 type TemplateStep struct {

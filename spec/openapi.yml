@@ -197,6 +197,7 @@ components:
       type: object
       description: MCP configuration for the sandbox
       additionalProperties: {}
+      nullable: true
 
     SandboxLog:
       description: Log entry with timestamp and line
@@ -539,6 +540,7 @@ components:
         - buildCount
         - envdVersion
         - aliases
+        - buildStatus
       properties:
         templateID:
           type: string
@@ -587,6 +589,8 @@ components:
           description: Number of times the template was built
         envdVersion:
           $ref: "#/components/schemas/EnvdVersion"
+        buildStatus:
+          $ref: "#/components/schemas/TemplateBuildStatus"
 
     TemplateBuildRequest:
       required:
@@ -799,6 +803,15 @@ components:
           items:
             $ref: "#/components/schemas/BuildLogEntry"
 
+    TemplateBuildStatus:
+      type: string
+      description: Status of the template build
+      enum:
+        - building
+        - waiting
+        - ready
+        - error
+
     TemplateBuild:
       required:
         - templateID
@@ -826,13 +839,7 @@ components:
           type: string
           description: Identifier of the build
         status:
-          type: string
-          description: Status of the template
-          enum:
-            - building
-            - waiting
-            - ready
-            - error
+          $ref: "#/components/schemas/TemplateBuildStatus"
         reason:
           $ref: "#/components/schemas/BuildStatusReason"
 

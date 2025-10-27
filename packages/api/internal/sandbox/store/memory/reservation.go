@@ -46,16 +46,19 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 		if sbx, ok := teamSandboxes[sandboxID]; ok {
 			alreadyPresent = true
 			startResult = sbx.start
+
 			return teamSandboxes
 		}
 
 		if limit >= 0 && len(teamSandboxes) >= int(limit) {
 			limitExceeded = true
+
 			return teamSandboxes
 		}
 
 		startResult = utils.NewSetOnce[sandbox.Sandbox]()
 		teamSandboxes[sandboxID] = newSandboxReservation(startResult)
+
 		return teamSandboxes
 	})
 
@@ -87,6 +90,7 @@ func (s *ReservationStorage) Remove(teamID, sandboxID string) {
 		}
 
 		delete(ts, sandboxID)
+
 		return len(ts) == 0
 	})
 }

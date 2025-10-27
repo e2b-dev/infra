@@ -411,6 +411,7 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 			}
 
 			waiters[i] = waitForStart
+
 			return nil
 		})
 	}
