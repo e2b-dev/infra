@@ -186,14 +186,14 @@ func (u *Uffd) Ready() chan struct{} {
 	return u.readyCh
 }
 
+func (u *Uffd) Exit() *utils.ErrorOnce {
+	return u.exit
+}
+
 func (u *Uffd) Disable() error {
 	return u.memfile.Disable()
 }
 
 func (u *Uffd) Dirty() *bitset.BitSet {
 	return u.memfile.Dirty()
-}
-
-func (u *Uffd) Exit() *utils.ErrorOnce {
-	return u.exit
 }
