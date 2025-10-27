@@ -23,6 +23,10 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 	now := time.Now()
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
+		if sbx.State != sandbox.StateRunning {
+			return sbx, &sandbox.NotFoundError{SandboxID: sandboxID}
+		}
+
 		maxAllowedTTL := getMaxAllowedTTL(now, sbx.StartTime, duration, sbx.MaxInstanceLength)
 		newEndTime := now.Add(maxAllowedTTL)
 
