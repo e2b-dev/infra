@@ -22,6 +22,7 @@ locals {
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
     NODE_POOL                    = var.build_node_pool
     BASE_HUGEPAGES_PERCENTAGE    = var.build_base_hugepages_percentage
+    LOCAL_CACHE_DISK_COUNT       = local.cache_disk_count
   })
 }
 

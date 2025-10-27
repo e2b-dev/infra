@@ -16,8 +16,45 @@ set -x
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
 # Add cache disk for orchestrator and swapfile
-# TODO: Parametrize this
+%{ if LOCAL_CACHE_DISK_COUNT > 0 }
+for i in {0..${ LOCAL_CACHE_DISK_COUNT - 1 }}; do
+  dev_path="/dev/disk/by-id/google-local-nvme-ssd-$i"
+  part_path="$dev_path-part1"
+  echo "partitioning drive #$i"
+  sudo parted --script $dev_path \
+      mklabel gpt \
+      mkpart primary 0% 100% \
+      set 1 raid on
+
+done
+
+DISK="/dev/md0"
+
+echo "creating the array"
+for i in {1..10}; do
+  if sudo mdadm --create --verbose \
+    $DISK \
+    --raid-devices=${ LOCAL_CACHE_DISK_COUNT } \
+    %{ for i in range(LOCAL_CACHE_DISK_COUNT) ~}/dev/disk/by-id/google-local-nvme-ssd-${ i }-part1 %{ endfor }\
+    --level=0; then
+      break
+  fi
+
+  echo "failed to create array, waiting ... "
+  sleep 1
+done
+
+if [ ! -b "$DISK" ]; then
+  echo "failed to create raid array"
+  exit 99
+fi
+
+echo "persisting array configuration"
+sudo mdadm --detail --scan --verbose | sudo tee -a /etc/mdadm/mdadm.conf
+%{ else }
 DISK="/dev/disk/by-id/google-persistent-disk-1"
+%{ endif }
+
 MOUNT_POINT="/orchestrator"
 
 # Step 1: Format the disk with XFS and 65K block size
@@ -27,7 +64,8 @@ sudo mkfs.xfs -f -b size=4096 $DISK
 sudo mkdir -p $MOUNT_POINT
 
 # Step 3: Mount the disk with
-sudo mount -o noatime $DISK $MOUNT_POINT
+echo "$DISK    $MOUNT_POINT    xfs noatime 0 0" | sudo tee /etc/fstab
+sudo mount "$MOUNT_POINT"
 
 sudo mkdir -p /orchestrator/sandbox
 sudo mkdir -p /orchestrator/template

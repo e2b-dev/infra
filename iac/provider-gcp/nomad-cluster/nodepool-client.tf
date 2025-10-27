@@ -1,4 +1,7 @@
 locals {
+  cache_disk_count = 3   # todo: make configurable
+  cache_disk_size  = 375 # todo: make configurable
+
   client_pool_name = "${var.prefix}${var.client_cluster_name}"
   client_startup_script = templatefile("${path.module}/scripts/start-client.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
@@ -22,6 +25,7 @@ locals {
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
     NODE_POOL                    = var.orchestrator_node_pool
     BASE_HUGEPAGES_PERCENTAGE    = var.orchestrator_base_hugepages_percentage
+    LOCAL_CACHE_DISK_COUNT       = local.cache_disk_count
   })
 }
 
@@ -131,18 +135,24 @@ resource "google_compute_instance_template" "client" {
   }
 
   disk {
+    auto_delete  = true
     boot         = true
     source_image = data.google_compute_image.client_source_image.id
     disk_size_gb = 300
     disk_type    = "pd-ssd"
   }
 
-  disk {
-    auto_delete  = true
-    boot         = false
-    type         = "PERSISTENT"
-    disk_size_gb = var.client_cluster_cache_disk_size_gb
-    disk_type    = var.client_cluster_cache_disk_type
+  dynamic "disk" {
+    for_each = [for n in range(local.cache_disk_count) : {}]
+
+    content {
+      auto_delete  = true
+      boot         = false
+      disk_size_gb = local.cache_disk_size
+      interface    = "NVME"
+      disk_type    = "local-ssd"
+      type         = "SCRATCH"
+    }
   }
 
   network_interface {
