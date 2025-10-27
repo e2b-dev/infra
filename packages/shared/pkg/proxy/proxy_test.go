@@ -70,6 +70,7 @@ func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 	backendURL, err := url.Parse(fmt.Sprintf("http://%s", listener.Addr().String()))
 	if err != nil {
 		listener.Close()
+
 		return nil, fmt.Errorf("failed to parse backend URL: %w", err)
 	}
 	backend.url = backendURL
@@ -424,6 +425,7 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 		listener, err := lisCfg.Listen(t.Context(), "tcp", backendAddr)
 		if err != nil {
 			backendReady <- backendResult{nil, fmt.Errorf("failed to create delayed backend listener: %w", err)}
+
 			return
 		}
 
@@ -431,6 +433,7 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 		if err != nil {
 			listener.Close()
 			backendReady <- backendResult{nil, fmt.Errorf("failed to create delayed backend: %w", err)}
+
 			return
 		}
 

@@ -56,6 +56,7 @@ func (h *HTTPWriter) Write(source []byte) (n int, err error) {
 					line := p[start:i]
 					if err := h.sendLogLine(line); err != nil {
 						log.Printf("%v: %s\n", err, line)
+
 						return
 					}
 				}
@@ -68,6 +69,7 @@ func (h *HTTPWriter) Write(source []byte) (n int, err error) {
 			line := p[start:]
 			if err := h.sendLogLine(line); err != nil {
 				log.Printf("%v: %s\n", err, line)
+
 				return
 			}
 		}
@@ -85,6 +87,7 @@ func (h *HTTPWriter) Sync() error {
 	h.wgLock.Unlock()
 
 	wg.Wait()
+
 	return nil
 }
 
@@ -106,5 +109,6 @@ func (h *HTTPWriter) sendLogLine(line []byte) error {
 	if err != nil {
 		return fmt.Errorf("error closing response body: %w", err)
 	}
+
 	return nil
 }

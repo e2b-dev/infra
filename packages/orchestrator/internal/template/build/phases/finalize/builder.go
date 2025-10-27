@@ -75,7 +75,7 @@ func (ppb *PostProcessingBuilder) Metadata() phases.PhaseMeta {
 	}
 }
 
-func (ppb *PostProcessingBuilder) Hash(sourceLayer phases.LayerResult) (string, error) {
+func (ppb *PostProcessingBuilder) Hash(_ context.Context, sourceLayer phases.LayerResult) (string, error) {
 	return cache.HashKeys(sourceLayer.Hash, "config-run-cmd"), nil
 }
 
@@ -122,7 +122,7 @@ func (ppb *PostProcessingBuilder) Build(
 	defaultUser := utils.ToPtr(currentLayer.Metadata.Context.User)
 	defaultWorkdir := currentLayer.Metadata.Context.WorkDir
 
-	ok, err := utils.IsGTEVersion(ppb.Version, templates.TemplateDefaultUserVersion)
+	ok, err := utils.IsGTEVersion(ppb.Version, templates.TemplateV2ReleaseVersion)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error checking build version: %w", err)
 	}
@@ -202,6 +202,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 			)
 			if err != nil {
 				e = fmt.Errorf("error running sync command: %w", err)
+
 				return
 			}
 		}()
@@ -231,7 +232,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 		var startCmdRun errgroup.Group
 		startCmdConfirm := make(chan struct{})
 		if meta.Start.StartCmd != "" {
-			userLogger.Info("Running start command")
+			userLogger.Info(fmt.Sprintf("Running start command: %s", meta.Start.StartCmd))
 			startCmdRun.Go(func() error {
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,
@@ -248,6 +249,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 				if err != nil && !errors.Is(err, context.Canceled) {
 					// Cancel the ready command context, so the ready command does not wait anymore if an error occurs.
 					commandsCancel()
+
 					return fmt.Errorf("error running start command: %w", err)
 				}
 

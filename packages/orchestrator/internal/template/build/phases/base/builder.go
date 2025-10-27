@@ -30,6 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -61,6 +62,7 @@ type BaseBuilder struct {
 	templateStorage     storage.StorageProvider
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
+	featureFlags        *featureflags.Client
 
 	layerExecutor *layer.LayerExecutor
 	index         cache.Index
@@ -69,6 +71,7 @@ type BaseBuilder struct {
 
 func New(
 	buildContext buildcontext.BuildContext,
+	featureFlags *featureflags.Client,
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	templateStorage storage.StorageProvider,
@@ -89,6 +92,7 @@ func New(
 		artifactRegistry:    artifactRegistry,
 		dockerhubRepository: dockerhubRepository,
 		sandboxFactory:      sandboxFactory,
+		featureFlags:        featureFlags,
 
 		layerExecutor: layerExecutor,
 		index:         index,
@@ -244,6 +248,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
+
 		return metadata.Template{}, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
 	}
 	zap.L().Debug("provisioned filesystem ext4 integrity",
@@ -278,6 +283,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		if err != nil {
 			return metadata.Template{}, fmt.Errorf("error running sync command: %w", err)
 		}
+
 		return meta, nil
 	})
 
@@ -380,6 +386,7 @@ func (bb *BaseBuilder) Layer(
 
 			return notCachedResult, nil
 		}
+
 		return phases.LayerResult{
 			Metadata: meta,
 			Cached:   true,

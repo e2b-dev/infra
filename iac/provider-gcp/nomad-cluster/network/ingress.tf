@@ -26,8 +26,20 @@ resource "google_compute_backend_service" "ingress" {
   load_balancing_scheme = "EXTERNAL_MANAGED"
   locality_lb_policy    = "ROUND_ROBIN"
 
+  security_policy = google_compute_security_policy.ingress.id
+
   backend {
     group = var.api_instance_group
+  }
+}
+
+resource "google_compute_security_policy" "ingress" {
+  name = "${var.prefix}ingress"
+
+  adaptive_protection_config {
+    layer_7_ddos_defense_config {
+      enable = true
+    }
   }
 }
 

@@ -155,6 +155,7 @@ func ignoreConstraints(err error) error {
 			return nil
 		}
 	}
+
 	return err
 }
 
@@ -184,6 +185,7 @@ func upsertTeam(ctx context.Context, database *db.DB) (*models.Team, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create team: %w", err)
 	}
+
 	return team, nil
 }
 
@@ -201,6 +203,7 @@ func upsertUser(ctx context.Context, database *db.DB) (*models.User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to upsert user: %w", err)
 	}
+
 	return user, nil
 }
 
@@ -224,5 +227,6 @@ func createTokenHash(prefix, accessToken string) (string, keys.MaskedIdentifier,
 	if err != nil {
 		return "", keys.MaskedIdentifier{}, fmt.Errorf("failed to mask key")
 	}
+
 	return accessTokenHash, accessTokenMask, nil
 }

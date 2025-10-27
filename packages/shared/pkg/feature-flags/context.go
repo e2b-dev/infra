@@ -21,6 +21,7 @@ func SetContext(ctx context.Context, contexts ...ldcontext.Context) context.Cont
 	}
 
 	ctx = context.WithValue(ctx, ctxKey{}, val)
+
 	return ctx
 }
 
@@ -28,6 +29,7 @@ func getContext(ctx context.Context) (ldcontext.Context, bool) {
 	if val, ok := ctx.Value(ctxKey{}).(ldcontext.Context); ok {
 		return val, true
 	}
+
 	return ldcontext.Context{}, false
 }
 
@@ -46,6 +48,7 @@ func flattenContexts(contexts []ldcontext.Context) []ldcontext.Context {
 			} else {
 				contextMap[item.Kind()] = item
 			}
+
 			continue
 		}
 
@@ -127,10 +130,16 @@ func SandboxContext(sandboxID string) ldcontext.Context {
 	return ldcontext.NewWithKind(SandboxKind, sandboxID)
 }
 
-func TeamContext(teamID, teamName string) ldcontext.Context {
+func TeamContextWithName(teamID, teamName string) ldcontext.Context {
 	return ldcontext.NewBuilder(teamID).
 		Kind(TeamKind).
 		Name(teamName).
+		Build()
+}
+
+func TeamContext(teamID string) ldcontext.Context {
+	return ldcontext.NewBuilder(teamID).
+		Kind(TeamKind).
 		Build()
 }
 
@@ -147,4 +156,8 @@ func UserContext(userID string) ldcontext.Context {
 
 func ServiceContext(serviceName string) ldcontext.Context {
 	return ldcontext.NewWithKind(ServiceKind, serviceName)
+}
+
+func TemplateContext(templateID string) ldcontext.Context {
+	return ldcontext.NewWithKind(TemplateKind, templateID)
 }

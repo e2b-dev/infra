@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -42,6 +43,9 @@ var (
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
+	Transport: otelhttp.NewTransport(
+		http.DefaultTransport,
+	),
 }
 
 type Config struct {
@@ -433,6 +437,8 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to serve memory: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "started serving memory")
+
 	// ==== END of resources initialization ====
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
@@ -561,6 +567,8 @@ func (f *Factory) ResumeSandbox(
 		return sbx.Stop(ctx)
 	})
 
+	telemetry.ReportEvent(execCtx, "waiting for envd")
+
 	err = sbx.WaitForEnvd(
 		ctx,
 		f.config.EnvdTimeout,
@@ -568,6 +576,8 @@ func (f *Factory) ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+
+	telemetry.ReportEvent(execCtx, "envd initialized")
 
 	go sbx.Checks.Start(execCtx)
 
@@ -615,6 +625,7 @@ func (s *Sandbox) Close(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to cleanup sandbox: %w", err)
 	}
+
 	return nil
 }
 
@@ -898,6 +909,7 @@ func getNetworkSlotAsync(
 		ips, err := networkPool.Get(ctx, allowInternet)
 		if err != nil {
 			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
+
 			return
 		}
 
@@ -936,9 +948,13 @@ func serveMemory(
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "created uffd")
+
 	if err = fcUffd.Start(ctx, sandboxID); err != nil {
 		return nil, fmt.Errorf("failed to start uffd: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "started uffd")
 
 	cleanup.Add(func(ctx context.Context) error {
 		_, span := tracer.Start(ctx, "uffd-stop")
@@ -1026,5 +1042,6 @@ func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	if err != nil {
 		zap.L().Warn("failed to get envd timeout from feature flag, using default", zap.Error(err))
 	}
+
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
 }

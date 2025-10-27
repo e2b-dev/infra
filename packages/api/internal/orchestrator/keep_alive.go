@@ -23,6 +23,10 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 	now := time.Now()
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
+		if sbx.State != sandbox.StateRunning {
+			return sbx, &sandbox.NotFoundError{SandboxID: sandboxID}
+		}
+
 		maxAllowedTTL := getMaxAllowedTTL(now, sbx.StartTime, duration, sbx.MaxInstanceLength)
 		newEndTime := now.Add(maxAllowedTTL)
 
@@ -36,6 +40,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 
 		zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
 		sbx.EndTime = newEndTime
+
 		return sbx, nil
 	}
 
@@ -56,6 +61,10 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 	}
 	err = o.UpdateSandbox(ctx, sandboxID, sbx.EndTime, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
+		if errors.Is(err, ErrSandboxNotFound) {
+			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
+		}
+
 		return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 	}
 

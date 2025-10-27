@@ -9,37 +9,21 @@ import (
 	"github.com/google/uuid"
 )
 
-type SandboxEventCategory string
-
-const (
-	SandboxEventCategoryLifecycle SandboxEventCategory = "lifecycle"
-	SandboxEventCategoryMetric    SandboxEventCategory = "metric"
-	SandboxEventCategoryProcess   SandboxEventCategory = "process"
-	SandboxEventCategoryNetwork   SandboxEventCategory = "network"
-	SandboxEventCategoryFile      SandboxEventCategory = "file"
-	SandboxEventCategoryError     SandboxEventCategory = "error"
-)
-
-type SandboxEventLabel string
-
-const (
-	SandboxEventLabelCreate SandboxEventLabel = "create"
-	SandboxEventLabelPause  SandboxEventLabel = "pause"
-	SandboxEventLabelResume SandboxEventLabel = "resume"
-	SandboxEventLabelUpdate SandboxEventLabel = "update"
-	SandboxEventLabelKill   SandboxEventLabel = "kill"
-)
-
 type SandboxEvent struct {
-	Timestamp          time.Time      `ch:"timestamp"`
-	SandboxID          string         `ch:"sandbox_id"`
-	SandboxExecutionID string         `ch:"sandbox_execution_id"`
-	SandboxTemplateID  string         `ch:"sandbox_template_id"`
-	SandboxBuildID     string         `ch:"sandbox_build_id"`
-	SandboxTeamID      uuid.UUID      `ch:"sandbox_team_id"`
-	EventCategory      string         `ch:"event_category"`
-	EventLabel         string         `ch:"event_label"`
-	EventData          sql.NullString `ch:"event_data"`
+	ID      uuid.UUID `ch:"id"`
+	Version string    `ch:"version"`
+	Type    string    `ch:"type"`
+
+	EventCategory string         `ch:"event_category"`
+	EventLabel    string         `ch:"event_label"`
+	EventData     sql.NullString `ch:"event_data"`
+
+	Timestamp          time.Time `ch:"timestamp"`
+	SandboxID          string    `ch:"sandbox_id"`
+	SandboxExecutionID string    `ch:"sandbox_execution_id"`
+	SandboxTemplateID  string    `ch:"sandbox_template_id"`
+	SandboxBuildID     string    `ch:"sandbox_build_id"`
+	SandboxTeamID      uuid.UUID `ch:"sandbox_team_id"`
 }
 
 const existsSandboxIdQuery = `
@@ -66,7 +50,10 @@ SELECT
     sandbox_team_id,
     event_category,
     event_label,
-    event_data
+    event_data,
+    type,
+    version,
+    id
 FROM sandbox_events
 WHERE sandbox_id = ?
 ORDER BY timestamp %s
@@ -109,7 +96,10 @@ SELECT
     sandbox_team_id,
     event_category,
     event_label,
-    event_data
+    event_data,
+    type,
+    version,
+    id
 FROM sandbox_events
 WHERE sandbox_team_id = ?
 ORDER BY timestamp %s

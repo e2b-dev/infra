@@ -28,6 +28,7 @@ func GetFileMetadata(fullPath string) (File, error) {
 	if statx.Mask&unix.STATX_BTIME == unix.STATX_BTIME {
 		t.BTime = statxTimestampToTime(statx.Btime)
 	}
+
 	return t, nil
 }
 

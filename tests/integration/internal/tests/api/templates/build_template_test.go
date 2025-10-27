@@ -90,9 +90,11 @@ func buildTemplate(
 		switch statusResp.JSON200.Status {
 		case api.TemplateBuildStatusReady:
 			tb.Log("Build completed successfully")
+
 			return true
 		case api.TemplateBuildStatusError:
 			tb.Fatalf("Build failed: %v", safe(statusResp.JSON200.Reason))
+
 			return false
 		}
 
@@ -105,6 +107,7 @@ func safe[T any](item *T) T {
 		return *item
 	}
 	var t T
+
 	return t
 }
 
@@ -310,6 +313,7 @@ func TestTemplateBuildCache(t *testing.T) {
 				return true
 			}
 		}
+
 		return false
 	}, "Expected to contain cached ENV layer")
 }
@@ -728,8 +732,7 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 			expectedLogs: []string{
 				"Running start command",
 				"[start] [stdout]: Hello, World!",
-				"Waiting for template to be ready",
-				"[ready cmd]: sleep 2",
+				"Waiting for template to be ready: sleep 2",
 				"Template is ready",
 			},
 		},
@@ -754,7 +757,6 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 				"[start] [stdout]: Starting with TEST_VAR=test_value",
 				"[start] [stdout]: Initialization complete",
 				"Waiting for template to be ready",
-				"[ready cmd]:",
 				"Template is ready",
 			},
 		},
@@ -780,6 +782,7 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 				for _, msg := range logMessages {
 					if strings.Contains(msg, expectedLog) {
 						found = true
+
 						break
 					}
 				}
@@ -858,6 +861,7 @@ func TestTemplateBuildWithDifferentSourceImages(t *testing.T) {
 				for _, msg := range logMessages {
 					if strings.Contains(msg, expectedLog) {
 						found = true
+
 						break
 					}
 				}

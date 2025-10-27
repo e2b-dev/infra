@@ -52,6 +52,7 @@ func (c *Checks) GetMetrics(ctx context.Context, timeout time.Duration) (*Metric
 
 	if response.StatusCode != http.StatusOK {
 		err = fmt.Errorf("unexpected status code: %d", response.StatusCode)
+
 		return nil, err
 	}
 

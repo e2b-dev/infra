@@ -45,7 +45,6 @@ linters:
     - mnd
     - nestif
     - nilnil
-    - nlreturn
     - noinlineerr
     - nonamedreturns
     - nosprintfhostport
@@ -110,7 +109,6 @@ linters:
         - { disabled: true, name: package-comments }
         - { disabled: true, name: unchecked-type-assertion }
         - { disabled: true, name: unexported-naming }
-        - { disabled: true, name: unexported-return }
         - { disabled: true, name: unhandled-error }  #  todo: enable this
         - { disabled: true, name: unnecessary-format }  # todo: enable this
         - { disabled: true, name: unnecessary-stmt }  # todo: enable this

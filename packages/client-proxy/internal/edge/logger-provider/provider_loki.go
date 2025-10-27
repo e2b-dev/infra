@@ -43,6 +43,7 @@ func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID strin
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for template build", err)
 		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
+
 		return make([]logs.LogEntry, 0), nil
 	}
 
@@ -50,6 +51,7 @@ func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID strin
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping build logs", err)
 		zap.L().Error("error when mapping logs for template build", zap.Error(err), logger.WithBuildID(buildID))
+
 		return make([]logs.LogEntry, 0), nil
 	}
 
@@ -67,6 +69,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string,
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for sandbox", err)
 		zap.L().Error("error when returning logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+
 		return make([]logs.LogEntry, 0), nil
 	}
 
@@ -74,6 +77,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string,
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		zap.L().Error("error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+
 		return make([]logs.LogEntry, 0), nil
 	}
 

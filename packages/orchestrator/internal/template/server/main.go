@@ -20,6 +20,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -48,6 +49,7 @@ type ServerStore struct {
 
 func New(
 	ctx context.Context,
+	featureFlags *featureflags.Client,
 	meterProvider metric.MeterProvider,
 	logger *zap.Logger,
 	buildLogger *zap.Logger,
@@ -98,6 +100,7 @@ func New(
 
 	builder := build.NewBuilder(
 		logger,
+		featureFlags,
 		sandboxFactory,
 		templatePersistence,
 		buildPersistance,
@@ -130,21 +133,6 @@ func (s *ServerStore) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return errors.New("force exit, not waiting for builds to finish")
 	default:
-		// Wait for draining state to propagate to all consumers
-		if !env.IsLocal() {
-			time.Sleep(15 * time.Second)
-		}
-
-		s.logger.Info("Waiting for all build jobs to finish")
-		s.wg.Wait()
-
-		if !env.IsLocal() {
-			s.logger.Info("Waiting for consumers to check build status")
-			time.Sleep(15 * time.Second)
-		}
-
-		s.logger.Info("Template build queue cleaned")
-
 		var closersErr error
 		for _, closer := range s.closers {
 			err := closer.Close()
@@ -155,6 +143,25 @@ func (s *ServerStore) Close(ctx context.Context) error {
 		if closersErr != nil {
 			return fmt.Errorf("failed to close services: %w", closersErr)
 		}
+
+		return nil
+	}
+}
+
+func (s *ServerStore) Wait(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return errors.New("force exit, not waiting for builds to finish")
+	default:
+		s.logger.Info("Waiting for all build jobs to finish")
+		s.wg.Wait()
+
+		if !env.IsLocal() {
+			s.logger.Info("Waiting for consumers to check build status")
+			time.Sleep(15 * time.Second)
+		}
+
+		s.logger.Info("Template build queue cleaned")
 
 		return nil
 	}
