@@ -85,6 +85,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 			LastSpawnedAt: item.Env.LastSpawnedAt,
 			SpawnCount:    item.Env.SpawnCount,
 			BuildCount:    item.Env.BuildCount,
+			BuildStatus:   api.TemplateBuildStatus(item.BuildStatus),
 			CreatedBy:     createdBy,
 			EnvdVersion:   envdVersion,
 		})
