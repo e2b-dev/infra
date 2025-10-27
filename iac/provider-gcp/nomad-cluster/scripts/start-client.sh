@@ -64,7 +64,7 @@ sudo mkfs.xfs -f -b size=4096 $DISK
 sudo mkdir -p $MOUNT_POINT
 
 # Step 3: Mount the disk with
-echo "$DISK    $MOUNT_POINT    xfs noatime 0 0" | sudo tee /etc/fstab
+echo "$DISK    $MOUNT_POINT    xfs noatime 0 0" | sudo tee -a /etc/fstab
 sudo mount "$MOUNT_POINT"
 
 sudo mkdir -p /orchestrator/sandbox
