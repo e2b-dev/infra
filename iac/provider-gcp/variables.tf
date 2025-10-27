@@ -491,3 +491,18 @@ variable "remote_repository_enabled" {
   description = "Set to true to enable remote repository cache. Can be set via TF_VAR_remote_repository_enabled or REMOTE_REPOSITORY_ENABLED env var."
   default     = false
 }
+
+variable "client_node_type" {
+  type    = string
+  default = ""
+}
+
+variable "isolated_client_cluster_size" {
+  type    = number
+  default = 1
+}
+
+variable "isolated_client_cluster_size_max" {
+  type    = number
+  default = 1
+}

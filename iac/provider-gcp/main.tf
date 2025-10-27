@@ -13,7 +13,7 @@ terraform {
 
     google = {
       source  = "hashicorp/google"
-      version = "6.49.3"
+      version = "~> 6"
     }
 
     cloudflare = {
@@ -97,6 +97,10 @@ module "cluster" {
   build_cluster_root_disk_size_gb   = var.build_cluster_root_disk_size_gb
   build_cluster_cache_disk_size_gb  = var.build_cluster_cache_disk_size_gb
   build_cluster_cache_disk_type     = var.build_cluster_cache_disk_type
+
+  client_node_type                 = var.client_node_type
+  isolated_client_cluster_size     = var.isolated_client_cluster_size
+  isolated_client_cluster_size_max = var.isolated_client_cluster_size_max
 
   api_cluster_size        = var.api_cluster_size
   build_cluster_size      = var.build_cluster_size
