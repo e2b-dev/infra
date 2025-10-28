@@ -19,7 +19,7 @@ var (
 	errCannotSetTTL              = fmt.Errorf("cannot set ttl")
 )
 
-func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
+func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, extendOnly bool) *api.APIError {
 	now := time.Now()
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
@@ -34,7 +34,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 			return sbx, errMaxInstanceLengthExceeded
 		}
 
-		if !allowShorter && newEndTime.Before(sbx.EndTime) {
+		if extendOnly && newEndTime.Before(sbx.EndTime) {
 			return sbx, errCannotSetTTL
 		}
 

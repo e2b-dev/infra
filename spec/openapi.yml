@@ -1671,6 +1671,11 @@ paths:
                   type: integer
                   format: int32
                   minimum: 0
+                extend_only:
+                  description: Whether to extend the timeout or set a new one
+                  type: boolean
+                  default: false
+
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:

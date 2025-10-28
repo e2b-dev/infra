@@ -36,7 +36,12 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 		duration = time.Duration(body.Timeout) * time.Second
 	}
 
-	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, true)
+	extendOnly := false
+	if body.ExtendOnly != nil {
+		extendOnly = *body.ExtendOnly
+	}
+
+	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, extendOnly)
 	if apiErr != nil {
 		telemetry.ReportError(ctx, "error when setting timeout", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)

@@ -41,7 +41,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 		duration = sandbox.SandboxTimeoutDefault
 	}
 
-	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, false)
+	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, true)
 	if apiErr != nil {
 		telemetry.ReportError(ctx, "error when refreshing sandbox", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)

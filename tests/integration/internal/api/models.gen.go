@@ -902,6 +902,9 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 
 // PostSandboxesSandboxIDTimeoutJSONBody defines parameters for PostSandboxesSandboxIDTimeout.
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
+	// ExtendOnly Whether to extend the timeout or set a new one
+	ExtendOnly *bool `json:"extend_only,omitempty"`
+
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
 }
