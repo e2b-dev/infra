@@ -1690,6 +1690,7 @@ paths:
 
   /sandboxes/{sandboxID}/refreshes:
     post:
+      deprecated: true
       description: Refresh the sandbox extending its time to live
       security:
         - ApiKeyAuth: []
