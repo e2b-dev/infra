@@ -58,7 +58,7 @@ func TestSandboxConnect(t *testing.T) {
 			Timeout: 321,
 		}, setup.WithAPIKey())
 		require.NoError(t, err)
-		require.Equal(t, http.StatusCreated, sbxConnect.StatusCode())
+		require.Equal(t, http.StatusOK, sbxConnect.StatusCode())
 		require.NotNil(t, sbxConnect.JSON201)
 		assert.Equal(t, sbxConnect.JSON201.SandboxID, sbxId)
 
