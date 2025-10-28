@@ -80,7 +80,7 @@ func TestSandboxTimeoutExtendOnly_NoShortenWhenExtendOnlyTrue(t *testing.T) {
 
 	// The end time should remain the same (or very close, accounting for time precision)
 	timeDiff := newEndTime.Sub(initialEndTime)
-	assert.True(t, timeDiff.Abs() < 2*time.Second, "End time should not be shortened when extendOnly is true")
+	assert.Less(t, timeDiff.Abs(), 2*time.Second, "End time should not be shortened when extendOnly is true")
 }
 
 func TestSandboxTimeoutExtendOnly_ShortenWhenExtendOnlyFalse(t *testing.T) {
