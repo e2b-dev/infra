@@ -16,93 +16,85 @@ set -x
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
 # Add cache disk for orchestrator and swapfile
-%{ if LOCAL_CACHE_DISK_COUNT > 0 }
 for i in {0..${ LOCAL_CACHE_DISK_COUNT - 1 }}; do
   dev_path="/dev/disk/by-id/google-local-nvme-ssd-$i"
-  part_path="$dev_path-part1"
   echo "partitioning drive #$i"
-  sudo parted --script $dev_path \
+  parted --script $dev_path \
       mklabel gpt \
       mkpart primary 0% 100% \
       set 1 raid on
-
 done
 
+%{ if LOCAL_CACHE_DISK_COUNT > 1 }
 DISK="/dev/md0"
 
 echo "creating the array"
-for i in {1..10}; do
-  if sudo mdadm --create --verbose \
-    $DISK \
-    --raid-devices=${ LOCAL_CACHE_DISK_COUNT } \
-    %{ for i in range(LOCAL_CACHE_DISK_COUNT) ~}/dev/disk/by-id/google-local-nvme-ssd-${ i }-part1 %{ endfor }\
-    --level=0; then
-      break
-  fi
-
-  echo "failed to create array, waiting ... "
-  sleep 1
+until mdadm --create --verbose \
+  $DISK \
+  --raid-devices=${ LOCAL_CACHE_DISK_COUNT } \
+  %{ for i in range(LOCAL_CACHE_DISK_COUNT) ~}/dev/disk/by-id/google-local-nvme-ssd-${ i }-part1 %{ endfor }\
+  --level=0; do
+    echo "failed to create array, trying again ... "
+    sleep 1
 done
 
-if [ ! -b "$DISK" ]; then
-  echo "failed to create raid array"
-  exit 99
-fi
-
 echo "persisting array configuration"
-sudo mdadm --detail --scan --verbose | sudo tee -a /etc/mdadm/mdadm.conf
+mdadm --detail --scan --verbose | tee -a /etc/mdadm/mdadm.conf
 %{ else }
-DISK="/dev/disk/by-id/google-persistent-disk-1"
+DISK="/dev/disk/by-id/google-local-nvme-ssd-0-part1"
 %{ endif }
 
 MOUNT_POINT="/orchestrator"
 
 # Step 1: Format the disk with XFS and 65K block size
-sudo mkfs.xfs -f -b size=4096 $DISK
+until mkfs.xfs -f -b size=4096 $DISK; do
+  echo "failed to make file system, trying again ... "
+  sleep 1
+done
 
 # Step 2: Create the mount point
-sudo mkdir -p $MOUNT_POINT
+mkdir -p $MOUNT_POINT
 
 # Step 3: Mount the disk with
-echo "$DISK    $MOUNT_POINT    xfs noatime 0 0" | sudo tee -a /etc/fstab
-sudo mount "$MOUNT_POINT"
+echo "$DISK    $MOUNT_POINT    xfs noatime 0 0" | tee -a /etc/fstab
+mount "$MOUNT_POINT"
 
-sudo mkdir -p /orchestrator/sandbox
-sudo mkdir -p /orchestrator/template
-sudo mkdir -p /orchestrator/build
+mkdir -p /orchestrator/sandbox
+mkdir -p /orchestrator/template
+mkdir -p /orchestrator/build
 
 # Add swapfile
 SWAPFILE="/swapfile"
-sudo fallocate -l 100G $SWAPFILE
-sudo chmod 600 $SWAPFILE
-sudo mkswap $SWAPFILE
-sudo swapon $SWAPFILE
+fallocate -l 100G $SWAPFILE
+chmod 600 $SWAPFILE
+mkswap $SWAPFILE
+swapon $SWAPFILE
 
 # Make swapfile persistent
-echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+echo "$SWAPFILE none swap sw 0 0" | tee -a /etc/fstab
 
 # Set swap settings
-sudo sysctl vm.swappiness=10
-sudo sysctl vm.vfs_cache_pressure=50
+sysctl vm.swappiness=10
+sysctl vm.vfs_cache_pressure=50
 
 # TODO: Optimize the mount more according to https://cloud.google.com/filestore/docs/mounting-fileshares
 %{ if USE_FILESTORE_CACHE }
 # Mount NFS
-sudo mkdir -p "${NFS_MOUNT_PATH}"
-echo "${NFS_IP_ADDRESS}:/store ${NFS_MOUNT_PATH} nfs ${NFS_MOUNT_OPTS} 0 0" | sudo tee -a /etc/fstab
-sudo mount "${NFS_MOUNT_PATH}"
-sudo mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
+mkdir -p "${NFS_MOUNT_PATH}"
+echo "${NFS_IP_ADDRESS}:/store ${NFS_MOUNT_PATH} nfs ${NFS_MOUNT_OPTS} 0 0" | tee -a /etc/fstab
+mount "${NFS_MOUNT_PATH}"
+mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
 %{ endif }
 
 # Add tmpfs for snapshotting
 # TODO: Parametrize this
-sudo mkdir -p /mnt/snapshot-cache
-sudo mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
+mkdir -p /mnt/snapshot-cache
+mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
 
 ulimit -n 1048576
 export GOMAXPROCS='nproc'
 
-sudo tee -a /etc/sysctl.conf <<EOF
+tee -a /etc/sysctl.conf <<EOF
 # Increase the maximum number of socket connections
 net.core.somaxconn = 65535
 
@@ -116,7 +108,7 @@ net.ipv4.tcp_max_syn_backlog = 65535
 vm.max_map_count=1048576
 
 EOF
-sudo sysctl -p
+sysctl -p
 
 echo "Disabling inotify for NBD devices"
 # https://lore.kernel.org/lkml/20220422054224.19527-1-matthew.ruffell@canonical.com/
@@ -125,11 +117,11 @@ cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
 ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
 EOH
 
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+udevadm control --reload-rules
+udevadm trigger
 
 # Load the nbd module with 4096 devices
-sudo modprobe nbd nbds_max=4096
+modprobe nbd nbds_max=4096
 
 # Create the directory for the fc mounts
 mkdir -p /fc-vm
@@ -201,7 +193,7 @@ systemctl restart systemd-resolved
 # The THP are by default set to madvise
 # We are allocating the hugepages at the start when the memory is not fragmented yet
 echo "[Setting up huge pages]"
-sudo mkdir -p /mnt/hugepages
+mkdir -p /mnt/hugepages
 mount -t hugetlbfs none /mnt/hugepages
 # Increase proactive compaction to reduce memory fragmentation for using overcomitted huge pages
 
