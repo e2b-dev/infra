@@ -1679,6 +1679,12 @@ paths:
             schema:
               $ref: "#/components/schemas/ConnectSandbox"
       responses:
+        "200":
+          description: The sandbox was already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sandbox"
         "201":
           description: The sandbox was resumed successfully
           content:

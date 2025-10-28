@@ -3071,6 +3071,7 @@ func (r GetSandboxesSandboxIDResponse) StatusCode() int {
 type PostSandboxesSandboxIDConnectResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON200      *Sandbox
 	JSON201      *Sandbox
 	JSON401      *N401
 	JSON404      *N404
@@ -4657,6 +4658,13 @@ func ParsePostSandboxesSandboxIDConnectResponse(rsp *http.Response) (*PostSandbo
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Sandbox
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest Sandbox
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

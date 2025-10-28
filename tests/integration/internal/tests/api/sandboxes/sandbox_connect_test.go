@@ -59,8 +59,8 @@ func TestSandboxConnect(t *testing.T) {
 		}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, sbxConnect.StatusCode())
-		require.NotNil(t, sbxConnect.JSON201)
-		assert.Equal(t, sbxConnect.JSON201.SandboxID, sbxId)
+		require.NotNil(t, sbxConnect.JSON200)
+		assert.Equal(t, sbxConnect.JSON200.SandboxID, sbxId)
 
 		// Check if the sandbox is running and the timeout isn't changed
 		res, err = c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
