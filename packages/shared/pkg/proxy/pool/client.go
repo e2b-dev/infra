@@ -2,6 +2,7 @@ package pool
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -174,8 +175,15 @@ func (p *ProxyClient) closeIdleConnections() {
 	p.transport.CloseIdleConnections()
 }
 
-func (p *ProxyClient) closeAllConnections() {
+func (p *ProxyClient) resetAllConnections() error {
+	var errs []error
+
 	for _, conn := range p.activeConnections.Items() {
-		conn.Close()
+		err := conn.Reset()
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
+
+	return errors.Join(errs...)
 }

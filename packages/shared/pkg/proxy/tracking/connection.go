@@ -4,9 +4,9 @@ import (
 	"net"
 	"sync/atomic"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type Connection struct {
@@ -25,14 +25,29 @@ func NewConnection(conn net.Conn, counter *atomic.Int64, m *smap.Map[*Connection
 		Conn:    conn,
 		counter: counter,
 		m:       m,
-		key:     uuid.New().String(),
 	}
 
 	if m != nil {
+		c.key = uuid.New().String()
+
 		m.Insert(c.key, c)
 	}
 
 	return c
+}
+
+func (c *Connection) Reset() error {
+	err := c.Conn.(*net.TCPConn).SetLinger(0)
+	if err != nil {
+		return err
+	}
+
+	err = c.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *Connection) Close() error {

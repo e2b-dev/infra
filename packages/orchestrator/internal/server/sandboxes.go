@@ -156,7 +156,11 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.sandboxes.RemoveByExecutionID(req.GetSandbox().GetSandboxId(), sbx.Runtime.ExecutionID)
 
 		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
-		s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		cleanupErr = s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		if cleanupErr != nil {
+			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
+			sbxlogger.I(sbx).Warn("error during removing sandbox proxy pool", zap.Error(cleanupErr))
+		}
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()
