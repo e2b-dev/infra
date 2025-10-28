@@ -2,9 +2,7 @@ package auth
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -20,19 +18,15 @@ func Validate(ctx context.Context, sqlcDB *client.Client, token, envID string) (
 		return false, err
 	}
 
-	_, err = sqlcDB.ValidateEnvBuilds(ctx, queries.ValidateEnvBuildsParams{
+	exists, err := sqlcDB.ExistsWaitingTemplateBuild(ctx, queries.ExistsWaitingTemplateBuildParams{
 		TemplateID:      envID,
 		AccessTokenHash: hashedToken,
 	})
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil
-		}
-
 		return false, err
 	}
 
-	return true, nil
+	return exists, nil
 }
 
 func ValidateAccessToken(ctx context.Context, db *client.Client, accessToken string) bool {

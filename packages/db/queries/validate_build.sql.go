@@ -7,26 +7,29 @@ package queries
 
 import (
 	"context"
-
-	"github.com/google/uuid"
 )
 
-const validateEnvBuilds = `-- name: ValidateEnvBuilds :one
-SELECT at.user_id FROM envs e
-JOIN users_teams ut on ut.team_id = e.team_id
-JOIN access_tokens at on at.user_id = ut.user_id
-WHERE at.access_token_hash = $1
-  AND e.id = $2
+const existsWaitingTemplateBuild = `-- name: ExistsWaitingTemplateBuild :one
+SELECT EXISTS (
+    SELECT 1
+    FROM envs e
+             JOIN users_teams ut ON ut.team_id = e.team_id
+             JOIN access_tokens at ON at.user_id = ut.user_id
+             JOIN env_builds eb ON eb.env_id = e.id
+    WHERE at.access_token_hash = $1
+      AND e.id = $2
+      AND eb.status = 'waiting'
+) AS valid
 `
 
-type ValidateEnvBuildsParams struct {
+type ExistsWaitingTemplateBuildParams struct {
 	AccessTokenHash string
 	TemplateID      string
 }
 
-func (q *Queries) ValidateEnvBuilds(ctx context.Context, arg ValidateEnvBuildsParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, validateEnvBuilds, arg.AccessTokenHash, arg.TemplateID)
-	var user_id uuid.UUID
-	err := row.Scan(&user_id)
-	return user_id, err
+func (q *Queries) ExistsWaitingTemplateBuild(ctx context.Context, arg ExistsWaitingTemplateBuildParams) (bool, error) {
+	row := q.db.QueryRow(ctx, existsWaitingTemplateBuild, arg.AccessTokenHash, arg.TemplateID)
+	var valid bool
+	err := row.Scan(&valid)
+	return valid, err
 }
