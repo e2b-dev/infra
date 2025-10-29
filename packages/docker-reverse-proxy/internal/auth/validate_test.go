@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	db "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	db "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/testuilts"
+	"github.com/e2b-dev/infra/packages/db/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
@@ -51,7 +51,7 @@ func TestValidate(t *testing.T) {
 			createdEnvId:     envID,
 			createdEnvStatus: "waiting",
 			validateEnvId:    envID,
-			accessTokenUsed:  fmt.Sprintf("%s_123abx", accessToken.PrefixedRawValue),
+			accessTokenUsed:  fmt.Sprintf("%s123abc", keys.AccessTokenPrefix),
 			error:            false,
 		},
 		{
@@ -93,7 +93,7 @@ func TestValidate(t *testing.T) {
 	}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tb *testing.T) {
-			dbClient := testuilts.SetupDatabase(tb)
+			dbClient := testutils.SetupDatabase(tb)
 			setupValidateTest(tb, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
 
 			valid, err := Validate(ctx, dbClient, tc.accessTokenUsed, tc.validateEnvId)
@@ -154,7 +154,7 @@ func setupValidateTest(tb testing.TB, db *db.Client, userID, teamID uuid.UUID, a
 	buildID := uuid.New()
 	var finishedAt *string
 	if createdEnvStatus == "finished" {
-		now := time.Now().String()
+		now := time.Now().Format(time.RFC3339)
 		finishedAt = &now
 	}
 	err = db.TestsRawSQL(tb.Context(), `
@@ -162,5 +162,4 @@ func setupValidateTest(tb testing.TB, db *db.Client, userID, teamID uuid.UUID, a
 		VALUES ($1, $2, $3, $4, 'FROM ubuntu', NOW(), 1, 1024, 1024, '0.0.0', '0.0.0', 'abc')
 	`, buildID, envID, createdEnvStatus, finishedAt)
 	require.NoError(tb, err)
-
 }
