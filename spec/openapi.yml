@@ -1691,12 +1691,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Sandbox"
-        "409":
-          $ref: "#/components/responses/409"
-        "404":
-          $ref: "#/components/responses/404"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 
