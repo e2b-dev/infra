@@ -158,6 +158,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		m,
 		u.memfile,
 		u.fdExit,
+		make(map[int64]struct{}),
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
