@@ -10,7 +10,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
@@ -78,21 +77,6 @@ func (uu *UserUpdate) AddCreatedEnvs(e ...*Env) *UserUpdate {
 	return uu.AddCreatedEnvIDs(ids...)
 }
 
-// AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by IDs.
-func (uu *UserUpdate) AddAccessTokenIDs(ids ...uuid.UUID) *UserUpdate {
-	uu.mutation.AddAccessTokenIDs(ids...)
-	return uu
-}
-
-// AddAccessTokens adds the "access_tokens" edges to the AccessToken entity.
-func (uu *UserUpdate) AddAccessTokens(a ...*AccessToken) *UserUpdate {
-	ids := make([]uuid.UUID, len(a))
-	for i := range a {
-		ids[i] = a[i].ID
-	}
-	return uu.AddAccessTokenIDs(ids...)
-}
-
 // AddUsersTeamIDs adds the "users_teams" edge to the UsersTeams entity by IDs.
 func (uu *UserUpdate) AddUsersTeamIDs(ids ...int) *UserUpdate {
 	uu.mutation.AddUsersTeamIDs(ids...)
@@ -153,27 +137,6 @@ func (uu *UserUpdate) RemoveCreatedEnvs(e ...*Env) *UserUpdate {
 		ids[i] = e[i].ID
 	}
 	return uu.RemoveCreatedEnvIDs(ids...)
-}
-
-// ClearAccessTokens clears all "access_tokens" edges to the AccessToken entity.
-func (uu *UserUpdate) ClearAccessTokens() *UserUpdate {
-	uu.mutation.ClearAccessTokens()
-	return uu
-}
-
-// RemoveAccessTokenIDs removes the "access_tokens" edge to AccessToken entities by IDs.
-func (uu *UserUpdate) RemoveAccessTokenIDs(ids ...uuid.UUID) *UserUpdate {
-	uu.mutation.RemoveAccessTokenIDs(ids...)
-	return uu
-}
-
-// RemoveAccessTokens removes "access_tokens" edges to AccessToken entities.
-func (uu *UserUpdate) RemoveAccessTokens(a ...*AccessToken) *UserUpdate {
-	ids := make([]uuid.UUID, len(a))
-	for i := range a {
-		ids[i] = a[i].ID
-	}
-	return uu.RemoveAccessTokenIDs(ids...)
 }
 
 // ClearUsersTeams clears all "users_teams" edges to the UsersTeams entity.
@@ -363,54 +326,6 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if uu.mutation.AccessTokensCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.AccessTokensTable,
-			Columns: []string{user.AccessTokensColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
-			},
-		}
-		edge.Schema = uu.schemaConfig.AccessToken
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := uu.mutation.RemovedAccessTokensIDs(); len(nodes) > 0 && !uu.mutation.AccessTokensCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.AccessTokensTable,
-			Columns: []string{user.AccessTokensColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
-			},
-		}
-		edge.Schema = uu.schemaConfig.AccessToken
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := uu.mutation.AccessTokensIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.AccessTokensTable,
-			Columns: []string{user.AccessTokensColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
-			},
-		}
-		edge.Schema = uu.schemaConfig.AccessToken
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
 	if uu.mutation.UsersTeamsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -527,21 +442,6 @@ func (uuo *UserUpdateOne) AddCreatedEnvs(e ...*Env) *UserUpdateOne {
 	return uuo.AddCreatedEnvIDs(ids...)
 }
 
-// AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by IDs.
-func (uuo *UserUpdateOne) AddAccessTokenIDs(ids ...uuid.UUID) *UserUpdateOne {
-	uuo.mutation.AddAccessTokenIDs(ids...)
-	return uuo
-}
-
-// AddAccessTokens adds the "access_tokens" edges to the AccessToken entity.
-func (uuo *UserUpdateOne) AddAccessTokens(a ...*AccessToken) *UserUpdateOne {
-	ids := make([]uuid.UUID, len(a))
-	for i := range a {
-		ids[i] = a[i].ID
-	}
-	return uuo.AddAccessTokenIDs(ids...)
-}
-
 // AddUsersTeamIDs adds the "users_teams" edge to the UsersTeams entity by IDs.
 func (uuo *UserUpdateOne) AddUsersTeamIDs(ids ...int) *UserUpdateOne {
 	uuo.mutation.AddUsersTeamIDs(ids...)
@@ -602,27 +502,6 @@ func (uuo *UserUpdateOne) RemoveCreatedEnvs(e ...*Env) *UserUpdateOne {
 		ids[i] = e[i].ID
 	}
 	return uuo.RemoveCreatedEnvIDs(ids...)
-}
-
-// ClearAccessTokens clears all "access_tokens" edges to the AccessToken entity.
-func (uuo *UserUpdateOne) ClearAccessTokens() *UserUpdateOne {
-	uuo.mutation.ClearAccessTokens()
-	return uuo
-}
-
-// RemoveAccessTokenIDs removes the "access_tokens" edge to AccessToken entities by IDs.
-func (uuo *UserUpdateOne) RemoveAccessTokenIDs(ids ...uuid.UUID) *UserUpdateOne {
-	uuo.mutation.RemoveAccessTokenIDs(ids...)
-	return uuo
-}
-
-// RemoveAccessTokens removes "access_tokens" edges to AccessToken entities.
-func (uuo *UserUpdateOne) RemoveAccessTokens(a ...*AccessToken) *UserUpdateOne {
-	ids := make([]uuid.UUID, len(a))
-	for i := range a {
-		ids[i] = a[i].ID
-	}
-	return uuo.RemoveAccessTokenIDs(ids...)
 }
 
 // ClearUsersTeams clears all "users_teams" edges to the UsersTeams entity.
@@ -837,54 +716,6 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 			},
 		}
 		edge.Schema = uuo.schemaConfig.Env
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if uuo.mutation.AccessTokensCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.AccessTokensTable,
-			Columns: []string{user.AccessTokensColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
-			},
-		}
-		edge.Schema = uuo.schemaConfig.AccessToken
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := uuo.mutation.RemovedAccessTokensIDs(); len(nodes) > 0 && !uuo.mutation.AccessTokensCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.AccessTokensTable,
-			Columns: []string{user.AccessTokensColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
-			},
-		}
-		edge.Schema = uuo.schemaConfig.AccessToken
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := uuo.mutation.AccessTokensIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.AccessTokensTable,
-			Columns: []string{user.AccessTokensColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
-			},
-		}
-		edge.Schema = uuo.schemaConfig.AccessToken
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
