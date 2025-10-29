@@ -2,8 +2,11 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
+	db "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,7 +17,6 @@ import (
 )
 
 func TestValidate(t *testing.T) {
-	db := testuilts.SetupDatabase(t)
 	ctx := context.Background()
 
 	// Generate a valid access token
@@ -23,29 +25,113 @@ func TestValidate(t *testing.T) {
 
 	userID := uuid.New()
 	teamID := uuid.New()
+	envID := "test-env-id"
+
+	testcases := []struct {
+		name             string
+		valid            bool
+		createdEnvId     string
+		createdEnvStatus string
+		validateEnvId    string
+		accessTokenUsed  string
+		error            bool
+	}{
+		{
+			name:             "valid token",
+			valid:            true,
+			createdEnvId:     envID,
+			createdEnvStatus: "waiting",
+			validateEnvId:    envID,
+			accessTokenUsed:  accessToken.PrefixedRawValue,
+			error:            false,
+		},
+		{
+			name:             "random access token",
+			valid:            false,
+			createdEnvId:     envID,
+			createdEnvStatus: "waiting",
+			validateEnvId:    envID,
+			accessTokenUsed:  fmt.Sprintf("%s_123abx", accessToken.PrefixedRawValue),
+			error:            false,
+		},
+		{
+			name:             "wrong env ID",
+			valid:            false,
+			createdEnvId:     envID,
+			createdEnvStatus: "waiting",
+			validateEnvId:    "non-existent-env-id",
+			accessTokenUsed:  accessToken.PrefixedRawValue,
+			error:            false,
+		},
+		{
+			name:             "no env ID",
+			valid:            false,
+			createdEnvId:     envID,
+			createdEnvStatus: "waiting",
+			validateEnvId:    "",
+			accessTokenUsed:  accessToken.PrefixedRawValue,
+			error:            false,
+		},
+		{
+			name:             "invalid status",
+			valid:            false,
+			createdEnvId:     envID,
+			createdEnvStatus: "finished",
+			validateEnvId:    envID,
+			accessTokenUsed:  accessToken.PrefixedRawValue,
+			error:            false,
+		},
+		{
+			name:             "invalid access token",
+			valid:            false,
+			createdEnvId:     envID,
+			createdEnvStatus: "waiting",
+			validateEnvId:    envID,
+			accessTokenUsed:  "invalid-access-token",
+			error:            true,
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(tb *testing.T) {
+			dbClient := testuilts.SetupDatabase(tb)
+			setupValidateTest(tb, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
+
+			valid, err := Validate(ctx, dbClient, tc.accessTokenUsed, tc.validateEnvId)
+			if tc.error {
+				require.Error(tb, err)
+			} else {
+				require.NoError(tb, err)
+			}
+			assert.Equal(tb, tc.valid, valid)
+		})
+	}
+}
+
+func setupValidateTest(tb testing.TB, db *db.Client, userID, teamID uuid.UUID, accessToken keys.Key, envID, createdEnvStatus string) {
+	tb.Helper()
 
 	// Create team
-	err = db.TestsRawSQL(ctx, `
+	err := db.TestsRawSQL(tb.Context(), `
 		INSERT INTO "auth"."users" (id, email)
 		VALUES ($1, 'test@e2b.dev')
 	`, userID)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
-	err = db.TestsRawSQL(ctx, `
+	err = db.TestsRawSQL(tb.Context(), `
 		INSERT INTO teams (id, name, email, tier)
 		VALUES ($1, 'test-team', 'test@e2b.dev', 'base_v1')
 	`, teamID)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	// Link user to team
-	err = db.TestsRawSQL(ctx, `
+	err = db.TestsRawSQL(tb.Context(), `
 		INSERT INTO users_teams (user_id, team_id, is_default)
 		VALUES ($1, $2, true)
 	`, userID, teamID)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	// Create access token
-	_, err = db.CreateAccessToken(ctx, queries.CreateAccessTokenParams{
+	_, err = db.CreateAccessToken(tb.Context(), queries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,
@@ -55,68 +141,26 @@ func TestValidate(t *testing.T) {
 		AccessTokenMaskSuffix: accessToken.Masked.MaskedValueSuffix,
 		Name:                  "Test token",
 	})
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	// Create env
-	envID := "test-env-id"
-	err = db.TestsRawSQL(ctx, `
+	err = db.TestsRawSQL(tb.Context(), `
 		INSERT INTO envs (id, team_id, updated_at)
 		VALUES ($1, $2, NOW())
 	`, envID, teamID)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
-	// Create env_build with "waiting" status
+	// Create env_build
 	buildID := uuid.New()
-	err = db.TestsRawSQL(ctx, `
-		INSERT INTO env_builds (id, env_id, status, dockerfile, updated_at, vcpu, ram_mb, free_disk_size_mb, firecracker_version, kernel_version, cluster_node_id)
-		VALUES ($1, $2, 'waiting', 'FROM ubuntu', NOW(), 1, 1024, 1024, '0.0.0', '0.0.0', 'abc')
-	`, buildID, envID)
-	require.NoError(t, err)
+	var finishedAt *string
+	if createdEnvStatus == "finished" {
+		now := time.Now().String()
+		finishedAt = &now
+	}
+	err = db.TestsRawSQL(tb.Context(), `
+		INSERT INTO env_builds (id, env_id, status, finished_at, dockerfile, updated_at, vcpu, ram_mb, free_disk_size_mb, firecracker_version, kernel_version, cluster_node_id)
+		VALUES ($1, $2, $3, $4, 'FROM ubuntu', NOW(), 1, 1024, 1024, '0.0.0', '0.0.0', 'abc')
+	`, buildID, envID, createdEnvStatus, finishedAt)
+	require.NoError(tb, err)
 
-	t.Run("valid token with waiting build", func(t *testing.T) {
-		valid, err := Validate(ctx, db, accessToken.PrefixedRawValue, envID)
-		require.NoError(t, err)
-		assert.True(t, valid)
-	})
-
-	t.Run("valid token but no waiting build", func(t *testing.T) {
-		// Update build status to "finished"
-		err = db.TestsRawSQL(ctx, `
-			UPDATE env_builds SET status = 'finished', finished_at = NOW() WHERE id = $1
-		`, buildID)
-		require.NoError(t, err)
-
-		valid, err := Validate(ctx, db, accessToken.PrefixedRawValue, envID)
-		require.NoError(t, err)
-		assert.False(t, valid)
-
-		// Restore status for other tests
-		err = db.TestsRawSQL(ctx, `
-			UPDATE env_builds SET status = 'waiting' WHERE id = $1
-		`, buildID)
-		require.NoError(t, err)
-	})
-
-	t.Run("invalid token format", func(t *testing.T) {
-		valid, err := Validate(ctx, db, "invalid-token", envID)
-		require.Error(t, err)
-		assert.False(t, valid)
-		assert.Contains(t, err.Error(), "invalid key prefix")
-	})
-
-	t.Run("valid token format but not in database", func(t *testing.T) {
-		// Generate a new token that's not in the database
-		newToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
-		require.NoError(t, err)
-
-		valid, err := Validate(ctx, db, newToken.PrefixedRawValue, envID)
-		require.NoError(t, err)
-		assert.False(t, valid)
-	})
-
-	t.Run("valid token but wrong env ID", func(t *testing.T) {
-		valid, err := Validate(ctx, db, accessToken.PrefixedRawValue, "non-existent-env-id")
-		require.NoError(t, err)
-		assert.False(t, valid)
-	})
 }
