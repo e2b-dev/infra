@@ -4,10 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -63,8 +61,6 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		envdVersion := ""
 		if item.BuildEnvdVersion != nil {
 			envdVersion = *item.BuildEnvdVersion
-		} else {
-			zap.L().Error("failed to determine envd version", logger.WithTemplateID(item.Env.ID))
 		}
 
 		diskMB := int64(0)
@@ -75,9 +71,9 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		templates = append(templates, &api.Template{
 			TemplateID:    item.Env.ID,
 			BuildID:       item.BuildID.String(),
-			CpuCount:      int32(item.BuildVcpu),
-			MemoryMB:      int32(item.BuildRamMb),
-			DiskSizeMB:    int32(diskMB),
+			CpuCount:      api.CPUCount(item.BuildVcpu),
+			MemoryMB:      api.MemoryMB(item.BuildRamMb),
+			DiskSizeMB:    api.DiskSizeMB(diskMB),
 			Public:        item.Env.Public,
 			Aliases:       item.Aliases,
 			CreatedAt:     item.Env.CreatedAt,
