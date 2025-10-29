@@ -91,7 +91,10 @@ func main() {
 	}
 
 	// Remove old access token
-	err = sqlcDB.Test_DeleteAccessToken(ctx, user.ID)
+	err = sqlcDB.TestsRawSQL(ctx, `
+		DELETE FROM "public"."access_tokens"
+		WHERE user_id = $1;
+`, user.ID)
 	if err != nil {
 		panic(err)
 	}
