@@ -189,7 +189,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	if envdVersion == nil {
 		return "", &api.APIError{
 			Code:      http.StatusBadRequest,
-			ClientMsg: "you need to re-build template to allow secure flag",
+			ClientMsg: "You need to re-build template to allow using secured access. Please visit https://e2b.dev/docs/sandbox/secured-access for more information.",
 			Err:       errors.New("envd version is required during envd access token creation"),
 		}
 	}
@@ -206,7 +206,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	if !ok {
 		return "", &api.APIError{
 			Code:      http.StatusBadRequest,
-			ClientMsg: "current template build does not support access flag, you need to re-build template to allow it",
+			ClientMsg: "Template is not compatible with secured access. Please visit https://e2b.dev/docs/sandbox/secured-access for more information.",
 			Err:       errors.New("envd version is not supported for secure flag"),
 		}
 	}
