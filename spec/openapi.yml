@@ -478,6 +478,17 @@ components:
           deprecated: true
           description: Automatically pauses the sandbox after the timeout
 
+    ConnectSandbox:
+      type: object
+      required:
+        - timeout
+      properties:
+        timeout:
+          description: Timeout in seconds from the current time after which the sandbox should expire
+          type: integer
+          format: int32
+          minimum: 0
+
     TeamMetric:
       description: Team metric with timestamp
       required:
@@ -1620,6 +1631,7 @@ paths:
 
   /sandboxes/{sandboxID}/resume:
     post:
+      deprecated: true
       description: Resume the sandbox
       tags: [sandboxes]
       security:
@@ -1647,6 +1659,44 @@ paths:
           $ref: "#/components/responses/404"
         "401":
           $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/connect:
+    post:
+      description: Returns sandbox details. If the sandbox is paused, it will be resumed. TTL is only extended.
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectSandbox"
+      responses:
+        "200":
+          description: The sandbox was already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sandbox"
+        "201":
+          description: The sandbox was resumed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sandbox"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 
