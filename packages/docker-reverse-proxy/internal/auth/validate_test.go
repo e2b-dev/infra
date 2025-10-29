@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -17,8 +16,6 @@ import (
 )
 
 func TestValidate(t *testing.T) {
-	ctx := context.Background()
-
 	// Generate a valid access token
 	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
 	require.NoError(t, err)
@@ -96,7 +93,7 @@ func TestValidate(t *testing.T) {
 			dbClient := testutils.SetupDatabase(tb)
 			setupValidateTest(tb, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
 
-			valid, err := Validate(ctx, dbClient, tc.accessTokenUsed, tc.validateEnvId)
+			valid, err := Validate(tb.Context(), dbClient, tc.accessTokenUsed, tc.validateEnvId)
 			if tc.error {
 				require.Error(tb, err)
 			} else {
