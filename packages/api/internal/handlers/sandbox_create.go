@@ -194,7 +194,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 		}
 	}
 
-	// check if the envd version is newer than 0.2.0
+	// check if the envd version is at least 0.2.0
 	ok, err := sharedUtils.IsGTEVersion(*envdVersion, minEnvdVersionForSecureFlag)
 	if err != nil {
 		return "", &api.APIError{
