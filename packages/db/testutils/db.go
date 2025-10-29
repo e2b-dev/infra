@@ -100,6 +100,8 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 
 // cleanupTestDatabase terminates the container and restores environment
 func cleanupTestDatabase(tb testing.TB, ctx context.Context, sqlcClient *db.Client, container *postgres.PostgresContainer) {
+	tb.Helper()
+
 	if sqlcClient != nil {
 		err := sqlcClient.Close()
 		if err != nil {
