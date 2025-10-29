@@ -1664,7 +1664,7 @@ paths:
 
   /sandboxes/{sandboxID}/connect:
     post:
-      description: Resumes the sandbox if it is paused. Returns sandbox data. TTL is only extended.
+      description: Returns sandbox details. If the sandbox is paused, it will be resumed. TTL is only extended.
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
