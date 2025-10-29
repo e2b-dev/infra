@@ -83,7 +83,7 @@ func startPostgresContainer(t *testing.T) *postgres.PostgresContainer {
 func runDatabaseMigrations(t *testing.T, connStr string) {
 	t.Helper()
 
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "--show-toplevel")
 	output, err := cmd.Output()
 	require.NoError(t, err, "Failed to find git root")
 
@@ -99,18 +99,18 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 }
 
 // cleanupTestDatabase terminates the container and restores environment
-func cleanupTestDatabase(t testing.TB, ctx context.Context, sqlcClient *db.Client, container *postgres.PostgresContainer) {
+func cleanupTestDatabase(tb testing.TB, ctx context.Context, sqlcClient *db.Client, container *postgres.PostgresContainer) {
 	if sqlcClient != nil {
 		err := sqlcClient.Close()
 		if err != nil {
-			t.Errorf("Failed to close sqlc client: %s", err)
+			tb.Errorf("Failed to close sqlc client: %s", err)
 		}
 	}
 
 	if container != nil {
 		err := container.Terminate(ctx)
 		if err != nil {
-			t.Errorf("Failed to terminate container: %s", err)
+			tb.Errorf("Failed to terminate container: %s", err)
 		}
 	}
 }
