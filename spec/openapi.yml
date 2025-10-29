@@ -1664,7 +1664,7 @@ paths:
 
   /sandboxes/{sandboxID}/connect:
     post:
-      description: Returns sandbox info if the sandbox is running, resumes it if it is paused. The timeout is set only if the sandbox is paused.
+      description: Resumes the sandbox if it is paused. If the sandbox is already running, it extends the timeout if the current timeout is shorter.
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []

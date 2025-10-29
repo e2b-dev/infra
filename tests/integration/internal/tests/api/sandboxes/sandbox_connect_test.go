@@ -42,6 +42,38 @@ func TestSandboxConnect(t *testing.T) {
 
 	t.Run("connect to running sandbox", func(t *testing.T) {
 		// Create a sandbox with auto-pause disabled
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(100))
+		sbxId := sbx.SandboxID
+
+		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, res.StatusCode())
+		require.NotNil(t, res.JSON200)
+		assert.Equal(t, api.Running, res.JSON200.State)
+
+		initialEndTime := res.JSON200.EndAt
+
+		// Connect to the sandbox
+		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDConnectJSONRequestBody{
+			Timeout: 10,
+		}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, sbxConnect.StatusCode())
+		require.NotNil(t, sbxConnect.JSON200)
+		assert.Equal(t, sbxConnect.JSON200.SandboxID, sbxId)
+
+		// Check if the sandbox is running and the timeout isn't changed
+		res, err = c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, res.StatusCode())
+		require.NotNil(t, res.JSON200)
+		assert.Equal(t, api.Running, res.JSON200.State)
+
+		assert.Equal(t, initialEndTime, res.JSON200.EndAt, "the timeout shouldn't be changed")
+	})
+
+	t.Run("connect to running sandbox shorter timeout", func(t *testing.T) {
+		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c)
 		sbxId := sbx.SandboxID
 
@@ -69,7 +101,7 @@ func TestSandboxConnect(t *testing.T) {
 		require.NotNil(t, res.JSON200)
 		assert.Equal(t, api.Running, res.JSON200.State)
 
-		assert.Equal(t, initialEndTime, res.JSON200.EndAt, "the timeout shouldn't be changed")
+		assert.True(t, res.JSON200.EndAt.After(initialEndTime), "End time should be extended")
 	})
 
 	t.Run("connect to not existing sandbox", func(t *testing.T) {

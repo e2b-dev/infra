@@ -43,6 +43,13 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		return
 	}
 
+	timeout := time.Duration(body.Timeout) * time.Second
+	if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
+
+		return
+	}
+
 	sandboxID = utils.ShortID(sandboxID)
 	sandboxData, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
@@ -67,6 +74,14 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 				zap.String("node_id", sandboxData.NodeID),
 			)
 
+			apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, timeout, false)
+			if apiErr != nil {
+				zap.L().Error("Error when resuming sandbox", zap.Error(apiErr.Err))
+				a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+				return
+			}
+
 			c.JSON(http.StatusOK, sandboxData.ToAPISandbox())
 
 			return
@@ -76,13 +91,6 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 
 			return
 		}
-	}
-
-	timeout := time.Duration(body.Timeout) * time.Second
-	if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
-
-		return
 	}
 
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamInfo.Team.ID})
