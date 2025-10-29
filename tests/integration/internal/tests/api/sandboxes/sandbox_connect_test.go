@@ -113,6 +113,15 @@ func TestSandboxConnect(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, sbxConnect.StatusCode())
 	})
 
+	t.Run("connect with too big timeout", func(t *testing.T) {
+		// Try to connect the sandbox
+		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "it-isnt-there", api.PostSandboxesSandboxIDConnectJSONRequestBody{
+			Timeout: 60 * 60 * 72, // 3 days
+		}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, sbxConnect.StatusCode())
+	})
+
 	t.Run("concurrent connects - not returning early", func(t *testing.T) {
 		c := setup.GetAPIClient()
 
