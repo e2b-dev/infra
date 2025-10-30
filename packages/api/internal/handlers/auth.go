@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,36 +19,27 @@ func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {
 	return c.Value(auth.UserIDContextKey).(uuid.UUID)
 }
 
-func (a *APIStore) GetUserAndTeams(c *gin.Context) (*uuid.UUID, []*types.TeamWithDefault, error) {
-	userID := a.GetUserID(c)
-	ctx := c.Request.Context()
-
-	teams, err := dbapi.GetTeamsByUser(ctx, a.sqlcDB, userID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error when getting default team: %w", err)
-	}
-
-	return &userID, teams, err
-}
-
 func (a *APIStore) GetTeamInfo(c *gin.Context) *types.Team {
 	return c.Value(auth.TeamContextKey).(*types.Team)
 }
 
-func (a *APIStore) GetTeamAndLimits(
+func (a *APIStore) GetTeam(
+	ctx context.Context,
 	c *gin.Context,
 	// Deprecated: use API Token authentication instead.
 	teamID *string,
 ) (*types.Team, *api.APIError) {
-	_, span := tracer.Start(c.Request.Context(), "get-team-and-tier")
+	ctx, span := tracer.Start(ctx, "get-team-and-tier")
 	defer span.End()
 
-	if c.Value(auth.TeamContextKey) != nil {
+	switch {
+	case c.Value(auth.TeamContextKey) != nil:
 		teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
 
 		return teamInfo, nil
-	} else if c.Value(auth.UserIDContextKey) != nil {
-		_, teams, err := a.GetUserAndTeams(c)
+	case c.Value(auth.UserIDContextKey) != nil:
+		userID := a.GetUserID(c)
+		teams, err := dbapi.GetTeamsByUser(ctx, a.sqlcDB, userID)
 		if err != nil {
 			return nil, &api.APIError{
 				Code:      http.StatusInternalServerError,
@@ -74,12 +66,12 @@ func (a *APIStore) GetTeamAndLimits(
 		}
 
 		return team, nil
-	}
-
-	return nil, &api.APIError{
-		Code:      http.StatusUnauthorized,
-		ClientMsg: "You are not authenticated",
-		Err:       errors.New("invalid authentication context for team and tier"),
+	default:
+		return nil, &api.APIError{
+			Code:      http.StatusUnauthorized,
+			ClientMsg: "You are not authenticated",
+			Err:       errors.New("invalid authentication context for team and tier"),
+		}
 	}
 }
 
