@@ -38,6 +38,7 @@ type Addon struct {
 	ValidFrom                     time.Time
 	ValidTo                       *time.Time
 	AddedBy                       uuid.UUID
+	IdempotencyKey                *string
 }
 
 type AuthUser struct {

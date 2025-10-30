@@ -16,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	userModel "github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 )
@@ -92,7 +91,10 @@ func main() {
 	}
 
 	// Remove old access token
-	_, err = database.Client.AccessToken.Delete().Where(accesstoken.UserID(user.ID)).Exec(ctx)
+	err = sqlcDB.TestsRawSQL(ctx, `
+		DELETE FROM "public"."access_tokens"
+		WHERE user_id = $1;
+`, user.ID)
 	if err != nil {
 		panic(err)
 	}
@@ -120,15 +122,17 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	_, err = database.Client.AccessToken.Create().
-		SetUser(user).
-		SetAccessTokenHash(accessTokenHash).
-		SetAccessTokenPrefix(accessTokenMask.Prefix).
-		SetAccessTokenLength(accessTokenMask.ValueLength).
-		SetAccessTokenMaskPrefix(accessTokenMask.MaskedValuePrefix).
-		SetAccessTokenMaskSuffix(accessTokenMask.MaskedValueSuffix).
-		SetName("Seed Access Token").
-		Save(ctx)
+	_, err = sqlcDB.CreateAccessToken(
+		ctx, queries.CreateAccessTokenParams{
+			ID:                    uuid.New(),
+			UserID:                user.ID,
+			AccessTokenHash:       accessTokenHash,
+			AccessTokenPrefix:     accessTokenMask.Prefix,
+			AccessTokenLength:     int32(accessTokenMask.ValueLength),
+			AccessTokenMaskPrefix: accessTokenMask.MaskedValuePrefix,
+			AccessTokenMaskSuffix: accessTokenMask.MaskedValueSuffix,
+			Name:                  "Seed Access Token",
+		})
 	if err != nil {
 		panic(err)
 	}
