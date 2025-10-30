@@ -58,10 +58,12 @@ func New(
 	}
 }
 
+// TotalPoolConnections returns the total number of connections that have been established across whole pool.
 func (p *Proxy) TotalPoolConnections() uint64 {
 	return p.pool.TotalConnections()
 }
 
+// CurrentServerConnections returns the current number of connections that are alive across whole pool.
 func (p *Proxy) CurrentServerConnections() int64 {
 	return p.currentServerConnsCounter.Load()
 }
