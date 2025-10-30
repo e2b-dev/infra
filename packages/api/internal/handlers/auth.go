@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,9 +19,8 @@ func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {
 	return c.Value(auth.UserIDContextKey).(uuid.UUID)
 }
 
-func (a *APIStore) GetUserAndTeams(c *gin.Context) (*uuid.UUID, []*types.TeamWithDefault, error) {
+func (a *APIStore) GetUserAndTeams(ctx context.Context, c *gin.Context) (*uuid.UUID, []*types.TeamWithDefault, error) {
 	userID := a.GetUserID(c)
-	ctx := c.Request.Context()
 
 	teams, err := dbapi.GetTeamsByUser(ctx, a.sqlcDB, userID)
 	if err != nil {
@@ -35,11 +35,12 @@ func (a *APIStore) GetTeamInfo(c *gin.Context) *types.Team {
 }
 
 func (a *APIStore) GetTeamAndLimits(
+	ctx context.Context,
 	c *gin.Context,
 	// Deprecated: use API Token authentication instead.
 	teamID *string,
 ) (*types.Team, *api.APIError) {
-	_, span := tracer.Start(c.Request.Context(), "get-team-and-tier")
+	ctx, span := tracer.Start(ctx, "get-team-and-tier")
 	defer span.End()
 
 	if c.Value(auth.TeamContextKey) != nil {
@@ -47,7 +48,7 @@ func (a *APIStore) GetTeamAndLimits(
 
 		return teamInfo, nil
 	} else if c.Value(auth.UserIDContextKey) != nil {
-		_, teams, err := a.GetUserAndTeams(c)
+		_, teams, err := a.GetUserAndTeams(ctx, c)
 		if err != nil {
 			return nil, &api.APIError{
 				Code:      http.StatusInternalServerError,

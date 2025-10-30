@@ -48,7 +48,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	infoTeamID := buildInfo.TeamID.String()
-	team, apiErr := a.GetTeamAndLimits(c, &infoTeamID)
+	team, apiErr := a.GetTeamAndLimits(ctx, c, &infoTeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
