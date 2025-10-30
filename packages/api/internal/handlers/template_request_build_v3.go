@@ -16,8 +16,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
-// PostV2Templates triggers a new template build
-func (a *APIStore) PostV2Templates(c *gin.Context) {
+// PostV3Templates triggers a new template build
+func (a *APIStore) PostV3Templates(c *gin.Context) {
+	t := requestTemplateBuild(a, c)
+	if t != nil {
+		c.JSON(http.StatusAccepted, t)
+	}
+}
+
+func requestTemplateBuild(a *APIStore, c *gin.Context) *api.TemplateRequestResponseV3 {
 	ctx := c.Request.Context()
 
 	body, err := apiutils.ParseBody[api.TemplateBuildRequestV2](ctx, c)
@@ -25,7 +32,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid request body", err)
 
-		return
+		return nil
 	}
 
 	telemetry.ReportEvent(ctx, "started environment build")
@@ -36,7 +43,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team, limits", apiErr.Err)
 
-		return
+		return nil
 	}
 
 	// Create the build, find the template ID by alias or generate a new one
@@ -51,7 +58,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", body.Alias))
 			telemetry.ReportError(ctx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", body.Alias))
 
-			return
+			return nil
 		}
 
 		templateID = templateAlias.EnvID
@@ -62,7 +69,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
 
-		return
+		return nil
 	}
 	span.End()
 
@@ -71,7 +78,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
 
-		return
+		return nil
 	}
 
 	buildReq := template.RegisterBuildData{
@@ -91,7 +98,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
 
-		return
+		return nil
 	}
 
 	_, span = tracer.Start(ctx, "posthog-analytics")
@@ -105,10 +112,10 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	)
 	span.End()
 
-	c.JSON(http.StatusAccepted, &api.Template{
+	return &api.TemplateRequestResponseV3{
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
 		Aliases:    template.Aliases,
 		Public:     public,
-	})
+	}
 }
