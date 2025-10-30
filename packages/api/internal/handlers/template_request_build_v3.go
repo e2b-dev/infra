@@ -48,7 +48,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	}
 
 	// Create the build, find the template ID by alias or generate a new one
-	_, span := tracer.Start(c, "find-template-alias")
+	_, span := tracer.Start(ctx, "find-template-alias")
 	defer span.End()
 	templateID := id.Generate()
 	public := false
