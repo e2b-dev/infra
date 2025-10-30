@@ -36,24 +36,24 @@ const (
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
 )
 
-type (
-	SeekableObjectType string
-	ObjectType         string
-)
+type SeekableObjectType int
 
 const (
-	MemfileObjectType       SeekableObjectType = "memfile"
-	MemfileHeaderObjectType ObjectType         = "memfile-header"
+	UnknownSeekableObjectType SeekableObjectType = iota
+	MemfileObjectType
+	RootFSObjectType
+)
 
-	RootFSObjectType       SeekableObjectType = "rootfs"
-	RootFSHeaderObjectType ObjectType         = "rootfs-header"
+type ObjectType int
 
-	SnapfileObjectType ObjectType = "snapfile"
-
-	MetadataObjectType ObjectType = "metadata"
-
-	LayerObjectType         ObjectType = "layer"
-	LayerMetadataObjectType ObjectType = "layer-metadata"
+const (
+	UnknownObjectType ObjectType = iota
+	MemfileHeaderObjectType
+	RootFSHeaderObjectType
+	SnapfileObjectType
+	MetadataObjectType
+	LayerObjectType
+	LayerMetadataObjectType
 )
 
 type StorageProvider interface {

@@ -56,7 +56,7 @@ func TestWriteFromFileSystem(t *testing.T) {
 	const payload = "copy me please"
 	require.NoError(t, os.WriteFile(srcPath, []byte(payload), 0o600))
 
-	obj, err := p.OpenObject(ctx, "copy/dst.txt", "")
+	obj, err := p.OpenObject(ctx, "copy/dst.txt", UnknownObjectType)
 	require.NoError(t, err)
 	require.NoError(t, obj.WriteFromFileSystem(t.Context(), srcPath))
 
@@ -70,7 +70,7 @@ func TestDelete(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenObject(ctx, "to/delete.txt", "")
+	obj, err := p.OpenObject(ctx, "to/delete.txt", 0)
 	require.NoError(t, err)
 
 	_, err = obj.Write(t.Context(), []byte("bye"))
@@ -99,7 +99,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 		"data/sub/c.txt",
 	}
 	for _, pth := range paths {
-		obj, err := p.OpenObject(ctx, pth, "")
+		obj, err := p.OpenObject(ctx, pth, UnknownObjectType)
 		require.NoError(t, err)
 		_, err = obj.Write(t.Context(), []byte("x"))
 		require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestWriteToNonExistentObject(t *testing.T) {
 	p := newTempProvider(t)
 
 	ctx := t.Context()
-	obj, err := p.OpenObject(ctx, "missing/file.txt", "")
+	obj, err := p.OpenObject(ctx, "missing/file.txt", UnknownObjectType)
 	require.NoError(t, err)
 
 	var sink bytes.Buffer

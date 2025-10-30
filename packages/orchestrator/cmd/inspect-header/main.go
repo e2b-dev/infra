@@ -27,8 +27,10 @@ func main() {
 	switch *kind {
 	case "memfile":
 		storagePath = template.StorageMemfileHeaderPath()
+		objectType = storage.MemfileHeaderObjectType
 	case "rootfs":
 		storagePath = template.StorageRootfsHeaderPath()
+		objectType = storage.RootFSHeaderObjectType
 	default:
 		log.Fatalf("invalid kind: %s", *kind)
 
