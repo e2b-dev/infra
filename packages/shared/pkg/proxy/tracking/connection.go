@@ -1,6 +1,7 @@
 package tracking
 
 import (
+	"errors"
 	"net"
 	"sync/atomic"
 
@@ -37,17 +38,20 @@ func NewConnection(conn net.Conn, counter *atomic.Int64, m *smap.Map[*Connection
 }
 
 func (c *Connection) Reset() error {
+	var errs []error
+
+	// This forces the connection to close with RST.
 	err := c.Conn.(*net.TCPConn).SetLinger(0)
 	if err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
 	err = c.Close()
 	if err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (c *Connection) Close() error {
