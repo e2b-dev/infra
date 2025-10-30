@@ -736,6 +736,21 @@ components:
           type: boolean
           description: Whether the step should be forced to run regardless of the cache
 
+    TemplateBuildRequestV3:
+      required:
+        - alias
+      properties:
+        alias:
+          description: Alias of the template
+          type: string
+        teamID:
+          type: string
+          description: Identifier of the team
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
+
     TemplateBuildRequestV2:
       required:
         - alias
@@ -1861,7 +1876,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TemplateBuildRequestV2"
+              $ref: "#/components/schemas/TemplateBuildRequestV3"
 
       responses:
         "202":

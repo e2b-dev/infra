@@ -775,6 +775,21 @@ type TemplateBuildRequestV2 struct {
 	TeamID *string `json:"teamID,omitempty"`
 }
 
+// TemplateBuildRequestV3 defines model for TemplateBuildRequestV3.
+type TemplateBuildRequestV3 struct {
+	// Alias Alias of the template
+	Alias string `json:"alias"`
+
+	// CpuCount CPU cores for the sandbox
+	CpuCount *CPUCount `json:"cpuCount,omitempty"`
+
+	// MemoryMB Memory for the sandbox in MiB
+	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
+
+	// TeamID Identifier of the team
+	TeamID *string `json:"teamID,omitempty"`
+}
+
 // TemplateBuildStartV2 defines model for TemplateBuildStartV2.
 type TemplateBuildStartV2 struct {
 	// Force Whether the whole build should be forced to run regardless of the cache
@@ -1060,7 +1075,7 @@ type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2
 type PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody = TemplateBuildStartV2
 
 // PostV3TemplatesJSONRequestBody defines body for PostV3Templates for application/json ContentType.
-type PostV3TemplatesJSONRequestBody = TemplateBuildRequestV2
+type PostV3TemplatesJSONRequestBody = TemplateBuildRequestV3
 
 // AsAWSRegistry returns the union data inside the FromImageRegistry as a AWSRegistry
 func (t FromImageRegistry) AsAWSRegistry() (AWSRegistry, error) {

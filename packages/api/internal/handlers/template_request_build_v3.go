@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -18,23 +19,23 @@ import (
 
 // PostV3Templates triggers a new template build
 func (a *APIStore) PostV3Templates(c *gin.Context) {
-	t := requestTemplateBuild(a, c)
+	ctx := c.Request.Context()
+
+	body, err := apiutils.ParseBody[api.TemplateBuildRequestV3](ctx, c)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
+		telemetry.ReportCriticalError(ctx, "invalid request body", err)
+
+		return
+	}
+
+	t := requestTemplateBuild(ctx, a, c, body)
 	if t != nil {
 		c.JSON(http.StatusAccepted, t)
 	}
 }
 
-func requestTemplateBuild(a *APIStore, c *gin.Context) *api.TemplateRequestResponseV3 {
-	ctx := c.Request.Context()
-
-	body, err := apiutils.ParseBody[api.TemplateBuildRequestV2](ctx, c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
-		telemetry.ReportCriticalError(ctx, "invalid request body", err)
-
-		return nil
-	}
-
+func requestTemplateBuild(ctx context.Context, a *APIStore, c *gin.Context, body api.TemplateBuildRequestV3) *api.TemplateRequestResponseV3 {
 	telemetry.ReportEvent(ctx, "started environment build")
 
 	// Prepare info for rebuilding env
