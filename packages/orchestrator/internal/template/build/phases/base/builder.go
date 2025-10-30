@@ -45,7 +45,6 @@ const (
 	rootfsProvisionLink = "rootfs.filesystem.build.provision"
 
 	baseLayerTimeout = 10 * time.Minute
-	waitEnvdTimeout  = 60 * time.Second
 
 	defaultUser = "root"
 )

@@ -79,7 +79,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	userID, teams, err := a.GetUserAndTeams(c)
+	userID, teams, err := a.GetUserAndTeams(ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
