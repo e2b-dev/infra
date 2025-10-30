@@ -130,10 +130,16 @@ func SandboxContext(sandboxID string) ldcontext.Context {
 	return ldcontext.NewWithKind(SandboxKind, sandboxID)
 }
 
-func TeamContext(teamID, teamName string) ldcontext.Context {
+func TeamContextWithName(teamID, teamName string) ldcontext.Context {
 	return ldcontext.NewBuilder(teamID).
 		Kind(TeamKind).
 		Name(teamName).
+		Build()
+}
+
+func TeamContext(teamID string) ldcontext.Context {
+	return ldcontext.NewBuilder(teamID).
+		Kind(TeamKind).
 		Build()
 }
 
@@ -150,4 +156,8 @@ func UserContext(userID string) ldcontext.Context {
 
 func ServiceContext(serviceName string) ldcontext.Context {
 	return ldcontext.NewWithKind(ServiceKind, serviceName)
+}
+
+func TemplateContext(templateID string) ldcontext.Context {
+	return ldcontext.NewWithKind(TemplateKind, templateID)
 }
