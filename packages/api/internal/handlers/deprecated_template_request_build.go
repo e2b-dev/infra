@@ -33,7 +33,7 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 		return
 	}
 
-	team, apiErr := a.GetTeamAndLimits(ctx, c, body.TeamID)
+	team, apiErr := a.GetTeam(ctx, c, body.TeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and limits", apiErr.Err)
@@ -93,7 +93,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 	}
 	span.SetAttributes(telemetry.WithTemplateID(templateID))
 
-	team, apiErr := a.GetTeamAndLimits(ctx, c, body.TeamID)
+	team, apiErr := a.GetTeam(ctx, c, body.TeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)

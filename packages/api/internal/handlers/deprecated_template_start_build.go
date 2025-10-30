@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -79,7 +80,9 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	userID, teams, err := a.GetUserAndTeams(ctx, c)
+	userID := a.GetUserID(c)
+
+	teams, err := dbapi.GetTeamsByUser(ctx, a.sqlcDB, userID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 

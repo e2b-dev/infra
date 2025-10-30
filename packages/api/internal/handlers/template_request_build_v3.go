@@ -39,7 +39,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	telemetry.ReportEvent(ctx, "started environment build")
 
 	// Prepare info for rebuilding env
-	team, apiErr := a.GetTeamAndLimits(ctx, c, body.TeamID)
+	team, apiErr := a.GetTeam(ctx, c, body.TeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team, limits", apiErr.Err)

@@ -65,7 +65,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	}
 
 	dbTeamID := template.TeamID.String()
-	team, apiErr := a.GetTeamAndLimits(ctx, c, &dbTeamID)
+	team, apiErr := a.GetTeam(ctx, c, &dbTeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
