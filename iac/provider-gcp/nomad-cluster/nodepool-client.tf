@@ -22,6 +22,7 @@ locals {
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
     NODE_POOL                    = var.orchestrator_node_pool
     BASE_HUGEPAGES_PERCENTAGE    = var.orchestrator_base_hugepages_percentage
+    LOCAL_CACHE_DISK_COUNT       = var.client_cluster_cache_disk_count
   })
 }
 
@@ -131,18 +132,24 @@ resource "google_compute_instance_template" "client" {
   }
 
   disk {
+    auto_delete  = true
     boot         = true
     source_image = data.google_compute_image.client_source_image.id
     disk_size_gb = 300
     disk_type    = "pd-ssd"
   }
 
-  disk {
-    auto_delete  = true
-    boot         = false
-    type         = "PERSISTENT"
-    disk_size_gb = var.client_cluster_cache_disk_size_gb
-    disk_type    = var.client_cluster_cache_disk_type
+  dynamic "disk" {
+    for_each = [for n in range(var.client_cluster_cache_disk_count) : {}]
+
+    content {
+      auto_delete  = true
+      boot         = false
+      disk_size_gb = 375
+      interface    = "NVME"
+      disk_type    = "local-ssd"
+      type         = "SCRATCH"
+    }
   }
 
   network_interface {
