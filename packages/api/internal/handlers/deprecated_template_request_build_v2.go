@@ -12,25 +12,18 @@ import (
 )
 
 // PostV2Templates triggers a new template build
-func (a *APIStore) PostV2Templates(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	body, err := apiutils.ParseBody[api.TemplateBuildRequestV2](ctx, c)
+func (a *APIStore) PostV2Templates(ctx *gin.Context) {
+	body, err := apiutils.ParseBody[api.TemplateBuildRequestV2](ctx, ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
+		a.sendAPIStoreError(ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid request body", err)
 
 		return
 	}
 
-	t := requestTemplateBuild(ctx, a, c, api.TemplateBuildRequestV3{
-		TeamID:   body.TeamID,
-		Alias:    body.Alias,
-		CpuCount: body.CpuCount,
-		MemoryMB: body.MemoryMB,
-	})
+	t := requestTemplateBuild(ctx, a, api.TemplateBuildRequestV3(body))
 	if t != nil {
-		c.JSON(http.StatusAccepted, &api.TemplateLegacy{
+		ctx.JSON(http.StatusAccepted, &api.TemplateLegacy{
 			TemplateID: t.TemplateID,
 			BuildID:    t.BuildID,
 			Public:     t.Public,

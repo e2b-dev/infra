@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -18,30 +17,28 @@ import (
 )
 
 // PostV3Templates triggers a new template build
-func (a *APIStore) PostV3Templates(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	body, err := apiutils.ParseBody[api.TemplateBuildRequestV3](ctx, c)
+func (a *APIStore) PostV3Templates(ctx *gin.Context) {
+	body, err := apiutils.ParseBody[api.TemplateBuildRequestV3](ctx, ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
+		a.sendAPIStoreError(ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid request body", err)
 
 		return
 	}
 
-	t := requestTemplateBuild(ctx, a, c, body)
+	t := requestTemplateBuild(ctx, a, body)
 	if t != nil {
-		c.JSON(http.StatusAccepted, t)
+		ctx.JSON(http.StatusAccepted, t)
 	}
 }
 
-func requestTemplateBuild(ctx context.Context, a *APIStore, c *gin.Context, body api.TemplateBuildRequestV3) *api.TemplateRequestResponseV3 {
+func requestTemplateBuild(ctx *gin.Context, a *APIStore, body api.TemplateBuildRequestV3) *api.TemplateRequestResponseV3 {
 	telemetry.ReportEvent(ctx, "started environment build")
 
 	// Prepare info for rebuilding env
-	team, apiErr := a.GetTeamAndLimits(c, body.TeamID)
+	team, apiErr := a.GetTeamAndLimits(ctx, body.TeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		a.sendAPIStoreError(ctx, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team, limits", apiErr.Err)
 
 		return nil
@@ -56,7 +53,7 @@ func requestTemplateBuild(ctx context.Context, a *APIStore, c *gin.Context, body
 	switch {
 	case err == nil:
 		if templateAlias.TeamID != team.ID {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", body.Alias))
+			a.sendAPIStoreError(ctx, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", body.Alias))
 			telemetry.ReportError(ctx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", body.Alias))
 
 			return nil
@@ -67,7 +64,7 @@ func requestTemplateBuild(ctx context.Context, a *APIStore, c *gin.Context, body
 	case dberrors.IsNotFoundError(err):
 		// Alias is available and not used
 	default:
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
+		a.sendAPIStoreError(ctx, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
 
 		return nil
@@ -76,7 +73,7 @@ func requestTemplateBuild(ctx context.Context, a *APIStore, c *gin.Context, body
 
 	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
+		a.sendAPIStoreError(ctx, http.StatusInternalServerError, "Error when getting available build client")
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
 
 		return nil
@@ -96,7 +93,7 @@ func requestTemplateBuild(ctx context.Context, a *APIStore, c *gin.Context, body
 
 	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, buildReq)
 	if apiError != nil {
-		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
+		a.sendAPIStoreError(ctx, apiError.Code, apiError.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
 
 		return nil
@@ -104,7 +101,7 @@ func requestTemplateBuild(ctx context.Context, a *APIStore, c *gin.Context, body
 
 	_, span = tracer.Start(ctx, "posthog-analytics")
 	defer span.End()
-	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
+	properties := a.posthog.GetPackageToPosthogProperties(&ctx.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
