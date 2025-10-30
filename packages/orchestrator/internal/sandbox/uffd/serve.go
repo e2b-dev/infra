@@ -32,6 +32,7 @@ func Serve(
 	mappings mapping.Mappings,
 	src block.Slicer,
 	fdExit *fdexit.FdExit,
+	missingRequests map[int64]struct{},
 	logger *zap.Logger,
 ) error {
 	pollFds := []unix.PollFd{
@@ -40,8 +41,6 @@ func Serve(
 	}
 
 	var eg errgroup.Group
-
-	missingPagesBeingHandled := map[int64]struct{}{}
 
 outerLoop:
 	for {
@@ -140,11 +139,11 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		if _, ok := missingPagesBeingHandled[offset]; ok {
+		if _, ok := missingRequests[offset]; ok {
 			continue
 		}
 
-		missingPagesBeingHandled[offset] = struct{}{}
+		missingRequests[offset] = struct{}{}
 
 		eg.Go(func() error {
 			defer func() {
