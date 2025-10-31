@@ -21,6 +21,8 @@ type Config struct {
 	// around temporarily until all nomad jobs have a port labeled "grpc", then this can be removed.
 	DefaultOrchestratorPort int `env:"ORCHESTRATOR_PORT" envDefault:"5008"`
 
+	OrchestratorPortLabel string `env:"ORCHESTRATOR_PORT_LABEL" envDefault:"grpc"`
+
 	PostgresConnectionString string `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
 
 	PosthogAPIKey string `env:"POSTHOG_API_KEY"`

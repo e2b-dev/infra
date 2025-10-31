@@ -38,6 +38,7 @@ type Orchestrator struct {
 	// Deprecated: Nomad knows which port the orchestrator is listening on. Keep this
 	// around temporarily until all nomad jobs have a port labeled "grpc", then this can be removed.
 	defaultPort int
+	portLabel   string
 
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
@@ -128,6 +129,7 @@ func New(
 		sqlcDB:             sqlcDB,
 		tel:                tel,
 		clusters:           clusters,
+		portLabel:          config.OrchestratorPortLabel,
 		defaultPort:        config.DefaultOrchestratorPort,
 
 		sandboxCounter: sandboxCounter,

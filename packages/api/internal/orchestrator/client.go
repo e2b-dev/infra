@@ -97,7 +97,7 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadS
 			continue
 		}
 
-		ip, port, ok := o.findPortInAllocation(alloc, "grpc")
+		ip, port, ok := o.findPortInAllocation(alloc)
 		if !ok {
 			zap.L().Warn("Cannot find port in allocation",
 				zap.String("allocation_id", alloc.ID), zap.String("port_name", "grpc"))
@@ -144,10 +144,18 @@ func isHealthy(alloc *nomadapi.AllocationListStub) bool {
 	return *alloc.DeploymentStatus.Healthy
 }
 
-func (o *Orchestrator) findPortInAllocation(allocation *nomadapi.AllocationListStub, portLabel string) (string, int, bool) {
+func (o *Orchestrator) findPortInAllocation(allocation *nomadapi.AllocationListStub) (string, int, bool) {
+	if allocation == nil {
+		return "", 0, false
+	}
+
+	if allocation.AllocatedResources == nil {
+		return "", 0, false
+	}
+
 	for _, task := range allocation.AllocatedResources.Tasks {
 		for _, network := range task.Networks {
-			host, port, ok := o.findPortInNetwork(network, portLabel)
+			host, port, ok := o.findPortInNetwork(network)
 			if ok {
 				return host, port, true
 			}
@@ -155,7 +163,7 @@ func (o *Orchestrator) findPortInAllocation(allocation *nomadapi.AllocationListS
 	}
 
 	for _, net := range allocation.AllocatedResources.Shared.Networks {
-		host, port, ok := o.findPortInNetwork(net, portLabel)
+		host, port, ok := o.findPortInNetwork(net)
 		if ok {
 			return host, port, true
 		}
@@ -164,9 +172,9 @@ func (o *Orchestrator) findPortInAllocation(allocation *nomadapi.AllocationListS
 	return "", 0, false
 }
 
-func (o *Orchestrator) findPortInNetwork(net *nomadapi.NetworkResource, portLabel string) (string, int, bool) {
+func (o *Orchestrator) findPortInNetwork(net *nomadapi.NetworkResource) (string, int, bool) {
 	for _, port := range net.ReservedPorts {
-		if port.Label == portLabel {
+		if port.Label == o.portLabel {
 			return net.IP, port.Value, true
 		}
 
@@ -176,7 +184,7 @@ func (o *Orchestrator) findPortInNetwork(net *nomadapi.NetworkResource, portLabe
 	}
 
 	for _, port := range net.DynamicPorts {
-		if port.Label == portLabel {
+		if port.Label == o.portLabel {
 			return net.IP, port.Value, true
 		}
 
