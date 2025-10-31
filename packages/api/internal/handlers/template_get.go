@@ -15,7 +15,7 @@ import (
 func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.TemplateID) {
 	ctx := c.Request.Context()
 
-	team, apiErr := a.GetTeamAndLimits(c, nil)
+	team, apiErr := a.GetTeam(ctx, c, nil)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
