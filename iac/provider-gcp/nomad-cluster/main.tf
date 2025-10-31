@@ -15,12 +15,11 @@ locals {
     "nocto",                // skip "close-to-open" attribute checks
     "nolock",               // do not use locking
     "noresvport",           // use a non-privileged source port
-    "resvport",             // use a privileged source port when communicating with the NFS server
-    "retrans=3",            // retry three times before performing recovery actions
-    "rsize=524288",         // receive 512 KB per read request
+    "retrans=2",            // retry two times before performing recovery actions
+    "rsize=1048576",        // receive 1 MB per read request
     "sec=sys",              // use AUTH_SYS for all requests
     "timeo=600",            // wait 60 seconds (measured in deci-seconds) before retrying a failed request
-    "wsize=524288",         // receive 512 KB per write request
+    "wsize=1048576",        // receive 1 MB per write request
   ])
 
   file_hash = {
