@@ -99,7 +99,7 @@ type ServerInterface interface {
 	DeleteTemplatesTemplateID(c *gin.Context, templateID TemplateID)
 
 	// (GET /templates/{templateID})
-	GetTemplatesTemplateID(c *gin.Context, templateID TemplateID)
+	GetTemplatesTemplateID(c *gin.Context, templateID TemplateID, params GetTemplatesTemplateIDParams)
 
 	// (PATCH /templates/{templateID})
 	PatchTemplatesTemplateID(c *gin.Context, templateID TemplateID)
@@ -987,6 +987,25 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(Supabase2TeamAuthScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTemplatesTemplateIDParams
+
+	// ------------- Optional query parameter "nextToken" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "nextToken", c.Request.URL.Query(), &params.NextToken)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nextToken: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -994,7 +1013,7 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateID(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetTemplatesTemplateID(c, templateID)
+	siw.Handler.GetTemplatesTemplateID(c, templateID, params)
 }
 
 // PatchTemplatesTemplateID operation middleware

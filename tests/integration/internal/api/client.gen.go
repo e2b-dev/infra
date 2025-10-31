@@ -194,7 +194,7 @@ type ClientInterface interface {
 	DeleteTemplatesTemplateID(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTemplatesTemplateID request
-	GetTemplatesTemplateID(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetTemplatesTemplateID(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PatchTemplatesTemplateIDWithBody request with any body
 	PatchTemplatesTemplateIDWithBody(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -690,8 +690,8 @@ func (c *Client) DeleteTemplatesTemplateID(ctx context.Context, templateID Templ
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetTemplatesTemplateID(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetTemplatesTemplateIDRequest(c.Server, templateID)
+func (c *Client) GetTemplatesTemplateID(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesTemplateIDRequest(c.Server, templateID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2124,7 +2124,7 @@ func NewDeleteTemplatesTemplateIDRequest(server string, templateID TemplateID) (
 }
 
 // NewGetTemplatesTemplateIDRequest generates requests for GetTemplatesTemplateID
-func NewGetTemplatesTemplateIDRequest(server string, templateID TemplateID) (*http.Request, error) {
+func NewGetTemplatesTemplateIDRequest(server string, templateID TemplateID, params *GetTemplatesTemplateIDParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2147,6 +2147,44 @@ func NewGetTemplatesTemplateIDRequest(server string, templateID TemplateID) (*ht
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.NextToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "nextToken", runtime.ParamLocationQuery, *params.NextToken); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -2791,7 +2829,7 @@ type ClientWithResponsesInterface interface {
 	DeleteTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*DeleteTemplatesTemplateIDResponse, error)
 
 	// GetTemplatesTemplateIDWithResponse request
-	GetTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDResponse, error)
+	GetTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDResponse, error)
 
 	// PatchTemplatesTemplateIDWithBodyWithResponse request with any body
 	PatchTemplatesTemplateIDWithBodyWithResponse(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchTemplatesTemplateIDResponse, error)
@@ -4095,8 +4133,8 @@ func (c *ClientWithResponses) DeleteTemplatesTemplateIDWithResponse(ctx context.
 }
 
 // GetTemplatesTemplateIDWithResponse request returning *GetTemplatesTemplateIDResponse
-func (c *ClientWithResponses) GetTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDResponse, error) {
-	rsp, err := c.GetTemplatesTemplateID(ctx, templateID, reqEditors...)
+func (c *ClientWithResponses) GetTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDResponse, error) {
+	rsp, err := c.GetTemplatesTemplateID(ctx, templateID, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

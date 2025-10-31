@@ -3,16 +3,27 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/dberrors"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.TemplateID) {
+const (
+	templateBuildsDefaultLimit = int32(100)
+	templateBuildsMaxLimit     = int32(100)
+)
+
+var maxBuildID = uuid.Max.String()
+
+func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.TemplateID, params api.GetTemplatesTemplateIDParams) {
 	ctx := c.Request.Context()
 
 	team, apiErr := a.GetTeam(ctx, c, nil)
@@ -46,13 +57,41 @@ func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 		return
 	}
 
-	builds, err := a.sqlcDB.GetTemplateBuilds(ctx, templateID)
+	// Initialize pagination
+	pagination, err := utils.NewPagination[queries.EnvBuild](
+		utils.PaginationParams{
+			Limit:     params.Limit,
+			NextToken: params.NextToken,
+		},
+		utils.PaginationConfig{
+			DefaultLimit: templateBuildsDefaultLimit,
+			MaxLimit:     templateBuildsMaxLimit,
+			DefaultID:    maxBuildID,
+		},
+	)
+	if err != nil {
+		telemetry.ReportError(ctx, "error parsing pagination cursor", err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid next token")
+
+		return
+	}
+
+	builds, err := a.sqlcDB.GetTemplateBuilds(ctx, queries.GetTemplateBuildsParams{
+		TemplateID: templateID,
+		CursorTime: pagination.CursorTime(),
+		CursorID:   pagination.CursorID(),
+		BuildLimit: pagination.QueryLimit(),
+	})
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting builds")
 		telemetry.ReportCriticalError(ctx, "error when getting builds", err)
 
 		return
 	}
+
+	builds = pagination.ProcessResultsWithHeader(c, builds, func(b queries.EnvBuild) (time.Time, string) {
+		return b.CreatedAt, b.ID.String()
+	})
 
 	res := api.TemplateWithBuilds{
 		TemplateID:    template.ID,
@@ -74,7 +113,7 @@ func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 			FinishedAt:  item.FinishedAt,
 			CpuCount:    api.CPUCount(item.Vcpu),
 			MemoryMB:    api.MemoryMB(item.RamMb),
-			DiskSizeMB:  utils.CastPtr(item.TotalDiskSizeMb, func(v int64) api.DiskSizeMB { return api.DiskSizeMB(v) }),
+			DiskSizeMB:  sharedUtils.CastPtr(item.TotalDiskSizeMb, func(v int64) api.DiskSizeMB { return api.DiskSizeMB(v) }),
 			EnvdVersion: item.EnvdVersion,
 		})
 	}

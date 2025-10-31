@@ -7,17 +7,32 @@ package queries
 
 import (
 	"context"
+	"time"
 )
 
 const getTemplateBuilds = `-- name: GetTemplateBuilds :many
 SELECT eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version
 FROM public.env_builds eb
 WHERE eb.env_id = $1
-ORDER BY eb.created_at DESC
+  AND (eb.created_at, eb.id::text) < ($2, $3::text)
+ORDER BY eb.created_at DESC, eb.id DESC
+LIMIT $4
 `
 
-func (q *Queries) GetTemplateBuilds(ctx context.Context, templateID string) ([]EnvBuild, error) {
-	rows, err := q.db.Query(ctx, getTemplateBuilds, templateID)
+type GetTemplateBuildsParams struct {
+	TemplateID string
+	CursorTime time.Time
+	CursorID   string
+	BuildLimit int32
+}
+
+func (q *Queries) GetTemplateBuilds(ctx context.Context, arg GetTemplateBuildsParams) ([]EnvBuild, error) {
+	rows, err := q.db.Query(ctx, getTemplateBuilds,
+		arg.TemplateID,
+		arg.CursorTime,
+		arg.CursorID,
+		arg.BuildLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
