@@ -1,24 +1,20 @@
 import { Sandbox } from "@e2b/code-interpreter";
-import { log } from "./utils.ts";
+import { log, runTestWithSandbox } from "./utils.ts";
 
 log("Starting sandbox logs test");
 
-let sandbox: Sandbox | null = null;
+// Create sandbox
+log("creating sandbox");
+const sandbox = await Sandbox.create();
+log("ℹ️ sandbox created", sandbox.sandboxId);
 
-if (Deno.env.get("E2B_DOMAIN") === "e2b-juliett.dev") {
-  log("Skipping test on juliett.dev b/c internet is disabled");
-  Deno.exit(0);
-}
-
-try {
-  // Create sandbox
-  log("creating sandbox");
-  sandbox = await Sandbox.create();
-  log("ℹ️ sandbox created", sandbox.sandboxId);
-
-  const out = await sandbox.commands.run("wget https://www.gstatic.com/generate_204", {
-    requestTimeoutMs: 10000,
-  });
+await runTestWithSandbox(sandbox, "internet-works", async () => {
+  const out = await sandbox.commands.run(
+    "wget https://www.gstatic.com/generate_204",
+    {
+      requestTimeoutMs: 10000,
+    }
+  );
   log("wget output", out.stderr);
 
   const internetWorking = out.stderr.includes("204 No Content");
@@ -29,15 +25,4 @@ try {
   }
 
   log("Test passed successfully");
-} catch (error) {
-  log("Test failed:", error);
-  throw error;
-} finally {
-  if (sandbox) {
-    try {
-      await sandbox.kill();
-    } catch (error) {
-      console.error("Error closing sandbox:", error);
-    }
-  }
-}
+});
