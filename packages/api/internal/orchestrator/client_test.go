@@ -20,7 +20,7 @@ func TestIsHealthy(t *testing.T) {
 			input: &nomadapi.AllocationListStub{
 				DeploymentStatus: nil,
 			},
-			expected: false,
+			expected: true,
 		},
 		"healthy is nil": {
 			input: &nomadapi.AllocationListStub{
@@ -28,7 +28,7 @@ func TestIsHealthy(t *testing.T) {
 					Healthy: nil,
 				},
 			},
-			expected: false,
+			expected: true,
 		},
 		"status is not healthy": {
 			input: &nomadapi.AllocationListStub{
