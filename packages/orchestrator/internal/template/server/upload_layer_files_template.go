@@ -33,15 +33,13 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 		return nil, fmt.Errorf("failed to get signed url: %w", err)
 	}
 
-	if exists, _ := obj.Exists(ctx); !exists {
-		return &templatemanager.InitLayerFileUploadResponse{
-			Present: false,
-			Url:     &signedUrl,
-		}, nil
+	exists, err := obj.Exists(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if layer files exists: %w", err)
 	}
 
 	return &templatemanager.InitLayerFileUploadResponse{
-		Present: true,
+		Present: exists,
 		Url:     &signedUrl,
 	}, nil
 }
