@@ -49,6 +49,10 @@ async function deleteTemplate(templateID: string) {
     "-y",
     templateID,
   ]);
+
+  if (output.status.code !== 0) {
+    throw new Error(`❌ Delete failed with code ${output.status.code}`);
+  }
 }
 
 const uniqueID = crypto.randomUUID();
@@ -124,17 +128,5 @@ try {
   });
 } finally {
   // delete template
-  const output = await streamCommandOutput("deno", [
-    "run",
-    "--allow-all",
-    "@e2b/cli",
-    "template",
-    "delete",
-    "-y",
-    templateID,
-  ]);
-
-  if (output.status.code !== 0) {
-    throw new Error(`❌ Delete failed with code ${output.status.code}`);
-  }
+  await deleteTemplate(templateID);
 }
