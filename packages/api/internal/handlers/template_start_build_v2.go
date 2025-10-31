@@ -69,7 +69,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	}
 
 	dbTeamID := templateBuildDB.Env.TeamID.String()
-	team, apiErr := a.GetTeamAndLimits(c, &dbTeamID)
+	team, apiErr := a.GetTeam(ctx, c, &dbTeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)

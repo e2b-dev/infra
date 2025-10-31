@@ -69,14 +69,6 @@ variable "build_cluster_root_disk_size_gb" {
   type = number
 }
 
-variable "build_cluster_cache_disk_size_gb" {
-  type = number
-}
-
-variable "build_cluster_cache_disk_type" {
-  type = string
-}
-
 variable "edge_api_port" {
   type = object({
     name = string
@@ -135,14 +127,6 @@ variable "client_cluster_size_max" {
 }
 
 variable "client_machine_type" {
-  type = string
-}
-
-variable "client_cluster_cache_disk_size_gb" {
-  type = number
-}
-
-variable "client_cluster_cache_disk_type" {
   type = string
 }
 
@@ -342,4 +326,22 @@ variable "isolated_client_cluster_size" {
 
 variable "isolated_client_cluster_size_max" {
   type = number
+}
+
+variable "build_cluster_cache_disk_count" {
+  type = number
+
+  validation {
+    condition     = var.build_cluster_cache_disk_count > 0
+    error_message = "Must include at least 1 build cluster cache disk"
+  }
+}
+
+variable "client_cluster_cache_disk_count" {
+  type = number
+
+  validation {
+    condition     = var.client_cluster_cache_disk_count > 0
+    error_message = "Must include at least 1 client cluster cache disk"
+  }
 }

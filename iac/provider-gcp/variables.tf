@@ -506,3 +506,15 @@ variable "isolated_client_cluster_size_max" {
   type    = number
   default = 1
 }
+
+variable "build_cluster_cache_disk_count" {
+  type        = number
+  description = "The number of 375 GB NVME disks to raid together for storing build files."
+  default     = 3
+}
+
+variable "client_cluster_cache_disk_count" {
+  type        = number
+  description = "The number of 375 GB NVME disks to raid together for storing sandbox files."
+  default     = 3
+}
