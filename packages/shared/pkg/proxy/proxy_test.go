@@ -87,6 +87,7 @@ func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 	backendURL, err := url.Parse(fmt.Sprintf("http://%s", listener.Addr().String()))
 	if err != nil {
 		listener.Close()
+
 		return nil, fmt.Errorf("failed to parse backend URL: %w", err)
 	}
 	backend.url = backendURL
@@ -130,7 +131,7 @@ func assertStreamError(t *testing.T, resp *http.Response) {
 	assert.Equal(t, resp.StatusCode, http.StatusOK, "status code should be 200")
 
 	_, err := io.ReadAll(resp.Body)
-	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	assert.ErrorType(t, err, io.ErrUnexpectedEOF)
 }
 
 // newTestProxy creates a new proxy server for testing
@@ -235,6 +236,7 @@ func httpGetWithHeaders(t *testing.T, proxyURL string, headers http.Header) (*ht
 
 type instrumentedConn struct {
 	net.Conn
+
 	listener *instrumentedListener
 }
 
@@ -397,7 +399,7 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 		// Make a request to the proxy
 		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 		resp, err := httpGetWithBodyWriteDelay(t, proxyURL, 10*time.Second)
-		require.NoError(t, err)
+		assert.NilError(t, err)
 		defer resp.Body.Close()
 
 		assertStreamError(t, resp)
@@ -423,7 +425,7 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 		t.Fatalf("request timed out: %v", t.Context().Err())
 	}
 
-	require.Equal(t, len(instrumentedListener.ReadErrors()), 1, "server connection should have one read error")
+	require.Len(t, instrumentedListener.ReadErrors(), 1, "server connection should have one read error")
 	// io.EOF is returned for the FIN packet.
 	require.NotErrorIs(t, instrumentedListener.ReadErrors()[0], io.EOF, "server connection should have read error other than EOF")
 
