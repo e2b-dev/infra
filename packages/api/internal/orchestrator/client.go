@@ -132,13 +132,13 @@ func isHealthy(alloc *nomadapi.AllocationListStub) bool {
 	if alloc.DeploymentStatus == nil {
 		zap.L().Warn("Allocation deployment status is nil", zap.String("allocation_id", alloc.ID))
 
-		return false
+		return true
 	}
 
 	if alloc.DeploymentStatus.Healthy == nil {
 		zap.L().Warn("Allocation deployment status healthy is nil", zap.String("allocation_id", alloc.ID))
 
-		return false
+		return true
 	}
 
 	return *alloc.DeploymentStatus.Healthy
