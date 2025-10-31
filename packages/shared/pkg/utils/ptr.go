@@ -31,3 +31,13 @@ func DerefOrDefault[T any](s *T, defaultValue T) T {
 
 	return *s
 }
+
+func CastPtr[S any, T any](s *S, castFunc func(S) T) *T {
+	if s == nil {
+		return nil
+	}
+
+	t := castFunc(*s)
+
+	return &t
+}
