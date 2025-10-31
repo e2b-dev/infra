@@ -316,6 +316,18 @@ variable "api_nat_min_ports_per_vm" {
   type = number
 }
 
+variable "client_node_type" {
+  type = string
+}
+
+variable "isolated_client_cluster_size" {
+  type = number
+}
+
+variable "isolated_client_cluster_size_max" {
+  type = number
+}
+
 variable "build_cluster_cache_disk_count" {
   type = number
 

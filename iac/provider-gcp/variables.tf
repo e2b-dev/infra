@@ -492,6 +492,21 @@ variable "remote_repository_enabled" {
   default     = false
 }
 
+variable "client_node_type" {
+  type    = string
+  default = ""
+}
+
+variable "isolated_client_cluster_size" {
+  type    = number
+  default = 1
+}
+
+variable "isolated_client_cluster_size_max" {
+  type    = number
+  default = 1
+}
+
 variable "build_cluster_cache_disk_count" {
   type        = number
   description = "The number of 375 GB NVME disks to raid together for storing build files."
