@@ -82,7 +82,12 @@ func (lb *LayerExecutor) BuildLayer(
 	lb.sandboxes.Insert(sbx)
 	defer func() {
 		lb.sandboxes.Remove(sbx.Runtime.SandboxID)
-		lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+
+		closeErr := lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		if closeErr != nil {
+			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
+			lb.logger.Warn("errors when manually closing connections to sandbox", zap.Error(closeErr))
+		}
 	}()
 
 	// Update envd binary to the latest version

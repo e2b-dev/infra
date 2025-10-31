@@ -58,10 +58,12 @@ func New(
 	}
 }
 
+// TotalPoolConnections returns the total number of connections that have been established across whole pool.
 func (p *Proxy) TotalPoolConnections() uint64 {
 	return p.pool.TotalConnections()
 }
 
+// CurrentServerConnections returns the current number of connections that are alive across whole pool.
 func (p *Proxy) CurrentServerConnections() int64 {
 	return p.currentServerConnsCounter.Load()
 }
@@ -74,8 +76,8 @@ func (p *Proxy) CurrentPoolConnections() int64 {
 	return p.pool.CurrentConnections()
 }
 
-func (p *Proxy) RemoveFromPool(connectionKey string) {
-	p.pool.Close(connectionKey)
+func (p *Proxy) RemoveFromPool(connectionKey string) error {
+	return p.pool.Close(connectionKey)
 }
 
 func (p *Proxy) ListenAndServe(ctx context.Context) error {

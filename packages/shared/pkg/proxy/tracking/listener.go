@@ -24,5 +24,5 @@ func (l *Listener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	return NewConnection(conn, l.counter), nil
+	return NewConnection(conn, l.counter, nil), nil
 }

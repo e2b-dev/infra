@@ -127,8 +127,8 @@ func (p *SandboxProxy) Close(ctx context.Context) error {
 	return nil
 }
 
-func (p *SandboxProxy) RemoveFromPool(connectionKey string) {
-	p.proxy.RemoveFromPool(connectionKey)
+func (p *SandboxProxy) RemoveFromPool(connectionKey string) error {
+	return p.proxy.RemoveFromPool(connectionKey)
 }
 
 func (p *SandboxProxy) GetAddr() string {
