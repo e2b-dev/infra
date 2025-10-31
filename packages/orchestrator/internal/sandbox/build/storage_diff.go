@@ -18,16 +18,26 @@ func storagePath(buildId string, diffType DiffType) string {
 }
 
 type StorageDiff struct {
-	chunker     *utils.SetOnce[*block.Chunker]
-	cachePath   string
-	cacheKey    DiffStoreKey
-	storagePath string
+	chunker           *utils.SetOnce[*block.Chunker]
+	cachePath         string
+	cacheKey          DiffStoreKey
+	storagePath       string
+	storageObjectType storage.SeekableObjectType
+
 	blockSize   int64
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
 }
 
 var _ Diff = (*StorageDiff)(nil)
+
+type UnknownDiffTypeError struct {
+	DiffType DiffType
+}
+
+func (e UnknownDiffTypeError) Error() string {
+	return fmt.Sprintf("unknown diff type: %s", e.DiffType)
+}
 
 func newStorageDiff(
 	basePath string,
@@ -36,21 +46,37 @@ func newStorageDiff(
 	blockSize int64,
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
-) *StorageDiff {
+) (*StorageDiff, error) {
 	cachePathSuffix := id.Generate()
 
 	storagePath := storagePath(buildId, diffType)
+	storageObjectType, ok := storageObjectType(diffType)
+	if !ok {
+		return nil, UnknownDiffTypeError{diffType}
+	}
 	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
 	cachePath := filepath.Join(basePath, cacheFile)
 
 	return &StorageDiff{
-		storagePath: storagePath,
-		cachePath:   cachePath,
-		chunker:     utils.NewSetOnce[*block.Chunker](),
-		blockSize:   blockSize,
-		metrics:     metrics,
-		persistence: persistence,
-		cacheKey:    GetDiffStoreKey(buildId, diffType),
+		storagePath:       storagePath,
+		storageObjectType: storageObjectType,
+		cachePath:         cachePath,
+		chunker:           utils.NewSetOnce[*block.Chunker](),
+		blockSize:         blockSize,
+		metrics:           metrics,
+		persistence:       persistence,
+		cacheKey:          GetDiffStoreKey(buildId, diffType),
+	}, nil
+}
+
+func storageObjectType(diffType DiffType) (storage.SeekableObjectType, bool) {
+	switch diffType {
+	case Memfile:
+		return storage.MemfileObjectType, true
+	case Rootfs:
+		return storage.RootFSObjectType, true
+	default:
+		return storage.UnknownSeekableObjectType, false
 	}
 }
 
@@ -59,7 +85,7 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	obj, err := b.persistence.OpenObject(ctx, b.storagePath)
+	obj, err := b.persistence.OpenSeekableObject(ctx, b.storagePath, b.storageObjectType)
 	if err != nil {
 		return err
 	}

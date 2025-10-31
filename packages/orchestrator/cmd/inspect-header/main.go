@@ -22,14 +22,19 @@ func main() {
 	}
 
 	var storagePath string
+	var objectType storage.ObjectType
 
 	switch *kind {
 	case "memfile":
 		storagePath = template.StorageMemfileHeaderPath()
+		objectType = storage.MemfileHeaderObjectType
 	case "rootfs":
 		storagePath = template.StorageRootfsHeaderPath()
+		objectType = storage.RootFSHeaderObjectType
 	default:
 		log.Fatalf("invalid kind: %s", *kind)
+
+		return
 	}
 
 	ctx := context.Background()
@@ -38,7 +43,7 @@ func main() {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	obj, err := storage.OpenObject(ctx, storagePath)
+	obj, err := storage.OpenObject(ctx, storagePath, objectType)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}

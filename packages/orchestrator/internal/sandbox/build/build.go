@@ -116,7 +116,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 }
 
 func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
-	storageDiff := newStorageDiff(
+	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
 		b.fileType,
@@ -124,6 +124,9 @@ func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
 		b.metrics,
 		b.persistence,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create storage diff: %w", err)
+	}
 
 	source, err := b.store.Get(ctx, storageDiff)
 	if err != nil {
