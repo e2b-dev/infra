@@ -184,9 +184,16 @@ cat <<EOF >/etc/systemd/resolved.conf.d/consul.conf
 [Resolve]
 DNS=127.0.0.1:8600
 DNSSEC=false
-Domains=~consul
 EOF
-systemctl restart systemd-resolved
+sync  # Ensure file is written to disk
+
+# Remove GCE's DNS config to prevent it from competing with Consul DNS (GCP-specific fix)
+# We don't need routing domains since Consul handles ALL DNS:
+#   - .consul queries: served directly by Consul
+#   - other queries: forwarded to GCE DNS via Consul's recursor config
+if [ -f /etc/systemd/resolved.conf.d/gce-resolved.conf ]; then
+  mv /etc/systemd/resolved.conf.d/gce-resolved.conf /etc/systemd/resolved.conf.d/gce-resolved.conf.disabled
+fi
 
 # Set up huge pages
 # We are not enabling Transparent Huge Pages for now, as they are not swappable and may result in slowdowns + we are not using swap right now.
@@ -260,13 +267,36 @@ overcommitment_hugepages=$(remove_decimal $overcommitment_hugepages)
 echo "- Allocating $overcommitment_hugepages huge pages ($overcommitment_hugepages_percentage%) for overcommitment"
 echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 
+# Get GCE DNS server dynamically from metadata for Consul recursors
+# This ensures we can resolve internet domains through Consul
+GCE_DNS=$(curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/dns-servers || echo "169.254.169.254")
+
+# Start Consul first (in background) with GCE DNS as recursor
+# This allows Consul to handle both .consul queries AND forward internet queries
 # These variables are passed in via Terraform template interpolation
 /opt/consul/bin/run-consul.sh --client \
     --consul-token "${CONSUL_TOKEN}" \
     --cluster-tag-name "${CLUSTER_TAG_NAME}" \
     --enable-gossip-encryption \
     --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" \
-    --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" &
+    --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" \
+    --recursor "$${GCE_DNS}" &
+
+# Give Consul a moment to start its DNS server on port 8600
+sleep 3
+
+# Now restart systemd-resolved to apply Consul DNS configuration
+# This must happen AFTER Consul starts, otherwise systemd-resolved marks 127.0.0.1:8600 as unreachable
+# Consul DNS (127.0.0.1:8600) is the ONLY DNS server configured in systemd-resolved
+# Consul handles ALL queries: .consul directly, everything else via recursor to GCE DNS
+echo "[Configuring systemd-resolved for Consul DNS]"
+echo "- Restarting systemd-resolved to apply Consul DNS config"
+systemctl restart systemd-resolved
+echo "- Waiting for systemd-resolved to settle"
+sleep 5
+echo "- Flushing DNS caches"
+resolvectl flush-caches
+echo "- systemd-resolved configured to use Consul DNS for all queries"
 
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
 
