@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -48,6 +49,7 @@ type testHandler struct {
 	memoryMap       mapping.Mappings
 	uffd            uintptr
 	missingRequests map[int64]struct{}
+	writeMu         sync.Mutex
 }
 
 func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
@@ -143,8 +145,15 @@ func (h *testHandler) getAccessedOffsets() []uint {
 	return offsets
 }
 
+//go:noinline
+func touchRead(b []byte) {
+	var dst [1]byte
+	_ = copy(dst[:], b[:1]) // forces a real read → MISSING fault
+}
+
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
+	touchRead(readBytes)
 
 	expectedBytes, err := h.data.Slice(ctx, op.offset, int64(h.pagesize))
 	if err != nil {
@@ -165,6 +174,10 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 	if err != nil {
 		return err
 	}
+
+	// An unprotected parallel write to map results in undefined behavior—here usually manifesting as total freeze of the test.
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
 
 	n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
 	if n != int(h.pagesize) {

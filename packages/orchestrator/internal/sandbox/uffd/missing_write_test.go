@@ -134,8 +134,7 @@ func TestMissingWrite(t *testing.T) {
 }
 
 func TestParallelMissingWrite(t *testing.T) {
-	// TODO: At around 10k+ parallel operations the test often freezes.
-	parallelOperations := 5_000
+	parallelOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,

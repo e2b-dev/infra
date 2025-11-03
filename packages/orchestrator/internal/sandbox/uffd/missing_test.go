@@ -1,7 +1,10 @@
 package uffd
 
 import (
+	"fmt"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -130,7 +133,7 @@ func TestMissing(t *testing.T) {
 
 func TestParallelMissing(t *testing.T) {
 	// TODO: At around 10k+ parallel operations the test often freezes.
-	parallelOperations := 5_000
+	parallelOperations := 100_0000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
@@ -144,6 +147,15 @@ func TestParallelMissing(t *testing.T) {
 		offset: 0,
 		mode:   operationModeRead,
 	}
+
+	fmt.Fprint(os.Stdout, "init\n")
+
+	go func() {
+		for {
+			time.Sleep(1 * time.Second)
+			fmt.Println("non frozen")
+		}
+	}()
 
 	var verr errgroup.Group
 
