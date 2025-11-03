@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type testConfig struct {
@@ -91,7 +92,7 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 		fdExit.Close()
 	})
 
-	uffd, err := newUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, data, m, logger)
+	uffd, err := newUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, data, m, int64(tt.pagesize), logger)
 	require.NoError(t, err)
 
 	cleanupList = append(cleanupList, func() {
@@ -131,8 +132,8 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 
 func (h *testHandler) getAccessedOffsets() []uint {
 	offsets := []uint{}
-	for offset := range h.uffd.missingRequests {
-		offsets = append(offsets, uint(offset))
+	for offset := range h.uffd.missingRequests.BitSet().EachSet() {
+		offsets = append(offsets, uint(header.BlockOffset(int64(offset), h.uffd.missingRequests.BlockSize())))
 	}
 
 	return offsets

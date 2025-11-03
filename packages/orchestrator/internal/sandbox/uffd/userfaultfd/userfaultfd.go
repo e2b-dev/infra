@@ -1,7 +1,6 @@
 package userfaultfd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -48,6 +47,6 @@ func (u *Userfaultfd) Unregister() error {
 	return nil
 }
 
-func (u *Userfaultfd) Dirty(ctx context.Context) (*block.Tracker, error) {
+func (u *Userfaultfd) Dirty() (*block.Tracker, error) {
 	return u.missingRequests.Clone(), nil
 }
