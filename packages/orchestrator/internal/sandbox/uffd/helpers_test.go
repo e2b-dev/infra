@@ -48,7 +48,7 @@ type testHandler struct {
 	data            *testutils.MemorySlicer
 	memoryMap       mapping.Mappings
 	uffd            uintptr
-	missingRequests map[int64]struct{}
+	missingRequests *sync.Map
 	writeMu         sync.Mutex
 }
 
@@ -95,7 +95,7 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 		fdExit.Close()
 	})
 
-	uffd, err := userfaultfd.NewUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, data, m, logger)
+	uffd, err := userfaultfd.NewUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	require.NoError(t, err)
 
 	cleanupList = append(cleanupList, func() {
@@ -110,7 +110,7 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 
 	exitUffd := make(chan struct{}, 1)
 
-	missingRequests := make(map[int64]struct{})
+	missingRequests := &sync.Map{}
 
 	go func() {
 		err := Serve(t.Context(), int(uffd), m, data, fdExit, missingRequests, logger)
@@ -138,9 +138,12 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 
 func (h *testHandler) getAccessedOffsets() []uint {
 	offsets := []uint{}
-	for offset := range h.missingRequests {
-		offsets = append(offsets, uint(offset))
-	}
+
+	h.missingRequests.Range(func(key, _ any) bool {
+		offsets = append(offsets, uint(key.(int64)))
+
+		return true
+	})
 
 	return offsets
 }

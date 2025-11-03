@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -32,7 +33,7 @@ func Serve(
 	mappings mapping.Mappings,
 	src block.Slicer,
 	fdExit *fdexit.FdExit,
-	missingRequests map[int64]struct{},
+	missingRequests *sync.Map,
 	logger *zap.Logger,
 ) error {
 	pollFds := []unix.PollFd{
@@ -139,11 +140,11 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		if _, ok := missingRequests[offset]; ok {
+		if _, ok := missingRequests.Load(offset); ok {
 			continue
 		}
 
-		missingRequests[offset] = struct{}{}
+		missingRequests.Store(offset, struct{}{})
 
 		eg.Go(func() error {
 			defer func() {

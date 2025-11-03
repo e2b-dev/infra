@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 
@@ -152,13 +153,15 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	u.readyCh <- struct{}{}
 
+	missingRequests := &sync.Map{}
+
 	err = Serve(
 		ctx,
 		uffd,
 		m,
 		u.memfile,
 		u.fdExit,
-		make(map[int64]struct{}),
+		missingRequests,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
