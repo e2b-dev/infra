@@ -56,9 +56,6 @@ func Run(ctx context.Context, opts Options) error {
 	var wg sync.WaitGroup
 	doneCh := make(chan taskResult, len(opts.Tasks))
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	startTask := startTaskFactory(baseLogger, &wg, doneCh)
 
 	baseLogger.Info("starting tasks", zap.Int("count", len(opts.Tasks)))
@@ -84,8 +81,11 @@ func Run(ctx context.Context, opts Options) error {
 		reason = TaskExitedError{TaskName: res.name, TaskError: res.err}
 	}
 
+	closeCtx := context.WithoutCancel(ctx)
 	if opts.ForceStop {
-		cancel()
+		var cancel func()
+		closeCtx, cancel = context.WithCancel(closeCtx)
+		defer cancel()
 	}
 
 	var errs []error
@@ -98,7 +98,7 @@ func Run(ctx context.Context, opts Options) error {
 		taskLogger := baseLogger.Named(task.Name)
 		if task.Cleanup != nil {
 			taskLogger.Info("running cleanup")
-			if err := task.Cleanup(ctx); err != nil {
+			if err := task.Cleanup(closeCtx); err != nil {
 				taskLogger.Warn("cleanup failed", zap.Error(err))
 				errs = append(errs, err)
 			}

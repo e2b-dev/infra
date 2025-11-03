@@ -98,4 +98,26 @@ func TestHappyPath(t *testing.T) {
 		assert.True(t, task)
 		assert.True(t, cleanup)
 	})
+
+	t.Run("context cancelled before closing", func(t *testing.T) {
+		tasks := []Task{
+			{
+				Name: "clean up requires valid context",
+				Cleanup: func(ctx context.Context) error {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					default:
+						return ErrSignal
+					}
+				},
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+		t.Cleanup(cancel)
+
+		err := Run(ctx, Options{Tasks: tasks})
+		require.ErrorIs(t, err, ErrSignal)
+	})
 }
