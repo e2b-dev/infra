@@ -20,7 +20,7 @@ job "filestore-cleanup" {
           driver = "raw_exec"
 
           env {
-            NODE_ID                      = "$${node.unique.name}"
+            NODE_ID = "$${node.unique.name}"
           }
 
           config {
