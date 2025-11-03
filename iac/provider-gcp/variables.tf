@@ -491,3 +491,15 @@ variable "remote_repository_enabled" {
   description = "Set to true to enable remote repository cache. Can be set via TF_VAR_remote_repository_enabled or REMOTE_REPOSITORY_ENABLED env var."
   default     = false
 }
+
+variable "build_cluster_cache_disk_count" {
+  type        = number
+  description = "The number of 375 GB NVME disks to raid together for storing build files."
+  default     = 3
+}
+
+variable "client_cluster_cache_disk_count" {
+  type        = number
+  description = "The number of 375 GB NVME disks to raid together for storing sandbox files."
+  default     = 3
+}

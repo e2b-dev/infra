@@ -23,6 +23,8 @@ const (
 	TierKind ldcontext.Kind = "tier"
 
 	ServiceKind ldcontext.Kind = "service"
+
+	TemplateKind ldcontext.Kind = "template"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
@@ -93,4 +95,5 @@ var (
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
 	// that can be used before the cache starts evicting items.
 	BuildCacheMaxUsagePercentage = newIntFlag("build-cache-max-usage-percentage", 85)
+	BuildProvisionVersion        = newIntFlag("build-provision-version", 0)
 )

@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"context"
 	"strings"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
@@ -8,7 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func (sb *StepBuilder) Hash(sourceLayer phases.LayerResult) (string, error) {
+func (sb *StepBuilder) Hash(_ context.Context, sourceLayer phases.LayerResult) (string, error) {
 	return cache.HashKeys(
 		sourceLayer.Hash,
 		sb.step.GetType(),

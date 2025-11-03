@@ -32,6 +32,7 @@ require (
 	entgo.io/ent v0.12.5 // indirect
 	github.com/ClickHouse/ch-go v0.66.1 // indirect
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2 // indirect
+	github.com/XSAM/otelsql v0.40.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
@@ -42,6 +43,7 @@ require (
 	github.com/dchest/uniuri v1.2.0 // indirect
 	github.com/dnephin/pflag v1.0.7 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
+	github.com/exaring/otelpgx v0.9.3 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/getkin/kin-openapi v0.132.0 // indirect

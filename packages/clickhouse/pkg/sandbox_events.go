@@ -10,8 +10,9 @@ import (
 )
 
 type SandboxEvent struct {
-	Version string `ch:"version"`
-	Type    string `ch:"type"`
+	ID      uuid.UUID `ch:"id"`
+	Version string    `ch:"version"`
+	Type    string    `ch:"type"`
 
 	EventCategory string         `ch:"event_category"`
 	EventLabel    string         `ch:"event_label"`
@@ -51,7 +52,8 @@ SELECT
     event_label,
     event_data,
     type,
-    version
+    version,
+    id
 FROM sandbox_events
 WHERE sandbox_id = ?
 ORDER BY timestamp %s
@@ -96,7 +98,8 @@ SELECT
     event_label,
     event_data,
     type,
-    version
+    version,
+    id
 FROM sandbox_events
 WHERE sandbox_team_id = ?
 ORDER BY timestamp %s

@@ -30,6 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -44,7 +45,6 @@ const (
 	rootfsProvisionLink = "rootfs.filesystem.build.provision"
 
 	baseLayerTimeout = 10 * time.Minute
-	waitEnvdTimeout  = 60 * time.Second
 
 	defaultUser = "root"
 )
@@ -61,6 +61,7 @@ type BaseBuilder struct {
 	templateStorage     storage.StorageProvider
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
+	featureFlags        *featureflags.Client
 
 	layerExecutor *layer.LayerExecutor
 	index         cache.Index
@@ -69,6 +70,7 @@ type BaseBuilder struct {
 
 func New(
 	buildContext buildcontext.BuildContext,
+	featureFlags *featureflags.Client,
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	templateStorage storage.StorageProvider,
@@ -89,6 +91,7 @@ func New(
 		artifactRegistry:    artifactRegistry,
 		dockerhubRepository: dockerhubRepository,
 		sandboxFactory:      sandboxFactory,
+		featureFlags:        featureFlags,
 
 		layerExecutor: layerExecutor,
 		index:         index,

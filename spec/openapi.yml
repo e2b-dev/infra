@@ -75,6 +75,24 @@ components:
       required: true
       schema:
         type: string
+    paginationLimit:
+      name: limit
+      in: query
+      description: Maximum number of items to return per page
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        default: 100
+        maximum: 100
+    paginationNextToken:
+      name: nextToken
+      in: query
+      description: Cursor to start the list from
+      required: false
+      schema:
+        type: string
 
   responses:
     "400":
@@ -478,6 +496,17 @@ components:
           deprecated: true
           description: Automatically pauses the sandbox after the timeout
 
+    ConnectSandbox:
+      type: object
+      required:
+        - timeout
+      properties:
+        timeout:
+          description: Timeout in seconds from the current time after which the sandbox should expire
+          type: integer
+          format: int32
+          minimum: 0
+
     TeamMetric:
       description: Team metric with timestamp
       required:
@@ -525,6 +554,96 @@ components:
           description: The maximum value of the requested metric in the given interval
 
     Template:
+      required:
+        - templateID
+        - buildID
+        - cpuCount
+        - memoryMB
+        - diskSizeMB
+        - public
+        - createdAt
+        - updatedAt
+        - createdBy
+        - lastSpawnedAt
+        - spawnCount
+        - buildCount
+        - envdVersion
+        - aliases
+        - buildStatus
+      properties:
+        templateID:
+          type: string
+          description: Identifier of the template
+        buildID:
+          type: string
+          description: Identifier of the last successful build for given template
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
+        diskSizeMB:
+          $ref: "#/components/schemas/DiskSizeMB"
+        public:
+          type: boolean
+          description: Whether the template is public or only accessible by the team
+        aliases:
+          type: array
+          description: Aliases of the template
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+          description: Time when the template was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: Time when the template was last updated
+        createdBy:
+          allOf:
+            - $ref: "#/components/schemas/TeamUser"
+          nullable: true
+        lastSpawnedAt:
+          type: string
+          nullable: true
+          format: date-time
+          description: Time when the template was last used
+        spawnCount:
+          type: integer
+          format: int64
+          description: Number of times the template was used
+        buildCount:
+          type: integer
+          format: int32
+          description: Number of times the template was built
+        envdVersion:
+          $ref: "#/components/schemas/EnvdVersion"
+        buildStatus:
+          $ref: "#/components/schemas/TemplateBuildStatus"
+
+    TemplateRequestResponseV3:
+      required:
+        - templateID
+        - buildID
+        - public
+        - aliases
+      properties:
+        templateID:
+          type: string
+          description: Identifier of the template
+        buildID:
+          type: string
+          description: Identifier of the last successful build for given template
+        public:
+          type: boolean
+          description: Whether the template is public or only accessible by the team
+        aliases:
+          type: array
+          description: Aliases of the template
+          items:
+            type: string
+
+    TemplateLegacy:
       required:
         - templateID
         - buildID
@@ -589,6 +708,87 @@ components:
         envdVersion:
           $ref: "#/components/schemas/EnvdVersion"
 
+    TemplateBuild:
+      required:
+        - buildID
+        - status
+        - createdAt
+        - updatedAt
+        - cpuCount
+        - memoryMB
+      properties:
+        buildID:
+          type: string
+          format: uuid
+          description: Identifier of the build
+        status:
+          $ref: "#/components/schemas/TemplateBuildStatus"
+        createdAt:
+          type: string
+          format: date-time
+          description: Time when the build was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: Time when the build was last updated
+        finishedAt:
+          type: string
+          format: date-time
+          description: Time when the build was finished
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
+        diskSizeMB:
+          $ref: "#/components/schemas/DiskSizeMB"
+        envdVersion:
+          $ref: "#/components/schemas/EnvdVersion"
+
+    TemplateWithBuilds:
+      required:
+        - templateID
+        - public
+        - aliases
+        - createdAt
+        - updatedAt
+        - lastSpawnedAt
+        - spawnCount
+        - builds
+      properties:
+        templateID:
+          type: string
+          description: Identifier of the template
+        public:
+          type: boolean
+          description: Whether the template is public or only accessible by the team
+        aliases:
+          type: array
+          description: Aliases of the template
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+          description: Time when the template was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: Time when the template was last updated
+        lastSpawnedAt:
+          type: string
+          nullable: true
+          format: date-time
+          description: Time when the template was last used
+        spawnCount:
+          type: integer
+          format: int64
+          description: Number of times the template was used
+        builds:
+          type: array
+          description: List of builds for the template
+          items:
+            $ref: "#/components/schemas/TemplateBuild"
+
     TemplateBuildRequest:
       required:
         - dockerfile
@@ -634,6 +834,21 @@ components:
           default: false
           type: boolean
           description: Whether the step should be forced to run regardless of the cache
+
+    TemplateBuildRequestV3:
+      required:
+        - alias
+      properties:
+        alias:
+          description: Alias of the template
+          type: string
+        teamID:
+          type: string
+          description: Identifier of the team
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
 
     TemplateBuildRequestV2:
       required:
@@ -800,7 +1015,16 @@ components:
           items:
             $ref: "#/components/schemas/BuildLogEntry"
 
-    TemplateBuild:
+    TemplateBuildStatus:
+      type: string
+      description: Status of the template build
+      enum:
+        - building
+        - waiting
+        - ready
+        - error
+
+    TemplateBuildInfo:
       required:
         - templateID
         - buildID
@@ -827,13 +1051,7 @@ components:
           type: string
           description: Identifier of the build
         status:
-          type: string
-          description: Status of the template
-          enum:
-            - building
-            - waiting
-            - ready
-            - error
+          $ref: "#/components/schemas/TemplateBuildStatus"
         reason:
           $ref: "#/components/schemas/BuildStatusReason"
 
@@ -1398,21 +1616,8 @@ paths:
               $ref: "#/components/schemas/SandboxState"
           style: form
           explode: false
-        - name: nextToken
-          in: query
-          description: Cursor to start the list from
-          required: false
-          schema:
-            type: string
-        - name: limit
-          in: query
-          description: Maximum number of items to return per page
-          required: false
-          schema:
-            type: integer
-            format: int32
-            minimum: 1
-            default: 100
+        - $ref: "#/components/parameters/paginationNextToken"
+        - $ref: "#/components/parameters/paginationLimit"
       responses:
         "200":
           description: Successfully returned all running sandboxes
@@ -1614,6 +1819,7 @@ paths:
 
   /sandboxes/{sandboxID}/resume:
     post:
+      deprecated: true
       description: Resume the sandbox
       tags: [sandboxes]
       security:
@@ -1641,6 +1847,44 @@ paths:
           $ref: "#/components/responses/404"
         "401":
           $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/connect:
+    post:
+      description: Returns sandbox details. If the sandbox is paused, it will be resumed. TTL is only extended.
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectSandbox"
+      responses:
+        "200":
+          description: The sandbox was already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sandbox"
+        "201":
+          description: The sandbox was resumed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sandbox"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1706,9 +1950,38 @@ paths:
         "404":
           $ref: "#/components/responses/404"
 
+  /v3/templates:
+    post:
+      description: Create a new template
+      tags: [templates]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateBuildRequestV3"
+
+      responses:
+        "202":
+          description: The build was requested successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateRequestResponseV3"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
   /v2/templates:
     post:
       description: Create a new template
+      deprecated: true
       tags: [templates]
       security:
         - ApiKeyAuth: []
@@ -1726,7 +1999,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Template"
+                $ref: "#/components/schemas/TemplateLegacy"
         "400":
           $ref: "#/components/responses/400"
         "401":
@@ -1798,6 +2071,7 @@ paths:
           $ref: "#/components/responses/500"
     post:
       description: Create a new template
+      deprecated: true
       tags: [templates]
       security:
         - AccessTokenAuth: []
@@ -1815,7 +2089,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Template"
+                $ref: "#/components/schemas/TemplateLegacy"
         "400":
           $ref: "#/components/responses/400"
         "401":
@@ -1824,8 +2098,31 @@ paths:
           $ref: "#/components/responses/500"
 
   /templates/{templateID}:
+    get:
+      description: List all builds for a template
+      tags: [templates]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/paginationNextToken"
+        - $ref: "#/components/parameters/paginationLimit"
+      responses:
+        "200":
+          description: Successfully returned the template with its builds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateWithBuilds"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
     post:
       description: Rebuild an template
+      deprecated: true
       tags: [templates]
       security:
         - AccessTokenAuth: []
@@ -1845,7 +2142,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Template"
+                $ref: "#/components/schemas/TemplateLegacy"
         "401":
           $ref: "#/components/responses/401"
         "500":
@@ -1894,6 +2191,7 @@ paths:
   /templates/{templateID}/builds/{buildID}:
     post:
       description: Start the build
+      deprecated: true
       tags: [templates]
       security:
         - AccessTokenAuth: []
@@ -1962,7 +2260,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TemplateBuild"
+                $ref: "#/components/schemas/TemplateBuildInfo"
         "401":
           $ref: "#/components/responses/401"
         "404":

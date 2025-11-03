@@ -127,8 +127,9 @@ func (es *SandboxEventsService) handleClickhouseBatcherEvent(ctx context.Context
 
 	if sandboxLifeCycleEventsWriteFlag {
 		err := es.batcher.Push(clickhouse.SandboxEvent{
-			Type:      event.Type,
 			Version:   event.Version,
+			ID:        event.ID,
+			Type:      event.Type,
 			Timestamp: event.Timestamp,
 
 			EventCategory: event.EventCategory,

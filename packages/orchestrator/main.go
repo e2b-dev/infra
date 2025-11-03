@@ -362,6 +362,7 @@ func run(config cfg.Config) (success bool) {
 	if slices.Contains(services, cfg.TemplateManager) {
 		tmpl, err = tmplserver.New(
 			ctx,
+			featureFlags,
 			tel.MeterProvider,
 			globalLogger,
 			tmplSbxLoggerExternal,

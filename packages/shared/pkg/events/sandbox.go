@@ -28,8 +28,9 @@ var ValidSandboxEventTypes = []string{
 }
 
 type SandboxEvent struct {
-	Version string `json:"version"`
-	Type    string `json:"type"`
+	ID      uuid.UUID `json:"id"`
+	Version string    `json:"version"`
+	Type    string    `json:"type"`
 
 	// Deprecated: for new events use event field with dot syntax
 	EventCategory string `json:"event_category"`
