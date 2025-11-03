@@ -131,10 +131,7 @@ func run(config cfg.Config) (success bool) {
 		EnableConsole: true,
 	}))
 	zap.ReplaceGlobals(globalLogger)
-	tasks = append(tasks, supervisor.Task{
-		Name:    "global logger",
-		Cleanup: cleanupLogger(globalLogger),
-	})
+	defer globalLogger.Sync()
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
