@@ -193,6 +193,9 @@ type ClientInterface interface {
 	// DeleteTemplatesTemplateID request
 	DeleteTemplatesTemplateID(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetTemplatesTemplateID request
+	GetTemplatesTemplateID(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PatchTemplatesTemplateIDWithBody request with any body
 	PatchTemplatesTemplateIDWithBody(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -677,6 +680,18 @@ func (c *Client) PostTemplates(ctx context.Context, body PostTemplatesJSONReques
 
 func (c *Client) DeleteTemplatesTemplateID(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteTemplatesTemplateIDRequest(c.Server, templateID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetTemplatesTemplateID(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesTemplateIDRequest(c.Server, templateID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2108,6 +2123,78 @@ func NewDeleteTemplatesTemplateIDRequest(server string, templateID TemplateID) (
 	return req, nil
 }
 
+// NewGetTemplatesTemplateIDRequest generates requests for GetTemplatesTemplateID
+func NewGetTemplatesTemplateIDRequest(server string, templateID TemplateID, params *GetTemplatesTemplateIDParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "templateID", runtime.ParamLocationPath, templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.NextToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "nextToken", runtime.ParamLocationQuery, *params.NextToken); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewPatchTemplatesTemplateIDRequest calls the generic PatchTemplatesTemplateID builder with application/json body
 func NewPatchTemplatesTemplateIDRequest(server string, templateID TemplateID, body PatchTemplatesTemplateIDJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -2740,6 +2827,9 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteTemplatesTemplateIDWithResponse request
 	DeleteTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*DeleteTemplatesTemplateIDResponse, error)
+
+	// GetTemplatesTemplateIDWithResponse request
+	GetTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDResponse, error)
 
 	// PatchTemplatesTemplateIDWithBodyWithResponse request with any body
 	PatchTemplatesTemplateIDWithBodyWithResponse(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchTemplatesTemplateIDResponse, error)
@@ -3466,6 +3556,30 @@ func (r DeleteTemplatesTemplateIDResponse) StatusCode() int {
 	return 0
 }
 
+type GetTemplatesTemplateIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *TemplateWithBuilds
+	JSON401      *N401
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesTemplateIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesTemplateIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type PatchTemplatesTemplateIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3540,7 +3654,7 @@ func (r PostTemplatesTemplateIDBuildsBuildIDResponse) StatusCode() int {
 type GetTemplatesTemplateIDBuildsBuildIDStatusResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *TemplateBuild
+	JSON200      *TemplateBuildInfo
 	JSON401      *N401
 	JSON404      *N404
 	JSON500      *N500
@@ -4016,6 +4130,15 @@ func (c *ClientWithResponses) DeleteTemplatesTemplateIDWithResponse(ctx context.
 		return nil, err
 	}
 	return ParseDeleteTemplatesTemplateIDResponse(rsp)
+}
+
+// GetTemplatesTemplateIDWithResponse request returning *GetTemplatesTemplateIDResponse
+func (c *ClientWithResponses) GetTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDResponse, error) {
+	rsp, err := c.GetTemplatesTemplateID(ctx, templateID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesTemplateIDResponse(rsp)
 }
 
 // PatchTemplatesTemplateIDWithBodyWithResponse request with arbitrary body returning *PatchTemplatesTemplateIDResponse
@@ -5364,6 +5487,46 @@ func ParseDeleteTemplatesTemplateIDResponse(rsp *http.Response) (*DeleteTemplate
 	return response, nil
 }
 
+// ParseGetTemplatesTemplateIDResponse parses an HTTP response from a GetTemplatesTemplateIDWithResponse call
+func ParseGetTemplatesTemplateIDResponse(rsp *http.Response) (*GetTemplatesTemplateIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesTemplateIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TemplateWithBuilds
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParsePatchTemplatesTemplateIDResponse parses an HTTP response from a PatchTemplatesTemplateIDWithResponse call
 func ParsePatchTemplatesTemplateIDResponse(rsp *http.Response) (*PatchTemplatesTemplateIDResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -5492,7 +5655,7 @@ func ParseGetTemplatesTemplateIDBuildsBuildIDStatusResponse(rsp *http.Response) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest TemplateBuild
+		var dest TemplateBuildInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
