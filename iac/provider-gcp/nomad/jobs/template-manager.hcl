@@ -23,14 +23,14 @@ job "template-manager-system" {
     }
 
     network {
-      port "api" {
+      port "template-manager" {
         static = "${port}"
       }
     }
 
     service {
       name     = "template-manager"
-      port     = "api"
+      port     = "${port}"
       provider = "nomad"
 
       check {
@@ -77,7 +77,7 @@ job "template-manager-system" {
         SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         DOCKERHUB_REMOTE_REPOSITORY_URL  = "${dockerhub_remote_repository_url}"
-        GRPC_PORT                     = "$${NOMAD_PORT_api}"
+        GRPC_PORT                     = "${port}"
         GIN_MODE                      = "release"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
