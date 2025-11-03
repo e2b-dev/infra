@@ -120,6 +120,7 @@ func (s *Store) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (sandb
 
 	item.mu.Lock()
 	defer item.mu.Unlock()
+
 	sbx, err := updateFunc(item._data)
 	if err != nil {
 		return sandbox.Sandbox{}, err

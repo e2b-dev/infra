@@ -50,6 +50,19 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIPString(), port),
 			}
 
+			logger := zap.L().With(
+				zap.String("origin_host", r.Host),
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithTeamID(sbx.Runtime.TeamID),
+				zap.String("sandbox_ip", sbx.Slot.HostIPString()),
+				zap.Uint64("sandbox_req_port", port),
+				zap.String("sandbox_req_path", r.URL.Path),
+				zap.String("sandbox_req_method", r.Method),
+				zap.String("sandbox_req_user_agent", r.UserAgent()),
+				zap.String("remote_addr", r.RemoteAddr),
+				zap.Int64("content_length", r.ContentLength),
+			)
+
 			return &pool.Destination{
 				Url:                                url,
 				SandboxId:                          sbx.Runtime.SandboxID,
@@ -59,14 +72,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
 				ConnectionKey: sbx.Runtime.ExecutionID,
-				RequestLogger: zap.L().With(
-					zap.String("host", r.Host),
-					logger.WithSandboxID(sbx.Runtime.SandboxID),
-					zap.String("sandbox_ip", sbx.Slot.HostIPString()),
-					logger.WithTeamID(sbx.Runtime.TeamID),
-					zap.String("sandbox_req_port", url.Port()),
-					zap.String("sandbox_req_path", r.URL.Path),
-				),
+				RequestLogger: logger,
 			}, nil
 		},
 	)

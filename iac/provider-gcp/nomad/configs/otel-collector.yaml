@@ -139,10 +139,12 @@ processors:
           - "orchestrator.*"
           - "template.*"
           - "api.*"
+          - "db.sql.connection.*"
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
           - "otelcol.*"
+          - "pgxpool.*"
 
   filter/prometheus:
     metrics:

@@ -9,18 +9,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
 
-// The AccessTokenFunc type is an adapter to allow the use of ordinary
-// function as AccessToken mutator.
-type AccessTokenFunc func(context.Context, *models.AccessTokenMutation) (models.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f AccessTokenFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, error) {
-	if mv, ok := m.(*models.AccessTokenMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.AccessTokenMutation", m)
-}
-
 // The ClusterFunc type is an adapter to allow the use of ordinary
 // function as Cluster mutator.
 type ClusterFunc func(context.Context, *models.ClusterMutation) (models.Value, error)

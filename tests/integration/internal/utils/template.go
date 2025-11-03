@@ -52,7 +52,7 @@ func NoOpBuildLogHandler() BuildLogHandler {
 }
 
 // BuildTemplate builds a template with the given options and waits for it to complete
-func BuildTemplate(tb testing.TB, opts TemplateBuildOptions) *api.Template {
+func BuildTemplate(tb testing.TB, opts TemplateBuildOptions) *api.TemplateRequestResponseV3 {
 	tb.Helper()
 
 	// Set defaults
@@ -157,7 +157,7 @@ func requestTemplateBuild(
 	alias string,
 	cpuCount, memoryMB *int32,
 	reqEditors ...api.RequestEditorFn,
-) *api.Template {
+) *api.TemplateRequestResponseV3 {
 	tb.Helper()
 
 	ctx := tb.Context()
@@ -170,7 +170,7 @@ func requestTemplateBuild(
 		memoryMB = utils.ToPtr(DefaultMemoryMB)
 	}
 
-	resp, err := c.PostV2TemplatesWithResponse(ctx, api.TemplateBuildRequestV2{
+	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
 		Alias:    alias,
 		CpuCount: cpuCount,
 		MemoryMB: memoryMB,
@@ -217,7 +217,7 @@ func safeValue[T any](item *T) T {
 }
 
 // BuildSimpleTemplate builds a simple template with Ubuntu 22.04 base image
-func BuildSimpleTemplate(tb testing.TB, alias string, reqEditors ...api.RequestEditorFn) *api.Template {
+func BuildSimpleTemplate(tb testing.TB, alias string, reqEditors ...api.RequestEditorFn) *api.TemplateRequestResponseV3 {
 	tb.Helper()
 
 	opts := TemplateBuildOptions{
