@@ -59,28 +59,7 @@ func Run(ctx context.Context, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	startTask := func(ctx context.Context, task Task) {
-		taskLogger := baseLogger.Named(task.Name)
-
-		if task.Background == nil {
-			return
-		}
-
-		taskLogger.Info("starting task")
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			err := task.Background(ctx)
-			// Non-blocking send in case Run already finished
-			select {
-			case doneCh <- taskResult{name: task.Name, err: err}:
-			default:
-			}
-
-			taskLogger.Info("task finished", zap.Error(err))
-		}()
-	}
+	startTask := startTaskFactory(baseLogger, &wg, doneCh)
 
 	baseLogger.Info("starting tasks", zap.Int("count", len(opts.Tasks)))
 	for _, task := range opts.Tasks {
@@ -129,4 +108,29 @@ func Run(ctx context.Context, opts Options) error {
 	wg.Wait()
 
 	return errors.Join(errs...)
+}
+
+func startTaskFactory(baseLogger *zap.Logger, wg *sync.WaitGroup, doneCh chan taskResult) func(context.Context, Task) {
+	return func(ctx context.Context, task Task) {
+		taskLogger := baseLogger.Named(task.Name)
+
+		if task.Background == nil {
+			return
+		}
+
+		taskLogger.Info("starting task")
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			err := task.Background(ctx)
+			// Non-blocking send in case Run already finished
+			select {
+			case doneCh <- taskResult{name: task.Name, err: err}:
+			default:
+			}
+
+			taskLogger.Info("task finished", zap.Error(err))
+		}()
+	}
 }
