@@ -28,9 +28,10 @@ const (
 
 	UFFDIO_REGISTER_MODE_MISSING = C.UFFDIO_REGISTER_MODE_MISSING
 
-	UFFDIO_API      = C.UFFDIO_API
-	UFFDIO_REGISTER = C.UFFDIO_REGISTER
-	UFFDIO_COPY     = C.UFFDIO_COPY
+	UFFDIO_API        = C.UFFDIO_API
+	UFFDIO_REGISTER   = C.UFFDIO_REGISTER
+	UFFDIO_UNREGISTER = C.UFFDIO_UNREGISTER
+	UFFDIO_COPY       = C.UFFDIO_COPY
 
 	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
 
@@ -66,6 +67,13 @@ func NewUffdioRegister(start, length, mode CULong) UffdioRegister {
 			len:   length,
 		},
 		mode: mode,
+	}
+}
+
+func NewUffdioRange(start, length CULong) UffdioRange {
+	return UffdioRange{
+		start: start,
+		len:   length,
 	}
 }
 

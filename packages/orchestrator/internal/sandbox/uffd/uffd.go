@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -36,7 +35,8 @@ type Uffd struct {
 	fdExit     *fdexit.FdExit
 	lis        *net.UnixListener
 	socketPath string
-	memfile    *block.TrackedSliceDevice
+	memfile    block.ReadonlyDevice
+	dirty      *block.Tracker
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 }
 
@@ -48,17 +48,13 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		return nil, fmt.Errorf("failed to create fd exit: %w", err)
 	}
 
-	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
-	}
-
 	return &Uffd{
 		exit:       utils.NewErrorOnce(),
 		readyCh:    make(chan struct{}, 1),
 		fdExit:     fdExit,
 		socketPath: socketPath,
-		memfile:    trackedMemfile,
+		memfile:    memfile,
+		dirty:      block.NewTracker(blockSize),
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 	}, nil
 }
@@ -147,6 +143,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		uintptr(fds[0]),
 		u.memfile,
 		m,
+		u.memfile.BlockSize(),
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
@@ -187,10 +184,20 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-func (u *Uffd) Disable() error {
-	return u.memfile.Disable()
+func (u *Uffd) Disable(ctx context.Context) error {
+	uffd, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	return uffd.Unregister()
 }
 
-func (u *Uffd) Dirty() *bitset.BitSet {
-	return u.memfile.Dirty()
+func (u *Uffd) Dirty(ctx context.Context) (*block.Tracker, error) {
+	uffd, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	return uffd.Dirty(ctx)
 }

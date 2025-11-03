@@ -5,6 +5,7 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -13,7 +14,7 @@ type NoopMemory struct {
 	size      int64
 	blockSize int64
 
-	dirty *bitset.BitSet
+	dirty *block.Tracker
 
 	exit *utils.ErrorOnce
 }
@@ -23,23 +24,23 @@ var _ MemoryBackend = (*NoopMemory)(nil)
 func NewNoopMemory(size, blockSize int64) *NoopMemory {
 	blocks := header.TotalBlocks(size, blockSize)
 
-	dirty := bitset.New(uint(blocks))
-	dirty.FlipRange(0, dirty.Len())
+	b := bitset.New(uint(blocks))
+	b.FlipRange(0, b.Len())
 
 	return &NoopMemory{
 		size:      size,
 		blockSize: blockSize,
-		dirty:     dirty,
+		dirty:     block.NewTrackerFromBitset(b, blockSize),
 		exit:      utils.NewErrorOnce(),
 	}
 }
 
-func (m *NoopMemory) Disable() error {
+func (m *NoopMemory) Disable(context.Context) error {
 	return nil
 }
 
-func (m *NoopMemory) Dirty() *bitset.BitSet {
-	return m.dirty
+func (m *NoopMemory) Dirty(context.Context) (*block.Tracker, error) {
+	return m.dirty.Clone(), nil
 }
 
 func (m *NoopMemory) Start(context.Context, string) error {

@@ -151,11 +151,9 @@ func (u *Userfaultfd) handleMissing(
 	offset int64,
 	pagesize uint64,
 ) error {
-	if _, ok := u.missingRequests[offset]; ok {
+	if u.missingRequests.Has(offset) {
 		return nil
 	}
-
-	u.missingRequests[offset] = struct{}{}
 
 	u.wg.Go(func() error {
 		defer func() {

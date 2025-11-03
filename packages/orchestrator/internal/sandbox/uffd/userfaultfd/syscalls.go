@@ -13,13 +13,13 @@ import (
 )
 
 // flags: syscall.O_CLOEXEC|syscall.O_NONBLOCK
-func newUserfaultfd(flags uintptr, src block.Slicer, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
+func newUserfaultfd(flags uintptr, src block.Slicer, m *memory.Mapping, pagesize int64, logger *zap.Logger) (*Userfaultfd, error) {
 	uffd, _, errno := syscall.Syscall(NR_userfaultfd, flags, 0, 0)
 	if errno != 0 {
 		return nil, fmt.Errorf("userfaultfd syscall failed: %w", errno)
 	}
 
-	return NewUserfaultfdFromFd(uffd, src, m, logger)
+	return NewUserfaultfdFromFd(uffd, src, m, pagesize, logger)
 }
 
 // features: UFFD_FEATURE_MISSING_HUGETLBFS
@@ -50,6 +50,17 @@ func (u *Userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %w (ret=%d)", errno, ret)
+	}
+
+	return nil
+}
+
+func (u *Userfaultfd) unregister(addr uintptr, size uint64) error {
+	r := NewUffdioRange(CULong(addr), CULong(size))
+
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_UNREGISTER, uintptr(unsafe.Pointer(&r)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_UNREGISTER ioctl failed: %w (ret=%d)", errno, ret)
 	}
 
 	return nil

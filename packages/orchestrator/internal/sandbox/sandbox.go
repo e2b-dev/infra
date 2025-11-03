@@ -684,7 +684,7 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.memory.Disable(); err != nil {
+	if err := s.memory.Disable(ctx); err != nil {
 		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
@@ -724,6 +724,11 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
+	dirty, err := s.memory.Dirty(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
+	}
+
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
@@ -731,7 +736,7 @@ func (s *Sandbox) Pause(
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
 			memfile:    memfile,
-			dirtyPages: s.memory.Dirty(),
+			dirtyPages: dirty.BitSet(),
 			blockSize:  originalMemfile.BlockSize(),
 			doneHook: func(context.Context) error {
 				return memfile.Close()
