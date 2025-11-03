@@ -216,15 +216,10 @@ func TestSerialMissingWrite(t *testing.T) {
 		mode:   operationModeWrite,
 	}
 
-	var verr errgroup.Group
-
 	for range serialOperations {
 		err := h.executeWrite(t.Context(), writeOp)
 		require.NoError(t, err)
 	}
-
-	err := verr.Wait()
-	require.NoError(t, err)
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 	assert.Equal(t, expectedAccessedOffsets, h.getAccessedOffsets(), "checking which pages were faulted")
