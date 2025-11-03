@@ -213,7 +213,7 @@ func TestSerialMissingWrite(t *testing.T) {
 
 	writeOp := operation{
 		offset: 0,
-		mode:   operationModeRead,
+		mode:   operationModeWrite,
 	}
 
 	var verr errgroup.Group
