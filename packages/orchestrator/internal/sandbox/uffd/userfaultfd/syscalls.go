@@ -5,15 +5,11 @@ import (
 	"syscall"
 	"unsafe"
 
-	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 // flags: syscall.O_CLOEXEC|syscall.O_NONBLOCK
-func NewUserfaultfd(flags uintptr, src block.Slicer, m mapping.Mappings, logger *zap.Logger) (uintptr, error) {
+func NewUserfaultfd(flags uintptr) (uintptr, error) {
 	uffd, _, errno := syscall.Syscall(NR_userfaultfd, flags, 0, 0)
 	if errno != 0 {
 		return 0, fmt.Errorf("userfaultfd syscall failed: %w", errno)
