@@ -283,7 +283,18 @@ GCE_DNS=$(curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/c
     --recursor "$${GCE_DNS}" &
 
 # Give Consul a moment to start its DNS server on port 8600
-sleep 3
+echo "- Waiting for Consul DNS to start on port 8600..."
+for i in {1..10}; do
+  if nc -z 127.0.0.1 8600 2>/dev/null; then
+    echo "- Consul DNS is ready (attempt $i/10)"
+    break
+  fi
+  if [ $i -eq 10 ]; then
+    echo "- ERROR: Consul DNS not responding after 10 seconds, exiting..."
+    exit 1
+  fi
+  sleep 1
+done
 
 # Now restart systemd-resolved to apply Consul DNS configuration
 # This must happen AFTER Consul starts, otherwise systemd-resolved marks 127.0.0.1:8600 as unreachable
