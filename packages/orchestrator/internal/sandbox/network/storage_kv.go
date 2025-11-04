@@ -22,7 +22,7 @@ func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
 
-func NewStorageKV(slotsSize int, nodeID string, config Config) (*StorageKV, error) {
+func NewStorageKV(nodeID string, config Config) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
 
 	consulClient, err := newConsulClient(consulToken)
@@ -32,7 +32,7 @@ func NewStorageKV(slotsSize int, nodeID string, config Config) (*StorageKV, erro
 
 	return &StorageKV{
 		config:       config,
-		slotsSize:    slotsSize,
+		slotsSize:    config.GetVirtualSlotsSize(),
 		consulClient: consulClient,
 		nodeID:       nodeID,
 	}, nil
@@ -123,10 +123,10 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 	return slot, nil
 }
 
-func (s *StorageKV) Release(ips *Slot) error {
+func (s *StorageKV) Release(_ context.Context, ips *Slot) error {
 	kv := s.consulClient.KV()
 
-	pair, _, err := kv.Get(ips.Key, nil)
+	pair, _, err := kv.Get(ips.Name, nil)
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to read Consul KV: %w", err)
 	}
@@ -136,7 +136,7 @@ func (s *StorageKV) Release(ips *Slot) error {
 	}
 
 	status, _, err := kv.DeleteCAS(&consulApi.KVPair{
-		Key:         ips.Key,
+		Key:         ips.Name,
 		ModifyIndex: pair.ModifyIndex,
 	}, nil)
 	if err != nil {

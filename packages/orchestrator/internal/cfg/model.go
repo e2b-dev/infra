@@ -1,6 +1,8 @@
 package cfg
 
 import (
+	"net"
+	"reflect"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -35,9 +37,17 @@ type Config struct {
 }
 
 func Parse() (Config, error) {
-	return env.ParseAs[Config]()
+	return env.ParseAsWithOptions[Config](env.Options{
+		FuncMap: map[reflect.Type]env.ParserFunc{
+			reflect.TypeOf(net.IPNet{}): network.ParseIPNet,
+		},
+	})
 }
 
 func ParseBuilder() (BuilderConfig, error) {
-	return env.ParseAs[BuilderConfig]()
+	return env.ParseAsWithOptions[BuilderConfig](env.Options{
+		FuncMap: map[reflect.Type]env.ParserFunc{
+			reflect.TypeOf(net.IPNet{}): network.ParseIPNet,
+		},
+	})
 }
