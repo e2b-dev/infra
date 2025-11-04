@@ -6,9 +6,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
-// AccessToken is the predicate function for accesstoken builders.
-type AccessToken func(*sql.Selector)
-
 // Cluster is the predicate function for cluster builders.
 type Cluster func(*sql.Selector)
 

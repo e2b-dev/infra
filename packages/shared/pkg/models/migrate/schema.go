@@ -9,32 +9,6 @@ import (
 )
 
 var (
-	// AccessTokensColumns holds the columns for the "access_tokens" table.
-	AccessTokensColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
-		{Name: "access_token_hash", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "access_token_prefix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(10)"}},
-		{Name: "access_token_length", Type: field.TypeInt},
-		{Name: "access_token_mask_prefix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(5)"}},
-		{Name: "access_token_mask_suffix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(5)"}},
-		{Name: "name", Type: field.TypeString, Default: "Unnamed Access Token", SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "created_at", Type: field.TypeTime, Nullable: true, Default: "CURRENT_TIMESTAMP"},
-		{Name: "user_id", Type: field.TypeUUID},
-	}
-	// AccessTokensTable holds the schema information for the "access_tokens" table.
-	AccessTokensTable = &schema.Table{
-		Name:       "access_tokens",
-		Columns:    AccessTokensColumns,
-		PrimaryKey: []*schema.Column{AccessTokensColumns[0]},
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "access_tokens_users_access_tokens",
-				Columns:    []*schema.Column{AccessTokensColumns[8]},
-				RefColumns: []*schema.Column{UsersColumns[0]},
-				OnDelete:   schema.Cascade,
-			},
-		},
-	}
 	// ClustersColumns holds the columns for the "clusters" table.
 	ClustersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
@@ -232,7 +206,6 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
-		AccessTokensTable,
 		ClustersTable,
 		EnvsTable,
 		EnvAliasesTable,
@@ -245,8 +218,6 @@ var (
 )
 
 func init() {
-	AccessTokensTable.ForeignKeys[0].RefTable = UsersTable
-	AccessTokensTable.Annotation = &entsql.Annotation{}
 	ClustersTable.Annotation = &entsql.Annotation{}
 	EnvsTable.ForeignKeys[0].RefTable = TeamsTable
 	EnvsTable.ForeignKeys[1].RefTable = UsersTable

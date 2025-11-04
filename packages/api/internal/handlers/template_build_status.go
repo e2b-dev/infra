@@ -48,7 +48,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	infoTeamID := buildInfo.TeamID.String()
-	team, apiErr := a.GetTeamAndLimits(c, &infoTeamID)
+	team, apiErr := a.GetTeam(ctx, c, &infoTeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
@@ -65,7 +65,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	// early return if still waiting for build start
 	if buildInfo.BuildStatus == envbuild.StatusWaiting {
-		result := api.TemplateBuild{
+		result := api.TemplateBuildInfo{
 			LogEntries: make([]api.BuildLogEntry, 0),
 			Logs:       make([]string, 0),
 			TemplateID: templateID,
@@ -79,7 +79,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	// Needs to be before logs request so the status is not set to done too early
-	result := api.TemplateBuild{
+	result := api.TemplateBuildInfo{
 		LogEntries: nil,
 		Logs:       nil,
 		TemplateID: templateID,
