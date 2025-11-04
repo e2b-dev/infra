@@ -304,10 +304,22 @@ echo "[Configuring systemd-resolved for Consul DNS]"
 echo "- Restarting systemd-resolved to apply Consul DNS config"
 systemctl restart systemd-resolved
 echo "- Waiting for systemd-resolved to settle"
-sleep 5
+
+# Give Consul a moment to start its DNS server on port 8600
+echo "- Waiting for Systemd-resolved to start..."
+for i in {1..10}; do
+  if host google.com 2>/dev/null; then
+    echo "- DNS resolving is ready (attempt $i/10)"
+    break
+  fi
+  if [ $i -eq 10 ]; then
+    echo "- ERROR: Systemd-resolved not responding after 10 seconds, exiting..."
+    exit 1
+  fi
+  sleep 1
+done
 echo "- Flushing DNS caches"
 resolvectl flush-caches
-echo "- systemd-resolved configured to use Consul DNS for all queries"
 
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
 
