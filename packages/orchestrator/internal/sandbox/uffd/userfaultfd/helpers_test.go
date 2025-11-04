@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"sync"
 	"syscall"
@@ -109,8 +110,6 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 
 	exitUffd := make(chan struct{}, 1)
 
-	missingRequests := &sync.Map{}
-
 	go func() {
 		err := uffd.Serve(t.Context(), fdExit)
 		assert.NoError(t, err)
@@ -131,7 +130,7 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 		pagesize:        tt.pagesize,
 		data:            data,
 		uffd:            uffd,
-		missingRequests: missingRequests,
+		missingRequests: &uffd.missingRequests,
 	}, cleanup
 }
 
@@ -140,6 +139,7 @@ func (h *testHandler) getAccessedOffsets() []uint {
 
 	h.missingRequests.Range(func(key, _ any) bool {
 		offsets = append(offsets, uint(key.(int64)))
+		fmt.Fprintf(os.Stderr, "offset: %d\n", key.(int64))
 
 		return true
 	})
