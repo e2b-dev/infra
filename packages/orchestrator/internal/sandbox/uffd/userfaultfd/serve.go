@@ -157,7 +157,7 @@ func (u *Userfaultfd) handleMissing(
 	offset int64,
 	pagesize uint64,
 ) error {
-	if u.missingRequests.Has(offset) {
+	if !u.missingRequests.Add(offset) {
 		return nil
 	}
 
