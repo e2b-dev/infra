@@ -43,13 +43,12 @@ type operation struct {
 }
 
 type testHandler struct {
-	memoryArea      *[]byte
-	pagesize        uint64
-	data            *testutils.MemorySlicer
-	memoryMap       *memory.Mapping
-	uffd            *Userfaultfd
-	missingRequests *sync.Map
-	writeMu         sync.Mutex
+	memoryArea *[]byte
+	pagesize   uint64
+	data       *testutils.MemorySlicer
+	memoryMap  *memory.Mapping
+	uffd       *Userfaultfd
+	writeMu    sync.Mutex
 }
 
 func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
