@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Copy struct {
@@ -35,10 +36,23 @@ type copyScriptData struct {
 	TargetPath  string
 	Owner       string
 	Permissions string
+	Workdir     string
 }
 
 var copyScriptTemplate = txtTemplate.Must(txtTemplate.New("copy-script-template").Parse(`
 #!/bin/bash
+
+workdir="{{ .Workdir }}"
+
+# Fill the workdir with user home directory if empty
+if [ -z "${workdir}" ]; then
+ # The owner is in format user:group, we need only the user part
+ username=$(printf "{{ .Owner }}" | cut -d':' -f1)
+
+ # Use the owner's home directory
+ workdir=$(getent passwd "$username" | cut -d: -f6)
+fi
+cd "$workdir"
 
 # Get the parent folder of the source file/folder
 sourceFolder="$(dirname "{{ .SourcePath}}")"
@@ -48,9 +62,7 @@ inputPath="{{ .TargetPath }}"
 if [[ "$inputPath" = /* ]]; then
  targetPath="$inputPath"
 else
- # Use the owner's home directory as the base for relative paths
- # The owner is in format user:group, we need only the user part
- targetPath="$(printf ~{{ .Owner }} | cut -d':' -f1)/$inputPath"
+ targetPath="$(pwd)/$inputPath"
 fi
 
 cd "$sourceFolder" || exit 1
@@ -179,6 +191,7 @@ func (c *Copy) Execute(
 
 	var moveScript bytes.Buffer
 	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
+		Workdir:    utils.DerefOrDefault(cmdMetadata.WorkDir, ""),
 		SourcePath: filepath.Join(sbxUnpackPath, args.SourcePath),
 		TargetPath: args.TargetPath,
 		Owner:      args.Owner,
