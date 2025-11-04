@@ -1,15 +1,19 @@
 package events
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		in   SandboxEvent
-		want SandboxEvent
+		in      SandboxEvent
+		want    SandboxEvent
+		wantErr error
 	}{
-		"without-version": {
+		"missing-version": {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "create",
@@ -20,6 +24,16 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.created",
 				Version:       "v1",
 			},
+			wantErr: nil,
+		},
+		"unknown-version": {
+			in: SandboxEvent{
+				EventCategory: "lifecycle",
+				EventLabel:    "create",
+				Version:       "v10",
+			},
+			want:    SandboxEvent{},
+			wantErr: ErrUnknownEventFormat,
 		},
 		"v1-created": {
 			in: SandboxEvent{
@@ -33,6 +47,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.created",
 				Version:       "v1",
 			},
+			wantErr: nil,
 		},
 		"v1-paused": {
 			in: SandboxEvent{
@@ -46,6 +61,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.paused",
 				Version:       "v1",
 			},
+			wantErr: nil,
 		},
 		"v1-killed": {
 			in: SandboxEvent{
@@ -59,6 +75,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.killed",
 				Version:       "v1",
 			},
+			wantErr: nil,
 		},
 		"v1-resumed": {
 			in: SandboxEvent{
@@ -72,6 +89,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.resumed",
 				Version:       "v1",
 			},
+			wantErr: nil,
 		},
 		"v1-updated": {
 			in: SandboxEvent{
@@ -85,6 +103,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.updated",
 				Version:       "v1",
 			},
+			wantErr: nil,
 		},
 		"v1-custom": {
 			in: SandboxEvent{
@@ -95,6 +114,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:    "sandbox.custom",
 				Version: "v1",
 			},
+			wantErr: nil,
 		},
 		"v2-created": {
 			in: SandboxEvent{
@@ -107,6 +127,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.created",
 				Version:       "v2",
 			},
+			wantErr: nil,
 		},
 		"v2-paused": {
 			in: SandboxEvent{
@@ -119,6 +140,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.paused",
 				Version:       "v2",
 			},
+			wantErr: nil,
 		},
 		"v2-killed": {
 			in: SandboxEvent{
@@ -131,6 +153,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.killed",
 				Version:       "v2",
 			},
+			wantErr: nil,
 		},
 		"v2-resumed": {
 			in: SandboxEvent{
@@ -143,6 +166,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.resumed",
 				Version:       "v2",
 			},
+			wantErr: nil,
 		},
 		"v2-updated": {
 			in: SandboxEvent{
@@ -155,6 +179,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Type:          "sandbox.lifecycle.updated",
 				Version:       "v2",
 			},
+			wantErr: nil,
 		},
 	}
 
@@ -162,7 +187,11 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			got := LegacySandboxEventMigrationMapping(tc.in)
+			got, gotErr := LegacySandboxEventMigrationMapping(tc.in)
+			if !errors.Is(gotErr, tc.wantErr) {
+				t.Fatalf("error: got %v, want %v", gotErr, tc.wantErr)
+			}
+
 			if got.Version != tc.want.Version {
 				t.Fatalf("Version: got %q, want %q", got.Version, tc.want.Version)
 			}
