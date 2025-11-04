@@ -232,6 +232,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	builder := build.NewBuilder(
 		logger,
+		featureFlags,
 		sandboxFactory,
 		persistenceTemplate,
 		persistenceBuild,
@@ -334,6 +335,7 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 		err = sbx.Close(ctx)
 		require.NoError(b, err)
 		b.StartTimer()
+
 		return
 	}
 

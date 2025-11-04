@@ -33,6 +33,7 @@ func TestSandboxMetrics(t *testing.T) {
 		}
 
 		metrics = *response.JSON200
+
 		return true
 	}, maxDuration, tick, "sandbox metrics not available in time")
 

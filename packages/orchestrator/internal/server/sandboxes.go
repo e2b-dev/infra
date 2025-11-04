@@ -17,9 +17,8 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
+	"github.com/e2b-dev/infra/packages/shared/pkg/events"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -83,6 +82,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	acquired := s.startingSandboxes.TryAcquire(1)
 	if !acquired {
 		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
+
 		return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
 	}
 	defer s.startingSandboxes.Release(1)
@@ -131,6 +131,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	if err != nil {
 		err := errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
+
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
 
@@ -155,28 +156,36 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.sandboxes.RemoveByExecutionID(req.GetSandbox().GetSandboxId(), sbx.Runtime.ExecutionID)
 
 		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
-		s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		closeErr := s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		if closeErr != nil {
+			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
+			sbxlogger.I(sbx).Warn("errors when manually closing connections to sandbox", zap.Error(closeErr))
+		}
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()
 
-	label := clickhouse.SandboxEventLabelCreate
+	eventType := events.SandboxCreatedEventPair
 	if req.GetSandbox().GetSnapshot() {
-		label = clickhouse.SandboxEventLabelResume
+		eventType = events.SandboxResumedEventPair
 	}
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
+		Version:   events.StructureVersionV2,
+		ID:        uuid.New(),
+		Type:      eventType.Type,
+		Timestamp: time.Now().UTC(),
 
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), event.SandboxEvent{
-		Timestamp:          time.Now().UTC(),
+		EventCategory: eventType.LegacyCategory,
+		EventLabel:    eventType.LegacyLabel,
+		EventData:     eventData,
+
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
 		SandboxTemplateID:  sbx.Config.BaseTemplateID,
 		SandboxBuildID:     buildId,
 		SandboxTeamID:      teamID,
-		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-		EventLabel:         string(label),
-		EventData:          eventData,
 	})
 
 	return &orchestrator.SandboxCreateResponse{
@@ -204,17 +213,23 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
+	eventType := events.SandboxUpdatedEventPair
 
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), event.SandboxEvent{
-		Timestamp:          time.Now().UTC(),
+	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
+		Version:   events.StructureVersionV2,
+		ID:        uuid.New(),
+		Type:      eventType.Type,
+		Timestamp: time.Now().UTC(),
+
+		EventCategory: eventType.LegacyCategory,
+		EventLabel:    eventType.LegacyLabel,
+		EventData:     eventData,
+
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
 		SandboxTemplateID:  sbx.Config.BaseTemplateID,
 		SandboxBuildID:     buildId,
 		SandboxTeamID:      teamID,
-		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-		EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
-		EventData:          eventData,
 	})
 
 	return &emptypb.Empty{}, nil
@@ -290,16 +305,22 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), event.SandboxEvent{
-		Timestamp:          time.Now().UTC(),
+	eventType := events.SandboxKilledEventPair
+	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
+		Version:   events.StructureVersionV2,
+		ID:        uuid.New(),
+		Type:      eventType.Type,
+		Timestamp: time.Now().UTC(),
+
+		EventCategory: eventType.LegacyCategory,
+		EventLabel:    eventType.LegacyLabel,
+		EventData:     eventData,
+
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
 		SandboxTemplateID:  sbx.Config.BaseTemplateID,
 		SandboxBuildID:     buildId,
 		SandboxTeamID:      teamID,
-		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-		EventLabel:         string(clickhouse.SandboxEventLabelKill),
-		EventData:          eventData,
 	})
 
 	return &emptypb.Empty{}, nil
@@ -396,16 +417,22 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), event.SandboxEvent{
-		Timestamp:          time.Now().UTC(),
+	eventType := events.SandboxPausedEventPair
+	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
+		Version:   events.StructureVersionV2,
+		ID:        uuid.New(),
+		Type:      eventType.Type,
+		Timestamp: time.Now().UTC(),
+
+		EventCategory: eventType.LegacyCategory,
+		EventLabel:    eventType.LegacyLabel,
+		EventData:     eventData,
+
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
 		SandboxTemplateID:  sbx.Config.BaseTemplateID,
 		SandboxBuildID:     buildId,
 		SandboxTeamID:      teamID,
-		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-		EventLabel:         string(clickhouse.SandboxEventLabelPause),
-		EventData:          eventData,
 	})
 
 	return &emptypb.Empty{}, nil

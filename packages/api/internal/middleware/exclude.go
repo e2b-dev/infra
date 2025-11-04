@@ -36,6 +36,7 @@ func shouldInclude(path string, patterns []string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 

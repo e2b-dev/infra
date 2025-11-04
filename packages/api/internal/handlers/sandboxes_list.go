@@ -27,13 +27,11 @@ import (
 )
 
 const (
-	maxSandboxListLimit     int32 = 100
-	defaultSandboxListLimit int32 = 100
+	sandboxesDefaultLimit = int32(100)
+	sandboxesMaxLimit     = int32(100)
 )
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
-	// Apply limit + 1 to check if there are more results
-	queryLimit := limit + 1
+func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, queryLimit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
 	queryMetadata := dbtypes.JSONBStringMap{}
 	if metadataFilter != nil {
 		queryMetadata = *metadataFilter
@@ -54,6 +52,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	}
 
 	sandboxes := snapshotsToPaginatedSandboxes(snapshots)
+
 	return sandboxes, nil
 }
 
@@ -114,14 +113,23 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		states = append(states, *params.State...)
 	}
 
-	limit := defaultSandboxListLimit
-	if params.Limit != nil {
-		limit = *params.Limit
-	}
+	// Initialize pagination
+	pagination, err := utils.NewPagination[utils.PaginatedSandbox](
+		utils.PaginationParams{
+			Limit:     params.Limit,
+			NextToken: params.NextToken,
+		},
+		utils.PaginationConfig{
+			DefaultLimit: sandboxesDefaultLimit,
+			MaxLimit:     sandboxesMaxLimit,
+			DefaultID:    utils.MaxSandboxID,
+		},
+	)
+	if err != nil {
+		telemetry.ReportError(ctx, "error parsing pagination cursor", err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid next token")
 
-	// Clip limit to max
-	if limit > maxSandboxListLimit {
-		limit = maxSandboxListLimit
+		return
 	}
 
 	metadataFilter, err := utils.ParseMetadata(params.Metadata)
@@ -134,15 +142,6 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 	// Get sandboxes with pagination
 	sandboxes := make([]utils.PaginatedSandbox, 0)
-
-	// Parse the next token to offset sandboxes for pagination
-	cursorTime, cursorID, err := utils.ParseNextToken(params.NextToken)
-	if err != nil {
-		zap.L().Error("Error parsing cursor", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid next token")
-
-		return
-	}
 
 	allSandboxes := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning, sandbox.StatePausing})
 	runningSandboxes := sharedUtils.Filter(allSandboxes, func(sbx sandbox.Sandbox) bool {
@@ -162,7 +161,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxList)))
 
 		// Filter based on cursor
-		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID)
+		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, pagination.CursorTime(), pagination.CursorID())
 
 		sandboxes = append(sandboxes, runningSandboxList...)
 	}
@@ -177,7 +176,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 		}
 
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, limit, cursorTime, cursorID)
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())
 		if err != nil {
 			zap.L().Error("Error getting paused sandboxes", zap.Error(err))
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting paused sandboxes")
@@ -187,7 +186,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 		pausingSandboxList := instanceInfoToPaginatedSandboxes(pausingSandboxes)
 		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
-		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, cursorTime, cursorID)
+		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, pagination.CursorTime(), pagination.CursorID())
 
 		sandboxes = append(sandboxes, pausedSandboxList...)
 		sandboxes = append(sandboxes, pausingSandboxList...)
@@ -196,21 +195,9 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	// We need to sort again after merging running and paused sandboxes
 	utils.SortPaginatedSandboxesDesc(sandboxes)
 
-	var nextToken *string
-	if len(sandboxes) > int(limit) {
-		// We have more results than the limit, so we need to set the nextToken
-		lastSandbox := sandboxes[limit-1]
-		cursor := lastSandbox.GenerateCursor()
-		nextToken = &cursor
-
-		// Trim to the requested limit
-		sandboxes = sandboxes[:limit]
-	}
-
-	// Add pagination info to headers
-	if nextToken != nil {
-		c.Header("X-Next-Token", *nextToken)
-	}
+	sandboxes = pagination.ProcessResultsWithHeader(c, sandboxes, func(s utils.PaginatedSandbox) (time.Time, string) {
+		return s.PaginationTimestamp, s.SandboxID
+	})
 
 	c.JSON(http.StatusOK, sandboxes)
 }

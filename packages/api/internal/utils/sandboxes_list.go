@@ -13,18 +13,15 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
-const maxSandboxID = "zzzzzzzzzzzzzzzzzzzz"
+const (
+	MaxSandboxID = "zzzzzzzzzzzzzzzzzzzz"
+)
 
-// extend the api.ListedSandbox with a timestamp to use for pagination
+// PaginatedSandbox extends the api.ListedSandbox with a timestamp to use for pagination
 type PaginatedSandbox struct {
 	api.ListedSandbox
 
 	PaginationTimestamp time.Time `json:"-"`
-}
-
-func (p *PaginatedSandbox) GenerateCursor() string {
-	cursor := fmt.Sprintf("%s__%s", p.PaginationTimestamp.Format(time.RFC3339Nano), p.SandboxID)
-	return base64.URLEncoding.EncodeToString([]byte(cursor))
 }
 
 func ParseNextToken(token *string) (time.Time, string, error) {
@@ -38,7 +35,7 @@ func ParseNextToken(token *string) (time.Time, string, error) {
 	}
 
 	// default to all sandboxes (older than now) and always lexically after any sandbox ID (the sort is descending)
-	return time.Now(), maxSandboxID, nil
+	return time.Now(), MaxSandboxID, nil
 }
 
 func ParseMetadata(metadata *string) (*map[string]string, error) {
@@ -99,6 +96,7 @@ func SortPaginatedSandboxesDesc(sandboxes []PaginatedSandbox) {
 		if !a.StartedAt.Equal(b.StartedAt) {
 			return b.StartedAt.Compare(a.StartedAt)
 		}
+
 		return strings.Compare(a.SandboxID, b.SandboxID)
 	})
 }
@@ -119,6 +117,7 @@ func FilterSandboxesOnMetadata(sandboxes []PaginatedSandbox, metadata *map[strin
 		for key, value := range *metadata {
 			if metadataValue, ok := (*sbx.Metadata)[key]; !ok || metadataValue != value {
 				matchesAll = false
+
 				break
 			}
 		}

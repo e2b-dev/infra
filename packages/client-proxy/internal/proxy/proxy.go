@@ -62,10 +62,14 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			}
 
 			logger := zap.L().With(
-				zap.String("host", r.Host),
+				zap.String("origin_host", r.Host),
 				l.WithSandboxID(sandboxId),
 				zap.Uint64("sandbox_req_port", port),
 				zap.String("sandbox_req_path", r.URL.Path),
+				zap.String("sandbox_req_method", r.Method),
+				zap.String("sandbox_req_user_agent", r.UserAgent()),
+				zap.String("remote_addr", r.RemoteAddr),
+				zap.Int64("content_length", r.ContentLength),
 			)
 
 			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog)
@@ -77,17 +81,22 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
-			logger.Debug("Proxying request", zap.String("node_ip", nodeIP))
+			url := &url.URL{
+				Scheme: "http",
+				Host:   fmt.Sprintf("%s:%d", nodeIP, orchestratorProxyPort),
+			}
+
+			logger = logger.With(
+				zap.String("target_hostname", url.Hostname()),
+				zap.String("target_port", url.Port()),
+			)
 
 			return &pool.Destination{
 				SandboxId:     sandboxId,
 				RequestLogger: logger,
 				SandboxPort:   port,
 				ConnectionKey: clientProxyConnectionKey,
-				Url: &url.URL{
-					Scheme: "http",
-					Host:   fmt.Sprintf("%s:%d", nodeIP, orchestratorProxyPort),
-				},
+				Url:           url,
 			}, nil
 		},
 	)
@@ -96,6 +105,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 	_, err := telemetry.GetObservableUpDownCounter(
 		meter, telemetry.ClientProxyPoolConnectionsMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
 			observer.Observe(proxy.CurrentServerConnections())
+
 			return nil
 		},
 	)
@@ -106,6 +116,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 	_, err = telemetry.GetObservableUpDownCounter(
 		meter, telemetry.ClientProxyPoolSizeMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
 			observer.Observe(int64(proxy.CurrentPoolSize()))
+
 			return nil
 		},
 	)
@@ -116,6 +127,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 	_, err = telemetry.GetObservableUpDownCounter(
 		meter, telemetry.ClientProxyServerConnectionsMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
 			observer.Observe(proxy.CurrentPoolConnections())
+
 			return nil
 		},
 	)

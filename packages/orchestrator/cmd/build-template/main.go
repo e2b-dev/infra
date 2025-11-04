@@ -190,6 +190,7 @@ func buildTemplate(
 
 	builder := build.NewBuilder(
 		logger,
+		featureFlags,
 		sandboxFactory,
 		persistenceTemplate,
 		persistenceBuild,
@@ -230,5 +231,6 @@ func buildTemplate(
 	}
 
 	fmt.Println("Build finished, closing...")
+
 	return nil
 }

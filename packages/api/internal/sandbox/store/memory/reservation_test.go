@@ -26,6 +26,7 @@ var teamID = uuid.New()
 
 func newMemoryStore() *Store {
 	cache := NewStore(nil, nil)
+
 	return cache
 }
 
@@ -410,6 +411,7 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 			}
 
 			waiters[i] = waitForStart
+
 			return nil
 		})
 	}

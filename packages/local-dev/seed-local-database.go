@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lib/pq"
 
 	"github.com/e2b-dev/infra/packages/db/client"
@@ -75,7 +76,7 @@ func run(ctx context.Context) error {
 	}
 
 	// create user token
-	if err = upsertUserToken(ctx, database, user, keys.AccessTokenPrefix, userTokenValue); err != nil {
+	if err = upsertUserToken(ctx, sqlcDB, user, keys.AccessTokenPrefix, userTokenValue); err != nil {
 		return fmt.Errorf("failed to upsert token: %w", err)
 	}
 
@@ -127,21 +128,22 @@ func ensureUserIsOnTeam(ctx context.Context, database *db.DB, user *models.User,
 	return nil
 }
 
-func upsertUserToken(ctx context.Context, database *db.DB, user *models.User, tokenPrefix, token string) error {
+func upsertUserToken(ctx context.Context, db *client.Client, user *models.User, tokenPrefix, token string) error {
 	tokenHash, tokenMask, err := createTokenHash(tokenPrefix, token)
 	if err != nil {
 		return fmt.Errorf("failed to create token hash: %w", err)
 	}
 
-	if _, err = database.Client.AccessToken.Create().
-		SetID(tokenID).
-		SetUser(user).
-		SetAccessTokenHash(tokenHash).
-		SetAccessTokenLength(tokenMask.ValueLength).
-		SetAccessTokenPrefix(tokenMask.Prefix).
-		SetAccessTokenMaskPrefix(tokenMask.MaskedValuePrefix).
-		SetAccessTokenMaskSuffix(tokenMask.MaskedValueSuffix).
-		Save(ctx); ignoreConstraints(err) != nil {
+	if _, err = db.CreateAccessToken(ctx, queries.CreateAccessTokenParams{
+		ID:                    tokenID,
+		UserID:                user.ID,
+		AccessTokenHash:       tokenHash,
+		AccessTokenPrefix:     tokenMask.Prefix,
+		AccessTokenLength:     int32(tokenMask.ValueLength),
+		AccessTokenMaskPrefix: tokenMask.MaskedValuePrefix,
+		AccessTokenMaskSuffix: tokenMask.MaskedValueSuffix,
+		Name:                  "local dev seed token",
+	}); ignoreConstraints(err) != nil {
 		return fmt.Errorf("failed to create token: %w", err)
 	}
 
@@ -149,12 +151,22 @@ func upsertUserToken(ctx context.Context, database *db.DB, user *models.User, to
 }
 
 func ignoreConstraints(err error) error {
+	// entgo check
 	var pqerr *pq.Error
 	if errors.As(err, &pqerr) {
 		if pqerr.Code == "23505" {
 			return nil
 		}
 	}
+
+	// sqlc check
+	var pgconnErr *pgconn.PgError
+	if errors.As(err, &pgconnErr) {
+		if pgconnErr.Code == "23505" {
+			return nil
+		}
+	}
+
 	return err
 }
 
@@ -184,6 +196,7 @@ func upsertTeam(ctx context.Context, database *db.DB) (*models.Team, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create team: %w", err)
 	}
+
 	return team, nil
 }
 
@@ -201,6 +214,7 @@ func upsertUser(ctx context.Context, database *db.DB) (*models.User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to upsert user: %w", err)
 	}
+
 	return user, nil
 }
 
@@ -224,5 +238,6 @@ func createTokenHash(prefix, accessToken string) (string, keys.MaskedIdentifier,
 	if err != nil {
 		return "", keys.MaskedIdentifier{}, fmt.Errorf("failed to mask key")
 	}
+
 	return accessTokenHash, accessTokenMask, nil
 }

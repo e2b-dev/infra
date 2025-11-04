@@ -106,6 +106,7 @@ func TestHostParser(t *testing.T) {
 				if !errors.Is(err, tt.wantErr) || reflect.TypeOf(err) != reflect.TypeOf(tt.wantErr) {
 					t.Fatalf("ParseHost(%q) error type = %T, want %T", tt.host, err, tt.wantErr)
 				}
+
 				return // no further checks when an error was expected
 			}
 

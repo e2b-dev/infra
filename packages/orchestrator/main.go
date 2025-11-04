@@ -39,8 +39,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/webhooks"
+	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -177,6 +176,7 @@ func NewTemplateManager(
 	sandboxFactory *sandbox.Factory,
 	sandboxProxy *proxy.SandboxProxy,
 	sandboxes *sandbox.Map,
+	featureFlags *featureflags.Client,
 	templateCache *template.Cache,
 	persistence storage.StorageProvider,
 	limiter *limit.Limiter,
@@ -212,6 +212,7 @@ func NewTemplateManager(
 
 	tmpl, err := tmplserver.New(
 		context.Background(),
+		featureFlags,
 		tel.MeterProvider,
 		globalLogger,
 		tmplSbxLoggerExternal,
@@ -552,7 +553,7 @@ func NewSandboxObserver(
 
 func NewSandboxEventsService(
 	featureFlags *featureflags.Client,
-	redisPubSub pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData],
+	redisPubSub pubsub.PubSub[event.SandboxEvent, struct{}],
 	sandboxEventBatcher batcher.ClickhouseInsertBatcher[clickhouse.SandboxEvent],
 	globalLogger *zap.Logger,
 ) *events.SandboxEventsService {
@@ -562,12 +563,12 @@ func NewSandboxEventsService(
 func NewPubSub(
 	lc fx.Lifecycle,
 	redisClient redis.UniversalClient,
-) (pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData], error) {
-	var redisPubSub pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]
+) (pubsub.PubSub[event.SandboxEvent, struct{}], error) {
+	var redisPubSub pubsub.PubSub[event.SandboxEvent, struct{}]
 	if redisClient != nil {
-		redisPubSub = pubsub.NewRedisPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData](redisClient, "sandbox-webhooks")
+		redisPubSub = pubsub.NewRedisPubSub[event.SandboxEvent, struct{}](redisClient, "sandbox-webhooks")
 	} else {
-		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
+		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, struct{}]()
 	}
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {

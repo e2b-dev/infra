@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -37,6 +38,7 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 		All(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "Error when getting running builds", err)
+
 		return fmt.Errorf("error when getting running builds: %w", err)
 	}
 
@@ -56,6 +58,7 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
 		if deleteJobErr != nil {
 			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
+
 			return fmt.Errorf("error when canceling running build: %w", deleteJobErr)
 		}
 		telemetry.ReportEvent(ctx, "canceled running builds")
@@ -77,7 +80,9 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	userID, teams, err := a.GetUserAndTeams(c)
+	userID := a.GetUserID(c)
+
+	teams, err := dbapi.GetTeamsByUser(ctx, a.sqlcDB, userID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
@@ -106,6 +111,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	for _, t := range teams {
 		if t.Team.ID == templateBuildDB.Env.TeamID {
 			team = t.Team
+
 			break
 		}
 	}
@@ -127,6 +133,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	// Check and cancel concurrent builds
 	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
+
 		return
 	}
 
@@ -137,6 +144,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if build.Status != envbuild.StatusWaiting.String() {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
 		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
+
 		return
 	}
 
@@ -176,6 +184,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "build failed", err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", err))
+
 		return
 	}
 

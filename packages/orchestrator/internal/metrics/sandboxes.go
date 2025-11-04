@@ -68,6 +68,7 @@ func NewSandboxObserver(ctx context.Context, nodeID, serviceName, serviceCommit,
 		if kind == sdkmetric.InstrumentKindGauge {
 			return metricdata.DeltaTemporality
 		}
+
 		return metricdata.CumulativeTemporality
 	})
 
@@ -155,6 +156,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 				ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMetrics)
 				if err != nil {
 					zap.L().Error("Failed to check envd version", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
+
 					continue
 				}
 				if !ok {
@@ -252,6 +254,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 							zap.Float32("cpu_threshold_percent", sbxCpuThresholdPct),
 						)
 					}
+
 					return nil
 				})
 			}

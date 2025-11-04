@@ -11,7 +11,6 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/cluster"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
@@ -34,838 +33,15 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAccessToken = "AccessToken"
-	TypeCluster     = "Cluster"
-	TypeEnv         = "Env"
-	TypeEnvAlias    = "EnvAlias"
-	TypeEnvBuild    = "EnvBuild"
-	TypeSnapshot    = "Snapshot"
-	TypeTeam        = "Team"
-	TypeUser        = "User"
-	TypeUsersTeams  = "UsersTeams"
+	TypeCluster    = "Cluster"
+	TypeEnv        = "Env"
+	TypeEnvAlias   = "EnvAlias"
+	TypeEnvBuild   = "EnvBuild"
+	TypeSnapshot   = "Snapshot"
+	TypeTeam       = "Team"
+	TypeUser       = "User"
+	TypeUsersTeams = "UsersTeams"
 )
-
-// AccessTokenMutation represents an operation that mutates the AccessToken nodes in the graph.
-type AccessTokenMutation struct {
-	config
-	op                       Op
-	typ                      string
-	id                       *uuid.UUID
-	access_token_hash        *string
-	access_token_prefix      *string
-	access_token_length      *int
-	addaccess_token_length   *int
-	access_token_mask_prefix *string
-	access_token_mask_suffix *string
-	name                     *string
-	created_at               *time.Time
-	clearedFields            map[string]struct{}
-	user                     *uuid.UUID
-	cleareduser              bool
-	done                     bool
-	oldValue                 func(context.Context) (*AccessToken, error)
-	predicates               []predicate.AccessToken
-}
-
-var _ ent.Mutation = (*AccessTokenMutation)(nil)
-
-// accesstokenOption allows management of the mutation configuration using functional options.
-type accesstokenOption func(*AccessTokenMutation)
-
-// newAccessTokenMutation creates new mutation for the AccessToken entity.
-func newAccessTokenMutation(c config, op Op, opts ...accesstokenOption) *AccessTokenMutation {
-	m := &AccessTokenMutation{
-		config:        c,
-		op:            op,
-		typ:           TypeAccessToken,
-		clearedFields: make(map[string]struct{}),
-	}
-	for _, opt := range opts {
-		opt(m)
-	}
-	return m
-}
-
-// withAccessTokenID sets the ID field of the mutation.
-func withAccessTokenID(id uuid.UUID) accesstokenOption {
-	return func(m *AccessTokenMutation) {
-		var (
-			err   error
-			once  sync.Once
-			value *AccessToken
-		)
-		m.oldValue = func(ctx context.Context) (*AccessToken, error) {
-			once.Do(func() {
-				if m.done {
-					err = errors.New("querying old values post mutation is not allowed")
-				} else {
-					value, err = m.Client().AccessToken.Get(ctx, id)
-				}
-			})
-			return value, err
-		}
-		m.id = &id
-	}
-}
-
-// withAccessToken sets the old AccessToken of the mutation.
-func withAccessToken(node *AccessToken) accesstokenOption {
-	return func(m *AccessTokenMutation) {
-		m.oldValue = func(context.Context) (*AccessToken, error) {
-			return node, nil
-		}
-		m.id = &node.ID
-	}
-}
-
-// Client returns a new `ent.Client` from the mutation. If the mutation was
-// executed in a transaction (ent.Tx), a transactional client is returned.
-func (m AccessTokenMutation) Client() *Client {
-	client := &Client{config: m.config}
-	client.init()
-	return client
-}
-
-// Tx returns an `ent.Tx` for mutations that were executed in transactions;
-// it returns an error otherwise.
-func (m AccessTokenMutation) Tx() (*Tx, error) {
-	if _, ok := m.driver.(*txDriver); !ok {
-		return nil, errors.New("models: mutation is not running in a transaction")
-	}
-	tx := &Tx{config: m.config}
-	tx.init()
-	return tx, nil
-}
-
-// SetID sets the value of the id field. Note that this
-// operation is only accepted on creation of AccessToken entities.
-func (m *AccessTokenMutation) SetID(id uuid.UUID) {
-	m.id = &id
-}
-
-// ID returns the ID value in the mutation. Note that the ID is only available
-// if it was provided to the builder or after it was returned from the database.
-func (m *AccessTokenMutation) ID() (id uuid.UUID, exists bool) {
-	if m.id == nil {
-		return
-	}
-	return *m.id, true
-}
-
-// IDs queries the database and returns the entity ids that match the mutation's predicate.
-// That means, if the mutation is applied within a transaction with an isolation level such
-// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
-// or updated by the mutation.
-func (m *AccessTokenMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
-	switch {
-	case m.op.Is(OpUpdateOne | OpDeleteOne):
-		id, exists := m.ID()
-		if exists {
-			return []uuid.UUID{id}, nil
-		}
-		fallthrough
-	case m.op.Is(OpUpdate | OpDelete):
-		return m.Client().AccessToken.Query().Where(m.predicates...).IDs(ctx)
-	default:
-		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
-	}
-}
-
-// SetAccessTokenHash sets the "access_token_hash" field.
-func (m *AccessTokenMutation) SetAccessTokenHash(s string) {
-	m.access_token_hash = &s
-}
-
-// AccessTokenHash returns the value of the "access_token_hash" field in the mutation.
-func (m *AccessTokenMutation) AccessTokenHash() (r string, exists bool) {
-	v := m.access_token_hash
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAccessTokenHash returns the old "access_token_hash" field's value of the AccessToken entity.
-// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AccessTokenMutation) OldAccessTokenHash(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAccessTokenHash is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAccessTokenHash requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAccessTokenHash: %w", err)
-	}
-	return oldValue.AccessTokenHash, nil
-}
-
-// ResetAccessTokenHash resets all changes to the "access_token_hash" field.
-func (m *AccessTokenMutation) ResetAccessTokenHash() {
-	m.access_token_hash = nil
-}
-
-// SetAccessTokenPrefix sets the "access_token_prefix" field.
-func (m *AccessTokenMutation) SetAccessTokenPrefix(s string) {
-	m.access_token_prefix = &s
-}
-
-// AccessTokenPrefix returns the value of the "access_token_prefix" field in the mutation.
-func (m *AccessTokenMutation) AccessTokenPrefix() (r string, exists bool) {
-	v := m.access_token_prefix
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAccessTokenPrefix returns the old "access_token_prefix" field's value of the AccessToken entity.
-// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AccessTokenMutation) OldAccessTokenPrefix(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAccessTokenPrefix is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAccessTokenPrefix requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAccessTokenPrefix: %w", err)
-	}
-	return oldValue.AccessTokenPrefix, nil
-}
-
-// ResetAccessTokenPrefix resets all changes to the "access_token_prefix" field.
-func (m *AccessTokenMutation) ResetAccessTokenPrefix() {
-	m.access_token_prefix = nil
-}
-
-// SetAccessTokenLength sets the "access_token_length" field.
-func (m *AccessTokenMutation) SetAccessTokenLength(i int) {
-	m.access_token_length = &i
-	m.addaccess_token_length = nil
-}
-
-// AccessTokenLength returns the value of the "access_token_length" field in the mutation.
-func (m *AccessTokenMutation) AccessTokenLength() (r int, exists bool) {
-	v := m.access_token_length
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAccessTokenLength returns the old "access_token_length" field's value of the AccessToken entity.
-// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AccessTokenMutation) OldAccessTokenLength(ctx context.Context) (v int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAccessTokenLength is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAccessTokenLength requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAccessTokenLength: %w", err)
-	}
-	return oldValue.AccessTokenLength, nil
-}
-
-// AddAccessTokenLength adds i to the "access_token_length" field.
-func (m *AccessTokenMutation) AddAccessTokenLength(i int) {
-	if m.addaccess_token_length != nil {
-		*m.addaccess_token_length += i
-	} else {
-		m.addaccess_token_length = &i
-	}
-}
-
-// AddedAccessTokenLength returns the value that was added to the "access_token_length" field in this mutation.
-func (m *AccessTokenMutation) AddedAccessTokenLength() (r int, exists bool) {
-	v := m.addaccess_token_length
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetAccessTokenLength resets all changes to the "access_token_length" field.
-func (m *AccessTokenMutation) ResetAccessTokenLength() {
-	m.access_token_length = nil
-	m.addaccess_token_length = nil
-}
-
-// SetAccessTokenMaskPrefix sets the "access_token_mask_prefix" field.
-func (m *AccessTokenMutation) SetAccessTokenMaskPrefix(s string) {
-	m.access_token_mask_prefix = &s
-}
-
-// AccessTokenMaskPrefix returns the value of the "access_token_mask_prefix" field in the mutation.
-func (m *AccessTokenMutation) AccessTokenMaskPrefix() (r string, exists bool) {
-	v := m.access_token_mask_prefix
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAccessTokenMaskPrefix returns the old "access_token_mask_prefix" field's value of the AccessToken entity.
-// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AccessTokenMutation) OldAccessTokenMaskPrefix(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAccessTokenMaskPrefix is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAccessTokenMaskPrefix requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAccessTokenMaskPrefix: %w", err)
-	}
-	return oldValue.AccessTokenMaskPrefix, nil
-}
-
-// ResetAccessTokenMaskPrefix resets all changes to the "access_token_mask_prefix" field.
-func (m *AccessTokenMutation) ResetAccessTokenMaskPrefix() {
-	m.access_token_mask_prefix = nil
-}
-
-// SetAccessTokenMaskSuffix sets the "access_token_mask_suffix" field.
-func (m *AccessTokenMutation) SetAccessTokenMaskSuffix(s string) {
-	m.access_token_mask_suffix = &s
-}
-
-// AccessTokenMaskSuffix returns the value of the "access_token_mask_suffix" field in the mutation.
-func (m *AccessTokenMutation) AccessTokenMaskSuffix() (r string, exists bool) {
-	v := m.access_token_mask_suffix
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAccessTokenMaskSuffix returns the old "access_token_mask_suffix" field's value of the AccessToken entity.
-// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AccessTokenMutation) OldAccessTokenMaskSuffix(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAccessTokenMaskSuffix is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAccessTokenMaskSuffix requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAccessTokenMaskSuffix: %w", err)
-	}
-	return oldValue.AccessTokenMaskSuffix, nil
-}
-
-// ResetAccessTokenMaskSuffix resets all changes to the "access_token_mask_suffix" field.
-func (m *AccessTokenMutation) ResetAccessTokenMaskSuffix() {
-	m.access_token_mask_suffix = nil
-}
-
-// SetName sets the "name" field.
-func (m *AccessTokenMutation) SetName(s string) {
-	m.name = &s
-}
-
-// Name returns the value of the "name" field in the mutation.
-func (m *AccessTokenMutation) Name() (r string, exists bool) {
-	v := m.name
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldName returns the old "name" field's value of the AccessToken entity.
-// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AccessTokenMutation) OldName(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldName is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldName requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldName: %w", err)
-	}
-	return oldValue.Name, nil
-}
-
-// ResetName resets all changes to the "name" field.
-func (m *AccessTokenMutation) ResetName() {
-	m.name = nil
-}
-
-// SetUserID sets the "user_id" field.
-func (m *AccessTokenMutation) SetUserID(u uuid.UUID) {
-	m.user = &u
-}
-
-// UserID returns the value of the "user_id" field in the mutation.
-func (m *AccessTokenMutation) UserID() (r uuid.UUID, exists bool) {
-	v := m.user
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldUserID returns the old "user_id" field's value of the AccessToken entity.
-// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AccessTokenMutation) OldUserID(ctx context.Context) (v uuid.UUID, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUserID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
-	}
-	return oldValue.UserID, nil
-}
-
-// ResetUserID resets all changes to the "user_id" field.
-func (m *AccessTokenMutation) ResetUserID() {
-	m.user = nil
-}
-
-// SetCreatedAt sets the "created_at" field.
-func (m *AccessTokenMutation) SetCreatedAt(t time.Time) {
-	m.created_at = &t
-}
-
-// CreatedAt returns the value of the "created_at" field in the mutation.
-func (m *AccessTokenMutation) CreatedAt() (r time.Time, exists bool) {
-	v := m.created_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCreatedAt returns the old "created_at" field's value of the AccessToken entity.
-// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AccessTokenMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
-	}
-	return oldValue.CreatedAt, nil
-}
-
-// ClearCreatedAt clears the value of the "created_at" field.
-func (m *AccessTokenMutation) ClearCreatedAt() {
-	m.created_at = nil
-	m.clearedFields[accesstoken.FieldCreatedAt] = struct{}{}
-}
-
-// CreatedAtCleared returns if the "created_at" field was cleared in this mutation.
-func (m *AccessTokenMutation) CreatedAtCleared() bool {
-	_, ok := m.clearedFields[accesstoken.FieldCreatedAt]
-	return ok
-}
-
-// ResetCreatedAt resets all changes to the "created_at" field.
-func (m *AccessTokenMutation) ResetCreatedAt() {
-	m.created_at = nil
-	delete(m.clearedFields, accesstoken.FieldCreatedAt)
-}
-
-// ClearUser clears the "user" edge to the User entity.
-func (m *AccessTokenMutation) ClearUser() {
-	m.cleareduser = true
-	m.clearedFields[accesstoken.FieldUserID] = struct{}{}
-}
-
-// UserCleared reports if the "user" edge to the User entity was cleared.
-func (m *AccessTokenMutation) UserCleared() bool {
-	return m.cleareduser
-}
-
-// UserIDs returns the "user" edge IDs in the mutation.
-// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
-// UserID instead. It exists only for internal usage by the builders.
-func (m *AccessTokenMutation) UserIDs() (ids []uuid.UUID) {
-	if id := m.user; id != nil {
-		ids = append(ids, *id)
-	}
-	return
-}
-
-// ResetUser resets all changes to the "user" edge.
-func (m *AccessTokenMutation) ResetUser() {
-	m.user = nil
-	m.cleareduser = false
-}
-
-// Where appends a list predicates to the AccessTokenMutation builder.
-func (m *AccessTokenMutation) Where(ps ...predicate.AccessToken) {
-	m.predicates = append(m.predicates, ps...)
-}
-
-// WhereP appends storage-level predicates to the AccessTokenMutation builder. Using this method,
-// users can use type-assertion to append predicates that do not depend on any generated package.
-func (m *AccessTokenMutation) WhereP(ps ...func(*sql.Selector)) {
-	p := make([]predicate.AccessToken, len(ps))
-	for i := range ps {
-		p[i] = ps[i]
-	}
-	m.Where(p...)
-}
-
-// Op returns the operation name.
-func (m *AccessTokenMutation) Op() Op {
-	return m.op
-}
-
-// SetOp allows setting the mutation operation.
-func (m *AccessTokenMutation) SetOp(op Op) {
-	m.op = op
-}
-
-// Type returns the node type of this mutation (AccessToken).
-func (m *AccessTokenMutation) Type() string {
-	return m.typ
-}
-
-// Fields returns all fields that were changed during this mutation. Note that in
-// order to get all numeric fields that were incremented/decremented, call
-// AddedFields().
-func (m *AccessTokenMutation) Fields() []string {
-	fields := make([]string, 0, 8)
-	if m.access_token_hash != nil {
-		fields = append(fields, accesstoken.FieldAccessTokenHash)
-	}
-	if m.access_token_prefix != nil {
-		fields = append(fields, accesstoken.FieldAccessTokenPrefix)
-	}
-	if m.access_token_length != nil {
-		fields = append(fields, accesstoken.FieldAccessTokenLength)
-	}
-	if m.access_token_mask_prefix != nil {
-		fields = append(fields, accesstoken.FieldAccessTokenMaskPrefix)
-	}
-	if m.access_token_mask_suffix != nil {
-		fields = append(fields, accesstoken.FieldAccessTokenMaskSuffix)
-	}
-	if m.name != nil {
-		fields = append(fields, accesstoken.FieldName)
-	}
-	if m.user != nil {
-		fields = append(fields, accesstoken.FieldUserID)
-	}
-	if m.created_at != nil {
-		fields = append(fields, accesstoken.FieldCreatedAt)
-	}
-	return fields
-}
-
-// Field returns the value of a field with the given name. The second boolean
-// return value indicates that this field was not set, or was not defined in the
-// schema.
-func (m *AccessTokenMutation) Field(name string) (ent.Value, bool) {
-	switch name {
-	case accesstoken.FieldAccessTokenHash:
-		return m.AccessTokenHash()
-	case accesstoken.FieldAccessTokenPrefix:
-		return m.AccessTokenPrefix()
-	case accesstoken.FieldAccessTokenLength:
-		return m.AccessTokenLength()
-	case accesstoken.FieldAccessTokenMaskPrefix:
-		return m.AccessTokenMaskPrefix()
-	case accesstoken.FieldAccessTokenMaskSuffix:
-		return m.AccessTokenMaskSuffix()
-	case accesstoken.FieldName:
-		return m.Name()
-	case accesstoken.FieldUserID:
-		return m.UserID()
-	case accesstoken.FieldCreatedAt:
-		return m.CreatedAt()
-	}
-	return nil, false
-}
-
-// OldField returns the old value of the field from the database. An error is
-// returned if the mutation operation is not UpdateOne, or the query to the
-// database failed.
-func (m *AccessTokenMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
-	switch name {
-	case accesstoken.FieldAccessTokenHash:
-		return m.OldAccessTokenHash(ctx)
-	case accesstoken.FieldAccessTokenPrefix:
-		return m.OldAccessTokenPrefix(ctx)
-	case accesstoken.FieldAccessTokenLength:
-		return m.OldAccessTokenLength(ctx)
-	case accesstoken.FieldAccessTokenMaskPrefix:
-		return m.OldAccessTokenMaskPrefix(ctx)
-	case accesstoken.FieldAccessTokenMaskSuffix:
-		return m.OldAccessTokenMaskSuffix(ctx)
-	case accesstoken.FieldName:
-		return m.OldName(ctx)
-	case accesstoken.FieldUserID:
-		return m.OldUserID(ctx)
-	case accesstoken.FieldCreatedAt:
-		return m.OldCreatedAt(ctx)
-	}
-	return nil, fmt.Errorf("unknown AccessToken field %s", name)
-}
-
-// SetField sets the value of a field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *AccessTokenMutation) SetField(name string, value ent.Value) error {
-	switch name {
-	case accesstoken.FieldAccessTokenHash:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAccessTokenHash(v)
-		return nil
-	case accesstoken.FieldAccessTokenPrefix:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAccessTokenPrefix(v)
-		return nil
-	case accesstoken.FieldAccessTokenLength:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAccessTokenLength(v)
-		return nil
-	case accesstoken.FieldAccessTokenMaskPrefix:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAccessTokenMaskPrefix(v)
-		return nil
-	case accesstoken.FieldAccessTokenMaskSuffix:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAccessTokenMaskSuffix(v)
-		return nil
-	case accesstoken.FieldName:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetName(v)
-		return nil
-	case accesstoken.FieldUserID:
-		v, ok := value.(uuid.UUID)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUserID(v)
-		return nil
-	case accesstoken.FieldCreatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCreatedAt(v)
-		return nil
-	}
-	return fmt.Errorf("unknown AccessToken field %s", name)
-}
-
-// AddedFields returns all numeric fields that were incremented/decremented during
-// this mutation.
-func (m *AccessTokenMutation) AddedFields() []string {
-	var fields []string
-	if m.addaccess_token_length != nil {
-		fields = append(fields, accesstoken.FieldAccessTokenLength)
-	}
-	return fields
-}
-
-// AddedField returns the numeric value that was incremented/decremented on a field
-// with the given name. The second boolean return value indicates that this field
-// was not set, or was not defined in the schema.
-func (m *AccessTokenMutation) AddedField(name string) (ent.Value, bool) {
-	switch name {
-	case accesstoken.FieldAccessTokenLength:
-		return m.AddedAccessTokenLength()
-	}
-	return nil, false
-}
-
-// AddField adds the value to the field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *AccessTokenMutation) AddField(name string, value ent.Value) error {
-	switch name {
-	case accesstoken.FieldAccessTokenLength:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddAccessTokenLength(v)
-		return nil
-	}
-	return fmt.Errorf("unknown AccessToken numeric field %s", name)
-}
-
-// ClearedFields returns all nullable fields that were cleared during this
-// mutation.
-func (m *AccessTokenMutation) ClearedFields() []string {
-	var fields []string
-	if m.FieldCleared(accesstoken.FieldCreatedAt) {
-		fields = append(fields, accesstoken.FieldCreatedAt)
-	}
-	return fields
-}
-
-// FieldCleared returns a boolean indicating if a field with the given name was
-// cleared in this mutation.
-func (m *AccessTokenMutation) FieldCleared(name string) bool {
-	_, ok := m.clearedFields[name]
-	return ok
-}
-
-// ClearField clears the value of the field with the given name. It returns an
-// error if the field is not defined in the schema.
-func (m *AccessTokenMutation) ClearField(name string) error {
-	switch name {
-	case accesstoken.FieldCreatedAt:
-		m.ClearCreatedAt()
-		return nil
-	}
-	return fmt.Errorf("unknown AccessToken nullable field %s", name)
-}
-
-// ResetField resets all changes in the mutation for the field with the given name.
-// It returns an error if the field is not defined in the schema.
-func (m *AccessTokenMutation) ResetField(name string) error {
-	switch name {
-	case accesstoken.FieldAccessTokenHash:
-		m.ResetAccessTokenHash()
-		return nil
-	case accesstoken.FieldAccessTokenPrefix:
-		m.ResetAccessTokenPrefix()
-		return nil
-	case accesstoken.FieldAccessTokenLength:
-		m.ResetAccessTokenLength()
-		return nil
-	case accesstoken.FieldAccessTokenMaskPrefix:
-		m.ResetAccessTokenMaskPrefix()
-		return nil
-	case accesstoken.FieldAccessTokenMaskSuffix:
-		m.ResetAccessTokenMaskSuffix()
-		return nil
-	case accesstoken.FieldName:
-		m.ResetName()
-		return nil
-	case accesstoken.FieldUserID:
-		m.ResetUserID()
-		return nil
-	case accesstoken.FieldCreatedAt:
-		m.ResetCreatedAt()
-		return nil
-	}
-	return fmt.Errorf("unknown AccessToken field %s", name)
-}
-
-// AddedEdges returns all edge names that were set/added in this mutation.
-func (m *AccessTokenMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
-	if m.user != nil {
-		edges = append(edges, accesstoken.EdgeUser)
-	}
-	return edges
-}
-
-// AddedIDs returns all IDs (to other nodes) that were added for the given edge
-// name in this mutation.
-func (m *AccessTokenMutation) AddedIDs(name string) []ent.Value {
-	switch name {
-	case accesstoken.EdgeUser:
-		if id := m.user; id != nil {
-			return []ent.Value{*id}
-		}
-	}
-	return nil
-}
-
-// RemovedEdges returns all edge names that were removed in this mutation.
-func (m *AccessTokenMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
-	return edges
-}
-
-// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
-// the given name in this mutation.
-func (m *AccessTokenMutation) RemovedIDs(name string) []ent.Value {
-	return nil
-}
-
-// ClearedEdges returns all edge names that were cleared in this mutation.
-func (m *AccessTokenMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
-	if m.cleareduser {
-		edges = append(edges, accesstoken.EdgeUser)
-	}
-	return edges
-}
-
-// EdgeCleared returns a boolean which indicates if the edge with the given name
-// was cleared in this mutation.
-func (m *AccessTokenMutation) EdgeCleared(name string) bool {
-	switch name {
-	case accesstoken.EdgeUser:
-		return m.cleareduser
-	}
-	return false
-}
-
-// ClearEdge clears the value of the edge with the given name. It returns an error
-// if that edge is not defined in the schema.
-func (m *AccessTokenMutation) ClearEdge(name string) error {
-	switch name {
-	case accesstoken.EdgeUser:
-		m.ClearUser()
-		return nil
-	}
-	return fmt.Errorf("unknown AccessToken unique edge %s", name)
-}
-
-// ResetEdge resets all changes to the edge with the given name in this mutation.
-// It returns an error if the edge is not defined in the schema.
-func (m *AccessTokenMutation) ResetEdge(name string) error {
-	switch name {
-	case accesstoken.EdgeUser:
-		m.ResetUser()
-		return nil
-	}
-	return fmt.Errorf("unknown AccessToken edge %s", name)
-}
 
 // ClusterMutation represents an operation that mutates the Cluster nodes in the graph.
 type ClusterMutation struct {
@@ -3084,6 +2260,7 @@ type EnvBuildMutation struct {
 	envd_version          *string
 	cluster_node_id       *string
 	reason                *schema.BuildReason
+	version               *string
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -3967,6 +3144,55 @@ func (m *EnvBuildMutation) ResetReason() {
 	m.reason = nil
 }
 
+// SetVersion sets the "version" field.
+func (m *EnvBuildMutation) SetVersion(s string) {
+	m.version = &s
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *EnvBuildMutation) Version() (r string, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the EnvBuild entity.
+// If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnvBuildMutation) OldVersion(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// ClearVersion clears the value of the "version" field.
+func (m *EnvBuildMutation) ClearVersion() {
+	m.version = nil
+	m.clearedFields[envbuild.FieldVersion] = struct{}{}
+}
+
+// VersionCleared returns if the "version" field was cleared in this mutation.
+func (m *EnvBuildMutation) VersionCleared() bool {
+	_, ok := m.clearedFields[envbuild.FieldVersion]
+	return ok
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *EnvBuildMutation) ResetVersion() {
+	m.version = nil
+	delete(m.clearedFields, envbuild.FieldVersion)
+}
+
 // ClearEnv clears the "env" edge to the Env entity.
 func (m *EnvBuildMutation) ClearEnv() {
 	m.clearedenv = true
@@ -4028,7 +3254,7 @@ func (m *EnvBuildMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnvBuildMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.created_at != nil {
 		fields = append(fields, envbuild.FieldCreatedAt)
 	}
@@ -4080,6 +3306,9 @@ func (m *EnvBuildMutation) Fields() []string {
 	if m.reason != nil {
 		fields = append(fields, envbuild.FieldReason)
 	}
+	if m.version != nil {
+		fields = append(fields, envbuild.FieldVersion)
+	}
 	return fields
 }
 
@@ -4122,6 +3351,8 @@ func (m *EnvBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.ClusterNodeID()
 	case envbuild.FieldReason:
 		return m.Reason()
+	case envbuild.FieldVersion:
+		return m.Version()
 	}
 	return nil, false
 }
@@ -4165,6 +3396,8 @@ func (m *EnvBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldClusterNodeID(ctx)
 	case envbuild.FieldReason:
 		return m.OldReason(ctx)
+	case envbuild.FieldVersion:
+		return m.OldVersion(ctx)
 	}
 	return nil, fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -4293,6 +3526,13 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetReason(v)
 		return nil
+	case envbuild.FieldVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -4392,6 +3632,9 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldEnvdVersion) {
 		fields = append(fields, envbuild.FieldEnvdVersion)
 	}
+	if m.FieldCleared(envbuild.FieldVersion) {
+		fields = append(fields, envbuild.FieldVersion)
+	}
 	return fields
 }
 
@@ -4423,6 +3666,9 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldEnvdVersion:
 		m.ClearEnvdVersion()
+		return nil
+	case envbuild.FieldVersion:
+		m.ClearVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild nullable field %s", name)
@@ -4482,6 +3728,9 @@ func (m *EnvBuildMutation) ResetField(name string) error {
 		return nil
 	case envbuild.FieldReason:
 		m.ResetReason()
+		return nil
+	case envbuild.FieldVersion:
+		m.ResetVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)
@@ -6560,26 +5809,23 @@ func (m *TeamMutation) ResetEdge(name string) error {
 // UserMutation represents an operation that mutates the User nodes in the graph.
 type UserMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *uuid.UUID
-	email                *string
-	clearedFields        map[string]struct{}
-	teams                map[uuid.UUID]struct{}
-	removedteams         map[uuid.UUID]struct{}
-	clearedteams         bool
-	created_envs         map[string]struct{}
-	removedcreated_envs  map[string]struct{}
-	clearedcreated_envs  bool
-	access_tokens        map[uuid.UUID]struct{}
-	removedaccess_tokens map[uuid.UUID]struct{}
-	clearedaccess_tokens bool
-	users_teams          map[int]struct{}
-	removedusers_teams   map[int]struct{}
-	clearedusers_teams   bool
-	done                 bool
-	oldValue             func(context.Context) (*User, error)
-	predicates           []predicate.User
+	op                  Op
+	typ                 string
+	id                  *uuid.UUID
+	email               *string
+	clearedFields       map[string]struct{}
+	teams               map[uuid.UUID]struct{}
+	removedteams        map[uuid.UUID]struct{}
+	clearedteams        bool
+	created_envs        map[string]struct{}
+	removedcreated_envs map[string]struct{}
+	clearedcreated_envs bool
+	users_teams         map[int]struct{}
+	removedusers_teams  map[int]struct{}
+	clearedusers_teams  bool
+	done                bool
+	oldValue            func(context.Context) (*User, error)
+	predicates          []predicate.User
 }
 
 var _ ent.Mutation = (*UserMutation)(nil)
@@ -6830,60 +6076,6 @@ func (m *UserMutation) ResetCreatedEnvs() {
 	m.removedcreated_envs = nil
 }
 
-// AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by ids.
-func (m *UserMutation) AddAccessTokenIDs(ids ...uuid.UUID) {
-	if m.access_tokens == nil {
-		m.access_tokens = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		m.access_tokens[ids[i]] = struct{}{}
-	}
-}
-
-// ClearAccessTokens clears the "access_tokens" edge to the AccessToken entity.
-func (m *UserMutation) ClearAccessTokens() {
-	m.clearedaccess_tokens = true
-}
-
-// AccessTokensCleared reports if the "access_tokens" edge to the AccessToken entity was cleared.
-func (m *UserMutation) AccessTokensCleared() bool {
-	return m.clearedaccess_tokens
-}
-
-// RemoveAccessTokenIDs removes the "access_tokens" edge to the AccessToken entity by IDs.
-func (m *UserMutation) RemoveAccessTokenIDs(ids ...uuid.UUID) {
-	if m.removedaccess_tokens == nil {
-		m.removedaccess_tokens = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		delete(m.access_tokens, ids[i])
-		m.removedaccess_tokens[ids[i]] = struct{}{}
-	}
-}
-
-// RemovedAccessTokens returns the removed IDs of the "access_tokens" edge to the AccessToken entity.
-func (m *UserMutation) RemovedAccessTokensIDs() (ids []uuid.UUID) {
-	for id := range m.removedaccess_tokens {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// AccessTokensIDs returns the "access_tokens" edge IDs in the mutation.
-func (m *UserMutation) AccessTokensIDs() (ids []uuid.UUID) {
-	for id := range m.access_tokens {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// ResetAccessTokens resets all changes to the "access_tokens" edge.
-func (m *UserMutation) ResetAccessTokens() {
-	m.access_tokens = nil
-	m.clearedaccess_tokens = false
-	m.removedaccess_tokens = nil
-}
-
 // AddUsersTeamIDs adds the "users_teams" edge to the UsersTeams entity by ids.
 func (m *UserMutation) AddUsersTeamIDs(ids ...int) {
 	if m.users_teams == nil {
@@ -7071,15 +6263,12 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 3)
 	if m.teams != nil {
 		edges = append(edges, user.EdgeTeams)
 	}
 	if m.created_envs != nil {
 		edges = append(edges, user.EdgeCreatedEnvs)
-	}
-	if m.access_tokens != nil {
-		edges = append(edges, user.EdgeAccessTokens)
 	}
 	if m.users_teams != nil {
 		edges = append(edges, user.EdgeUsersTeams)
@@ -7103,12 +6292,6 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
-	case user.EdgeAccessTokens:
-		ids := make([]ent.Value, 0, len(m.access_tokens))
-		for id := range m.access_tokens {
-			ids = append(ids, id)
-		}
-		return ids
 	case user.EdgeUsersTeams:
 		ids := make([]ent.Value, 0, len(m.users_teams))
 		for id := range m.users_teams {
@@ -7121,15 +6304,12 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 3)
 	if m.removedteams != nil {
 		edges = append(edges, user.EdgeTeams)
 	}
 	if m.removedcreated_envs != nil {
 		edges = append(edges, user.EdgeCreatedEnvs)
-	}
-	if m.removedaccess_tokens != nil {
-		edges = append(edges, user.EdgeAccessTokens)
 	}
 	if m.removedusers_teams != nil {
 		edges = append(edges, user.EdgeUsersTeams)
@@ -7153,12 +6333,6 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
-	case user.EdgeAccessTokens:
-		ids := make([]ent.Value, 0, len(m.removedaccess_tokens))
-		for id := range m.removedaccess_tokens {
-			ids = append(ids, id)
-		}
-		return ids
 	case user.EdgeUsersTeams:
 		ids := make([]ent.Value, 0, len(m.removedusers_teams))
 		for id := range m.removedusers_teams {
@@ -7171,15 +6345,12 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 3)
 	if m.clearedteams {
 		edges = append(edges, user.EdgeTeams)
 	}
 	if m.clearedcreated_envs {
 		edges = append(edges, user.EdgeCreatedEnvs)
-	}
-	if m.clearedaccess_tokens {
-		edges = append(edges, user.EdgeAccessTokens)
 	}
 	if m.clearedusers_teams {
 		edges = append(edges, user.EdgeUsersTeams)
@@ -7195,8 +6366,6 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedteams
 	case user.EdgeCreatedEnvs:
 		return m.clearedcreated_envs
-	case user.EdgeAccessTokens:
-		return m.clearedaccess_tokens
 	case user.EdgeUsersTeams:
 		return m.clearedusers_teams
 	}
@@ -7220,9 +6389,6 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeCreatedEnvs:
 		m.ResetCreatedEnvs()
-		return nil
-	case user.EdgeAccessTokens:
-		m.ResetAccessTokens()
 		return nil
 	case user.EdgeUsersTeams:
 		m.ResetUsersTeams()

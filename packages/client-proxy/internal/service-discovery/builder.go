@@ -50,6 +50,7 @@ func createDnsProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, p
 	if len(dnsHosts) == 0 {
 		return nil, ErrMissingDNSQuery
 	}
+
 	return NewDnsServiceDiscovery(ctx, logger, dnsHosts, dnsResolverAddress, port), nil
 }
 

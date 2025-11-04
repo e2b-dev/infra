@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -32,6 +33,7 @@ func Serve(
 	mappings mapping.Mappings,
 	src block.Slicer,
 	fdExit *fdexit.FdExit,
+	missingRequests *sync.Map,
 	logger *zap.Logger,
 ) error {
 	pollFds := []unix.PollFd{
@@ -41,7 +43,8 @@ func Serve(
 
 	var eg errgroup.Group
 
-	missingPagesBeingHandled := map[int64]struct{}{}
+	eagainCounter := newEagainCounter(logger, "uffd: eagain during fd read (accumulated)")
+	defer eagainCounter.Close()
 
 outerLoop:
 	for {
@@ -56,7 +59,7 @@ outerLoop:
 			}
 
 			if err == unix.EAGAIN {
-				logger.Debug("uffd: eagain during polling, going back to polling")
+				logger.Debug("uffd: eagain during fd polling, going back to polling")
 
 				continue
 			}
@@ -97,7 +100,7 @@ outerLoop:
 		buf := make([]byte, unsafe.Sizeof(userfaultfd.UffdMsg{}))
 
 		for {
-			n, err := syscall.Read(uffd, buf)
+			_, err := syscall.Read(uffd, buf)
 			if err == syscall.EINTR {
 				logger.Debug("uffd: interrupted read, reading again")
 
@@ -110,7 +113,7 @@ outerLoop:
 			}
 
 			if err == syscall.EAGAIN {
-				logger.Debug("uffd: eagain error, going back to polling", zap.Error(err), zap.Int("read_bytes", n))
+				eagainCounter.Increase()
 
 				// Continue polling the fd.
 				continue outerLoop
@@ -120,6 +123,8 @@ outerLoop:
 
 			return fmt.Errorf("failed to read: %w", err)
 		}
+
+		eagainCounter.Log()
 
 		msg := *(*userfaultfd.UffdMsg)(unsafe.Pointer(&buf[0]))
 		if userfaultfd.GetMsgEvent(&msg) != userfaultfd.UFFD_EVENT_PAGEFAULT {
@@ -140,11 +145,11 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		if _, ok := missingPagesBeingHandled[offset]; ok {
+		if _, ok := missingRequests.Load(offset); ok {
 			continue
 		}
 
-		missingPagesBeingHandled[offset] = struct{}{}
+		missingRequests.Store(offset, struct{}{})
 
 		eg.Go(func() error {
 			defer func() {

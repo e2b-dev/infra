@@ -10,8 +10,6 @@ type Config struct {
 
 	ClickhouseConnectionString string `env:"CLICKHOUSE_CONNECTION_STRING"`
 
-	DNSPort uint16 `env:"DNS_PORT" envDefault:"5353"`
-
 	LocalClusterEndpoint string `env:"LOCAL_CLUSTER_ENDPOINT"`
 	LocalClusterToken    string `env:"LOCAL_CLUSTER_TOKEN"`
 
@@ -38,5 +36,6 @@ type Config struct {
 func Parse() (Config, error) {
 	var config Config
 	err := env.Parse(&config)
+
 	return config, err
 }

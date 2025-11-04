@@ -177,6 +177,7 @@ var gaugeIntUnits = map[GaugeIntType]string{
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {
 	desc := counterDesc[name]
 	unit := counterUnits[name]
+
 	return meter.Int64Counter(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
@@ -186,6 +187,7 @@ func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, erro
 func GetUpDownCounter(meter metric.Meter, name UpDownCounterType) (metric.Int64UpDownCounter, error) {
 	desc := upDownCounterDesc[name]
 	unit := upDownCounterUnits[name]
+
 	return meter.Int64UpDownCounter(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
@@ -195,6 +197,7 @@ func GetUpDownCounter(meter metric.Meter, name UpDownCounterType) (metric.Int64U
 func GetObservableCounter(meter metric.Meter, name ObservableCounterType, callback metric.Int64Callback) (metric.Int64ObservableCounter, error) {
 	desc := observableCounterDesc[name]
 	unit := observableCounterUnits[name]
+
 	return meter.Int64ObservableCounter(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
@@ -205,6 +208,7 @@ func GetObservableCounter(meter metric.Meter, name ObservableCounterType, callba
 func GetObservableUpDownCounter(meter metric.Meter, name ObservableUpDownCounterType, callback metric.Int64Callback) (metric.Int64ObservableUpDownCounter, error) {
 	desc := observableUpDownCounterDesc[name]
 	unit := observableUpDownCounterUnits[name]
+
 	return meter.Int64ObservableUpDownCounter(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
@@ -215,6 +219,7 @@ func GetObservableUpDownCounter(meter metric.Meter, name ObservableUpDownCounter
 func GetGaugeFloat(meter metric.Meter, name GaugeFloatType) (metric.Float64ObservableGauge, error) {
 	desc := gaugeFloatDesc[name]
 	unit := gaugeFloatUnits[name]
+
 	return meter.Float64ObservableGauge(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
@@ -224,6 +229,7 @@ func GetGaugeFloat(meter metric.Meter, name GaugeFloatType) (metric.Float64Obser
 func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableGauge, error) {
 	desc := gaugeIntDesc[name]
 	unit := gaugeIntUnits[name]
+
 	return meter.Int64ObservableGauge(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
@@ -249,6 +255,7 @@ var histogramUnits = map[HistogramType]string{
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
 	desc := histogramDesc[name]
 	unit := histogramUnits[name]
+
 	return meter.Int64Histogram(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),

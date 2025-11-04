@@ -104,7 +104,7 @@ func RunCommandWithConfirmation(
 		confirmCh,
 		func(stdout, stderr string) {
 			logStream(logger, lvl, id, "stdout", stdout)
-			logStream(logger, zapcore.ErrorLevel, id, "stderr", stderr)
+			logStream(logger, lvl, id, "stderr", stderr)
 		},
 	)
 }
@@ -171,6 +171,7 @@ func runCommandWithAllOptions(
 			e := msg.GetEvent()
 			if e == nil {
 				zap.L().Error("received nil command event")
+
 				return nil
 			}
 
@@ -184,8 +185,6 @@ func runCommandWithAllOptions(
 				success := end.GetExitCode() == 0
 
 				if !success {
-					processOutput("", end.GetStatus())
-
 					return errors.New(end.GetStatus())
 				}
 			}

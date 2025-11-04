@@ -69,6 +69,7 @@ func (o *Orchestrator) CreateSandbox(
 			}
 		default:
 			zap.L().Error("failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
+
 			return sandbox.Sandbox{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),
@@ -239,5 +240,6 @@ func (o *Orchestrator) CreateSandbox(
 	)
 
 	o.sandboxStore.Add(ctx, sbx, true)
+
 	return sbx, nil
 }

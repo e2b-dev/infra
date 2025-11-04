@@ -44,6 +44,7 @@ func TestUpdateTemplateVisibilityToPublicWithAPIKey(t *testing.T) {
 		if tmpl.TemplateID == template.TemplateID {
 			assert.True(t, tmpl.Public, "Template should be public")
 			found = true
+
 			break
 		}
 	}
@@ -92,6 +93,7 @@ func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 		if tmpl.TemplateID == template.TemplateID {
 			assert.False(t, tmpl.Public, "Template should be private")
 			found = true
+
 			break
 		}
 	}
@@ -177,6 +179,7 @@ func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
 		if tmpl.TemplateID == template.TemplateID {
 			assert.True(t, tmpl.Public, "Template should be public")
 			found = true
+
 			break
 		}
 	}
@@ -237,6 +240,7 @@ func TestUpdateTemplateNotOwnedByTeam(t *testing.T) {
 		if tmpl.TemplateID == team1TemplateID {
 			assert.True(t, tmpl.Public, "Template should be public after update")
 			found = true
+
 			break
 		}
 	}

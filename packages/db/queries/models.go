@@ -38,6 +38,7 @@ type Addon struct {
 	ValidFrom                     time.Time
 	ValidTo                       *time.Time
 	AddedBy                       uuid.UUID
+	IdempotencyKey                *string
 }
 
 type AuthUser struct {
@@ -93,6 +94,7 @@ type EnvBuild struct {
 	ReadyCmd           *string
 	ClusterNodeID      string
 	Reason             types.BuildReason
+	Version            *string
 }
 
 type Snapshot struct {

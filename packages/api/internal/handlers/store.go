@@ -39,6 +39,8 @@ import (
 // This is a security measure to prevent the use of weak secrets (like empty).
 const minSupabaseJWTSecretLength = 16
 
+var _ api.ServerInterface = (*APIStore)(nil)
+
 type APIStore struct {
 	Healthy                  bool
 	config                   cfg.Config
@@ -191,6 +193,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 				if orch.NodeCount() != 0 {
 					zap.L().Info("Nodes are ready, setting API as healthy")
 					a.Healthy = true
+
 					return
 				}
 			}
@@ -340,6 +343,7 @@ func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
 		if err != nil {
 			// This error is ignored because we will try to parse the token with the next secret.
 			errs = append(errs, fmt.Errorf("failed to parse supabase token: %w", err))
+
 			continue
 		}
 

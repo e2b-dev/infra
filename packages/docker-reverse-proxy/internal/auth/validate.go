@@ -7,55 +7,42 @@ import (
 	"log"
 	"strings"
 
+	"github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 )
 
-func Validate(ctx context.Context, db *models.Client, token, envID string) (bool, error) {
+func Validate(ctx context.Context, sqlcDB *client.Client, token, envID string) (bool, error) {
 	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, token)
 	if err != nil {
 		return false, err
 	}
 
-	u, err := db.User.Query().Where(user.HasAccessTokensWith(accesstoken.AccessTokenHash(hashedToken))).WithTeams().Only(ctx)
+	exists, err := sqlcDB.ExistsWaitingTemplateBuild(ctx, queries.ExistsWaitingTemplateBuildParams{
+		TemplateID:      envID,
+		AccessTokenHash: hashedToken,
+	})
 	if err != nil {
 		return false, err
 	}
 
-	e, err := db.Env.Query().Where(
-		env.ID(envID),
-		env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusWaiting)),
-	).Only(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	for _, team := range u.Edges.Teams {
-		if team.ID == e.TeamID {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return exists, nil
 }
 
-func ValidateAccessToken(ctx context.Context, db *models.Client, accessToken string) bool {
+func ValidateAccessToken(ctx context.Context, db *client.Client, accessToken string) bool {
 	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
 	if err != nil {
 		return false
 	}
 
-	exists, err := db.AccessToken.Query().Where(accesstoken.AccessTokenHash(hashedToken)).Exist(ctx)
+	_, err = db.GetUserIDFromAccessToken(ctx, hashedToken)
 	if err != nil {
 		log.Printf("Error while checking access token: %s\n", err.Error())
+
 		return false
 	}
 
-	return exists
+	return true
 }
 
 func ExtractAccessToken(authHeader, authType string) (string, error) {

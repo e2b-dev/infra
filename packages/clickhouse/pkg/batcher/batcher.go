@@ -125,6 +125,7 @@ func (b *Batcher[T]) Stop() error {
 	<-b.doneCh
 	b.ch = nil
 	b.doneCh = nil
+
 	return nil
 }
 
@@ -164,6 +165,7 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 		case batchedItem, ok = <-ch:
 			if !ok {
 				call(f, batch, errorHandler)
+
 				return
 			}
 			batch = append(batch, batchedItem)
@@ -173,6 +175,7 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 				// Flush what's left in the buffer if the batcher is stopped
 				if !ok {
 					call(f, batch, errorHandler)
+
 					return
 				}
 				batch = append(batch, batchedItem)
@@ -183,6 +186,7 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 					case batchedItem, ok = <-ch:
 						if !ok {
 							call(f, batch, errorHandler)
+
 							return
 						}
 						batch = append(batch, batchedItem)

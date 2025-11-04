@@ -69,6 +69,7 @@ func New(
 	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {
 		_ = client.Close()
+
 		return nil, fmt.Errorf("failed to get node service info: %w", err)
 	}
 
@@ -150,6 +151,7 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 	nodeInfo, err := nodeClient.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {
 		zap.L().Error("Failed to get node service info", zap.Error(err), logger.WithNodeID(n.ID))
+
 		return n, nil
 	}
 

@@ -9,6 +9,7 @@ func ToPtr[T any](v T) *T {
 func FromPtr[T any](s *T) T {
 	if s == nil {
 		var zero T
+
 		return zero
 	}
 
@@ -21,4 +22,22 @@ func Sprintp[T any](s *T) string {
 	}
 
 	return fmt.Sprintf("%v", *s)
+}
+
+func DerefOrDefault[T any](s *T, defaultValue T) T {
+	if s == nil {
+		return defaultValue
+	}
+
+	return *s
+}
+
+func CastPtr[S any, T any](s *S, castFunc func(S) T) *T {
+	if s == nil {
+		return nil
+	}
+
+	t := castFunc(*s)
+
+	return &t
 }

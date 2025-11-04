@@ -52,7 +52,7 @@ func NoOpBuildLogHandler() BuildLogHandler {
 }
 
 // BuildTemplate builds a template with the given options and waits for it to complete
-func BuildTemplate(tb testing.TB, opts TemplateBuildOptions) *api.Template {
+func BuildTemplate(tb testing.TB, opts TemplateBuildOptions) *api.TemplateRequestResponseV3 {
 	tb.Helper()
 
 	// Set defaults
@@ -112,6 +112,7 @@ func WaitForBuildCompletion(
 		select {
 		case <-ctx.Done():
 			tb.Fatal("Build timeout exceeded")
+
 			return
 		default:
 		}
@@ -138,9 +139,11 @@ func WaitForBuildCompletion(
 		switch statusResp.JSON200.Status {
 		case api.TemplateBuildStatusReady:
 			tb.Log("Build completed successfully")
+
 			return
 		case api.TemplateBuildStatusError:
 			tb.Fatalf("Build failed: %v", safeValue(statusResp.JSON200.Reason))
+
 			return
 		}
 
@@ -154,7 +157,7 @@ func requestTemplateBuild(
 	alias string,
 	cpuCount, memoryMB *int32,
 	reqEditors ...api.RequestEditorFn,
-) *api.Template {
+) *api.TemplateRequestResponseV3 {
 	tb.Helper()
 
 	ctx := tb.Context()
@@ -167,7 +170,7 @@ func requestTemplateBuild(
 		memoryMB = utils.ToPtr(DefaultMemoryMB)
 	}
 
-	resp, err := c.PostV2TemplatesWithResponse(ctx, api.TemplateBuildRequestV2{
+	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
 		Alias:    alias,
 		CpuCount: cpuCount,
 		MemoryMB: memoryMB,
@@ -209,11 +212,12 @@ func safeValue[T any](item *T) T {
 		return *item
 	}
 	var t T
+
 	return t
 }
 
 // BuildSimpleTemplate builds a simple template with Ubuntu 22.04 base image
-func BuildSimpleTemplate(tb testing.TB, alias string, reqEditors ...api.RequestEditorFn) *api.Template {
+func BuildSimpleTemplate(tb testing.TB, alias string, reqEditors ...api.RequestEditorFn) *api.TemplateRequestResponseV3 {
 	tb.Helper()
 
 	opts := TemplateBuildOptions{

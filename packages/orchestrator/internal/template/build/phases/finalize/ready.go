@@ -30,9 +30,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 	ctx, span := tracer.Start(ctx, "run-ready-command")
 	defer span.End()
 
-	userLogger.Info("Waiting for template to be ready")
-
-	userLogger.Info(fmt.Sprintf("[ready cmd]: %s", readyCmd))
+	userLogger.Info(fmt.Sprintf("Waiting for template to be ready: %s", readyCmd))
 
 	startTime := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, readyCommandTimeout)
@@ -44,7 +42,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 			ctx,
 			ppb.proxy,
 			userLogger,
-			zapcore.InfoLevel,
+			zapcore.DebugLevel,
 			"ready",
 			sandboxID,
 			readyCmd,
@@ -53,10 +51,11 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 
 		if err == nil {
 			userLogger.Info("Template is ready")
+
 			return nil
 		}
 
-		userLogger.Info(fmt.Sprintf("Template is not ready: %v", err))
+		userLogger.Debug(fmt.Sprintf("Template is not ready: %v", err))
 
 		select {
 		case <-ctx.Done():
@@ -65,6 +64,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 			}
 			// Template is ready, the start command finished before the ready command
 			userLogger.Info("Template is ready")
+
 			return nil
 		case <-time.After(readyCommandRetryInterval):
 			// Wait for readyCommandRetryInterval time before retrying the ready command
