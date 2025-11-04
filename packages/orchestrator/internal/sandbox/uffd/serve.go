@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -32,6 +33,7 @@ func Serve(
 	mappings mapping.Mappings,
 	src block.Slicer,
 	fdExit *fdexit.FdExit,
+	missingRequests *sync.Map,
 	logger *zap.Logger,
 ) error {
 	pollFds := []unix.PollFd{
@@ -40,8 +42,6 @@ func Serve(
 	}
 
 	var eg errgroup.Group
-
-	missingPagesBeingHandled := map[int64]struct{}{}
 
 	eagainCounter := newEagainCounter(logger, "uffd: eagain during fd read (accumulated)")
 	defer eagainCounter.Close()
@@ -145,11 +145,11 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		if _, ok := missingPagesBeingHandled[offset]; ok {
+		if _, ok := missingRequests.Load(offset); ok {
 			continue
 		}
 
-		missingPagesBeingHandled[offset] = struct{}{}
+		missingRequests.Store(offset, struct{}{})
 
 		eg.Go(func() error {
 			defer func() {
