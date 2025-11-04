@@ -39,8 +39,8 @@ type copyScriptData struct {
 
 	// Workdir is the working directory for the target path resolution if relative.
 	Workdir string
-	// WorkdirUserHome is used for filling the workdir if empty.
-	WorkdirUserHome string
+	// User is used for filling the workdir if empty.
+	User string
 }
 
 var copyScriptTemplate = txtTemplate.Must(txtTemplate.New("copy-script-template").Parse(`
@@ -51,7 +51,7 @@ workdir="{{ .Workdir }}"
 # Fill the workdir with user home directory if empty
 if [ -z "${workdir}" ]; then
  # Use the owner's home directory
- workdir=$(getent passwd "{{ .WorkdirUserHome }}" | cut -d: -f6)
+ workdir=$(getent passwd "{{ .User }}" | cut -d: -f6)
 fi
 cd "$workdir"
 
@@ -192,8 +192,8 @@ func (c *Copy) Execute(
 
 	var moveScript bytes.Buffer
 	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
-		Workdir:         utils.DerefOrDefault(cmdMetadata.WorkDir, ""),
-		WorkdirUserHome: cmdMetadata.User,
+		Workdir: utils.DerefOrDefault(cmdMetadata.WorkDir, ""),
+		User:    cmdMetadata.User,
 
 		SourcePath: filepath.Join(sbxUnpackPath, args.SourcePath),
 		TargetPath: args.TargetPath,
