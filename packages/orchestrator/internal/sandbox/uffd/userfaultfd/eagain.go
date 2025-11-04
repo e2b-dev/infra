@@ -1,4 +1,4 @@
-package uffd
+package userfaultfd
 
 import (
 	"time"

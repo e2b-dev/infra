@@ -22,6 +22,9 @@ func (u *Userfaultfd) Serve(
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
 	}
 
+	eagainCounter := newEagainCounter(u.logger, "uffd: eagain during fd read (accumulated)")
+	defer eagainCounter.Close()
+
 outerLoop:
 	for {
 		if _, err := unix.Poll(
@@ -85,6 +88,9 @@ outerLoop:
 
 			if err == nil {
 				// There is no error so we can proceed.
+
+				eagainCounter.Log()
+
 				break
 			}
 
@@ -151,11 +157,11 @@ func (u *Userfaultfd) handleMissing(
 	offset int64,
 	pagesize uint64,
 ) error {
-	if _, ok := u.missingRequests[offset]; ok {
+	if _, ok := u.missingRequests.Load(offset); ok {
 		return nil
 	}
 
-	u.missingRequests[offset] = struct{}{}
+	u.missingRequests.Store(offset, struct{}{})
 
 	u.wg.Go(func() error {
 		defer func() {

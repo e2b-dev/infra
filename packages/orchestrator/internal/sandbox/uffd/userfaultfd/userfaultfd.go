@@ -2,6 +2,7 @@ package userfaultfd
 
 import (
 	"errors"
+	"sync"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -18,7 +19,7 @@ type Userfaultfd struct {
 	src block.Slicer
 	ma  *memory.Mapping
 
-	missingRequests map[int64]struct{}
+	missingRequests sync.Map
 
 	wg errgroup.Group
 
@@ -30,7 +31,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	return &Userfaultfd{
 		fd:              fd,
 		src:             src,
-		missingRequests: make(map[int64]struct{}),
+		missingRequests: sync.Map{},
 		ma:              m,
 		logger:          logger,
 	}, nil

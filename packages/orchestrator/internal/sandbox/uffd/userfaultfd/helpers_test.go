@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -41,11 +42,13 @@ type operation struct {
 }
 
 type testHandler struct {
-	memoryArea *[]byte
-	pagesize   uint64
-	data       *testutils.MemorySlicer
-	memoryMap  *memory.Mapping
-	uffd       *Userfaultfd
+	memoryArea      *[]byte
+	pagesize        uint64
+	data            *testutils.MemorySlicer
+	memoryMap       *memory.Mapping
+	uffd            *Userfaultfd
+	missingRequests *sync.Map
+	writeMu         sync.Mutex
 }
 
 func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
@@ -106,6 +109,8 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 
 	exitUffd := make(chan struct{}, 1)
 
+	missingRequests := &sync.Map{}
+
 	go func() {
 		err := uffd.Serve(t.Context(), fdExit)
 		assert.NoError(t, err)
@@ -121,25 +126,36 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 	})
 
 	return &testHandler{
-		memoryArea: &memoryArea,
-		memoryMap:  m,
-		pagesize:   tt.pagesize,
-		data:       data,
-		uffd:       uffd,
+		memoryArea:      &memoryArea,
+		memoryMap:       m,
+		pagesize:        tt.pagesize,
+		data:            data,
+		uffd:            uffd,
+		missingRequests: missingRequests,
 	}, cleanup
 }
 
 func (h *testHandler) getAccessedOffsets() []uint {
 	offsets := []uint{}
-	for offset := range h.uffd.missingRequests {
-		offsets = append(offsets, uint(offset))
-	}
+
+	h.missingRequests.Range(func(key, _ any) bool {
+		offsets = append(offsets, uint(key.(int64)))
+
+		return true
+	})
 
 	return offsets
 }
 
+//go:noinline
+func touchRead(b []byte) {
+	var dst [1]byte
+	_ = copy(dst[:], b[:1]) // forces a real read → MISSING fault
+}
+
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
+	touchRead(readBytes)
 
 	expectedBytes, err := h.data.Slice(ctx, op.offset, int64(h.pagesize))
 	if err != nil {
@@ -160,6 +176,10 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 	if err != nil {
 		return err
 	}
+
+	// An unprotected parallel write to map results in undefined behavior—here usually manifesting as total freeze of the test.
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
 
 	n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
 	if n != int(h.pagesize) {
