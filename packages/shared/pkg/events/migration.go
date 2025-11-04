@@ -41,6 +41,10 @@ var SandboxKilledEventPair = SandboxEventType{
 // We will receive old event just with event category and label, so we need to map them to new event types that
 // are using new dot namespaced syntax for event names
 func LegacySandboxEventMigrationMapping(e SandboxEvent) SandboxEvent {
+	if e.Version == "" {
+		e.Version = StructureVersionV1
+	}
+
 	switch e.Version {
 	case StructureVersionV1:
 		// Migrate old event category/label to new event type

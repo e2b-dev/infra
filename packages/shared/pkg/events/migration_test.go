@@ -9,6 +9,18 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 		in   SandboxEvent
 		want SandboxEvent
 	}{
+		"without-version": {
+			in: SandboxEvent{
+				EventCategory: "lifecycle",
+				EventLabel:    "create",
+			},
+			want: SandboxEvent{
+				EventCategory: "lifecycle",
+				EventLabel:    "create",
+				Type:          "sandbox.lifecycle.created",
+				Version:       "v1",
+			},
+		},
 		"v1-created": {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
