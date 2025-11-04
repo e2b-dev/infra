@@ -79,7 +79,7 @@ outerLoop:
 		buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
 
 		for {
-			n, err := syscall.Read(int(u.fd), buf)
+			_, err := syscall.Read(int(u.fd), buf)
 			if err == syscall.EINTR {
 				u.logger.Debug("uffd: interrupted read, reading again")
 
@@ -95,7 +95,7 @@ outerLoop:
 			}
 
 			if err == syscall.EAGAIN {
-				u.logger.Debug("uffd: eagain error, going back to polling", zap.Error(err), zap.Int("read_bytes", n))
+				eagainCounter.Increase()
 
 				// Continue polling the fd.
 				continue outerLoop

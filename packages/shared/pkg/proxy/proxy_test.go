@@ -34,6 +34,8 @@ func (b *testBackend) RequestCount() uint64 {
 	return b.requestCount.Load()
 }
 
+const bodyWriteDelayHeader = "body-write-delay"
+
 // newTestBackend creates a new test backend server
 func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 	var requestCount atomic.Uint64
@@ -42,7 +44,7 @@ func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 
 	backend := &testBackend{
 		server: &http.Server{
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				select {
 				case <-ctx.Done():
 					w.WriteHeader(http.StatusBadGateway)
@@ -54,6 +56,21 @@ func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 				requestCount.Add(1)
 
 				w.WriteHeader(http.StatusOK)
+
+				// Flush the headers, so we can read the headers and body separately after .Do() returns.
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+
+				// Check for "body-write-delay" header (interpreted as seconds)
+				delayHeader := r.Header.Get(bodyWriteDelayHeader)
+
+				if delayHeader != "" {
+					if n, err := time.ParseDuration(delayHeader); err == nil {
+						time.Sleep(n)
+					}
+				}
+
 				w.Write([]byte(id))
 			}),
 		},
@@ -101,9 +118,20 @@ func assertBackendOutput(t *testing.T, backend *testBackend, resp *http.Response
 	t.Helper()
 
 	assert.Equal(t, resp.StatusCode, http.StatusOK, "status code should be 200")
+
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
+
 	assert.Equal(t, string(body), backend.id, "backend id should be the same")
+}
+
+func assertStreamError(t *testing.T, resp *http.Response) {
+	t.Helper()
+
+	assert.Equal(t, resp.StatusCode, http.StatusOK, "status code should be 200")
+
+	_, err := io.ReadAll(resp.Body)
+	assert.ErrorType(t, err, io.ErrUnexpectedEOF)
 }
 
 // newTestProxy creates a new proxy server for testing
@@ -175,9 +203,27 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 func httpGet(t *testing.T, proxyURL string) (*http.Response, error) {
 	t.Helper()
 
+	return httpGetWithHeaders(t, proxyURL, nil)
+}
+
+func httpGetWithBodyWriteDelay(t *testing.T, proxyURL string, bodyWriteDelay time.Duration) (*http.Response, error) {
+	t.Helper()
+
+	return httpGetWithHeaders(t, proxyURL, http.Header{bodyWriteDelayHeader: {bodyWriteDelay.String()}})
+}
+
+func httpGetWithHeaders(t *testing.T, proxyURL string, headers http.Header) (*http.Response, error) {
+	t.Helper()
+
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyURL, nil)
 	if err != nil {
 		return nil, err
+	}
+
+	for key, values := range headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
 	}
 
 	rsp, err := (&http.Client{}).Do(req)
@@ -186,6 +232,51 @@ func httpGet(t *testing.T, proxyURL string) (*http.Response, error) {
 	}
 
 	return rsp, nil
+}
+
+type instrumentedConn struct {
+	net.Conn
+
+	listener *instrumentedListener
+}
+
+func (c *instrumentedConn) Read(b []byte) (int, error) {
+	n, err := c.Conn.Read(b)
+	if err != nil {
+		c.listener.AddReadError(err)
+	}
+
+	return n, err
+}
+
+func (l *instrumentedListener) AddReadError(err error) {
+	l.readErrsMutex.Lock()
+	defer l.readErrsMutex.Unlock()
+
+	l.readErrs = append(l.readErrs, err)
+}
+
+func (l *instrumentedListener) ReadErrors() []error {
+	l.readErrsMutex.Lock()
+	defer l.readErrsMutex.Unlock()
+
+	return l.readErrs
+}
+
+type instrumentedListener struct {
+	net.Listener
+
+	readErrs      []error
+	readErrsMutex sync.Mutex
+}
+
+func (l *instrumentedListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+
+	return &instrumentedConn{Conn: conn, listener: l}, nil
 }
 
 func TestProxyReusesConnections(t *testing.T) {
@@ -231,6 +322,114 @@ func TestProxyReusesConnections(t *testing.T) {
 	// Verify that only one connection was established
 	assert.Equal(t, backend.RequestCount(), uint64(2), "backend should have been called twice")
 	assert.Equal(t, proxy.TotalPoolConnections(), uint64(1), "proxy should have used one connection")
+}
+
+func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
+	var lisCfg net.ListenConfig
+	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	backend, err := newTestBackend(listener, "backend-1")
+	require.NoError(t, err)
+	defer backend.Close()
+
+	getDestination := func(*http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
+			Url:           backend.url,
+			SandboxId:     "test-sandbox",
+			RequestLogger: zap.NewNop(),
+			ConnectionKey: backend.id,
+		}, nil
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	defer proxy.Close()
+
+	// Make a request to the proxy
+	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+	resp, err := httpGet(t, proxyURL)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assertBackendOutput(t, backend, resp)
+
+	assert.Equal(t, proxy.TotalPoolConnections(), uint64(1), "proxy should have established one connection")
+	assert.Equal(t, proxy.CurrentPoolConnections(), int64(1), "proxy should have established one connection that is still alive")
+	assert.Equal(t, backend.RequestCount(), uint64(1), "backend should have been called once")
+
+	// Remove the connection from the pool
+	err = proxy.RemoveFromPool(backend.id)
+	require.NoError(t, err)
+
+	assert.Equal(t, proxy.TotalPoolConnections(), uint64(1), "proxy should have still one connection in the pool")
+	assert.Equal(t, proxy.CurrentPoolConnections(), int64(0), "proxy should have removed the connection from the pool that is still alive")
+}
+
+func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
+	var lisCfg net.ListenConfig
+
+	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	instrumentedListener := &instrumentedListener{Listener: listener}
+
+	backend, err := newTestBackend(instrumentedListener, "backend-1")
+	require.NoError(t, err)
+	defer backend.Close()
+
+	getDestination := func(*http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
+			Url:           backend.url,
+			SandboxId:     "test-sandbox",
+			RequestLogger: zap.NewNop(),
+			ConnectionKey: backend.id,
+		}, nil
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	defer proxy.Close()
+
+	requestEnded := make(chan struct{}, 1)
+
+	go func() {
+		defer close(requestEnded)
+
+		// Make a request to the proxy
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+		resp, err := httpGetWithBodyWriteDelay(t, proxyURL, 10*time.Second)
+		assert.NilError(t, err)
+		defer resp.Body.Close()
+
+		assertStreamError(t, resp)
+	}()
+
+	// Wait for the request to start being processed by the backend
+	time.Sleep(1 * time.Second)
+
+	assert.Equal(t, proxy.TotalPoolConnections(), uint64(1), "proxy should have established one connection")
+	assert.Equal(t, proxy.CurrentPoolConnections(), int64(1), "proxy should have established one connection that is still alive")
+	assert.Equal(t, backend.RequestCount(), uint64(1), "backend should have been called once")
+
+	// Remove the connection from the pool
+	err = proxy.RemoveFromPool(backend.id)
+	require.NoError(t, err)
+
+	assert.Equal(t, proxy.TotalPoolConnections(), uint64(1), "proxy should have still one connection in the pool")
+	assert.Equal(t, proxy.CurrentPoolConnections(), int64(0), "proxy should have removed the connection from the pool that is still alive")
+
+	select {
+	case <-requestEnded:
+	case <-t.Context().Done():
+		t.Fatalf("request timed out: %v", t.Context().Err())
+	}
+
+	require.Len(t, instrumentedListener.ReadErrors(), 1, "server connection should have one read error")
+	// io.EOF is returned for the FIN packet.
+	require.NotErrorIs(t, instrumentedListener.ReadErrors()[0], io.EOF, "server connection should have read error other than EOF")
+
+	require.ErrorContains(t, instrumentedListener.ReadErrors()[0], "connection reset by peer")
 }
 
 // This is a test that verify that the proxy reuse fails when the backend changes.
