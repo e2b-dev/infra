@@ -38,7 +38,7 @@ func buildTemplate(
 	c := setup.GetAPIClient()
 
 	// Request build
-	resp, err := c.PostV2TemplatesWithResponse(ctx, api.TemplateBuildRequestV2{
+	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
 		Alias:    templateAlias,
 		CpuCount: utils.ToPtr[int32](2),
 		MemoryMB: utils.ToPtr[int32](1024),

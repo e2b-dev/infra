@@ -22,11 +22,8 @@ WHERE
         -- And NULL does not match with empty json
         s.metadata @> @metadata OR @metadata = '{}'::jsonb
     )
-    AND (
-        s.sandbox_started_at < @cursor_time
-        OR
-        (s.sandbox_started_at = @cursor_time AND s.sandbox_id > @cursor_id)
-    )
+    -- The order here is important, we want started_at descending, but sandbox_id ascending
+    AND (s.sandbox_started_at, @cursor_id::text) < (@cursor_time, s.sandbox_id)
     AND NOT (s.sandbox_id = ANY (@snapshot_exclude_sbx_ids::text[]))
-ORDER BY s.sandbox_started_at DESC, s.sandbox_id
+ORDER BY s.sandbox_started_at DESC, s.sandbox_id ASC
 LIMIT $1;

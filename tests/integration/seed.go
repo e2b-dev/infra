@@ -89,7 +89,7 @@ func seed(ctx context.Context, db *db.DB, sqlcDB *client.Client, data SeedData) 
 	hasher := keys.NewSHA256Hashing()
 
 	// User
-	user, err := db.Client.User.Create().
+	_, err := db.Client.User.Create().
 		SetID(data.UserID).
 		SetEmail("user-test-integration@e2b.dev").
 		Save(ctx)
@@ -111,15 +111,16 @@ func seed(ctx context.Context, db *db.DB, sqlcDB *client.Client, data SeedData) 
 		return fmt.Errorf("failed to mask access token: %w", err)
 	}
 
-	err = db.Client.AccessToken.Create().
-		SetUser(user).
-		SetAccessTokenHash(accessTokenHash).
-		SetAccessTokenPrefix(accessTokenMask.Prefix).
-		SetAccessTokenLength(accessTokenMask.ValueLength).
-		SetAccessTokenMaskPrefix(accessTokenMask.MaskedValuePrefix).
-		SetAccessTokenMaskSuffix(accessTokenMask.MaskedValueSuffix).
-		SetName("Integration Tests Access Token").
-		Exec(ctx)
+	_, err = sqlcDB.CreateAccessToken(ctx, queries.CreateAccessTokenParams{
+		ID:                    uuid.New(),
+		UserID:                data.UserID,
+		AccessTokenHash:       accessTokenHash,
+		AccessTokenPrefix:     accessTokenMask.Prefix,
+		AccessTokenLength:     int32(accessTokenMask.ValueLength),
+		AccessTokenMaskPrefix: accessTokenMask.MaskedValuePrefix,
+		AccessTokenMaskSuffix: accessTokenMask.MaskedValueSuffix,
+		Name:                  "Integration Tests Access Token",
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create user: %w", err)
 	}
