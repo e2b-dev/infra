@@ -3,11 +3,9 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"slices"
 	"strings"
 	"syscall"
@@ -17,7 +15,6 @@ import (
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -50,13 +47,9 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/supervisor"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-type closer struct {
-	name  string
-	close func(ctx context.Context) error
-}
 
 const version = "0.1.0"
 
@@ -78,8 +71,6 @@ func main() {
 }
 
 func run(config cfg.Config) (success bool) {
-	success = true
-
 	services := cfg.GetServices(config)
 
 	// Check if the orchestrator crashed and restarted
@@ -114,40 +105,23 @@ func run(config cfg.Config) (success bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
-	defer sigCancel()
-
 	nodeID := env.GetNodeID()
 	serviceName := cfg.GetServiceName(services)
 	serviceInstanceID := uuid.NewString()
 	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID, config)
 
-	serviceError := make(chan error)
-	defer close(serviceError)
-
-	var g errgroup.Group
-	// defer waiting on the group so that this runs even when
-	// there's a panic.
-	defer func(g *errgroup.Group) {
-		err := g.Wait()
-		if err != nil {
-			log.Printf("error while shutting down: %v", err)
-			success = false
-		}
-	}(&g)
+	// all the tasks that will be started, waited on, and cleaned up
+	var tasks []supervisor.Task
 
 	// Setup telemetry
 	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID)
 	if err != nil {
 		zap.L().Fatal("failed to init telemetry", zap.Error(err))
 	}
-	defer func() {
-		err := tel.Shutdown(ctx)
-		if err != nil {
-			log.Printf("error while shutting down telemetry: %v", err)
-			success = false
-		}
-	}()
+	tasks = append(tasks, supervisor.Task{
+		Name:    "telemetry",
+		Cleanup: tel.Shutdown,
+	})
 
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   serviceName,
@@ -156,14 +130,8 @@ func run(config cfg.Config) (success bool) {
 		Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
 		EnableConsole: true,
 	}))
-	defer func(l *zap.Logger) {
-		err := l.Sync()
-		if err != nil {
-			log.Printf("error while shutting down logger: %v", err)
-			success = false
-		}
-	}(globalLogger)
 	zap.ReplaceGlobals(globalLogger)
+	defer globalLogger.Sync()
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
@@ -174,14 +142,11 @@ func run(config cfg.Config) (success bool) {
 			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
-	defer func(l *zap.Logger) {
-		err := l.Sync()
-		if err != nil {
-			log.Printf("error while shutting down sandbox logger: %v", err)
-			success = false
-		}
-	}(sbxLoggerExternal)
 	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
+	tasks = append(tasks, supervisor.Task{
+		Name:    "sandbox logger (external)",
+		Cleanup: cleanupLogger(sbxLoggerExternal),
+	})
 
 	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
@@ -192,39 +157,17 @@ func run(config cfg.Config) (success bool) {
 			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
-	defer func(l *zap.Logger) {
-		err := l.Sync()
-		if err != nil {
-			log.Printf("error while shutting down sandbox logger: %v", err)
-			success = false
-		}
-	}(sbxLoggerInternal)
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
+	tasks = append(tasks, supervisor.Task{
+		Name:    "sandbox logger (internal)",
+		Cleanup: cleanupLogger(sbxLoggerInternal),
+	})
 
-	globalLogger.Info("Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
-
-	startService := func(name string, f func() error) {
-		g.Go(func() error {
-			l := globalLogger.With(zap.String("service", name))
-			l.Info("starting service")
-
-			err := f()
-			if err != nil {
-				l.Error("service returned an error", zap.Error(err))
-			}
-
-			select {
-			case serviceError <- err:
-			default:
-				// Don't block if the serviceError channel is already closed
-				// or if the error is already sent
-			}
-
-			return serviceDoneError{name: name}
-		})
-	}
-
-	var closers []closer
+	globalLogger.Info("Starting orchestrator",
+		zap.String("version", version),
+		zap.String("commit", commitSHA),
+		logger.WithServiceInstanceID(serviceInstanceID),
+	)
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
@@ -235,14 +178,19 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
-	closers = append(closers, closer{"feature flags", featureFlags.Close})
+	tasks = append(tasks, supervisor.Task{
+		Name: "feature flags",
+		Cleanup: func(ctx context.Context) error {
+			return featureFlags.Close(ctx)
+		},
+	})
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
-	closers = append(closers, closer{"limiter", limiter.Close})
+	tasks = append(tasks, supervisor.Task{Name: "gcp concurrent upload limiter", Cleanup: limiter.Close})
 
 	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
 	if err != nil {
@@ -275,14 +223,14 @@ func run(config cfg.Config) (success bool) {
 			zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
 		}
 	}
-	closers = append(closers, closer{"sandbox event batcher", sandboxEventBatcher.Close})
+	tasks = append(tasks, supervisor.Task{Name: "sandbox event batcher", Cleanup: sandboxEventBatcher.Close})
 
 	// redis
 	redisClient, err := factories.NewRedisClient(ctx, config)
 	if err != nil && !errors.Is(err, factories.ErrRedisDisabled) {
 		zap.L().Fatal("Could not connect to Redis", zap.Error(err))
 	} else if err == nil {
-		closers = append(closers, closer{"redis client", func(context.Context) error {
+		tasks = append(tasks, supervisor.Task{Name: "redis client", Cleanup: func(context.Context) error {
 			return factories.CloseCleanly(redisClient)
 		}})
 	}
@@ -294,7 +242,7 @@ func run(config cfg.Config) (success bool) {
 	} else {
 		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, struct{}]()
 	}
-	closers = append(closers, closer{"pubsub", redisPubSub.Close})
+	tasks = append(tasks, supervisor.Task{Name: "redis pubsub", Cleanup: redisPubSub.Close})
 
 	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
 
@@ -303,46 +251,55 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
-	closers = append(closers, closer{"sandbox observer", sandboxObserver.Close})
+	tasks = append(tasks, supervisor.Task{Name: "sandbox observer", Cleanup: sandboxObserver.Close})
 
 	// sandbox proxy
 	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
-	startService("sandbox proxy", func() error {
-		err := sandboxProxy.Start(ctx)
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
+	tasks = append(tasks, supervisor.Task{
+		Name: "sandbox proxy",
+		Background: func(ctx context.Context) error {
+			err := sandboxProxy.Start(ctx)
+			if errors.Is(err, http.ErrServerClosed) {
+				return nil
+			}
 
-		return err
+			return err
+		},
+		Cleanup: sandboxProxy.Close,
 	})
-	closers = append(closers, closer{"sandbox proxy", sandboxProxy.Close})
 
 	// device pool
 	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
-	startService("nbd device pool", func() error {
-		devicePool.Populate(ctx)
+	tasks = append(tasks, supervisor.Task{
+		Name: "device pool",
+		Background: func(ctx context.Context) error {
+			devicePool.Populate(ctx)
 
-		return nil
+			return nil
+		},
+		Cleanup: devicePool.Close,
 	})
-	closers = append(closers, closer{"device pool", devicePool.Close})
 
 	// network pool
 	networkPool, err := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
-	startService("network pool", func() error {
-		networkPool.Populate(ctx)
+	tasks = append(tasks, supervisor.Task{
+		Name: "network pool",
+		Background: func(ctx context.Context) error {
+			networkPool.Populate(ctx)
 
-		return nil
+			return nil
+		},
+		Cleanup: networkPool.Close,
 	})
-	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
@@ -371,15 +328,9 @@ func run(config cfg.Config) (success bool) {
 			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
-	closers = append(closers, closer{
-		"template manager sandbox logger", func(context.Context) error {
-			// Sync returns EINVAL when path is /dev/stdout (for example)
-			if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
-				return err
-			}
-
-			return nil
-		},
+	tasks = append(tasks, supervisor.Task{
+		Name:    "template manager sandbox logger (external)",
+		Cleanup: cleanupLogger(tmplSbxLoggerExternal),
 	})
 
 	// hyperloop server
@@ -387,15 +338,18 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create hyperloop server", zap.Error(err))
 	}
-	startService("hyperloop server", func() error {
-		err := hyperloopSrv.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
+	tasks = append(tasks, supervisor.Task{
+		Name: "hyperloop server",
+		Background: func(context.Context) error {
+			err := hyperloopSrv.ListenAndServe()
+			if errors.Is(err, http.ErrServerClosed) {
+				return nil
+			}
 
-		return err
+			return err
+		},
+		Cleanup: hyperloopSrv.Shutdown,
 	})
-	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
 
 	grpcServer := factories.NewGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
@@ -423,7 +377,10 @@ func run(config cfg.Config) (success bool) {
 
 		templatemanager.RegisterTemplateServiceServer(grpcServer, tmpl)
 
-		closers = append(closers, closer{"template server", tmpl.Close})
+		tasks = append(tasks, supervisor.Task{
+			Name:    "template manager",
+			Cleanup: tmpl.Close,
+		})
 	}
 
 	infoService := service.NewInfoService(serviceInfo, sandboxes)
@@ -437,21 +394,24 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create cmux server", zap.Error(err))
 	}
-	startService("cmux server", func() error {
-		zap.L().Info("Starting network server", zap.Uint16("port", config.GRPCPort))
-		err := cmuxServer.Serve()
-		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
+	tasks = append(tasks, supervisor.Task{
+		Name: "cmux server",
+		Background: func(context.Context) error {
+			zap.L().Info("Starting network server", zap.Uint16("port", config.GRPCPort))
+			err := cmuxServer.Serve()
+			if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
+				return nil
+			}
+
+			return err
+		},
+		Cleanup: func(context.Context) error {
+			zap.L().Info("Shutting down cmux server")
+			cmuxServer.Close()
+
 			return nil
-		}
-
-		return err
+		},
 	})
-	closers = append(closers, closer{"cmux server", func(context.Context) error {
-		zap.L().Info("Shutting down cmux server")
-		cmuxServer.Close()
-
-		return nil
-	}})
 
 	// http server
 	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
@@ -464,89 +424,89 @@ func run(config cfg.Config) (success bool) {
 	httpServer := factories.NewHTTPServer()
 	httpServer.Handler = healthcheck.CreateHandler()
 
-	startService("http server", func() error {
-		err := httpServer.Serve(httpListener)
-		switch {
-		case errors.Is(err, cmux.ErrServerClosed):
-			return nil
-		case errors.Is(err, http.ErrServerClosed):
-			return nil
-		default:
-			return err
-		}
+	tasks = append(tasks, supervisor.Task{
+		Name: "http server",
+		Background: func(context.Context) error {
+			err := httpServer.Serve(httpListener)
+			switch {
+			case errors.Is(err, cmux.ErrServerClosed):
+				return nil
+			case errors.Is(err, http.ErrServerClosed):
+				return nil
+			default:
+				return err
+			}
+		},
+		Cleanup: func(ctx context.Context) error {
+			zap.L().Info("Shutting down http server")
+
+			return httpServer.Shutdown(ctx)
+		},
 	})
-	closers = append(closers, closer{"http server", httpServer.Shutdown})
 
 	// grpc server
 	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
-	startService("grpc server", func() error {
-		return grpcServer.Serve(grpcListener)
-	})
-	closers = append(closers, closer{"grpc server", func(context.Context) error {
-		zap.L().Info("Shutting down grpc server")
-		grpcServer.GracefulStop()
+	tasks = append(tasks, supervisor.Task{
+		Name: "grpc server",
+		Background: func(context.Context) error {
+			return grpcServer.Serve(grpcListener)
+		},
+		Cleanup: func(context.Context) error {
+			grpcServer.GracefulStop()
 
-		return nil
-	}})
+			return nil
+		},
+	})
+
+	tasks = append(tasks, supervisor.Task{
+		Name: "orchestrator drain",
+		Cleanup: func(context.Context) error {
+			// Mark service draining if not already.
+			// If service stats was previously changed via API, we don't want to override it.
+			if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
+				serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Draining)
+			}
+
+			// Wait for draining state to propagate to all consumers
+			if !env.IsLocal() {
+				time.Sleep(15 * time.Second)
+			}
+
+			return nil
+		},
+	})
+
+	if tmpl != nil {
+		tasks = append(tasks, supervisor.Task{
+			Name:    "template manager drain",
+			Cleanup: tmpl.Wait,
+		})
+	}
 
 	// Wait for the shutdown signal or if some service fails
-	select {
-	case <-sig.Done():
-		zap.L().Info("Shutdown signal received")
-	case serviceErr := <-serviceError:
-		zap.L().Error("Service error", zap.Error(serviceErr))
+	err = supervisor.Run(ctx, supervisor.Options{
+		ForceStop: config.ForceStop,
+		Tasks:     tasks,
+		Logger:    globalLogger,
+	})
+	if err != nil {
+		zap.L().Error("failed to run tasks", zap.Error(err))
 	}
 
-	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
-	defer cancelCloseCtx()
-	if config.ForceStop {
-		cancelCloseCtx()
-	}
-
-	// Mark service draining if not already.
-	// If service stats was previously changed via API, we don't want to override it.
-	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
-		serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Draining)
-
-		// Wait for draining state to propagate to all consumers
-		if !env.IsLocal() {
-			time.Sleep(15 * time.Second)
-		}
-	}
-
-	// Wait for services to be drained before closing them
-	if tmpl != nil {
-		err := tmpl.Wait(closeCtx)
-		if err != nil {
-			zap.L().Error("error while waiting for template manager to drain", zap.Error(err))
-			success = false
-		}
-	}
-
-	slices.Reverse(closers)
-	for _, closer := range closers {
-		clog := globalLogger.With(zap.String("service", closer.name), zap.Bool("forced", config.ForceStop))
-		clog.Info("closing")
-		if err := closer.close(closeCtx); err != nil {
-			clog.Error("error during shutdown", zap.Error(err))
-			success = false
-		}
-	}
-
-	zap.L().Info("Waiting for services to finish")
-	var sde serviceDoneError
-	if err := g.Wait(); err != nil && !errors.As(err, &sde) {
-		zap.L().Error("service group error", zap.Error(err))
-		success = false
-	}
-
-	return success
+	return err == nil
 }
 
-type serviceDoneError struct {
-	name string
-}
+func cleanupLogger(logger *zap.Logger) func(context.Context) error {
+	return func(context.Context) error {
+		if err := logger.Sync(); err != nil {
+			// We expect /dev/stdout and /dev/stderr to error, as they don't implement `sync`
+			if errors.Is(err, syscall.EINVAL) {
+				return nil
+			}
 
-func (e serviceDoneError) Error() string {
-	return fmt.Sprintf("service %s finished", e.name)
+			return err
+		}
+
+		return nil
+	}
 }
