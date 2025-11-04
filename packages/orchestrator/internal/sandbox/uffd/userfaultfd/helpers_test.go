@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"slices"
 	"sync"
 	"syscall"
@@ -139,7 +138,6 @@ func (h *testHandler) getAccessedOffsets() []uint {
 
 	h.missingRequests.Range(func(key, _ any) bool {
 		offsets = append(offsets, uint(key.(int64)))
-		fmt.Fprintf(os.Stderr, "offset: %d\n", key.(int64))
 
 		return true
 	})
