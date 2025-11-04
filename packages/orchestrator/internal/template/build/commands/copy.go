@@ -48,7 +48,9 @@ inputPath="{{ .TargetPath }}"
 if [[ "$inputPath" = /* ]]; then
  targetPath="$inputPath"
 else
- targetPath="$(pwd)/$inputPath"
+ # Use the owner's home directory as the base for relative paths
+ # The owner is in format user:group, we need only the user part
+ targetPath="$(printf ~{{ .Owner }} | cut -d':' -f1)/$inputPath"
 fi
 
 cd "$sourceFolder" || exit 1
