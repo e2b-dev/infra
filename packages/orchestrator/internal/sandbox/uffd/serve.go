@@ -139,61 +139,61 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		// if _, ok := missingRequests[offset]; ok {
-		// 	continue
-		// }
+		if _, ok := missingRequests[offset]; ok {
+			continue
+		}
 
 		missingRequests[offset] = struct{}{}
 
-		// eg.Go(func() error {
-		// 	defer func() {
-		// 		if r := recover(); r != nil {
-		// 			logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
-		// 		}
-		// 	}()
+		eg.Go(func() error {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+				}
+			}()
 
-		b, err := src.Slice(ctx, offset, pagesize)
-		if err != nil {
-			signalErr := fdExit.SignalExit()
+			b, err := src.Slice(ctx, offset, pagesize)
+			if err != nil {
+				signalErr := fdExit.SignalExit()
 
-			joinedErr := errors.Join(err, signalErr)
+				joinedErr := errors.Join(err, signalErr)
 
-			logger.Error("UFFD serve slice error", zap.Error(joinedErr))
+				logger.Error("UFFD serve slice error", zap.Error(joinedErr))
 
-			return fmt.Errorf("failed to read from source: %w", joinedErr)
-		}
-
-		cpy := userfaultfd.NewUffdioCopy(
-			b,
-			addr&^userfaultfd.CULong(pagesize-1),
-			userfaultfd.CULong(pagesize),
-			0,
-			0,
-		)
-
-		if _, _, errno := syscall.Syscall(
-			syscall.SYS_IOCTL,
-			uintptr(uffd),
-			userfaultfd.UFFDIO_COPY,
-			uintptr(unsafe.Pointer(&cpy)),
-		); errno != 0 {
-			if errno == unix.EEXIST {
-				logger.Debug("UFFD serve page already mapped", zap.Any("offset", offset), zap.Any("pagesize", pagesize))
-
-				// Page is already mapped
-				continue
+				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
-			signalErr := fdExit.SignalExit()
+			cpy := userfaultfd.NewUffdioCopy(
+				b,
+				addr&^userfaultfd.CULong(pagesize-1),
+				userfaultfd.CULong(pagesize),
+				0,
+				0,
+			)
 
-			joinedErr := errors.Join(errno, signalErr)
+			if _, _, errno := syscall.Syscall(
+				syscall.SYS_IOCTL,
+				uintptr(uffd),
+				userfaultfd.UFFDIO_COPY,
+				uintptr(unsafe.Pointer(&cpy)),
+			); errno != 0 {
+				if errno == unix.EEXIST {
+					logger.Debug("UFFD serve page already mapped", zap.Any("offset", offset), zap.Any("pagesize", pagesize))
 
-			logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
+					// Page is already mapped
+					return nil
+				}
 
-			return fmt.Errorf("failed uffdio copy %w", joinedErr)
-		}
+				signalErr := fdExit.SignalExit()
 
-		// 	return nil
-		// })
+				joinedErr := errors.Join(errno, signalErr)
+
+				logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
+
+				return fmt.Errorf("failed uffdio copy %w", joinedErr)
+			}
+
+			return nil
+		})
 	}
 }
