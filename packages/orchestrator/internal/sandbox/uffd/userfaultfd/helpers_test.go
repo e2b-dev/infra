@@ -109,8 +109,6 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 
 	exitUffd := make(chan struct{}, 1)
 
-	missingRequests := &sync.Map{}
-
 	go func() {
 		err := uffd.Serve(t.Context(), fdExit)
 		assert.NoError(t, err)
@@ -131,7 +129,7 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 		pagesize:        tt.pagesize,
 		data:            data,
 		uffd:            uffd,
-		missingRequests: missingRequests,
+		missingRequests: &uffd.missingRequests,
 	}, cleanup
 }
 
