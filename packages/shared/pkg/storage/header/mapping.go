@@ -19,12 +19,12 @@ type BuildMap struct {
 	BuildStorageOffset uint64
 }
 
-func (m *BuildMap) Copy() *BuildMap {
+func (mapping *BuildMap) Copy() *BuildMap {
 	return &BuildMap{
-		Offset:             m.Offset,
-		Length:             m.Length,
-		BuildId:            m.BuildId,
-		BuildStorageOffset: m.BuildStorageOffset,
+		Offset:             mapping.Offset,
+		Length:             mapping.Length,
+		BuildId:            mapping.BuildId,
+		BuildStorageOffset: mapping.BuildStorageOffset,
 	}
 }
 

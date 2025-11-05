@@ -443,7 +443,7 @@ func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
 	require.Equal(t, uint64(0), m[0].Offset)
 	require.Equal(t, 4*blockSize, m[0].Length)
 	require.Equal(t, id1, m[0].BuildId)
-	require.Equal(t, uint64(4*blockSize), m[1].Offset)
+	require.Equal(t, 4*blockSize, m[1].Offset)
 	require.Equal(t, 4*blockSize, m[1].Length)
 	require.Equal(t, id2, m[1].BuildId)
 }
@@ -572,11 +572,11 @@ func TestNormalizeMappingsMixedPattern(t *testing.T) {
 	require.Equal(t, 2*blockSize, m[0].Length)
 	require.Equal(t, id1, m[0].BuildId)
 	// Middle one stays alone
-	require.Equal(t, uint64(2*blockSize), m[1].Offset)
+	require.Equal(t, 2*blockSize, m[1].Offset)
 	require.Equal(t, 1*blockSize, m[1].Length)
 	require.Equal(t, id2, m[1].BuildId)
 	// Last three merged
-	require.Equal(t, uint64(3*blockSize), m[2].Offset)
+	require.Equal(t, 3*blockSize, m[2].Offset)
 	require.Equal(t, 3*blockSize, m[2].Length)
 	require.Equal(t, id3, m[2].BuildId)
 }
