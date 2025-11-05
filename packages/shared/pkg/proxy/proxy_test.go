@@ -250,19 +250,22 @@ func (c *instrumentedConn) Read(b []byte) (int, error) {
 }
 
 func (l *instrumentedListener) AddReadError(err error) {
-	l.ReadErr <- err
+	select {
+	case l.FirstReadErr <- err:
+	default:
+	}
 }
 
 type instrumentedListener struct {
 	net.Listener
 
-	ReadErr chan error
+	FirstReadErr chan error
 }
 
 func newInstrumentedListener(l net.Listener) *instrumentedListener {
 	return &instrumentedListener{
-		Listener: l,
-		ReadErr:  make(chan error, 1),
+		Listener:     l,
+		FirstReadErr: make(chan error, 1),
 	}
 }
 
@@ -422,7 +425,7 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 	}
 
 	select {
-	case readErr, ok := <-instrumentedListener.ReadErr:
+	case readErr, ok := <-instrumentedListener.FirstReadErr:
 		if !ok {
 			t.Fatalf("read error channel closed")
 		}
