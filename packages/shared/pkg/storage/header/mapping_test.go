@@ -286,3 +286,372 @@ func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 
 	require.NoError(t, err)
 }
+
+func TestNormalizeMappingsEmptySlice(t *testing.T) {
+	m := NormalizeMappings([]*BuildMap{})
+	require.Empty(t, m)
+}
+
+func TestNormalizeMappingsSingleMapping(t *testing.T) {
+	input := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 0,
+		},
+	}
+
+	m := NormalizeMappings(input)
+
+	require.Len(t, m, 1)
+	require.Equal(t, uint64(0), m[0].Offset)
+	require.Equal(t, 2*blockSize, m[0].Length)
+	require.Equal(t, baseID, m[0].BuildId)
+}
+
+func TestNormalizeMappingsNoAdjacentSameBuildId(t *testing.T) {
+	id1 := uuid.New()
+	id2 := uuid.New()
+	id3 := uuid.New()
+
+	input := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             2 * blockSize,
+			BuildId:            id1,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             2 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            id2,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             4 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            id3,
+			BuildStorageOffset: 0,
+		},
+	}
+
+	m := NormalizeMappings(input)
+
+	require.Len(t, m, 3)
+	require.Equal(t, id1, m[0].BuildId)
+	require.Equal(t, id2, m[1].BuildId)
+	require.Equal(t, id3, m[2].BuildId)
+}
+
+func TestNormalizeMappingsTwoAdjacentSameBuildId(t *testing.T) {
+	input := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             2 * blockSize,
+			Length:             3 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 2 * blockSize,
+		},
+	}
+
+	m := NormalizeMappings(input)
+
+	require.Len(t, m, 1)
+	require.Equal(t, uint64(0), m[0].Offset)
+	require.Equal(t, 5*blockSize, m[0].Length)
+	require.Equal(t, baseID, m[0].BuildId)
+	require.Equal(t, uint64(0), m[0].BuildStorageOffset)
+}
+
+func TestNormalizeMappingsAllSameBuildId(t *testing.T) {
+	input := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             2 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 2 * blockSize,
+		},
+		{
+			Offset:             4 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 4 * blockSize,
+		},
+		{
+			Offset:             6 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 6 * blockSize,
+		},
+	}
+
+	m := NormalizeMappings(input)
+
+	require.Len(t, m, 1)
+	require.Equal(t, uint64(0), m[0].Offset)
+	require.Equal(t, 8*blockSize, m[0].Length)
+	require.Equal(t, baseID, m[0].BuildId)
+	require.Equal(t, uint64(0), m[0].BuildStorageOffset)
+}
+
+func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
+	id1 := uuid.New()
+	id2 := uuid.New()
+
+	input := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             2 * blockSize,
+			BuildId:            id1,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             2 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            id1,
+			BuildStorageOffset: 2 * blockSize,
+		},
+		{
+			Offset:             4 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            id2,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             6 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            id2,
+			BuildStorageOffset: 2 * blockSize,
+		},
+	}
+
+	m := NormalizeMappings(input)
+
+	require.Len(t, m, 2)
+	require.Equal(t, uint64(0), m[0].Offset)
+	require.Equal(t, 4*blockSize, m[0].Length)
+	require.Equal(t, id1, m[0].BuildId)
+	require.Equal(t, uint64(4*blockSize), m[1].Offset)
+	require.Equal(t, 4*blockSize, m[1].Length)
+	require.Equal(t, id2, m[1].BuildId)
+}
+
+func TestNormalizeMappingsAlternatingBuildIds(t *testing.T) {
+	id1 := uuid.New()
+	id2 := uuid.New()
+
+	input := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             2 * blockSize,
+			BuildId:            id1,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             2 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            id2,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             4 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            id1,
+			BuildStorageOffset: 2 * blockSize,
+		},
+		{
+			Offset:             6 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            id2,
+			BuildStorageOffset: 2 * blockSize,
+		},
+	}
+
+	m := NormalizeMappings(input)
+
+	// Should not merge any mappings since no adjacent ones have the same BuildId
+	require.Len(t, m, 4)
+	require.Equal(t, id1, m[0].BuildId)
+	require.Equal(t, id2, m[1].BuildId)
+	require.Equal(t, id1, m[2].BuildId)
+	require.Equal(t, id2, m[3].BuildId)
+}
+
+func TestNormalizeMappingsThreeConsecutiveSameBuildId(t *testing.T) {
+	input := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             2 * blockSize,
+			Length:             3 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 2 * blockSize,
+		},
+		{
+			Offset:             5 * blockSize,
+			Length:             1 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 5 * blockSize,
+		},
+	}
+
+	m := NormalizeMappings(input)
+
+	require.Len(t, m, 1)
+	require.Equal(t, uint64(0), m[0].Offset)
+	require.Equal(t, 6*blockSize, m[0].Length)
+	require.Equal(t, baseID, m[0].BuildId)
+	require.Equal(t, uint64(0), m[0].BuildStorageOffset)
+}
+
+func TestNormalizeMappingsMixedPattern(t *testing.T) {
+	id1 := uuid.New()
+	id2 := uuid.New()
+	id3 := uuid.New()
+
+	input := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             1 * blockSize,
+			BuildId:            id1,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             1 * blockSize,
+			Length:             1 * blockSize,
+			BuildId:            id1,
+			BuildStorageOffset: 1 * blockSize,
+		},
+		{
+			Offset:             2 * blockSize,
+			Length:             1 * blockSize,
+			BuildId:            id2,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             3 * blockSize,
+			Length:             1 * blockSize,
+			BuildId:            id3,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             4 * blockSize,
+			Length:             1 * blockSize,
+			BuildId:            id3,
+			BuildStorageOffset: 1 * blockSize,
+		},
+		{
+			Offset:             5 * blockSize,
+			Length:             1 * blockSize,
+			BuildId:            id3,
+			BuildStorageOffset: 2 * blockSize,
+		},
+	}
+
+	m := NormalizeMappings(input)
+
+	require.Len(t, m, 3)
+	// First two merged
+	require.Equal(t, uint64(0), m[0].Offset)
+	require.Equal(t, 2*blockSize, m[0].Length)
+	require.Equal(t, id1, m[0].BuildId)
+	// Middle one stays alone
+	require.Equal(t, uint64(2*blockSize), m[1].Offset)
+	require.Equal(t, 1*blockSize, m[1].Length)
+	require.Equal(t, id2, m[1].BuildId)
+	// Last three merged
+	require.Equal(t, uint64(3*blockSize), m[2].Offset)
+	require.Equal(t, 3*blockSize, m[2].Length)
+	require.Equal(t, id3, m[2].BuildId)
+}
+
+func TestNormalizeMappingsZeroLengthMapping(t *testing.T) {
+	input := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             2 * blockSize,
+			Length:             0,
+			BuildId:            baseID,
+			BuildStorageOffset: 2 * blockSize,
+		},
+		{
+			Offset:             2 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 2 * blockSize,
+		},
+	}
+
+	m := NormalizeMappings(input)
+
+	// All should be merged since they all have the same BuildId
+	require.Len(t, m, 1)
+	require.Equal(t, uint64(0), m[0].Offset)
+	require.Equal(t, 4*blockSize, m[0].Length)
+	require.Equal(t, baseID, m[0].BuildId)
+}
+
+func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
+	input := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 0,
+		},
+		{
+			Offset:             2 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            baseID,
+			BuildStorageOffset: 2 * blockSize,
+		},
+		{
+			Offset:             4 * blockSize,
+			Length:             2 * blockSize,
+			BuildId:            diffID,
+			BuildStorageOffset: 0,
+		},
+	}
+
+	// Store original values
+	originalLen := len(input)
+	originalOffset0 := input[0].Offset
+	originalLength0 := input[0].Length
+	originalOffset1 := input[1].Offset
+	originalLength1 := input[1].Length
+
+	m := NormalizeMappings(input)
+
+	// Verify result is correct
+	require.Len(t, m, 2)
+	require.Equal(t, uint64(0), m[0].Offset)
+	require.Equal(t, 4*blockSize, m[0].Length)
+
+	// Verify input was not modified
+	require.Len(t, input, originalLen, "Input slice length should not change")
+	require.Equal(t, originalOffset0, input[0].Offset, "Input[0].Offset should not change")
+	require.Equal(t, originalLength0, input[0].Length, "Input[0].Length should not change")
+	require.Equal(t, originalOffset1, input[1].Offset, "Input[1].Offset should not change")
+	require.Equal(t, originalLength1, input[1].Length, "Input[1].Length should not change")
+}

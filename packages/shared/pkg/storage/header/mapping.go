@@ -19,6 +19,15 @@ type BuildMap struct {
 	BuildStorageOffset uint64
 }
 
+func (m *BuildMap) Copy() *BuildMap {
+	return &BuildMap{
+		Offset:             m.Offset,
+		Length:             m.Length,
+		BuildId:            m.BuildId,
+		BuildStorageOffset: m.BuildStorageOffset,
+	}
+}
+
 func CreateMapping(
 	buildId *uuid.UUID,
 	dirty *bitset.BitSet,
@@ -237,12 +246,29 @@ func MergeMappings(
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.
 func NormalizeMappings(mappings []*BuildMap) []*BuildMap {
-	for i := 0; i < len(mappings); i++ {
-		if i+1 < len(mappings) && mappings[i].BuildId == mappings[i+1].BuildId {
-			mappings[i].Length += mappings[i+1].Length
-			mappings = append(mappings[:i+1], mappings[i+2:]...)
+	if len(mappings) == 0 {
+		return nil
+	}
+
+	result := make([]*BuildMap, 0, len(mappings))
+
+	// Start with a copy of the first mapping
+	current := mappings[0].Copy()
+
+	for i := 1; i < len(mappings); i++ {
+		mp := mappings[i]
+		if mp.BuildId != current.BuildId {
+			// BuildId changed, add the current map to results and start a new one
+			result = append(result, current)
+			current = mp.Copy() // New copy
+		} else {
+			// Same BuildId, just add the length
+			current.Length += mp.Length
 		}
 	}
 
-	return mappings
+	// Add the last mapping
+	result = append(result, current)
+
+	return result
 }
