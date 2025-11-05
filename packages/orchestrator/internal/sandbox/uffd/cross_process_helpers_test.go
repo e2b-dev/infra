@@ -14,15 +14,15 @@ import (
 	"sync"
 	"syscall"
 	"testing"
-	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 type accessedOffsetsIpc struct {
@@ -66,7 +66,7 @@ func (a *accessedOffsetsIpc) Close() error {
 	return a.f.Close()
 }
 
-func (a *accessedOffsetsIpc) Write(ctx context.Context, offsets []uint) error {
+func (a *accessedOffsetsIpc) Write(offsets []uint) error {
 	if err := a.f.Truncate(0); err != nil {
 		return fmt.Errorf("truncate failed: %w", err)
 	}
@@ -89,11 +89,6 @@ func (a *accessedOffsetsIpc) Write(ctx context.Context, offsets []uint) error {
 	if err != nil {
 		return fmt.Errorf("failed to sync offsets: %w", err)
 	}
-
-	// print file name
-	fmt.Fprintf(os.Stdout, "sending signal to other process to read offsets\n")
-
-	time.Sleep(1 * time.Second)
 
 	syscall.Kill(a.otherPid, syscall.SIGUSR2)
 
@@ -139,13 +134,13 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, func(
 	err = userfaultfd.Register(uffd, memoryStart, uint64(size), userfaultfd.UFFDIO_REGISTER_MODE_MISSING)
 	require.NoError(t, err)
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestHelperServingProcess")
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
 	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
 
 	// Passing the fd to the child process
-	uffdFile := os.NewFile(uintptr(uffd), "userfaultfd")
+	uffdFile := os.NewFile(uffd, "userfaultfd")
 
 	contentFile, err := os.CreateTemp(os.TempDir(), "content-*.txt")
 	require.NoError(t, err)
@@ -222,10 +217,24 @@ func TestHelperServingProcess(t *testing.T) {
 		t.Skip("this is a helper process, skipping direct execution")
 	}
 
+	err := crossProcessServe(t)
+	if err != nil {
+		fmt.Println("exit serving process", err)
+		os.Exit(1)
+	}
+
+	os.Exit(0)
+}
+
+func crossProcessServe(t *testing.T) error {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
 	startRaw, err := strconv.Atoi(os.Getenv("GO_MMAP_START"))
 	if err != nil {
-		fmt.Print("exit parsing mmap start", err)
-		os.Exit(1)
+		return fmt.Errorf("exit parsing mmap start: %w", err)
 	}
 
 	memoryStart := uintptr(startRaw)
@@ -243,8 +252,7 @@ func TestHelperServingProcess(t *testing.T) {
 
 	fdExit, err := fdexit.New()
 	if err != nil {
-		fmt.Print("exit creating fd exit", err)
-		os.Exit(1)
+		return fmt.Errorf("exit creating fd exit: %w", err)
 	}
 	defer fdExit.Close()
 
@@ -263,15 +271,16 @@ func TestHelperServingProcess(t *testing.T) {
 		for {
 			select {
 			case <-missingRequestsSignal:
-				offsets, err := accessedOffsetsMap.Offsets(t.Context())
+				offsets, err := accessedOffsetsMap.Offsets(ctx)
 				if err != nil {
 					fmt.Println("exit getting offsets", err)
-					os.Exit(1)
+
+					cancel()
 				}
 
-				accessedOffsets.Write(t.Context(), offsets)
+				accessedOffsets.Write(offsets)
 				// Write accessed offsets to the file
-			case <-t.Context().Done():
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -280,14 +289,12 @@ func TestHelperServingProcess(t *testing.T) {
 	// Read directly from the file descriptor, not using Name()
 	content, err := io.ReadAll(contentFile)
 	if err != nil {
-		fmt.Println("exit reading content", err)
-		os.Exit(1)
+		return fmt.Errorf("exit reading content: %w", err)
 	}
 
 	pageSize, err := strconv.Atoi(os.Getenv("GO_MMAP_PAGE_SIZE"))
 	if err != nil {
-		fmt.Println("exit parsing page size", err)
-		os.Exit(1)
+		return fmt.Errorf("exit parsing page size: %w", err)
 	}
 
 	data := testutils.NewMemorySlicer(content, int64(pageSize))
@@ -318,6 +325,7 @@ func TestHelperServingProcess(t *testing.T) {
 
 		<-exitUffd
 	}
+	defer cleanup()
 
 	exitSignal := make(chan os.Signal, 1)
 	signal.Notify(exitSignal, syscall.SIGTERM)
@@ -327,10 +335,8 @@ func TestHelperServingProcess(t *testing.T) {
 
 	select {
 	case <-exitSignal:
-	case <-t.Context().Done():
+	case <-ctx.Done():
 	}
 
-	cleanup()
-
-	os.Exit(0)
+	return nil
 }

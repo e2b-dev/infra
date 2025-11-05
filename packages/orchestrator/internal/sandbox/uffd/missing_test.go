@@ -134,8 +134,6 @@ func TestMissing(t *testing.T) {
 }
 
 func TestParallelMissing(t *testing.T) {
-	// t.Skipf("skipping for now because it freezes in debug mode")
-
 	parallelOperations := 100_000_000
 
 	tt := testConfig{
