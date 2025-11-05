@@ -55,10 +55,25 @@ func (t *Header) GetShiftedMapping(offset int64) (mappedOffset int64, mappedLeng
 		return 0, 0, nil, err
 	}
 
-	return int64(mapping.BuildStorageOffset) + shift, int64(mapping.Length) - shift, &mapping.BuildId, nil
+	mappedOffset = int64(mapping.BuildStorageOffset) + shift
+	mappedLength = int64(mapping.Length) - shift
+	buildID = &mapping.BuildId
+
+	if mappedLength < 0 {
+		return 0, 0, nil, fmt.Errorf("mapped length for offset %d is negative: %d", offset, mappedLength)
+	}
+
+	return mappedOffset, mappedLength, buildID, nil
 }
 
 func (t *Header) getMapping(offset int64) (*BuildMap, int64, error) {
+	if offset < 0 || offset >= int64(t.Metadata.Size) {
+		return nil, 0, fmt.Errorf("offset %d is out of bounds (size: %d)", offset, t.Metadata.Size)
+	}
+	if offset%int64(t.Metadata.BlockSize) != 0 {
+		return nil, 0, fmt.Errorf("offset %d is not aligned to block size %d", offset, t.Metadata.BlockSize)
+	}
+
 	block := BlockIdx(offset, int64(t.Metadata.BlockSize))
 
 	start, ok := t.blockStarts.PreviousSet(uint(block))
@@ -72,6 +87,12 @@ func (t *Header) getMapping(offset int64) (*BuildMap, int64, error) {
 	}
 
 	shift := (block - int64(start)) * int64(t.Metadata.BlockSize)
+
+	// Verify that the offset falls within this mapping's range
+	if shift >= int64(mapping.Length) {
+		return nil, 0, fmt.Errorf("offset %d (block %d) is beyond the end of mapping at offset %d (ends at %d)",
+			offset, block, mapping.Offset, mapping.Offset+mapping.Length)
+	}
 
 	return mapping, shift, nil
 }

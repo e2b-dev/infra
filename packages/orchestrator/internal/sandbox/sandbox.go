@@ -833,6 +833,11 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
 	}
 
+	err = header.ValidateMappings(memfileHeader.Mapping, memfileHeader.Metadata.Size, memfileHeader.Metadata.BlockSize)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid memfile header mappings: %w", err)
+	}
+
 	return memfileDiff, memfileHeader, nil
 }
 
@@ -887,6 +892,11 @@ func pauseProcessRootfs(
 	rootfsHeader, err := header.NewHeader(rootfsMetadata, rootfsMappings)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
+	}
+
+	err = header.ValidateMappings(rootfsHeader.Mapping, rootfsHeader.Metadata.Size, rootfsHeader.Metadata.BlockSize)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid rootfs header mappings: %w", err)
 	}
 
 	return rootfsDiff, rootfsHeader, nil

@@ -48,6 +48,12 @@ func main() {
 		log.Fatalf("failed to deserialize header: %s", err)
 	}
 
+	// Validate mappings
+	err = header.ValidateMappings(h.Mapping, h.Metadata.Size, h.Metadata.BlockSize)
+	if err != nil {
+		fmt.Printf("\n⚠️  WARNING: Mapping validation failed!\n%s\n\n", err)
+	}
+
 	fmt.Printf("\nMETADATA\n")
 	fmt.Printf("========\n")
 	fmt.Printf("Storage            %s/%s\n", storage.GetDetails(), storagePath)
