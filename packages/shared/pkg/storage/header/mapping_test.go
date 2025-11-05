@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -289,7 +290,7 @@ func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 
 func TestNormalizeMappingsEmptySlice(t *testing.T) {
 	m := NormalizeMappings([]*BuildMap{})
-	require.Empty(t, m)
+	assert.Empty(t, m)
 }
 
 func TestNormalizeMappingsSingleMapping(t *testing.T) {
@@ -304,10 +305,10 @@ func TestNormalizeMappingsSingleMapping(t *testing.T) {
 
 	m := NormalizeMappings(input)
 
-	require.Len(t, m, 1)
-	require.Equal(t, uint64(0), m[0].Offset)
-	require.Equal(t, 2*blockSize, m[0].Length)
-	require.Equal(t, baseID, m[0].BuildId)
+	assert.Len(t, m, 1)
+	assert.Equal(t, uint64(0), m[0].Offset)
+	assert.Equal(t, 2*blockSize, m[0].Length)
+	assert.Equal(t, baseID, m[0].BuildId)
 }
 
 func TestNormalizeMappingsNoAdjacentSameBuildId(t *testing.T) {
@@ -338,10 +339,10 @@ func TestNormalizeMappingsNoAdjacentSameBuildId(t *testing.T) {
 
 	m := NormalizeMappings(input)
 
-	require.Len(t, m, 3)
-	require.Equal(t, id1, m[0].BuildId)
-	require.Equal(t, id2, m[1].BuildId)
-	require.Equal(t, id3, m[2].BuildId)
+	assert.Len(t, m, 3)
+	assert.Equal(t, id1, m[0].BuildId)
+	assert.Equal(t, id2, m[1].BuildId)
+	assert.Equal(t, id3, m[2].BuildId)
 }
 
 func TestNormalizeMappingsTwoAdjacentSameBuildId(t *testing.T) {
@@ -362,11 +363,11 @@ func TestNormalizeMappingsTwoAdjacentSameBuildId(t *testing.T) {
 
 	m := NormalizeMappings(input)
 
-	require.Len(t, m, 1)
-	require.Equal(t, uint64(0), m[0].Offset)
-	require.Equal(t, 5*blockSize, m[0].Length)
-	require.Equal(t, baseID, m[0].BuildId)
-	require.Equal(t, uint64(0), m[0].BuildStorageOffset)
+	assert.Len(t, m, 1)
+	assert.Equal(t, uint64(0), m[0].Offset)
+	assert.Equal(t, 5*blockSize, m[0].Length)
+	assert.Equal(t, baseID, m[0].BuildId)
+	assert.Equal(t, uint64(0), m[0].BuildStorageOffset)
 }
 
 func TestNormalizeMappingsAllSameBuildId(t *testing.T) {
@@ -399,11 +400,11 @@ func TestNormalizeMappingsAllSameBuildId(t *testing.T) {
 
 	m := NormalizeMappings(input)
 
-	require.Len(t, m, 1)
-	require.Equal(t, uint64(0), m[0].Offset)
-	require.Equal(t, 8*blockSize, m[0].Length)
-	require.Equal(t, baseID, m[0].BuildId)
-	require.Equal(t, uint64(0), m[0].BuildStorageOffset)
+	assert.Len(t, m, 1)
+	assert.Equal(t, uint64(0), m[0].Offset)
+	assert.Equal(t, 8*blockSize, m[0].Length)
+	assert.Equal(t, baseID, m[0].BuildId)
+	assert.Equal(t, uint64(0), m[0].BuildStorageOffset)
 }
 
 func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
@@ -439,13 +440,13 @@ func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
 
 	m := NormalizeMappings(input)
 
-	require.Len(t, m, 2)
-	require.Equal(t, uint64(0), m[0].Offset)
-	require.Equal(t, 4*blockSize, m[0].Length)
-	require.Equal(t, id1, m[0].BuildId)
-	require.Equal(t, 4*blockSize, m[1].Offset)
-	require.Equal(t, 4*blockSize, m[1].Length)
-	require.Equal(t, id2, m[1].BuildId)
+	assert.Len(t, m, 2)
+	assert.Equal(t, uint64(0), m[0].Offset)
+	assert.Equal(t, 4*blockSize, m[0].Length)
+	assert.Equal(t, id1, m[0].BuildId)
+	assert.Equal(t, 4*blockSize, m[1].Offset)
+	assert.Equal(t, 4*blockSize, m[1].Length)
+	assert.Equal(t, id2, m[1].BuildId)
 }
 
 func TestNormalizeMappingsAlternatingBuildIds(t *testing.T) {
@@ -482,11 +483,11 @@ func TestNormalizeMappingsAlternatingBuildIds(t *testing.T) {
 	m := NormalizeMappings(input)
 
 	// Should not merge any mappings since no adjacent ones have the same BuildId
-	require.Len(t, m, 4)
-	require.Equal(t, id1, m[0].BuildId)
-	require.Equal(t, id2, m[1].BuildId)
-	require.Equal(t, id1, m[2].BuildId)
-	require.Equal(t, id2, m[3].BuildId)
+	assert.Len(t, m, 4)
+	assert.Equal(t, id1, m[0].BuildId)
+	assert.Equal(t, id2, m[1].BuildId)
+	assert.Equal(t, id1, m[2].BuildId)
+	assert.Equal(t, id2, m[3].BuildId)
 }
 
 func TestNormalizeMappingsThreeConsecutiveSameBuildId(t *testing.T) {
@@ -513,11 +514,11 @@ func TestNormalizeMappingsThreeConsecutiveSameBuildId(t *testing.T) {
 
 	m := NormalizeMappings(input)
 
-	require.Len(t, m, 1)
-	require.Equal(t, uint64(0), m[0].Offset)
-	require.Equal(t, 6*blockSize, m[0].Length)
-	require.Equal(t, baseID, m[0].BuildId)
-	require.Equal(t, uint64(0), m[0].BuildStorageOffset)
+	assert.Len(t, m, 1)
+	assert.Equal(t, uint64(0), m[0].Offset)
+	assert.Equal(t, 6*blockSize, m[0].Length)
+	assert.Equal(t, baseID, m[0].BuildId)
+	assert.Equal(t, uint64(0), m[0].BuildStorageOffset)
 }
 
 func TestNormalizeMappingsMixedPattern(t *testing.T) {
@@ -566,19 +567,19 @@ func TestNormalizeMappingsMixedPattern(t *testing.T) {
 
 	m := NormalizeMappings(input)
 
-	require.Len(t, m, 3)
+	assert.Len(t, m, 3)
 	// First two merged
-	require.Equal(t, uint64(0), m[0].Offset)
-	require.Equal(t, 2*blockSize, m[0].Length)
-	require.Equal(t, id1, m[0].BuildId)
+	assert.Equal(t, uint64(0), m[0].Offset)
+	assert.Equal(t, 2*blockSize, m[0].Length)
+	assert.Equal(t, id1, m[0].BuildId)
 	// Middle one stays alone
-	require.Equal(t, 2*blockSize, m[1].Offset)
-	require.Equal(t, 1*blockSize, m[1].Length)
-	require.Equal(t, id2, m[1].BuildId)
+	assert.Equal(t, 2*blockSize, m[1].Offset)
+	assert.Equal(t, 1*blockSize, m[1].Length)
+	assert.Equal(t, id2, m[1].BuildId)
 	// Last three merged
-	require.Equal(t, 3*blockSize, m[2].Offset)
-	require.Equal(t, 3*blockSize, m[2].Length)
-	require.Equal(t, id3, m[2].BuildId)
+	assert.Equal(t, 3*blockSize, m[2].Offset)
+	assert.Equal(t, 3*blockSize, m[2].Length)
+	assert.Equal(t, id3, m[2].BuildId)
 }
 
 func TestNormalizeMappingsZeroLengthMapping(t *testing.T) {
@@ -606,10 +607,10 @@ func TestNormalizeMappingsZeroLengthMapping(t *testing.T) {
 	m := NormalizeMappings(input)
 
 	// All should be merged since they all have the same BuildId
-	require.Len(t, m, 1)
-	require.Equal(t, uint64(0), m[0].Offset)
-	require.Equal(t, 4*blockSize, m[0].Length)
-	require.Equal(t, baseID, m[0].BuildId)
+	assert.Len(t, m, 1)
+	assert.Equal(t, uint64(0), m[0].Offset)
+	assert.Equal(t, 4*blockSize, m[0].Length)
+	assert.Equal(t, baseID, m[0].BuildId)
 }
 
 func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
@@ -644,14 +645,14 @@ func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
 	m := NormalizeMappings(input)
 
 	// Verify result is correct
-	require.Len(t, m, 2)
-	require.Equal(t, uint64(0), m[0].Offset)
-	require.Equal(t, 4*blockSize, m[0].Length)
+	assert.Len(t, m, 2)
+	assert.Equal(t, uint64(0), m[0].Offset)
+	assert.Equal(t, 4*blockSize, m[0].Length)
 
 	// Verify input was not modified
-	require.Len(t, input, originalLen, "Input slice length should not change")
-	require.Equal(t, originalOffset0, input[0].Offset, "Input[0].Offset should not change")
-	require.Equal(t, originalLength0, input[0].Length, "Input[0].Length should not change")
-	require.Equal(t, originalOffset1, input[1].Offset, "Input[1].Offset should not change")
-	require.Equal(t, originalLength1, input[1].Length, "Input[1].Length should not change")
+	assert.Len(t, input, originalLen, "Input slice length should not change")
+	assert.Equal(t, originalOffset0, input[0].Offset, "Input[0].Offset should not change")
+	assert.Equal(t, originalLength0, input[0].Length, "Input[0].Length should not change")
+	assert.Equal(t, originalOffset1, input[1].Offset, "Input[1].Offset should not change")
+	assert.Equal(t, originalLength1, input[1].Length, "Input[1].Length should not change")
 }
