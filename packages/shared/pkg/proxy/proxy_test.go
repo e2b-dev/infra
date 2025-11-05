@@ -433,7 +433,6 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 	case <-t.Context().Done():
 		t.Fatalf("read error timed out: %v", t.Context().Err())
 	}
-
 }
 
 // This is a test that verify that the proxy reuse fails when the backend changes.
