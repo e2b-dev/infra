@@ -309,6 +309,9 @@ func TestNormalizeMappingsSingleMapping(t *testing.T) {
 	assert.Equal(t, uint64(0), m[0].Offset)
 	assert.Equal(t, 2*blockSize, m[0].Length)
 	assert.Equal(t, baseID, m[0].BuildId)
+
+	err := ValidateMappings(m, 2*blockSize, blockSize)
+	require.NoError(t, err)
 }
 
 func TestNormalizeMappingsNoAdjacentSameBuildId(t *testing.T) {
@@ -343,6 +346,9 @@ func TestNormalizeMappingsNoAdjacentSameBuildId(t *testing.T) {
 	assert.Equal(t, id1, m[0].BuildId)
 	assert.Equal(t, id2, m[1].BuildId)
 	assert.Equal(t, id3, m[2].BuildId)
+
+	err := ValidateMappings(m, 6*blockSize, blockSize)
+	require.NoError(t, err)
 }
 
 func TestNormalizeMappingsTwoAdjacentSameBuildId(t *testing.T) {
@@ -368,6 +374,9 @@ func TestNormalizeMappingsTwoAdjacentSameBuildId(t *testing.T) {
 	assert.Equal(t, 5*blockSize, m[0].Length)
 	assert.Equal(t, baseID, m[0].BuildId)
 	assert.Equal(t, uint64(0), m[0].BuildStorageOffset)
+
+	err := ValidateMappings(m, 5*blockSize, blockSize)
+	require.NoError(t, err)
 }
 
 func TestNormalizeMappingsAllSameBuildId(t *testing.T) {
@@ -405,6 +414,9 @@ func TestNormalizeMappingsAllSameBuildId(t *testing.T) {
 	assert.Equal(t, 8*blockSize, m[0].Length)
 	assert.Equal(t, baseID, m[0].BuildId)
 	assert.Equal(t, uint64(0), m[0].BuildStorageOffset)
+
+	err := ValidateMappings(m, size, blockSize)
+	require.NoError(t, err)
 }
 
 func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
@@ -447,6 +459,9 @@ func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
 	assert.Equal(t, 4*blockSize, m[1].Offset)
 	assert.Equal(t, 4*blockSize, m[1].Length)
 	assert.Equal(t, id2, m[1].BuildId)
+
+	err := ValidateMappings(m, size, blockSize)
+	require.NoError(t, err)
 }
 
 func TestNormalizeMappingsAlternatingBuildIds(t *testing.T) {
@@ -488,6 +503,9 @@ func TestNormalizeMappingsAlternatingBuildIds(t *testing.T) {
 	assert.Equal(t, id2, m[1].BuildId)
 	assert.Equal(t, id1, m[2].BuildId)
 	assert.Equal(t, id2, m[3].BuildId)
+
+	err := ValidateMappings(m, size, blockSize)
+	require.NoError(t, err)
 }
 
 func TestNormalizeMappingsThreeConsecutiveSameBuildId(t *testing.T) {
@@ -519,6 +537,9 @@ func TestNormalizeMappingsThreeConsecutiveSameBuildId(t *testing.T) {
 	assert.Equal(t, 6*blockSize, m[0].Length)
 	assert.Equal(t, baseID, m[0].BuildId)
 	assert.Equal(t, uint64(0), m[0].BuildStorageOffset)
+
+	err := ValidateMappings(m, 6*blockSize, blockSize)
+	require.NoError(t, err)
 }
 
 func TestNormalizeMappingsMixedPattern(t *testing.T) {
@@ -580,6 +601,9 @@ func TestNormalizeMappingsMixedPattern(t *testing.T) {
 	assert.Equal(t, 3*blockSize, m[2].Offset)
 	assert.Equal(t, 3*blockSize, m[2].Length)
 	assert.Equal(t, id3, m[2].BuildId)
+
+	err := ValidateMappings(m, 6*blockSize, blockSize)
+	require.NoError(t, err)
 }
 
 func TestNormalizeMappingsZeroLengthMapping(t *testing.T) {
@@ -611,6 +635,9 @@ func TestNormalizeMappingsZeroLengthMapping(t *testing.T) {
 	assert.Equal(t, uint64(0), m[0].Offset)
 	assert.Equal(t, 4*blockSize, m[0].Length)
 	assert.Equal(t, baseID, m[0].BuildId)
+
+	err := ValidateMappings(m, 4*blockSize, blockSize)
+	require.NoError(t, err)
 }
 
 func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
@@ -655,4 +682,7 @@ func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
 	assert.Equal(t, originalLength0, input[0].Length, "Input[0].Length should not change")
 	assert.Equal(t, originalOffset1, input[1].Offset, "Input[1].Offset should not change")
 	assert.Equal(t, originalLength1, input[1].Length, "Input[1].Length should not change")
+
+	err := ValidateMappings(m, 6*blockSize, blockSize)
+	require.NoError(t, err)
 }
