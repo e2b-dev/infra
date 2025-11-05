@@ -151,4 +151,13 @@ build {
       "echo 'net.netfilter.nf_conntrack_max = 2097152' | sudo tee -a /etc/sysctl.conf",
     ]
   }
+
+  # Block GCE's gce-resolved.conf to prevent DNS conflicts with Consul
+  provisioner "shell" {
+    inline = [
+      "echo 'Blocking gce-resolved.conf to prevent DNS conflicts with Consul DNS'",
+      "sudo dpkg-divert --add --rename --divert /etc/systemd/resolved.conf.d/gce-resolved.conf.diverted /etc/systemd/resolved.conf.d/gce-resolved.conf || true",
+      "echo 'dpkg-divert configured successfully'",
+    ]
+  }
 }
