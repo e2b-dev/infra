@@ -43,13 +43,12 @@ type operation struct {
 }
 
 type testHandler struct {
-	memoryArea      *[]byte
-	pagesize        uint64
-	data            *testutils.MemorySlicer
-	memoryMap       mapping.Mappings
-	uffd            uintptr
-	missingRequests *sync.Map
-	writeMu         sync.Mutex
+	memoryArea *[]byte
+	pagesize   uint64
+	data       *testutils.MemorySlicer
+	uffd       uintptr
+	accessed   accessedOffsets
+	writeMu    sync.Mutex
 }
 
 func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
@@ -127,25 +126,32 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
 	})
 
 	return &testHandler{
-		memoryArea:      &memoryArea,
-		memoryMap:       m,
-		pagesize:        tt.pagesize,
-		data:            data,
-		uffd:            uffd,
-		missingRequests: missingRequests,
+		memoryArea: &memoryArea,
+		pagesize:   tt.pagesize,
+		data:       data,
+		uffd:       uffd,
+		accessed:   &accessedOffsetsMap{missingRequests: missingRequests},
 	}, cleanup
 }
 
-func (h *testHandler) getAccessedOffsets() []uint {
+type accessedOffsets interface {
+	Offsets(ctx context.Context) ([]uint, error)
+}
+
+type accessedOffsetsMap struct {
+	missingRequests *sync.Map
+}
+
+func (a *accessedOffsetsMap) Offsets(_ context.Context) ([]uint, error) {
 	offsets := []uint{}
 
-	h.missingRequests.Range(func(key, _ any) bool {
+	a.missingRequests.Range(func(key, _ any) bool {
 		offsets = append(offsets, uint(key.(int64)))
 
 		return true
 	})
 
-	return offsets
+	return offsets, nil
 }
 
 //go:noinline
