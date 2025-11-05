@@ -250,24 +250,20 @@ func (c *instrumentedConn) Read(b []byte) (int, error) {
 }
 
 func (l *instrumentedListener) AddReadError(err error) {
-	l.readErrsMutex.Lock()
-	defer l.readErrsMutex.Unlock()
-
-	l.readErrs = append(l.readErrs, err)
-}
-
-func (l *instrumentedListener) ReadErrors() []error {
-	l.readErrsMutex.Lock()
-	defer l.readErrsMutex.Unlock()
-
-	return l.readErrs
+	l.ReadErr <- err
 }
 
 type instrumentedListener struct {
 	net.Listener
 
-	readErrs      []error
-	readErrsMutex sync.Mutex
+	ReadErr chan error
+}
+
+func newInstrumentedListener(l net.Listener) *instrumentedListener {
+	return &instrumentedListener{
+		Listener: l,
+		ReadErr:  make(chan error, 1),
+	}
 }
 
 func (l *instrumentedListener) Accept() (net.Conn, error) {
@@ -372,7 +368,7 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	instrumentedListener := &instrumentedListener{Listener: listener}
+	instrumentedListener := newInstrumentedListener(listener)
 
 	backend, err := newTestBackend(instrumentedListener, "backend-1")
 	require.NoError(t, err)
@@ -425,11 +421,19 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 		t.Fatalf("request timed out: %v", t.Context().Err())
 	}
 
-	require.Len(t, instrumentedListener.ReadErrors(), 1, "server connection should have one read error")
-	// io.EOF is returned for the FIN packet.
-	require.NotErrorIs(t, instrumentedListener.ReadErrors()[0], io.EOF, "server connection should have read error other than EOF")
+	select {
+	case readErr, ok := <-instrumentedListener.ReadErr:
+		if !ok {
+			t.Fatalf("read error channel closed")
+		}
+		assert.ErrorContains(t, readErr, "connection reset by peer")
 
-	require.ErrorContains(t, instrumentedListener.ReadErrors()[0], "connection reset by peer")
+		// io.EOF is returned for the FIN packet.
+		require.NotErrorIs(t, readErr, io.EOF, "server connection should have read error other than EOF")
+	case <-t.Context().Done():
+		t.Fatalf("read error timed out: %v", t.Context().Err())
+	}
+
 }
 
 // This is a test that verify that the proxy reuse fails when the backend changes.
