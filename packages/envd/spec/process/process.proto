@@ -2,8 +2,14 @@ syntax = "proto3";
 
 package process;
 
+import "mcp/mcp.proto";
+
 service Process {
-    rpc List(ListRequest) returns (ListResponse);
+    rpc List(ListRequest) returns (ListResponse) {
+        option (mcp.mcp) = {
+            enabled: true;
+        };
+    }
 
     rpc Connect(ConnectRequest) returns (stream ConnectResponse);
     rpc Start(StartRequest) returns (stream StartResponse);
@@ -28,7 +34,7 @@ message PTY {
 message ProcessConfig {
     string cmd = 1;
     repeated string args = 2;
-    
+
     map<string, string> envs = 3;
     optional string cwd = 4;
 }

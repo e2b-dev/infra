@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(go list:*)",
+      "Read(//Users/valenta.and.thomas/Developer/infra/packages/**)",
+      "Bash(go build:*)",
+      "Bash(go doc:*)",
+      "Bash(go test:*)",
+      "Bash(curl:*)",
+      "Bash(make start-docker:*)",
+      "Read(//Users/valenta.and.thomas/go/pkg/mod/github.com/mark3labs/mcp-go@v0.42.0/server/**)",
+      "Bash(docker stop:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
+	mcpRpc "github.com/e2b-dev/infra/packages/envd/internal/services/mcp"
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
@@ -166,6 +167,9 @@ func main() {
 
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, defaults)
+
+	mcpLogger := l.With().Str("logger", "mcp").Logger()
+	mcpRpc.Handle(m, &mcpLogger, defaults)
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)

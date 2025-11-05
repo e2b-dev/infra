@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package mcp;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MethodOptions {
+  MCPOptions mcp = 50001;
+}
+
+message MCPOptions {
+  bool enabled = 1;
+}
+
