@@ -53,6 +53,14 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 	return func(w http.ResponseWriter, r *http.Request) {
 		d, err := getDestination(r)
 
+		var mhe MissingHeaderError
+		if errors.As(err, &mhe) {
+			zap.L().Warn("missing header", zap.Error(mhe))
+			http.Error(w, "missing header", http.StatusBadRequest)
+
+			return
+		}
+
 		if errors.Is(err, ErrInvalidHost) {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)

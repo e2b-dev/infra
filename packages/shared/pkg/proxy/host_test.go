@@ -15,7 +15,7 @@ func TestHostParser(t *testing.T) {
 	tests := []struct {
 		name     string
 		host     string
-		headers  map[string][]string
+		headers  http.Header
 		wantID   string
 		wantPort uint64
 		wantErr  error
@@ -129,7 +129,7 @@ func TestHostParser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := &http.Request{
 				Host:   tt.host,
-				Header: http.Header(tt.headers),
+				Header: tt.headers,
 			}
 			gotID, gotPort, err := getUpstreamFromRequest(req)
 
