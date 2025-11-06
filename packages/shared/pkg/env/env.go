@@ -7,13 +7,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var environment = GetEnv("ENVIRONMENT", "prod")
-
 func IsLocal() bool {
-	return environment == "local"
+	return GetEnv("ENVIRONMENT", "prod") == "local"
 }
 
 func IsDevelopment() bool {
+	environment := GetEnv("ENVIRONMENT", "prod")
+
 	return environment == "dev" || environment == "local"
 }
 

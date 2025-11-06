@@ -1,13 +1,15 @@
 package proxy
 
 import (
-	"errors"
 	"net/http"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestHostParser(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "local")
+
 	tests := []struct {
 		name     string
 		host     string
@@ -63,35 +65,35 @@ func TestHostParser(t *testing.T) {
 			host:     "isv6ril5xadwn1k9t2jye.e2b.app",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
-			wantErr:  InvalidHostError{},
+			wantErr:  ErrInvalidHost,
 		},
 		{
 			name:     "sandbox-host-with-invalid-port-part",
 			host:     "abcd-isv6ril5xadwn1k9t2jye.e2b.app",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
-			wantErr:  InvalidHostError{},
+			wantErr:  InvalidSandboxPortError{},
 		},
 		{
 			name:     "sandbox-host-without-domain",
 			host:     "49983-isv6ril5xadwn1k9t2jye",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
-			wantErr:  InvalidHostError{},
+			wantErr:  ErrInvalidHost,
 		},
 		{
 			name:     "sandbox-host-with-missing-domain-and-port",
 			host:     "49983-isv6ril5xadwn1k9t2jye:8080",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
-			wantErr:  InvalidHostError{},
+			wantErr:  ErrInvalidHost,
 		},
 		{
 			name:     "sandbox-host-with-missing-domain",
 			host:     "49983-isv6ril5xadwn1k9t2jye",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
-			wantErr:  InvalidHostError{},
+			wantErr:  ErrInvalidHost,
 		},
 		{
 			name: "headers: happy path",
@@ -109,7 +111,7 @@ func TestHostParser(t *testing.T) {
 			headers: http.Header{
 				headerSandboxPort: []string{"8080"},
 			},
-			wantErr: InvalidHostError{},
+			wantErr: MissingHeaderError{Header: headerSandboxID},
 		},
 		{
 			name: "headers: missing sandbox port",
@@ -117,7 +119,7 @@ func TestHostParser(t *testing.T) {
 			headers: http.Header{
 				headerSandboxID: []string{"isv6ril5xadwn1k9t2jye"},
 			},
-			wantErr: InvalidHostError{},
+			wantErr: MissingHeaderError{Header: headerSandboxPort},
 		},
 	}
 
@@ -127,7 +129,7 @@ func TestHostParser(t *testing.T) {
 				Host:   tt.host,
 				Header: http.Header(tt.headers),
 			}
-			gotID, gotPort, err := GetHostPort(req)
+			gotID, gotPort, err := GetUpstreamFromRequest(req)
 
 			// Compare error presence and, when present, the concrete type.
 			if (err != nil) != (tt.wantErr != nil) {
@@ -135,9 +137,7 @@ func TestHostParser(t *testing.T) {
 			}
 
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) || reflect.TypeOf(err) != reflect.TypeOf(tt.wantErr) {
-					t.Fatalf("ParseHost(%q) error type = %T, want %T", tt.host, err, tt.wantErr)
-				}
+				require.ErrorIs(t, err, tt.wantErr)
 
 				return // no further checks when an error was expected
 			}

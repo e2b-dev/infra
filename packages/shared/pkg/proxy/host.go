@@ -1,31 +1,39 @@
 package proxy
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
-func GetHostPort(r *http.Request) (string, uint64, error) {
-	sandboxId, port, ok := parseHost(r.Host)
-	if ok {
-		return sandboxId, port, nil
+func GetUpstreamFromRequest(r *http.Request) (sandboxId string, port uint64, err error) {
+	if env.IsLocal() {
+		var ok bool
+		sandboxId, port, ok, err = parseHeaders(r.Header)
+		if err != nil {
+			return "", 0, err
+		} else if ok {
+			return sandboxId, port, nil
+		}
 	}
 
-	sandboxId, port, ok = parseHeader(r.Header)
-	if ok {
-		return sandboxId, port, nil
+	sandboxId, port, err = parseHost(r.Host)
+	if err != nil {
+		return "", 0, err
 	}
 
-	return "", 0, InvalidHostError{}
+	return sandboxId, port, nil
 }
 
-func parseHost(host string) (sandboxID string, port uint64, ok bool) {
+func parseHost(host string) (sandboxID string, port uint64, err error) {
 	dot := strings.Index(host, ".")
 
 	// There must be always domain part used
 	if dot == -1 {
-		return "", 0, false
+		return "", 0, ErrInvalidHost
 	}
 
 	// Keep only the left-most subdomain part, i.e. everything before the
@@ -33,7 +41,7 @@ func parseHost(host string) (sandboxID string, port uint64, ok bool) {
 
 	hostParts := strings.Split(host, "-")
 	if len(hostParts) < 2 {
-		return "", 0, false
+		return "", 0, ErrInvalidHost
 	}
 
 	sandboxPortString := hostParts[0]
@@ -41,10 +49,18 @@ func parseHost(host string) (sandboxID string, port uint64, ok bool) {
 
 	sandboxPort, err := strconv.ParseUint(sandboxPortString, 10, 64)
 	if err != nil {
-		return "", 0, false
+		return "", 0, InvalidSandboxPortError{sandboxPortString, err}
 	}
 
-	return sandboxID, sandboxPort, true
+	return sandboxID, sandboxPort, nil
+}
+
+type MissingHeaderError struct {
+	Header string
+}
+
+func (e MissingHeaderError) Error() string {
+	return fmt.Sprintf("Missing header: %s", e.Header)
 }
 
 const (
@@ -52,21 +68,26 @@ const (
 	headerSandboxPort = "X-Sandbox-Port"
 )
 
-func parseHeader(h http.Header) (sandboxID string, port uint64, ok bool) {
+func parseHeaders(h http.Header) (sandboxID string, port uint64, ok bool, err error) {
 	sandboxID = h.Get(headerSandboxID)
-	if sandboxID == "" {
-		return "", 0, false
-	}
-
 	portString := h.Get(headerSandboxPort)
+
+	if sandboxID == "" && portString == "" {
+		return "", 0, false, nil
+	}
+
+	if sandboxID == "" {
+		return "", 0, false, MissingHeaderError{Header: headerSandboxID}
+	}
+
 	if portString == "" {
-		return "", 0, false
+		return "", 0, false, MissingHeaderError{Header: headerSandboxPort}
 	}
 
-	port, err := strconv.ParseUint(portString, 10, 64)
+	port, err = strconv.ParseUint(portString, 10, 64)
 	if err != nil {
-		return "", 0, false
+		return "", 0, false, InvalidSandboxPortError{portString, err}
 	}
 
-	return sandboxID, port, true
+	return sandboxID, port, true, nil
 }
