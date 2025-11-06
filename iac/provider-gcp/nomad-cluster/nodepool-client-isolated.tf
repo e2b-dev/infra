@@ -10,6 +10,16 @@ resource "google_compute_node_template" "isolated-client" {
   region      = var.gcp_region
   node_type   = var.client_node_type
   description = "Sole tenant node template for orchestrators"
+
+  dynamic "disks" {
+    for_each = var.isolated_client_cluster_disk_count == 0 ? [] : [{}]
+
+    content {
+      disk_count   = var.isolated_client_cluster_disk_count
+      disk_size_gb = 375
+      disk_type    = "local-ssd"
+    }
+  }
 }
 
 resource "google_compute_node_group" "isolated-client" {
@@ -29,7 +39,6 @@ resource "google_compute_instance_template" "isolated-client" {
 
   instance_description = null
   machine_type         = var.client_machine_type
-  min_cpu_platform     = var.min_cpu_platform
 
   labels = merge(
     var.labels,
@@ -46,6 +55,14 @@ resource "google_compute_instance_template" "isolated-client" {
 
   scheduling {
     on_host_maintenance = "MIGRATE"
+
+    node_affinities {
+      key      = "compute.googleapis.com/node-group-name"
+      operator = "IN"
+      values = [
+        google_compute_node_group.isolated-client[0].name
+      ]
+    }
   }
 
   disk {
@@ -56,7 +73,7 @@ resource "google_compute_instance_template" "isolated-client" {
   }
 
   dynamic "disk" {
-    for_each = [for n in range(var.client_cluster_cache_disk_count) : {}]
+    for_each = [for n in range(var.isolated_client_cluster_disk_count) : {}]
 
     content {
       auto_delete  = true

@@ -2,6 +2,9 @@ name: Run tests on PRs
 
 on: [workflow_call]
 
+permissions:
+  contents: read
+
 jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}

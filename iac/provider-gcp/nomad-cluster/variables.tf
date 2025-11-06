@@ -324,6 +324,10 @@ variable "isolated_client_cluster_target_size" {
   type = number
 }
 
+variable "isolated_client_cluster_disk_count" {
+  type = number
+}
+
 variable "build_cluster_cache_disk_count" {
   type = number
 

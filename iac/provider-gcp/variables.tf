@@ -478,6 +478,11 @@ variable "isolated_client_cluster_target_size" {
   default = 0
 }
 
+variable "isolated_client_cluster_disk_count" {
+  type    = number
+  default = 0
+}
+
 variable "build_cluster_cache_disk_count" {
   type        = number
   description = "The number of 375 GB NVME disks to raid together for storing build files."

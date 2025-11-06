@@ -96,6 +96,7 @@ module "cluster" {
 
   client_node_type                    = var.client_node_type
   isolated_client_cluster_target_size = var.isolated_client_cluster_target_size
+  isolated_client_cluster_disk_count  = var.isolated_client_cluster_disk_count
 
   api_cluster_size        = var.api_cluster_size
   build_cluster_size      = var.build_cluster_size
