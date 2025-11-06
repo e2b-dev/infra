@@ -316,8 +316,9 @@ type NewSandbox struct {
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 
 	// AutoPause Automatically pauses the sandbox after the timeout
-	AutoPause *bool    `json:"autoPause,omitempty"`
-	EnvVars   *EnvVars `json:"envVars,omitempty"`
+	AutoPause *bool                  `json:"autoPause,omitempty"`
+	EnvVars   *EnvVars               `json:"envVars,omitempty"`
+	Firewall  *SandboxFirewallConfig `json:"firewall,omitempty"`
 
 	// Mcp MCP configuration for the sandbox
 	Mcp      *Mcp             `json:"mcp"`
@@ -532,6 +533,20 @@ type SandboxDetail struct {
 
 	// TemplateID Identifier of the template from which is the sandbox created
 	TemplateID string `json:"templateID"`
+}
+
+// SandboxFirewallConfig defines model for SandboxFirewallConfig.
+type SandboxFirewallConfig struct {
+	Egress *SandboxFirewallEgressConfig `json:"egress,omitempty"`
+}
+
+// SandboxFirewallEgressConfig defines model for SandboxFirewallEgressConfig.
+type SandboxFirewallEgressConfig struct {
+	// AllowedCidrs List of allowed CIDR blocks for egress traffic
+	AllowedCidrs *[]string `json:"allowedCidrs,omitempty"`
+
+	// BlockedCidrs List of blocked CIDR blocks for egress traffic
+	BlockedCidrs *[]string `json:"blockedCidrs,omitempty"`
 }
 
 // SandboxLog Log entry with timestamp and line

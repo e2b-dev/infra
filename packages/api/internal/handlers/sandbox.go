@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -37,10 +38,14 @@ func (a *APIStore) startSandbox(
 	autoPause bool,
 	envdAccessToken *string,
 	allowInternetAccess *bool,
+	firewall *api.SandboxFirewallConfig,
 	mcp api.Mcp,
 ) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
+
+	// Convert API firewall config to orchestrator firewall config
+	orchFirewall := utils.APIToOrchestratorFirewall(firewall)
 
 	// Unique ID for the execution (from start/resume to stop/pause)
 	executionID := uuid.New().String()
@@ -62,6 +67,7 @@ func (a *APIStore) startSandbox(
 		autoPause,
 		envdAccessToken,
 		allowInternetAccess,
+		orchFirewall,
 	)
 	if instanceErr != nil {
 		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)

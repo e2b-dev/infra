@@ -9,3 +9,12 @@ type BuildReason struct {
 	// Step that failed
 	Step *string `json:"step,omitempty"`
 }
+
+type SandboxFirewallEgressConfig struct {
+	AllowedCidrs []string `json:"allowedCidrs,omitempty"`
+	BlockedCidrs []string `json:"blockedCidrs,omitempty"`
+}
+
+type SandboxFirewallConfig struct {
+	Egress *SandboxFirewallEgressConfig `json:"egress,omitempty"`
+}

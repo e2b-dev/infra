@@ -125,6 +125,7 @@ var (
 		{Name: "origin_node_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "team_id", Type: field.TypeUUID},
 		{Name: "allow_internet_access", Type: field.TypeBool, Nullable: true},
+		{Name: "firewall", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// SnapshotsTable holds the schema information for the "snapshots" table.
@@ -135,7 +136,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "snapshots_envs_snapshots",
-				Columns:    []*schema.Column{SnapshotsColumns[11]},
+				Columns:    []*schema.Column{SnapshotsColumns[12]},
 				RefColumns: []*schema.Column{EnvsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},

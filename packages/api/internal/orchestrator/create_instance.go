@@ -44,6 +44,7 @@ func (o *Orchestrator) CreateSandbox(
 	autoPause bool,
 	envdAuthToken *string,
 	allowInternetAccess *bool,
+	firewall *orchestrator.SandboxFirewallConfig,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -138,6 +139,11 @@ func (o *Orchestrator) CreateSandbox(
 		sbxDomain = cluster.SandboxDomain
 	}
 
+	if allowInternetAccess != nil && !*allowInternetAccess {
+		firewall.Egress = firewall.GetEgress()
+		firewall.Egress.BlockedCidrs = []string{"0.0.0.0/0"}
+	}
+
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:      baseTemplateID,
@@ -160,6 +166,7 @@ func (o *Orchestrator) CreateSandbox(
 			Snapshot:            isResume,
 			AutoPause:           autoPause,
 			AllowInternetAccess: allowInternetAccess,
+			Firewall:            firewall,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
 		},
 		StartTime: timestamppb.New(startTime),
@@ -237,6 +244,7 @@ func (o *Orchestrator) CreateSandbox(
 		allowInternetAccess,
 		baseTemplateID,
 		sbxDomain,
+		utils.OrchestratorToDBFirewall(firewall),
 	)
 
 	o.sandboxStore.Add(ctx, sbx, true)

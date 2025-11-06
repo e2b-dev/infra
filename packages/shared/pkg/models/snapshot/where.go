@@ -527,6 +527,16 @@ func AllowInternetAccessNotNil() predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldNotNull(FieldAllowInternetAccess))
 }
 
+// FirewallIsNil applies the IsNil predicate on the "firewall" field.
+func FirewallIsNil() predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIsNull(FieldFirewall))
+}
+
+// FirewallNotNil applies the NotNil predicate on the "firewall" field.
+func FirewallNotNil() predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotNull(FieldFirewall))
+}
+
 // HasEnv applies the HasEdge predicate on the "env" edge.
 func HasEnv() predicate.Snapshot {
 	return predicate.Snapshot(func(s *sql.Selector) {

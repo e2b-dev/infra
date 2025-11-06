@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
@@ -170,6 +171,26 @@ func (su *SnapshotUpdate) ClearAllowInternetAccess() *SnapshotUpdate {
 	return su
 }
 
+// SetFirewall sets the "firewall" field.
+func (su *SnapshotUpdate) SetFirewall(tfc types.SandboxFirewallConfig) *SnapshotUpdate {
+	su.mutation.SetFirewall(tfc)
+	return su
+}
+
+// SetNillableFirewall sets the "firewall" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableFirewall(tfc *types.SandboxFirewallConfig) *SnapshotUpdate {
+	if tfc != nil {
+		su.SetFirewall(*tfc)
+	}
+	return su
+}
+
+// ClearFirewall clears the value of the "firewall" field.
+func (su *SnapshotUpdate) ClearFirewall() *SnapshotUpdate {
+	su.mutation.ClearFirewall()
+	return su
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (su *SnapshotUpdate) SetEnv(e *Env) *SnapshotUpdate {
 	return su.SetEnvID(e.ID)
@@ -268,6 +289,12 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if su.mutation.AllowInternetAccessCleared() {
 		_spec.ClearField(snapshot.FieldAllowInternetAccess, field.TypeBool)
+	}
+	if value, ok := su.mutation.Firewall(); ok {
+		_spec.SetField(snapshot.FieldFirewall, field.TypeJSON, value)
+	}
+	if su.mutation.FirewallCleared() {
+		_spec.ClearField(snapshot.FieldFirewall, field.TypeJSON)
 	}
 	if su.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -462,6 +489,26 @@ func (suo *SnapshotUpdateOne) ClearAllowInternetAccess() *SnapshotUpdateOne {
 	return suo
 }
 
+// SetFirewall sets the "firewall" field.
+func (suo *SnapshotUpdateOne) SetFirewall(tfc types.SandboxFirewallConfig) *SnapshotUpdateOne {
+	suo.mutation.SetFirewall(tfc)
+	return suo
+}
+
+// SetNillableFirewall sets the "firewall" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableFirewall(tfc *types.SandboxFirewallConfig) *SnapshotUpdateOne {
+	if tfc != nil {
+		suo.SetFirewall(*tfc)
+	}
+	return suo
+}
+
+// ClearFirewall clears the value of the "firewall" field.
+func (suo *SnapshotUpdateOne) ClearFirewall() *SnapshotUpdateOne {
+	suo.mutation.ClearFirewall()
+	return suo
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (suo *SnapshotUpdateOne) SetEnv(e *Env) *SnapshotUpdateOne {
 	return suo.SetEnvID(e.ID)
@@ -590,6 +637,12 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if suo.mutation.AllowInternetAccessCleared() {
 		_spec.ClearField(snapshot.FieldAllowInternetAccess, field.TypeBool)
+	}
+	if value, ok := suo.mutation.Firewall(); ok {
+		_spec.SetField(snapshot.FieldFirewall, field.TypeJSON, value)
+	}
+	if suo.mutation.FirewallCleared() {
+		_spec.ClearField(snapshot.FieldFirewall, field.TypeJSON)
 	}
 	if suo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{

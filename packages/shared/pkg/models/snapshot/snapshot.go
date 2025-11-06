@@ -36,6 +36,8 @@ const (
 	FieldTeamID = "team_id"
 	// FieldAllowInternetAccess holds the string denoting the allow_internet_access field in the database.
 	FieldAllowInternetAccess = "allow_internet_access"
+	// FieldFirewall holds the string denoting the firewall field in the database.
+	FieldFirewall = "firewall"
 	// EdgeEnv holds the string denoting the env edge name in mutations.
 	EdgeEnv = "env"
 	// Table holds the table name of the snapshot in the database.
@@ -63,6 +65,7 @@ var Columns = []string{
 	FieldOriginNodeID,
 	FieldTeamID,
 	FieldAllowInternetAccess,
+	FieldFirewall,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

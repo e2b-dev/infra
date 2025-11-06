@@ -156,6 +156,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	allowInternetAccess := body.AllowInternetAccess
+	firewall := body.Firewall
 
 	sbx, createErr := a.startSandbox(
 		ctx,
@@ -173,6 +174,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause,
 		envdAccessToken,
 		allowInternetAccess,
+		firewall,
 		mcp,
 	)
 	if createErr != nil {

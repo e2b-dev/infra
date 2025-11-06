@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/google/uuid"
@@ -119,6 +120,20 @@ func (sc *SnapshotCreate) SetAllowInternetAccess(b bool) *SnapshotCreate {
 func (sc *SnapshotCreate) SetNillableAllowInternetAccess(b *bool) *SnapshotCreate {
 	if b != nil {
 		sc.SetAllowInternetAccess(*b)
+	}
+	return sc
+}
+
+// SetFirewall sets the "firewall" field.
+func (sc *SnapshotCreate) SetFirewall(tfc types.SandboxFirewallConfig) *SnapshotCreate {
+	sc.mutation.SetFirewall(tfc)
+	return sc
+}
+
+// SetNillableFirewall sets the "firewall" field if the given value is not nil.
+func (sc *SnapshotCreate) SetNillableFirewall(tfc *types.SandboxFirewallConfig) *SnapshotCreate {
+	if tfc != nil {
+		sc.SetFirewall(*tfc)
 	}
 	return sc
 }
@@ -294,6 +309,10 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.AllowInternetAccess(); ok {
 		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
 		_node.AllowInternetAccess = &value
+	}
+	if value, ok := sc.mutation.Firewall(); ok {
+		_spec.SetField(snapshot.FieldFirewall, field.TypeJSON, value)
+		_node.Firewall = value
 	}
 	if nodes := sc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -488,6 +507,24 @@ func (u *SnapshotUpsert) UpdateAllowInternetAccess() *SnapshotUpsert {
 // ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
 func (u *SnapshotUpsert) ClearAllowInternetAccess() *SnapshotUpsert {
 	u.SetNull(snapshot.FieldAllowInternetAccess)
+	return u
+}
+
+// SetFirewall sets the "firewall" field.
+func (u *SnapshotUpsert) SetFirewall(v types.SandboxFirewallConfig) *SnapshotUpsert {
+	u.Set(snapshot.FieldFirewall, v)
+	return u
+}
+
+// UpdateFirewall sets the "firewall" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateFirewall() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldFirewall)
+	return u
+}
+
+// ClearFirewall clears the value of the "firewall" field.
+func (u *SnapshotUpsert) ClearFirewall() *SnapshotUpsert {
+	u.SetNull(snapshot.FieldFirewall)
 	return u
 }
 
@@ -686,6 +723,27 @@ func (u *SnapshotUpsertOne) UpdateAllowInternetAccess() *SnapshotUpsertOne {
 func (u *SnapshotUpsertOne) ClearAllowInternetAccess() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.ClearAllowInternetAccess()
+	})
+}
+
+// SetFirewall sets the "firewall" field.
+func (u *SnapshotUpsertOne) SetFirewall(v types.SandboxFirewallConfig) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetFirewall(v)
+	})
+}
+
+// UpdateFirewall sets the "firewall" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateFirewall() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateFirewall()
+	})
+}
+
+// ClearFirewall clears the value of the "firewall" field.
+func (u *SnapshotUpsertOne) ClearFirewall() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearFirewall()
 	})
 }
 
@@ -1051,6 +1109,27 @@ func (u *SnapshotUpsertBulk) UpdateAllowInternetAccess() *SnapshotUpsertBulk {
 func (u *SnapshotUpsertBulk) ClearAllowInternetAccess() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.ClearAllowInternetAccess()
+	})
+}
+
+// SetFirewall sets the "firewall" field.
+func (u *SnapshotUpsertBulk) SetFirewall(v types.SandboxFirewallConfig) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetFirewall(v)
+	})
+}
+
+// UpdateFirewall sets the "firewall" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateFirewall() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateFirewall()
+	})
+}
+
+// ClearFirewall clears the value of the "firewall" field.
+func (u *SnapshotUpsertBulk) ClearFirewall() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearFirewall()
 	})
 }
 
