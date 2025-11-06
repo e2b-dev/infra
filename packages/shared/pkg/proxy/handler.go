@@ -31,7 +31,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 	return func(w http.ResponseWriter, r *http.Request) {
 		d, err := getDestination(r)
 
-		var invalidHostErr *InvalidHostError
+		var invalidHostErr InvalidHostError
 		if errors.As(err, &invalidHostErr) {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
@@ -39,7 +39,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var notFoundErr *SandboxNotFoundError
+		var notFoundErr SandboxNotFoundError
 		if errors.As(err, &notFoundErr) {
 			zap.L().Warn("sandbox not found",
 				zap.String("host", r.Host),
