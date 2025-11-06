@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
@@ -27,7 +28,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
-	"github.com/stretchr/testify/assert"
 )
 
 func getAccessedOffsets(missingRequests *sync.Map) ([]uint, error) {
@@ -58,7 +58,6 @@ func (a *accessedOffsetsIpc) Offsets(ctx context.Context) ([]uint, error) {
 	case <-ctx.Done():
 		return nil, fmt.Errorf("context done: %w", ctx.Err())
 	case <-sigc:
-		break
 	}
 
 	if _, err := a.f.Seek(0, io.SeekStart); err != nil {
@@ -247,7 +246,6 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	case <-t.Context().Done():
 		return nil, t.Context().Err()
 	case <-servingProcessReady:
-		break
 	}
 
 	return &testHandler{

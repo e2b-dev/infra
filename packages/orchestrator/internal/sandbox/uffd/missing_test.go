@@ -11,6 +11,8 @@ import (
 )
 
 func TestMissing(t *testing.T) {
+	t.Parallel()
+
 	tests := []testConfig{
 		{
 			name:          "standard 4k page, operation at start",
@@ -120,14 +122,14 @@ func TestMissing(t *testing.T) {
 			for _, operation := range tt.operations {
 				if operation.mode == operationModeRead {
 					err := h.executeRead(t.Context(), operation)
-					assert.NoError(t, err, "for operation %+v", operation)
+					require.NoError(t, err, "for operation %+v", operation)
 				}
 			}
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
 
 			accessedOffsets, err := h.accessed.Offsets(t.Context())
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 		})

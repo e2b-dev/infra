@@ -11,6 +11,8 @@ import (
 )
 
 func TestMissingWrite(t *testing.T) {
+	t.Parallel()
+
 	tests := []testConfig{
 		{
 			name:          "standard 4k page, operation at start",
