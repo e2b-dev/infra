@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -49,6 +50,7 @@ type ServerStore struct {
 
 func New(
 	ctx context.Context,
+	config cfg.Config,
 	featureFlags *featureflags.Client,
 	meterProvider metric.MeterProvider,
 	logger *zap.Logger,
@@ -99,6 +101,7 @@ func New(
 	}
 
 	builder := build.NewBuilder(
+		config.BuilderConfig,
 		logger,
 		featureFlags,
 		sandboxFactory,

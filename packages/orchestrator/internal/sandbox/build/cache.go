@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/shared/pkg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
@@ -21,10 +19,6 @@ const (
 	ToMBShift        = 20
 	fallbackDiffSize = 100 << ToMBShift
 )
-
-func DefaultCachePath() string {
-	return filepath.Join(pkg.OrchestratorBasePath(), "build")
-}
 
 type deleteDiff struct {
 	size      int64

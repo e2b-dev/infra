@@ -27,7 +27,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -35,10 +34,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
-
-func templatesDirectory() string {
-	return filepath.Join(pkg.OrchestratorBasePath(), "build-templates")
-}
 
 const (
 	rootfsBuildFileName = "rootfs.filesystem.build"
@@ -164,7 +159,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	baseMetadata metadata.Template,
 	hash string,
 ) (metadata.Template, error) {
-	templateBuildDir := filepath.Join(templatesDirectory(), bb.Template.BuildID)
+	templateBuildDir := filepath.Join(bb.BuilderConfig.TemplatesDir, bb.Template.BuildID)
 	err := os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error creating template build directory: %w", err)
@@ -187,7 +182,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Env variables from the Docker image
 	baseMetadata.Context.EnvVars = oci.ParseEnvs(envsImg.Env)
 
-	cacheFiles, err := baseMetadata.Template.CacheFiles()
+	cacheFiles, err := baseMetadata.Template.CacheFiles(bb.BuildContext.BuilderConfig)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}

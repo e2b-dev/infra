@@ -56,6 +56,7 @@ type Process struct {
 
 	cmd *exec.Cmd
 
+	config                cfg.BuilderConfig
 	firecrackerSocketPath string
 
 	slot               *network.Slot
@@ -123,6 +124,7 @@ func NewProcess(
 		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
+		config:                config,
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		providerRootfsPath:    rootfsProviderPath,
 		files:                 files,
@@ -156,7 +158,7 @@ func (p *Process) configure(
 	}
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
-	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -285,7 +287,7 @@ func (p *Process) Create(
 	telemetry.ReportEvent(ctx, "set fc boot source config")
 
 	// Rootfs
-	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -350,7 +352,7 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
 
-	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}

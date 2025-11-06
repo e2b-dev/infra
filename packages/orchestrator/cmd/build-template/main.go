@@ -47,12 +47,17 @@ func main() {
 	fcVersion := flag.String("firecracker", "", "firecracker version")
 	flag.Parse()
 
-	networkConfig, err := network.ParseConfig()
+	builderConfig, err := cfg.ParseBuilder()
 	if err != nil {
-		log.Fatalf("error parsing config: %v", err)
+		log.Fatalf("error parsing builder config: %v", err)
 	}
 
-	err = buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID, networkConfig)
+	networkConfig, err := network.ParseConfig()
+	if err != nil {
+		log.Fatalf("error parsing network config: %v", err)
+	}
+
+	err = buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatalf("error building template: %v", err)
 	}
@@ -64,6 +69,7 @@ func buildTemplate(
 	fcVersion,
 	templateID,
 	buildID string,
+	builderConfig cfg.BuilderConfig,
 	networkConfig network.Config,
 ) error {
 	ctx, cancel := context.WithTimeout(parentCtx, time.Minute*5)
@@ -190,6 +196,7 @@ func buildTemplate(
 	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags)
 
 	builder := build.NewBuilder(
+		builderConfig,
 		logger,
 		featureFlags,
 		sandboxFactory,

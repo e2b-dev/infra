@@ -6,13 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg"
 )
-
-func templateCacheDir() string {
-	return filepath.Join(pkg.OrchestratorBasePath(), "template")
-}
 
 type TemplateCacheFiles struct {
 	TemplateFiles
@@ -21,7 +15,7 @@ type TemplateCacheFiles struct {
 	CacheIdentifier string
 }
 
-func (t TemplateFiles) CacheFiles() (TemplateCacheFiles, error) {
+func (t TemplateFiles) CacheFiles(config BuilderConfig) (TemplateCacheFiles, error) {
 	identifier, err := uuid.NewRandom()
 	if err != nil {
 		return TemplateCacheFiles{}, fmt.Errorf("failed to generate identifier: %w", err)
@@ -32,22 +26,24 @@ func (t TemplateFiles) CacheFiles() (TemplateCacheFiles, error) {
 		CacheIdentifier: identifier.String(),
 	}
 
-	err = os.MkdirAll(tcf.cacheDir(), os.ModePerm)
+	cacheDir := tcf.cacheDir(config)
+
+	err = os.MkdirAll(cacheDir, os.ModePerm)
 	if err != nil {
-		return TemplateCacheFiles{}, fmt.Errorf("failed to create cache dir '%s': %w", tcf.cacheDir(), err)
+		return TemplateCacheFiles{}, fmt.Errorf("failed to create cache dir '%s': %w", cacheDir, err)
 	}
 
 	return tcf, nil
 }
 
-func (c TemplateCacheFiles) CacheSnapfilePath() string {
-	return filepath.Join(c.cacheDir(), SnapfileName)
+func (c TemplateCacheFiles) CacheSnapfilePath(config BuilderConfig) string {
+	return filepath.Join(c.cacheDir(config), SnapfileName)
 }
 
-func (c TemplateCacheFiles) CacheMetadataPath() string {
-	return filepath.Join(c.cacheDir(), MetadataName)
+func (c TemplateCacheFiles) CacheMetadataPath(config BuilderConfig) string {
+	return filepath.Join(c.cacheDir(config), MetadataName)
 }
 
-func (c TemplateCacheFiles) cacheDir() string {
-	return filepath.Join(templateCacheDir(), c.BuildID, "cache", c.CacheIdentifier)
+func (c TemplateCacheFiles) cacheDir(config BuilderConfig) string {
+	return filepath.Join(config.GetTemplateCacheDir(), c.BuildID, "cache", c.CacheIdentifier)
 }
