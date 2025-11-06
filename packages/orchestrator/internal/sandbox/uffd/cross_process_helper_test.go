@@ -4,11 +4,13 @@ package uffd
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"sync"
@@ -24,6 +26,18 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 )
+
+func getAccessedOffsets(missingRequests *sync.Map) ([]uint, error) {
+	var offsets []uint
+
+	missingRequests.Range(func(key, _ any) bool {
+		offsets = append(offsets, uint(key.(int64)))
+
+		return true
+	})
+
+	return offsets, nil
+}
 
 type accessedOffsetsIpc struct {
 	otherPid int
@@ -53,10 +67,10 @@ func (a *accessedOffsetsIpc) Offsets(ctx context.Context) ([]uint, error) {
 		return nil, fmt.Errorf("failed to read offsets: %w", err)
 	}
 
-	// decode the offsets
-	offsets := []uint{}
-	for _, offset := range offsetsBytes {
-		offsets = append(offsets, uint(offset))
+	var offsets []uint
+
+	for i := 0; i < len(offsetsBytes); i += 8 {
+		offsets = append(offsets, uint(binary.LittleEndian.Uint64(offsetsBytes[i:i+8])))
 	}
 
 	return offsets, nil
@@ -75,9 +89,10 @@ func (a *accessedOffsetsIpc) Write(offsets []uint) error {
 		return fmt.Errorf("seek failed: %w", err)
 	}
 
-	offsetsBytes := []byte{}
+	var offsetsBytes []byte
+
 	for _, offset := range offsets {
-		offsetsBytes = append(offsetsBytes, byte(offset))
+		offsetsBytes = binary.LittleEndian.AppendUint64(offsetsBytes, uint64(offset))
 	}
 
 	_, err := a.f.Write(offsetsBytes)
@@ -185,7 +200,19 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, func(
 	require.NoError(t, err)
 
 	go func() {
+		// panic handler + print why
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "panic in wait cmd: %v\n", r)
+				debug.PrintStack()
+			}
+		}()
+
 		err := cmd.Wait()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error in wait cmd: %v\n", err)
+			debug.PrintStack()
+		}
 		assert.NoError(t, err)
 	}()
 
@@ -207,7 +234,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, func(
 		pagesize:   tt.pagesize,
 		data:       data,
 		uffd:       uffd,
-		accessed:   &accessedOffsetsIpc{otherPid: cmd.Process.Pid, f: missingRequestsFile},
+		accessed:   accessedOffsetsIpc{otherPid: cmd.Process.Pid, f: missingRequestsFile},
 	}, cleanup
 }
 
@@ -217,7 +244,7 @@ func TestHelperServingProcess(t *testing.T) {
 		t.Skip("this is a helper process, skipping direct execution")
 	}
 
-	err := crossProcessServe(t)
+	err := crossProcessServe()
 	if err != nil {
 		fmt.Println("exit serving process", err)
 		os.Exit(1)
@@ -226,10 +253,8 @@ func TestHelperServingProcess(t *testing.T) {
 	os.Exit(0)
 }
 
-func crossProcessServe(t *testing.T) error {
-	t.Helper()
-
-	ctx, cancel := context.WithCancel(t.Context())
+func crossProcessServe() error {
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	startRaw, err := strconv.Atoi(os.Getenv("GO_MMAP_START"))
@@ -262,16 +287,21 @@ func crossProcessServe(t *testing.T) error {
 
 	missingRequests := &sync.Map{}
 
-	accessedOffsetsMap := &accessedOffsetsMap{missingRequests: missingRequests}
-
 	missingRequestsSignal := make(chan os.Signal, 1)
 	signal.Notify(missingRequestsSignal, syscall.SIGUSR2)
 
 	go func() {
+
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("panic in missing requests process", r)
+			}
+		}()
+
 		for {
 			select {
 			case <-missingRequestsSignal:
-				offsets, err := accessedOffsetsMap.Offsets(ctx)
+				offsets, err := getAccessedOffsets(missingRequests)
 				if err != nil {
 					fmt.Println("exit getting offsets", err)
 
@@ -311,7 +341,13 @@ func crossProcessServe(t *testing.T) error {
 	exitUffd := make(chan struct{}, 1)
 
 	go func() {
-		err := Serve(t.Context(), int(uffd), m, data, fdExit, missingRequests, zap.L())
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("panic in serving process", r)
+			}
+		}()
+
+		err := Serve(ctx, int(uffd), m, data, fdExit, missingRequests, zap.L())
 		if err != nil {
 			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
 		}
@@ -320,8 +356,7 @@ func crossProcessServe(t *testing.T) error {
 	}()
 
 	cleanup := func() {
-		signalExitErr := fdExit.SignalExit()
-		assert.NoError(t, signalExitErr)
+		fdExit.SignalExit()
 
 		<-exitUffd
 	}

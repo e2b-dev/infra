@@ -18,7 +18,19 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 )
 
-var ErrUnexpectedEventType = errors.New("unexpected event type")
+// var ErrUnexpectedEventType = errors.New("unexpected event type")
+
+type ErrUnexpectedEventType struct {
+	Event userfaultfd.CUChar
+}
+
+func newErrUnexpectedEventType(event userfaultfd.CUChar) ErrUnexpectedEventType {
+	return ErrUnexpectedEventType{Event: event}
+}
+
+func (e ErrUnexpectedEventType) Error() string {
+	return fmt.Sprintf("unexpected event type: %x", e.Event)
+}
 
 type GuestRegionUffdMapping struct {
 	BaseHostVirtAddr uintptr `json:"base_host_virt_addr"`
@@ -130,7 +142,7 @@ outerLoop:
 		if userfaultfd.GetMsgEvent(&msg) != userfaultfd.UFFD_EVENT_PAGEFAULT {
 			logger.Error("UFFD serve unexpected event type", zap.Any("event_type", userfaultfd.GetMsgEvent(&msg)))
 
-			return ErrUnexpectedEventType
+			return newErrUnexpectedEventType(userfaultfd.GetMsgEvent(&msg))
 		}
 
 		arg := userfaultfd.GetMsgArg(&msg)

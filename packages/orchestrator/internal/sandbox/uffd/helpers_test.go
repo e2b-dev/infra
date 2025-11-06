@@ -6,17 +6,10 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-	"syscall"
-	"testing"
 
 	"github.com/bits-and-blooms/bitset"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 )
 
 type testConfig struct {
@@ -47,128 +40,19 @@ type testHandler struct {
 	pagesize   uint64
 	data       *testutils.MemorySlicer
 	uffd       uintptr
-	accessed   accessedOffsets
+	accessed   accessedOffsetsIpc
 	writeMu    sync.Mutex
-}
-
-func configureTest(t *testing.T, tt testConfig) (*testHandler, func()) {
-	t.Helper()
-
-	cleanupList := []func(){}
-
-	cleanup := func() {
-		slices.Reverse(cleanupList)
-
-		for _, cleanup := range cleanupList {
-			cleanup()
-		}
-	}
-
-	data := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
-
-	size, err := data.Size()
-	require.NoError(t, err)
-
-	memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(uint64(size), tt.pagesize)
-	require.NoError(t, err)
-
-	cleanupList = append(cleanupList, func() {
-		unmap()
-	})
-
-	m := mapping.FcMappings([]mapping.GuestRegionUffdMapping{
-		{
-			BaseHostVirtAddr: memoryStart,
-			Size:             uintptr(size),
-			Offset:           uintptr(0),
-			PageSize:         uintptr(tt.pagesize),
-		},
-	})
-
-	logger := testutils.NewTestLogger(t)
-
-	fdExit, err := fdexit.New()
-	require.NoError(t, err)
-
-	cleanupList = append(cleanupList, func() {
-		fdExit.Close()
-	})
-
-	uffd, err := userfaultfd.NewUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
-	require.NoError(t, err)
-
-	cleanupList = append(cleanupList, func() {
-		userfaultfd.Close(uffd)
-	})
-
-	err = userfaultfd.ConfigureApi(uffd, tt.pagesize)
-	require.NoError(t, err)
-
-	err = userfaultfd.Register(uffd, memoryStart, uint64(size), userfaultfd.UFFDIO_REGISTER_MODE_MISSING)
-	require.NoError(t, err)
-
-	exitUffd := make(chan struct{}, 1)
-
-	missingRequests := &sync.Map{}
-
-	go func() {
-		err := Serve(t.Context(), int(uffd), m, data, fdExit, missingRequests, logger)
-		assert.NoError(t, err)
-
-		exitUffd <- struct{}{}
-	}()
-
-	cleanupList = append(cleanupList, func() {
-		signalExitErr := fdExit.SignalExit()
-		assert.NoError(t, signalExitErr)
-
-		<-exitUffd
-	})
-
-	return &testHandler{
-		memoryArea: &memoryArea,
-		pagesize:   tt.pagesize,
-		data:       data,
-		uffd:       uffd,
-		accessed:   &accessedOffsetsMap{missingRequests: missingRequests},
-	}, cleanup
-}
-
-type accessedOffsets interface {
-	Offsets(ctx context.Context) ([]uint, error)
-}
-
-type accessedOffsetsMap struct {
-	missingRequests *sync.Map
-}
-
-func (a *accessedOffsetsMap) Offsets(_ context.Context) ([]uint, error) {
-	offsets := []uint{}
-
-	a.missingRequests.Range(func(key, _ any) bool {
-		offsets = append(offsets, uint(key.(int64)))
-
-		return true
-	})
-
-	return offsets, nil
-}
-
-//go:noinline
-func touchRead(b []byte) {
-	var dst [1]byte
-	_ = copy(dst[:], b[:1]) // forces a real read → MISSING fault
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
-	touchRead(readBytes)
 
 	expectedBytes, err := h.data.Slice(ctx, op.offset, int64(h.pagesize))
 	if err != nil {
 		return err
 	}
 
+	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
 	if !bytes.Equal(readBytes, expectedBytes) {
 		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
 

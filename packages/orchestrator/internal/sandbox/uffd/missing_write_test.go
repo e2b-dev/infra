@@ -112,7 +112,7 @@ func TestMissingWrite(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, cleanupFunc := configureTest(t, tt)
+			h, cleanupFunc := configureCrossProcessTest(t, tt)
 			defer cleanupFunc()
 
 			for _, operation := range tt.operations {
@@ -178,7 +178,7 @@ func TestParallelMissingWriteWithPrefault(t *testing.T) {
 		numberOfPages: 2,
 	}
 
-	h, cleanup := configureTest(t, tt)
+	h, cleanup := configureCrossProcessTest(t, tt)
 	t.Cleanup(cleanup)
 
 	writeOp := operation{
@@ -214,7 +214,7 @@ func TestSerialMissingWrite(t *testing.T) {
 		numberOfPages: 2,
 	}
 
-	h, cleanup := configureTest(t, tt)
+	h, cleanup := configureCrossProcessTest(t, tt)
 	t.Cleanup(cleanup)
 
 	writeOp := operation{

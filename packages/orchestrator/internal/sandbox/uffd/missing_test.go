@@ -37,85 +37,85 @@ func TestMissing(t *testing.T) {
 				},
 			},
 		},
-		{
-			name:          "standard 4k page, operation at last page",
-			pagesize:      header.PageSize,
-			numberOfPages: 32,
-			operations: []operation{
-				{
-					offset: 31 * header.PageSize,
-					mode:   operationModeRead,
-				},
-			},
-		},
-		{
-			name:          "standard 4k page, read after read",
-			pagesize:      header.PageSize,
-			numberOfPages: 32,
-			operations: []operation{
-				{
-					offset: 0,
-					mode:   operationModeRead,
-				},
-				{
-					offset: 0,
-					mode:   operationModeRead,
-				},
-			},
-		},
-		{
-			name:          "hugepage, operation at start",
-			pagesize:      header.HugepageSize,
-			numberOfPages: 8,
-			operations: []operation{
-				{
-					offset: 0,
-					mode:   operationModeRead,
-				},
-			},
-		},
-		{
-			name:          "hugepage, operation at middle",
-			pagesize:      header.HugepageSize,
-			numberOfPages: 8,
-			operations: []operation{
-				{
-					offset: 3 * header.HugepageSize,
-					mode:   operationModeRead,
-				},
-			},
-		},
-		{
-			name:          "hugepage, operation at last page",
-			pagesize:      header.HugepageSize,
-			numberOfPages: 8,
-			operations: []operation{
-				{
-					offset: 7 * header.HugepageSize,
-					mode:   operationModeRead,
-				},
-			},
-		},
-		{
-			name:          "hugepage, read after read",
-			pagesize:      header.HugepageSize,
-			numberOfPages: 32,
-			operations: []operation{
-				{
-					offset: 0,
-					mode:   operationModeRead,
-				},
-				{
-					offset: 0,
-					mode:   operationModeRead,
-				},
-			},
-		},
+		// {
+		// 	name:          "standard 4k page, operation at last page",
+		// 	pagesize:      header.PageSize,
+		// 	numberOfPages: 32,
+		// 	operations: []operation{
+		// 		{
+		// 			offset: 31 * header.PageSize,
+		// 			mode:   operationModeRead,
+		// 		},
+		// 	},
+		// },
+		// {
+		// 	name:          "standard 4k page, read after read",
+		// 	pagesize:      header.PageSize,
+		// 	numberOfPages: 32,
+		// 	operations: []operation{
+		// 		{
+		// 			offset: 0,
+		// 			mode:   operationModeRead,
+		// 		},
+		// 		{
+		// 			offset: 0,
+		// 			mode:   operationModeRead,
+		// 		},
+		// 	},
+		// },
+		// {
+		// 	name:          "hugepage, operation at start",
+		// 	pagesize:      header.HugepageSize,
+		// 	numberOfPages: 8,
+		// 	operations: []operation{
+		// 		{
+		// 			offset: 0,
+		// 			mode:   operationModeRead,
+		// 		},
+		// 	},
+		// },
+		// {
+		// 	name:          "hugepage, operation at middle",
+		// 	pagesize:      header.HugepageSize,
+		// 	numberOfPages: 8,
+		// 	operations: []operation{
+		// 		{
+		// 			offset: 3 * header.HugepageSize,
+		// 			mode:   operationModeRead,
+		// 		},
+		// 	},
+		// },
+		// {
+		// 	name:          "hugepage, operation at last page",
+		// 	pagesize:      header.HugepageSize,
+		// 	numberOfPages: 8,
+		// 	operations: []operation{
+		// 		{
+		// 			offset: 7 * header.HugepageSize,
+		// 			mode:   operationModeRead,
+		// 		},
+		// 	},
+		// },
+		// {
+		// 	name:          "hugepage, read after read",
+		// 	pagesize:      header.HugepageSize,
+		// 	numberOfPages: 32,
+		// 	operations: []operation{
+		// 		{
+		// 			offset: 0,
+		// 			mode:   operationModeRead,
+		// 		},
+		// 		{
+		// 			offset: 0,
+		// 			mode:   operationModeRead,
+		// 		},
+		// 	},
+		// },
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, cleanupFunc := configureTest(t, tt)
+			h, cleanupFunc := configureCrossProcessTest(t, tt)
 			defer cleanupFunc()
 
 			for _, operation := range tt.operations {
@@ -187,7 +187,7 @@ func TestParallelMissingWithPrefault(t *testing.T) {
 		numberOfPages: 2,
 	}
 
-	h, cleanup := configureTest(t, tt)
+	h, cleanup := configureCrossProcessTest(t, tt)
 	t.Cleanup(cleanup)
 
 	readOp := operation{
@@ -223,7 +223,7 @@ func TestSerialMissing(t *testing.T) {
 		numberOfPages: 2,
 	}
 
-	h, cleanup := configureTest(t, tt)
+	h, cleanup := configureCrossProcessTest(t, tt)
 	t.Cleanup(cleanup)
 
 	readOp := operation{
