@@ -94,18 +94,6 @@ variable "build_cluster_root_disk_size_gb" {
   default     = 200
 }
 
-variable "build_cluster_cache_disk_size_gb" {
-  type        = number
-  description = "The size of the cache disk for the build machines in GB"
-  default     = 200
-}
-
-variable "build_cluster_cache_disk_type" {
-  description = "The GCE cache disk type for the build machines."
-  type        = string
-  default     = "pd-ssd"
-}
-
 variable "clickhouse_cluster_size" {
   type = number
 }
@@ -279,18 +267,6 @@ variable "nomad_port" {
 variable "allow_sandbox_internet" {
   type    = bool
   default = true
-}
-
-variable "client_cluster_cache_disk_size_gb" {
-  type        = number
-  description = "The size of the cache disk for the orchestrator machines in GB"
-  default     = 500
-}
-
-variable "client_cluster_cache_disk_type" {
-  description = "The GCE cache disk type for the client machines."
-  type        = string
-  default     = "pd-ssd"
 }
 
 variable "orchestrator_node_pool" {
@@ -494,17 +470,17 @@ variable "remote_repository_enabled" {
 
 variable "client_node_type" {
   type    = string
-  default = ""
+  default = "n1-node-96-624"
 }
 
 variable "isolated_client_cluster_size" {
   type    = number
-  default = 1
+  default = 0
 }
 
 variable "isolated_client_cluster_size_max" {
   type    = number
-  default = 1
+  default = 0
 }
 
 variable "build_cluster_cache_disk_count" {

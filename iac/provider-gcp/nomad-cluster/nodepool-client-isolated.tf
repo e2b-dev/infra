@@ -55,12 +55,17 @@ resource "google_compute_instance_template" "isolated_client" {
     disk_type    = "pd-ssd"
   }
 
-  disk {
-    auto_delete  = true
-    boot         = false
-    type         = "PERSISTENT"
-    disk_size_gb = var.client_cluster_cache_disk_size_gb
-    disk_type    = var.client_cluster_cache_disk_type
+  dynamic "disk" {
+    for_each = [for n in range(var.client_cluster_cache_disk_count) : {}]
+
+    content {
+      auto_delete  = true
+      boot         = false
+      disk_size_gb = 375
+      interface    = "NVME"
+      disk_type    = "local-ssd"
+      type         = "SCRATCH"
+    }
   }
 
   network_interface {
