@@ -17,6 +17,21 @@
 13. `cd packages/shared/script && make local-build-base-template` instructs orchestrator to create the 'base' template
 
 # Services
-- grafana: http://localhost:53000)
+- grafana: http://localhost:53000
 - postgres: postgres:postgres@127.0.0.1:5432
-- clickhouse: clickhouse:clickhouse@127.0.0.1:9000
+- clickhouse (http): http://localhost:8123
+- clickhouse (native): clickhouse:clickhouse@127.0.0.1:9000
+- redis: localhost:6379
+- otel collector (grpc): localhost:4317
+- otel collector (http): localhost:4318
+- e2b api: http://localhost:3000
+- e2b client proxy: http://localhost:3002
+- e2b orchestrator: http://localhost:5008
+
+# Client configuration
+```dotenv
+E2B_API_KEY=e2b_53ae1fed82754c17ad8077fbc8bcdd90
+E2B_ACCESS_TOKEN=sk_e2b_89215020937a4c989cde33d7bc647715
+E2B_API_URL=http://localhost:3000
+E2B_ENVD_API_URL=http://localhost:3002
+```
