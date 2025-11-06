@@ -18,8 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 )
 
-// var ErrUnexpectedEventType = errors.New("unexpected event type")
-
 type ErrUnexpectedEventType struct {
 	Event userfaultfd.CUChar
 }

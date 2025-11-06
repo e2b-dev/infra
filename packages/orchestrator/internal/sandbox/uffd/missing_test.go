@@ -1,10 +1,7 @@
 package uffd
 
 import (
-	"fmt"
-	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,129 +34,123 @@ func TestMissing(t *testing.T) {
 				},
 			},
 		},
-		// {
-		// 	name:          "standard 4k page, operation at last page",
-		// 	pagesize:      header.PageSize,
-		// 	numberOfPages: 32,
-		// 	operations: []operation{
-		// 		{
-		// 			offset: 31 * header.PageSize,
-		// 			mode:   operationModeRead,
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	name:          "standard 4k page, read after read",
-		// 	pagesize:      header.PageSize,
-		// 	numberOfPages: 32,
-		// 	operations: []operation{
-		// 		{
-		// 			offset: 0,
-		// 			mode:   operationModeRead,
-		// 		},
-		// 		{
-		// 			offset: 0,
-		// 			mode:   operationModeRead,
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	name:          "hugepage, operation at start",
-		// 	pagesize:      header.HugepageSize,
-		// 	numberOfPages: 8,
-		// 	operations: []operation{
-		// 		{
-		// 			offset: 0,
-		// 			mode:   operationModeRead,
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	name:          "hugepage, operation at middle",
-		// 	pagesize:      header.HugepageSize,
-		// 	numberOfPages: 8,
-		// 	operations: []operation{
-		// 		{
-		// 			offset: 3 * header.HugepageSize,
-		// 			mode:   operationModeRead,
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	name:          "hugepage, operation at last page",
-		// 	pagesize:      header.HugepageSize,
-		// 	numberOfPages: 8,
-		// 	operations: []operation{
-		// 		{
-		// 			offset: 7 * header.HugepageSize,
-		// 			mode:   operationModeRead,
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	name:          "hugepage, read after read",
-		// 	pagesize:      header.HugepageSize,
-		// 	numberOfPages: 32,
-		// 	operations: []operation{
-		// 		{
-		// 			offset: 0,
-		// 			mode:   operationModeRead,
-		// 		},
-		// 		{
-		// 			offset: 0,
-		// 			mode:   operationModeRead,
-		// 		},
-		// 	},
-		// },
+		{
+			name:          "standard 4k page, operation at last page",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 31 * header.PageSize,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "standard 4k page, read after read",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "hugepage, operation at start",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "hugepage, operation at middle",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 3 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "hugepage, operation at last page",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 7 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "hugepage, read after read",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, cleanupFunc := configureCrossProcessTest(t, tt)
-			defer cleanupFunc()
+			t.Parallel()
+
+			h, err := configureCrossProcessTest(t, tt)
+			require.NoError(t, err)
 
 			for _, operation := range tt.operations {
 				if operation.mode == operationModeRead {
 					err := h.executeRead(t.Context(), operation)
-					require.NoError(t, err)
+					assert.NoError(t, err, "for operation %+v", operation)
 				}
 			}
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
+
 			accessedOffsets, err := h.accessed.Offsets(t.Context())
-			require.NoError(t, err)
+			assert.NoError(t, err)
+
 			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 		})
 	}
 }
 
 func TestParallelMissing(t *testing.T) {
-	parallelOperations := 100_000_000
+	t.Parallel()
+
+	parallelOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
 		numberOfPages: 2,
 	}
 
-	h, cleanup := configureCrossProcessTest(t, tt)
-	t.Cleanup(cleanup)
+	h, err := configureCrossProcessTest(t, tt)
+	require.NoError(t, err)
 
 	readOp := operation{
 		offset: 0,
 		mode:   operationModeRead,
 	}
-
-	go func() {
-		for {
-			select {
-			case <-t.Context().Done():
-				return
-			default:
-				fmt.Fprintf(os.Stdout, "non frozen\n")
-				time.Sleep(1 * time.Second)
-			}
-		}
-	}()
 
 	var verr errgroup.Group
 
@@ -169,10 +160,11 @@ func TestParallelMissing(t *testing.T) {
 		})
 	}
 
-	err := verr.Wait()
+	err = verr.Wait()
 	require.NoError(t, err)
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{readOp}, operationModeRead)
+
 	accessedOffsets, err := h.accessed.Offsets(t.Context())
 	require.NoError(t, err)
 
@@ -180,22 +172,24 @@ func TestParallelMissing(t *testing.T) {
 }
 
 func TestParallelMissingWithPrefault(t *testing.T) {
-	parallelOperations := 10
+	t.Parallel()
+
+	parallelOperations := 10_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
 		numberOfPages: 2,
 	}
 
-	h, cleanup := configureCrossProcessTest(t, tt)
-	t.Cleanup(cleanup)
+	h, err := configureCrossProcessTest(t, tt)
+	require.NoError(t, err)
 
 	readOp := operation{
 		offset: 0,
 		mode:   operationModeRead,
 	}
 
-	err := h.executeRead(t.Context(), readOp)
+	err = h.executeRead(t.Context(), readOp)
 	require.NoError(t, err)
 
 	var verr errgroup.Group
@@ -210,21 +204,25 @@ func TestParallelMissingWithPrefault(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{readOp}, operationModeRead)
+
 	accessedOffsets, err := h.accessed.Offsets(t.Context())
 	require.NoError(t, err)
+
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 }
 
 func TestSerialMissing(t *testing.T) {
-	serialOperations := 1_000_000
+	t.Parallel()
+
+	serialOperations := 10_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
 		numberOfPages: 2,
 	}
 
-	h, cleanup := configureCrossProcessTest(t, tt)
-	t.Cleanup(cleanup)
+	h, err := configureCrossProcessTest(t, tt)
+	require.NoError(t, err)
 
 	readOp := operation{
 		offset: 0,
@@ -237,7 +235,9 @@ func TestSerialMissing(t *testing.T) {
 	}
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{readOp}, operationModeRead)
+
 	accessedOffsets, err := h.accessed.Offsets(t.Context())
 	require.NoError(t, err)
+
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 }

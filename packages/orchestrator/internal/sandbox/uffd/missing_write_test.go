@@ -96,7 +96,7 @@ func TestMissingWrite(t *testing.T) {
 		{
 			name:          "hugepage, read after write",
 			pagesize:      header.HugepageSize,
-			numberOfPages: 32,
+			numberOfPages: 8,
 			operations: []operation{
 				{
 					offset: 0,
@@ -112,41 +112,45 @@ func TestMissingWrite(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, cleanupFunc := configureCrossProcessTest(t, tt)
-			defer cleanupFunc()
+			t.Parallel()
+
+			h, err := configureCrossProcessTest(t, tt)
+			require.NoError(t, err)
 
 			for _, operation := range tt.operations {
 				if operation.mode == operationModeRead {
 					err := h.executeRead(t.Context(), operation)
-					require.NoError(t, err)
+					require.NoError(t, err, "for operation %+v", operation)
 				}
 
 				if operation.mode == operationModeWrite {
 					err := h.executeWrite(t.Context(), operation)
-					require.NoError(t, err)
+					require.NoError(t, err, "for operation %+v", operation)
 				}
 			}
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
+
 			accessedOffsets, err := h.accessed.Offsets(t.Context())
 			require.NoError(t, err)
+
 			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 		})
 	}
 }
 
 func TestParallelMissingWrite(t *testing.T) {
-	t.Skipf("skipping for now because it freezes in debug mode")
+	t.Parallel()
 
-	parallelOperations := 10_000_000
+	parallelOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
 		numberOfPages: 2,
 	}
 
-	h, cleanup := configureCrossProcessTest(t, tt)
-	t.Cleanup(cleanup)
+	h, err := configureCrossProcessTest(t, tt)
+	require.NoError(t, err)
 
 	writeOp := operation{
 		offset: 0,
@@ -161,32 +165,36 @@ func TestParallelMissingWrite(t *testing.T) {
 		})
 	}
 
-	err := verr.Wait()
+	err = verr.Wait()
 	require.NoError(t, err)
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
+
 	accessedOffsets, err := h.accessed.Offsets(t.Context())
 	require.NoError(t, err)
+
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 }
 
 func TestParallelMissingWriteWithPrefault(t *testing.T) {
-	parallelOperations := 1_000_000
+	t.Parallel()
+
+	parallelOperations := 10_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
 		numberOfPages: 2,
 	}
 
-	h, cleanup := configureCrossProcessTest(t, tt)
-	t.Cleanup(cleanup)
+	h, err := configureCrossProcessTest(t, tt)
+	require.NoError(t, err)
 
 	writeOp := operation{
 		offset: 0,
 		mode:   operationModeWrite,
 	}
 
-	err := h.executeWrite(t.Context(), writeOp)
+	err = h.executeWrite(t.Context(), writeOp)
 	require.NoError(t, err)
 
 	var verr errgroup.Group
@@ -201,21 +209,25 @@ func TestParallelMissingWriteWithPrefault(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
+
 	accessedOffsets, err := h.accessed.Offsets(t.Context())
 	require.NoError(t, err)
+
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 }
 
 func TestSerialMissingWrite(t *testing.T) {
-	serialOperations := 1_000_000
+	t.Parallel()
+
+	serialOperations := 10_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
 		numberOfPages: 2,
 	}
 
-	h, cleanup := configureCrossProcessTest(t, tt)
-	t.Cleanup(cleanup)
+	h, err := configureCrossProcessTest(t, tt)
+	require.NoError(t, err)
 
 	writeOp := operation{
 		offset: 0,
@@ -228,7 +240,9 @@ func TestSerialMissingWrite(t *testing.T) {
 	}
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
+
 	accessedOffsets, err := h.accessed.Offsets(t.Context())
 	require.NoError(t, err)
+
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 }

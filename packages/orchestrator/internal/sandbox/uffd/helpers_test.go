@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sync"
 
 	"github.com/bits-and-blooms/bitset"
 
@@ -41,7 +40,6 @@ type testHandler struct {
 	data       *testutils.MemorySlicer
 	uffd       uintptr
 	accessed   accessedOffsetsIpc
-	writeMu    sync.Mutex
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
@@ -68,10 +66,8 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 		return err
 	}
 
-	// An unprotected parallel write to map results in undefined behavior—here usually manifesting as total freeze of the test.
-	h.writeMu.Lock()
-	defer h.writeMu.Unlock()
-
+	// An unprotected parallel write to map might result in an undefined behavior.
+	// If the tests prove to be flaky, we can add a mutex here.
 	n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
 	if n != int(h.pagesize) {
 		return fmt.Errorf("copy length mismatch: want %d, got %d", h.pagesize, n)

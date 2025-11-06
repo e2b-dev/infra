@@ -1,6 +1,10 @@
 package uffd
 
-// This tests is creating uffd in a process and handling the page faults in another process.
+// This tests is creating uffd in the main process and handling the page faults in another process.
+// It prevents problems with Go mmap during testing (https://pojntfx.github.io/networked-linux-memsync/main.html#limitations) and also more accurately simulates what we do with Firecracker.
+// These problems are not affecting Firecracker, because:
+// 1. It is a different process that handles the page faults
+// 2. Does not use garbage collection
 
 import (
 	"context"
@@ -10,21 +14,20 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"runtime/debug"
-	"slices"
 	"strconv"
 	"sync"
 	"syscall"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
+	"github.com/stretchr/testify/assert"
 )
 
 func getAccessedOffsets(missingRequests *sync.Map) ([]uint, error) {
@@ -47,17 +50,17 @@ type accessedOffsetsIpc struct {
 func (a *accessedOffsetsIpc) Offsets(ctx context.Context) ([]uint, error) {
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGUSR2)
+	defer signal.Stop(sigc)
 
 	syscall.Kill(a.otherPid, syscall.SIGUSR2)
 
 	select {
-	case <-sigc:
-		fmt.Fprintf(os.Stdout, "received signal to read offsets\n")
 	case <-ctx.Done():
 		return nil, fmt.Errorf("context done: %w", ctx.Err())
+	case <-sigc:
+		break
 	}
 
-	// Rewind before reading
 	if _, err := a.f.Seek(0, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("seek failed: %w", err)
 	}
@@ -74,10 +77,6 @@ func (a *accessedOffsetsIpc) Offsets(ctx context.Context) ([]uint, error) {
 	}
 
 	return offsets, nil
-}
-
-func (a *accessedOffsetsIpc) Close() error {
-	return a.f.Close()
 }
 
 func (a *accessedOffsetsIpc) Write(offsets []uint) error {
@@ -111,76 +110,110 @@ func (a *accessedOffsetsIpc) Write(offsets []uint) error {
 }
 
 // Main process, FC in our case
-func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, func()) {
+func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error) {
 	t.Helper()
-
-	cleanupList := []func(){}
-
-	cleanup := func() {
-		slices.Reverse(cleanupList)
-
-		for _, cleanup := range cleanupList {
-			cleanup()
-		}
-	}
 
 	data := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
 
 	size, err := data.Size()
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
 
 	memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(uint64(size), tt.pagesize)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
 
-	cleanupList = append(cleanupList, func() {
+	t.Cleanup(func() {
 		unmap()
 	})
 
 	uffd, err := userfaultfd.NewUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
 
-	cleanupList = append(cleanupList, func() {
+	t.Cleanup(func() {
 		userfaultfd.Close(uffd)
 	})
 
 	err = userfaultfd.ConfigureApi(uffd, tt.pagesize)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
 
 	err = userfaultfd.Register(uffd, memoryStart, uint64(size), userfaultfd.UFFDIO_REGISTER_MODE_MISSING)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
 
-	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
+	// t.Cleanup(func() {
+	// 	// We explicitly unregister memory during cleanup, because as the test runs in the same process, we can get addresses that seems to collide
+	// 	// and without synchronizing the uffd cleanup, the new memory could be served by the old uffd.
+	// 	err := userfaultfd.Unregister(uffd, memoryStart, uint64(size))
+	// 	assert.NoError(t, err)
+	// })
+
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestHelperServingProcess")
 	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
 
+	dup, err := syscall.Dup(int(uffd))
+	if err != nil {
+		return nil, err
+	}
+
+	// clear FD_CLOEXEC on the dup we pass across exec
+	if _, err := unix.FcntlInt(uintptr(dup), unix.F_SETFD, 0); err != nil {
+		return nil, err
+	}
+
+	id := uuid.New().String()
 	// Passing the fd to the child process
-	uffdFile := os.NewFile(uffd, "userfaultfd")
+	uffdFile := os.NewFile(uintptr(dup), fmt.Sprintf("userfaultfd-%s", id))
+
+	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_UFFD_FILE=%s", uffdFile.Name()))
 
 	contentFile, err := os.CreateTemp(os.TempDir(), "content-*.txt")
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Cleanup(func() {
+		err := contentFile.Close()
+		assert.NoError(t, err)
+
+		err = os.Remove(contentFile.Name())
+		assert.NoError(t, err)
+	})
 
 	// Write content to the file before passing it to child
 	_, err = contentFile.Write(data.Content())
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
 
 	// Seek to beginning so child can read from start
 	_, err = contentFile.Seek(0, 0)
-	require.NoError(t, err)
-
-	cleanupList = append(cleanupList, func() {
-		contentFile.Close()
-		os.Remove(contentFile.Name())
-	})
+	if err != nil {
+		return nil, err
+	}
 
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_CONTENT_FILE=%s", contentFile.Name()))
 
 	missingRequestsFile, err := os.CreateTemp(os.TempDir(), "missing-requests-*.txt")
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
 
-	cleanupList = append(cleanupList, func() {
-		missingRequestsFile.Close()
-		os.Remove(missingRequestsFile.Name())
+	t.Cleanup(func() {
+		err := missingRequestsFile.Close()
+		assert.NoError(t, err)
+
+		err = os.Remove(missingRequestsFile.Name())
+		assert.NoError(t, err)
 	})
 
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MISSING_REQUESTS_FILE=%s", missingRequestsFile.Name()))
@@ -193,40 +226,28 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, func(
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	// We use SIGUSR1 to signal to main process that the serving process is ready to be used.
 	servingProcessReady := make(chan os.Signal, 1)
 	signal.Notify(servingProcessReady, syscall.SIGUSR1)
+	defer signal.Stop(servingProcessReady)
 
 	err = cmd.Start()
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
 
-	go func() {
-		// panic handler + print why
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Fprintf(os.Stderr, "panic in wait cmd: %v\n", r)
-				debug.PrintStack()
-			}
-		}()
+	t.Cleanup(func() {
+		cmd.Process.Signal(syscall.SIGUSR1)
 
 		err := cmd.Wait()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error in wait cmd: %v\n", err)
-			debug.PrintStack()
-		}
 		assert.NoError(t, err)
-	}()
-
-	cleanupList = append(cleanupList, func() {
-		cmd.Process.Signal(syscall.SIGTERM)
 	})
 
 	select {
-	case <-servingProcessReady:
-		fmt.Println("child signaled ready")
 	case <-t.Context().Done():
-		cleanup()
-
-		return nil, nil
+		return nil, t.Context().Err()
+	case <-servingProcessReady:
+		break
 	}
 
 	return &testHandler{
@@ -235,7 +256,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, func(
 		data:       data,
 		uffd:       uffd,
 		accessed:   accessedOffsetsIpc{otherPid: cmd.Process.Pid, f: missingRequestsFile},
-	}, cleanup
+	}, nil
 }
 
 // Secondary process, orchestrator in our case
@@ -254,8 +275,8 @@ func TestHelperServingProcess(t *testing.T) {
 }
 
 func crossProcessServe() error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
 
 	startRaw, err := strconv.Atoi(os.Getenv("GO_MMAP_START"))
 	if err != nil {
@@ -264,7 +285,7 @@ func crossProcessServe() error {
 
 	memoryStart := uintptr(startRaw)
 
-	uffdFile := os.NewFile(uintptr(3), "userfaultfd")
+	uffdFile := os.NewFile(uintptr(3), os.Getenv("GO_UFFD_FILE"))
 	defer uffdFile.Close()
 
 	uffd := uffdFile.Fd()
@@ -287,29 +308,23 @@ func crossProcessServe() error {
 
 	missingRequests := &sync.Map{}
 
+	// We use SIGUSR2 to signal to child to write accessed offsets to the file and to main process that they are ready to be read.
 	missingRequestsSignal := make(chan os.Signal, 1)
 	signal.Notify(missingRequestsSignal, syscall.SIGUSR2)
+	defer signal.Stop(missingRequestsSignal)
 
 	go func() {
-
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Println("panic in missing requests process", r)
-			}
-		}()
-
 		for {
 			select {
 			case <-missingRequestsSignal:
 				offsets, err := getAccessedOffsets(missingRequests)
 				if err != nil {
-					fmt.Println("exit getting offsets", err)
+					cancel(err)
 
-					cancel()
+					return
 				}
 
 				accessedOffsets.Write(offsets)
-				// Write accessed offsets to the file
 			case <-ctx.Done():
 				return
 			}
@@ -341,12 +356,6 @@ func crossProcessServe() error {
 	exitUffd := make(chan struct{}, 1)
 
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Println("panic in serving process", r)
-			}
-		}()
-
 		err := Serve(ctx, int(uffd), m, data, fdExit, missingRequests, zap.L())
 		if err != nil {
 			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
@@ -360,18 +369,19 @@ func crossProcessServe() error {
 
 		<-exitUffd
 	}
+
 	defer cleanup()
 
 	exitSignal := make(chan os.Signal, 1)
-	signal.Notify(exitSignal, syscall.SIGTERM)
+	signal.Notify(exitSignal, syscall.SIGUSR1)
 
 	// Signalize ready
 	syscall.Kill(ppid, syscall.SIGUSR1)
 
 	select {
-	case <-exitSignal:
 	case <-ctx.Done():
+		return ctx.Err()
+	case <-exitSignal:
+		return nil
 	}
-
-	return nil
 }
