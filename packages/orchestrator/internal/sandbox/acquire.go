@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/google/uuid"
+	"golang.org/x/sync/semaphore"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
-	"github.com/google/uuid"
-	"golang.org/x/sync/semaphore"
 )
 
 var maxParallelMemfileSnapshotting = utils.Must(env.GetEnvAsInt("MAX_PARALLEL_MEMFILE_SNAPSHOTTING", 8))

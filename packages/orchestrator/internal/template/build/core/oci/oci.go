@@ -355,6 +355,7 @@ func createExport(ctx context.Context, logger *zap.Logger, srcImage containerreg
 			})
 			if err != nil {
 				logger.Warn(fmt.Sprintf("Failed to untar layer #%d", i))
+
 				return fmt.Errorf("failed to untar layer %q (%d): %w", layerPath, i, err)
 			}
 			logger.Info(fmt.Sprintf("Done uncompressing layer #%d", i))

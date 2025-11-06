@@ -81,7 +81,6 @@ func makePathsAbsolute(c *BuilderConfig) error {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("failed to make %q: %w", dir, err)
 		}
-
 	}
 
 	return nil

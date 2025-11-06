@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,8 +74,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	clientID := uuid.NewString()
 
 	abs := func(s string) string {
-		return s
-		//return utils.Must(filepath.Abs(s))
+		return utils.Must(filepath.Abs(s))
 	}
 
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
