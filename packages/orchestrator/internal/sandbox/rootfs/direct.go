@@ -36,7 +36,7 @@ func NewDirectProvider(rootfs block.ReadonlyDevice, path string) (Provider, erro
 
 	cache, err := block.NewCache(size, blockSize, path, true)
 	if err != nil {
-		return nil, fmt.Errorf("error creating cache: %w", err)
+		return nil, fmt.Errorf("error creating direct cache: %w", err)
 	}
 
 	return &DirectProvider{

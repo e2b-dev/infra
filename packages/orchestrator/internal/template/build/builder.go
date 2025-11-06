@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -46,6 +48,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 
 type Builder struct {
 	logger *zap.Logger
+	config cfg.BuilderConfig
 
 	sandboxFactory      *sandbox.Factory
 	templateStorage     storage.StorageProvider
@@ -61,6 +64,7 @@ type Builder struct {
 
 func NewBuilder(
 	logger *zap.Logger,
+	config cfg.BuilderConfig,
 	featureFlags *featureflags.Client,
 	sandboxFactory *sandbox.Factory,
 	templateStorage storage.StorageProvider,
@@ -74,6 +78,7 @@ func NewBuilder(
 ) *Builder {
 	return &Builder{
 		logger:              logger,
+		config:              config,
 		featureFlags:        featureFlags,
 		sandboxFactory:      sandboxFactory,
 		templateStorage:     templateStorage,
@@ -106,7 +111,7 @@ type Result struct {
 //
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
-func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
+func (b *Builder) Build(ctx context.Context, template paths.TemplateFiles, cfg config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
 	ctx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -173,7 +178,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		}
 	}(context.WithoutCancel(ctx))
 
-	envdVersion, err := envd.GetEnvdVersion(ctx)
+	envdVersion, err := envd.GetEnvdVersion(ctx, b.config)
 	if err != nil {
 		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}
@@ -189,6 +194,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 
 	buildContext := buildcontext.BuildContext{
 		Config:         cfg,
+		BuilderConfig:  b.config,
 		Template:       template,
 		UploadErrGroup: &uploadErrGroup,
 		EnvdVersion:    envdVersion,
@@ -206,7 +212,7 @@ func runBuild(
 	bc buildcontext.BuildContext,
 	builder *Builder,
 ) (*Result, error) {
-	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
+	index := cache.NewHashIndex(bc.BuilderConfig, bc.CacheScope, builder.buildStorage, builder.templateStorage)
 
 	layerExecutor := layer.NewLayerExecutor(
 		bc,
@@ -335,7 +341,7 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 func getRootfsSize(
 	ctx context.Context,
 	s storage.StorageProvider,
-	metadata storage.TemplateFiles,
+	metadata paths.TemplateFiles,
 ) (uint64, error) {
 	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath())
 	if err != nil {

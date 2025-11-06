@@ -2,6 +2,8 @@
   "name": "base-template",
   "version": "1.0.0",
   "dependencies": {
+    "@e2b/cli": "^2.4.1",
+    "dotenv": "^17.2.3",
     "e2b": "^2.1.3"
   }
 }

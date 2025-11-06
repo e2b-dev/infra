@@ -10,6 +10,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ioutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -50,12 +52,12 @@ type Start struct {
 }
 
 type Template struct {
-	Version      uint64                `json:"version"`
-	Template     storage.TemplateFiles `json:"template"`
-	Context      Context               `json:"context"`
-	Start        *Start                `json:"start,omitempty"`
-	FromImage    *string               `json:"from_image,omitempty"`
-	FromTemplate *FromTemplate         `json:"from_template,omitempty"`
+	Version      uint64              `json:"version"`
+	Template     paths.TemplateFiles `json:"template"`
+	Context      Context             `json:"context"`
+	Start        *Start              `json:"start,omitempty"`
+	FromImage    *string             `json:"from_image,omitempty"`
+	FromTemplate *FromTemplate       `json:"from_template,omitempty"`
 }
 
 func V1TemplateVersion() Template {
@@ -77,7 +79,7 @@ func (t Template) BasedOn(
 	}
 }
 
-func (t Template) NewVersionTemplate(files storage.TemplateFiles) Template {
+func (t Template) NewVersionTemplate(files paths.TemplateFiles) Template {
 	return Template{
 		Version:      CurrentVersion,
 		Template:     files,
@@ -88,7 +90,7 @@ func (t Template) NewVersionTemplate(files storage.TemplateFiles) Template {
 	}
 }
 
-func (t Template) SameVersionTemplate(files storage.TemplateFiles) Template {
+func (t Template) SameVersionTemplate(files paths.TemplateFiles) Template {
 	return Template{
 		Version:      t.Version,
 		Template:     files,
@@ -128,13 +130,11 @@ func FromFile(path string) (Template, error) {
 	return templateMetadata, nil
 }
 
-func FromBuildID(ctx context.Context, s storage.StorageProvider, buildID string) (Template, error) {
-	return fromTemplate(ctx, s, storage.TemplateFiles{
-		BuildID: buildID,
-	})
+func FromBuildID(ctx context.Context, config cfg.BuilderConfig, s storage.StorageProvider, buildID string) (Template, error) {
+	return fromTemplate(ctx, s, paths.New(config, buildID))
 }
 
-func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.TemplateFiles) (Template, error) {
+func fromTemplate(ctx context.Context, s storage.StorageProvider, files paths.TemplateFiles) (Template, error) {
 	ctx, span := tracer.Start(ctx, "from template")
 	defer span.End()
 

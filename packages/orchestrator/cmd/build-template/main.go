@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -190,6 +191,7 @@ func buildTemplate(
 
 	builder := build.NewBuilder(
 		logger,
+		c.BuilderConfig,
 		featureFlags,
 		sandboxFactory,
 		persistenceTemplate,
@@ -220,11 +222,7 @@ func buildTemplate(
 		HugePages:  true,
 	}
 
-	metadata := storage.TemplateFiles{
-		BuildID:            buildID,
-		KernelVersion:      kernelVersion,
-		FirecrackerVersion: fcVersion,
-	}
+	metadata := paths.NewWithVersions(c.BuilderConfig, buildID, kernelVersion, fcVersion)
 	_, err = builder.Build(ctx, metadata, template, logger.Core())
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)

@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -38,7 +39,6 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator")
@@ -54,8 +54,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		baseImage           = "e2bdev/base"
 		kernelVersion       = "vmlinux-6.1.102"
 		fcVersion           = "v1.10.1_1fcdaec08"
-		templateID          = "fcb33d09-3141-42c4-8d3b-c2df411681db"
-		buildID             = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
+		templateID          = "fcb33d09-3141-42c4-8d3b-c2df411681dc"
+		buildID             = "ba6aae36-74f7-487a-b6f7-74fd7c94e478"
 		useHugePages        = false
 		allowInternetAccess = true
 		templateVersion     = "v2.0.0"
@@ -73,7 +73,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	clientID := uuid.NewString()
 
 	abs := func(s string) string {
-		return utils.Must(filepath.Abs(s))
+		return s
+		//return utils.Must(filepath.Abs(s))
 	}
 
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -100,15 +101,15 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	// hacks, these should go away
 	b.Setenv("ARTIFACTS_REGISTRY_PROVIDER", "Local")
-	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
-	b.Setenv("STORAGE_PROVIDER", "Local")
-	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
-	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
 	b.Setenv("FIRECRACKER_VERSIONS_DIR", abs(filepath.Join("..", "fc-versions", "builds")))
+	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
 	b.Setenv("HOST_KERNELS_DIR", abs(kernelsDir))
+	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
+	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
 	b.Setenv("SANDBOX_DIR", abs(sandboxDir))
 	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
-	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
+	b.Setenv("STORAGE_PROVIDER", "Local")
+	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
 
 	config, err := cfg.Parse()
 	require.NoError(b, err)
@@ -232,6 +233,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	builder := build.NewBuilder(
 		logger,
+		config.BuilderConfig,
 		featureFlags,
 		sandboxFactory,
 		persistenceTemplate,
@@ -260,7 +262,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			HugePages:  sandboxConfig.HugePages,
 		}
 
-		metadata := storage.TemplateFiles{
+		metadata := paths.TemplateFiles{
 			BuildID:            buildID,
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: fcVersion,
@@ -289,7 +291,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	}
 
 	for b.Loop() {
-		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
+		tc.testOneItem(b, config.BuilderConfig, buildID, kernelVersion, fcVersion)
 	}
 }
 
@@ -313,7 +315,7 @@ type testContainer struct {
 	runtime        sandbox.RuntimeMetadata
 }
 
-func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVersion string) {
+func (tc *testContainer) testOneItem(b *testing.B, config cfg.BuilderConfig, buildID, kernelVersion, fcVersion string) {
 	b.Helper()
 
 	ctx, span := tracer.Start(b.Context(), "testOneItem")
@@ -342,11 +344,12 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 	meta, err := sbx.Template.Metadata()
 	require.NoError(b, err)
 
-	templateMetadata := meta.SameVersionTemplate(storage.TemplateFiles{
-		BuildID:            buildID,
-		KernelVersion:      kernelVersion,
-		FirecrackerVersion: fcVersion,
-	})
+	templateMetadata := meta.SameVersionTemplate(paths.NewWithVersions(
+		config,
+		buildID,
+		kernelVersion,
+		fcVersion,
+	))
 	snap, err := sbx.Pause(ctx, templateMetadata)
 	require.NoError(b, err)
 	require.NotNil(b, snap)

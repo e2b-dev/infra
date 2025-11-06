@@ -14,6 +14,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const MemfileName = "memfile"
+
 // snapshotCacheDir is a tmpfs directory mounted on the host.
 // This is used for speed optimization as the final diff is copied to the persistent storage.
 func snapshotCacheDir() string {

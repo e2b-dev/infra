@@ -193,7 +193,7 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error
 
 	_, err := c.client.Operations.PutGuestDriveByID(&driversConfig)
 	if err != nil {
-		return fmt.Errorf("error setting fc drivers config: %w", err)
+		return fmt.Errorf("error putting guest drive by id: %w", err)
 	}
 
 	return nil

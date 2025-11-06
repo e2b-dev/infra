@@ -48,7 +48,7 @@ type Cache struct {
 func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("error opening file: %w", err)
+		return nil, fmt.Errorf("error opening cache file: %w", err)
 	}
 
 	defer f.Close()

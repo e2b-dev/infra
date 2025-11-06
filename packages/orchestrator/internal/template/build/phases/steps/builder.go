@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -25,7 +26,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const layerTimeout = time.Hour
@@ -129,11 +129,12 @@ func (sb *StepBuilder) Layer(
 	}
 
 	finalMetadata := sourceLayer.Metadata
-	finalMetadata.Template = storage.TemplateFiles{
-		BuildID:            uuid.NewString(),
-		KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
-		FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
-	}
+	finalMetadata.Template = paths.NewWithVersions(
+		sb.BuilderConfig,
+		uuid.NewString(),
+		sourceLayer.Metadata.Template.KernelVersion,
+		sourceLayer.Metadata.Template.FirecrackerVersion,
+	)
 
 	return phases.LayerResult{
 		Metadata: finalMetadata,

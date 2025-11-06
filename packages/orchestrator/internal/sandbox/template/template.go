@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type Template interface {
-	Files() storage.TemplateCacheFiles
+	Files() paths.TemplateCacheFiles
 	Memfile(ctx context.Context) (block.ReadonlyDevice, error)
 	Rootfs() (block.ReadonlyDevice, error)
 	Snapfile() (File, error)

@@ -4,18 +4,18 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 var _ SourceTemplateProvider = (*CacheSourceTemplateProvider)(nil)
 
 type CacheSourceTemplateProvider struct {
-	files storage.TemplateFiles
+	files paths.TemplateFiles
 }
 
 func NewCacheSourceTemplateProvider(
-	files storage.TemplateFiles,
+	files paths.TemplateFiles,
 ) *CacheSourceTemplateProvider {
 	return &CacheSourceTemplateProvider{
 		files: files,

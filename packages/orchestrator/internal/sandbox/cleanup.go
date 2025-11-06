@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 )
 
 type Cleanup struct {
@@ -86,7 +86,7 @@ func (c *Cleanup) run(ctx context.Context) {
 	c.error = errors.Join(errs...)
 }
 
-func cleanupFiles(files *storage.SandboxFiles) func(context.Context) error {
+func cleanupFiles(files *paths.SandboxFiles) func(context.Context) error {
 	return func(context.Context) error {
 		var errs []error
 

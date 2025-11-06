@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -106,11 +107,12 @@ func (lb *LayerExecutor) BuildLayer(
 
 	// Prepare metadata
 	fcVersions := sbx.FirecrackerVersions()
-	meta = meta.NewVersionTemplate(storage.TemplateFiles{
-		BuildID:            cmd.CurrentLayer.Template.BuildID,
-		KernelVersion:      fcVersions.KernelVersion,
-		FirecrackerVersion: fcVersions.FirecrackerVersion,
-	})
+	meta = meta.NewVersionTemplate(paths.NewWithVersions(
+		lb.BuilderConfig,
+		cmd.CurrentLayer.Template.BuildID,
+		fcVersions.KernelVersion,
+		fcVersions.FirecrackerVersion,
+	))
 	err = lb.PauseAndUpload(
 		ctx,
 		userLogger,
@@ -134,7 +136,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx, childSpan := tracer.Start(ctx, "update-envd")
 	defer childSpan.End()
 
-	envdVersion, err := envd.GetEnvdVersion(ctx)
+	envdVersion, err := envd.GetEnvdVersion(ctx, lb.BuilderConfig)
 	if err != nil {
 		return fmt.Errorf("error getting envd version: %w", err)
 	}
@@ -147,7 +149,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"root",
-		storage.HostEnvdPath(),
+		lb.BuilderConfig.HostEnvdPath,
 		tmpEnvdPath,
 	)
 	if err != nil {
@@ -159,7 +161,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		# Replace the binary and set permissions
 		chmod +x %s
 		mv -f %s %s
-	`, tmpEnvdPath, tmpEnvdPath, storage.GuestEnvdPath)
+	`, tmpEnvdPath, tmpEnvdPath, paths.GuestEnvdPath)
 
 	err = sandboxtools.RunCommandWithLogger(
 		ctx,

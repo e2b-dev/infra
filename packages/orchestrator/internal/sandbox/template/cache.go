@@ -40,6 +40,7 @@ var (
 )
 
 type Cache struct {
+	config        cfg.BuilderConfig
 	flags         *featureflags.Client
 	cache         *ttlcache.Cache[string, Template]
 	persistence   storage.StorageProvider
@@ -72,7 +73,7 @@ func NewCache(
 	})
 
 	// Delete the old build cache directory content.
-	err := cleanDir(build.DefaultCachePath())
+	err := cleanDir(config.DefaultCachePath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to remove old build cache directory: %w", err)
 	}
@@ -81,7 +82,7 @@ func NewCache(
 		ctx,
 		config,
 		flags,
-		build.DefaultCachePath(),
+		config.DefaultCachePath,
 		buildCacheTTL,
 		buildCacheDelayEviction,
 	)
@@ -97,6 +98,7 @@ func NewCache(
 		buildStore:    buildStore,
 		cache:         cache,
 		flags:         flags,
+		config:        config.BuilderConfig,
 		rootCachePath: config.BuilderConfig.SharedChunkCachePath,
 	}, nil
 }
@@ -125,6 +127,7 @@ func (c *Cache) GetTemplate(
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
+		c.config,
 		buildID,
 		kernelVersion,
 		firecrackerVersion,
@@ -167,6 +170,7 @@ func (c *Cache) AddSnapshot(
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
+		c.config,
 		buildId,
 		kernelVersion,
 		firecrackerVersion,
@@ -215,7 +219,7 @@ func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot boo
 
 func cleanDir(path string) error {
 	entries, err := os.ReadDir(path)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("reading directory contents: %w", err)
 	}
 

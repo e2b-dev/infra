@@ -9,6 +9,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -36,6 +37,7 @@ type Index interface {
 }
 
 type HashIndex struct {
+	config          cfg.BuilderConfig
 	cacheScope      string
 	indexStorage    storage.StorageProvider
 	templateStorage storage.StorageProvider
@@ -43,11 +45,13 @@ type HashIndex struct {
 }
 
 func NewHashIndex(
+	config cfg.BuilderConfig,
 	cacheScope string,
 	indexStorage storage.StorageProvider,
 	templateStorage storage.StorageProvider,
 ) *HashIndex {
 	return &HashIndex{
+		config:          config,
 		cacheScope:      cacheScope,
 		indexStorage:    indexStorage,
 		templateStorage: templateStorage,
@@ -127,7 +131,7 @@ func (h *HashIndex) Cached(
 	ctx, span := tracer.Start(ctx, "is cached")
 	defer span.End()
 
-	tmpl, err := metadata.FromBuildID(ctx, h.templateStorage, buildID)
+	tmpl, err := metadata.FromBuildID(ctx, h.config, h.templateStorage, buildID)
 	if err != nil {
 		// If the metadata does not exist, the layer is not cached
 		return metadata.Template{}, fmt.Errorf("error reading template metadata: %w", err)

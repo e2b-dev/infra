@@ -83,8 +83,6 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 		return fmt.Errorf("%s %w", a.errorMessage, err)
 	}
 
-	telemetry.ReportEvent(ctx, "api key extracted")
-
 	// If the API key is valid, we will get a result back
 	result, validationError := a.validationFunction(ctx, headerKey)
 	if validationError != nil {

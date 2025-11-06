@@ -8,6 +8,8 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -19,7 +21,7 @@ import (
 )
 
 type storageTemplate struct {
-	files storage.TemplateCacheFiles
+	files paths.TemplateCacheFiles
 
 	memfile  *utils.SetOnce[block.ReadonlyDevice]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
@@ -36,6 +38,7 @@ type storageTemplate struct {
 }
 
 func newTemplateFromStorage(
+	config cfg.BuilderConfig,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
@@ -46,11 +49,12 @@ func newTemplateFromStorage(
 	localSnapfile File,
 	localMetafile File,
 ) (*storageTemplate, error) {
-	files, err := storage.TemplateFiles{
-		BuildID:            buildId,
-		KernelVersion:      kernelVersion,
-		FirecrackerVersion: firecrackerVersion,
-	}.CacheFiles()
+	files, err := paths.NewWithVersions(
+		config,
+		buildId,
+		kernelVersion,
+		firecrackerVersion,
+	).CacheFiles()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
 	}
@@ -233,7 +237,7 @@ func (t *storageTemplate) Close(ctx context.Context) error {
 	return closeTemplate(ctx, t)
 }
 
-func (t *storageTemplate) Files() storage.TemplateCacheFiles {
+func (t *storageTemplate) Files() paths.TemplateCacheFiles {
 	return t.files
 }
 

@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -21,13 +23,13 @@ func main() {
 
 	flag.Parse()
 
-	baseTemplate := storage.TemplateFiles{
-		BuildID: *baseBuildId,
+	config, err := cfg.ParseBuilder()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	diffTemplate := storage.TemplateFiles{
-		BuildID: *diffBuildId,
-	}
+	baseTemplate := paths.New(config, *baseBuildId)
+	diffTemplate := paths.New(config, *diffBuildId)
 
 	var baseStoragePath string
 	var diffStoragePath string

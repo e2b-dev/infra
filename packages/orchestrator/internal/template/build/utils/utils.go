@@ -10,7 +10,7 @@ import (
 func GetFileHash(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("error opening file: %w", err)
+		return "", fmt.Errorf("error opening file for hash: %w", err)
 	}
 	defer file.Close()
 

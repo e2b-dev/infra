@@ -17,13 +17,13 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -374,11 +374,12 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	fcVersions := sbx.FirecrackerVersions()
-	meta = meta.SameVersionTemplate(storage.TemplateFiles{
-		BuildID:            in.GetBuildId(),
-		KernelVersion:      fcVersions.KernelVersion,
-		FirecrackerVersion: fcVersions.FirecrackerVersion,
-	})
+	meta = meta.SameVersionTemplate(paths.NewWithVersions(
+		s.config,
+		in.GetBuildId(),
+		fcVersions.KernelVersion,
+		fcVersions.FirecrackerVersion,
+	))
 	snapshot, err := sbx.Pause(ctx, meta)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))

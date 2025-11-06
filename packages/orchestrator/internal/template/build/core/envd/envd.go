@@ -6,20 +6,15 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 )
 
-func GetEnvdVersion(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, storage.HostEnvdPath(), "-version")
+func GetEnvdVersion(ctx context.Context, config cfg.BuilderConfig) (string, error) {
+	cmd := exec.CommandContext(ctx, config.HostEnvdPath, "-version")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("error while getting envd version: %w", err)
 	}
 
 	return strings.TrimSpace(string(out)), nil
-}
-
-func GetEnvdHash() (string, error) {
-	return utils.GetFileHash(storage.HostEnvdPath())
 }

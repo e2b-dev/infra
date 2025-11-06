@@ -129,10 +129,10 @@ func (d *DevicePool) Populate(ctx context.Context) {
 		device, err := d.getFreeDeviceSlot()
 		if err != nil {
 			if failedCount%100 == 0 {
-				zap.L().Error("[nbd pool]: failed to create network",
-					zap.Error(err),
-					zap.Int("failed_count", failedCount),
-				)
+				// zap.L().Error("[nbd pool]: failed to create network",
+				//	zap.Error(err),
+				//	zap.Int("failed_count", failedCount),
+				//)
 			}
 
 			failedCount++

@@ -4,20 +4,20 @@ import (
 	"context"
 	"errors"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type LocalTemplate struct {
-	files storage.TemplateCacheFiles
+	files paths.TemplateCacheFiles
 
 	memfile block.ReadonlyDevice
 	rootfs  block.ReadonlyDevice
 }
 
 func NewLocalTemplate(
-	files storage.TemplateCacheFiles,
+	files paths.TemplateCacheFiles,
 	rootfs block.ReadonlyDevice,
 	memfile block.ReadonlyDevice,
 ) *LocalTemplate {
@@ -32,7 +32,7 @@ func (t *LocalTemplate) Close(ctx context.Context) error {
 	return closeTemplate(ctx, t)
 }
 
-func (t *LocalTemplate) Files() storage.TemplateCacheFiles {
+func (t *LocalTemplate) Files() paths.TemplateCacheFiles {
 	return t.files
 }
 

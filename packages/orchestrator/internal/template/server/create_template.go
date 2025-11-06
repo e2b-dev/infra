@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildlogger"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -17,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
@@ -44,11 +44,12 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("server is draining")
 	}
 
-	metadata := storage.TemplateFiles{
-		BuildID:            cfg.GetBuildID(),
-		KernelVersion:      cfg.GetKernelVersion(),
-		FirecrackerVersion: cfg.GetFirecrackerVersion(),
-	}
+	metadata := paths.NewWithVersions(
+		s.config,
+		cfg.GetBuildID(),
+		cfg.GetKernelVersion(),
+		cfg.GetFirecrackerVersion(),
+	)
 
 	// default to scope by template ID
 	cacheScope := cfg.GetTemplateID()

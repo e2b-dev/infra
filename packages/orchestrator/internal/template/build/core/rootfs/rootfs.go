@@ -14,6 +14,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci"
@@ -21,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -36,7 +37,7 @@ const (
 )
 
 type Rootfs struct {
-	metadata            storage.TemplateFiles
+	metadata            paths.TemplateFiles
 	template            config.TemplateConfig
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
@@ -60,7 +61,7 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 func New(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
-	metadata storage.TemplateFiles,
+	metadata paths.TemplateFiles,
 	template config.TemplateConfig,
 ) *Rootfs {
 	return &Rootfs{
@@ -73,6 +74,7 @@ func New(
 
 func (r *Rootfs) CreateExt4Filesystem(
 	ctx context.Context,
+	builderConfig cfg.BuilderConfig,
 	logger *zap.Logger,
 	rootfsPath string,
 	provisionScript string,
@@ -107,7 +109,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	logger.Info(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	logger.Debug("Setting up system files")
-	layers, err := additionalOCILayers(childCtx, r.template, provisionScript, provisionLogPrefix)
+	layers, err := additionalOCILayers(childCtx, builderConfig, r.template, provisionScript, provisionLogPrefix)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
 	}
@@ -172,6 +174,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 
 func additionalOCILayers(
 	_ context.Context,
+	builderConfig cfg.BuilderConfig,
 	config config.TemplateConfig,
 	provisionScript string,
 	provisionLogPrefix string,
@@ -213,7 +216,7 @@ ff02::2	ip6-allrouters
 127.0.1.1	%s
 `, hostname)
 
-	envdFileData, err := os.ReadFile(storage.HostEnvdPath())
+	envdFileData, err := os.ReadFile(builderConfig.HostEnvdPath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}
@@ -225,8 +228,8 @@ ff02::2	ip6-allrouters
 			"etc/hosts":       {Bytes: []byte(hosts), Mode: 0o644},
 			"etc/resolv.conf": {Bytes: []byte("nameserver 8.8.8.8"), Mode: 0o644},
 
-			storage.GuestEnvdPath:                                            {Bytes: envdFileData, Mode: 0o777},
-			"etc/systemd/system/envd.service":                                {Bytes: []byte(envdService), Mode: 0o644},
+			paths.GuestEnvdPath:               {Bytes: envdFileData, Mode: 0o777},
+			"etc/systemd/system/envd.service": {Bytes: []byte(envdService), Mode: 0o644},
 			"etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf": {Bytes: []byte(autologinService), Mode: 0o644},
 
 			// Provision script

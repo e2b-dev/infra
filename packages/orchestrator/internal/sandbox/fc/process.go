@@ -18,12 +18,12 @@ import (
 	"go.uber.org/zap/zapio"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -62,7 +62,7 @@ type Process struct {
 	providerRootfsPath string
 	rootfsPath         string
 	kernelPath         string
-	files              *storage.SandboxFiles
+	files              *paths.SandboxFiles
 
 	Exit *utils.ErrorOnce
 
@@ -74,7 +74,7 @@ func NewProcess(
 	execCtx context.Context,
 	config cfg.BuilderConfig,
 	slot *network.Slot,
-	files *storage.SandboxFiles,
+	files *paths.SandboxFiles,
 	versions FirecrackerVersions,
 	rootfsProviderPath string,
 	rootfsPaths RootfsPaths,
@@ -294,7 +294,7 @@ func (p *Process) Create(
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
-		return errors.Join(fmt.Errorf("error setting fc drivers config: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("error setting rootfs drive: %w", err), fcStopErr)
 	}
 	telemetry.ReportEvent(ctx, "set fc drivers config")
 

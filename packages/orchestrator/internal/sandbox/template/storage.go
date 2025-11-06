@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -33,7 +34,7 @@ func NewStorage(
 	metrics blockmetrics.Metrics,
 ) (*Storage, error) {
 	if h == nil {
-		headerObjectPath := buildId + "/" + string(fileType) + storage.HeaderSuffix
+		headerObjectPath := buildId + "/" + string(fileType) + paths.HeaderSuffix
 		headerObject, err := persistence.OpenObject(ctx, headerObjectPath)
 		if err != nil {
 			return nil, err

@@ -8,11 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestDeserialize(t *testing.T) {
+	var config cfg.BuilderConfig
+
 	tests := []struct {
 		name           string
 		input          string
@@ -24,11 +27,12 @@ func TestDeserialize(t *testing.T) {
 			input: `{"version": 2, "template": {"build_id": "build123", "kernel_version": "5.10", "firecracker_version": "1.0"}, "context": {"user": "testuser", "workdir": "/app", "env_vars": {"KEY": "value"}}, "start": {"start_command": "npm start", "ready_command": "echo ready", "context": {"user": "root"}}, "from_image": "ubuntu:20.04"}`,
 			expectedResult: Template{
 				Version: 2,
-				Template: storage.TemplateFiles{
-					BuildID:            "build123",
-					KernelVersion:      "5.10",
-					FirecrackerVersion: "1.0",
-				},
+				Template: paths.NewWithVersions(
+					config,
+					"build123",
+					"5.10",
+					"1.0",
+				),
 				Context: Context{
 					User:    "testuser",
 					WorkDir: utils.ToPtr("/app"),
@@ -49,11 +53,12 @@ func TestDeserialize(t *testing.T) {
 			input: `{"version": 2, "template": {"build_id": "build456", "kernel_version": "5.10", "firecracker_version": "1.0"}, "context": {"user": "testuser"}, "from_template": {"alias": "base-template", "build_id": "base-build-123"}}`,
 			expectedResult: Template{
 				Version: 2,
-				Template: storage.TemplateFiles{
-					BuildID:            "build456",
-					KernelVersion:      "5.10",
-					FirecrackerVersion: "1.0",
-				},
+				Template: paths.NewWithVersions(
+					config,
+					"build456",
+					"5.10",
+					"1.0",
+				),
 				Context: Context{
 					User: "testuser",
 				},
@@ -68,11 +73,12 @@ func TestDeserialize(t *testing.T) {
 			input: `{"version": 2, "template": {"build_id": "build789", "kernel_version": "5.10", "firecracker_version": "1.0"}, "context": {}}`,
 			expectedResult: Template{
 				Version: 2,
-				Template: storage.TemplateFiles{
-					BuildID:            "build789",
-					KernelVersion:      "5.10",
-					FirecrackerVersion: "1.0",
-				},
+				Template: paths.NewWithVersions(
+					config,
+					"build789",
+					"5.10",
+					"1.0",
+				),
 				Context: Context{},
 			},
 		},

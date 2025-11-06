@@ -315,6 +315,8 @@ func createExport(ctx context.Context, logger *zap.Logger, srcImage containerreg
 
 	layerPaths := make([]string, len(layers))
 	var eg errgroup.Group
+	eg.SetLimit(5)
+
 	for i, l := range layers {
 		digest, err := l.Digest()
 		if err != nil {
@@ -347,12 +349,15 @@ func createExport(ctx context.Context, logger *zap.Logger, srcImage containerreg
 			}
 			defer rc.Close()
 
+			logger.Info(fmt.Sprintf("Begin uncompressing layer #%d", i))
 			err = archive.Untar(rc, layerPath, &archive.TarOptions{
 				IgnoreChownErrors: true,
 			})
 			if err != nil {
-				return fmt.Errorf("failed to untar layer %d: %w", i, err)
+				logger.Warn(fmt.Sprintf("Failed to untar layer #%d", i))
+				return fmt.Errorf("failed to untar layer %q (%d): %w", layerPath, i, err)
 			}
+			logger.Info(fmt.Sprintf("Done uncompressing layer #%d", i))
 
 			return nil
 		})

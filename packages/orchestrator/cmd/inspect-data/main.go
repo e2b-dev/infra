@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -18,9 +20,12 @@ func main() {
 
 	flag.Parse()
 
-	template := storage.TemplateFiles{
-		BuildID: *buildId,
+	config, err := cfg.ParseBuilder()
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	template := paths.New(config, *buildId)
 
 	var storagePath string
 	var blockSize int64

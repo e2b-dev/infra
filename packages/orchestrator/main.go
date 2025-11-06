@@ -348,6 +348,7 @@ func run(config cfg.Config) (success bool) {
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 
 	orchestratorService := server.New(server.ServiceConfig{
+		Config:           config.BuilderConfig,
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,
 		NetworkPool:      networkPool,
@@ -405,6 +406,7 @@ func run(config cfg.Config) (success bool) {
 	if slices.Contains(services, cfg.TemplateManager) {
 		tmpl, err = tmplserver.New(
 			ctx,
+			config.BuilderConfig,
 			featureFlags,
 			tel.MeterProvider,
 			globalLogger,

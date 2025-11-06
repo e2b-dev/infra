@@ -6,19 +6,20 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type TemplateBuild struct {
-	files       storage.TemplateFiles
+	files       paths.TemplateFiles
 	persistence storage.StorageProvider
 
 	memfileHeader *headers.Header
 	rootfsHeader  *headers.Header
 }
 
-func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence storage.StorageProvider, files storage.TemplateFiles) *TemplateBuild {
+func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence storage.StorageProvider, files paths.TemplateFiles) *TemplateBuild {
 	return &TemplateBuild{
 		persistence: persistence,
 		files:       files,

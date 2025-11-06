@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -27,7 +28,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -35,10 +35,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
-
-func templatesDirectory() string {
-	return filepath.Join(pkg.OrchestratorBasePath(), "build-templates")
-}
 
 const (
 	rootfsBuildFileName = "rootfs.filesystem.build"
@@ -164,7 +160,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	baseMetadata metadata.Template,
 	hash string,
 ) (metadata.Template, error) {
-	templateBuildDir := filepath.Join(templatesDirectory(), bb.Template.BuildID)
+	templateBuildDir := filepath.Join(bb.BuilderConfig.TemplatesDir, bb.Template.BuildID)
 	err := os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error creating template build directory: %w", err)
@@ -350,11 +346,12 @@ func (bb *BaseBuilder) Layer(
 
 		meta := metadata.Template{
 			Version: metadata.CurrentVersion,
-			Template: storage.TemplateFiles{
-				BuildID:            uuid.New().String(),
-				KernelVersion:      bb.Template.KernelVersion,
-				FirecrackerVersion: bb.Template.FirecrackerVersion,
-			},
+			Template: paths.NewWithVersions(
+				bb.BuilderConfig,
+				uuid.New().String(),
+				bb.Template.KernelVersion,
+				bb.Template.FirecrackerVersion,
+			),
 			Context:      cmdMeta,
 			FromImage:    &bb.Config.FromImage,
 			FromTemplate: nil,

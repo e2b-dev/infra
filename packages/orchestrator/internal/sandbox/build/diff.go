@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -18,7 +19,7 @@ func (NoDiffError) Error() string {
 
 const (
 	Memfile DiffType = storage.MemfileName
-	Rootfs  DiffType = storage.RootfsName
+	Rootfs  DiffType = paths.RootfsName
 )
 
 type Diff interface {

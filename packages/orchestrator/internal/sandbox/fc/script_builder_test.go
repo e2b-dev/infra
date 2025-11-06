@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 )
 
 func TestStartScriptBuilder_Build(t *testing.T) {
@@ -18,7 +18,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 	tests := []struct {
 		name                  string
 		versions              FirecrackerVersions
-		files                 *storage.SandboxFiles
+		files                 *paths.SandboxFiles
 		rootfsPaths           RootfsPaths
 		namespaceID           string
 		expectedRootfsPath    string
@@ -31,7 +31,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 				KernelVersion:      "6.1.0",
 				FirecrackerVersion: "1.4.0",
 			},
-			files: createTestSandboxFiles("test-sandbox", "static-id"),
+			files: createTestSandboxFiles(config, "test-sandbox", "static-id"),
 			rootfsPaths: RootfsPaths{
 				TemplateVersion: 2,
 				TemplateID:      "template-123",
@@ -56,7 +56,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 				KernelVersion:      "5.10.0",
 				FirecrackerVersion: "1.3.0",
 			},
-			files: createTestSandboxFiles("legacy-sandbox", "legacy-id"),
+			files: createTestSandboxFiles(config, "legacy-sandbox", "legacy-id"),
 			rootfsPaths: RootfsPaths{
 				TemplateVersion: 1,
 				TemplateID:      "legacy-template",
@@ -81,7 +81,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 				KernelVersion:      "6.2.1",
 				FirecrackerVersion: "1.5.0-beta",
 			},
-			files: createTestSandboxFiles("custom-sandbox", "custom-id"),
+			files: createTestSandboxFiles(config, "custom-sandbox", "custom-id"),
 			rootfsPaths: RootfsPaths{
 				TemplateVersion: 2,
 				TemplateID:      "custom-template",
@@ -140,14 +140,10 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 }
 
 // createTestSandboxFiles creates a SandboxFiles instance for testing
-func createTestSandboxFiles(sandboxID, staticID string) *storage.SandboxFiles {
-	templateFiles := storage.TemplateFiles{
-		BuildID:            "test-build",
-		KernelVersion:      "6.1.0",
-		FirecrackerVersion: "1.4.0",
-	}
+func createTestSandboxFiles(config cfg.BuilderConfig, sandboxID, staticID string) *paths.SandboxFiles {
+	templateFiles := paths.NewWithVersions(config, "test-build", "6.1.0", "1.4.0")
 
-	templateCacheFiles := storage.TemplateCacheFiles{
+	templateCacheFiles := paths.TemplateCacheFiles{
 		TemplateFiles:   templateFiles,
 		CacheIdentifier: "test-cache-id",
 	}

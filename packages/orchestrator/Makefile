@@ -57,8 +57,10 @@ endef
 
 .PHONY: run-local
 run-local:
+	make build-debug
 	$(call setup_local_env)
-	NODE_ID=$$(hostname) ./bin/orchestrator --port 3000
+	mkdir -p $(ORCHESTRATOR_BASE_PATH)/build-templates
+	NODE_ID=$$(hostname) sudo -E ./bin/orchestrator --port 3000
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:

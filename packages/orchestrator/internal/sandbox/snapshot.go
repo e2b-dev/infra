@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -23,7 +24,7 @@ type Snapshot struct {
 func (s *Snapshot) Upload(
 	ctx context.Context,
 	persistence storage.StorageProvider,
-	templateFiles storage.TemplateFiles,
+	templateFiles paths.TemplateFiles,
 ) error {
 	var memfilePath *string
 	switch r := s.MemfileDiff.(type) {

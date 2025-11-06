@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -33,6 +34,7 @@ type closeable interface {
 type ServerStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
 
+	config            cfg.BuilderConfig
 	logger            *zap.Logger
 	builder           *build.Builder
 	buildCache        *cache.BuildCache
@@ -49,6 +51,7 @@ type ServerStore struct {
 
 func New(
 	ctx context.Context,
+	config cfg.BuilderConfig,
 	featureFlags *featureflags.Client,
 	meterProvider metric.MeterProvider,
 	logger *zap.Logger,
@@ -100,6 +103,7 @@ func New(
 
 	builder := build.NewBuilder(
 		logger,
+		config,
 		featureFlags,
 		sandboxFactory,
 		templatePersistence,
@@ -113,6 +117,7 @@ func New(
 	)
 
 	store := &ServerStore{
+		config:            config,
 		logger:            logger,
 		builder:           builder,
 		buildCache:        buildCache,

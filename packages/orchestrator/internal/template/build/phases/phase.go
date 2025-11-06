@@ -11,10 +11,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -150,7 +150,7 @@ func validateMetadata(
 }
 
 func validateTemplate(
-	files storage.TemplateFiles,
+	files paths.TemplateFiles,
 ) (err error) {
 	if files.BuildID == "" {
 		err = errors.Join(err, fmt.Errorf("template build ID is empty"))

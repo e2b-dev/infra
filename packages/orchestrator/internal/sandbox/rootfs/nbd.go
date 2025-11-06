@@ -40,7 +40,7 @@ func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *n
 
 	cache, err := block.NewCache(size, blockSize, cachePath, false)
 	if err != nil {
-		return nil, fmt.Errorf("error creating cache: %w", err)
+		return nil, fmt.Errorf("error creating nbd cache: %w", err)
 	}
 
 	overlay := block.NewOverlay(rootfs, cache, blockSize)

@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -25,6 +26,7 @@ import (
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
+	config            cfg.BuilderConfig
 	sandboxFactory    *sandbox.Factory
 	info              *service.ServiceInfo
 	sandboxes         *sandbox.Map
@@ -40,6 +42,7 @@ type Server struct {
 }
 
 type ServiceConfig struct {
+	Config           cfg.BuilderConfig
 	Tel              *telemetry.Client
 	NetworkPool      *network.Pool
 	DevicePool       *nbd.DevicePool
@@ -55,6 +58,7 @@ type ServiceConfig struct {
 
 func New(cfg ServiceConfig) *Server {
 	server := &Server{
+		config:            cfg.Config,
 		sandboxFactory:    cfg.SandboxFactory,
 		info:              cfg.Info,
 		proxy:             cfg.Proxy,

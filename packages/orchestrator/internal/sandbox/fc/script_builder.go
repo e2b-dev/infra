@@ -7,7 +7,7 @@ import (
 	txtTemplate "text/template"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 )
 
 // startScriptArgs represents the arguments for the start script template
@@ -81,7 +81,7 @@ func NewStartScriptBuilder(builderConfig cfg.BuilderConfig) *StartScriptBuilder 
 // buildArgs prepares the arguments for the start script template
 func (sb *StartScriptBuilder) buildArgs(
 	versions FirecrackerVersions,
-	files *storage.SandboxFiles,
+	files *paths.SandboxFiles,
 	rootfsPaths RootfsPaths,
 	namespaceID string,
 ) startScriptArgs {
@@ -129,7 +129,7 @@ func (sb *StartScriptBuilder) GenerateScript(args startScriptArgs, rootfsPaths R
 // Build creates a complete StartScriptResult with script, args, and computed paths
 func (sb *StartScriptBuilder) Build(
 	versions FirecrackerVersions,
-	files *storage.SandboxFiles,
+	files *paths.SandboxFiles,
 	rootfsPaths RootfsPaths,
 	namespaceID string,
 ) (*StartScriptResult, error) {

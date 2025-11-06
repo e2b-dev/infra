@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -105,7 +106,8 @@ type Sandbox struct {
 	*Resources
 	*Metadata
 
-	files   *storage.SandboxFiles
+	config  cfg.BuilderConfig
+	files   *paths.SandboxFiles
 	cleanup *Cleanup
 
 	process *fc.Process
@@ -305,6 +307,7 @@ func (f *Factory) CreateSandbox(
 		Metadata:  metadata,
 
 		Template: template,
+		config:   f.config,
 		files:    sandboxFiles,
 		process:  fcHandle,
 
@@ -543,6 +546,7 @@ func (f *Factory) ResumeSandbox(
 		Metadata:  metadata,
 
 		Template: t,
+		config:   f.config,
 		files:    sandboxFiles,
 		process:  fcHandle,
 
@@ -727,6 +731,7 @@ func (s *Sandbox) Pause(
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
+		s.config,
 		buildID,
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
@@ -744,6 +749,7 @@ func (s *Sandbox) Pause(
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
 		ctx,
+		s.config,
 		buildID,
 		originalRootfs.Header(),
 		&RootfsDiffCreator{
@@ -773,6 +779,7 @@ func (s *Sandbox) Pause(
 
 func pauseProcessMemory(
 	ctx context.Context,
+	config cfg.BuilderConfig,
 	buildId uuid.UUID,
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
@@ -781,7 +788,7 @@ func pauseProcessMemory(
 	defer span.End()
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
-		build.DefaultCachePath(),
+		config.DefaultCachePath,
 		buildId.String(),
 		build.Memfile,
 	)
@@ -838,6 +845,7 @@ func pauseProcessMemory(
 
 func pauseProcessRootfs(
 	ctx context.Context,
+	config cfg.BuilderConfig,
 	buildId uuid.UUID,
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
@@ -845,7 +853,7 @@ func pauseProcessRootfs(
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
 
-	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath(), buildId.String(), build.Rootfs)
+	rootfsDiffFile, err := build.NewLocalDiffFile(config.DefaultCachePath, buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}

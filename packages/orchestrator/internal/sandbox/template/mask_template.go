@@ -3,9 +3,9 @@ package template
 import (
 	"context"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type MaskTemplate struct {
@@ -46,7 +46,7 @@ func (c *MaskTemplate) Close(_ context.Context) error {
 	return nil
 }
 
-func (c *MaskTemplate) Files() storage.TemplateCacheFiles {
+func (c *MaskTemplate) Files() paths.TemplateCacheFiles {
 	return c.template.Files()
 }
 
