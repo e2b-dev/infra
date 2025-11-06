@@ -94,9 +94,8 @@ module "cluster" {
   client_cluster_size_max         = var.client_cluster_size_max
   build_cluster_root_disk_size_gb = var.build_cluster_root_disk_size_gb
 
-  client_node_type                 = var.client_node_type
-  isolated_client_cluster_size     = var.isolated_client_cluster_size
-  isolated_client_cluster_size_max = var.isolated_client_cluster_size_max
+  client_node_type                    = var.client_node_type
+  isolated_client_cluster_target_size = var.isolated_client_cluster_target_size
 
   api_cluster_size        = var.api_cluster_size
   build_cluster_size      = var.build_cluster_size

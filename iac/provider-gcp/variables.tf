@@ -473,12 +473,7 @@ variable "client_node_type" {
   default = "n1-node-96-624"
 }
 
-variable "isolated_client_cluster_size" {
-  type    = number
-  default = 0
-}
-
-variable "isolated_client_cluster_size_max" {
+variable "isolated_client_cluster_target_size" {
   type    = number
   default = 0
 }

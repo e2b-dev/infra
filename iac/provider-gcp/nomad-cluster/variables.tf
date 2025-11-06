@@ -320,11 +320,7 @@ variable "client_node_type" {
   type = string
 }
 
-variable "isolated_client_cluster_size" {
-  type = number
-}
-
-variable "isolated_client_cluster_size_max" {
+variable "isolated_client_cluster_target_size" {
   type = number
 }
 

@@ -1,10 +1,10 @@
 locals {
-  use_isolated_nodes = var.client_node_type != ""
+  use_isolated_nodes = var.isolated_client_cluster_target_size > 0
 
   isolated_client_pool_name = "${var.prefix}${var.client_cluster_name}-isolated"
 }
 
-resource "google_compute_node_template" "client" {
+resource "google_compute_node_template" "isolated-client" {
   count       = local.use_isolated_nodes ? 1 : 0
   name        = "${local.isolated_client_pool_name}-node-template"
   region      = var.gcp_region
@@ -12,17 +12,17 @@ resource "google_compute_node_template" "client" {
   description = "Sole tenant node template for orchestrators"
 }
 
-resource "google_compute_node_group" "client" {
+resource "google_compute_node_group" "isolated-client" {
   count       = local.use_isolated_nodes ? 1 : 0
   name        = "${local.isolated_client_pool_name}-node-group"
   zone        = var.gcp_zone
   description = "Sole tenant node group for orchestrators"
 
   initial_size  = 1
-  node_template = google_compute_node_template.client[0].id
+  node_template = google_compute_node_template.isolated-client[0].id
 }
 
-resource "google_compute_instance_template" "isolated_client" {
+resource "google_compute_instance_template" "isolated-client" {
   count = local.use_isolated_nodes ? 1 : 0
 
   name_prefix = "${local.isolated_client_pool_name}-"
@@ -103,18 +103,18 @@ resource "google_compute_instance_template" "isolated_client" {
   ]
 }
 
-resource "google_compute_region_instance_group_manager" "isolated_client_pool" {
+resource "google_compute_region_instance_group_manager" "isolated-client-pool" {
   count = local.use_isolated_nodes ? 1 : 0
 
   name                      = "${local.isolated_client_pool_name}-rig"
   region                    = var.gcp_region
   distribution_policy_zones = [var.gcp_zone]
 
-  target_size = var.isolated_client_cluster_size < var.isolated_client_cluster_size_max ? null : var.isolated_client_cluster_size
+  target_size = var.isolated_client_cluster_target_size
 
   version {
-    name              = google_compute_instance_template.isolated_client[0].id
-    instance_template = google_compute_instance_template.isolated_client[0].id
+    name              = google_compute_instance_template.isolated-client[0].id
+    instance_template = google_compute_instance_template.isolated-client[0].id
   }
 
   auto_healing_policies {
