@@ -135,9 +135,16 @@ func New(
 		createdCounter: createdCounter,
 	}
 
-	redisStorage := redisbackend.NewStorage(redisClient)
+	var sandboxStorage sandbox.Storage
 	memoryStorage := memory.NewStorage()
-	sandboxStorage := populate_redis.NewStorage(memoryStorage, redisStorage)
+
+	if redisClient != nil {
+		redisStorage := redisbackend.NewStorage(redisClient)
+		sandboxStorage = populate_redis.NewStorage(memoryStorage, redisStorage)
+	} else {
+		sandboxStorage = memoryStorage
+	}
+
 	reservationStorage := reservations.NewReservationStorage()
 
 	o.sandboxStore = sandbox.NewStore(
