@@ -19,9 +19,11 @@ func setupTestEnvironment(t *testing.T) (sourceDir, targetBaseDir, workDir strin
 	tmpBase := t.TempDir()
 	sourceDir = filepath.Join(tmpBase, "source")
 	targetBaseDir = filepath.Join(tmpBase, "target")
+	workDir = filepath.Join(tmpBase, "work")
 
 	require.NoError(t, os.MkdirAll(sourceDir, 0o755))
 	require.NoError(t, os.MkdirAll(targetBaseDir, 0o755))
+	require.NoError(t, os.MkdirAll(workDir, 0o755))
 
 	return sourceDir, targetBaseDir, workDir
 }
