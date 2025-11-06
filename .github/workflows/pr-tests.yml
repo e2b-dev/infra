@@ -65,5 +65,5 @@ jobs:
       - name: Validate terraform
         working-directory: ./iac/provider-gcp
         run: |
-          terraform init
+          terraform init -backend=false
           terraform validate
