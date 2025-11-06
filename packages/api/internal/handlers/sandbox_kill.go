@@ -91,7 +91,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	killedOrRemoved := false
 
-	sbx, err := a.orchestrator.GetSandbox(sandboxID)
+	sbx, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 	if err == nil {
 		if sbx.TeamID != teamID {
 			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
