@@ -9,19 +9,29 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       name = "orchestrator"
       port = "${port}"
 
+      provider = "nomad"
+
       check {
-        type         = "grpc"
+        type         = "http"
+        path         = "/health"
         name         = "health"
         interval     = "20s"
         timeout      = "5s"
-        grpc_use_tls = false
-        port         = "${port}"
       }
     }
 
     service {
       name = "orchestrator-proxy"
       port = "${proxy_port}"
+
+      provider = "nomad"
+
+      check {
+        type     = "tcp"
+        name     = "health"
+        interval = "30s"
+        timeout  = "1s"
+      }
     }
 
     task "check-placement" {

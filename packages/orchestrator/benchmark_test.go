@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -71,7 +70,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	// ephemeral data
 	tempDir := b.TempDir()
-	clientID := uuid.NewString()
 
 	abs := func(s string) string {
 		return utils.Must(filepath.Abs(s))
@@ -127,8 +125,9 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	sbxlogger.SetSandboxLoggerInternal(logger)
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
-	networkPool, err := network.NewPool(8, 8, clientID, config.NetworkConfig)
+	slotStorage, err := network.NewStorageLocal(config.NetworkConfig)
 	require.NoError(b, err)
+	networkPool := network.NewPool(8, 8, slotStorage, config.NetworkConfig)
 	go func() {
 		networkPool.Populate(b.Context())
 		logger.Info("network pool populated")

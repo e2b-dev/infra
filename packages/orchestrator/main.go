@@ -333,10 +333,11 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"device pool", devicePool.Close})
 
 	// network pool
-	networkPool, err := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
+	slotStorage, err := newStorage(nodeID, config.NetworkConfig)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
+	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
 	startService("network pool", func() error {
 		networkPool.Populate(ctx)
 
@@ -551,4 +552,13 @@ type serviceDoneError struct {
 
 func (e serviceDoneError) Error() string {
 	return fmt.Sprintf("service %s finished", e.name)
+}
+
+// NewStorage creates a new slot storage based on the environment, we are ok with using a memory storage for local
+func newStorage(nodeID string, config network.Config) (network.Storage, error) {
+	if env.IsDevelopment() || config.UseLocalNamespaceStorage {
+		return network.NewStorageLocal(config)
+	}
+
+	return network.NewStorageKV(nodeID, config)
 }

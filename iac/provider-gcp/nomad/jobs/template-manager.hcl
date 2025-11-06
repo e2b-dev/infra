@@ -29,16 +29,16 @@ job "template-manager-system" {
     }
 
     service {
-      name = "template-manager"
-      port = "${port}"
+      name     = "template-manager"
+      port     = "${port}"
+      provider = "nomad"
 
       check {
-        type         = "grpc"
+        type         = "http"
+        path         = "/health"
         name         = "health"
         interval     = "20s"
         timeout      = "5s"
-        grpc_use_tls = false
-        port         = "${port}"
       }
     }
 
