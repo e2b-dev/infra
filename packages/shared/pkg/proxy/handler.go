@@ -23,6 +23,12 @@ type SandboxNotFoundError struct {
 	SandboxId string
 }
 
+func NewErrSandboxNotFound(sandboxId string) *SandboxNotFoundError {
+	return &SandboxNotFoundError{
+		SandboxId: sandboxId,
+	}
+}
+
 func (e SandboxNotFoundError) Error() string {
 	return "sandbox not found"
 }
