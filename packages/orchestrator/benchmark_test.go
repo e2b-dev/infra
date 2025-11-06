@@ -261,11 +261,12 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			HugePages:  sandboxConfig.HugePages,
 		}
 
-		metadata := paths.TemplateFiles{
-			BuildID:            buildID,
-			KernelVersion:      kernelVersion,
-			FirecrackerVersion: fcVersion,
-		}
+		metadata := paths.NewWithVersions(
+			config.BuilderConfig,
+			buildID,
+			kernelVersion,
+			fcVersion,
+		)
 		_, err = builder.Build(b.Context(), metadata, templateConfig, logger.Core())
 		require.NoError(b, err)
 	}
