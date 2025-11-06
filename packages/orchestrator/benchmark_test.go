@@ -33,6 +33,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -49,16 +50,17 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	// test configuration
 	const (
-		testType            = onlyStart
-		baseImage           = "e2bdev/base"
-		kernelVersion       = "vmlinux-6.1.102"
-		fcVersion           = "v1.10.1_1fcdaec08"
-		templateID          = "fcb33d09-3141-42c4-8d3b-c2df411681db"
-		buildID             = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
-		useHugePages        = false
-		allowInternetAccess = true
-		templateVersion     = "v2.0.0"
+		testType        = onlyStart
+		baseImage       = "e2bdev/base"
+		kernelVersion   = "vmlinux-6.1.102"
+		fcVersion       = "v1.10.1_1fcdaec08"
+		templateID      = "fcb33d09-3141-42c4-8d3b-c2df411681db"
+		buildID         = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
+		useHugePages    = false
+		templateVersion = "v2.0.0"
 	)
+
+	firewall := &orchestrator.SandboxFirewallConfig{}
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
 	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
@@ -182,12 +184,12 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	accessToken := "access-token"
 	sandboxConfig := sandbox.Config{
-		BaseTemplateID:      templateID,
-		Vcpu:                2,
-		RamMB:               512,
-		TotalDiskSizeMB:     2 * 1024,
-		HugePages:           useHugePages,
-		AllowInternetAccess: ptr(allowInternetAccess),
+		BaseTemplateID:  templateID,
+		Vcpu:            2,
+		RamMB:           512,
+		TotalDiskSizeMB: 2 * 1024,
+		HugePages:       useHugePages,
+		Firewall:        firewall,
 		Envd: sandbox.EnvdMetadata{
 			Vars:        map[string]string{"HELLO": "WORLD"},
 			AccessToken: &accessToken,
@@ -290,10 +292,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	for b.Loop() {
 		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
 	}
-}
-
-func ptr[T any](v T) *T {
-	return &v
 }
 
 type testCycle string

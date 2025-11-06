@@ -9,20 +9,20 @@ message SandboxConfig {
   // Data required for creating a new sandbox.
   string template_id = 1;
   string build_id = 2;
-  
+
   string kernel_version = 3;
   string firecracker_version = 4;
-  
+
   bool huge_pages = 5;
-  
+
   string sandbox_id = 6;
   map<string, string> env_vars = 7;
-  
+
   // Metadata about the sandbox.
   map<string, string> metadata = 8;
   optional string alias = 9;
   string envd_version = 10;
-  
+
   int64 vcpu = 11;
   int64 ram_mb = 12;
 
@@ -44,6 +44,17 @@ message SandboxConfig {
   // This is optional only for backwards compatibility.
   // After migration, the optional keyword can be removed.
   optional bool allow_internet_access = 21;
+
+  optional SandboxFirewallConfig firewall = 22;
+}
+
+message SandboxFirewallConfig {
+    optional SandboxFirewallEgressConfig egress = 1;
+}
+
+message SandboxFirewallEgressConfig {
+    repeated string allowed_cidrs = 1;
+    repeated string blocked_cidrs = 2;
 }
 
 message SandboxCreateRequest {

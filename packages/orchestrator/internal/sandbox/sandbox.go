@@ -61,7 +61,7 @@ type Config struct {
 	TotalDiskSizeMB int64
 	HugePages       bool
 
-	AllowInternetAccess *bool
+	Firewall *orchestrator.SandboxFirewallConfig
 
 	Envd EnvdMetadata
 }
@@ -185,13 +185,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
-	allowInternet := f.config.AllowSandboxInternet
-	if config.AllowInternetAccess != nil {
-		allowInternet = *config.AllowInternetAccess
-	}
-
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Firewall)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -373,14 +367,7 @@ func (f *Factory) ResumeSandbox(
 		}
 	}()
 
-	// TODO: Temporarily set this based on global config, should be removed later
-	//  (it should be passed as a non nil parameter from API)
-	allowInternet := f.config.AllowSandboxInternet
-	if config.AllowInternetAccess != nil {
-		allowInternet = *config.AllowInternetAccess
-	}
-
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Firewall)
 	defer func() {
 		// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -915,7 +902,7 @@ func getNetworkSlotAsync(
 	ctx context.Context,
 	networkPool *network.Pool,
 	cleanup *Cleanup,
-	allowInternet bool,
+	firewall *orchestrator.SandboxFirewallConfig,
 ) chan networkSlotRes {
 	ctx, span := tracer.Start(ctx, "get-network-slot")
 	defer span.End()
@@ -925,7 +912,7 @@ func getNetworkSlotAsync(
 	go func() {
 		defer close(r)
 
-		ips, err := networkPool.Get(ctx, allowInternet)
+		ips, err := networkPool.Get(ctx, firewall)
 		if err != nil {
 			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
 

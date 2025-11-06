@@ -349,6 +349,7 @@ func run(config cfg.Config) (success bool) {
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 
 	orchestratorService := server.New(server.ServiceConfig{
+		Config:           config,
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,
 		NetworkPool:      networkPool,

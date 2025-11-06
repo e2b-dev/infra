@@ -16,6 +16,7 @@ import (
 	netutils "k8s.io/utils/net"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
@@ -248,14 +249,13 @@ func (s *Slot) CloseFirewall() error {
 	return nil
 }
 
-func (s *Slot) ConfigureInternet(ctx context.Context, allowInternet bool) (e error) {
+func (s *Slot) ConfigureInternet(ctx context.Context, firewall *orchestrator.SandboxFirewallConfig) (e error) {
 	_, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
-		attribute.Bool("allow_internet", allowInternet),
 	))
 	defer span.End()
 
-	if allowInternet {
+	if firewall == nil || len(firewall.GetEgress().GetAllowedCidrs()) == 0 && len(firewall.GetEgress().GetBlockedCidrs()) == 0 {
 		// Internet access is allowed by default.
 		return nil
 	}
@@ -269,9 +269,18 @@ func (s *Slot) ConfigureInternet(ctx context.Context, allowInternet bool) (e err
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		err = s.Firewall.AddBlockedIP("0.0.0.0/0")
-		if err != nil {
-			return fmt.Errorf("error setting firewall rules: %w", err)
+		for _, cidr := range firewall.GetEgress().GetAllowedCidrs() {
+			err = s.Firewall.AddAllowedIP(cidr)
+			if err != nil {
+				return fmt.Errorf("error setting firewall rules: %w", err)
+			}
+		}
+
+		for _, cidr := range firewall.GetEgress().GetBlockedCidrs() {
+			err = s.Firewall.AddBlockedIP(cidr)
+			if err != nil {
+				return fmt.Errorf("error setting firewall rules: %w", err)
+			}
 		}
 
 		return nil
