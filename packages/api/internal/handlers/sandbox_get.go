@@ -42,7 +42,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// Try to get the running sandbox first
-	sbx, err := a.orchestrator.GetSandbox(sandboxId)
+	sbx, err := a.orchestrator.GetSandbox(ctx, sandboxId)
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if sbx.TeamID != team.ID {

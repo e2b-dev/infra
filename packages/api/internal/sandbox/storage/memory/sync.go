@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"context"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -12,7 +11,7 @@ import (
 // This is to prevent remove instances that are still being started
 const syncSandboxRemoveGracePeriod = 10 * time.Second
 
-func (s *Store) Sync(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID string) {
+func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
 	sandboxMap := make(map[string]sandbox.Sandbox)
 
 	// Use a map for faster lookup
@@ -41,12 +40,15 @@ func (s *Store) Sync(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID st
 		}
 	}
 
+	var toBeAdded []sandbox.Sandbox
 	// Add sandboxes that are not in the cache with the default TTL
 	for _, sandbox := range sandboxes {
 		if s.exists(sandbox.SandboxID) {
 			continue
 		}
 
-		s.Add(ctx, sandbox, false)
+		toBeAdded = append(toBeAdded, sandbox)
 	}
+
+	return toBeAdded
 }
