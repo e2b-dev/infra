@@ -16,13 +16,6 @@ type Config struct {
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
 
-	// DefaultOrchestratorPort is the port that the Orchestrator listens on.
-	// Deprecated: Nomad knows which port the orchestrator is listening on. Keep this
-	// around temporarily until all nomad jobs have a port labeled "grpc", then this can be removed.
-	DefaultOrchestratorPort int `env:"ORCHESTRATOR_PORT" envDefault:"5008"`
-
-	OrchestratorPortLabel string `env:"ORCHESTRATOR_PORT_LABEL" envDefault:"grpc"`
-
 	PostgresConnectionString string `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
 
 	PosthogAPIKey string `env:"POSTHOG_API_KEY"`

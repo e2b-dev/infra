@@ -22,7 +22,7 @@ type StorageLocal struct {
 
 const netNamespacesDir = "/var/run/netns"
 
-func NewStorageLocal(slotsSize int, config Config) (*StorageLocal, error) {
+func NewStorageLocal(config Config) (*StorageLocal, error) {
 	// get namespaces that we want to always skip
 	foreignNs, err := getForeignNamespaces()
 	if err != nil {
@@ -38,8 +38,8 @@ func NewStorageLocal(slotsSize int, config Config) (*StorageLocal, error) {
 	return &StorageLocal{
 		config:       config,
 		foreignNs:    foreignNsMap,
-		slotsSize:    slotsSize,
-		acquiredNs:   make(map[string]struct{}, slotsSize),
+		slotsSize:    vrtSlotsSize,
+		acquiredNs:   make(map[string]struct{}, vrtSlotsSize),
 		acquiredNsMu: sync.Mutex{},
 	}, nil
 }
