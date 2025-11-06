@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 )
@@ -10,6 +11,7 @@ func TestHostParser(t *testing.T) {
 	tests := []struct {
 		name     string
 		host     string
+		headers  map[string][]string
 		wantID   string
 		wantPort uint64
 		wantErr  error
@@ -61,41 +63,71 @@ func TestHostParser(t *testing.T) {
 			host:     "isv6ril5xadwn1k9t2jye.e2b.app",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
-			wantErr:  &InvalidHostError{},
+			wantErr:  InvalidHostError{},
 		},
 		{
 			name:     "sandbox-host-with-invalid-port-part",
 			host:     "abcd-isv6ril5xadwn1k9t2jye.e2b.app",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
-			wantErr:  &InvalidSandboxPortError{},
+			wantErr:  InvalidHostError{},
 		},
 		{
 			name:     "sandbox-host-without-domain",
 			host:     "49983-isv6ril5xadwn1k9t2jye",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
-			wantErr:  &InvalidHostError{},
+			wantErr:  InvalidHostError{},
 		},
 		{
 			name:     "sandbox-host-with-missing-domain-and-port",
 			host:     "49983-isv6ril5xadwn1k9t2jye:8080",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
-			wantErr:  &InvalidHostError{},
+			wantErr:  InvalidHostError{},
 		},
 		{
 			name:     "sandbox-host-with-missing-domain",
 			host:     "49983-isv6ril5xadwn1k9t2jye",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
-			wantErr:  &InvalidHostError{},
+			wantErr:  InvalidHostError{},
+		},
+		{
+			name: "headers: happy path",
+			host: "localhost:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"8080"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 8080,
+		},
+		{
+			name: "headers: missing sandbox id",
+			host: "localhost:1234",
+			headers: http.Header{
+				headerSandboxPort: []string{"8080"},
+			},
+			wantErr: InvalidHostError{},
+		},
+		{
+			name: "headers: missing sandbox port",
+			host: "localhost:1234",
+			headers: http.Header{
+				headerSandboxID: []string{"isv6ril5xadwn1k9t2jye"},
+			},
+			wantErr: InvalidHostError{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotID, gotPort, err := ParseHost(tt.host)
+			req := &http.Request{
+				Host:   tt.host,
+				Header: http.Header(tt.headers),
+			}
+			gotID, gotPort, err := GetHostPort(req)
 
 			// Compare error presence and, when present, the concrete type.
 			if (err != nil) != (tt.wantErr != nil) {

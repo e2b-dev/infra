@@ -19,18 +19,6 @@ func (e InvalidHostError) Error() string {
 	return "invalid url host"
 }
 
-type InvalidSandboxPortError struct{}
-
-func (e InvalidSandboxPortError) Error() string {
-	return "invalid sandbox port"
-}
-
-func NewErrSandboxNotFound(sandboxId string) SandboxNotFoundError {
-	return SandboxNotFoundError{
-		SandboxId: sandboxId,
-	}
-}
-
 type SandboxNotFoundError struct {
 	SandboxId string
 }
@@ -47,14 +35,6 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 		if errors.As(err, &invalidHostErr) {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
-
-			return
-		}
-
-		var invalidPortErr *InvalidSandboxPortError
-		if errors.As(err, &invalidPortErr) {
-			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host))
-			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
 
 			return
 		}
