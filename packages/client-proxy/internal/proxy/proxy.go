@@ -56,7 +56,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 		reverseproxy.ClientProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := reverseproxy.ParseHost(r.Host)
+			sandboxId, port, err := reverseproxy.GetHostPort(r)
 			if err != nil {
 				return nil, err
 			}

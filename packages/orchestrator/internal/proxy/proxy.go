@@ -35,7 +35,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 		reverseproxy.SandboxProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := reverseproxy.ParseHost(r.Host)
+			sandboxId, port, err := reverseproxy.GetHostPort(r)
 			if err != nil {
 				return nil, err
 			}
