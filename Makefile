@@ -97,8 +97,8 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
-.PHONY: download-public-builds
-download-public-builds:
+.PHONY: download-public-kernels
+download-public-kernels:
 	mkdir -p ./packages/fc-kernels
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* ./packages/fc-kernels/
 

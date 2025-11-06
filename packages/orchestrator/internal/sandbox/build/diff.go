@@ -18,7 +18,7 @@ func (NoDiffError) Error() string {
 }
 
 const (
-	Memfile DiffType = storage.MemfileName
+	Memfile DiffType = paths.MemfileName
 	Rootfs  DiffType = paths.RootfsName
 )
 

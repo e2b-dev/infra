@@ -22,8 +22,12 @@ type BuilderConfig struct {
 	SandboxCacheDir        string        `env:"SANDBOX_CACHE_DIR,expand"  envDefault:"${ORCHESTRATOR_BASE_PATH}/sandbox"`
 	SandboxDir             string        `env:"SANDBOX_DIR"               envDefault:"/fc-vm"`
 	SharedChunkCachePath   string        `env:"SHARED_CHUNK_CACHE_PATH"`
-	TemplateCacheDir       string        `env:"TEMPLATE_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/template"`
-	TemplatesDir           string        `env:"TEMPLATES_DIR,expand"      envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
+
+	// SnapshotCacheDir is a tmpfs directory mounted on the host.
+	// This is used for speed optimization as the final diff is copied to the persistent storage.
+	SnapshotCacheDir string `env:"SNAPSHOT_CACHE_DIR,expand" envDefault:"/mnt/snapshot-cache"`
+	TemplateCacheDir string `env:"TEMPLATE_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/template"`
+	TemplatesDir     string `env:"TEMPLATES_DIR,expand"      envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
 
 	NetworkConfig network.Config
 }
@@ -38,6 +42,7 @@ func makePathsAbsolute(c *BuilderConfig) error {
 		&c.SandboxCacheDir,
 		&c.SandboxDir,
 		&c.SharedChunkCachePath,
+		&c.SnapshotCacheDir,
 		&c.TemplateCacheDir,
 		&c.TemplatesDir,
 	} {
@@ -65,6 +70,7 @@ func makePathsAbsolute(c *BuilderConfig) error {
 		c.SandboxCacheDir,
 		c.SandboxDir,
 		c.SharedChunkCachePath,
+		c.SnapshotCacheDir,
 		c.TemplateCacheDir,
 		c.TemplatesDir,
 	} {

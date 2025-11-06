@@ -10,7 +10,6 @@ import (
 	"github.com/bits-and-blooms/bitset"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -28,7 +27,7 @@ func (r *RootfsDiffCreator) process(ctx context.Context, out io.Writer) (*header
 }
 
 type MemoryDiffCreator struct {
-	memfile    *storage.TemporaryMemfile
+	memfile    *TemporaryMemfile
 	dirtyPages *bitset.BitSet
 	blockSize  int64
 	doneHook   func(context.Context) error

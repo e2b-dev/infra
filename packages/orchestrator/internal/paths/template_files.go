@@ -7,12 +7,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const (
 	GuestEnvdPath = "/usr/bin/envd"
 
+	MemfileName  = "memfile"
 	RootfsName   = "rootfs.ext4"
 	SnapfileName = "snapfile"
 	MetadataName = "metadata.json"
@@ -62,11 +62,11 @@ func (t TemplateFiles) StorageDir() string {
 }
 
 func (t TemplateFiles) StorageMemfilePath() string {
-	return fmt.Sprintf("%s/%s", t.StorageDir(), storage.MemfileName)
+	return fmt.Sprintf("%s/%s", t.StorageDir(), MemfileName)
 }
 
 func (t TemplateFiles) StorageMemfileHeaderPath() string {
-	return fmt.Sprintf("%s/%s%s", t.StorageDir(), storage.MemfileName, HeaderSuffix)
+	return fmt.Sprintf("%s/%s%s", t.StorageDir(), MemfileName, HeaderSuffix)
 }
 
 func (t TemplateFiles) StorageRootfsPath() string {

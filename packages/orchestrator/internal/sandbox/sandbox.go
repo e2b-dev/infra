@@ -30,7 +30,6 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -702,7 +701,7 @@ func (s *Sandbox) Pause(
 	4. Delete tmpfs file
 	5. Unlock so another snapshot can use tmpfs space
 	*/
-	memfile, err := storage.AcquireTmpMemfile(ctx, buildID.String())
+	memfile, err := acquireTmpMemfile(ctx, s.config, buildID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
 	}
