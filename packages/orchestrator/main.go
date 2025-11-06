@@ -68,6 +68,10 @@ func main() {
 		log.Fatalf("failed to parse config: %v", err)
 	}
 
+	if err = ensureDirs(config); err != nil {
+		log.Fatalf("failed to create dirs: %v", err)
+	}
+
 	success := run(config)
 
 	log.Println("Stopping orchestrator, success:", success)
@@ -75,6 +79,29 @@ func main() {
 	if success == false {
 		os.Exit(1)
 	}
+}
+
+func ensureDirs(c cfg.Config) error {
+	for _, dir := range []string{
+		c.OrchestratorBasePath,
+		c.DefaultCachePath,
+		c.SandboxCacheDir,
+		c.SandboxDir,
+		c.SharedChunkCachePath,
+		c.SnapshotCacheDir,
+		c.TemplateCacheDir,
+		c.TemplatesDir,
+	} {
+		if dir == "" {
+			continue
+		}
+
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("failed to make %q: %w", dir, err)
+		}
+	}
+
+	return nil
 }
 
 func run(config cfg.Config) (success bool) {

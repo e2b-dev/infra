@@ -2,7 +2,6 @@ package cfg
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -62,25 +61,6 @@ func makePathsAbsolute(c *BuilderConfig) error {
 		}
 
 		*item = dir
-	}
-
-	for _, dir := range []string{
-		c.OrchestratorBasePath,
-		c.DefaultCachePath,
-		c.SandboxCacheDir,
-		c.SandboxDir,
-		c.SharedChunkCachePath,
-		c.SnapshotCacheDir,
-		c.TemplateCacheDir,
-		c.TemplatesDir,
-	} {
-		if dir == "" {
-			continue
-		}
-
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return fmt.Errorf("failed to make %q: %w", dir, err)
-		}
 	}
 
 	return nil
