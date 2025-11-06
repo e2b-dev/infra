@@ -10,6 +10,8 @@ import (
 func TestHostParser(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "local")
 
+	getUpstreamFromRequest := GetUpstreamFromRequest(true)
+
 	tests := []struct {
 		name     string
 		host     string
@@ -129,7 +131,7 @@ func TestHostParser(t *testing.T) {
 				Host:   tt.host,
 				Header: http.Header(tt.headers),
 			}
-			gotID, gotPort, err := GetUpstreamFromRequest(req)
+			gotID, gotPort, err := getUpstreamFromRequest(req)
 
 			// Compare error presence and, when present, the concrete type.
 			if (err != nil) != (tt.wantErr != nil) {

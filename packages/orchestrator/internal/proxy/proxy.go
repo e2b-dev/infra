@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -29,13 +30,15 @@ type SandboxProxy struct {
 }
 
 func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map) (*SandboxProxy, error) {
+	getUpstreamFromRequest := reverseproxy.GetUpstreamFromRequest(env.IsLocal())
+
 	proxy := reverseproxy.New(
 		port,
 		// Retry 5 times to handle port forwarding delays in sandbox envd.
 		reverseproxy.SandboxProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := reverseproxy.GetUpstreamFromRequest(r)
+			sandboxId, port, err := getUpstreamFromRequest(r)
 			if err != nil {
 				return nil, err
 			}

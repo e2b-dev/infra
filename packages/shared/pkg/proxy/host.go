@@ -5,27 +5,27 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
-func GetUpstreamFromRequest(r *http.Request) (sandboxId string, port uint64, err error) {
-	if env.IsLocal() {
-		var ok bool
-		sandboxId, port, ok, err = parseHeaders(r.Header)
+func GetUpstreamFromRequest(processHeaders bool) func(r *http.Request) (sandboxId string, port uint64, err error) {
+	return func(r *http.Request) (sandboxId string, port uint64, err error) {
+		if processHeaders {
+			var ok bool
+			sandboxId, port, ok, err = parseHeaders(r.Header)
+			if err != nil {
+				return "", 0, err
+			} else if ok {
+				return sandboxId, port, nil
+			}
+		}
+
+		sandboxId, port, err = parseHost(r.Host)
 		if err != nil {
 			return "", 0, err
-		} else if ok {
-			return sandboxId, port, nil
 		}
-	}
 
-	sandboxId, port, err = parseHost(r.Host)
-	if err != nil {
-		return "", 0, err
+		return sandboxId, port, nil
 	}
-
-	return sandboxId, port, nil
 }
 
 func parseHost(host string) (sandboxID string, port uint64, err error) {
