@@ -31,6 +31,7 @@ plan:
 
 .PHONY: destroy
 destroy:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(MAKE) -C iac/provider-gcp destroy
 
 # Deploy all jobs in Nomad
