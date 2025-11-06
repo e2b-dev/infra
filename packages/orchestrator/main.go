@@ -83,8 +83,8 @@ func main() {
 
 func ensureDirs(c cfg.Config) error {
 	for _, dir := range []string{
-		c.OrchestratorBasePath,
 		c.DefaultCachePath,
+		c.OrchestratorBasePath,
 		c.SandboxCacheDir,
 		c.SandboxDir,
 		c.SharedChunkCachePath,
