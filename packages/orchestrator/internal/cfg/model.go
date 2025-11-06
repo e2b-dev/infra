@@ -31,6 +31,7 @@ type BuilderConfig struct {
 	NetworkConfig network.Config
 }
 
+// makePathsAbsolute avoids some complexities with symlinks and relative paths
 func makePathsAbsolute(c *BuilderConfig) error {
 	for _, item := range []*string{
 		&c.DefaultCachePath,
