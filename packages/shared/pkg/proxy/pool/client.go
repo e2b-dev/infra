@@ -97,6 +97,7 @@ func newProxyClient(
 		Rewrite: func(r *httputil.ProxyRequest) {
 			t, ok := pc.getDestination(r.In)
 			if !ok {
+				r.SetURL(r.In.URL) // make linters happy, shouldn't matter
 				return
 			}
 
