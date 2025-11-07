@@ -30,7 +30,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 
 	key := getSandboxKey(sbx.SandboxID)
 
-	// Storage in Redis with expiration
+	// Storage in Redis with max expiration little bit longer than max instance length to prevent leaking
 	err = s.redisClient.Set(redisCtx, key, data, sbx.MaxInstanceLength+time.Minute).Err()
 	if err != nil {
 		zap.L().Error("Failed to store sandbox in Redis", logger.WithSandboxID(sbx.SandboxID), zap.Error(err))
