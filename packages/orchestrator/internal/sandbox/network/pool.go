@@ -72,14 +72,9 @@ type Pool struct {
 
 var ErrClosed = errors.New("cannot read from a closed pool")
 
-func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
+func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, slotStorage Storage, config Config) *Pool {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
-
-	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create slot storage: %w", err)
-	}
 
 	pool := &Pool{
 		config:      config,
@@ -89,7 +84,7 @@ func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Co
 		slotStorage: slotStorage,
 	}
 
-	return pool, nil
+	return pool
 }
 
 func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
