@@ -14,10 +14,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
 
+// Deprecated: use db package instead
 type DB struct {
 	Client *models.Client
 }
 
+// Deprecated: use db package instead
 func NewClient(maxConns, maxIdle int) (*DB, error) {
 	databaseURL := os.Getenv("POSTGRES_CONNECTION_STRING")
 	if databaseURL == "" {

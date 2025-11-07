@@ -4,6 +4,14 @@ import (
 	"fmt"
 )
 
+type AddressNotFoundError struct {
+	hostVirtAddr uintptr
+}
+
+func (e AddressNotFoundError) Error() string {
+	return fmt.Sprintf("address %d not found in any mapping", e.hostVirtAddr)
+}
+
 type Mapping struct {
 	Regions []Region
 }
@@ -20,5 +28,5 @@ func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uint64, error) {
 		}
 	}
 
-	return 0, 0, fmt.Errorf("address %d not found in any mapping", hostVirtAddr)
+	return 0, 0, AddressNotFoundError{hostVirtAddr: hostVirtAddr}
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -838,6 +839,15 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
 	}
 
+	err = header.ValidateMappings(memfileHeader.Mapping, memfileHeader.Metadata.Size, memfileHeader.Metadata.BlockSize)
+	if err != nil {
+		if memfileHeader.IsNormalizeFixApplied() {
+			return nil, nil, fmt.Errorf("invalid memfile header mappings: %w", err)
+		}
+
+		zap.L().Warn("memfile header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(memfileHeader.Metadata.BuildId.String()))
+	}
+
 	return memfileDiff, memfileHeader, nil
 }
 
@@ -892,6 +902,15 @@ func pauseProcessRootfs(
 	rootfsHeader, err := header.NewHeader(rootfsMetadata, rootfsMappings)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
+	}
+
+	err = header.ValidateMappings(rootfsHeader.Mapping, rootfsHeader.Metadata.Size, rootfsHeader.Metadata.BlockSize)
+	if err != nil {
+		if rootfsHeader.IsNormalizeFixApplied() {
+			return nil, nil, fmt.Errorf("invalid rootfs header mappings: %w", err)
+		}
+
+		zap.L().Warn("rootfs header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(rootfsHeader.Metadata.BuildId.String()))
 	}
 
 	return rootfsDiff, rootfsHeader, nil
