@@ -95,7 +95,7 @@ func NewClickhouseSandboxEventsDelivery(conn driver.Conn, opts batcher.BatcherOp
 	return delivery, nil
 }
 
-func (c *ClickhouseDelivery) Publish(ctx context.Context, deliveryKey string, event events.SandboxEvent) error {
+func (c *ClickhouseDelivery) Publish(_ context.Context, _ string, event events.SandboxEvent) error {
 	eventData := ""
 	eventDataJson, err := json.Marshal(event.EventData)
 	if err != nil {
