@@ -7,12 +7,13 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const signedUrlExpiration = time.Minute * 30
 
 func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanager.InitLayerFileUploadRequest) (*templatemanager.InitLayerFileUploadResponse, error) {
-	_, childSpan := tracer.Start(ctx, "template-create")
+	ctx, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
 	// default to scope by template ID
@@ -22,7 +23,7 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 	}
 
 	path := paths.GetLayerFilesCachePath(cacheScope, in.GetHash())
-	obj, err := s.buildStorage.OpenObject(ctx, path)
+	obj, err := s.buildStorage.OpenObject(ctx, path, storage.BuildLayerFileObjectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
 	}
@@ -32,16 +33,13 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 		return nil, fmt.Errorf("failed to get signed url: %w", err)
 	}
 
-	_, err = obj.Size(ctx)
+	exists, err := obj.Exists(ctx)
 	if err != nil {
-		return &templatemanager.InitLayerFileUploadResponse{
-			Present: false,
-			Url:     &signedUrl,
-		}, nil
+		return nil, fmt.Errorf("failed to check if layer files exists: %w", err)
 	}
 
 	return &templatemanager.InitLayerFileUploadResponse{
-		Present: true,
+		Present: exists,
 		Url:     &signedUrl,
 	}, nil
 }
