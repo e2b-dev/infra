@@ -31,16 +31,20 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	// remove from processing queue when done
 	defer tm.removeFromProcessingQueue(buildID)
 
-	envBuildDb, err := tm.db.GetEnvBuild(ctx, buildID)
+	result, err := tm.sqlcDB.GetTemplateBuildWithTemplate(ctx, queries.GetTemplateBuildWithTemplateParams{
+		TemplateID: templateID,
+		BuildID:    buildID,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to get env build: %w", err)
 	}
 
+	envBuild := result.EnvBuild
 	// waiting for build to start, local docker build and push can take some time
 	// so just check if it's not too long
-	if envBuildDb.Status == envbuild.StatusWaiting {
+	if envBuild.Status == string(envbuild.StatusWaiting) {
 		// if waiting for too long, fail the build
-		if time.Since(envBuildDb.CreatedAt) > syncWaitingStateDeadline {
+		if time.Since(envBuild.CreatedAt) > syncWaitingStateDeadline {
 			err = tm.SetStatus(ctx, templateID, buildID, envbuild.StatusFailed, &templatemanagergrpc.TemplateBuildStatusReason{
 				Message: "build is in waiting state for too long",
 			})
@@ -278,7 +282,12 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 
 func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
 	// first do database update to prevent race condition while calling status
-	err := tm.db.FinishEnvBuild(ctx, templateID, buildID, rootfsSize, envdVersion)
+	err := tm.sqlcDB.FinishTemplateBuild(ctx, queries.FinishTemplateBuildParams{
+		TotalDiskSizeMb: &rootfsSize,
+		EnvdVersion:     &envdVersion,
+		BuildID:         buildID,
+		EnvID:           templateID,
+	})
 	if err != nil {
 		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, types.BuildReason{
 			Message: fmt.Sprintf("error when finishing build: %s", err.Error()),

@@ -9,19 +9,19 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // PatchTemplatesTemplateID serves to update a template
 func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	ctx := c.Request.Context()
+	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	body, err := utils.ParseBody[api.TemplateUpdateRequest](ctx, c)
 	if err != nil {
@@ -39,78 +39,40 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		return
 	}
 
-	template, err := a.db.
-		Client.
-		Env.
-		Query().
-		Where(
-			env.Or(
-				env.HasEnvAliasesWith(envalias.ID(aliasOrTemplateID)),
-				env.ID(aliasOrTemplateID),
-			),
-		).Only(ctx)
-
-	notFound := models.IsNotFound(err)
-	if notFound {
-		telemetry.ReportError(ctx, "template not found", fmt.Errorf("template '%s' not found", aliasOrTemplateID))
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("the sandbox template '%s' wasn't found", cleanedAliasOrEnvID))
-
-		return
-	} else if err != nil {
-		telemetry.ReportError(ctx, "failed to get env", err, telemetry.WithTemplateID(aliasOrTemplateID))
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting env")
+	if body.Public == nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "No data provided")
 
 		return
 	}
 
-	dbTeamID := template.TeamID.String()
-	team, apiErr := a.GetTeam(ctx, c, &dbTeamID)
-	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+	// Update template
+	templateID, dbErr := a.sqlcDB.UpdateTemplate(ctx, queries.UpdateTemplateParams{
+		TemplateIDOrAlias: cleanedAliasOrEnvID,
+		TeamID:            team.ID,
+		Public:            *body.Public,
+	})
+	if dbErr != nil {
+		telemetry.ReportError(ctx, "error when updating env", dbErr)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
 
 		return
-	}
-
-	if team.ID != template.TeamID {
-		telemetry.ReportError(ctx, "access to the sandbox template denied", fmt.Errorf("access to the sandbox template '%s' denied", cleanedAliasOrEnvID))
-
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", cleanedAliasOrEnvID))
-
-		return
-	}
-
-	if body.Public != nil {
-		// Update env
-		dbErr := a.db.UpdateEnv(ctx, template.ID, db.UpdateEnvInput{
-			Public: *body.Public,
-		})
-
-		if dbErr != nil {
-			telemetry.ReportError(ctx, "error when updating env", dbErr)
-
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
-
-			return
-		}
 	}
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
-		telemetry.WithTemplateID(template.ID),
+		telemetry.WithTemplateID(templateID),
 	)
 
-	a.templateCache.Invalidate(template.ID)
+	a.templateCache.Invalidate(templateID)
 
 	telemetry.ReportEvent(ctx, "updated env")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "updated environment", properties.Set("environment", template.ID))
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "updated environment", properties.Set("environment", templateID))
 
-	zap.L().Info("Updated env", logger.WithTemplateID(template.ID), logger.WithTeamID(team.ID.String()))
+	zap.L().Info("Updated env", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }
