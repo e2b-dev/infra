@@ -19,7 +19,7 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 			"grpc.response.content": {},
 		}
 
-		w := 0
+		arrayLength := 0
 		for i := 0; i+1 < len(fields); i += 2 {
 			k, ok := fields[i].(string)
 			if !ok {
@@ -30,10 +30,10 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 				continue
 			}
 
-			fields[w], fields[w+1] = k, fields[i+1]
-			w += 2
+			fields[arrayLength], fields[arrayLength+1] = k, fields[i+1]
+			arrayLength += 2
 		}
-		fields = fields[:w]
+		fields = fields[:arrayLength]
 
 		f := make([]zap.Field, 0, len(fields)/2)
 
