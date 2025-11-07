@@ -5,18 +5,18 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/db/client"
 )
 
-func GetTestDBClient(tb testing.TB) *db.DB {
+func GetTestDBClient(tb testing.TB) *client.Client {
 	tb.Helper()
 
-	database, err := db.NewClient(1, 1)
+	db, err := client.NewClient(tb.Context())
 	require.NoError(tb, err)
 
 	tb.Cleanup(func() {
-		database.Close()
+		db.Close()
 	})
 
-	return database
+	return db
 }

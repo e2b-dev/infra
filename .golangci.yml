@@ -130,6 +130,7 @@ linters:
 
 run:
   go: 1.24.7
+  allow-parallel-runners: true
 
 issues:
   max-issues-per-linter: 50
