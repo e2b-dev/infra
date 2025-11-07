@@ -30,7 +30,7 @@ type SandboxProxy struct {
 }
 
 func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map) (*SandboxProxy, error) {
-	getUpstreamFromRequest := reverseproxy.GetUpstreamFromRequest(env.IsLocal())
+	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 
 	proxy := reverseproxy.New(
 		port,
@@ -38,7 +38,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 		reverseproxy.SandboxProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := getUpstreamFromRequest(r)
+			sandboxId, port, err := getTargetFromRequest(r)
 			if err != nil {
 				return nil, err
 			}

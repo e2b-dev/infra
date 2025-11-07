@@ -51,7 +51,7 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
-	getUpstreamFromRequest := reverseproxy.GetUpstreamFromRequest(env.IsLocal())
+	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 
 	proxy := reverseproxy.New(
 		port,
@@ -59,7 +59,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 		reverseproxy.ClientProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := getUpstreamFromRequest(r)
+			sandboxId, port, err := getTargetFromRequest(r)
 			if err != nil {
 				return nil, err
 			}

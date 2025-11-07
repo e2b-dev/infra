@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func GetUpstreamFromRequest(processHeaders bool) func(r *http.Request) (sandboxId string, port uint64, err error) {
+func GetTargetFromRequest(processHeaders bool) func(r *http.Request) (sandboxId string, port uint64, err error) {
 	return func(r *http.Request) (sandboxId string, port uint64, err error) {
 		if processHeaders {
 			var ok bool

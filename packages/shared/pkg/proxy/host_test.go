@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHostParser(t *testing.T) {
+func TestGetTargetFromRequest(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "local")
 
-	getUpstreamFromRequest := GetUpstreamFromRequest(true)
+	getTargetFromRequest := GetTargetFromRequest(true)
 
 	tests := []struct {
 		name     string
@@ -131,7 +131,7 @@ func TestHostParser(t *testing.T) {
 				Host:   tt.host,
 				Header: tt.headers,
 			}
-			gotID, gotPort, err := getUpstreamFromRequest(req)
+			gotID, gotPort, err := getTargetFromRequest(req)
 
 			// Compare error presence and, when present, the concrete type.
 			if (err != nil) != (tt.wantErr != nil) {
