@@ -20,11 +20,6 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	redisCtx, cancel := context.WithTimeout(ctx, redisTimeout)
 	defer cancel()
 
-	// Adjust end time if needed
-	if sbx.EndTime.Sub(sbx.StartTime) > sbx.MaxInstanceLength {
-		sbx.EndTime = sbx.StartTime.Add(sbx.MaxInstanceLength)
-	}
-
 	// Serialize sandbox
 	data, err := json.Marshal(sbx)
 	if err != nil {
