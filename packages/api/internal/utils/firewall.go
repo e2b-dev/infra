@@ -67,4 +67,3 @@ func OrchestratorToDBFirewall(orchFirewall *orchestrator.SandboxFirewallConfig) 
 
 	return &dbFirewall
 }
-
