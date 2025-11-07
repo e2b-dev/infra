@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 
 	"github.com/bits-and-blooms/bitset"
 
@@ -42,6 +43,7 @@ type testHandler struct {
 	// Returns offsets of the pages that were faulted.
 	// It can only be called once.
 	offsetsOnce func() ([]uint, error)
+	mutex       sync.Mutex
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
@@ -69,7 +71,9 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 	}
 
 	// An unprotected parallel write to map might result in an undefined behavior.
-	// If the tests prove to be flaky, we can add a mutex here.
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
 	n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
 	if n != int(h.pagesize) {
 		return fmt.Errorf("copy length mismatch: want %d, got %d", h.pagesize, n)
