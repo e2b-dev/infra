@@ -203,7 +203,6 @@ func crossProcessServe() error {
 	offsetsFile := os.NewFile(uintptr(5), "offsets")
 
 	readyFile := os.NewFile(uintptr(6), "ready")
-	defer readyFile.Close()
 
 	missingRequests := &sync.Map{}
 
