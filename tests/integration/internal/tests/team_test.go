@@ -19,14 +19,14 @@ type ForbiddenErrorResponse struct {
 
 func TestBannedTeam(t *testing.T) {
 	ctx := t.Context()
-	sqlcDB := setup.GetTestDBClient(t)
+	db := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()
 
 	teamName := "test-team-banned"
-	teamID := utils.CreateTeamWithUser(t, sqlcDB, teamName, setup.UserID)
+	teamID := utils.CreateTeamWithUser(t, db, teamName, setup.UserID)
 	apiKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, teamID)
 
-	err := sqlcDB.TestsRawSQL(ctx, `
+	err := db.TestsRawSQL(ctx, `
 UPDATE teams SET is_banned = $1 WHERE id = $2
 `, true, teamID)
 	require.NoError(t, err)
@@ -45,16 +45,16 @@ UPDATE teams SET is_banned = $1 WHERE id = $2
 
 func TestBlockedTeam(t *testing.T) {
 	ctx := t.Context()
-	sqlcDB := setup.GetTestDBClient(t)
+	db := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()
 
 	teamName := "test-team-blocked"
 	blockReason := "test-reason"
 
-	teamID := utils.CreateTeamWithUser(t, sqlcDB, teamName, setup.UserID)
+	teamID := utils.CreateTeamWithUser(t, db, teamName, setup.UserID)
 	apiKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, teamID)
 
-	err := sqlcDB.TestsRawSQL(ctx, `
+	err := db.TestsRawSQL(ctx, `
 UPDATE teams SET is_blocked = $1, blocked_reason = $2 WHERE id = $3
 `, true, blockReason, teamID)
 	require.NoError(t, err)

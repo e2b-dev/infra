@@ -11,12 +11,12 @@ import (
 func GetTestDBClient(tb testing.TB) *client.Client {
 	tb.Helper()
 
-	sqlcDB, err := client.NewClient(tb.Context())
+	db, err := client.NewClient(tb.Context())
 	require.NoError(tb, err)
 
 	tb.Cleanup(func() {
-		sqlcDB.Close()
+		db.Close()
 	})
 
-	return sqlcDB
+	return db
 }
