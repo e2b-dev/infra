@@ -202,10 +202,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			Type:      eventType.Type,
 			Timestamp: time.Now().UTC(),
 
-			EventCategory: eventType.LegacyCategory,
-			EventLabel:    eventType.LegacyLabel,
-			EventData:     eventData,
-
+			EventData:          eventData,
 			SandboxID:          sbx.Runtime.SandboxID,
 			SandboxExecutionID: sbx.Runtime.ExecutionID,
 			SandboxTemplateID:  sbx.Config.BaseTemplateID,
@@ -250,10 +247,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			Type:      eventType.Type,
 			Timestamp: time.Now().UTC(),
 
-			EventCategory: eventType.LegacyCategory,
-			EventLabel:    eventType.LegacyLabel,
-			EventData:     eventData,
-
+			EventData:          eventData,
 			SandboxID:          sbx.Runtime.SandboxID,
 			SandboxExecutionID: sbx.Runtime.ExecutionID,
 			SandboxTemplateID:  sbx.Config.BaseTemplateID,
@@ -345,10 +339,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 			Type:      eventType.Type,
 			Timestamp: time.Now().UTC(),
 
-			EventCategory: eventType.LegacyCategory,
-			EventLabel:    eventType.LegacyLabel,
-			EventData:     eventData,
-
+			EventData:          eventData,
 			SandboxID:          sbx.Runtime.SandboxID,
 			SandboxExecutionID: sbx.Runtime.ExecutionID,
 			SandboxTemplateID:  sbx.Config.BaseTemplateID,
@@ -461,10 +452,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			Type:      eventType.Type,
 			Timestamp: time.Now().UTC(),
 
-			EventCategory: eventType.LegacyCategory,
-			EventLabel:    eventType.LegacyLabel,
-			EventData:     eventData,
-
+			EventData:          eventData,
 			SandboxID:          sbx.Runtime.SandboxID,
 			SandboxExecutionID: sbx.Runtime.ExecutionID,
 			SandboxTemplateID:  sbx.Config.BaseTemplateID,
