@@ -38,6 +38,7 @@ func (e *Evictor) Start(ctx context.Context) {
 						stateAction = sandbox.StateActionPause
 					}
 
+					zap.L().Debug("Evicting sandbox", logger.WithSandboxID(item.SandboxID), zap.String("state_action", string(stateAction)))
 					if err := e.removeSandbox(ctx, item, stateAction); err != nil {
 						zap.L().Debug("Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
 					}
