@@ -13,13 +13,6 @@ func (e InvalidSandboxPortError) Error() string {
 	return "invalid sandbox port"
 }
 
-func (e InvalidSandboxPortError) Is(err error) bool {
-	var other InvalidSandboxPortError
-	ok := errors.As(err, &other)
-
-	return ok
-}
-
 func (e InvalidSandboxPortError) Unwrap() error {
 	return e.wrapped
 }

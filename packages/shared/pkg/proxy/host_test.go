@@ -18,84 +18,85 @@ func TestGetTargetFromRequest(t *testing.T) {
 		headers  http.Header
 		wantID   string
 		wantPort uint64
-		wantErr  error
+
+		wantErrIs, wantErrAs error
 	}{
 		{
-			name:     "sandbox-host-with-client-id",
-			host:     "49983-isv6ril5xadwn1k9t2jye-6532622b.e2b.app",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  nil,
+			name:      "sandbox-host-with-client-id",
+			host:      "49983-isv6ril5xadwn1k9t2jye-6532622b.e2b.app",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrIs: nil,
 		},
 		{
-			name:     "sandbox-host-with-client-id-and-dash-domain",
-			host:     "49983-isv6ril5xadwn1k9t2jye-6532622b.e2b-test.app",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  nil,
+			name:      "sandbox-host-with-client-id-and-dash-domain",
+			host:      "49983-isv6ril5xadwn1k9t2jye-6532622b.e2b-test.app",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrIs: nil,
 		},
 		{
-			name:     "sandbox-host-with-client-id-and-subdomain",
-			host:     "49983-isv6ril5xadwn1k9t2jye-6532622b.demo.e2b.app",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  nil,
+			name:      "sandbox-host-with-client-id-and-subdomain",
+			host:      "49983-isv6ril5xadwn1k9t2jye-6532622b.demo.e2b.app",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrIs: nil,
 		},
 		{
-			name:     "sandbox-host-without-client-id",
-			host:     "49983-isv6ril5xadwn1k9t2jye.e2b.app",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  nil,
+			name:      "sandbox-host-without-client-id",
+			host:      "49983-isv6ril5xadwn1k9t2jye.e2b.app",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrIs: nil,
 		},
 		{
-			name:     "sandbox-host-with-dash-domain-and-without-client-id",
-			host:     "49983-isv6ril5xadwn1k9t2jye.e2b-test.app",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  nil,
+			name:      "sandbox-host-with-dash-domain-and-without-client-id",
+			host:      "49983-isv6ril5xadwn1k9t2jye.e2b-test.app",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrIs: nil,
 		},
 		{
-			name:     "sandbox-host-with-subdomain-and-without-client-id",
-			host:     "49983-isv6ril5xadwn1k9t2jye.demo.e2b.app",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  nil,
+			name:      "sandbox-host-with-subdomain-and-without-client-id",
+			host:      "49983-isv6ril5xadwn1k9t2jye.demo.e2b.app",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrIs: nil,
 		},
 		{
-			name:     "sandbox-host-without-port-part",
-			host:     "isv6ril5xadwn1k9t2jye.e2b.app",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  ErrInvalidHost,
+			name:      "sandbox-host-without-port-part",
+			host:      "isv6ril5xadwn1k9t2jye.e2b.app",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrIs: ErrInvalidHost,
 		},
 		{
-			name:     "sandbox-host-with-invalid-port-part",
-			host:     "abcd-isv6ril5xadwn1k9t2jye.e2b.app",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  InvalidSandboxPortError{},
+			name:      "sandbox-host-with-invalid-port-part",
+			host:      "abcd-isv6ril5xadwn1k9t2jye.e2b.app",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrAs: InvalidSandboxPortError{},
 		},
 		{
-			name:     "sandbox-host-without-domain",
-			host:     "49983-isv6ril5xadwn1k9t2jye",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  ErrInvalidHost,
+			name:      "sandbox-host-without-domain",
+			host:      "49983-isv6ril5xadwn1k9t2jye",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrIs: ErrInvalidHost,
 		},
 		{
-			name:     "sandbox-host-with-missing-domain-and-port",
-			host:     "49983-isv6ril5xadwn1k9t2jye:8080",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  ErrInvalidHost,
+			name:      "sandbox-host-with-missing-domain-and-port",
+			host:      "49983-isv6ril5xadwn1k9t2jye:8080",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrIs: ErrInvalidHost,
 		},
 		{
-			name:     "sandbox-host-with-missing-domain",
-			host:     "49983-isv6ril5xadwn1k9t2jye",
-			wantID:   "isv6ril5xadwn1k9t2jye",
-			wantPort: 49983,
-			wantErr:  ErrInvalidHost,
+			name:      "sandbox-host-with-missing-domain",
+			host:      "49983-isv6ril5xadwn1k9t2jye",
+			wantID:    "isv6ril5xadwn1k9t2jye",
+			wantPort:  49983,
+			wantErrIs: ErrInvalidHost,
 		},
 		{
 			name: "headers: happy path",
@@ -113,7 +114,7 @@ func TestGetTargetFromRequest(t *testing.T) {
 			headers: http.Header{
 				headerSandboxPort: []string{"8080"},
 			},
-			wantErr: MissingHeaderError{Header: headerSandboxID},
+			wantErrIs: MissingHeaderError{Header: headerSandboxID},
 		},
 		{
 			name: "headers: missing sandbox port",
@@ -121,7 +122,7 @@ func TestGetTargetFromRequest(t *testing.T) {
 			headers: http.Header{
 				headerSandboxID: []string{"isv6ril5xadwn1k9t2jye"},
 			},
-			wantErr: MissingHeaderError{Header: headerSandboxPort},
+			wantErrIs: MissingHeaderError{Header: headerSandboxPort},
 		},
 	}
 
@@ -134,12 +135,18 @@ func TestGetTargetFromRequest(t *testing.T) {
 			gotID, gotPort, err := getTargetFromRequest(req)
 
 			// Compare error presence and, when present, the concrete type.
-			if (err != nil) != (tt.wantErr != nil) {
-				t.Fatalf("ParseHost(%q) error = %v, wantErr %v", tt.host, err, tt.wantErr)
+			if (err != nil) != (tt.wantErrIs != nil || tt.wantErrAs != nil) {
+				t.Fatalf("ParseHost(%q) error = %v, wantErr %v", tt.host, err, tt.wantErrIs)
 			}
 
-			if tt.wantErr != nil {
-				require.ErrorIs(t, err, tt.wantErr)
+			if tt.wantErrIs != nil {
+				require.ErrorIs(t, err, tt.wantErrIs)
+
+				return // no further checks when an error was expected
+			}
+
+			if tt.wantErrAs != nil {
+				require.ErrorAs(t, err, &tt.wantErrIs)
 
 				return // no further checks when an error was expected
 			}
