@@ -17,7 +17,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 
@@ -334,16 +333,4 @@ func crossProcessServe() error {
 	case <-exitSignal:
 		return nil
 	}
-}
-
-func getAccessedOffsets(missingRequests *sync.Map) ([]uint, error) {
-	var offsets []uint
-
-	missingRequests.Range(func(key, _ any) bool {
-		offsets = append(offsets, uint(key.(int64)))
-
-		return true
-	})
-
-	return offsets, nil
 }
