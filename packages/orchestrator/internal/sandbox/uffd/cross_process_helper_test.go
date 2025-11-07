@@ -295,6 +295,10 @@ func crossProcessServe() error {
 	defer fdExit.Close()
 
 	go func() {
+		defer func() {
+			exitUffd <- struct{}{}
+		}()
+
 		serverErr := Serve(ctx, int(uffd), m, data, fdExit, missingRequests, logger)
 		if serverErr != nil {
 			msg := fmt.Errorf("error serving: %w", serverErr)
@@ -305,8 +309,6 @@ func crossProcessServe() error {
 
 			return
 		}
-
-		exitUffd <- struct{}{}
 	}()
 
 	cleanup := func() {
