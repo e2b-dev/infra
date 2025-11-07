@@ -124,7 +124,11 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		waitErr := cmd.Wait()
 		// It can be either nil, an ExitError, a context.Canceled error, or "signal: killed"
 		assert.True(t,
-			(waitErr != nil && errors.As(waitErr, new(*exec.ExitError))) ||
+			(waitErr != nil && func(err error) bool {
+				var exitErr *exec.ExitError
+
+				return errors.As(err, &exitErr)
+			}(waitErr)) ||
 				errors.Is(waitErr, context.Canceled) ||
 				(waitErr != nil && strings.Contains(waitErr.Error(), "signal: killed")) ||
 				waitErr == nil,
