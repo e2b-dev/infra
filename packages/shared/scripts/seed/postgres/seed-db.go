@@ -78,15 +78,6 @@ DELETE FROM teams WHERE email = $1
 		panic(err)
 	}
 
-	// Remove old access token
-	err = sqlcDB.TestsRawSQL(ctx, `
-DELETE FROM access_tokens
-WHERE user_id = $1
-`, userID)
-	if err != nil {
-		panic(err)
-	}
-
 	// Create team
 	err = sqlcDB.TestsRawSQL(ctx, `
 INSERT INTO teams (id, email, name, tier, is_blocked)

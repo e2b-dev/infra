@@ -53,20 +53,16 @@ func AddUserToTeam(t *testing.T, sqlcDB *client.Client, teamID uuid.UUID, userID
 	userUUID, err := uuid.Parse(userID)
 	require.NoError(t, err)
 
-	var userTeamID int64
 	err = sqlcDB.TestsRawSQL(t.Context(), `
 INSERT INTO users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
-RETURNING id
 `, userUUID, teamID, false)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		if userTeamID != 0 {
-			sqlcDB.TestsRawSQL(t.Context(), `
-DELETE FROM users_teams WHERE id = $1
-`, userTeamID)
-		}
+		sqlcDB.TestsRawSQL(t.Context(), `
+DELETE FROM users_teams WHERE user_id = $1 and team_id = $2
+`, userUUID, teamID)
 	})
 }
 
