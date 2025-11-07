@@ -75,13 +75,13 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+	err = a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TemplateID: templateID,
 		TeamID:     team.ID,
 	})
-	if dbErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when deleting env from db", dbErr)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting env")
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when deleting template from db", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting template")
 
 		return
 	}
@@ -98,22 +98,22 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	// delete all builds
-	deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIds)
-	if deleteJobErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when deleting env files from storage", deleteJobErr)
+	err = a.templateManager.DeleteBuilds(ctx, buildIds)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when deleting template files from storage", err)
 	} else {
-		telemetry.ReportEvent(ctx, "deleted env from storage")
+		telemetry.ReportEvent(ctx, "deleted template from storage")
 	}
 
 	a.templateCache.Invalidate(templateID)
 
-	telemetry.ReportEvent(ctx, "deleted env from db")
+	telemetry.ReportEvent(ctx, "deleted template from db")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "deleted environment", properties.Set("environment", templateID))
 
-	zap.L().Info("Deleted env", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
+	zap.L().Info("Deleted template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }
