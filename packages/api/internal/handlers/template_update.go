@@ -31,17 +31,18 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		return
 	}
 
+	// No data passed
+	if body.Public == nil {
+		c.Status(http.StatusOK)
+
+		return
+	}
+
 	cleanedAliasOrEnvID, err := id.CleanEnvID(aliasOrTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid env ID: %s", aliasOrTemplateID))
 
 		telemetry.ReportCriticalError(ctx, "invalid env ID", err)
-
-		return
-	}
-
-	if body.Public == nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "No data provided")
 
 		return
 	}
