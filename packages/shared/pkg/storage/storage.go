@@ -52,7 +52,7 @@ const (
 	RootFSHeaderObjectType
 	SnapfileObjectType
 	MetadataObjectType
-	LayerObjectType
+	BuildLayerFileObjectType
 	LayerMetadataObjectType
 )
 

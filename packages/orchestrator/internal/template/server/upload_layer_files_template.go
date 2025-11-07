@@ -13,7 +13,7 @@ import (
 const signedUrlExpiration = time.Minute * 30
 
 func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanager.InitLayerFileUploadRequest) (*templatemanager.InitLayerFileUploadResponse, error) {
-	_, childSpan := tracer.Start(ctx, "template-create")
+	ctx, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
 	// default to scope by template ID
@@ -23,7 +23,7 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 	}
 
 	path := paths.GetLayerFilesCachePath(cacheScope, in.GetHash())
-	obj, err := s.buildStorage.OpenObject(ctx, path, storage.LayerObjectType)
+	obj, err := s.buildStorage.OpenObject(ctx, path, storage.BuildLayerFileObjectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
 	}
