@@ -48,12 +48,12 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	}
 
 	// Update template
-	templateID, dbErr := a.sqlcDB.UpdateTemplate(ctx, queries.UpdateTemplateParams{
+	templateID, err := a.sqlcDB.UpdateTemplate(ctx, queries.UpdateTemplateParams{
 		TemplateIDOrAlias: cleanedAliasOrTemplateID,
 		TeamID:            team.ID,
 		Public:            *body.Public,
 	})
-	if dbErr != nil {
+	if err != nil {
 		if dberrors.IsNotFoundError(err) {
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
 			telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(aliasOrTemplateID))
@@ -61,7 +61,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 			return
 		}
 
-		telemetry.ReportError(ctx, "error when updating template", dbErr)
+		telemetry.ReportError(ctx, "error when updating template", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error updating template")
 
 		return
@@ -75,7 +75,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 	a.templateCache.Invalidate(templateID)
 
-	telemetry.ReportEvent(ctx, "updated env")
+	telemetry.ReportEvent(ctx, "updated template")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
