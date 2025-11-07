@@ -13,42 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 )
 
-var ErrInvalidHost = errors.New("invalid url host")
-
-type InvalidSandboxPortError struct {
-	Port    string
-	wrapped error
-}
-
-func (e InvalidSandboxPortError) Error() string {
-	return "invalid sandbox port"
-}
-
-func (e InvalidSandboxPortError) Is(err error) bool {
-	var invalidSandboxPortError InvalidSandboxPortError
-	ok := errors.As(err, &invalidSandboxPortError)
-
-	return ok
-}
-
-func (e InvalidSandboxPortError) Unwrap() error {
-	return e.wrapped
-}
-
-type SandboxNotFoundError struct {
-	SandboxId string
-}
-
-func NewErrSandboxNotFound(sandboxId string) *SandboxNotFoundError {
-	return &SandboxNotFoundError{
-		SandboxId: sandboxId,
-	}
-}
-
-func (e SandboxNotFoundError) Error() string {
-	return "sandbox not found"
-}
-
 func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Destination, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		d, err := getDestination(r)
