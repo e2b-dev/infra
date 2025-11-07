@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -85,9 +84,11 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		d.RequestLogger.Debug("proxying request")
 
-		ctx := context.WithValue(r.Context(), pool.DestinationContextKey{}, d)
+		ctx := r.Context()
+		ctx = pool.WithDestination(ctx, d)
+		r = r.WithContext(ctx)
 
 		proxy := p.Get(d)
-		proxy.ServeHTTP(w, r.WithContext(ctx))
+		proxy.ServeHTTP(w, r)
 	}
 }
