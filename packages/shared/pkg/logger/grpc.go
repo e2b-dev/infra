@@ -28,7 +28,7 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 			"grpc.code":        "-",
 		}
 
-		fieldsLength := 0
+		fieldsCount := 0
 		for i := 0; i < len(fields)-1; i += 2 {
 			key, ok := fields[i].(string)
 			if !ok {
@@ -38,7 +38,7 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 			if _, ok := ignoredFields[key]; ok {
 				continue
 			}
-			fieldsLength++
+			fieldsCount++
 
 			value := fields[i+1]
 
@@ -58,7 +58,7 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 				f = append(f, zap.Any(key, v))
 			}
 		}
-		f = f[:fieldsLength]
+		f = f[:fieldsCount]
 
 		logger := l.WithOptions(zap.AddCallerSkip(1)).With(f...)
 
