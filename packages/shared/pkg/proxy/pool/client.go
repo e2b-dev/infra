@@ -24,80 +24,76 @@ type ProxyClient struct {
 	transport         *http.Transport
 }
 
-func (p *ProxyClient) WithDestination(destination *Destination) *ProxyClient {
+func (pc *ProxyClient) WithDestination(destination *Destination) *ProxyClient {
 	return &ProxyClient{
-		activeConnections: p.activeConnections,
+		activeConnections: pc.activeConnections,
 		destination:       destination,
-		transport:         p.transport,
+		transport:         pc.transport,
 	}
 }
 
-func newReverseProxy(pc *ProxyClient) *httputil.ReverseProxy {
-	return &httputil.ReverseProxy{
-		Transport: pc.transport,
-		Rewrite: func(r *httputil.ProxyRequest) {
-			t, ok := pc.getDestination(r.In)
-			if !ok {
-				// Error from this will be later caught as r.Host == "" in the ErrorHandler
-				r.SetURL(r.In.URL)
+func (pc *ProxyClient) proxyRewrite(r *httputil.ProxyRequest) {
+	t, ok := pc.getDestination(r.In)
+	if !ok {
+		// Error from this will be later caught as r.Host == "" in the ErrorHandler
+		r.SetURL(r.In.URL)
 
-				return
-			}
-
-			r.SetURL(t.Url)
-			// We are **not** using SetXForwarded() because servers can sometimes modify the content-location header to be http which might break some customer services.
-			r.Out.Host = r.In.Host
-		},
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			t, ok := pc.getDestination(r)
-			if !ok {
-				http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
-
-				return
-			}
-
-			if err != nil {
-				t.RequestLogger.Error("sandbox error handler called", zap.Error(err))
-			}
-
-			if t.DefaultToPortError {
-				err = template.
-					NewPortClosedError(t.SandboxId, r.Host, t.SandboxPort).
-					HandleError(w, r)
-				if err != nil {
-					t.RequestLogger.Error("failed to handle error", zap.Error(err))
-
-					http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
-
-					return
-				}
-
-				return
-			}
-
-			http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
-		},
-		ModifyResponse: func(r *http.Response) error {
-			t, ok := pc.getDestination(r.Request)
-			if !ok {
-				return nil
-			}
-
-			if r.StatusCode >= 500 {
-				t.RequestLogger.Error(
-					"Reverse proxy error",
-					zap.Int("status_code", r.StatusCode),
-				)
-			} else {
-				t.RequestLogger.Debug("Reverse proxy response",
-					zap.Int("status_code", r.StatusCode),
-				)
-			}
-
-			return nil
-		},
-		ErrorLog: log.New(os.Stdout, "[proxy] ", log.LstdFlags),
+		return
 	}
+
+	r.SetURL(t.Url)
+	// We are **not** using SetXForwarded() because servers can sometimes modify the content-location header to be http which might break some customer services.
+	r.Out.Host = r.In.Host
+}
+
+func (pc *ProxyClient) proxyErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
+	t, ok := pc.getDestination(r)
+	if !ok {
+		http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
+
+		return
+	}
+
+	if err != nil {
+		t.RequestLogger.Error("sandbox error handler called", zap.Error(err))
+	}
+
+	if t.DefaultToPortError {
+		err = template.
+			NewPortClosedError(t.SandboxId, r.Host, t.SandboxPort).
+			HandleError(w, r)
+		if err != nil {
+			t.RequestLogger.Error("failed to handle error", zap.Error(err))
+
+			http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
+
+			return
+		}
+
+		return
+	}
+
+	http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
+}
+
+func (pc *ProxyClient) proxyModifyResponse(r *http.Response) error {
+	t, ok := pc.getDestination(r.Request)
+	if !ok {
+		return nil
+	}
+
+	if r.StatusCode >= 500 {
+		t.RequestLogger.Error(
+			"Reverse proxy error",
+			zap.Int("status_code", r.StatusCode),
+		)
+	} else {
+		t.RequestLogger.Debug("Reverse proxy response",
+			zap.Int("status_code", r.StatusCode),
+		)
+	}
+
+	return nil
 }
 
 func newProxyClient(
@@ -166,8 +162,8 @@ func newProxyClient(
 	return pc
 }
 
-func (p *ProxyClient) getDestination(r *http.Request) (*Destination, bool) {
-	if p.destination == nil {
+func (pc *ProxyClient) getDestination(r *http.Request) (*Destination, bool) {
+	if pc.destination == nil {
 		zap.L().Error("failed to get routing target from context",
 			zap.String("request_method", r.Method),
 			zap.String("request_url", r.URL.String()))
@@ -175,17 +171,17 @@ func (p *ProxyClient) getDestination(r *http.Request) (*Destination, bool) {
 		return nil, false
 	}
 
-	return p.destination, true
+	return pc.destination, true
 }
 
-func (p *ProxyClient) closeIdleConnections() {
-	p.transport.CloseIdleConnections()
+func (pc *ProxyClient) closeIdleConnections() {
+	pc.transport.CloseIdleConnections()
 }
 
-func (p *ProxyClient) resetAllConnections() error {
+func (pc *ProxyClient) resetAllConnections() error {
 	var errs []error
 
-	for _, conn := range p.activeConnections.Items() {
+	for _, conn := range pc.activeConnections.Items() {
 		err := conn.Reset()
 		if err != nil {
 			errs = append(errs, err)
@@ -195,7 +191,16 @@ func (p *ProxyClient) resetAllConnections() error {
 	return errors.Join(errs...)
 }
 
-func (p *ProxyClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	reverseProxy := newReverseProxy(p)
+func (pc *ProxyClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// recreate the reverse proxy, passing a reference around means we're
+	// using a different ProxyClient's instance and not ours, which gives
+	// them a different destination.
+	reverseProxy := &httputil.ReverseProxy{
+		Transport:      pc.transport,
+		Rewrite:        pc.proxyRewrite,
+		ErrorHandler:   pc.proxyErrorHandler,
+		ModifyResponse: pc.proxyModifyResponse,
+		ErrorLog:       log.New(os.Stdout, "[proxy] ", log.LstdFlags),
+	}
 	reverseProxy.ServeHTTP(w, r)
 }
