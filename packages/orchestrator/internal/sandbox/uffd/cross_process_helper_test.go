@@ -226,6 +226,8 @@ func crossProcessServe() error {
 					fmt.Fprint(os.Stderr, msg.Error())
 
 					cancel(msg)
+
+					return
 				}
 
 				for _, offset := range offsets {
@@ -236,6 +238,8 @@ func crossProcessServe() error {
 						fmt.Fprint(os.Stderr, msg.Error())
 
 						cancel(msg)
+
+						return
 					}
 				}
 
