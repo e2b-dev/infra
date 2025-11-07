@@ -75,7 +75,10 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	dbErr := a.sqlcDB.DeleteTemplate(ctx, templateID)
+	dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+		TemplateID: templateID,
+		TeamID:     team.ID,
+	})
 	if dbErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when deleting env from db", dbErr)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting env")

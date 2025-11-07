@@ -7,14 +7,22 @@ package queries
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const deleteTemplate = `-- name: DeleteTemplate :exec
 DELETE FROM "public"."envs"
 WHERE id = $1
+AND team_id = $2
 `
 
-func (q *Queries) DeleteTemplate(ctx context.Context, templateID string) error {
-	_, err := q.db.Exec(ctx, deleteTemplate, templateID)
+type DeleteTemplateParams struct {
+	TemplateID string
+	TeamID     uuid.UUID
+}
+
+func (q *Queries) DeleteTemplate(ctx context.Context, arg DeleteTemplateParams) error {
+	_, err := q.db.Exec(ctx, deleteTemplate, arg.TemplateID, arg.TeamID)
 	return err
 }
