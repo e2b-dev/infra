@@ -14,7 +14,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+const maxRequestsInProgress = 4096
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
@@ -24,7 +27,8 @@ type Userfaultfd struct {
 	src block.Slicer
 	ma  *memory.Mapping
 
-	missingRequests *block.Tracker
+	missingRequests    *block.Tracker
+	requestsInProgress *utils.SettleCounter
 
 	wg errgroup.Group
 
@@ -33,13 +37,19 @@ type Userfaultfd struct {
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
 func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, pagesize int64, logger *zap.Logger) (*Userfaultfd, error) {
-	return &Userfaultfd{
-		fd:              uffdFd(fd),
-		src:             src,
-		missingRequests: block.NewTracker(pagesize),
-		ma:              m,
-		logger:          logger,
-	}, nil
+	u := &Userfaultfd{
+		fd:                 uffdFd(fd),
+		src:                src,
+		missingRequests:    block.NewTracker(pagesize),
+		requestsInProgress: utils.NewZeroSettleCounter(),
+		ma:                 m,
+		logger:             logger,
+	}
+
+	// By default this was unlimited.
+	u.wg.SetLimit(maxRequestsInProgress)
+
+	return u, nil
 }
 
 func (u *Userfaultfd) Close() error {
@@ -191,10 +201,9 @@ func (u *Userfaultfd) handleMissing(
 	offset int64,
 	pagesize uint64,
 ) error {
-	if !u.missingRequests.Add(offset) {
-		// Page is already mapped
-		return nil
-	}
+	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
+
+	u.requestsInProgress.Add()
 
 	u.wg.Go(func() error {
 		defer func() {
@@ -202,6 +211,8 @@ func (u *Userfaultfd) handleMissing(
 				u.logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
 			}
 		}()
+
+		defer u.requestsInProgress.Done()
 
 		b, sliceErr := u.src.Slice(ctx, offset, int64(pagesize))
 		if sliceErr != nil {
@@ -233,6 +244,9 @@ func (u *Userfaultfd) handleMissing(
 			return fmt.Errorf("failed uffdio copy %w", joinedErr)
 		}
 
+		// Add the offset to the missing requests tracker.
+		u.missingRequests.Add(offset)
+
 		return nil
 	})
 
@@ -249,6 +263,11 @@ func (u *Userfaultfd) Unregister() error {
 	return nil
 }
 
-func (u *Userfaultfd) Dirty() *block.Tracker {
-	return u.missingRequests.Clone()
+func (u *Userfaultfd) Dirty(ctx context.Context) (*block.Tracker, error) {
+	err := u.requestsInProgress.Wait(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for requests to finish: %w", err)
+	}
+
+	return u.missingRequests.Clone(), nil
 }
