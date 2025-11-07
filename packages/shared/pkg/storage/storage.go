@@ -14,7 +14,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
+var (
+	tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
+	meter  = otel.GetMeterProvider().Meter("shared.pkg.storage")
+)
 
 var ErrObjectNotExist = errors.New("object does not exist")
 
@@ -33,10 +36,31 @@ const (
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
 )
 
+type SeekableObjectType int
+
+const (
+	UnknownSeekableObjectType SeekableObjectType = iota
+	MemfileObjectType
+	RootFSObjectType
+)
+
+type ObjectType int
+
+const (
+	UnknownObjectType ObjectType = iota
+	MemfileHeaderObjectType
+	RootFSHeaderObjectType
+	SnapfileObjectType
+	MetadataObjectType
+	BuildLayerFileObjectType
+	LayerMetadataObjectType
+)
+
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
-	OpenObject(ctx context.Context, path string) (StorageObjectProvider, error)
+	OpenObject(ctx context.Context, path string, objectType ObjectType) (ObjectProvider, error)
+	OpenSeekableObject(ctx context.Context, path string, seekableObjectType SeekableObjectType) (SeekableObjectProvider, error)
 	GetDetails() string
 }
 
@@ -52,15 +76,27 @@ type ReaderAtCtx interface {
 	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
 }
 
-type StorageObjectProvider interface {
+type ObjectProvider interface {
+	// write
 	WriterCtx
-	WriterToCtx
-	ReaderAtCtx
-
 	WriteFromFileSystem(ctx context.Context, path string) error
 
+	// read
+	WriterToCtx
+
+	// utility
+	Exists(ctx context.Context) (bool, error)
+}
+
+type SeekableObjectProvider interface {
+	// write
+	WriteFromFileSystem(ctx context.Context, path string) error
+
+	// read
+	ReaderAtCtx
+
+	// utility
 	Size(ctx context.Context) (int64, error)
-	Delete(ctx context.Context) error
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {

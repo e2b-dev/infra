@@ -15,7 +15,7 @@ type MemorySlicer struct {
 
 var _ block.Slicer = (*MemorySlicer)(nil)
 
-func newMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
+func NewMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
 	return &MemorySlicer{
 		content:  content,
 		pagesize: pagesize,

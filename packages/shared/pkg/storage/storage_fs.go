@@ -20,7 +20,10 @@ type FileSystemStorageObjectProvider struct {
 	path string
 }
 
-var _ StorageObjectProvider = (*FileSystemStorageObjectProvider)(nil)
+var (
+	_ SeekableObjectProvider = (*FileSystemStorageObjectProvider)(nil)
+	_ ObjectProvider         = (*FileSystemStorageObjectProvider)(nil)
+)
 
 func NewFileSystemStorageProvider(basePath string) (*FileSystemStorageProvider, error) {
 	return &FileSystemStorageProvider{
@@ -43,7 +46,18 @@ func (fs *FileSystemStorageProvider) UploadSignedURL(_ context.Context, _ string
 	return "", fmt.Errorf("file system storage does not support signed URLs")
 }
 
-func (fs *FileSystemStorageProvider) OpenObject(_ context.Context, path string) (StorageObjectProvider, error) {
+func (fs *FileSystemStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
+	dir := filepath.Dir(fs.getPath(path))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+
+	return &FileSystemStorageObjectProvider{
+		path: fs.getPath(path),
+	}, nil
+}
+
+func (fs *FileSystemStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
 	dir := filepath.Dir(fs.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -110,6 +124,15 @@ func (f *FileSystemStorageObjectProvider) ReadAt(_ context.Context, buff []byte,
 	defer handle.Close()
 
 	return handle.ReadAt(buff, off)
+}
+
+func (f *FileSystemStorageObjectProvider) Exists(_ context.Context) (bool, error) {
+	_, err := os.Stat(f.path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+
+	return err == nil, err
 }
 
 func (f *FileSystemStorageObjectProvider) Size(_ context.Context) (int64, error) {
