@@ -19,23 +19,23 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// DeleteTemplatesTemplateID serves to delete an env (e.g. in CLI)
+// DeleteTemplatesTemplateID serves to delete a template (e.g. in CLI)
 func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	ctx := c.Request.Context()
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
-	cleanedAliasOrEnvID, err := id.CleanTemplateID(aliasOrTemplateID)
+	cleanedAliasOrTemplateID, err := id.CleanTemplateID(aliasOrTemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid env ID: %s", aliasOrTemplateID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID))
 
-		telemetry.ReportCriticalError(ctx, "invalid env ID", err)
+		telemetry.ReportCriticalError(ctx, "invalid template ID", err)
 
 		return
 	}
 
 	builds, err := a.sqlcDB.GetTemplateBuildsByIdOrAlias(ctx, queries.GetTemplateBuildsByIdOrAliasParams{
 		TeamID:            team.ID,
-		TemplateIDOrAlias: cleanedAliasOrEnvID,
+		TemplateIDOrAlias: cleanedAliasOrTemplateID,
 	})
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to get template", fmt.Errorf("failed to get template: %w", err), telemetry.WithTemplateID(aliasOrTemplateID))
@@ -59,11 +59,11 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.WithTemplateID(templateID),
 	)
 
-	// check if base env has snapshots
+	// check if base template has snapshots
 	hasSnapshots, err := a.sqlcDB.ExistsTemplateSnapshots(ctx, templateID)
 	if err != nil {
-		telemetry.ReportError(ctx, "error when checking if base env has snapshots", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking if base env has snapshots")
+		telemetry.ReportError(ctx, "error when checking if base template has snapshots", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking if template has snapshots")
 
 		return
 	}
