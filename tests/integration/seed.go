@@ -163,7 +163,7 @@ VALUES ($1, $2, $3)
 	err = db.TestsRawSQL(ctx, `
 INSERT INTO envs (id, team_id, public, build_count, spawn_count, updated_at)
 VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-`, data.EnvID, data.TeamID, true, 1, 0)
+`, data.EnvID, data.TeamID, true, 2, 0)
 	if err != nil {
 		return fmt.Errorf("failed to create env: %w", err)
 	}
