@@ -161,7 +161,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
-	user, err := a.db.Client.User.Get(ctx, userID)
+	user, err := a.sqlcDB.GetUser(ctx, userID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err))
 
