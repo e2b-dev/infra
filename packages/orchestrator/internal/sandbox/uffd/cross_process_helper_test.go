@@ -89,8 +89,16 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	offsetsReader, offsetsWriter, err := os.Pipe()
 	require.NoError(t, err)
 
+	t.Cleanup(func() {
+		offsetsReader.Close()
+	})
+
 	readyReader, readyWriter, err := os.Pipe()
 	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		readyReader.Close()
+	})
 
 	readySignal := make(chan struct{}, 1)
 	go func() {
@@ -148,6 +156,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		}
 
 		var offsetList []uint
+
+		if len(offsetsBytes)%8 != 0 {
+			return nil, fmt.Errorf("invalid offsets bytes length: %d", len(offsetsBytes))
+		}
 
 		for i := 0; i < len(offsetsBytes); i += 8 {
 			offsetList = append(offsetList, uint(binary.LittleEndian.Uint64(offsetsBytes[i:i+8])))
@@ -329,7 +341,7 @@ func crossProcessServe() error {
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("context done: %w: %w", ctx.Err(), context.Cause(ctx))
 	case <-exitSignal:
 		return nil
 	}
