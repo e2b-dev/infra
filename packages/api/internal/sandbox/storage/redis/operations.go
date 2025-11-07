@@ -84,52 +84,55 @@ func (s *Storage) Items(_ *uuid.UUID, _ []sandbox.State, _ ...sandbox.ItemsOptio
 
 // Update modifies a sandbox atomically using a Lua script
 func (s *Storage) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), redisTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*redisTimeout)
 	defer cancel()
 
 	key := getSandboxKey(sandboxID)
 	var updatedSbx sandbox.Sandbox
 
-	// Use WATCH for optimistic locking
-	err := s.redisClient.Watch(ctx, func(tx *redis.Tx) error {
-		// Get current value
-		data, err := tx.Get(ctx, key).Bytes()
-		if errors.Is(err, redis.Nil) {
-			return &sandbox.NotFoundError{SandboxID: sandboxID}
-		}
+	lock, err := s.lockService.Obtain(ctx, key, redisTimeout, nil)
+	if err != nil {
+		return sandbox.Sandbox{}, fmt.Errorf("failed to obtain lock: %w", err)
+	}
+
+	defer func() {
+		err := lock.Release(ctx)
 		if err != nil {
-			return err
+			zap.L().Error("Failed to release lock", zap.Error(err))
 		}
+	}()
 
-		var sbx sandbox.Sandbox
-		err = json.Unmarshal(data, &sbx)
-		if err != nil {
-			return err
-		}
+	// Get current value
+	data, err := s.redisClient.Get(ctx, key).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
+	}
+	if err != nil {
+		return sandbox.Sandbox{}, err
+	}
 
-		// Apply update
-		newSbx, err := updateFunc(sbx)
-		if err != nil {
-			return err
-		}
+	var sbx sandbox.Sandbox
+	err = json.Unmarshal(data, &sbx)
+	if err != nil {
+		return sandbox.Sandbox{}, err
+	}
 
-		updatedSbx = newSbx
+	// Apply update
+	newSbx, err := updateFunc(sbx)
+	if err != nil {
+		return sandbox.Sandbox{}, err
+	}
 
-		// Serialize updated sandbox
-		newData, err := json.Marshal(newSbx)
-		if err != nil {
-			return err
-		}
+	updatedSbx = newSbx
 
-		// Execute transaction
-		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-			pipe.Set(ctx, key, newData, redis.KeepTTL)
+	// Serialize updated sandbox
+	newData, err := json.Marshal(newSbx)
+	if err != nil {
+		return sandbox.Sandbox{}, err
+	}
 
-			return nil
-		})
-
-		return err
-	}, key)
+	// Execute transaction
+	err = s.redisClient.Set(ctx, key, newData, redis.KeepTTL).Err()
 	if err != nil {
 		return sandbox.Sandbox{}, err
 	}
