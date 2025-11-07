@@ -2,6 +2,9 @@ name: Run tests on PRs
 
 on: [workflow_call]
 
+permissions:
+  contents: read
+
 jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
@@ -46,3 +49,24 @@ jobs:
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: go test -v ${{ matrix.test_path }}
+
+  validate-iac:
+    name: Validate terraform
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse .tool-versions
+        uses: wistia/parse-tool-versions@v2.1.1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "${{ env.TERRAFORM }}"
+
+      - name: Validate terraform
+        working-directory: ./iac/provider-gcp
+        run: |
+          terraform init -backend=false
+          terraform validate
