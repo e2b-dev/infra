@@ -48,4 +48,17 @@ func TestParse(t *testing.T) {
 
 		assert.Equal(t, []string{"service1", "service2"}, config.Services)
 	})
+
+	t.Run("env defaults get defaults before expansion", func(t *testing.T) {
+		config, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, "/orchestrator/build", config.DefaultCacheDir)
+	})
+
+	t.Run("env defaults get expanded", func(t *testing.T) {
+		t.Setenv("ORCHESTRATOR_BASE_PATH", "/a/b/c")
+		config, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, "/a/b/c/build", config.DefaultCacheDir)
+	})
 }
