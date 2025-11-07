@@ -71,6 +71,19 @@ func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
 
 	// Remove from Redis
 	key := getSandboxKey(sandboxID)
+
+	lock, err := s.lockService.Obtain(ctx, key, redisTimeout, nil)
+	if err != nil {
+		return fmt.Errorf("failed to obtain lock: %w", err)
+	}
+
+	defer func() {
+		err := lock.Release(ctx)
+		if err != nil {
+			zap.L().Error("Failed to release lock", zap.Error(err))
+		}
+	}()
+
 	s.redisClient.Del(ctx, key)
 
 	return nil
