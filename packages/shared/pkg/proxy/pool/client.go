@@ -3,15 +3,16 @@ package pool
 import (
 	"context"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -36,14 +37,10 @@ func newProxyClient(
 ) *ProxyClient {
 	activeConnections := smap.New[*tracking.Connection]()
 
-	withFields := make([]zap.Field, 0)
-	if t.IncludeSandboxIdInProxyErrorLogger {
-		withFields = append(withFields, logger.WithSandboxID(t.SandboxId))
-	}
-
-	stdLogger, err := zap.NewStdLogAt(zap.L().With(withFields...), zap.ErrorLevel)
+	stdLogger, err := zap.NewStdLogAt(t.RequestLogger, zap.WarnLevel)
 	if err != nil {
-		zap.L().Warn("failed to create logger", zap.Error(err))
+		t.RequestLogger.Warn("failed to create logger, falling back to stderr", zap.Error(err))
+		stdLogger = log.New(os.Stderr, "", 0)
 	}
 
 	transport := &http.Transport{

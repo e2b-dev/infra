@@ -64,11 +64,10 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			)
 
 			return &pool.Destination{
-				Url:                                url,
-				SandboxId:                          sbx.Runtime.SandboxID,
-				SandboxPort:                        port,
-				DefaultToPortError:                 true,
-				IncludeSandboxIdInProxyErrorLogger: true,
+				Url:                url,
+				SandboxId:          sbx.Runtime.SandboxID,
+				SandboxPort:        port,
+				DefaultToPortError: true,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
 				ConnectionKey: sbx.Runtime.ExecutionID,

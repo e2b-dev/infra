@@ -16,6 +16,5 @@ type Destination struct {
 	RequestLogger      *zap.Logger
 	// ConnectionKey is used for identifying which keepalive connections are not the same so we can prevent unintended reuse.
 	// This is evaluated before checking for existing connection to the IP:port pair.
-	ConnectionKey                      string
-	IncludeSandboxIdInProxyErrorLogger bool
+	ConnectionKey string
 }
