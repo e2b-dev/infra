@@ -289,7 +289,20 @@ func (o *Orchestrator) CreateSandbox(
 		trafficAccessToken,
 	)
 
-	o.sandboxStore.Add(ctx, sbx, true)
+	err = o.sandboxStore.Add(ctx, sbx, true)
+	if err != nil {
+		telemetry.ReportError(ctx, "failed to add sandbox to store", err)
+		killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbx, sandbox.StateActionKill)
+		if killErr != nil {
+			zap.L().Error("Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbx.SandboxID))
+		}
+
+		return sandbox.Sandbox{}, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Failed to create sandbox",
+			Err:       fmt.Errorf("failed to add sandbox to store: %w", err),
+		}
+	}
 
 	return sbx, nil
 }
