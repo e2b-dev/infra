@@ -170,7 +170,8 @@ func (f *Factory) CreateSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "create sandbox")
-	defer func() { endSpan(span, e) }()
+	defer span.End()
+	defer handleSpanError(span, &e)
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -181,7 +182,8 @@ func (f *Factory) CreateSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
-			endSpan(execSpan, e)
+			handleSpanError(execSpan, &e)
+			execSpan.End()
 		}
 	}()
 
@@ -331,13 +333,13 @@ func (f *Factory) CreateSandbox(
 	return sbx, nil
 }
 
-func endSpan(span trace.Span, err error) {
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+// Usage: defer handleSpanError(span, &err)
+func handleSpanError(span trace.Span, err *error) {
+	defer span.End()
+	if err != nil && *err != nil {
+		span.RecordError(*err)
+		span.SetStatus(codes.Error, (*err).Error())
 	}
-
-	span.End()
 }
 
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
@@ -352,7 +354,8 @@ func (f *Factory) ResumeSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume sandbox")
-	defer func() { endSpan(span, e) }()
+	defer span.End()
+	defer handleSpanError(span, &e)
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -363,7 +366,8 @@ func (f *Factory) ResumeSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
-			endSpan(execSpan, e)
+			handleSpanError(execSpan, &e)
+			execSpan.End()
 		}
 	}()
 
