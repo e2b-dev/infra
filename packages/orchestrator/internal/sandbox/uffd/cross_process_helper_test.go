@@ -79,11 +79,11 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	require.NoError(t, err)
 
 	go func() {
-		_, err := contentWriter.Write(data.Content())
-		assert.NoError(t, err)
+		_, writeErr := contentWriter.Write(data.Content())
+		assert.NoError(t, writeErr)
 
-		err = contentWriter.Close()
-		assert.NoError(t, err)
+		closeErr := contentWriter.Close()
+		assert.NoError(t, closeErr)
 	}()
 
 	offsetsReader, offsetsWriter, err := os.Pipe()
@@ -117,17 +117,17 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	readyWriter.Close()
 
 	t.Cleanup(func() {
-		err := cmd.Process.Signal(syscall.SIGUSR1)
-		assert.NoError(t, err)
+		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
+		assert.NoError(t, signalErr)
 
-		err = cmd.Wait()
+		waitErr := cmd.Wait()
 		// It can be either nil, an ExitError, a context.Canceled error, or "signal: killed"
 		assert.True(t,
-			errors.Is(err, &exec.ExitError{}) ||
-				errors.Is(err, context.Canceled) ||
-				(err != nil && strings.Contains(err.Error(), "signal: killed")) ||
-				err == nil,
-			"unexpected error: %v", err,
+			errors.Is(waitErr, &exec.ExitError{}) ||
+				errors.Is(waitErr, context.Canceled) ||
+				(waitErr != nil && strings.Contains(waitErr.Error(), "signal: killed")) ||
+				waitErr == nil,
+			"unexpected error: %v", waitErr,
 		)
 	})
 
@@ -229,9 +229,9 @@ func crossProcessServe() error {
 				}
 
 				for _, offset := range offsets {
-					err = binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
-					if err != nil {
-						msg := fmt.Errorf("error writing offsets to file: %w", err)
+					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
+					if writeErr != nil {
+						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
 
 						fmt.Fprint(os.Stderr, msg.Error())
 
@@ -279,9 +279,9 @@ func crossProcessServe() error {
 	defer fdExit.Close()
 
 	go func() {
-		err = Serve(ctx, int(uffd), m, data, fdExit, missingRequests, logger)
-		if err != nil {
-			msg := fmt.Errorf("error serving: %w", err)
+		serverErr := Serve(ctx, int(uffd), m, data, fdExit, missingRequests, logger)
+		if serverErr != nil {
+			msg := fmt.Errorf("error serving: %w", serverErr)
 
 			fmt.Fprint(os.Stderr, msg.Error())
 
@@ -314,9 +314,9 @@ func crossProcessServe() error {
 	signal.Notify(exitSignal, syscall.SIGUSR1)
 	defer signal.Stop(exitSignal)
 
-	err = readyFile.Close()
-	if err != nil {
-		return fmt.Errorf("error closing ready file: %w", err)
+	closeErr := readyFile.Close()
+	if closeErr != nil {
+		return fmt.Errorf("error closing ready file: %w", closeErr)
 	}
 
 	select {
