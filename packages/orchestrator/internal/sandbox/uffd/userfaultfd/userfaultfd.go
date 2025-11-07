@@ -141,8 +141,9 @@ outerLoop:
 		}
 
 		msg := *(*UffdMsg)(unsafe.Pointer(&buf[0]))
-		if getMsgEvent(&msg) != UFFD_EVENT_PAGEFAULT {
-			u.logger.Error("UFFD serve unexpected event type", zap.Any("event_type", getMsgEvent(&msg)))
+
+		if msgEvent := getMsgEvent(&msg); msgEvent != UFFD_EVENT_PAGEFAULT {
+			u.logger.Error("UFFD serve unexpected event type", zap.Any("event_type", msgEvent))
 
 			return ErrUnexpectedEventType
 		}
