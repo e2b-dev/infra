@@ -41,12 +41,8 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	size, err := data.Size()
 	require.NoError(t, err)
 
-	memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(uint64(size), tt.pagesize)
+	memoryArea, memoryStart, err := testutils.NewPageMmap(t, uint64(size), tt.pagesize)
 	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		unmap()
-	})
 
 	uffd, err := userfaultfd.NewUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	require.NoError(t, err)
