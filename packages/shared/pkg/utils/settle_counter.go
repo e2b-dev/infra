@@ -37,24 +37,16 @@ func (w *SettleCounter) Done() {
 
 // Wait waits for the counter to be the settle value.
 func (w *SettleCounter) Wait(ctx context.Context) error {
-	// Ensure we can break out of this Wait when the context is done.
-	go func() {
-		<-ctx.Done()
-
-		w.cond.Broadcast()
-	}()
+	stop := context.AfterFunc(ctx, w.cond.Broadcast)
+	defer stop()
 
 	for w.counter.Load() != w.settleValue {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
 		w.cond.L.Lock()
-
 		w.cond.Wait()
-
 		w.cond.L.Unlock()
 	}
 

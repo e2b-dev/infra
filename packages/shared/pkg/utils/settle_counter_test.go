@@ -146,6 +146,10 @@ func TestSettleCounter_Close(t *testing.T) {
 	// Give the wait goroutine time to start
 	time.Sleep(10 * time.Millisecond)
 
+	// Complete the work
+	sc.Done()
+	sc.Done()
+
 	// Wait for the wait to complete
 	wg.Wait()
 
