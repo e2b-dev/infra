@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -52,6 +53,13 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		Public:            *body.Public,
 	})
 	if dbErr != nil {
+		if dberrors.IsNotFoundError(err) {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
+			telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(aliasOrTemplateID))
+
+			return
+		}
+
 		telemetry.ReportError(ctx, "error when updating env", dbErr)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
 
