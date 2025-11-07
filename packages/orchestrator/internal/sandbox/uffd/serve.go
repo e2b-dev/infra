@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -151,6 +152,7 @@ outerLoop:
 
 		missingRequests.Store(offset, struct{}{})
 
+		fmt.Fprintf(os.Stderr, "serving page %d\n", offset)
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {

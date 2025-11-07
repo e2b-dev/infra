@@ -39,7 +39,9 @@ type testHandler struct {
 	pagesize   uint64
 	data       *testutils.MemorySlicer
 	uffd       uintptr
-	accessed   accessedOffsetsIpc
+	// Returns offsets of the pages that were faulted.
+	// It can only be called once.
+	offsetsOnce func() ([]uint, error)
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
