@@ -22,7 +22,7 @@ type ProxyPool struct {
 	currentConnsCounter   atomic.Int64
 }
 
-func New(maxClientConns int, maxConnectionAttempts int, idleTimeout time.Duration) *ProxyPool {
+func New(maxClientConns, maxConnectionAttempts int, idleTimeout time.Duration) *ProxyPool {
 	return &ProxyPool{
 		pool:                  smap.New[*ProxyClient](),
 		maxClientConns:        maxClientConns,
@@ -33,26 +33,25 @@ func New(maxClientConns int, maxConnectionAttempts int, idleTimeout time.Duratio
 
 func (p *ProxyPool) Get(d *Destination) *ProxyClient {
 	return p.pool.Upsert(d.ConnectionKey, nil, func(exist bool, inMapValue *ProxyClient, _ *ProxyClient) *ProxyClient {
-		if exist && inMapValue != nil {
-			return inMapValue
+		if !exist || inMapValue == nil {
+			inMapValue = newProxyClient(
+				p.maxClientConns,
+				// We limit the max number of connections per host to avoid exhausting the number of available via one host.
+				func() int {
+					if p.maxClientConns <= hostConnectionSplit {
+						return p.maxClientConns
+					}
+
+					return p.maxClientConns / hostConnectionSplit
+				}(),
+				p.maxConnectionAttempts,
+				p.idleTimeout,
+				&p.totalConnsCounter,
+				&p.currentConnsCounter,
+			)
 		}
 
-		return newProxyClient(
-			d,
-			p.maxClientConns,
-			// We limit the max number of connections per host to avoid exhausting the number of available via one host.
-			func() int {
-				if p.maxClientConns <= hostConnectionSplit {
-					return p.maxClientConns
-				}
-
-				return p.maxClientConns / hostConnectionSplit
-			}(),
-			p.maxConnectionAttempts,
-			p.idleTimeout,
-			&p.totalConnsCounter,
-			&p.currentConnsCounter,
-		)
+		return inMapValue.WithDestination(d)
 	})
 }
 

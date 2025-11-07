@@ -19,15 +19,22 @@ import (
 )
 
 type ProxyClient struct {
-	httputil.ReverseProxy
-
-	transport *http.Transport
-
 	activeConnections *smap.Map[*tracking.Connection]
+	destination       *Destination
+	reverseProxy      httputil.ReverseProxy
+	transport         *http.Transport
+}
+
+func (p *ProxyClient) WithDestination(destination *Destination) *ProxyClient {
+	return &ProxyClient{
+		activeConnections: p.activeConnections,
+		destination:       destination,
+		reverseProxy:      p.reverseProxy,
+		transport:         p.transport,
+	}
 }
 
 func newProxyClient(
-	t *Destination,
 	maxIdleConns,
 	maxHostIdleConns int,
 	maxConnectionAttempts int,
@@ -35,15 +42,11 @@ func newProxyClient(
 	totalConnsCounter *atomic.Uint64,
 	currentConnsCounter *atomic.Int64,
 ) *ProxyClient {
-	activeConnections := smap.New[*tracking.Connection]()
-
-	stdLogger, err := zap.NewStdLogAt(t.RequestLogger, zap.WarnLevel)
-	if err != nil {
-		t.RequestLogger.Warn("failed to create logger, falling back to stderr", zap.Error(err))
-		stdLogger = log.New(os.Stderr, "", 0)
+	pc := &ProxyClient{
+		activeConnections: smap.New[*tracking.Connection](),
 	}
 
-	transport := &http.Transport{
+	pc.transport = &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		// Limit the max connection per host to avoid exhausting the number of available ports to one host.
 		MaxIdleConnsPerHost:   maxHostIdleConns,
@@ -69,7 +72,7 @@ func newProxyClient(
 				if err == nil {
 					totalConnsCounter.Add(1)
 
-					return tracking.NewConnection(conn, currentConnsCounter, activeConnections), nil
+					return tracking.NewConnection(conn, currentConnsCounter, pc.activeConnections), nil
 				}
 
 				if ctx.Err() != nil {
@@ -94,14 +97,29 @@ func newProxyClient(
 		DisableCompression: true, // No need to request or manipulate compression
 	}
 
-	proxy := httputil.ReverseProxy{
-		Transport: transport,
+	pc.reverseProxy = httputil.ReverseProxy{
+		Transport: pc.transport,
 		Rewrite: func(r *httputil.ProxyRequest) {
+			t, ok := pc.getDestination(r.In)
+			if !ok {
+				// Error from this will be later caught as r.Host == "" in the ErrorHandler
+				r.SetURL(r.In.URL)
+
+				return
+			}
+
 			r.SetURL(t.Url)
 			// We are **not** using SetXForwarded() because servers can sometimes modify the content-location header to be http which might break some customer services.
 			r.Out.Host = r.In.Host
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			t, ok := pc.getDestination(r)
+			if !ok {
+				http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
+
+				return
+			}
+
 			if err != nil {
 				t.RequestLogger.Error("sandbox error handler called", zap.Error(err))
 			}
@@ -124,6 +142,11 @@ func newProxyClient(
 			http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
 		},
 		ModifyResponse: func(r *http.Response) error {
+			t, ok := pc.getDestination(r.Request)
+			if !ok {
+				return nil
+			}
+
 			if r.StatusCode >= 500 {
 				t.RequestLogger.Error(
 					"Reverse proxy error",
@@ -137,14 +160,22 @@ func newProxyClient(
 
 			return nil
 		},
-		ErrorLog: stdLogger,
+		ErrorLog: log.New(os.Stdout, "[proxy] ", log.LstdFlags),
 	}
 
-	return &ProxyClient{
-		transport:         transport,
-		activeConnections: activeConnections,
-		ReverseProxy:      proxy,
+	return pc
+}
+
+func (p *ProxyClient) getDestination(r *http.Request) (*Destination, bool) {
+	if p.destination == nil {
+		zap.L().Error("failed to get routing target from context",
+			zap.String("request_method", r.Method),
+			zap.String("request_url", r.URL.String()))
+
+		return nil, false
 	}
+
+	return p.destination, true
 }
 
 func (p *ProxyClient) closeIdleConnections() {
@@ -162,4 +193,8 @@ func (p *ProxyClient) resetAllConnections() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func (p *ProxyClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p.reverseProxy.ServeHTTP(w, r)
 }
