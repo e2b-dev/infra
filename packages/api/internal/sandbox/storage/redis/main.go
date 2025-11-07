@@ -3,6 +3,7 @@ package redis
 import (
 	"time"
 
+	"github.com/bsm/redislock"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -17,6 +18,7 @@ var _ sandbox.Storage = (*Storage)(nil)
 
 type Storage struct {
 	redisClient redis.UniversalClient
+	lockService *redislock.Client
 }
 
 func NewStorage(
@@ -24,6 +26,7 @@ func NewStorage(
 ) *Storage {
 	return &Storage{
 		redisClient: redisClient,
+		lockService: redislock.New(redisClient),
 	}
 }
 
