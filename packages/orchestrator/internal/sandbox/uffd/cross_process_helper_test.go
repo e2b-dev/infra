@@ -115,6 +115,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	contentReader.Close()
 	offsetsWriter.Close()
 	readyWriter.Close()
+	uffdFile.Close()
 
 	t.Cleanup(func() {
 		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
