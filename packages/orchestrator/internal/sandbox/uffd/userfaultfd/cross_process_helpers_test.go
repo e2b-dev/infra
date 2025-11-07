@@ -212,53 +212,6 @@ func crossProcessServe() error {
 	contentFile := os.NewFile(uintptr(4), "content")
 	defer contentFile.Close()
 
-	offsetsFile := os.NewFile(uintptr(5), "offsets")
-
-	readyFile := os.NewFile(uintptr(6), "ready")
-
-	missingRequests := &sync.Map{}
-
-	offsetsSignal := make(chan os.Signal, 1)
-	signal.Notify(offsetsSignal, syscall.SIGUSR2)
-	defer signal.Stop(offsetsSignal)
-
-	go func() {
-		defer offsetsFile.Close()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-offsetsSignal:
-				offsets, err := getAccessedOffsets(missingRequests)
-				if err != nil {
-					msg := fmt.Errorf("error getting accessed offsets from cross process: %w", err)
-
-					fmt.Fprint(os.Stderr, msg.Error())
-
-					cancel(msg)
-
-					return
-				}
-
-				for _, offset := range offsets {
-					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
-					if writeErr != nil {
-						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
-
-						fmt.Fprint(os.Stderr, msg.Error())
-
-						cancel(msg)
-
-						return
-					}
-				}
-
-				return
-			}
-		}
-	}()
-
 	content, err := io.ReadAll(contentFile)
 	if err != nil {
 		return fmt.Errorf("exit reading content: %w", err)
@@ -291,6 +244,49 @@ func crossProcessServe() error {
 	if err != nil {
 		return fmt.Errorf("exit creating uffd: %w", err)
 	}
+
+	offsetsFile := os.NewFile(uintptr(5), "offsets")
+
+	offsetsSignal := make(chan os.Signal, 1)
+	signal.Notify(offsetsSignal, syscall.SIGUSR2)
+	defer signal.Stop(offsetsSignal)
+
+	go func() {
+		defer offsetsFile.Close()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-offsetsSignal:
+				offsets, err := getAccessedOffsets(&uffd.missingRequests)
+				if err != nil {
+					msg := fmt.Errorf("error getting accessed offsets from cross process: %w", err)
+
+					fmt.Fprint(os.Stderr, msg.Error())
+
+					cancel(msg)
+
+					return
+				}
+
+				for _, offset := range offsets {
+					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
+					if writeErr != nil {
+						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
+
+						fmt.Fprint(os.Stderr, msg.Error())
+
+						cancel(msg)
+
+						return
+					}
+				}
+
+				return
+			}
+		}
+	}()
 
 	fdExit, err := fdexit.New()
 	if err != nil {
@@ -335,6 +331,8 @@ func crossProcessServe() error {
 	exitSignal := make(chan os.Signal, 1)
 	signal.Notify(exitSignal, syscall.SIGUSR1)
 	defer signal.Stop(exitSignal)
+
+	readyFile := os.NewFile(uintptr(6), "ready")
 
 	closeErr := readyFile.Close()
 	if closeErr != nil {
