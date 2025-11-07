@@ -43,52 +43,52 @@ func run(ctx context.Context) error {
 		}
 	}
 
-	sqlcDB, err := client.NewClient(ctx)
+	db, err := client.NewClient(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer sqlcDB.Close()
+	defer db.Close()
 
 	// create user
-	if err := upsertUser(ctx, sqlcDB); err != nil {
+	if err := upsertUser(ctx, db); err != nil {
 		return fmt.Errorf("failed to upsert user: %w", err)
 	}
 
 	// create team
-	teamID, err := upsertTeam(ctx, sqlcDB)
+	teamID, err := upsertTeam(ctx, db)
 	if err != nil {
 		return fmt.Errorf("failed to upsert team: %w", err)
 	}
 
-	if err = ensureUserIsOnTeam(ctx, sqlcDB, teamID); err != nil {
+	if err = ensureUserIsOnTeam(ctx, db, teamID); err != nil {
 		return fmt.Errorf("failed to ensure user is on team: %w", err)
 	}
 
 	// create user token
-	if err = upsertUserToken(ctx, sqlcDB, keys.AccessTokenPrefix, userTokenValue); err != nil {
+	if err = upsertUserToken(ctx, db, keys.AccessTokenPrefix, userTokenValue); err != nil {
 		return fmt.Errorf("failed to upsert token: %w", err)
 	}
 
 	// create team token
-	if err = upsertTeamAPIKey(ctx, sqlcDB, teamID, keys.ApiKeyPrefix, teamTokenValue); err != nil {
+	if err = upsertTeamAPIKey(ctx, db, teamID, keys.ApiKeyPrefix, teamTokenValue); err != nil {
 		return fmt.Errorf("failed to upsert token: %w", err)
 	}
 
 	// create local cluster
-	// if err = upsertLocalCluster(ctx, sqlcDB); err != nil {
+	// if err = upsertLocalCluster(ctx, db); err != nil {
 	//	return fmt.Errorf("failed to upsert local cluster: %w", err)
 	// }
 
 	return nil
 }
 
-func upsertTeamAPIKey(ctx context.Context, sqlcDB *client.Client, teamID uuid.UUID, tokenPrefix, token string) error {
+func upsertTeamAPIKey(ctx context.Context, db *client.Client, teamID uuid.UUID, tokenPrefix, token string) error {
 	tokenHash, tokenMask, err := createTokenHash(tokenPrefix, token)
 	if err != nil {
 		return fmt.Errorf("failed to create token hash: %w", err)
 	}
 
-	if _, err = sqlcDB.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
+	if _, err = db.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
 		TeamID:           teamID,
 		CreatedBy:        &userID,
 		ApiKeyHash:       tokenHash,
@@ -104,8 +104,8 @@ func upsertTeamAPIKey(ctx context.Context, sqlcDB *client.Client, teamID uuid.UU
 	return nil
 }
 
-func ensureUserIsOnTeam(ctx context.Context, sqlcDB *client.Client, teamID uuid.UUID) error {
-	if err := sqlcDB.TestsRawSQL(ctx, `
+func ensureUserIsOnTeam(ctx context.Context, db *client.Client, teamID uuid.UUID) error {
+	if err := db.TestsRawSQL(ctx, `
 INSERT INTO users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 ON CONFLICT DO NOTHING
@@ -116,13 +116,13 @@ ON CONFLICT DO NOTHING
 	return nil
 }
 
-func upsertUserToken(ctx context.Context, sqlcDB *client.Client, tokenPrefix, token string) error {
+func upsertUserToken(ctx context.Context, db *client.Client, tokenPrefix, token string) error {
 	tokenHash, tokenMask, err := createTokenHash(tokenPrefix, token)
 	if err != nil {
 		return fmt.Errorf("failed to create token hash: %w", err)
 	}
 
-	if _, err = sqlcDB.CreateAccessToken(ctx, queries.CreateAccessTokenParams{
+	if _, err = db.CreateAccessToken(ctx, queries.CreateAccessTokenParams{
 		ID:                    tokenID,
 		UserID:                userID,
 		AccessTokenHash:       tokenHash,
@@ -150,10 +150,10 @@ func ignoreConstraints(err error) error {
 	return err
 }
 
-func upsertTeam(ctx context.Context, sqlcDB *client.Client) (uuid.UUID, error) {
+func upsertTeam(ctx context.Context, db *client.Client) (uuid.UUID, error) {
 	teamID := uuid.MustParse("0b8a3ded-4489-4722-afd1-1d82e64ec2d5")
 
-	err := sqlcDB.TestsRawSQL(ctx, `
+	err := db.TestsRawSQL(ctx, `
 INSERT INTO teams (id, email, name, tier, is_blocked)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (id) DO UPDATE SET
@@ -168,8 +168,8 @@ ON CONFLICT (id) DO UPDATE SET
 	return teamID, nil
 }
 
-func upsertUser(ctx context.Context, sqlcDB *client.Client) error {
-	err := sqlcDB.TestsRawSQL(ctx, `
+func upsertUser(ctx context.Context, db *client.Client) error {
+	err := db.TestsRawSQL(ctx, `
 INSERT INTO auth.users (id, email)
 VALUES ($1, $2)
 ON CONFLICT (id) DO UPDATE SET

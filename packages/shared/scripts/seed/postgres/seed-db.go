@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
@@ -20,11 +20,11 @@ func main() {
 	ctx := context.Background()
 	hasher := keys.NewSHA256Hashing()
 
-	sqlcDB, err := sqlcdb.NewClient(ctx)
+	db, err := client.NewClient(ctx)
 	if err != nil {
 		panic(err)
 	}
-	defer sqlcDB.Close()
+	defer db.Close()
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -53,7 +53,7 @@ func main() {
 
 	// Open .e2b/config.json
 	// Delete existing user and recreate (simpler for seeding)
-	err = sqlcDB.TestsRawSQL(ctx, `
+	err = db.TestsRawSQL(ctx, `
 DELETE FROM auth.users WHERE email = $1
 `, email)
 	if err != nil {
@@ -62,7 +62,7 @@ DELETE FROM auth.users WHERE email = $1
 
 	// Create the user
 	userID := uuid.New()
-	err = sqlcDB.TestsRawSQL(ctx, `
+	err = db.TestsRawSQL(ctx, `
 INSERT INTO auth.users (id, email)
 VALUES ($1, $2)
 `, userID, email)
@@ -71,7 +71,7 @@ VALUES ($1, $2)
 	}
 
 	// Delete team
-	err = sqlcDB.TestsRawSQL(ctx, `
+	err = db.TestsRawSQL(ctx, `
 DELETE FROM teams WHERE email = $1
 `, email)
 	if err != nil {
@@ -79,7 +79,7 @@ DELETE FROM teams WHERE email = $1
 	}
 
 	// Create team
-	err = sqlcDB.TestsRawSQL(ctx, `
+	err = db.TestsRawSQL(ctx, `
 INSERT INTO teams (id, email, name, tier, is_blocked)
 VALUES ($1, $2, $3, $4, $5)
 `, teamUUID, email, "E2B", "base_v1", false)
@@ -88,7 +88,7 @@ VALUES ($1, $2, $3, $4, $5)
 	}
 
 	// Create user team
-	err = sqlcDB.TestsRawSQL(ctx, `
+	err = db.TestsRawSQL(ctx, `
 INSERT INTO users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, userID, teamUUID, true)
@@ -107,7 +107,7 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		panic(err)
 	}
-	_, err = sqlcDB.CreateAccessToken(
+	_, err = db.CreateAccessToken(
 		ctx, queries.CreateAccessTokenParams{
 			ID:                    uuid.New(),
 			UserID:                userID,
@@ -133,7 +133,7 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		panic(err)
 	}
-	_, err = sqlcDB.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
+	_, err = db.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
 		TeamID:           teamUUID,
 		CreatedBy:        &userID,
 		ApiKeyHash:       apiKeyHash,
@@ -148,7 +148,7 @@ VALUES ($1, $2, $3)
 	}
 
 	// Create init template
-	err = sqlcDB.TestsRawSQL(ctx, `
+	err = db.TestsRawSQL(ctx, `
 INSERT INTO envs (id, team_id, public, build_count, spawn_count, updated_at)
 VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 `, "rki5dems9wqfm4r03t7g", teamUUID, true, 0, 0)
