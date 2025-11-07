@@ -84,7 +84,10 @@ func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
 		}
 	}()
 
-	s.redisClient.Del(ctx, key)
+	err = s.redisClient.Del(ctx, key).Err()
+	if err != nil {
+		return fmt.Errorf("failed to remove sandbox from Redis: %w", err)
+	}
 
 	return nil
 }
