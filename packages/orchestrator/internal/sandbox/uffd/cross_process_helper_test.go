@@ -9,12 +9,14 @@ package uffd
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -87,10 +89,22 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	offsetsReader, offsetsWriter, err := os.Pipe()
 	require.NoError(t, err)
 
+	readyReader, readyWriter, err := os.Pipe()
+	require.NoError(t, err)
+
+	readySignal := make(chan struct{}, 1)
+	go func() {
+		_, err := io.ReadAll(readyReader)
+		assert.NoError(t, err)
+
+		readySignal <- struct{}{}
+	}()
+
 	cmd.ExtraFiles = []*os.File{
 		uffdFile,
 		contentReader,
 		offsetsWriter,
+		readyReader,
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -100,13 +114,21 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 
 	contentReader.Close()
 	offsetsWriter.Close()
+	readyWriter.Close()
 
 	t.Cleanup(func() {
 		err := cmd.Process.Signal(syscall.SIGUSR1)
 		assert.NoError(t, err)
 
-		cmd.Wait()
-		assert.NoError(t, err)
+		err = cmd.Wait()
+		// It can be either nil, an ExitError, a context.Canceled error, or "signal: killed"
+		assert.True(t,
+			errors.Is(err, &exec.ExitError{}) ||
+				errors.Is(err, context.Canceled) ||
+				(err != nil && strings.Contains(err.Error(), "signal: killed")) ||
+				err == nil,
+			"unexpected error: %v", err,
+		)
 	})
 
 	offsetsOnce := func() ([]uint, error) {
@@ -127,6 +149,12 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		}
 
 		return offsetList, nil
+	}
+
+	select {
+	case <-t.Context().Done():
+		return nil, t.Context().Err()
+	case <-readySignal:
 	}
 
 	return &testHandler{
@@ -173,6 +201,9 @@ func crossProcessServe() error {
 	defer contentFile.Close()
 
 	offsetsFile := os.NewFile(uintptr(5), "offsets")
+
+	readyFile := os.NewFile(uintptr(6), "ready")
+	defer readyFile.Close()
 
 	missingRequests := &sync.Map{}
 
@@ -282,6 +313,11 @@ func crossProcessServe() error {
 	exitSignal := make(chan os.Signal, 1)
 	signal.Notify(exitSignal, syscall.SIGUSR1)
 	defer signal.Stop(exitSignal)
+
+	err = readyFile.Close()
+	if err != nil {
+		return fmt.Errorf("error closing ready file: %w", err)
+	}
 
 	select {
 	case <-ctx.Done():
