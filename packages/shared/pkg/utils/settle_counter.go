@@ -40,15 +40,28 @@ func (w *SettleCounter) Wait(ctx context.Context) error {
 	stop := context.AfterFunc(ctx, w.cond.Broadcast)
 	defer stop()
 
-	for w.counter.Load() != w.settleValue {
+	for {
+		// Fast path: check if already settled (no lock needed for atomic read)
+		if w.counter.Load() == w.settleValue {
+			return nil
+		}
+
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
+		// Acquire lock before checking counter again to avoid race condition
 		w.cond.L.Lock()
+		// Double-check: counter might have changed while acquiring lock
+		if w.counter.Load() == w.settleValue {
+			w.cond.L.Unlock()
+
+			return nil
+		}
+
+		// Wait for change (releases lock, re-acquires on wakeup)
 		w.cond.Wait()
+
 		w.cond.L.Unlock()
 	}
-
-	return nil
 }
