@@ -19,7 +19,7 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 			"grpc.response.content": {},
 		}
 
-		f := make([]zap.Field, 0, (len(fields)-len(ignoredFields))/2)
+		f := make([]zap.Field, 0, (len(fields)/2)-len(ignoredFields))
 
 		methodFullNameMap := map[string]string{
 			"grpc.service":     "...",
