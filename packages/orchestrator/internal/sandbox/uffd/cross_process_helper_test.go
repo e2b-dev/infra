@@ -104,7 +104,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		uffdFile,
 		contentReader,
 		offsetsWriter,
-		readyReader,
+		readyWriter,
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
