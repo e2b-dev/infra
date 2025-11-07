@@ -11,8 +11,6 @@ import (
 )
 
 func TestMissing(t *testing.T) {
-	t.Parallel()
-
 	tests := []testConfig{
 		{
 			name:          "standard 4k page, operation at start",
@@ -114,8 +112,6 @@ func TestMissing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			h, err := configureCrossProcessTest(t, tt)
 			require.NoError(t, err)
 

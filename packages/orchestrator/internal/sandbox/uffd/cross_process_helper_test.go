@@ -76,8 +76,6 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	contentReader, contentWriter, err := os.Pipe()
 	require.NoError(t, err)
 
-	defer contentReader.Close()
-
 	go func() {
 		_, err := contentWriter.Write(data.Content())
 		assert.NoError(t, err)
@@ -88,8 +86,6 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 
 	offsetsReader, offsetsWriter, err := os.Pipe()
 	require.NoError(t, err)
-
-	defer offsetsWriter.Close()
 
 	cmd.ExtraFiles = []*os.File{
 		uffdFile,
@@ -102,28 +98,27 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	err = cmd.Start()
 	require.NoError(t, err)
 
+	contentReader.Close()
+	offsetsWriter.Close()
+
 	t.Cleanup(func() {
-		cmd.Process.Signal(syscall.SIGUSR1)
+		err := cmd.Process.Signal(syscall.SIGUSR1)
+		assert.NoError(t, err)
 
 		cmd.Wait()
+		assert.NoError(t, err)
 	})
 
 	offsetsOnce := func() ([]uint, error) {
-		fmt.Fprintf(os.Stderr, "signaling offsets\n")
-
 		err := cmd.Process.Signal(syscall.SIGUSR2)
 		if err != nil {
 			return nil, err
 		}
 
-		fmt.Fprintf(os.Stderr, "reading offsets\n")
-
 		offsetsBytes, err := io.ReadAll(offsetsReader)
 		if err != nil {
 			return nil, err
 		}
-
-		fmt.Fprintf(os.Stderr, "offsets: %x\n", len(offsetsBytes))
 
 		var offsetList []uint
 
@@ -193,22 +188,25 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				fmt.Fprintf(os.Stderr, "getting accessed offsets from cross process\n")
 				offsets, err := getAccessedOffsets(missingRequests)
 				if err != nil {
-					cancel(err)
-				}
+					msg := fmt.Errorf("error getting accessed offsets from cross process: %w", err)
 
-				fmt.Fprintf(os.Stderr, "writing offsets to file: %x\n", len(offsets))
+					fmt.Fprint(os.Stderr, msg.Error())
+
+					cancel(msg)
+				}
 
 				for _, offset := range offsets {
 					err = binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
 					if err != nil {
-						cancel(err)
+						msg := fmt.Errorf("error writing offsets to file: %w", err)
+
+						fmt.Fprint(os.Stderr, msg.Error())
+
+						cancel(msg)
 					}
 				}
-
-				fmt.Fprintf(os.Stderr, "written offsets to file\n")
 
 				return
 			}
@@ -220,14 +218,10 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit reading content: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "content: %x\n", len(content))
-
 	pageSize, err := strconv.Atoi(os.Getenv("GO_MMAP_PAGE_SIZE"))
 	if err != nil {
 		return fmt.Errorf("exit parsing page size: %w", err)
 	}
-
-	fmt.Fprintf(os.Stderr, "page size: %d\n", pageSize)
 
 	data := testutils.NewMemorySlicer(content, int64(pageSize))
 
@@ -240,8 +234,6 @@ func crossProcessServe() error {
 		},
 	})
 
-	fmt.Fprintf(os.Stderr, "memory start: %d\n", memoryStart)
-
 	exitUffd := make(chan struct{}, 1)
 
 	logger, err := zap.NewDevelopment()
@@ -249,33 +241,38 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit creating logger: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "creating fd exit\n")
-
 	fdExit, err := fdexit.New()
 	if err != nil {
 		return fmt.Errorf("exit creating fd exit: %w", err)
 	}
 	defer fdExit.Close()
 
-	fmt.Fprintf(os.Stderr, "serving\n")
-
 	go func() {
 		err = Serve(ctx, int(uffd), m, data, fdExit, missingRequests, logger)
 		if err != nil {
-			cancel(err)
+			msg := fmt.Errorf("error serving: %w", err)
+
+			fmt.Fprint(os.Stderr, msg.Error())
+
+			cancel(msg)
 
 			return
 		}
 
-		fmt.Fprintf(os.Stderr, "exit serving process\n")
-
 		exitUffd <- struct{}{}
 	}()
 
-	fmt.Fprintf(os.Stderr, "waiting for exit\n")
-
 	cleanup := func() {
-		fdExit.SignalExit()
+		err := fdExit.SignalExit()
+		if err != nil {
+			msg := fmt.Errorf("error signaling exit: %w", err)
+
+			fmt.Fprint(os.Stderr, msg.Error())
+
+			cancel(msg)
+
+			return
+		}
 
 		<-exitUffd
 	}
