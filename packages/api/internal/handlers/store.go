@@ -101,7 +101,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	if err != nil {
 		zap.L().Fatal("Initializing Nomad client", zap.Error(err))
 	}
-
 	var redisClient redis.UniversalClient
 	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
 		// For managed Redis Cluster in GCP we should use Cluster Client, because

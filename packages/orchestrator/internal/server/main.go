@@ -16,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
-	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -37,7 +36,7 @@ type Server struct {
 	devicePool        *nbd.DevicePool
 	persistence       storage.StorageProvider
 	featureFlags      *featureflags.Client
-	sbxEventsService  events.EventsService[event.SandboxEvent]
+	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
 }
 
@@ -53,7 +52,7 @@ type ServiceConfig struct {
 	Sandboxes        *sandbox.Map
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
-	SbxEventsService events.EventsService[event.SandboxEvent]
+	SbxEventsService *events.EventsService
 }
 
 func New(cfg ServiceConfig) *Server {

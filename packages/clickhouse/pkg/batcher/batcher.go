@@ -15,6 +15,7 @@ var (
 	ErrBatcherAlreadyStarted = errors.New("batcher already started")
 	ErrBatcherNotStarted     = errors.New("batcher not started")
 	ErrFuncNotSet            = errors.New("Batcher.Func must be set")
+	ErrBatcherQueueFull      = errors.New("batcher queue is full")
 )
 
 // Batcher groups items in batches and calls Func on them.

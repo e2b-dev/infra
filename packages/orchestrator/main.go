@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
-	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
+	clickhouseevents "github.com/e2b-dev/infra/packages/clickhouse/pkg/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
@@ -49,7 +49,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -287,23 +286,23 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
 
-	var sandboxEventBatcher batcher.ClickhouseInsertBatcher[clickhouse.SandboxEvent]
+	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
-	clickhouseConnectionString := config.ClickhouseConnectionString
-	if clickhouseConnectionString == "" {
-		sandboxEventBatcher = batcher.NewNoopBatcher[clickhouse.SandboxEvent]()
-	} else {
-		clickhouseConn, err := clickhouse.NewDriver(clickhouseConnectionString)
+	// Clickhouse sandbox events delivery target
+	if config.ClickhouseConnectionString != "" {
+		clickhouseConn, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
 		if err != nil {
 			zap.L().Fatal("failed to create clickhouse driver", zap.Error(err))
 		}
 
-		sandboxEventBatcher, err = factories.NewSandboxInsertsEventBatcher(ctx, clickhouseConn, featureFlags)
+		sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(ctx, clickhouseConn, featureFlags)
 		if err != nil {
-			zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
+			zap.L().Fatal("failed to create clickhouse events delivery", zap.Error(err))
 		}
+
+		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryClickhouse)
+		closers = append(closers, closer{"sandbox events delivery for clickhouse", sbxEventsDeliveryClickhouse.Close})
 	}
-	closers = append(closers, closer{"sandbox event batcher", sandboxEventBatcher.Close})
 
 	// redis
 	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
@@ -319,16 +318,12 @@ func run(config cfg.Config) (success bool) {
 		}})
 	}
 
-	// pubsub
-	var redisPubSub pubsub.PubSub[event.SandboxEvent, struct{}]
+	// Redis sandbox events delivery target
 	if redisClient != nil {
-		redisPubSub = pubsub.NewRedisPubSub[event.SandboxEvent, struct{}](redisClient, "sandbox-webhooks")
-	} else {
-		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, struct{}]()
+		sbxEventsDeliveryRedis := event.NewRedisPubSubDelivery[event.SandboxEvent](redisClient, "sandbox-events")
+		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
+		closers = append(closers, closer{"sandbox events delivery for redis", sbxEventsDeliveryRedis.Close})
 	}
-	closers = append(closers, closer{"pubsub", redisPubSub.Close})
-
-	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
 
 	// sandbox observer
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
@@ -392,7 +387,7 @@ func run(config cfg.Config) (success bool) {
 		Sandboxes:        sandboxes,
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
-		SbxEventsService: sbxEventsService,
+		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
 	})
 
 	// template manager sandbox logger

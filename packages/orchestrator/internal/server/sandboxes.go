@@ -193,22 +193,26 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:   events.StructureVersionV2,
-		ID:        uuid.New(),
-		Type:      eventType.Type,
-		Timestamp: time.Now().UTC(),
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
 
-		EventCategory: eventType.LegacyCategory,
-		EventLabel:    eventType.LegacyLabel,
-		EventData:     eventData,
+			EventCategory: eventType.LegacyCategory,
+			EventLabel:    eventType.LegacyLabel,
+			EventData:     eventData,
 
-		SandboxID:          sbx.Runtime.SandboxID,
-		SandboxExecutionID: sbx.Runtime.ExecutionID,
-		SandboxTemplateID:  sbx.Config.BaseTemplateID,
-		SandboxBuildID:     buildId,
-		SandboxTeamID:      teamID,
-	})
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &orchestrator.SandboxCreateResponse{
 		ClientId: s.info.ClientId,
@@ -237,22 +241,26 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
 	eventType := events.SandboxUpdatedEventPair
 
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:   events.StructureVersionV2,
-		ID:        uuid.New(),
-		Type:      eventType.Type,
-		Timestamp: time.Now().UTC(),
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
 
-		EventCategory: eventType.LegacyCategory,
-		EventLabel:    eventType.LegacyLabel,
-		EventData:     eventData,
+			EventCategory: eventType.LegacyCategory,
+			EventLabel:    eventType.LegacyLabel,
+			EventData:     eventData,
 
-		SandboxID:          sbx.Runtime.SandboxID,
-		SandboxExecutionID: sbx.Runtime.ExecutionID,
-		SandboxTemplateID:  sbx.Config.BaseTemplateID,
-		SandboxBuildID:     buildId,
-		SandboxTeamID:      teamID,
-	})
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &emptypb.Empty{}, nil
 }
@@ -328,22 +336,26 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 
 	eventType := events.SandboxKilledEventPair
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:   events.StructureVersionV2,
-		ID:        uuid.New(),
-		Type:      eventType.Type,
-		Timestamp: time.Now().UTC(),
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
 
-		EventCategory: eventType.LegacyCategory,
-		EventLabel:    eventType.LegacyLabel,
-		EventData:     eventData,
+			EventCategory: eventType.LegacyCategory,
+			EventLabel:    eventType.LegacyLabel,
+			EventData:     eventData,
 
-		SandboxID:          sbx.Runtime.SandboxID,
-		SandboxExecutionID: sbx.Runtime.ExecutionID,
-		SandboxTemplateID:  sbx.Config.BaseTemplateID,
-		SandboxBuildID:     buildId,
-		SandboxTeamID:      teamID,
-	})
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &emptypb.Empty{}, nil
 }
@@ -440,22 +452,26 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 
 	eventType := events.SandboxPausedEventPair
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:   events.StructureVersionV2,
-		ID:        uuid.New(),
-		Type:      eventType.Type,
-		Timestamp: time.Now().UTC(),
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
 
-		EventCategory: eventType.LegacyCategory,
-		EventLabel:    eventType.LegacyLabel,
-		EventData:     eventData,
+			EventCategory: eventType.LegacyCategory,
+			EventLabel:    eventType.LegacyLabel,
+			EventData:     eventData,
 
-		SandboxID:          sbx.Runtime.SandboxID,
-		SandboxExecutionID: sbx.Runtime.ExecutionID,
-		SandboxTemplateID:  sbx.Config.BaseTemplateID,
-		SandboxBuildID:     buildId,
-		SandboxTeamID:      teamID,
-	})
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &emptypb.Empty{}, nil
 }
