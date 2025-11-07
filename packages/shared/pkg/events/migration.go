@@ -1,5 +1,7 @@
 package events
 
+import "errors"
+
 // Deprecated: use only for already existing events for during migration period
 type SandboxEventType struct {
 	Type           string
@@ -37,10 +39,16 @@ var SandboxKilledEventPair = SandboxEventType{
 	LegacyLabel:    "kill",
 }
 
+var ErrUnknownEventFormat = errors.New("unknown sandbox event format")
+
 // LegacySandboxEventMigrationMapping works for senders back compatibility and converting old event types to new ones
 // We will receive old event just with event category and label, so we need to map them to new event types that
 // are using new dot namespaced syntax for event names
-func LegacySandboxEventMigrationMapping(e SandboxEvent) SandboxEvent {
+func LegacySandboxEventMigrationMapping(e SandboxEvent) (SandboxEvent, error) {
+	if e.Version == "" {
+		e.Version = StructureVersionV1
+	}
+
 	switch e.Version {
 	case StructureVersionV1:
 		// Migrate old event category/label to new event type
@@ -58,6 +66,8 @@ func LegacySandboxEventMigrationMapping(e SandboxEvent) SandboxEvent {
 				e.Type = SandboxKilledEventPair.Type
 			}
 		}
+
+		return e, nil
 	case StructureVersionV2:
 		// Back compatibility for v2 events that might still have legacy fields set
 		switch e.Type {
@@ -77,7 +87,9 @@ func LegacySandboxEventMigrationMapping(e SandboxEvent) SandboxEvent {
 			e.EventCategory = SandboxKilledEventPair.LegacyCategory
 			e.EventLabel = SandboxKilledEventPair.LegacyLabel
 		}
+
+		return e, nil
 	}
 
-	return e
+	return SandboxEvent{}, ErrUnknownEventFormat
 }
