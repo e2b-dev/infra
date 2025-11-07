@@ -34,7 +34,7 @@ func (Snapshot) Fields() []ent.Field {
 		field.String("origin_node_id").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.UUID("team_id", uuid.UUID{}),
 		field.Bool("allow_internet_access").Nillable().Optional(),
-		field.JSON("firewall", types.SandboxFirewallConfig{}).SchemaType(map[string]string{dialect.Postgres: "jsonb"}).Optional(),
+		field.JSON("config", types.PausedSandboxConfig{}).SchemaType(map[string]string{dialect.Postgres: "jsonb"}).Optional(),
 	}
 }
 

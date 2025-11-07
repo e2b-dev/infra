@@ -12,8 +12,8 @@ sql:
         overrides:
           - column: "public.env_builds.reason"
             go_type: "github.com/e2b-dev/infra/packages/db/types.BuildReason"
-          - column: "public.snapshots.firewall"
-            go_type: "github.com/e2b-dev/infra/packages/db/types.SandboxFirewallConfig"
+          - column: "public.snapshots.config"
+            go_type: "github.com/e2b-dev/infra/packages/db/types.PausedSandboxConfig"
           - db_type: "uuid"
             go_type:
               import: "github.com/google/uuid"

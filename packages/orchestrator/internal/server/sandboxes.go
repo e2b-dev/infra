@@ -99,17 +99,17 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	firewall := req.GetSandbox().GetFirewall()
+	network := req.GetSandbox().GetNetwork()
 
 	// TODO: Temporarily set this based on global config, should be removed later
-	//  (it should be passed as a non nil parameter from API)
+	//  (it should be passed network config from API)
 	allowInternet := s.config.AllowSandboxInternet
 	if req.GetSandbox().AllowInternetAccess != nil {
 		allowInternet = req.GetSandbox().GetAllowInternetAccess()
 	}
 	if !allowInternet {
-		firewall.Egress = firewall.GetEgress()
-		firewall.Egress.BlockedCidrs = []string{"0.0.0.0/0"}
+		network.Egress = network.GetEgress()
+		network.Egress.BlockedAddresses = []string{"0.0.0.0/0"}
 	}
 
 	sbx, err := s.sandboxFactory.ResumeSandbox(
@@ -123,7 +123,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
 			HugePages:       req.GetSandbox().GetHugePages(),
 
-			Firewall: req.GetSandbox().GetFirewall(),
+			Network: req.GetSandbox().GetNetwork(),
 
 			Envd: sandbox.EnvdMetadata{
 				Version:     req.GetSandbox().GetEnvdVersion(),

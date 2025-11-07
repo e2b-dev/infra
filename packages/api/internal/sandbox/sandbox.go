@@ -35,7 +35,7 @@ func NewSandbox(
 	allowInternetAccess *bool,
 	baseTemplateID string,
 	domain *string,
-	firewall *types.SandboxFirewallConfig,
+	network *types.SandboxNetworkConfig,
 ) Sandbox {
 	return Sandbox{
 		SandboxID:  sandboxID,
@@ -64,7 +64,7 @@ func NewSandbox(
 		AutoPause:           autoPause,
 		State:               StateRunning,
 		BaseTemplateID:      baseTemplateID,
-		Firewall:            firewall,
+		Network:             network,
 	}
 }
 
@@ -94,7 +94,7 @@ type Sandbox struct {
 	NodeID              string
 	ClusterID           uuid.UUID
 	AutoPause           bool
-	Firewall            *types.SandboxFirewallConfig
+	Network             *types.SandboxNetworkConfig
 
 	State State
 }

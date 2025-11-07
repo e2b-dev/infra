@@ -217,25 +217,19 @@ components:
       additionalProperties: {}
       nullable: true
 
-    SandboxFirewallEgressConfig:
+    SandboxNetworkConfig:
       type: object
       properties:
-        allowedCidrs:
+        allowOut:
           type: array
-          description: List of allowed CIDR blocks for egress traffic
+          description: List of allowed CIDR blocks or IP addresses for egress traffic
           items:
             type: string
-        blockedCidrs:
+        blockOut:
           type: array
-          description: List of blocked CIDR blocks for egress traffic
+          description: List of blocked CIDR blocks or IP addresses for egress traffic
           items:
             type: string
-
-    SandboxFirewallConfig:
-      type: object
-      properties:
-        egress:
-          $ref: "#/components/schemas/SandboxFirewallEgressConfig"
 
     SandboxLog:
       description: Log entry with timestamp and line
@@ -496,8 +490,8 @@ components:
         allow_internet_access:
           type: boolean
           description: Allow sandbox to access the internet
-        firewall:
-          $ref: "#/components/schemas/SandboxFirewallConfig"
+        network:
+          $ref: "#/components/schemas/SandboxNetworkConfig"
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
         envVars:

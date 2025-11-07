@@ -153,8 +153,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		autoPause,
 		envdAccessToken,
 		snap.AllowInternetAccess,
-		utils.DBToAPIFirewall(&snap.Firewall), // firewall config from snapshot
-		nil,                                   // mcp
+		snap.Config.Network,
+		nil, // mcp
 	)
 	if createErr != nil {
 		zap.L().Error("Failed to resume sandbox", zap.Error(createErr.Err))

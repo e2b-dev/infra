@@ -211,7 +211,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		HugePages: bb.Config.HugePages,
 
 		// Allow sandbox internet access during provisioning
-		Firewall: &orchestrator.SandboxFirewallConfig{},
+		Network: &orchestrator.SandboxNetworkConfig{},
 
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,

@@ -110,7 +110,7 @@ type Snapshot struct {
 	AllowInternetAccess *bool
 	AutoPause           bool
 	TeamID              uuid.UUID
-	Firewall            types.SandboxFirewallConfig
+	Config              types.PausedSandboxConfig
 }
 
 type Team struct {

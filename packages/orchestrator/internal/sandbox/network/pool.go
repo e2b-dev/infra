@@ -128,7 +128,7 @@ func (p *Pool) Populate(ctx context.Context) {
 	}
 }
 
-func (p *Pool) Get(ctx context.Context, firewall *orchestrator.SandboxFirewallConfig) (*Slot, error) {
+func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (*Slot, error) {
 	var slot *Slot
 
 	select {
@@ -155,7 +155,7 @@ func (p *Pool) Get(ctx context.Context, firewall *orchestrator.SandboxFirewallCo
 		}
 	}
 
-	err := slot.ConfigureInternet(ctx, firewall)
+	err := slot.ConfigureInternet(ctx, network)
 	if err != nil {
 		return nil, fmt.Errorf("error setting slot internet access: %w", err)
 	}

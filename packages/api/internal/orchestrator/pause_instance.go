@@ -43,7 +43,10 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		EnvdSecured:         sbx.EnvdAccessToken != nil,
 		AllowInternetAccess: sbx.AllowInternetAccess,
 		AutoPause:           sbx.AutoPause,
-		Firewall:            sbx.Firewall,
+		Config: &types.PausedSandboxConfig{
+			Version: types.PausedSandboxConfigVersion,
+			Network: sbx.Network,
+		},
 	}
 
 	envBuild, err := o.dbClient.NewSnapshotBuild(

@@ -45,16 +45,16 @@ message SandboxConfig {
   // After migration, the optional keyword can be removed.
   optional bool allow_internet_access = 21;
 
-  optional SandboxFirewallConfig firewall = 22;
+  optional SandboxNetworkConfig network = 22;
 }
 
-message SandboxFirewallConfig {
-    optional SandboxFirewallEgressConfig egress = 1;
+message SandboxNetworkConfig {
+    optional SandboxNetworkEgressConfig egress = 1;
 }
 
-message SandboxFirewallEgressConfig {
-    repeated string allowed_cidrs = 1;
-    repeated string blocked_cidrs = 2;
+message SandboxNetworkEgressConfig {
+    repeated string allowed_addresses = 1;
+    repeated string blocked_addresses = 2;
 }
 
 message SandboxCreateRequest {

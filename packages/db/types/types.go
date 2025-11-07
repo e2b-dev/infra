@@ -10,11 +10,18 @@ type BuildReason struct {
 	Step *string `json:"step,omitempty"`
 }
 
-type SandboxFirewallEgressConfig struct {
-	AllowedCidrs []string `json:"allowedCidrs,omitempty"`
-	BlockedCidrs []string `json:"blockedCidrs,omitempty"`
+const PausedSandboxConfigVersion = "v1"
+
+type SandboxNetworkEgressConfig struct {
+	AllowedAddresses []string `json:"allowedAddresses,omitempty"`
+	BlockedAddresses []string `json:"blockedAddresses,omitempty"`
 }
 
-type SandboxFirewallConfig struct {
-	Egress *SandboxFirewallEgressConfig `json:"egress,omitempty"`
+type SandboxNetworkConfig struct {
+	Egress *SandboxNetworkEgressConfig `json:"egress,omitempty"`
+}
+
+type PausedSandboxConfig struct {
+	Version string                `json:"version"`
+	Network *SandboxNetworkConfig `json:"network,omitempty"`
 }

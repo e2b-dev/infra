@@ -249,13 +249,13 @@ func (s *Slot) CloseFirewall() error {
 	return nil
 }
 
-func (s *Slot) ConfigureInternet(ctx context.Context, firewall *orchestrator.SandboxFirewallConfig) (e error) {
+func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (e error) {
 	_, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
 	defer span.End()
 
-	if firewall == nil || len(firewall.GetEgress().GetAllowedCidrs()) == 0 && len(firewall.GetEgress().GetBlockedCidrs()) == 0 {
+	if network == nil || len(network.GetEgress().GetAllowedAddresses()) == 0 && len(network.GetEgress().GetBlockedAddresses()) == 0 {
 		// Internet access is allowed by default.
 		return nil
 	}
@@ -269,15 +269,15 @@ func (s *Slot) ConfigureInternet(ctx context.Context, firewall *orchestrator.San
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		for _, cidr := range firewall.GetEgress().GetAllowedCidrs() {
-			err = s.Firewall.AddAllowedIP(cidr)
+		for _, address := range network.GetEgress().GetAllowedAddresses() {
+			err = s.Firewall.AddAllowedIP(address)
 			if err != nil {
 				return fmt.Errorf("error setting firewall rules: %w", err)
 			}
 		}
 
-		for _, cidr := range firewall.GetEgress().GetBlockedCidrs() {
-			err = s.Firewall.AddBlockedIP(cidr)
+		for _, address := range network.GetEgress().GetBlockedAddresses() {
+			err = s.Firewall.AddBlockedIP(address)
 			if err != nil {
 				return fmt.Errorf("error setting firewall rules: %w", err)
 			}

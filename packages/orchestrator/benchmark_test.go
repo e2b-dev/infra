@@ -60,7 +60,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		templateVersion = "v2.0.0"
 	)
 
-	firewall := &orchestrator.SandboxFirewallConfig{}
+	sbxNetwork := &orchestrator.SandboxNetworkConfig{}
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
 	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
@@ -189,7 +189,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		RamMB:           512,
 		TotalDiskSizeMB: 2 * 1024,
 		HugePages:       useHugePages,
-		Firewall:        firewall,
+		Network:         sbxNetwork,
 		Envd: sandbox.EnvdMetadata{
 			Vars:        map[string]string{"HELLO": "WORLD"},
 			AccessToken: &accessToken,

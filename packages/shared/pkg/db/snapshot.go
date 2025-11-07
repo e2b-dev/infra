@@ -29,7 +29,7 @@ type SnapshotInfo struct {
 	EnvdSecured         bool
 	AllowInternetAccess *bool
 	AutoPause           bool
-	Firewall            *types.SandboxFirewallConfig
+	Config              *types.PausedSandboxConfig
 }
 
 // Check if there exists snapshot with the ID, if yes then return a new
@@ -92,7 +92,7 @@ func (db *DB) NewSnapshotBuild(
 			SetNillableAllowInternetAccess(snapshotConfig.AllowInternetAccess).
 			SetOriginNodeID(originNodeID).
 			SetAutoPause(snapshotConfig.AutoPause).
-			SetNillableFirewall(snapshotConfig.Firewall).
+			SetNillableConfig(snapshotConfig.Config).
 			Exec(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create snapshot '%s': %w", snapshotConfig.SandboxID, err)
@@ -107,7 +107,7 @@ func (db *DB) NewSnapshotBuild(
 			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
 			SetOriginNodeID(originNodeID).
 			SetAutoPause(snapshotConfig.AutoPause).
-			SetNillableFirewall(snapshotConfig.Firewall).
+			SetNillableConfig(snapshotConfig.Config).
 			Exec(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update snapshot '%s': %w", snapshotConfig.SandboxID, err)

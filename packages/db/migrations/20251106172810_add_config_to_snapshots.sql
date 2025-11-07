@@ -2,12 +2,11 @@
 -- +goose StatementBegin
 
 ALTER TABLE snapshots
-    ADD COLUMN firewall jsonb NULL;
+    ADD COLUMN config jsonb NULL;
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
 ALTER TABLE snapshots
-    DROP COLUMN IF EXISTS firewall;
+    DROP COLUMN IF EXISTS config;
 -- +goose StatementEnd
-

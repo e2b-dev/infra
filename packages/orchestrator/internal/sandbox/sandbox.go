@@ -61,7 +61,7 @@ type Config struct {
 	TotalDiskSizeMB int64
 	HugePages       bool
 
-	Firewall *orchestrator.SandboxFirewallConfig
+	Network *orchestrator.SandboxNetworkConfig
 
 	Envd EnvdMetadata
 }
@@ -187,7 +187,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Firewall)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -371,7 +371,7 @@ func (f *Factory) ResumeSandbox(
 		}
 	}()
 
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Firewall)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
 		// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -906,7 +906,7 @@ func getNetworkSlotAsync(
 	ctx context.Context,
 	networkPool *network.Pool,
 	cleanup *Cleanup,
-	firewall *orchestrator.SandboxFirewallConfig,
+	network *orchestrator.SandboxNetworkConfig,
 ) chan networkSlotRes {
 	ctx, span := tracer.Start(ctx, "get-network-slot")
 	defer span.End()
@@ -916,7 +916,7 @@ func getNetworkSlotAsync(
 	go func() {
 		defer close(r)
 
-		ips, err := networkPool.Get(ctx, firewall)
+		ips, err := networkPool.Get(ctx, network)
 		if err != nil {
 			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
 

@@ -146,9 +146,9 @@ func (fw *Firewall) installRules() error {
 }
 
 // AddBlockedIP adds a single CIDR to the block set at runtime.
-func (fw *Firewall) AddBlockedIP(cidr string) error {
+func (fw *Firewall) AddBlockedIP(address string) error {
 	// 0.0.0.0/0 is not valid IP per GoLang, so we handle it as a special case
-	if cidr == "0.0.0.0/0" {
+	if address == "0.0.0.0/0" {
 		fw.conn.FlushSet(fw.blockSet.Set())
 
 		toAppend := []nftables.SetElement{
@@ -168,7 +168,7 @@ func (fw *Firewall) AddBlockedIP(cidr string) error {
 			return err
 		}
 
-		data, err := set.AddressStringsToSetData([]string{cidr})
+		data, err := set.AddressStringsToSetData([]string{address})
 		if err != nil {
 			return err
 		}
@@ -187,8 +187,8 @@ func (fw *Firewall) AddBlockedIP(cidr string) error {
 }
 
 // AddAllowedIP adds a single CIDR to the allow set at runtime.
-func (fw *Firewall) AddAllowedIP(cidr string) error {
-	data, err := set.AddressStringsToSetData([]string{cidr})
+func (fw *Firewall) AddAllowedIP(address string) error {
+	data, err := set.AddressStringsToSetData([]string{address})
 	if err != nil {
 		return err
 	}

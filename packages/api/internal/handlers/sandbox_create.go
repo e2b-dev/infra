@@ -13,10 +13,11 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -43,7 +44,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey
-	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
+	teamInfo := c.Value(auth.TeamContextKey).(*typesteam.Team)
 
 	c.Set("teamID", teamInfo.Team.ID.String())
 
@@ -156,7 +157,16 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	allowInternetAccess := body.AllowInternetAccess
-	firewall := body.Firewall
+
+	var network *types.SandboxNetworkConfig
+	if body.Network != nil {
+		network = &types.SandboxNetworkConfig{
+			Egress: &types.SandboxNetworkEgressConfig{
+				AllowedAddresses: sharedUtils.DerefOrDefault(body.Network.AllowOut, nil),
+				BlockedAddresses: sharedUtils.DerefOrDefault(body.Network.BlockOut, nil),
+			},
+		}
+	}
 
 	sbx, createErr := a.startSandbox(
 		ctx,
@@ -174,7 +184,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause,
 		envdAccessToken,
 		allowInternetAccess,
-		firewall,
+		network,
 		mcp,
 	)
 	if createErr != nil {

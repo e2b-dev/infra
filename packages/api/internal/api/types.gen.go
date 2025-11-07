@@ -316,13 +316,13 @@ type NewSandbox struct {
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 
 	// AutoPause Automatically pauses the sandbox after the timeout
-	AutoPause *bool                  `json:"autoPause,omitempty"`
-	EnvVars   *EnvVars               `json:"envVars,omitempty"`
-	Firewall  *SandboxFirewallConfig `json:"firewall,omitempty"`
+	AutoPause *bool    `json:"autoPause,omitempty"`
+	EnvVars   *EnvVars `json:"envVars,omitempty"`
 
 	// Mcp MCP configuration for the sandbox
-	Mcp      *Mcp             `json:"mcp"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+	Mcp      *Mcp                  `json:"mcp"`
+	Metadata *SandboxMetadata      `json:"metadata,omitempty"`
+	Network  *SandboxNetworkConfig `json:"network,omitempty"`
 
 	// Secure Secure all system communication with sandbox
 	Secure *bool `json:"secure,omitempty"`
@@ -535,20 +535,6 @@ type SandboxDetail struct {
 	TemplateID string `json:"templateID"`
 }
 
-// SandboxFirewallConfig defines model for SandboxFirewallConfig.
-type SandboxFirewallConfig struct {
-	Egress *SandboxFirewallEgressConfig `json:"egress,omitempty"`
-}
-
-// SandboxFirewallEgressConfig defines model for SandboxFirewallEgressConfig.
-type SandboxFirewallEgressConfig struct {
-	// AllowedCidrs List of allowed CIDR blocks for egress traffic
-	AllowedCidrs *[]string `json:"allowedCidrs,omitempty"`
-
-	// BlockedCidrs List of blocked CIDR blocks for egress traffic
-	BlockedCidrs *[]string `json:"blockedCidrs,omitempty"`
-}
-
 // SandboxLog Log entry with timestamp and line
 type SandboxLog struct {
 	// Line Log line content
@@ -610,6 +596,15 @@ type SandboxMetric struct {
 
 	// TimestampUnix Timestamp of the metric entry in Unix time (seconds since epoch)
 	TimestampUnix int64 `json:"timestampUnix"`
+}
+
+// SandboxNetworkConfig defines model for SandboxNetworkConfig.
+type SandboxNetworkConfig struct {
+	// AllowOut List of allowed CIDR blocks or IP addresses for egress traffic
+	AllowOut *[]string `json:"allowOut,omitempty"`
+
+	// BlockOut List of blocked CIDR blocks or IP addresses for egress traffic
+	BlockOut *[]string `json:"blockOut,omitempty"`
 }
 
 // SandboxState State of the sandbox

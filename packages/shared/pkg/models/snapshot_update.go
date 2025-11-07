@@ -171,23 +171,23 @@ func (su *SnapshotUpdate) ClearAllowInternetAccess() *SnapshotUpdate {
 	return su
 }
 
-// SetFirewall sets the "firewall" field.
-func (su *SnapshotUpdate) SetFirewall(tfc types.SandboxFirewallConfig) *SnapshotUpdate {
-	su.mutation.SetFirewall(tfc)
+// SetConfig sets the "config" field.
+func (su *SnapshotUpdate) SetConfig(tsc types.PausedSandboxConfig) *SnapshotUpdate {
+	su.mutation.SetConfig(tsc)
 	return su
 }
 
-// SetNillableFirewall sets the "firewall" field if the given value is not nil.
-func (su *SnapshotUpdate) SetNillableFirewall(tfc *types.SandboxFirewallConfig) *SnapshotUpdate {
-	if tfc != nil {
-		su.SetFirewall(*tfc)
+// SetNillableConfig sets the "config" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableConfig(tsc *types.PausedSandboxConfig) *SnapshotUpdate {
+	if tsc != nil {
+		su.SetConfig(*tsc)
 	}
 	return su
 }
 
-// ClearFirewall clears the value of the "firewall" field.
-func (su *SnapshotUpdate) ClearFirewall() *SnapshotUpdate {
-	su.mutation.ClearFirewall()
+// ClearConfig clears the value of the "config" field.
+func (su *SnapshotUpdate) ClearConfig() *SnapshotUpdate {
+	su.mutation.ClearConfig()
 	return su
 }
 
@@ -290,11 +290,11 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if su.mutation.AllowInternetAccessCleared() {
 		_spec.ClearField(snapshot.FieldAllowInternetAccess, field.TypeBool)
 	}
-	if value, ok := su.mutation.Firewall(); ok {
-		_spec.SetField(snapshot.FieldFirewall, field.TypeJSON, value)
+	if value, ok := su.mutation.Config(); ok {
+		_spec.SetField(snapshot.FieldConfig, field.TypeJSON, value)
 	}
-	if su.mutation.FirewallCleared() {
-		_spec.ClearField(snapshot.FieldFirewall, field.TypeJSON)
+	if su.mutation.ConfigCleared() {
+		_spec.ClearField(snapshot.FieldConfig, field.TypeJSON)
 	}
 	if su.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -489,23 +489,23 @@ func (suo *SnapshotUpdateOne) ClearAllowInternetAccess() *SnapshotUpdateOne {
 	return suo
 }
 
-// SetFirewall sets the "firewall" field.
-func (suo *SnapshotUpdateOne) SetFirewall(tfc types.SandboxFirewallConfig) *SnapshotUpdateOne {
-	suo.mutation.SetFirewall(tfc)
+// SetConfig sets the "config" field.
+func (suo *SnapshotUpdateOne) SetConfig(tsc types.PausedSandboxConfig) *SnapshotUpdateOne {
+	suo.mutation.SetConfig(tsc)
 	return suo
 }
 
-// SetNillableFirewall sets the "firewall" field if the given value is not nil.
-func (suo *SnapshotUpdateOne) SetNillableFirewall(tfc *types.SandboxFirewallConfig) *SnapshotUpdateOne {
-	if tfc != nil {
-		suo.SetFirewall(*tfc)
+// SetNillableConfig sets the "config" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableConfig(tsc *types.PausedSandboxConfig) *SnapshotUpdateOne {
+	if tsc != nil {
+		suo.SetConfig(*tsc)
 	}
 	return suo
 }
 
-// ClearFirewall clears the value of the "firewall" field.
-func (suo *SnapshotUpdateOne) ClearFirewall() *SnapshotUpdateOne {
-	suo.mutation.ClearFirewall()
+// ClearConfig clears the value of the "config" field.
+func (suo *SnapshotUpdateOne) ClearConfig() *SnapshotUpdateOne {
+	suo.mutation.ClearConfig()
 	return suo
 }
 
@@ -638,11 +638,11 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	if suo.mutation.AllowInternetAccessCleared() {
 		_spec.ClearField(snapshot.FieldAllowInternetAccess, field.TypeBool)
 	}
-	if value, ok := suo.mutation.Firewall(); ok {
-		_spec.SetField(snapshot.FieldFirewall, field.TypeJSON, value)
+	if value, ok := suo.mutation.Config(); ok {
+		_spec.SetField(snapshot.FieldConfig, field.TypeJSON, value)
 	}
-	if suo.mutation.FirewallCleared() {
-		_spec.ClearField(snapshot.FieldFirewall, field.TypeJSON)
+	if suo.mutation.ConfigCleared() {
+		_spec.ClearField(snapshot.FieldConfig, field.TypeJSON)
 	}
 	if suo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{

@@ -13,12 +13,13 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	teamtypes "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -26,12 +27,38 @@ import (
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// buildNetworkConfig constructs the orchestrator network configuration from the input parameters
+func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool) *orchestrator.SandboxNetworkConfig {
+	orchNetwork := &orchestrator.SandboxNetworkConfig{
+		Egress: &orchestrator.SandboxNetworkEgressConfig{},
+	}
+
+	// Copy network configuration if provided
+	if network != nil && network.Egress != nil {
+		if len(network.Egress.AllowedAddresses) > 0 {
+			orchNetwork.Egress.AllowedAddresses = network.Egress.AllowedAddresses
+		}
+		if len(network.Egress.BlockedAddresses) > 0 {
+			orchNetwork.Egress.BlockedAddresses = network.Egress.BlockedAddresses
+		}
+	}
+
+	// Handle the case where internet access is explicitly disabled
+	// This should be applied after copying the network config to preserve allowed addresses
+	if allowInternetAccess != nil && !*allowInternetAccess {
+		// Block all internet access - this overrides any other blocked addresses
+		orchNetwork.Egress.BlockedAddresses = []string{"0.0.0.0/0"}
+	}
+
+	return orchNetwork
+}
+
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
 	executionID,
 	alias string,
-	team *types.Team,
+	team *teamtypes.Team,
 	build queries.EnvBuild,
 	metadata map[string]string,
 	envVars map[string]string,
@@ -44,7 +71,7 @@ func (o *Orchestrator) CreateSandbox(
 	autoPause bool,
 	envdAuthToken *string,
 	allowInternetAccess *bool,
-	firewall *orchestrator.SandboxFirewallConfig,
+	network *types.SandboxNetworkConfig,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -139,10 +166,7 @@ func (o *Orchestrator) CreateSandbox(
 		sbxDomain = cluster.SandboxDomain
 	}
 
-	if allowInternetAccess != nil && !*allowInternetAccess {
-		firewall.Egress = firewall.GetEgress()
-		firewall.Egress.BlockedCidrs = []string{"0.0.0.0/0"}
-	}
+	orchNetwork := buildNetworkConfig(network, allowInternetAccess)
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
@@ -166,7 +190,7 @@ func (o *Orchestrator) CreateSandbox(
 			Snapshot:            isResume,
 			AutoPause:           autoPause,
 			AllowInternetAccess: allowInternetAccess,
-			Firewall:            firewall,
+			Network:             orchNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
 		},
 		StartTime: timestamppb.New(startTime),
@@ -244,7 +268,7 @@ func (o *Orchestrator) CreateSandbox(
 		allowInternetAccess,
 		baseTemplateID,
 		sbxDomain,
-		utils.OrchestratorToDBFirewall(firewall),
+		network,
 	)
 
 	o.sandboxStore.Add(ctx, sbx, true)

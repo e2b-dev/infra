@@ -124,16 +124,16 @@ func (sc *SnapshotCreate) SetNillableAllowInternetAccess(b *bool) *SnapshotCreat
 	return sc
 }
 
-// SetFirewall sets the "firewall" field.
-func (sc *SnapshotCreate) SetFirewall(tfc types.SandboxFirewallConfig) *SnapshotCreate {
-	sc.mutation.SetFirewall(tfc)
+// SetConfig sets the "config" field.
+func (sc *SnapshotCreate) SetConfig(tsc types.PausedSandboxConfig) *SnapshotCreate {
+	sc.mutation.SetConfig(tsc)
 	return sc
 }
 
-// SetNillableFirewall sets the "firewall" field if the given value is not nil.
-func (sc *SnapshotCreate) SetNillableFirewall(tfc *types.SandboxFirewallConfig) *SnapshotCreate {
-	if tfc != nil {
-		sc.SetFirewall(*tfc)
+// SetNillableConfig sets the "config" field if the given value is not nil.
+func (sc *SnapshotCreate) SetNillableConfig(tsc *types.PausedSandboxConfig) *SnapshotCreate {
+	if tsc != nil {
+		sc.SetConfig(*tsc)
 	}
 	return sc
 }
@@ -310,9 +310,9 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
 		_node.AllowInternetAccess = &value
 	}
-	if value, ok := sc.mutation.Firewall(); ok {
-		_spec.SetField(snapshot.FieldFirewall, field.TypeJSON, value)
-		_node.Firewall = value
+	if value, ok := sc.mutation.Config(); ok {
+		_spec.SetField(snapshot.FieldConfig, field.TypeJSON, value)
+		_node.Config = value
 	}
 	if nodes := sc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -510,21 +510,21 @@ func (u *SnapshotUpsert) ClearAllowInternetAccess() *SnapshotUpsert {
 	return u
 }
 
-// SetFirewall sets the "firewall" field.
-func (u *SnapshotUpsert) SetFirewall(v types.SandboxFirewallConfig) *SnapshotUpsert {
-	u.Set(snapshot.FieldFirewall, v)
+// SetConfig sets the "config" field.
+func (u *SnapshotUpsert) SetConfig(v types.PausedSandboxConfig) *SnapshotUpsert {
+	u.Set(snapshot.FieldConfig, v)
 	return u
 }
 
-// UpdateFirewall sets the "firewall" field to the value that was provided on create.
-func (u *SnapshotUpsert) UpdateFirewall() *SnapshotUpsert {
-	u.SetExcluded(snapshot.FieldFirewall)
+// UpdateConfig sets the "config" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateConfig() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldConfig)
 	return u
 }
 
-// ClearFirewall clears the value of the "firewall" field.
-func (u *SnapshotUpsert) ClearFirewall() *SnapshotUpsert {
-	u.SetNull(snapshot.FieldFirewall)
+// ClearConfig clears the value of the "config" field.
+func (u *SnapshotUpsert) ClearConfig() *SnapshotUpsert {
+	u.SetNull(snapshot.FieldConfig)
 	return u
 }
 
@@ -726,24 +726,24 @@ func (u *SnapshotUpsertOne) ClearAllowInternetAccess() *SnapshotUpsertOne {
 	})
 }
 
-// SetFirewall sets the "firewall" field.
-func (u *SnapshotUpsertOne) SetFirewall(v types.SandboxFirewallConfig) *SnapshotUpsertOne {
+// SetConfig sets the "config" field.
+func (u *SnapshotUpsertOne) SetConfig(v types.PausedSandboxConfig) *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
-		s.SetFirewall(v)
+		s.SetConfig(v)
 	})
 }
 
-// UpdateFirewall sets the "firewall" field to the value that was provided on create.
-func (u *SnapshotUpsertOne) UpdateFirewall() *SnapshotUpsertOne {
+// UpdateConfig sets the "config" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateConfig() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
-		s.UpdateFirewall()
+		s.UpdateConfig()
 	})
 }
 
-// ClearFirewall clears the value of the "firewall" field.
-func (u *SnapshotUpsertOne) ClearFirewall() *SnapshotUpsertOne {
+// ClearConfig clears the value of the "config" field.
+func (u *SnapshotUpsertOne) ClearConfig() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
-		s.ClearFirewall()
+		s.ClearConfig()
 	})
 }
 
@@ -1112,24 +1112,24 @@ func (u *SnapshotUpsertBulk) ClearAllowInternetAccess() *SnapshotUpsertBulk {
 	})
 }
 
-// SetFirewall sets the "firewall" field.
-func (u *SnapshotUpsertBulk) SetFirewall(v types.SandboxFirewallConfig) *SnapshotUpsertBulk {
+// SetConfig sets the "config" field.
+func (u *SnapshotUpsertBulk) SetConfig(v types.PausedSandboxConfig) *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
-		s.SetFirewall(v)
+		s.SetConfig(v)
 	})
 }
 
-// UpdateFirewall sets the "firewall" field to the value that was provided on create.
-func (u *SnapshotUpsertBulk) UpdateFirewall() *SnapshotUpsertBulk {
+// UpdateConfig sets the "config" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateConfig() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
-		s.UpdateFirewall()
+		s.UpdateConfig()
 	})
 }
 
-// ClearFirewall clears the value of the "firewall" field.
-func (u *SnapshotUpsertBulk) ClearFirewall() *SnapshotUpsertBulk {
+// ClearConfig clears the value of the "config" field.
+func (u *SnapshotUpsertBulk) ClearConfig() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
-		s.ClearFirewall()
+		s.ClearConfig()
 	})
 }
 
