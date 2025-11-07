@@ -13,37 +13,18 @@ import (
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	userModel "github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 )
 
 func main() {
 	ctx := context.Background()
 	hasher := keys.NewSHA256Hashing()
 
-	database, err := db.NewClient(1, 1)
-	if err != nil {
-		panic(err)
-	}
-	defer database.Close()
-
 	sqlcDB, err := sqlcdb.NewClient(ctx)
 	if err != nil {
 		panic(err)
 	}
 	defer sqlcDB.Close()
-
-	count, err := database.Client.Team.Query().Count(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	if count > 1 {
-		panic("Database contains some non-trivial data.")
-	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -71,42 +52,55 @@ func main() {
 	teamUUID := uuid.MustParse(teamID)
 
 	// Open .e2b/config.json
-	// Create the user if not exists (by email); otherwise use the existing one.
-	user, err := database.Client.User.Query().Where(userModel.EmailEQ(email)).Only(ctx)
+	// Delete existing user and recreate (simpler for seeding)
+	err = sqlcDB.TestsRawSQL(ctx, `
+DELETE FROM auth.users WHERE email = $1
+`, email)
 	if err != nil {
-		if models.IsNotFound(err) {
-			user, err = database.Client.User.Create().SetEmail(email).SetID(uuid.New()).Save(ctx)
-			if err != nil {
-				panic(err)
-			}
-		} else {
-			panic(err)
-		}
+		panic(err)
+	}
+
+	// Create the user
+	userID := uuid.New()
+	err = sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO auth.users (id, email)
+VALUES ($1, $2)
+`, userID, email)
+	if err != nil {
+		panic(err)
 	}
 
 	// Delete team
-	_, err = database.Client.Team.Delete().Where(team.Email(email)).Exec(ctx)
+	err = sqlcDB.TestsRawSQL(ctx, `
+DELETE FROM teams WHERE email = $1
+`, email)
 	if err != nil {
 		panic(err)
 	}
 
 	// Remove old access token
 	err = sqlcDB.TestsRawSQL(ctx, `
-		DELETE FROM "public"."access_tokens"
-		WHERE user_id = $1;
-`, user.ID)
+DELETE FROM access_tokens
+WHERE user_id = $1
+`, userID)
 	if err != nil {
 		panic(err)
 	}
 
 	// Create team
-	t, err := database.Client.Team.Create().SetEmail(email).SetName("E2B").SetID(teamUUID).SetTier("base_v1").Save(ctx)
+	err = sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO teams (id, email, name, tier, is_blocked)
+VALUES ($1, $2, $3, $4, $5)
+`, teamUUID, email, "E2B", "base_v1", false)
 	if err != nil {
 		panic(err)
 	}
 
 	// Create user team
-	_, err = database.Client.UsersTeams.Create().SetUserID(user.ID).SetTeamID(t.ID).SetIsDefault(true).Save(ctx)
+	err = sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO users_teams (user_id, team_id, is_default)
+VALUES ($1, $2, $3)
+`, userID, teamUUID, true)
 	if err != nil {
 		panic(err)
 	}
@@ -125,7 +119,7 @@ func main() {
 	_, err = sqlcDB.CreateAccessToken(
 		ctx, queries.CreateAccessTokenParams{
 			ID:                    uuid.New(),
-			UserID:                user.ID,
+			UserID:                userID,
 			AccessTokenHash:       accessTokenHash,
 			AccessTokenPrefix:     accessTokenMask.Prefix,
 			AccessTokenLength:     int32(accessTokenMask.ValueLength),
@@ -149,8 +143,8 @@ func main() {
 		panic(err)
 	}
 	_, err = sqlcDB.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
-		TeamID:           t.ID,
-		CreatedBy:        &user.ID,
+		TeamID:           teamUUID,
+		CreatedBy:        &userID,
 		ApiKeyHash:       apiKeyHash,
 		ApiKeyPrefix:     apiKeyMask.Prefix,
 		ApiKeyLength:     int32(apiKeyMask.ValueLength),
@@ -163,7 +157,10 @@ func main() {
 	}
 
 	// Create init template
-	_, err = database.Client.Env.Create().SetTeam(t).SetID("rki5dems9wqfm4r03t7g").SetPublic(true).Save(ctx)
+	err = sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO envs (id, team_id, public, build_count, spawn_count, updated_at)
+VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+`, "rki5dems9wqfm4r03t7g", teamUUID, true, 0, 0)
 	if err != nil {
 		panic(err)
 	}

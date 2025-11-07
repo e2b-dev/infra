@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	team_ "github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -20,20 +19,17 @@ type ForbiddenErrorResponse struct {
 
 func TestBannedTeam(t *testing.T) {
 	ctx := t.Context()
-	db := setup.GetTestDBClient(t)
+	sqlcDB := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()
 
 	teamName := "test-team-banned"
-	teamID := utils.CreateTeamWithUser(t, db, teamName, setup.UserID)
+	teamID := utils.CreateTeamWithUser(t, sqlcDB, teamName, setup.UserID)
 	apiKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, teamID)
 
-	err := db.Client.Team.UpdateOneID(teamID).SetIsBanned(true).Exec(ctx)
+	err := sqlcDB.TestsRawSQL(ctx, `
+UPDATE teams SET is_banned = $1 WHERE id = $2
+`, true, teamID)
 	require.NoError(t, err)
-
-	team, err := db.Client.Team.Query().Where(team_.ID(teamID)).First(ctx)
-	require.NoError(t, err)
-
-	assert.True(t, team.IsBanned)
 
 	resp, err := c.GetSandboxesWithResponse(ctx, nil, setup.WithAPIKey(apiKey))
 	require.NoError(t, err)
@@ -49,23 +45,19 @@ func TestBannedTeam(t *testing.T) {
 
 func TestBlockedTeam(t *testing.T) {
 	ctx := t.Context()
-	db := setup.GetTestDBClient(t)
+	sqlcDB := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()
 
 	teamName := "test-team-blocked"
 	blockReason := "test-reason"
 
-	teamID := utils.CreateTeamWithUser(t, db, teamName, setup.UserID)
+	teamID := utils.CreateTeamWithUser(t, sqlcDB, teamName, setup.UserID)
 	apiKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, teamID)
 
-	err := db.Client.Team.UpdateOneID(teamID).SetIsBlocked(true).SetBlockedReason(blockReason).Exec(ctx)
+	err := sqlcDB.TestsRawSQL(ctx, `
+UPDATE teams SET is_blocked = $1, blocked_reason = $2 WHERE id = $3
+`, true, blockReason, teamID)
 	require.NoError(t, err)
-
-	team, err := db.Client.Team.Query().Where(team_.ID(teamID)).First(ctx)
-	require.NoError(t, err)
-
-	assert.True(t, team.IsBlocked)
-	assert.Equal(t, teamID, team.ID)
 
 	resp, err := c.GetSandboxesWithResponse(ctx, nil, setup.WithAPIKey(apiKey))
 	require.NoError(t, err)

@@ -6,61 +6,67 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
-func CreateTeam(t *testing.T, db *db.DB, teamName string) uuid.UUID {
+func CreateTeam(t *testing.T, sqlcDB *client.Client, teamName string) uuid.UUID {
 	t.Helper()
 
-	return CreateTeamWithUser(t, db, teamName, "")
+	return CreateTeamWithUser(t, sqlcDB, teamName, "")
 }
 
 func CreateTeamWithUser(
 	t *testing.T,
-	db *db.DB,
+	sqlcDB *client.Client,
 	teamName, userID string,
 ) uuid.UUID {
 	t.Helper()
 
 	teamID := uuid.New()
 
-	team, err := db.Client.Team.Create().SetID(teamID).SetEmail(fmt.Sprintf("test-integration-%s@e2b.dev", teamID)).SetName(teamName).SetTier("base_v1").Save(t.Context())
+	err := sqlcDB.TestsRawSQL(t.Context(), `
+INSERT INTO teams (id, email, name, tier, is_blocked)
+VALUES ($1, $2, $3, $4, $5)
+`, teamID, fmt.Sprintf("test-integration-%s@e2b.dev", teamID), teamName, "base_v1", false)
 	require.NoError(t, err)
 
-	assert.Equal(t, teamName, team.Name)
-	assert.Equal(t, teamID, team.ID)
-
 	if userID != "" {
-		AddUserToTeam(t, db, teamID, userID)
+		AddUserToTeam(t, sqlcDB, teamID, userID)
 	}
 
 	t.Cleanup(func() {
-		db.Client.Team.DeleteOneID(teamID).Exec(t.Context())
+		sqlcDB.TestsRawSQL(t.Context(), `
+DELETE FROM teams WHERE id = $1
+`, teamID)
 	})
 
-	return team.ID
+	return teamID
 }
 
-func AddUserToTeam(t *testing.T, db *db.DB, teamID uuid.UUID, userID string) {
+func AddUserToTeam(t *testing.T, sqlcDB *client.Client, teamID uuid.UUID, userID string) {
 	t.Helper()
 
 	userUUID, err := uuid.Parse(userID)
 	require.NoError(t, err)
 
-	userTeam, err := db.Client.UsersTeams.Create().
-		SetUserID(userUUID).
-		SetTeamID(teamID).
-		SetIsDefault(false).
-		Save(t.Context())
+	var userTeamID int64
+	err = sqlcDB.TestsRawSQL(t.Context(), `
+INSERT INTO users_teams (user_id, team_id, is_default)
+VALUES ($1, $2, $3)
+RETURNING id
+`, userUUID, teamID, false)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		db.Client.UsersTeams.DeleteOne(userTeam).Exec(t.Context())
+		if userTeamID != 0 {
+			sqlcDB.TestsRawSQL(t.Context(), `
+DELETE FROM users_teams WHERE id = $1
+`, userTeamID)
+		}
 	})
 }
 

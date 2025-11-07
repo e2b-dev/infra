@@ -13,7 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -48,14 +47,6 @@ func run(ctx context.Context) int {
 		return 1
 	}
 
-	database, err := db.NewClient(1, 1)
-	if err != nil {
-		log.Printf("Failed to connect to database: %v", err)
-
-		return 1
-	}
-	defer database.Close()
-
 	sqlcDB, err := client.NewClient(ctx)
 	if err != nil {
 		log.Printf("Failed to connect to database: %v", err)
@@ -73,7 +64,7 @@ func run(ctx context.Context) int {
 		UserID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
 	}
 
-	err = seed(ctx, database, sqlcDB, data)
+	err = seed(ctx, sqlcDB, data)
 	if err != nil {
 		log.Printf("Failed to execute seed: %v", err)
 
@@ -85,14 +76,14 @@ func run(ctx context.Context) int {
 	return 0
 }
 
-func seed(ctx context.Context, db *db.DB, sqlcDB *client.Client, data SeedData) error {
+func seed(ctx context.Context, sqlcDB *client.Client, data SeedData) error {
 	hasher := keys.NewSHA256Hashing()
 
 	// User
-	_, err := db.Client.User.Create().
-		SetID(data.UserID).
-		SetEmail("user-test-integration@e2b.dev").
-		Save(ctx)
+	err := sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO auth.users (id, email)
+VALUES ($1, $2)
+`, data.UserID, "user-test-integration@e2b.dev")
 	if err != nil {
 		return fmt.Errorf("failed to create user: %w", err)
 	}
@@ -122,26 +113,23 @@ func seed(ctx context.Context, db *db.DB, sqlcDB *client.Client, data SeedData) 
 		Name:                  "Integration Tests Access Token",
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create user: %w", err)
+		return fmt.Errorf("failed to create access token: %w", err)
 	}
 
 	// Team
-	t, err := db.Client.Team.Create().
-		SetID(data.TeamID).
-		SetEmail("test-integration@e2b.dev").
-		SetName("E2B").
-		SetTier("base_v1").
-		Save(ctx)
+	err = sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO teams (id, email, name, tier, is_blocked)
+VALUES ($1, $2, $3, $4, $5)
+`, data.TeamID, "test-integration@e2b.dev", "E2B", "base_v1", false)
 	if err != nil {
 		return fmt.Errorf("failed to create team: %w", err)
 	}
 
 	// User-Team
-	_, err = db.Client.UsersTeams.Create().
-		SetUserID(data.UserID).
-		SetTeamID(t.ID).
-		SetIsDefault(true).
-		Save(ctx)
+	err = sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO users_teams (user_id, team_id, is_default)
+VALUES ($1, $2, $3)
+`, data.UserID, data.TeamID, true)
 	if err != nil {
 		return fmt.Errorf("failed to create user-team: %w", err)
 	}
@@ -158,7 +146,7 @@ func seed(ctx context.Context, db *db.DB, sqlcDB *client.Client, data SeedData) 
 		return fmt.Errorf("failed to mask api key: %w", err)
 	}
 	_, err = sqlcDB.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
-		TeamID:           t.ID,
+		TeamID:           data.TeamID,
 		CreatedBy:        &data.UserID,
 		ApiKeyHash:       apiKeyHash,
 		ApiKeyPrefix:     apiKeyMask.Prefix,
@@ -171,14 +159,11 @@ func seed(ctx context.Context, db *db.DB, sqlcDB *client.Client, data SeedData) 
 		return fmt.Errorf("failed to create team api key: %w", err)
 	}
 
-	// Base image build
-	_, err = db.Client.Env.Create().
-		SetID(data.EnvID).
-		SetTeamID(t.ID).
-		SetPublic(true).
-		SetBuildCount(1).
-		SetSpawnCount(0).
-		Save(ctx)
+	// Env
+	err = sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO envs (id, team_id, public, build_count, spawn_count, updated_at)
+VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+`, data.EnvID, data.TeamID, true, 1, 0)
 	if err != nil {
 		return fmt.Errorf("failed to create env: %w", err)
 	}
@@ -202,32 +187,36 @@ func seed(ctx context.Context, db *db.DB, sqlcDB *client.Client, data SeedData) 
 	}
 
 	for _, build := range builds {
-		_, err = db.Client.EnvBuild.Create().
-			SetID(build.id).
-			SetEnvID(data.EnvID).
-			SetDockerfile("FROM e2bdev/base:latest").
-			SetStatus(envbuild.StatusUploaded).
-			SetVcpu(2).
-			SetRAMMB(512).
-			SetFreeDiskSizeMB(512).
-			SetTotalDiskSizeMB(1982).
-			SetKernelVersion("vmlinux-6.1.102").
-			SetFirecrackerVersion("v1.12.1_d990331").
-			SetEnvdVersion("0.2.4").
-			SetNillableCreatedAt(build.createdAt).
-			SetClusterNodeID("integration-test-node").
-			SetVersion(templates.TemplateV1Version).
-			Save(ctx)
+		if build.createdAt != nil {
+			err = sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO env_builds (
+	id, env_id, dockerfile, status, vcpu, ram_mb, free_disk_size_mb,
+	total_disk_size_mb, kernel_version, firecracker_version, envd_version,
+	cluster_node_id, version, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP)
+`, build.id, data.EnvID, "FROM e2bdev/base:latest", envbuild.StatusUploaded,
+				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_d990331", "0.2.4",
+				"integration-test-node", templates.TemplateV1Version, build.createdAt)
+		} else {
+			err = sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO env_builds (
+	id, env_id, dockerfile, status, vcpu, ram_mb, free_disk_size_mb,
+	total_disk_size_mb, kernel_version, firecracker_version, envd_version,
+	cluster_node_id, version, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
+`, build.id, data.EnvID, "FROM e2bdev/base:latest", envbuild.StatusUploaded,
+				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_d990331", "0.2.4",
+				"integration-test-node", templates.TemplateV1Version)
+		}
 		if err != nil {
 			return fmt.Errorf("failed to create env build: %w", err)
 		}
 	}
 
-	_, err = db.Client.EnvAlias.Create().
-		SetID("base").
-		SetIsRenamable(true).
-		SetEnvID(data.EnvID).
-		Save(ctx)
+	err = sqlcDB.TestsRawSQL(ctx, `
+INSERT INTO env_aliases (alias, is_renamable, env_id)
+VALUES ($1, $2, $3)
+`, "base", true, data.EnvID)
 	if err != nil {
 		return fmt.Errorf("failed to create env alias: %w", err)
 	}
