@@ -14,7 +14,12 @@ const HealthCheckRoute = "/grpc.health.v1.Health/Check"
 
 func GRPCLogger(l *zap.Logger) logging.Logger {
 	return logging.LoggerFunc(func(_ context.Context, lvl logging.Level, msg string, fields ...any) {
-		f := make([]zap.Field, 0, len(fields)/2)
+		ignoredFields := map[string]struct{}{
+			"grpc.request.content":  {},
+			"grpc.response.content": {},
+		}
+
+		f := make([]zap.Field, 0, (len(fields)-len(ignoredFields))/2)
 
 		methodFullNameMap := map[string]string{
 			"grpc.service":     "...",
@@ -24,6 +29,10 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 		}
 
 		for i := 0; i < len(fields)-1; i += 2 {
+			if _, ok := ignoredFields[fields[i].(string)]; ok {
+				continue
+			}
+
 			key := fields[i]
 			value := fields[i+1]
 
