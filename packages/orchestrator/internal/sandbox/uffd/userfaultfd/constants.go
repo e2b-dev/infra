@@ -52,14 +52,14 @@ type (
 	UffdioWriteProtect = C.struct_uffdio_writeprotect
 )
 
-func NewUffdioAPI(api, features CULong) UffdioAPI {
+func newUffdioAPI(api, features CULong) UffdioAPI {
 	return UffdioAPI{
 		api:      api,
 		features: features,
 	}
 }
 
-func NewUffdioRegister(start, length, mode CULong) UffdioRegister {
+func newUffdioRegister(start, length, mode CULong) UffdioRegister {
 	return UffdioRegister{
 		_range: UffdioRange{
 			start: start,
@@ -69,7 +69,7 @@ func NewUffdioRegister(start, length, mode CULong) UffdioRegister {
 	}
 }
 
-func NewUffdioCopy(b []byte, address CULong, pagesize CULong, mode CULong, bytesCopied CLong) UffdioCopy {
+func newUffdioCopy(b []byte, address CULong, pagesize CULong, mode CULong, bytesCopied CLong) UffdioCopy {
 	return UffdioCopy{
 		src:  CULong(uintptr(unsafe.Pointer(&b[0]))),
 		dst:  address,
@@ -79,24 +79,14 @@ func NewUffdioCopy(b []byte, address CULong, pagesize CULong, mode CULong, bytes
 	}
 }
 
-func NewUffdioWriteProtect(start, length, mode CULong) UffdioWriteProtect {
-	return UffdioWriteProtect{
-		_range: UffdioRange{
-			start: start,
-			len:   length,
-		},
-		mode: mode,
-	}
-}
-
-func GetMsgEvent(msg *UffdMsg) CUChar {
+func getMsgEvent(msg *UffdMsg) CUChar {
 	return msg.event
 }
 
-func GetMsgArg(msg *UffdMsg) [24]byte {
+func getMsgArg(msg *UffdMsg) [24]byte {
 	return msg.arg
 }
 
-func GetPagefaultAddress(pagefault *UffdPagefault) uintptr {
+func getPagefaultAddress(pagefault *UffdPagefault) uintptr {
 	return uintptr(pagefault.address)
 }
