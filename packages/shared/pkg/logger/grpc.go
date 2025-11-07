@@ -30,7 +30,10 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 
 		fieldsLength := 0
 		for i := 0; i < len(fields)-1; i += 2 {
-			key := fields[i].(string)
+			key, ok := fields[i].(string)
+			if !ok {
+				continue
+			}
 
 			if _, ok := ignoredFields[key]; ok {
 				continue
