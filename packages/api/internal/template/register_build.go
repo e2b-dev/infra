@@ -131,7 +131,7 @@ func RegisterBuild(
 
 	var alias string
 	if data.Alias != nil {
-		alias, err = id.CleanEnvID(*data.Alias)
+		alias, err = id.CleanTemplateID(*data.Alias)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "invalid alias", err)
 

@@ -24,7 +24,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	ctx := c.Request.Context()
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
-	cleanedAliasOrEnvID, err := id.CleanEnvID(aliasOrTemplateID)
+	cleanedAliasOrEnvID, err := id.CleanTemplateID(aliasOrTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid env ID: %s", aliasOrTemplateID))
 

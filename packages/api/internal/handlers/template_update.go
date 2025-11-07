@@ -38,18 +38,18 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		return
 	}
 
-	cleanedAliasOrEnvID, err := id.CleanEnvID(aliasOrTemplateID)
+	cleanedAliasOrTemplateID, err := id.CleanTemplateID(aliasOrTemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid env ID: %s", aliasOrTemplateID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID))
 
-		telemetry.ReportCriticalError(ctx, "invalid env ID", err)
+		telemetry.ReportCriticalError(ctx, "invalid template ID", err)
 
 		return
 	}
 
 	// Update template
 	templateID, dbErr := a.sqlcDB.UpdateTemplate(ctx, queries.UpdateTemplateParams{
-		TemplateIDOrAlias: cleanedAliasOrEnvID,
+		TemplateIDOrAlias: cleanedAliasOrTemplateID,
 		TeamID:            team.ID,
 		Public:            *body.Public,
 	})
@@ -61,8 +61,8 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 			return
 		}
 
-		telemetry.ReportError(ctx, "error when updating env", dbErr)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
+		telemetry.ReportError(ctx, "error when updating template", dbErr)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error updating template")
 
 		return
 	}
@@ -81,7 +81,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "updated environment", properties.Set("environment", templateID))
 
-	zap.L().Info("Updated env", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
+	zap.L().Info("Updated template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }
