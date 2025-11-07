@@ -128,7 +128,7 @@ func (s *Storage) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (san
 
 		// Execute transaction
 		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-			pipe.Set(ctx, key, newData, 0)
+			pipe.Set(ctx, key, newData, redis.KeepTTL)
 
 			return nil
 		})
