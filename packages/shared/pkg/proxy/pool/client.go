@@ -3,7 +3,6 @@ package pool
 import (
 	"context"
 	"errors"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -12,6 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -26,15 +26,25 @@ type ProxyClient struct {
 }
 
 func newProxyClient(
+	t *Destination,
 	maxIdleConns,
 	maxHostIdleConns int,
 	maxConnectionAttempts int,
 	idleTimeout time.Duration,
 	totalConnsCounter *atomic.Uint64,
 	currentConnsCounter *atomic.Int64,
-	logger *log.Logger,
 ) *ProxyClient {
 	activeConnections := smap.New[*tracking.Connection]()
+
+	withFields := make([]zap.Field, 0)
+	if t.IncludeSandboxIdInProxyErrorLogger {
+		withFields = append(withFields, logger.WithSandboxID(t.SandboxId))
+	}
+
+	stdLogger, err := zap.NewStdLogAt(zap.L().With(withFields...), zap.ErrorLevel)
+	if err != nil {
+		zap.L().Warn("failed to create logger", zap.Error(err))
+	}
 
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -87,87 +97,56 @@ func newProxyClient(
 		DisableCompression: true, // No need to request or manipulate compression
 	}
 
+	proxy := httputil.ReverseProxy{
+		Transport: transport,
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(t.Url)
+			// We are **not** using SetXForwarded() because servers can sometimes modify the content-location header to be http which might break some customer services.
+			r.Out.Host = r.In.Host
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if err != nil {
+				t.RequestLogger.Error("sandbox error handler called", zap.Error(err))
+			}
+
+			if t.DefaultToPortError {
+				err = template.
+					NewPortClosedError(t.SandboxId, r.Host, t.SandboxPort).
+					HandleError(w, r)
+				if err != nil {
+					t.RequestLogger.Error("failed to handle error", zap.Error(err))
+
+					http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
+
+					return
+				}
+
+				return
+			}
+
+			http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
+		},
+		ModifyResponse: func(r *http.Response) error {
+			if r.StatusCode >= 500 {
+				t.RequestLogger.Error(
+					"Reverse proxy error",
+					zap.Int("status_code", r.StatusCode),
+				)
+			} else {
+				t.RequestLogger.Debug("Reverse proxy response",
+					zap.Int("status_code", r.StatusCode),
+				)
+			}
+
+			return nil
+		},
+		ErrorLog: stdLogger,
+	}
+
 	return &ProxyClient{
 		transport:         transport,
 		activeConnections: activeConnections,
-		ReverseProxy: httputil.ReverseProxy{
-			Transport: transport,
-			Rewrite: func(r *httputil.ProxyRequest) {
-				t, ok := r.In.Context().Value(DestinationContextKey{}).(*Destination)
-				if !ok {
-					zap.L().Error("failed to get routing destination from context")
-
-					// Error from this will be later caught as r.Host == "" in the ErrorHandler
-					r.SetURL(r.In.URL)
-
-					return
-				}
-
-				r.SetURL(t.Url)
-				// We are **not** using SetXForwarded() because servers can sometimes modify the content-location header to be http which might break some customer services.
-				r.Out.Host = r.In.Host
-			},
-			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-				if r.Host == "" {
-					zap.L().Error("error handler called from rewrite because of missing DestinationContext", zap.Error(err))
-
-					http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
-
-					return
-				}
-
-				t, ok := r.Context().Value(DestinationContextKey{}).(*Destination)
-				if !ok {
-					zap.L().Error("failed to get routing destination from context")
-
-					http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
-
-					return
-				}
-
-				if t.DefaultToPortError {
-					err = template.
-						NewPortClosedError(t.SandboxId, r.Host, t.SandboxPort).
-						HandleError(w, r)
-					if err != nil {
-						zap.L().Error("failed to handle error", zap.Error(err))
-
-						http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
-
-						return
-					}
-
-					return
-				}
-
-				zap.L().Error("sandbox error handler called", zap.Error(err))
-
-				http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
-			},
-			ModifyResponse: func(r *http.Response) error {
-				t, ok := r.Request.Context().Value(DestinationContextKey{}).(*Destination)
-				if !ok {
-					zap.L().Error("failed to get routing target from context")
-
-					return nil
-				}
-
-				if r.StatusCode >= 500 {
-					t.RequestLogger.Error(
-						"Reverse proxy error",
-						zap.Int("status_code", r.StatusCode),
-					)
-				} else {
-					t.RequestLogger.Debug("Reverse proxy response",
-						zap.Int("status_code", r.StatusCode),
-					)
-				}
-
-				return nil
-			},
-			// Ideally we would add info about sandbox to each error log, but there is no easy way right now.
-			ErrorLog: logger,
-		},
+		ReverseProxy:      proxy,
 	}
 }
 

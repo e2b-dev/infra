@@ -6,8 +6,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type DestinationContextKey struct{}
-
 // Destination contains information about where to route the request.
 type Destination struct {
 	Url         *url.URL

@@ -4,9 +4,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -40,17 +37,8 @@ func (p *ProxyPool) Get(d *Destination) *ProxyClient {
 			return inMapValue
 		}
 
-		withFields := make([]zap.Field, 0)
-		if d.IncludeSandboxIdInProxyErrorLogger {
-			withFields = append(withFields, logger.WithSandboxID(d.SandboxId))
-		}
-
-		logger, err := zap.NewStdLogAt(zap.L().With(withFields...), zap.ErrorLevel)
-		if err != nil {
-			zap.L().Warn("failed to create logger", zap.Error(err))
-		}
-
 		return newProxyClient(
+			d,
 			p.maxClientConns,
 			// We limit the max number of connections per host to avoid exhausting the number of available via one host.
 			func() int {
@@ -64,7 +52,6 @@ func (p *ProxyPool) Get(d *Destination) *ProxyClient {
 			p.idleTimeout,
 			&p.totalConnsCounter,
 			&p.currentConnsCounter,
-			logger,
 		)
 	})
 }
