@@ -199,5 +199,5 @@ func (u *Uffd) Dirty(ctx context.Context) (*block.Tracker, error) {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	return uffd.Dirty(ctx)
+	return uffd.Dirty(), nil
 }

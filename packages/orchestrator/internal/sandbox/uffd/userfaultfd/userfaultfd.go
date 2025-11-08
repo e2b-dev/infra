@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const maxRequestsInProgress = 4096
@@ -27,8 +26,9 @@ type Userfaultfd struct {
 	src block.Slicer
 	ma  *memory.Mapping
 
-	missingRequests    *block.Tracker
-	requestsInProgress *utils.SettleCounter
+	missingRequests *block.Tracker
+	// We use the settleRequests to guard the missingRequests so we can access a consistent state of the missingRequests after the requests are finished.
+	settleRequests settle
 
 	wg errgroup.Group
 
@@ -38,12 +38,11 @@ type Userfaultfd struct {
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
 func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, pagesize int64, logger *zap.Logger) (*Userfaultfd, error) {
 	u := &Userfaultfd{
-		fd:                 uffdFd(fd),
-		src:                src,
-		missingRequests:    block.NewTracker(pagesize),
-		requestsInProgress: utils.NewZeroSettleCounter(),
-		ma:                 m,
-		logger:             logger,
+		fd:              uffdFd(fd),
+		src:             src,
+		missingRequests: block.NewTracker(pagesize),
+		ma:              m,
+		logger:          logger,
 	}
 
 	// By default this was unlimited.
@@ -203,16 +202,19 @@ func (u *Userfaultfd) handleMissing(
 ) error {
 	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
 
-	u.requestsInProgress.Add()
-
 	u.wg.Go(func() error {
+		// Add() must be called inside the goroutine to ensure Remove() runs via defer
+		// even if the errgroup is cancelled or the goroutine returns early.
+		// This check protects us agains race condition between marking the request as missing and accessing the missingRequests tracker.
+		// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
+		u.settleRequests.Add()
+		defer u.settleRequests.Remove()
+
 		defer func() {
 			if r := recover(); r != nil {
 				u.logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
 			}
 		}()
-
-		defer u.requestsInProgress.Done()
 
 		b, sliceErr := u.src.Slice(ctx, offset, int64(pagesize))
 		if sliceErr != nil {
@@ -263,11 +265,9 @@ func (u *Userfaultfd) Unregister() error {
 	return nil
 }
 
-func (u *Userfaultfd) Dirty(ctx context.Context) (*block.Tracker, error) {
-	err := u.requestsInProgress.Wait(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to wait for requests to finish: %w", err)
-	}
+func (u *Userfaultfd) Dirty() *block.Tracker {
+	// This will be at worst cancelled when the uffd is closed.
+	u.settleRequests.Wait()
 
-	return u.missingRequests.Clone(), nil
+	return u.missingRequests.Clone()
 }
