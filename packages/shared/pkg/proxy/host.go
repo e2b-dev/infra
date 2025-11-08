@@ -64,8 +64,8 @@ func (e MissingHeaderError) Error() string {
 }
 
 const (
-	headerSandboxID   = "X-Sandbox-Id"
-	headerSandboxPort = "X-Sandbox-Port"
+	headerSandboxID   = "E2b-Sandbox-Id"
+	headerSandboxPort = "E2b-Sandbox-Port"
 )
 
 func parseHeaders(h http.Header) (sandboxID string, port uint64, ok bool, err error) {

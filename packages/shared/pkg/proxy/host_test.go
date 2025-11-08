@@ -146,7 +146,7 @@ func TestGetTargetFromRequest(t *testing.T) {
 			}
 
 			if tt.wantErrAs != nil {
-				require.ErrorAs(t, err, &tt.wantErrIs) // nolint:testifylint // doesn't need to
+				require.ErrorAs(t, err, &tt.wantErrIs) //nolint:testifylint // doesn't need to
 
 				return // no further checks when an error was expected
 			}
