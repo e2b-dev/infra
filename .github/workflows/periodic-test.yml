@@ -73,6 +73,21 @@ jobs:
         with:
           bun-version: "${{ env.TOOL_VERSION_BUN }}"
 
+      - name: Cache Bun dependencies (periodic-test)
+        id: bun-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            tests/periodic-test/node_modules
+          key: ${{ runner.os }}-bun-periodic-${{ hashFiles('tests/periodic-test/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-periodic-
+
+      - name: Install dependencies (tests/periodic-test)
+        working-directory: tests/periodic-test
+        run: bun install --frozen-lockfile
+
       - name: Set env variables from secrets
         if: always()
         run: |
