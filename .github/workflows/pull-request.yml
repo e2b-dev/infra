@@ -26,8 +26,6 @@ jobs:
     needs:
       - unit-tests
       - integration-tests
-      - lint
-      - out-of-order-migrations
     runs-on: ubuntu-latest
     permissions:
       checks: write
