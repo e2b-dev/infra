@@ -71,7 +71,22 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 		ctx = pool.WithDestination(ctx, d)
 		r = r.WithContext(ctx)
 
+		ww := &storeStatus{ResponseWriter: w}
+
 		proxy := p.Get(d)
 		proxy.ServeHTTP(w, r)
+
+		d.RequestLogger.Debug("request proxied", zap.Int("status_code", ww.statusCode))
 	}
+}
+
+type storeStatus struct {
+	http.ResponseWriter
+
+	statusCode int
+}
+
+func (ss *storeStatus) WriteHeader(statusCode int) {
+	ss.statusCode = statusCode
+	ss.ResponseWriter.WriteHeader(statusCode)
 }
