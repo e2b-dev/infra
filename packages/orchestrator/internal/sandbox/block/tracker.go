@@ -39,17 +39,11 @@ func (t *Tracker) Has(off int64) bool {
 	return t.b.Test(uint(header.BlockIdx(off, t.blockSize)))
 }
 
-func (t *Tracker) Add(off int64) bool {
+func (t *Tracker) Add(off int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.b.Test(uint(header.BlockIdx(off, t.blockSize))) {
-		return false
-	}
-
 	t.b.Set(uint(header.BlockIdx(off, t.blockSize)))
-
-	return true
 }
 
 func (t *Tracker) Reset() {

@@ -8,9 +8,8 @@ import (
 )
 
 type MemoryBackend interface {
-	Dirty(ctx context.Context) (*block.Tracker, error)
-	// Disable switch the uffd to start serving empty pages.
 	Disable(ctx context.Context) error
+	Dirty(ctx context.Context) (*block.Tracker, error)
 
 	Start(ctx context.Context, sandboxId string) error
 	Stop() error
