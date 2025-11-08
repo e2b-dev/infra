@@ -34,13 +34,19 @@ const (
 	UFFD_EVENT_PAGEFAULT = C.UFFD_EVENT_PAGEFAULT
 
 	UFFDIO_REGISTER_MODE_MISSING = C.UFFDIO_REGISTER_MODE_MISSING
+	UFFDIO_REGISTER_MODE_WP      = C.UFFDIO_REGISTER_MODE_WP
 
-	UFFDIO_API        = C.UFFDIO_API
-	UFFDIO_REGISTER   = C.UFFDIO_REGISTER
-	UFFDIO_UNREGISTER = C.UFFDIO_UNREGISTER
-	UFFDIO_COPY       = C.UFFDIO_COPY
+	UFFDIO_WRITEPROTECT_MODE_WP = C.UFFDIO_WRITEPROTECT_MODE_WP
+	UFFDIO_COPY_MODE_WP         = C.UFFDIO_COPY_MODE_WP
+
+	UFFDIO_API          = C.UFFDIO_API
+	UFFDIO_REGISTER     = C.UFFDIO_REGISTER
+	UFFDIO_UNREGISTER   = C.UFFDIO_UNREGISTER
+	UFFDIO_COPY         = C.UFFDIO_COPY
+	UFFDIO_WRITEPROTECT = C.UFFDIO_WRITEPROTECT
 
 	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
+	UFFD_PAGEFAULT_FLAG_WP    = C.UFFD_PAGEFAULT_FLAG_WP
 
 	UFFD_FEATURE_MISSING_HUGETLBFS = C.UFFD_FEATURE_MISSING_HUGETLBFS
 )
@@ -76,6 +82,16 @@ func newUffdioRange(start, length CULong) UffdioRange {
 
 func newUffdioRegister(start, length, mode CULong) UffdioRegister {
 	return UffdioRegister{
+		_range: UffdioRange{
+			start: start,
+			len:   length,
+		},
+		mode: mode,
+	}
+}
+
+func newUffdioWriteProtect(start, length, mode CULong) UffdioWriteProtect {
+	return UffdioWriteProtect{
 		_range: UffdioRange{
 			start: start,
 			len:   length,
@@ -178,6 +194,25 @@ func (u uffdFd) copy(addr uintptr, data []byte, pagesize uint64, mode CULong) er
 	}
 
 	return nil
+}
+
+func (u uffdFd) writeProtect(addr uintptr, size uint64, mode CULong) error {
+	register := newUffdioWriteProtect(CULong(addr), CULong(size), mode)
+
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(u), UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_WRITEPROTECT ioctl failed: %w (ret=%d)", errno, ret)
+	}
+
+	return nil
+}
+
+func (u uffdFd) removeWriteProtection(addr uintptr, size uint64) error {
+	return u.writeProtect(addr, size, 0)
+}
+
+func (u uffdFd) addWriteProtection(addr uintptr, size uint64) error {
+	return u.writeProtect(addr, size, UFFDIO_WRITEPROTECT_MODE_WP)
 }
 
 func (u uffdFd) close() error {

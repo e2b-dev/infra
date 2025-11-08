@@ -1,5 +1,10 @@
 package userfaultfd
 
+// flowchart TD
+// A[missing page] -- write (WRITE flag) --> B(COPY) --> C[dirty page]
+// A -- read (MISSING flag) --> D(COPY + MODE_WP) --> E[faulted page]
+// E -- write (WP+WRITE flag) --> F(remove MODE_WP) --> C
+
 import (
 	"context"
 	"errors"
@@ -28,6 +33,7 @@ type Userfaultfd struct {
 	ma  *memory.Mapping
 
 	missingRequests *block.Tracker
+	writeRequests   *block.Tracker
 	// We use the settleRequests to guard the missingRequests so we can access a consistent state of the missingRequests after the requests are finished.
 	settleRequests sync.RWMutex
 
@@ -170,9 +176,16 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
+		// Handle write to write protected page (WP+WRITE flag)
+		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 && flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+			u.handleWriteProtection(addr, offset, pagesize)
+
+			continue
+		}
+
 		// Handle write to missing page (WRITE flag)
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, true)
 			if err != nil {
 				return fmt.Errorf("failed to handle missing write: %w", err)
 			}
@@ -182,7 +195,7 @@ outerLoop:
 
 		// Handle read to missing page ("MISSING" flag)
 		if flags == 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
 			if err != nil {
 				return fmt.Errorf("failed to handle missing: %w", err)
 			}
@@ -200,6 +213,7 @@ func (u *Userfaultfd) handleMissing(
 	addr uintptr,
 	offset int64,
 	pagesize uint64,
+	write bool,
 ) error {
 	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
 
@@ -230,6 +244,10 @@ func (u *Userfaultfd) handleMissing(
 
 		var copyMode CULong
 
+		if !write {
+			copyMode |= UFFDIO_COPY_MODE_WP
+		}
+
 		copyErr := u.fd.copy(addr, b, pagesize, copyMode)
 		if errors.Is(copyErr, unix.EEXIST) {
 			// Page is already mapped
@@ -250,10 +268,38 @@ func (u *Userfaultfd) handleMissing(
 		// Add the offset to the missing requests tracker.
 		u.missingRequests.Add(offset)
 
+		if write {
+			// Add the offset to the write requests tracker.
+			u.writeRequests.Add(offset)
+		}
+
 		return nil
 	})
 
 	return nil
+}
+
+func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize uint64) {
+	u.wg.Go(func() error {
+		u.settleRequests.RLock()
+		defer u.settleRequests.RUnlock()
+
+		defer func() {
+			if r := recover(); r != nil {
+				u.logger.Error("UFFD remove write protection panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+			}
+		}()
+
+		wpErr := u.fd.removeWriteProtection(addr, pagesize)
+		if wpErr != nil {
+			return fmt.Errorf("error removing write protection from page %d", addr)
+		}
+
+		// Add the offset to the write requests tracker.
+		u.writeRequests.Add(offset)
+
+		return nil
+	})
 }
 
 func (u *Userfaultfd) Unregister() error {
@@ -266,11 +312,36 @@ func (u *Userfaultfd) Unregister() error {
 	return nil
 }
 
+// RegisterWriteProtecton registers the WP for the region.
+// It is possible that the memory region might be already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these registration flags.
+//
+// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
+//
+// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
+func (u *Userfaultfd) RegisterWriteProtecton(region *memory.Region) error {
+	err := u.fd.register(
+		region.BaseHostVirtAddr+region.Offset,
+		uint64(region.Size),
+		UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
+	}
+
+	return nil
+}
+
+// Dirty returns the dirty pages and resets the page trackers.
 func (u *Userfaultfd) Dirty() *block.Tracker {
 	// This will be at worst cancelled when the uffd is closed.
 	u.settleRequests.Lock()
 	// Intentionally not using defer—we just need to write lock and write unlock the mutex, to be sure all the RLock calls are released.
 	u.settleRequests.Unlock() //nolint:staticcheck
 
-	return u.missingRequests.Clone()
+	writeRequests := u.writeRequests.Clone()
+
+	u.writeRequests.Reset()
+	u.missingRequests.Reset()
+
+	return writeRequests
 }

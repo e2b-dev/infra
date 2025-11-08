@@ -150,6 +150,13 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("failed to create uffd: %w", err)
 	}
 
+	for _, region := range m.Regions {
+		err := uffd.RegisterWriteProtecton(&region)
+		if err != nil {
+			return err
+		}
+	}
+
 	u.handler.SetValue(uffd)
 
 	defer func() {
@@ -204,6 +211,7 @@ func (u *Uffd) Disable(ctx context.Context) error {
 // Dirty waits for the current requests to finish and returns the dirty pages.
 //
 // It *MUST* be only called after the sandbox was successfully paused via API.
+// It also resets the dirty page trackers.
 func (u *Uffd) Dirty(ctx context.Context) (*block.Tracker, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
