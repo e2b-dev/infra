@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -28,7 +29,7 @@ type Userfaultfd struct {
 
 	missingRequests *block.Tracker
 	// We use the settleRequests to guard the missingRequests so we can access a consistent state of the missingRequests after the requests are finished.
-	settleRequests settle
+	settleRequests sync.RWMutex
 
 	wg errgroup.Group
 
@@ -207,8 +208,8 @@ func (u *Userfaultfd) handleMissing(
 		// even if the errgroup is cancelled or the goroutine returns early.
 		// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
 		// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
-		u.settleRequests.Add()
-		defer u.settleRequests.Remove()
+		u.settleRequests.RLock()
+		defer u.settleRequests.RUnlock()
 
 		defer func() {
 			if r := recover(); r != nil {
@@ -267,7 +268,9 @@ func (u *Userfaultfd) Unregister() error {
 
 func (u *Userfaultfd) Dirty() *block.Tracker {
 	// This will be at worst cancelled when the uffd is closed.
-	u.settleRequests.Wait()
+	u.settleRequests.Lock()
+	// Intentionally not using defer—we just need to write lock and write unlock the mutex, to be sure all the RLock calls are released.
+	u.settleRequests.Unlock() //nolint:staticcheck
 
 	return u.missingRequests.Clone()
 }
