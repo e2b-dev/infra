@@ -21,6 +21,7 @@ jobs:
   unit-tests:
     uses: ./.github/workflows/pr-tests.yml
   integration-tests:
+    needs: [out-of-order-migrations]
     uses: ./.github/workflows/integration_tests.yml
   publish-test-results:
     needs:
