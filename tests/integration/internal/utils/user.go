@@ -7,23 +7,25 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/db/client"
 )
 
-func CreateUser(t *testing.T, db *db.DB) uuid.UUID {
+func CreateUser(t *testing.T, db *client.Client) uuid.UUID {
 	t.Helper()
 
 	userID := uuid.New()
 
-	user, err := db.Client.User.Create().
-		SetID(userID).
-		SetEmail(fmt.Sprintf("user-test-integration-%s@e2b.dev", userID)).
-		Save(t.Context())
+	err := db.TestsRawSQL(t.Context(), `
+INSERT INTO auth.users (id, email)
+VALUES ($1, $2)
+`, userID, fmt.Sprintf("user-test-integration-%s@e2b.dev", userID))
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		db.Client.User.DeleteOneID(userID).Exec(t.Context())
+		db.TestsRawSQL(t.Context(), `
+DELETE FROM auth.users WHERE id = $1
+`, userID)
 	})
 
-	return user.ID
+	return userID
 }
