@@ -4,7 +4,10 @@
   "description": "Periodic tests for e2b",
   "type": "module",
   "dependencies": {
-    "@e2b/cli": "^2.0.1",
-    "@e2b/code-interpreter": "^2.0.0"
+    "@e2b/cli": "^2.4.1",
+    "@e2b/code-interpreter": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.2"
   }
 }
