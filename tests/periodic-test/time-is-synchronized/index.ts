@@ -33,7 +33,7 @@ async function streamCommandOutput(command: string, args: string[]) {
     readStream(proc.stderr, (chunk) => Bun.write(Bun.stderr, chunk))
   ]);
 
-  exitCode = await proc.exited
+  exitCode = await proc.exited;
 
   return {
     status: { code: exitCode },
