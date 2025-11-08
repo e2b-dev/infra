@@ -168,7 +168,7 @@ func (u uffdFd) register(addr uintptr, size uint64, mode CULong) error {
 	return nil
 }
 
-func (u uffdFd) unregister(addr uintptr, size uint64) error {
+func (u uffdFd) unregister(addr, size uintptr) error {
 	r := newUffdioRange(CULong(addr), CULong(size))
 
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(u), UFFDIO_UNREGISTER, uintptr(unsafe.Pointer(&r)))
@@ -181,7 +181,7 @@ func (u uffdFd) unregister(addr uintptr, size uint64) error {
 
 // mode: UFFDIO_COPY_MODE_WP
 // When we use both missing and wp, we need to use UFFDIO_COPY_MODE_WP, otherwise copying would unprotect the page
-func (u uffdFd) copy(addr uintptr, data []byte, pagesize uint64, mode CULong) error {
+func (u uffdFd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 	cpy := newUffdioCopy(data, CULong(addr)&^CULong(pagesize-1), CULong(pagesize), mode, 0)
 
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(u), UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
@@ -189,14 +189,14 @@ func (u uffdFd) copy(addr uintptr, data []byte, pagesize uint64, mode CULong) er
 	}
 
 	// Check if the copied size matches the requested pagesize
-	if uint64(cpy.copy) != pagesize {
+	if cpy.copy != CLong(pagesize) {
 		return fmt.Errorf("UFFDIO_COPY copied %d bytes, expected %d", cpy.copy, pagesize)
 	}
 
 	return nil
 }
 
-func (u uffdFd) writeProtect(addr uintptr, size uint64, mode CULong) error {
+func (u uffdFd) writeProtect(addr, size uintptr, mode CULong) error {
 	register := newUffdioWriteProtect(CULong(addr), CULong(size), mode)
 
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(u), UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
@@ -207,11 +207,11 @@ func (u uffdFd) writeProtect(addr uintptr, size uint64, mode CULong) error {
 	return nil
 }
 
-func (u uffdFd) removeWriteProtection(addr uintptr, size uint64) error {
+func (u uffdFd) removeWriteProtection(addr, size uintptr) error {
 	return u.writeProtect(addr, size, 0)
 }
 
-func (u uffdFd) addWriteProtection(addr uintptr, size uint64) error {
+func (u uffdFd) addWriteProtection(addr, size uintptr) error {
 	return u.writeProtect(addr, size, UFFDIO_WRITEPROTECT_MODE_WP)
 }
 

@@ -178,14 +178,14 @@ outerLoop:
 
 		// Handle write to write protected page (WP+WRITE flag)
 		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 && flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			u.handleWriteProtection(addr, offset, pagesize)
+			u.handleWriteProtection(addr, pagesize, offset)
 
 			continue
 		}
 
 		// Handle write to missing page (WRITE flag)
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, true)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, true)
 			if err != nil {
 				return fmt.Errorf("failed to handle missing write: %w", err)
 			}
@@ -195,7 +195,7 @@ outerLoop:
 
 		// Handle read to missing page ("MISSING" flag)
 		if flags == 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, false)
 			if err != nil {
 				return fmt.Errorf("failed to handle missing: %w", err)
 			}
@@ -210,9 +210,9 @@ outerLoop:
 func (u *Userfaultfd) handleMissing(
 	ctx context.Context,
 	onFailure func() error,
-	addr uintptr,
+	addr,
+	pagesize uintptr,
 	offset int64,
-	pagesize uint64,
 	write bool,
 ) error {
 	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
@@ -248,7 +248,7 @@ func (u *Userfaultfd) handleMissing(
 			copyMode |= UFFDIO_COPY_MODE_WP
 		}
 
-		copyErr := u.fd.copy(addr, b, pagesize, copyMode)
+		copyErr := u.fd.copy(addr, pagesize, b, copyMode)
 		if errors.Is(copyErr, unix.EEXIST) {
 			// Page is already mapped
 
@@ -279,7 +279,7 @@ func (u *Userfaultfd) handleMissing(
 	return nil
 }
 
-func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize uint64) {
+func (u *Userfaultfd) handleWriteProtection(addr, pagesize uintptr, offset int64) {
 	u.wg.Go(func() error {
 		u.settleRequests.RLock()
 		defer u.settleRequests.RUnlock()
@@ -304,7 +304,7 @@ func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize
 
 func (u *Userfaultfd) Unregister() error {
 	for _, r := range u.ma.Regions {
-		if err := u.fd.unregister(r.BaseHostVirtAddr, uint64(r.Size)); err != nil {
+		if err := u.fd.unregister(r.BaseHostVirtAddr, r.Size); err != nil {
 			return fmt.Errorf("failed to unregister: %w", err)
 		}
 	}
@@ -320,7 +320,7 @@ func (u *Userfaultfd) Unregister() error {
 // - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
 func (u *Userfaultfd) RegisterWriteProtecton(region *memory.Region) error {
 	err := u.fd.register(
-		region.BaseHostVirtAddr+region.Offset,
+		region.BaseHostVirtAddr,
 		uint64(region.Size),
 		UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING,
 	)
