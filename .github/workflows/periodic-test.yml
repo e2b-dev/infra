@@ -69,7 +69,7 @@ jobs:
           prefix: "tool_version_"
 
       - name: Install Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: "${{ env.TOOL_VERSION_BUN }}"
 
