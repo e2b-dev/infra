@@ -13,55 +13,38 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 )
 
-type InvalidHostError struct{}
-
-func (e *InvalidHostError) Error() string {
-	return "invalid url host"
-}
-
-type InvalidSandboxPortError struct{}
-
-func (e *InvalidSandboxPortError) Error() string {
-	return "invalid sandbox port"
-}
-
-func NewErrSandboxNotFound(sandboxId string) *SandboxNotFoundError {
-	return &SandboxNotFoundError{
-		SandboxId: sandboxId,
-	}
-}
-
-type SandboxNotFoundError struct {
-	SandboxId string
-}
-
-func (e *SandboxNotFoundError) Error() string {
-	return "sandbox not found"
-}
-
 func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Destination, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		d, err := getDestination(r)
 
-		var invalidHostErr *InvalidHostError
-		if errors.As(err, &invalidHostErr) {
+		var mhe MissingHeaderError
+		if errors.As(err, &mhe) {
+			zap.L().Warn("missing header", zap.Error(mhe))
+			http.Error(w, "missing header", http.StatusBadRequest)
+
+			return
+		}
+
+		if errors.Is(err, ErrInvalidHost) {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
 
 			return
 		}
 
-		var invalidPortErr *InvalidSandboxPortError
+		var invalidPortErr InvalidSandboxPortError
 		if errors.As(err, &invalidPortErr) {
-			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host))
+			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host), zap.String("port", invalidPortErr.Port))
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
 
 			return
 		}
 
-		var notFoundErr *SandboxNotFoundError
+		var notFoundErr SandboxNotFoundError
 		if errors.As(err, &notFoundErr) {
-			zap.L().Warn("sandbox not found", zap.String("host", r.Host), logger.WithSandboxID(notFoundErr.SandboxId))
+			zap.L().Warn("sandbox not found",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(notFoundErr.SandboxId))
 
 			err := template.
 				NewSandboxNotFoundError(notFoundErr.SandboxId, r.Host).
