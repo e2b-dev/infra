@@ -205,7 +205,7 @@ func (u *Userfaultfd) handleMissing(
 	u.wg.Go(func() error {
 		// Add() must be called inside the goroutine to ensure Remove() runs via defer
 		// even if the errgroup is cancelled or the goroutine returns early.
-		// This check protects us agains race condition between marking the request as missing and accessing the missingRequests tracker.
+		// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
 		// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
 		u.settleRequests.Add()
 		defer u.settleRequests.Remove()

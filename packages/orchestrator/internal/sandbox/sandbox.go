@@ -685,8 +685,9 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.memory.Disable(ctx); err != nil {
-		return nil, fmt.Errorf("failed to disable uffd: %w", err)
+	dirty, err := s.memory.Dirty(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
@@ -706,6 +707,10 @@ func (s *Sandbox) Pause(
 	// Close the file even if an error occurs
 	defer memfile.Close()
 
+	if err := s.memory.Disable(ctx); err != nil {
+		return nil, fmt.Errorf("failed to disable uffd: %w", err)
+	}
+
 	err = s.process.CreateSnapshot(
 		ctx,
 		snapfile.Path(),
@@ -723,11 +728,6 @@ func (s *Sandbox) Pause(
 	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
-	}
-
-	dirty, err := s.memory.Dirty(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
 	}
 
 	// Start POSTPROCESSING

@@ -16,5 +16,6 @@ func (s *settle) Remove() {
 
 func (s *settle) Wait() {
 	s.mu.Lock()
-	s.mu.Unlock()
+	// This will block until all the RLock calls are released.
+	s.mu.Unlock() //nolint:staticcheck
 }
