@@ -115,6 +115,13 @@ func newProxyClient(
 				return
 			}
 
+			if r.Host == "" { // kept around for historical reasons, unsure of usefulness. todo: find out if this is useful.
+				t.RequestLogger.Error("error handler called from rewrite because of missing DestinationContext", zap.Error(err))
+				http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
+
+				return
+			}
+
 			if err != nil {
 				t.RequestLogger.Error("sandbox error handler called", zap.Error(err))
 			}
@@ -126,7 +133,7 @@ func newProxyClient(
 				if err != nil {
 					zap.L().Error("failed to handle error", zap.Error(err))
 
-					http.Error(w, "Failed to handle closed port error", http.StatusBadGateway)
+					http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
 
 					return
 				}
