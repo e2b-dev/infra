@@ -1,53 +1,53 @@
 import { Sandbox } from "@e2b/code-interpreter";
+import { readFile, rm } from "fs/promises";
 import { log, runTestWithSandbox } from "../utils.ts";
 
 // Helper function to stream command output
 async function streamCommandOutput(command: string, args: string[]) {
-  const cmd = new Deno.Command(command, {
-    args,
-    stdout: "piped",
-    stderr: "piped",
+  let output = "";
+  let exitCode: number | null = null;
+
+  const proc = Bun.spawn([command, ...args], {
+    stdout: "pipe",
+    stderr: "pipe"
   });
 
-  const process = cmd.spawn();
+  // Stream output (stdout and stderr)
   const decoder = new TextDecoder();
 
-  let output = "";
-
-  const readStream = async (
-    stream: ReadableStream<Uint8Array>,
-    logFn: (msg: Uint8Array) => void
-  ) => {
-    for await (const chunk of stream) {
-      logFn(chunk);
-      output += decoder.decode(chunk);
+  const readStream = async (readable: ReadableStream<Uint8Array>, logFn: (chunk: Uint8Array) => void) => {
+    const reader = readable.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        logFn(value);
+        output += decoder.decode(value);
+      }
     }
   };
 
-  // Run both readers concurrently
+  // Process stdout/stderr concurrently
   await Promise.all([
-    readStream(process.stdout, (chunk) => {
-      Deno.stdout.write(chunk);
-    }),
-    readStream(process.stderr, (chunk) => {
-      Deno.stderr.write(chunk);
-    }),
+    readStream(proc.stdout, (chunk) => Bun.write(Bun.stdout, chunk)),
+    readStream(proc.stderr, (chunk) => Bun.write(Bun.stderr, chunk))
   ]);
 
-  // Wait for the process to complete and get the status
-  const status = await process.status;
-  return { status, output };
+  exitCode = await proc.exited
+
+  return {
+    status: { code: exitCode },
+    output
+  };
 }
 
 async function deleteTemplate(templateID: string) {
-  const output = await streamCommandOutput("deno", [
-    "run",
-    "--allow-all",
+  const output = await streamCommandOutput("bunx", [
     "@e2b/cli",
     "template",
     "delete",
     "-y",
-    templateID,
+    templateID
   ]);
 
   if (output.status.code !== 0) {
@@ -61,16 +61,14 @@ console.log("ℹ️ templateName:", templateName);
 
 // Build template command with streaming output
 console.log(`Building template ${templateName}...`);
-const buildStatus = await streamCommandOutput("deno", [
-  "run",
-  "--allow-all",
+const buildStatus = await streamCommandOutput("bunx", [
   "@e2b/cli",
   "template",
   "build",
   "--name",
   templateName,
   "--cmd",
-  "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+  "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'"
 ]);
 
 if (buildStatus.status.code !== 0) {
@@ -80,7 +78,7 @@ if (buildStatus.status.code !== 0) {
 console.log("✅ Template built successfully");
 
 // read template id from e2b.toml
-const e2bToml = await Deno.readTextFile("e2b.toml");
+const e2bToml = await readFile("e2b.toml", "utf8");
 const templateID = e2bToml.match(/template_id = "(.*)"/)?.[1];
 
 if (!templateID) {
@@ -91,7 +89,7 @@ if (!templateID) {
 await new Promise((resolve) => setTimeout(resolve, 15000));
 
 // remove the file to make script idempotent in local testing
-await Deno.remove("e2b.toml");
+await rm("e2b.toml");
 
 if (!templateID) {
   throw new Error("❌ Template not found");

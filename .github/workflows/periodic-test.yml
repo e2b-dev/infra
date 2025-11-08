@@ -56,17 +56,22 @@ jobs:
             name: "pause and resume sandbox"
           - command: "tests/periodic-test/internet-works.ts"
             name: "internet connectivity inside of sandbox"
-          # - command: "tests/periodic-test/cli-logs.ts"
-          #   name: "cli logs"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install deno
-        uses: denoland/setup-deno@v2
+      - name: Parse .tool-versions
+        uses: wistia/parse-tool-versions@v2.1.1
         with:
-          cache: true
+          filename: ".tool-versions"
+          uppercase: "true"
+          prefix: "tool_version_"
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: "${{ env.TOOL_VERSION_BUN }}"
 
       - name: Set env variables from secrets
         if: always()
@@ -75,7 +80,7 @@ jobs:
           echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', matrix.access_token)] }}" >> $GITHUB_ENV
 
       - name: ${{ matrix.test-command.name }}
-        run: deno run --allow-all ${{ matrix.test-command.command }}
+        run: bun run ${{ matrix.test-command.command }}
         working-directory: ${{ matrix.test-command.dir }}
         env:
           E2B_API_KEY: ${{ env.E2B_API_KEY }}
