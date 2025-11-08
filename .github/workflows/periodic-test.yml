@@ -80,7 +80,7 @@ jobs:
           path: |
             ~/.bun/install/cache
             tests/periodic-test/node_modules
-          key: ${{ runner.os }}-bun-periodic-${{ hashFiles('tests/periodic-test/bun.lockb') }}
+          key: ${{ runner.os }}-bun-periodic-${{ hashFiles('tests/periodic-test/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-periodic-
 
