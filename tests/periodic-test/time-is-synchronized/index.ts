@@ -9,7 +9,8 @@ const templateName = `test-template-${uniqueID}`;
 console.log(`Building template ${templateName}...`);
 const buildCmd = Bun.spawn([
   "bunx",
-  `@e2b/cli template build --name ${templateName}`,
+  "@e2b/cli",
+  `template build --name ${templateName}`,
 ],
   {
     stderr: 'inherit',
@@ -61,7 +62,8 @@ try {
   // Delete template
   const deleteCmd = Bun.spawn([
     "bunx",
-    `@e2b/cli template delete -y ${templateID}`,
+    "@e2b/cli",
+    `template delete -y ${templateID}`,
   ], {
     stderr: 'inherit',
     stdout: 'inherit',
