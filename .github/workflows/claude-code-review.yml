@@ -41,6 +41,23 @@ jobs:
             Don't output final summaries, or final lists of action items.
             Try not to use emojis.
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            When you find a *specific issue* in the code (bug, performance concern, security risk, etc.),
+            leave an **inline comment** on that exact file and line.  
+            If no issues are found, do not post anything.
 
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+            To comment inline, use this format exactly:
+
+            ```bash
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments \
+              -f body='${BODY}' \
+              -f commit_id="$GITHUB_SHA" \
+              -f path='${PATH}' \
+              -F line=${LINE} \
+              -f side='RIGHT'
+            ```
+
+          claude_args: '--allowed-tools "Bash(gh api:*), Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
