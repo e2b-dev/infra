@@ -54,7 +54,7 @@ jobs:
               -H "X-GitHub-Api-Version: 2022-11-28" \
               /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments \
               -f body='${BODY}' \
-              -f commit_id="$GITHUB_SHA" \
+              -f commit_id="${{ github.event.pull_request.head.sha }}" \
               -f path='${PATH}' \
               -F line=${LINE} \
               -f side='RIGHT'
