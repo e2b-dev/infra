@@ -21,7 +21,7 @@ jobs:
   unit-tests:
     uses: ./.github/workflows/pr-tests.yml
   integration-tests:
-    needs: [ lint, out-of-order-migrations ]
+    needs: [out-of-order-migrations]
     uses: ./.github/workflows/integration_tests.yml
   publish-test-results:
     needs:
@@ -46,5 +46,5 @@ jobs:
         if: always()
         with:
           comment_mode: off
-          fail_on: 'errors'
+          fail_on: "errors"
           files: "artifacts/**/*.xml"
