@@ -57,6 +57,8 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	}
 
 	// By default this was unlimited.
+	// Now that we don't skip previously faulted pages we add at least some boundaries to the concurrency.
+	// Also, in some brief tests, adding a limit actually improved the handling at high concurrency.
 	u.wg.SetLimit(maxRequestsInProgress)
 
 	return u, nil
