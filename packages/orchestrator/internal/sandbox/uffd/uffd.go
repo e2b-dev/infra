@@ -43,14 +43,14 @@ type Uffd struct {
 var _ MemoryBackend = (*Uffd)(nil)
 
 func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
-	fdExit, err := fdexit.New()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create fd exit: %w", err)
-	}
-
 	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
+	}
+
+	fdExit, err := fdexit.New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create fd exit: %w", err)
 	}
 
 	return &Uffd{
