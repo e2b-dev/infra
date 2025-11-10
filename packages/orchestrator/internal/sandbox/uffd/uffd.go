@@ -64,15 +64,35 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 }
 
 func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
+	var cleaner utils.Cleaner
+
+	cleaner.Add(func() error {
+		return u.fdExit.Close()
+	})
+
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
+		err := cleaner.Run()
+		if err != nil {
+			zap.L().Warn("failed to cleanup after failed listening on socket", zap.Error(err))
+		}
+
 		return fmt.Errorf("failed listening on socket: %w", err)
 	}
+
+	cleaner.Add(func() error {
+		return u.lis.Close()
+	})
 
 	u.lis = lis
 
 	err = os.Chmod(u.socketPath, 0o777)
 	if err != nil {
+		err := cleaner.Run()
+		if err != nil {
+			zap.L().Warn("failed to cleanup after failed setting socket permissions", zap.Error(err))
+		}
+
 		return fmt.Errorf("failed setting socket permissions: %w", err)
 	}
 
