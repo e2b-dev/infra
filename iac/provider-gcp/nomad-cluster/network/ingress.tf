@@ -72,7 +72,7 @@ resource "google_compute_target_https_proxy" "ingress" {
   name    = "${var.prefix}ingress-https"
   url_map = google_compute_url_map.ingress.self_link
 
-  ssl_policy = google_compute_ssl_policy.ingress.id
+  ssl_policy = google_compute_ssl_policy.ingress.self_link
 
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.certificate_map.id}"
 }
