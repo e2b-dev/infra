@@ -62,9 +62,17 @@ resource "google_compute_global_address" "ingress_ipv4" {
   ip_version = "IPV4"
 }
 
+resource "google_compute_ssl_policy" "ingress" {
+  name            = "${var.prefix}ingress-ssl-policy"
+  profile         = "MODERN"
+  min_tls_version = "TLS_1_2"
+}
+
 resource "google_compute_target_https_proxy" "ingress" {
   name    = "${var.prefix}ingress-https"
   url_map = google_compute_url_map.ingress.self_link
+
+  ssl_policy = google_compute_ssl_policy.ingress.self_link
 
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.certificate_map.id}"
 }
