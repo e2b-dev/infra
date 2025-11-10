@@ -92,14 +92,14 @@ func NewClickhouseSandboxEventsDelivery(conn driver.Conn, opts batcher.BatcherOp
 }
 
 func (c *ClickhouseDelivery) Publish(_ context.Context, _ string, event events.SandboxEvent) error {
-	eventData := ""
 	eventDataJson, err := json.Marshal(event.EventData)
 	if err != nil {
 		zap.L().Error("Error marshalling sandbox event data", zap.Error(err))
-	} else {
-		eventData = string(eventDataJson)
+
+		return err
 	}
 
+	eventData := string(eventDataJson)
 	ok, err := c.batcher.Push(SandboxEvent{
 		Version:   event.Version,
 		ID:        event.ID,
