@@ -33,6 +33,8 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 const (
 	requestTimeout              = 60 * time.Second
 	maxStartingInstancesPerNode = 3
+
+	internetBlockAddress = "0.0.0.0/0"
 )
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
@@ -109,7 +111,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 	if !allowInternet {
 		network.Egress = network.GetEgress()
-		network.Egress.BlockedAddresses = []string{"0.0.0.0/0"}
+		network.Egress.BlockedAddresses = []string{internetBlockAddress}
 	}
 
 	sbx, err := s.sandboxFactory.ResumeSandbox(

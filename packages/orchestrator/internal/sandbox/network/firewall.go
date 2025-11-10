@@ -2,6 +2,7 @@ package network
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
 
 	"github.com/google/nftables"
@@ -13,6 +14,8 @@ import (
 
 const (
 	tableName = "slot-firewall"
+
+	allInternetTrafficAddress = "0.0.0.0/0"
 )
 
 var blockedRanges = []string{
@@ -23,12 +26,14 @@ var blockedRanges = []string{
 }
 
 type Firewall struct {
-	conn         *nftables.Conn
-	table        *nftables.Table
-	chain        *nftables.Chain
-	blockSet     set.Set
-	allowSet     set.Set
-	tapInterface string
+	conn  *nftables.Conn
+	table *nftables.Table
+	chain *nftables.Chain
+
+	blockInternetTraffic bool
+	blockSet             set.Set
+	allowSet             set.Set
+	tapInterface         string
 }
 
 func NewFirewall(tapIf string) (*Firewall, error) {
@@ -62,12 +67,13 @@ func NewFirewall(tapIf string) (*Firewall, error) {
 	}
 
 	fw := &Firewall{
-		conn:         conn,
-		table:        table,
-		chain:        chain,
-		blockSet:     blockSet,
-		allowSet:     allowSet,
-		tapInterface: tapIf,
+		conn:                 conn,
+		table:                table,
+		chain:                chain,
+		blockInternetTraffic: false,
+		blockSet:             blockSet,
+		allowSet:             allowSet,
+		tapInterface:         tapIf,
 	}
 
 	// Add firewall rules to the chain
@@ -147,8 +153,16 @@ func (fw *Firewall) installRules() error {
 
 // AddBlockedIP adds a single CIDR to the block set at runtime.
 func (fw *Firewall) AddBlockedIP(address string) error {
+	if fw.blockInternetTraffic {
+		// If internet is blocked, we don't need to add any other addresses to the block set.
+		// Because 0.0.0.0/0 is not valid IP per GoLang, we can't add new addresses to the block set.
+		return nil
+	}
+
 	// 0.0.0.0/0 is not valid IP per GoLang, so we handle it as a special case
-	if address == "0.0.0.0/0" {
+	if address == allInternetTrafficAddress {
+		fw.blockInternetTraffic = true
+
 		fw.conn.FlushSet(fw.blockSet.Set())
 
 		toAppend := []nftables.SetElement{
@@ -188,6 +202,15 @@ func (fw *Firewall) AddBlockedIP(address string) error {
 
 // AddAllowedIP adds a single CIDR to the allow set at runtime.
 func (fw *Firewall) AddAllowedIP(address string) error {
+	if address == allInternetTrafficAddress {
+		// Internet is enabled by default.
+		return nil
+	}
+
+	if isAddressInBlockedRanges(address) {
+		return fmt.Errorf("address %s is blocked by the provider and cannot be added to the allow list", address)
+	}
+
 	data, err := set.AddressStringsToSetData([]string{address})
 	if err != nil {
 		return err
@@ -231,10 +254,27 @@ func (fw *Firewall) ResetBlockedCustom() error {
 		return err
 	}
 
+	fw.blockInternetTraffic = false
+
 	return fw.conn.Flush()
 }
 
 // ResetAllowedCustom resets allow set back to original ranges.
 func (fw *Firewall) ResetAllowedCustom() error {
 	return nil
+}
+
+// isAddressInBlockedRanges checks if the address is in the default blocked ranges.
+func isAddressInBlockedRanges(address string) bool {
+	for _, blockedRange := range blockedRanges {
+		_, blockedRangeNet, err := net.ParseCIDR(blockedRange)
+		if err != nil {
+			return false
+		}
+		if blockedRangeNet.Contains(net.ParseIP(address)) {
+			return true
+		}
+	}
+
+	return false
 }

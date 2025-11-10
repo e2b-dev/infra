@@ -27,6 +27,8 @@ import (
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const internetBlockAddress = "0.0.0.0/0"
+
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
 func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool) *orchestrator.SandboxNetworkConfig {
 	orchNetwork := &orchestrator.SandboxNetworkConfig{
@@ -47,7 +49,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	// This should be applied after copying the network config to preserve allowed addresses
 	if allowInternetAccess != nil && !*allowInternetAccess {
 		// Block all internet access - this overrides any other blocked addresses
-		orchNetwork.Egress.BlockedAddresses = []string{"0.0.0.0/0"}
+		orchNetwork.Egress.BlockedAddresses = []string{internetBlockAddress}
 	}
 
 	return orchNetwork
