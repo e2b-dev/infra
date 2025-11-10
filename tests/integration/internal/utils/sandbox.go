@@ -13,9 +13,11 @@ import (
 )
 
 type SandboxConfig struct {
-	metadata  api.SandboxMetadata
-	timeout   int32
-	autoPause bool
+	metadata            api.SandboxMetadata
+	timeout             int32
+	autoPause           bool
+	network             *api.SandboxNetworkConfig
+	allowInternetAccess *bool
 }
 
 type SandboxOption func(config *SandboxConfig)
@@ -46,6 +48,18 @@ func WithAutoPause(autoPause bool) SandboxOption {
 	}
 }
 
+func WithNetwork(network *api.SandboxNetworkConfig) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.network = network
+	}
+}
+
+func WithAllowInternetAccess(allow bool) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.allowInternetAccess = &allow
+	}
+}
+
 // SetupSandboxWithCleanup creates a new sandbox and returns its data
 func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options ...SandboxOption) *api.Sandbox {
 	t.Helper()
@@ -66,10 +80,12 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 	}
 
 	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
-		TemplateID: setup.SandboxTemplateID,
-		Timeout:    &config.timeout,
-		Metadata:   &config.metadata,
-		AutoPause:  &config.autoPause,
+		TemplateID:          setup.SandboxTemplateID,
+		Timeout:             &config.timeout,
+		Metadata:            &config.metadata,
+		AutoPause:           &config.autoPause,
+		Network:             config.network,
+		AllowInternetAccess: config.allowInternetAccess,
 	}, setup.WithAPIKey())
 
 	require.NoError(t, err)

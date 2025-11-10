@@ -37,12 +37,8 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 
 	// Copy network configuration if provided
 	if network != nil && network.Egress != nil {
-		if len(network.Egress.AllowedAddresses) > 0 {
-			orchNetwork.Egress.AllowedAddresses = network.Egress.AllowedAddresses
-		}
-		if len(network.Egress.BlockedAddresses) > 0 {
-			orchNetwork.Egress.BlockedAddresses = network.Egress.BlockedAddresses
-		}
+		orchNetwork.Egress.AllowedAddresses = network.Egress.AllowedAddresses
+		orchNetwork.Egress.BlockedAddresses = network.Egress.BlockedAddresses
 	}
 
 	// Handle the case where internet access is explicitly disabled
