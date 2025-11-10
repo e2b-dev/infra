@@ -9,10 +9,9 @@ import (
 
 // FdExit is a wrapper around a pipe that allows to signal the exit of the uffd.
 type FdExit struct {
-	r         *os.File
-	w         *os.File
-	exit      func() error
-	closeOnce func() error
+	r    *os.File
+	w    *os.File
+	exit func() error
 }
 
 func New() (*FdExit, error) {
@@ -32,9 +31,6 @@ func New() (*FdExit, error) {
 
 			return nil
 		}),
-		closeOnce: sync.OnceValue(func() error {
-			return errors.Join(r.Close(), w.Close())
-		}),
 	}, nil
 }
 
@@ -47,5 +43,5 @@ func (e *FdExit) Reader() int32 {
 }
 
 func (e *FdExit) Close() error {
-	return e.closeOnce()
+	return errors.Join(e.r.Close(), e.w.Close())
 }
