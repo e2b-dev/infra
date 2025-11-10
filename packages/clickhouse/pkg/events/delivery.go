@@ -57,9 +57,9 @@ func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.
 		maxDelay = time.Duration(val) * time.Millisecond
 	}
 
-	bactherQueueSize := 1000
+	batcherQueueSize := 1000
 	if val, err := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherQueueSize, flags.SandboxContext("clickhouse-batcher")); err == nil {
-		bactherQueueSize = val
+		batcherQueueSize = val
 	}
 
 	return NewClickhouseSandboxEventsDelivery(
@@ -67,7 +67,7 @@ func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.
 		batcher.BatcherOptions{
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
-			QueueSize:    bactherQueueSize,
+			QueueSize:    batcherQueueSize,
 			ErrorHandler: func(err error) {
 				zap.L().Error("error batching sandbox events", zap.Error(err))
 			},
