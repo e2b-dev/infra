@@ -2,7 +2,7 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened]
 
 jobs:
   claude-review:
@@ -38,7 +38,26 @@ jobs:
             Be constructive and helpful in your feedback and be **very conscise**.
             Skip general recommendations, skip summarizing the changes, and don't make any recommendations on code style.
             Also skip any summarization about why the PR was done well, focus only on the code changes and the potential issues.
+            Don't output final summaries, or final lists of action items.
+            Reduce false positives—try to validate if the issue is really a valid problem in the changes.
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            When you find a *specific issue* in the code (bug, performance concern, security risk, etc.),
+            leave an **inline comment** on that exact file and line.  
+            If no issues are found, do not post anything.
 
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+            To comment inline, use this format exactly:
+
+            ```bash
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments \
+              -f body='${BODY}' \
+              -f commit_id="${{ github.event.pull_request.head.sha }}" \
+              -f path='${PATH}' \
+              -F line=${LINE} \
+              -f side='RIGHT'
+            ```
+
+          claude_args: '--allowed-tools "Bash(gh api:*), Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
