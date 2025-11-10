@@ -37,11 +37,19 @@ type Userfaultfd struct {
 }
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, pagesize int64, logger *zap.Logger) (*Userfaultfd, error) {
+func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
+	blockSize := src.BlockSize()
+
+	for _, region := range m.Regions {
+		if region.PageSize != uintptr(blockSize) {
+			return nil, fmt.Errorf("block size mismatch: %d != %d for region %d", region.PageSize, blockSize, region.BaseHostVirtAddr)
+		}
+	}
+
 	u := &Userfaultfd{
 		fd:              uffdFd(fd),
 		src:             src,
-		missingRequests: block.NewTracker(pagesize),
+		missingRequests: block.NewTracker(blockSize),
 		ma:              m,
 		logger:          logger,
 	}
