@@ -184,6 +184,7 @@ outerLoop:
 			continue
 		}
 
+		// MINOR and WP flags are not expected as we don't register the uffd with these flags.
 		return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
 	}
 }
