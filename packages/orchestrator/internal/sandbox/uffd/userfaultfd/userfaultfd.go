@@ -279,8 +279,9 @@ func (u *Userfaultfd) Unregister() error {
 func (u *Userfaultfd) Dirty() *block.Tracker {
 	// This will be at worst cancelled when the uffd is closed.
 	u.settleRequests.Lock()
-	// Intentionally not using defer—we just need to write lock and write unlock the mutex, to be sure all the RLock calls are released.
-	u.settleRequests.Unlock() //nolint:staticcheck
+	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
+	// so it is consistent even if there is a another uffd call after.
+	defer u.settleRequests.Unlock()
 
 	return u.missingRequests.Clone()
 }
