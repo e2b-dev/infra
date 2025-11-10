@@ -70,7 +70,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 	if template.TeamID != team.ID {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
-		telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(aliasOrTemplateID))
+		telemetry.ReportError(ctx, "template not found or user has no access", err, telemetry.WithTemplateID(aliasOrTemplateID))
 
 		return
 	}
