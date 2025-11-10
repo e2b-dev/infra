@@ -1,6 +1,9 @@
 package block
 
 import (
+	"maps"
+	"math/rand"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -132,4 +135,33 @@ func TestTracker_MisalignedOffset(t *testing.T) {
 	// And not far outside any set block
 	offsetFar := int64(2 * pageSize)
 	assert.False(t, tr.Has(offsetFar), "Did not expect offset %d to be marked", offsetFar)
+}
+
+func TestTracker_Offsets(t *testing.T) {
+	const pageSize = 4096
+	tr := NewTracker(pageSize)
+
+	numOffsets := 300
+
+	offsetsMap := map[int64]struct{}{}
+
+	for range numOffsets {
+		select {
+		case <-t.Context().Done():
+			t.FailNow()
+		default:
+		}
+
+		base := int64(rand.Intn(121)) // 0..120
+		offset := base * pageSize
+
+		offsetsMap[offset] = struct{}{}
+		tr.Add(offset)
+	}
+
+	expectedOffsets := slices.Collect(maps.Keys(offsetsMap))
+	actualOffsets := slices.Collect(tr.Offsets())
+
+	assert.Equal(t, len(expectedOffsets), len(actualOffsets))
+	assert.ElementsMatch(t, expectedOffsets, actualOffsets)
 }
