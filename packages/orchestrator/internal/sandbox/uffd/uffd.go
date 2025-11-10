@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sync"
 	"syscall"
 	"time"
 
@@ -17,7 +16,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -27,19 +27,17 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 const (
 	uffdMsgListenerTimeout = 10 * time.Second
 	fdSize                 = 4
-	mappingsSize           = 1024
+	regionMappingsSize     = 1024
 )
 
 type Uffd struct {
-	exit    *utils.ErrorOnce
-	readyCh chan struct{}
-
-	fdExit *fdexit.FdExit
-
-	lis *net.UnixListener
-
-	memfile    *block.TrackedSliceDevice
+	exit       *utils.ErrorOnce
+	readyCh    chan struct{}
+	fdExit     *fdexit.FdExit
+	lis        *net.UnixListener
 	socketPath string
+	memfile    *block.TrackedSliceDevice
+	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
@@ -59,8 +57,9 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		exit:       utils.NewErrorOnce(),
 		readyCh:    make(chan struct{}, 1),
 		fdExit:     fdExit,
-		memfile:    trackedMemfile,
 		socketPath: socketPath,
+		memfile:    trackedMemfile,
+		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 	}, nil
 }
 
@@ -107,19 +106,19 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	unixConn := conn.(*net.UnixConn)
 
-	mappingsBuf := make([]byte, mappingsSize)
+	regionMappingsBuf := make([]byte, regionMappingsSize)
 	uffdBuf := make([]byte, syscall.CmsgSpace(fdSize))
 
-	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(mappingsBuf, uffdBuf)
+	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(regionMappingsBuf, uffdBuf)
 	if err != nil {
 		return fmt.Errorf("failed to read unix msg from connection: %w", err)
 	}
 
-	mappingsBuf = mappingsBuf[:numBytesMappings]
+	regionMappingsBuf = regionMappingsBuf[:numBytesMappings]
 
-	var m mapping.FcMappings
+	var regions []memory.Region
 
-	err = json.Unmarshal(mappingsBuf, &m)
+	err = json.Unmarshal(regionMappingsBuf, &regions)
 	if err != nil {
 		return fmt.Errorf("failed parsing memory mapping data: %w", err)
 	}
@@ -142,10 +141,22 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("expected 1 fd: found %d", len(fds))
 	}
 
-	uffd := fds[0]
+	m := memory.NewMapping(regions)
+
+	uffd, err := userfaultfd.NewUserfaultfdFromFd(
+		uintptr(fds[0]),
+		u.memfile,
+		m,
+		zap.L().With(logger.WithSandboxID(sandboxId)),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create uffd: %w", err)
+	}
+
+	u.handler.SetValue(uffd)
 
 	defer func() {
-		closeErr := syscall.Close(uffd)
+		closeErr := uffd.Close()
 		if closeErr != nil {
 			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
@@ -153,16 +164,9 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	u.readyCh <- struct{}{}
 
-	missingRequests := &sync.Map{}
-
-	err = Serve(
+	err = uffd.Serve(
 		ctx,
-		uffd,
-		m,
-		u.memfile,
 		u.fdExit,
-		missingRequests,
-		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
@@ -181,10 +185,6 @@ func (u *Uffd) Ready() chan struct{} {
 
 func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
-}
-
-func (u *Uffd) TrackAndReturnNil() error {
-	return u.lis.Close()
 }
 
 func (u *Uffd) Disable() error {

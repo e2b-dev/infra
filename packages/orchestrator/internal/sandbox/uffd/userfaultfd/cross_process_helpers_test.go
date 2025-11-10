@@ -1,4 +1,4 @@
-package uffd
+package userfaultfd
 
 // This tests is creating uffd in the main process and handling the page faults in another process.
 // It prevents problems with Go mmap during testing (https://pojntfx.github.io/networked-linux-memsync/main.html#limitations) and also more accurately simulates what we do with Firecracker.
@@ -27,9 +27,8 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 )
 
 // Main process, FC in our case
@@ -44,17 +43,18 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	memoryArea, memoryStart, err := testutils.NewPageMmap(t, uint64(size), tt.pagesize)
 	require.NoError(t, err)
 
-	uffd, err := userfaultfd.NewUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
+	// We can pass mapping nil as the serve is used only in the helper process.
+	uffdFd, err := newFd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		userfaultfd.Close(uffd)
+		uffdFd.close()
 	})
 
-	err = userfaultfd.ConfigureApi(uffd, tt.pagesize)
+	err = uffdFd.configureApi(tt.pagesize)
 	require.NoError(t, err)
 
-	err = userfaultfd.Register(uffd, memoryStart, uint64(size), userfaultfd.UFFDIO_REGISTER_MODE_MISSING)
+	err = uffdFd.register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
 	require.NoError(t, err)
 
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
@@ -62,7 +62,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
 
-	dup, err := syscall.Dup(int(uffd))
+	dup, err := syscall.Dup(int(uffdFd))
 	require.NoError(t, err)
 
 	// clear FD_CLOEXEC on the dup we pass across exec
@@ -174,7 +174,6 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		memoryArea:  &memoryArea,
 		pagesize:    tt.pagesize,
 		data:        data,
-		uffd:        uffd,
 		offsetsOnce: offsetsOnce,
 	}, nil
 }
@@ -208,16 +207,46 @@ func crossProcessServe() error {
 	uffdFile := os.NewFile(uintptr(3), os.Getenv("GO_UFFD_FILE"))
 	defer uffdFile.Close()
 
-	uffd := uffdFile.Fd()
+	uffdFd := uffdFile.Fd()
 
 	contentFile := os.NewFile(uintptr(4), "content")
 	defer contentFile.Close()
 
+	content, err := io.ReadAll(contentFile)
+	if err != nil {
+		return fmt.Errorf("exit reading content: %w", err)
+	}
+
+	pageSize, err := strconv.ParseInt(os.Getenv("GO_MMAP_PAGE_SIZE"), 10, 64)
+	if err != nil {
+		return fmt.Errorf("exit parsing page size: %w", err)
+	}
+
+	data := testutils.NewMemorySlicer(content, pageSize)
+
+	m := memory.NewMapping([]memory.Region{
+		{
+			BaseHostVirtAddr: memoryStart,
+			Size:             uintptr(len(content)),
+			Offset:           0,
+			PageSize:         uintptr(pageSize),
+		},
+	})
+
+	exitUffd := make(chan struct{}, 1)
+	defer close(exitUffd)
+
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		return fmt.Errorf("exit creating logger: %w", err)
+	}
+
+	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, logger)
+	if err != nil {
+		return fmt.Errorf("exit creating uffd: %w", err)
+	}
+
 	offsetsFile := os.NewFile(uintptr(5), "offsets")
-
-	readyFile := os.NewFile(uintptr(6), "ready")
-
-	missingRequests := &sync.Map{}
 
 	offsetsSignal := make(chan os.Signal, 1)
 	signal.Notify(offsetsSignal, syscall.SIGUSR2)
@@ -231,7 +260,7 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				offsets, err := getAccessedOffsets(missingRequests)
+				offsets, err := getAccessedOffsets(&uffd.missingRequests)
 				if err != nil {
 					msg := fmt.Errorf("error getting accessed offsets from cross process: %w", err)
 
@@ -260,34 +289,6 @@ func crossProcessServe() error {
 		}
 	}()
 
-	content, err := io.ReadAll(contentFile)
-	if err != nil {
-		return fmt.Errorf("exit reading content: %w", err)
-	}
-
-	pageSize, err := strconv.Atoi(os.Getenv("GO_MMAP_PAGE_SIZE"))
-	if err != nil {
-		return fmt.Errorf("exit parsing page size: %w", err)
-	}
-
-	data := testutils.NewMemorySlicer(content, int64(pageSize))
-
-	m := mapping.FcMappings([]mapping.GuestRegionUffdMapping{
-		{
-			BaseHostVirtAddr: memoryStart,
-			Size:             uintptr(len(content)),
-			Offset:           0,
-			PageSize:         uintptr(pageSize),
-		},
-	})
-
-	exitUffd := make(chan struct{}, 1)
-
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		return fmt.Errorf("exit creating logger: %w", err)
-	}
-
 	fdExit, err := fdexit.New()
 	if err != nil {
 		return fmt.Errorf("exit creating fd exit: %w", err)
@@ -299,7 +300,7 @@ func crossProcessServe() error {
 			exitUffd <- struct{}{}
 		}()
 
-		serverErr := Serve(ctx, int(uffd), m, data, fdExit, missingRequests, logger)
+		serverErr := uffd.Serve(ctx, fdExit)
 		if serverErr != nil {
 			msg := fmt.Errorf("error serving: %w", serverErr)
 
@@ -331,6 +332,8 @@ func crossProcessServe() error {
 	exitSignal := make(chan os.Signal, 1)
 	signal.Notify(exitSignal, syscall.SIGUSR1)
 	defer signal.Stop(exitSignal)
+
+	readyFile := os.NewFile(uintptr(6), "ready")
 
 	closeErr := readyFile.Close()
 	if closeErr != nil {
