@@ -162,6 +162,6 @@ func TestTracker_Offsets(t *testing.T) {
 	expectedOffsets := slices.Collect(maps.Keys(offsetsMap))
 	actualOffsets := slices.Collect(tr.Offsets())
 
-	assert.Equal(t, len(expectedOffsets), len(actualOffsets))
+	assert.Len(t, actualOffsets, len(expectedOffsets))
 	assert.ElementsMatch(t, expectedOffsets, actualOffsets)
 }
