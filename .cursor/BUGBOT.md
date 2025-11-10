@@ -21,4 +21,3 @@ Be constructive and helpful in your feedback and be **very conscise**.
 Skip general recommendations, skip summarizing the changes, and don't make any recommendations on code style.
 Also skip any summarization about why the PR was done well, focus only on the code changes and the potential issues.
 Don't output final summaries, or final lists of action items.
-Try not to use emojis.
