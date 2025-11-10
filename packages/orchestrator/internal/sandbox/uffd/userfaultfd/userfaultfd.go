@@ -27,6 +27,8 @@ type Userfaultfd struct {
 	src block.Slicer
 	ma  *memory.Mapping
 
+	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
+	// For hugepages this should not be a problem, but might theoretically happen to normal pages with swap
 	missingRequests *block.Tracker
 	// We use the settleRequests to guard the missingRequests so we can access a consistent state of the missingRequests after the requests are finished.
 	settleRequests sync.RWMutex
@@ -209,10 +211,8 @@ func (u *Userfaultfd) handleMissing(
 	offset int64,
 	pagesize uint64,
 ) error {
-	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
-
 	u.wg.Go(func() error {
-		// Add() must be called inside the goroutine to ensure Remove() runs via defer
+		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 		// even if the errgroup is cancelled or the goroutine returns early.
 		// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
 		// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
