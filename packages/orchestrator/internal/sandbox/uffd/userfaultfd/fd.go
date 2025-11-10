@@ -76,11 +76,8 @@ func newUffdioRange(start, length CULong) UffdioRange {
 
 func newUffdioRegister(start, length, mode CULong) UffdioRegister {
 	return UffdioRegister{
-		_range: UffdioRange{
-			start: start,
-			len:   length,
-		},
-		mode: mode,
+		_range: newUffdioRange(start, length),
+		mode:   mode,
 	}
 }
 
