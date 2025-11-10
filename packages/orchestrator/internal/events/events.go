@@ -36,6 +36,7 @@ func (e *EventsService) Publish(ctx context.Context, teamID uuid.UUID, event eve
 	err := validateEvent(event)
 	if err != nil {
 		zap.L().Error("Failed to publish sandbox event due to validation error", zap.Error(err), zap.Any("event", event))
+
 		return
 	}
 
