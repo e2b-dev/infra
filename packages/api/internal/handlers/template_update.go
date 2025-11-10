@@ -9,8 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -22,7 +20,13 @@ import (
 // PatchTemplatesTemplateID serves to update a template
 func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	ctx := c.Request.Context()
-	team := c.Value(auth.TeamContextKey).(*types.Team)
+	team, apiErr := a.GetTeam(ctx, c, nil)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
+
+		return
+	}
 
 	body, err := utils.ParseBody[api.TemplateUpdateRequest](ctx, c)
 	if err != nil {
