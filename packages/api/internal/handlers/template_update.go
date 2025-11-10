@@ -69,7 +69,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	}
 
 	if template.TeamID != team.ID {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to template '%s'", aliasOrTemplateID))
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", aliasOrTemplateID))
 		telemetry.ReportError(ctx, "template not found or user has no access", nil, telemetry.WithTemplateID(aliasOrTemplateID))
 
 		return
