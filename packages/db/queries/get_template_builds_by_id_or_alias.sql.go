@@ -12,12 +12,13 @@ import (
 )
 
 const getTemplateBuildsByIdOrAlias = `-- name: GetTemplateBuildsByIdOrAlias :many
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version FROM "public"."envs" e
-JOIN "public"."env_builds" eb ON eb.env_id = e.id
-LEFT JOIN "public"."env_aliases" ea ON ea.env_id = e.id
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id as build_id, eb.cluster_node_id FROM "public"."envs" e
+LEFT JOIN "public"."env_builds" eb ON eb.env_id = e.id
 WHERE
-    e.team_id = $1 AND (
-    e.id = $2 OR
+    e.team_id = $1 AND e.id in (
+    SELECT e.id FROM "public"."envs" e
+    LEFT JOIN "public"."env_aliases" ea ON ea.env_id = e.id
+    WHERE e.id = $2 OR
     ea.alias = $2
     )
 `
@@ -28,8 +29,9 @@ type GetTemplateBuildsByIdOrAliasParams struct {
 }
 
 type GetTemplateBuildsByIdOrAliasRow struct {
-	Env      Env
-	EnvBuild EnvBuild
+	Env           Env
+	BuildID       *uuid.UUID
+	ClusterNodeID *string
 }
 
 func (q *Queries) GetTemplateBuildsByIdOrAlias(ctx context.Context, arg GetTemplateBuildsByIdOrAliasParams) ([]GetTemplateBuildsByIdOrAliasRow, error) {
@@ -52,25 +54,8 @@ func (q *Queries) GetTemplateBuildsByIdOrAlias(ctx context.Context, arg GetTempl
 			&i.Env.TeamID,
 			&i.Env.CreatedBy,
 			&i.Env.ClusterID,
-			&i.EnvBuild.ID,
-			&i.EnvBuild.CreatedAt,
-			&i.EnvBuild.UpdatedAt,
-			&i.EnvBuild.FinishedAt,
-			&i.EnvBuild.Status,
-			&i.EnvBuild.Dockerfile,
-			&i.EnvBuild.StartCmd,
-			&i.EnvBuild.Vcpu,
-			&i.EnvBuild.RamMb,
-			&i.EnvBuild.FreeDiskSizeMb,
-			&i.EnvBuild.TotalDiskSizeMb,
-			&i.EnvBuild.KernelVersion,
-			&i.EnvBuild.FirecrackerVersion,
-			&i.EnvBuild.EnvID,
-			&i.EnvBuild.EnvdVersion,
-			&i.EnvBuild.ReadyCmd,
-			&i.EnvBuild.ClusterNodeID,
-			&i.EnvBuild.Reason,
-			&i.EnvBuild.Version,
+			&i.BuildID,
+			&i.ClusterNodeID,
 		); err != nil {
 			return nil, err
 		}

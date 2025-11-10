@@ -31,7 +31,8 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 	// No data passed
 	if body.Public == nil {
-		c.Status(http.StatusOK)
+		zap.L().Error("No data passed")
+		c.String(http.StatusBadRequest, "No data passed")
 
 		return
 	}

@@ -89,11 +89,16 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	// get all build ids
 	buildIds := make([]template_manager.DeleteBuild, len(builds))
 	for i, build := range builds {
+		// Skip if there was no build
+		if build.BuildID == nil || build.ClusterNodeID == nil {
+			continue
+		}
+
 		buildIds[i] = template_manager.DeleteBuild{
-			BuildID:    build.EnvBuild.ID,
+			BuildID:    *build.BuildID,
 			TemplateID: build.Env.ID,
 			ClusterID:  utils.WithClusterFallback(team.ClusterID),
-			NodeID:     build.EnvBuild.ClusterNodeID,
+			NodeID:     *build.ClusterNodeID,
 		}
 	}
 
