@@ -50,6 +50,8 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		if dberrors.IsNotFoundError(err) {
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
 			telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(aliasOrTemplateID))
+
+			return
 		}
 
 		telemetry.ReportError(ctx, "error when getting template", err)
