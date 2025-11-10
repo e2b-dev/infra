@@ -39,7 +39,13 @@ func (r *RedisStreamsDelivery[Payload]) Publish(ctx context.Context, deliveryKey
 
 	// Use XADD to add entry to stream with auto-generated ID
 	_, err = r.redisClient.
-		XAdd(ctx, &redis.XAddArgs{Stream: r.streamName, ID: "*", Values: data}).
+		XAdd(ctx,
+			&redis.XAddArgs{
+				Stream: r.streamName,
+				ID:     "*",
+				Values: map[string]any{"payload": data},
+			},
+		).
 		Result()
 
 	return err
