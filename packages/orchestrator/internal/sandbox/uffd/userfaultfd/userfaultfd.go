@@ -183,6 +183,8 @@ outerLoop:
 		}
 
 		// Handle write to missing page (WRITE flag)
+		// If the event has WRITE flag, it was a write to a missing page.
+		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize)
 			if err != nil {
@@ -193,6 +195,7 @@ outerLoop:
 		}
 
 		// Handle read to missing page ("MISSING" flag)
+		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
 			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize)
 			if err != nil {
@@ -202,6 +205,7 @@ outerLoop:
 			continue
 		}
 
+		// MINOR and WP flags are not expected as we don't register the uffd with these flags.
 		return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
 	}
 }

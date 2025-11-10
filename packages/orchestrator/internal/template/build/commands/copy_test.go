@@ -31,6 +31,8 @@ func executeScript(t *testing.T, script string, workDir string) (stdout, stderr 
 	t.Helper()
 	scriptFile := filepath.Join(workDir, "test_script.sh")
 	err := os.WriteFile(scriptFile, []byte(script), 0o755)
+	defer os.Remove(scriptFile)
+
 	require.NoError(t, err, "Failed to write script file")
 
 	cmd := exec.CommandContext(t.Context(), "/bin/bash", scriptFile)
