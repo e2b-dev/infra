@@ -129,8 +129,7 @@ func (c *ClickhouseDelivery) Close(context.Context) error {
 }
 
 func (c *ClickhouseDelivery) batchInserter(events []SandboxEvent) error {
-	ctx := context.Background()
-	batch, err := c.conn.PrepareBatch(ctx, InsertSandboxEventQuery, driver.WithReleaseConnection())
+	batch, err := c.conn.PrepareBatch(context.TODO(), InsertSandboxEventQuery, driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("error preparing batch: %w", err)
 	}
@@ -149,13 +148,13 @@ func (c *ClickhouseDelivery) batchInserter(events []SandboxEvent) error {
 			event.ID,
 		)
 		if err != nil {
-			return fmt.Errorf("error appending %d product usage event to batch: %w", len(events), err)
+			return fmt.Errorf("error appending %d event to batch: %w", len(events), err)
 		}
 	}
 
 	err = batch.Send()
 	if err != nil {
-		return fmt.Errorf("error sending %d sandbox events batch: %w", len(events), err)
+		return fmt.Errorf("error sending %d events batch: %w", len(events), err)
 	}
 
 	return nil

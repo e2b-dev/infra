@@ -39,12 +39,6 @@ func (e *EventsService) Publish(ctx context.Context, teamID uuid.UUID, event eve
 		return
 	}
 
-	// Create a new context without cancel, so we can pass it to the goroutines
-	// and not worry about the parent context being cancelled.
-	// This is important because we want to ensure that the goroutines are not cancelled
-	// when the parent context is cancelled.
-	ctx = context.WithoutCancel(ctx)
-
 	wg := sync.WaitGroup{}
 	for _, target := range e.deliveryTargets {
 		wg.Add(1)
