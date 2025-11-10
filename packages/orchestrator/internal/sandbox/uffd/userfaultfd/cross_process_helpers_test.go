@@ -222,7 +222,7 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit parsing page size: %w", err)
 	}
 
-	data := testutils.NewMemorySlicer(content, int64(pageSize))
+	data := testutils.NewMemorySlicer(content, pageSize)
 
 	m := memory.NewMapping([]memory.Region{
 		{
