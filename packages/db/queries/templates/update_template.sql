@@ -1,7 +1,6 @@
 -- name: UpdateTemplate :one
 UPDATE "public"."envs" e
 SET public = @public
-FROM "public"."env_aliases" ea
 WHERE id IN (
     SELECT e.id FROM "public"."envs" e
     LEFT JOIN "public"."env_aliases" ea ON ea.env_id = e.id
