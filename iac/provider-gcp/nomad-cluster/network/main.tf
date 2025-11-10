@@ -321,9 +321,17 @@ resource "google_compute_url_map" "orch_map" {
 }
 
 ### IPv4 block ###
+resource "google_compute_ssl_policy" "default" {
+  name            = "${var.prefix}https-proxy-ssl-policy"
+  profile         = "MODERN"
+  min_tls_version = "TLS_1_2"
+}
+
 resource "google_compute_target_https_proxy" "default" {
   name    = "${var.prefix}https-proxy"
   url_map = google_compute_url_map.orch_map.self_link
+
+  ssl_policy = google_compute_ssl_policy.default.self_link
 
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.certificate_map.id}"
 }

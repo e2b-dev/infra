@@ -184,12 +184,12 @@ func (o *Orchestrator) CreateSandbox(
 	algorithm := o.getPlacementAlgorithm(ctx)
 	node, err = placement.PlaceSandbox(ctx, algorithm, clusterNodes, node, sbxRequest)
 	if err != nil {
-		telemetry.ReportError(ctx, "failed to create sandbox", err)
+		telemetry.ReportError(ctx, "failed to place sandbox", err)
 
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
-			ClientMsg: "Failed to create sandbox",
-			Err:       fmt.Errorf("failed to get create sandbox: %w", err),
+			ClientMsg: "Failed to place sandbox",
+			Err:       fmt.Errorf("failed to place sandbox: %w", err),
 		}
 	}
 
