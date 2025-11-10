@@ -13,6 +13,8 @@ type RedisPubSubDelivery[Payload any] struct {
 	queueName   string
 }
 
+const SandboxEventsQueueName = "sandbox-events"
+
 func NewRedisPubSubDelivery[Payload any](redisClient redis.UniversalClient, queueName string) *RedisPubSubDelivery[Payload] {
 	return &RedisPubSubDelivery[Payload]{
 		redisClient: redisClient,
