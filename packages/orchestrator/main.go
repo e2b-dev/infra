@@ -321,7 +321,6 @@ func run(config cfg.Config) (success bool) {
 	// Redis sandbox events delivery target
 	if redisClient != nil {
 		sbxEventsDeliveryRedis := event.NewRedisStreamsDelivery[event.SandboxEvent](redisClient, event.SandboxEventsStreamName)
-
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
 		closers = append(closers, closer{"sandbox events delivery for redis", sbxEventsDeliveryRedis.Close})
 	}
