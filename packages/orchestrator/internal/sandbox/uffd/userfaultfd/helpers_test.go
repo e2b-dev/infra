@@ -1,4 +1,4 @@
-package uffd
+package userfaultfd
 
 import (
 	"bytes"
@@ -39,7 +39,6 @@ type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *testutils.MemorySlicer
-	uffd       uintptr
 	// Returns offsets of the pages that were faulted.
 	// It can only be called once.
 	offsetsOnce func() ([]uint, error)
