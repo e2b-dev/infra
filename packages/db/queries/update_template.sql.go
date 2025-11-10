@@ -15,21 +15,23 @@ const updateTemplate = `-- name: UpdateTemplate :one
 UPDATE "public"."envs" e
 SET public = $1
 FROM "public"."env_aliases" ea
-WHERE
-    ea.env_id = e.id
-  AND (e.id = $2 OR ea.alias = $2)
-  AND e.team_id = $3
+WHERE id IN (
+    SELECT e.id FROM "public"."envs" e
+    LEFT JOIN "public"."env_aliases" ea ON ea.env_id = e.id
+    WHERE e.team_id = $2
+    AND (e.id = $3 OR ea.alias = $3)
+)
 RETURNING e.id
 `
 
 type UpdateTemplateParams struct {
 	Public            bool
-	TemplateIDOrAlias string
 	TeamID            uuid.UUID
+	TemplateIDOrAlias string
 }
 
 func (q *Queries) UpdateTemplate(ctx context.Context, arg UpdateTemplateParams) (string, error) {
-	row := q.db.QueryRow(ctx, updateTemplate, arg.Public, arg.TemplateIDOrAlias, arg.TeamID)
+	row := q.db.QueryRow(ctx, updateTemplate, arg.Public, arg.TeamID, arg.TemplateIDOrAlias)
 	var id string
 	err := row.Scan(&id)
 	return id, err
