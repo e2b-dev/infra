@@ -2,7 +2,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "4.19.0"
+      version = "5.12.0"
     }
   }
 }
@@ -103,48 +103,108 @@ locals {
 # ======== CLOUDFLARE ====================
 
 data "cloudflare_zone" "domain" {
-  name = local.root_domain
+  filter = {
+    name = local.root_domain
+  }
 }
 
-resource "cloudflare_record" "dns_auth" {
+resource "cloudflare_zone_setting" "always_use_https" {
+  zone_id    = data.cloudflare_zone.domain.id
+  setting_id = "always_use_https"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "min_tls" {
+  zone_id    = data.cloudflare_zone.domain.id
+  setting_id = "min_tls_version"
+  value      = "1.2"
+}
+
+resource "cloudflare_zone_setting" "hsts_header" {
+  zone_id    = data.cloudflare_zone.domain.id
+  setting_id = "security_header"
+  value = {
+    strict_transport_security = {
+      enabled            = true
+      include_subdomains = false
+      max_age            = 30
+      nosniff            = false
+      preload            = false
+    }
+  }
+}
+
+resource "cloudflare_dns_record" "dns_auth" {
   zone_id = data.cloudflare_zone.domain.id
   name    = google_certificate_manager_dns_authorization.dns_auth.dns_resource_record[0].name
-  value   = google_certificate_manager_dns_authorization.dns_auth.dns_resource_record[0].data
+  content = google_certificate_manager_dns_authorization.dns_auth.dns_resource_record[0].data
   type    = google_certificate_manager_dns_authorization.dns_auth.dns_resource_record[0].type
   ttl     = 3600
 }
 
-resource "cloudflare_record" "a_star" {
+resource "cloudflare_dns_record" "a_star" {
   zone_id = data.cloudflare_zone.domain.id
   name    = local.is_subdomain ? "*.${local.subdomain}" : "*"
-  value   = google_compute_global_forwarding_rule.https.ip_address
+  content = google_compute_global_forwarding_rule.https.ip_address
   type    = "A"
   comment = var.gcp_project_id
+  ttl     = 1 // Auto
+}
+
+resource "cloudflare_zone_setting" "always_use_https_additional" {
+  for_each   = local.domain_map
+  zone_id    = data.cloudflare_zone.domains_additional[each.key].id
+  setting_id = "always_use_https"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "min_tls_additional" {
+  for_each   = local.domain_map
+  zone_id    = data.cloudflare_zone.domains_additional[each.key].id
+  setting_id = "min_tls_version"
+  value      = "1.2"
+}
+
+resource "cloudflare_zone_setting" "hsts_header_additional" {
+  for_each   = local.domain_map
+  zone_id    = data.cloudflare_zone.domains_additional[each.key].id
+  setting_id = "security_header"
+  value = {
+    strict_transport_security = {
+      enabled            = true
+      include_subdomains = false
+      max_age            = 30
+      nosniff            = false
+      preload            = false
+    }
+  }
 }
 
 data "cloudflare_zone" "domains_additional" {
   for_each = local.domain_map
-  name     = each.value
+  filter = {
+    name = each.value
+  }
 }
 
-
-resource "cloudflare_record" "dns_auth_additional" {
+resource "cloudflare_dns_record" "dns_auth_additional" {
   for_each = local.domain_map
   zone_id  = data.cloudflare_zone.domains_additional[each.key].id
   name     = google_certificate_manager_dns_authorization.dns_auth_additional[each.key].dns_resource_record[0].name
-  value    = google_certificate_manager_dns_authorization.dns_auth_additional[each.key].dns_resource_record[0].data
+  content  = google_certificate_manager_dns_authorization.dns_auth_additional[each.key].dns_resource_record[0].data
   type     = google_certificate_manager_dns_authorization.dns_auth_additional[each.key].dns_resource_record[0].type
   ttl      = 3600
 }
 
 
-resource "cloudflare_record" "a_star_additional" {
+resource "cloudflare_dns_record" "a_star_additional" {
   for_each = local.domain_map
   zone_id  = data.cloudflare_zone.domains_additional[each.key].id
   name     = "*"
-  value    = google_compute_global_forwarding_rule.https.ip_address
+  content  = google_compute_global_forwarding_rule.https.ip_address
   type     = "A"
   comment  = var.gcp_project_id
+  ttl      = 1 // Auto
 }
 
 # =======================================

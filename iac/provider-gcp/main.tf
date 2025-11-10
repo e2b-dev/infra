@@ -18,7 +18,7 @@ terraform {
 
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "4.19.0"
+      version = "5.12.0"
     }
 
     nomad = {
