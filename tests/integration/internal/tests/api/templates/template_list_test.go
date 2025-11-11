@@ -90,6 +90,8 @@ func TestListTemplatesWithInvalidAPIKey(t *testing.T) {
 }
 
 func TestListTemplatesWithSupabaseToken(t *testing.T) {
+	t.Parallel()
+
 	// Test backward compatibility with Supabase token authentication
 	c := setup.GetAPIClient()
 

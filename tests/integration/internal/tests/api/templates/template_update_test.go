@@ -14,6 +14,8 @@ import (
 )
 
 func TestUpdateTemplateVisibilityToPublicWithAPIKey(t *testing.T) {
+	t.Parallel()
+
 	// Create a test template
 	template := testutils.BuildSimpleTemplate(t, "test-update-public-api-key", setup.WithAPIKey())
 
@@ -52,6 +54,8 @@ func TestUpdateTemplateVisibilityToPublicWithAPIKey(t *testing.T) {
 }
 
 func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
+	t.Parallel()
+
 	// Create a test template
 	template := testutils.BuildSimpleTemplate(t, "test-update-private-api-key", setup.WithAPIKey())
 
@@ -101,6 +105,8 @@ func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 }
 
 func TestUpdateTemplateWithInvalidAPIKey(t *testing.T) {
+	t.Parallel()
+
 	// Create a test template with valid API key
 	template := testutils.BuildSimpleTemplate(t, "test-update-invalid-key", setup.WithAPIKey())
 
@@ -141,6 +147,8 @@ func TestUpdateNonExistentTemplateWithAPIKey(t *testing.T) {
 }
 
 func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
+	t.Parallel()
+
 	// Create a test template with API key first
 	template := testutils.BuildSimpleTemplate(t, "test-update-supabase-token", setup.WithAPIKey())
 
@@ -187,6 +195,8 @@ func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
 }
 
 func TestUpdateTemplateNotOwnedByTeam(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	db := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()

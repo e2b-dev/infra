@@ -13,6 +13,8 @@ import (
 )
 
 func TestDeleteTemplate(t *testing.T) {
+	t.Parallel()
+
 	alias := "test-to-delete"
 	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
 		Force:     utils.ToPtr(ForceBaseBuild),

@@ -10,6 +10,8 @@ import (
 )
 
 func TestInvalidBuildStatus(t *testing.T) {
+	t.Parallel()
+
 	c := setup.GetAPIClient()
 
 	resp, err := c.GetTemplatesTemplateIDBuildsBuildIDStatusWithResponse(
