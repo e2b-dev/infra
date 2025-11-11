@@ -47,21 +47,27 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
+	platform := DefaultPlatform
+
 	// When no auth provider is provided and the image is from the default registry
 	// use docker remote repository proxy with cached images
 	if authProvider == nil && ref.Context().RegistryStr() == name.DefaultRegistry {
-		img, err := dockerhubRepository.GetImage(ctx, tag, DefaultPlatform)
+		img, err := dockerhubRepository.GetImage(ctx, tag, platform)
 		if err != nil {
 			return nil, fmt.Errorf("error getting image: %w", err)
 		}
 
-		telemetry.ReportEvent(ctx, "pulled public image")
+		telemetry.ReportEvent(ctx, "pulled public image through docker remote repository proxy")
+
+		err = verifyImagePlatform(img, platform)
+		if err != nil {
+			return nil, err
+		}
 
 		return img, nil
 	}
 
 	// Build options
-	platform := DefaultPlatform
 	opts := []remote.Option{remote.WithPlatform(platform)}
 
 	// Use the auth provider if provided
