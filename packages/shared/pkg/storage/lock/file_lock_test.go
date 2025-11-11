@@ -146,7 +146,6 @@ func TestConcurrentLockAcquisition(t *testing.T) {
 	// At least one should have acquired, others should have gotten already-held
 	assert.Positive(t, acquiredCount, "At least one goroutine should acquire the lock")
 	assert.Positive(t, alreadyHeldCount, "Some goroutines should see the lock as already held")
-	assert.Zero(t, acquiredCount)
 }
 
 func TestGetLockFilePath_Consistency(t *testing.T) {
