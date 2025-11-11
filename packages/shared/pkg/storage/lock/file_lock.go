@@ -35,7 +35,6 @@ func TryAcquireLock(path string) (*os.File, error) {
 		if age > defaultLockTTL {
 			// Lock is stale, try to remove it
 			zap.L().Debug("Found stale lock file, attempting cleanup",
-				zap.String("path", path),
 				zap.String("path", lockPath),
 				zap.Duration("age", age))
 
@@ -83,9 +82,6 @@ func ReleaseLock(file *os.File) error {
 
 		return fmt.Errorf("failed to remove lock file: %w", err)
 	}
-
-	zap.L().Debug("Lock released successfully",
-		zap.String("path", lockPath))
 
 	return nil
 }
