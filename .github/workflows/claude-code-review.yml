@@ -1,0 +1,63 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  claude-review:
+    name: Claude Code Review
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Please review this pull request and provide feedback on:
+            - Potential bugs or issues
+            - Performance considerations
+            - Important security concerns
+
+            Be constructive and helpful in your feedback and be **very conscise**.
+            Skip general recommendations, skip summarizing the changes, and don't make any recommendations on code style.
+            Also skip any summarization about why the PR was done well, focus only on the code changes and the potential issues.
+            Don't output final summaries, or final lists of action items.
+            Reduce false positives—try to validate if the issue is really a valid problem in the changes.
+
+            When you find a *specific issue* in the code (bug, performance concern, security risk, etc.),
+            leave an **inline comment** on that exact file and line.  
+            If no issues are found, do not post anything.
+
+            To comment inline, use this format exactly:
+
+            ```bash
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments \
+              -f body='${BODY}' \
+              -f commit_id="${{ github.event.pull_request.head.sha }}" \
+              -f path='${PATH}' \
+              -F line=${LINE} \
+              -f side='RIGHT'
+            ```
+
+          claude_args: '--allowed-tools "Bash(gh api:*), Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'

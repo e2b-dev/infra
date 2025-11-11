@@ -30,7 +30,21 @@ func ExecCommandAsRoot(tb testing.TB, ctx context.Context, sbx *api.Sandbox, env
 	return ExecCommandWithOptions(tb, ctx, sbx, envdClient, nil, "root", command, args...)
 }
 
+func ExecCommandAsRootWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, command string, args ...string) (string, error) {
+	tb.Helper()
+
+	return ExecCommandWithOutput(tb, ctx, sbx, envdClient, nil, "root", command, args...)
+}
+
 func ExecCommandWithOptions(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, cwd *string, user string, command string, args ...string) error {
+	tb.Helper()
+
+	_, err := ExecCommandWithOutput(tb, ctx, sbx, envdClient, cwd, user, command, args...)
+
+	return err
+}
+
+func ExecCommandWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, cwd *string, user string, command string, args ...string) (string, error) {
 	tb.Helper()
 
 	f := false
@@ -50,7 +64,7 @@ func ExecCommandWithOptions(tb testing.TB, ctx context.Context, sbx *api.Sandbox
 
 	stream, err := envdClient.ProcessClient.Start(ctx, req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	contextInfo := ""
 	if cwd != nil {
@@ -68,28 +82,41 @@ func ExecCommandWithOptions(tb testing.TB, ctx context.Context, sbx *api.Sandbox
 		}
 	}()
 
+	var output string
 	for stream.Receive() {
 		select {
 		case <-ctx.Done():
 			// Context canceled, exit the goroutine
-			return ctx.Err()
+			return "", ctx.Err()
 		default:
 			msg := stream.Msg()
 			tb.Logf("Command [%s] output: %s", command, msg.String())
+
+			// Capture stdout
+			if msg.GetEvent().GetData() != nil {
+				if stdout := msg.GetEvent().GetData().GetStdout(); stdout != nil {
+					output += string(stdout)
+				}
+
+				if stderr := msg.GetEvent().GetData().GetStderr(); stderr != nil {
+					output += string(stderr)
+				}
+			}
+
 			if msg.GetEvent().GetEnd() != nil {
 				if msg.GetEvent().GetEnd().GetExitCode() != 0 {
-					return fmt.Errorf("command %s in sandbox %s failed with exit code %d", command, sbx.SandboxID, msg.GetEvent().GetEnd().GetExitCode())
+					return output, fmt.Errorf("command %s in sandbox %s failed with exit code %d", command, sbx.SandboxID, msg.GetEvent().GetEnd().GetExitCode())
 				}
 				tb.Logf("Command [%s] completed successfully in sandbox %s", command, sbx.SandboxID)
 
-				return nil
+				return output, nil
 			}
 		}
 	}
 
 	if err := stream.Err(); err != nil {
-		return fmt.Errorf("failed to execute command %s in sandbox %s: %w", command, sbx.SandboxID, err)
+		return output, fmt.Errorf("failed to execute command %s in sandbox %s: %w", command, sbx.SandboxID, err)
 	}
 
-	return nil
+	return output, nil
 }
