@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -41,49 +40,21 @@ func TryAcquireLock(path string) (*os.File, error) {
 				zap.Duration("age", age))
 
 			if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
-				zap.L().Warn("Failed to remove stale lock file",
-					zap.String("path", path),
-					zap.Error(err))
+				return nil, fmt.Errorf("failed to remove lock file %s: %w", lockPath, err)
 			}
+		} else {
+			return nil, ErrLockAlreadyHeld
 		}
 	}
 
-	// Try to open or create the lock file
-	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, lockFileMode)
+	// Try to create the lock file (exclusive - fails if it already exists)
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL, lockFileMode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open lock file: %w", err)
-	}
-
-	// Try to acquire an exclusive lock (non-blocking)
-	err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-	if err != nil {
-		_ = file.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
+		if os.IsExist(err) {
 			return nil, ErrLockAlreadyHeld
 		}
 
-		return nil, fmt.Errorf("failed to acquire lock: %w", err)
-	}
-
-	// Write timestamp to lock file for TTL tracking
-	timestamp := []byte(fmt.Sprintf("%d", time.Now().Unix()))
-	if err := file.Truncate(0); err != nil {
-		_ = file.Close()
-
-		return nil, fmt.Errorf("failed to truncate lock file: %w", err)
-	}
-	if _, err := file.WriteAt(timestamp, 0); err != nil {
-		_ = file.Close()
-
-		return nil, fmt.Errorf("failed to write timestamp: %w", err)
-	}
-
-	// Update file modification time
-	now := time.Now()
-	if err := os.Chtimes(lockPath, now, now); err != nil {
-		_ = file.Close()
-
-		return nil, fmt.Errorf("failed to update lock file mtime: %w", err)
+		return nil, fmt.Errorf("failed to open lock file: %w", err)
 	}
 
 	return file, nil
