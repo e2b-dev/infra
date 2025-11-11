@@ -351,7 +351,8 @@ func (u *Userfaultfd) RegisterWriteProtecton(region *memory.Region) error {
 }
 
 // Dirty returns the dirty pages and resets the page trackers.
-func (u *Userfaultfd) Dirty() *block.Tracker {
+// If we are making incremental diffs from a running sandbox (checkpoints for example), we should reset the dirty page tracker.
+func (u *Userfaultfd) Dirty(reset bool) *block.Tracker {
 	// This will be at worst cancelled when the uffd is closed.
 	u.settleRequests.Lock()
 	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
@@ -360,8 +361,9 @@ func (u *Userfaultfd) Dirty() *block.Tracker {
 
 	writeRequests := u.writeRequests.Clone()
 
-	u.writeRequests.Reset()
-	u.missingRequests.Reset()
+	if reset {
+		u.writeRequests.Reset()
+	}
 
 	return writeRequests
 }
