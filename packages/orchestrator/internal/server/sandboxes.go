@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel"
@@ -15,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -103,10 +103,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	// Clone the network config to avoid modifying the original request
-	network := &orchestrator.SandboxNetworkConfig{}
-	if req.GetSandbox().GetNetwork() != nil {
-		network = proto.Clone(req.GetSandbox().GetNetwork()).(*orchestrator.SandboxNetworkConfig)
-	}
+	network := proto.CloneOf(req.GetSandbox().GetNetwork())
 
 	// TODO: Temporarily set this based on global config, should be removed later
 	//  (it should be passed network config from API)
@@ -115,6 +112,9 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		allowInternet = req.GetSandbox().GetAllowInternetAccess()
 	}
 	if !allowInternet {
+		if network == nil {
+			network = &orchestrator.SandboxNetworkConfig{}
+		}
 		if network.GetEgress() == nil {
 			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
 		}

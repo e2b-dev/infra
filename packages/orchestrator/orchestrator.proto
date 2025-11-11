@@ -49,12 +49,12 @@ message SandboxConfig {
 }
 
 message SandboxNetworkConfig {
-    optional SandboxNetworkEgressConfig egress = 1;
+  optional SandboxNetworkEgressConfig egress = 1;
 }
 
 message SandboxNetworkEgressConfig {
-    repeated string allowed_addresses = 1;
-    repeated string blocked_addresses = 2;
+  repeated string allowed_addresses = 1;
+  repeated string blocked_addresses = 2;
 }
 
 message SandboxCreateRequest {
