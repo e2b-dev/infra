@@ -275,17 +275,26 @@ func canAllowAddress(address string) error {
 		return err
 	}
 
-	addressPrefix, err := set.AddressStringsToSetData([]string{address})
+	addressData, err := set.AddressStringsToSetData([]string{address})
 	if err != nil {
 		return err
 	}
 
-	if len(addressPrefix) == 0 {
+	if len(addressData) == 0 {
 		return fmt.Errorf("address %s is not a valid IP address", address)
 	}
 
+	// Convert single IP address to prefix for comparison
+	var addressPrefix netip.Prefix
+	if !addressData[0].Prefix.IsValid() {
+		// If it's a single IP (not a CIDR), convert it to a /32 or /128 prefix
+		addressPrefix = netip.PrefixFrom(addressData[0].Address, addressData[0].Address.BitLen())
+	} else {
+		addressPrefix = addressData[0].Prefix
+	}
+
 	for _, blockedRange := range blockedData {
-		if blockedRange.Prefix.Overlaps(addressPrefix[0].Prefix) {
+		if blockedRange.Prefix.Overlaps(addressPrefix) {
 			return fmt.Errorf("address %s is blocked by the provider and cannot be added to the allow list", address)
 		}
 	}

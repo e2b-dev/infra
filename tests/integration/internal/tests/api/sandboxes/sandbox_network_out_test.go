@@ -346,61 +346,63 @@ func TestEgressFirewallWithInternetAccessFalse(t *testing.T) {
 
 // TestEgressFirewallPrivateIPRangesAlwaysBlocked tests that private IP ranges cannot be allowed
 // Note: Private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16) are always blocked
-// by the orchestrator for security reasons, even if specified in allowOut
+// by the orchestrator for security reasons. Attempting to specify them in allowOut should result in
+// a sandbox creation failure.
 func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
 	client := setup.GetAPIClient()
+	timeout := int32(60)
 
 	testCases := []struct {
 		name      string
 		allowedIP string
-		testIP    string
 		testDesc  string
 	}{
 		{
 			name:      "private_range_10.0.0.0/8",
 			allowedIP: "10.0.0.0/8",
-			testIP:    "10.1.2.3",
 			testDesc:  "10.0.0.0/8 range",
 		},
 		{
 			name:      "private_range_192.168.0.0/16",
 			allowedIP: "192.168.0.0/16",
-			testIP:    "192.168.1.1",
 			testDesc:  "192.168.0.0/16 range",
 		},
 		{
 			name:      "private_range_172.16.0.0/12",
 			allowedIP: "172.16.0.0/12",
-			testIP:    "172.16.0.1",
 			testDesc:  "172.16.0.0/12 range",
 		},
 		{
 			name:      "link_local_169.254.0.0/16",
 			allowedIP: "169.254.0.0/16",
-			testIP:    "169.254.169.254",
 			testDesc:  "169.254.0.0/16 range (link-local)",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Try to allow a private IP range
+			// Try to create a sandbox with a private IP range in allowOut
 			allowedIPs := []string{tc.allowedIP}
 
-			sbx := utils.SetupSandboxWithCleanup(t, client,
-				utils.WithTimeout(60),
-				utils.WithNetwork(&api.SandboxNetworkConfig{
+			// Sandbox creation should fail when trying to allow private IPs
+			resp, err := client.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
+				TemplateID: setup.SandboxTemplateID,
+				Timeout:    &timeout,
+				Network: &api.SandboxNetworkConfig{
 					AllowOut: &allowedIPs,
-				}),
-			)
+				},
+			}, setup.WithAPIKey())
 
-			envdClient := setup.GetEnvdClient(t, t.Context())
-
-			// Even though private range was in allowOut, it should still be blocked
-			// Note: This test may fail to execute curl if the IP is not routable, which is also expected behavior
-			err := utils.ExecCommand(t, t.Context(), sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", "https://"+tc.testIP)
-			require.Error(t, err, "Expected curl to private IP (%s) to fail even though it was in allowOut", tc.testDesc)
-			require.Contains(t, err.Error(), "failed with exit code", "Expected connection failure message")
+			// The request should either fail or return an error status code (not 201 Created)
+			if err == nil {
+				require.NotEqual(t, http.StatusCreated, resp.StatusCode(),
+					"Expected sandbox creation to fail when trying to allow private IP range (%s), but got status %d",
+					tc.testDesc, resp.StatusCode())
+				// If sandbox was somehow created, clean it up
+				if resp.JSON201 != nil {
+					utils.TeardownSandbox(t, client, resp.JSON201.SandboxID)
+				}
+			}
 		})
 	}
 }
