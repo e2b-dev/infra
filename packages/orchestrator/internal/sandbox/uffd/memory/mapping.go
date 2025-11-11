@@ -11,7 +11,15 @@ type AddressNotFoundError struct {
 }
 
 func (e AddressNotFoundError) Error() string {
-	return fmt.Sprintf("address %d not found in any mapping", e.hostVirtAddr)
+	return fmt.Sprintf("host virtual address %d not found in any mapping", e.hostVirtAddr)
+}
+
+type OffsetNotFoundError struct {
+	offset int64
+}
+
+func (e OffsetNotFoundError) Error() string {
+	return fmt.Sprintf("offset %d not found in any mapping", e.offset)
 }
 
 type Mapping struct {
@@ -40,7 +48,7 @@ func (m *Mapping) GetHostVirtRanges(off int64, size int64) (hostVirtRanges []blo
 
 		region, err := m.getHostVirtRegion(currentOff)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get host virt mapping: %w", err)
+			return nil, err
 		}
 
 		start := region.shiftedHostVirtAddr(currentOff)
@@ -64,5 +72,5 @@ func (m *Mapping) getHostVirtRegion(off int64) (*Region, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("offset %d not found in any mapping", off)
+	return nil, OffsetNotFoundError{offset: off}
 }
