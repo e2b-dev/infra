@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -22,7 +21,7 @@ var ErrLockAlreadyHeld = errors.New("lock is already held by another process")
 
 // getLockFilePath generates a lock file path from a key
 func getLockFilePath(path string) string {
-	return filepath.Join(path, ".lock")
+	return path + ".lock"
 }
 
 // TryAcquireLock attempts to acquire a lock for the given key
