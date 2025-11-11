@@ -119,9 +119,9 @@ func TestConcurrentLockAcquisition(t *testing.T) {
 				results <- result{alreadyHeld: true}
 			case err != nil:
 				time.Sleep(50 * time.Millisecond)
-				_ = ReleaseLock(file)
 				results <- result{err: err}
 			default:
+				_ = ReleaseLock(file)
 				results <- result{acquired: true}
 			}
 		}()
