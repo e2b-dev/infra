@@ -143,7 +143,6 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		uintptr(fds[0]),
 		u.memfile,
 		m,
-		u.memfile.BlockSize(),
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {

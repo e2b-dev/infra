@@ -32,6 +32,8 @@ type Userfaultfd struct {
 	src block.Slicer
 	ma  *memory.Mapping
 
+	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
+	// For hugepages this should not be a problem, but might theoretically happen to normal pages with swap
 	missingRequests *block.Tracker
 	writeRequests   *block.Tracker
 	// We use the settleRequests to guard the missingRequests so we can access a consistent state of the missingRequests after the requests are finished.
@@ -43,16 +45,26 @@ type Userfaultfd struct {
 }
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, pagesize int64, logger *zap.Logger) (*Userfaultfd, error) {
+func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
+	blockSize := src.BlockSize()
+
+	for _, region := range m.Regions {
+		if region.PageSize != uintptr(blockSize) {
+			return nil, fmt.Errorf("block size mismatch: %d != %d for region %d", region.PageSize, blockSize, region.BaseHostVirtAddr)
+		}
+	}
+
 	u := &Userfaultfd{
 		fd:              uffdFd(fd),
 		src:             src,
-		missingRequests: block.NewTracker(pagesize),
+		missingRequests: block.NewTracker(blockSize),
 		ma:              m,
 		logger:          logger,
 	}
 
 	// By default this was unlimited.
+	// Now that we don't skip previously faulted pages we add at least some boundaries to the concurrency.
+	// Also, in some brief tests, adding a limit actually improved the handling at high concurrency.
 	u.wg.SetLimit(maxRequestsInProgress)
 
 	return u, nil
@@ -184,6 +196,8 @@ outerLoop:
 		}
 
 		// Handle write to missing page (WRITE flag)
+		// If the event has WRITE flag, it was a write to a missing page.
+		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, true)
 			if err != nil {
@@ -194,6 +208,7 @@ outerLoop:
 		}
 
 		// Handle read to missing page ("MISSING" flag)
+		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
 			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, false)
 			if err != nil {
@@ -203,6 +218,7 @@ outerLoop:
 			continue
 		}
 
+		// MINOR and WP flags are not expected as we don't register the uffd with these flags.
 		return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
 	}
 }
@@ -215,10 +231,8 @@ func (u *Userfaultfd) handleMissing(
 	offset int64,
 	write bool,
 ) error {
-	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
-
 	u.wg.Go(func() error {
-		// Add() must be called inside the goroutine to ensure Remove() runs via defer
+		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 		// even if the errgroup is cancelled or the goroutine returns early.
 		// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
 		// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
@@ -335,8 +349,9 @@ func (u *Userfaultfd) RegisterWriteProtecton(region *memory.Region) error {
 func (u *Userfaultfd) Dirty() *block.Tracker {
 	// This will be at worst cancelled when the uffd is closed.
 	u.settleRequests.Lock()
-	// Intentionally not using defer—we just need to write lock and write unlock the mutex, to be sure all the RLock calls are released.
-	u.settleRequests.Unlock() //nolint:staticcheck
+	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
+	// so it is consistent even if there is a another uffd call after.
+	defer u.settleRequests.Unlock()
 
 	writeRequests := u.writeRequests.Clone()
 

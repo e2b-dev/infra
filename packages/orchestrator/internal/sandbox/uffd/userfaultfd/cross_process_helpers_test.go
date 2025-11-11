@@ -216,12 +216,12 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit reading content: %w", err)
 	}
 
-	pageSize, err := strconv.Atoi(os.Getenv("GO_MMAP_PAGE_SIZE"))
+	pageSize, err := strconv.ParseInt(os.Getenv("GO_MMAP_PAGE_SIZE"), 10, 64)
 	if err != nil {
 		return fmt.Errorf("exit parsing page size: %w", err)
 	}
 
-	data := testutils.NewMemorySlicer(content, int64(pageSize))
+	data := testutils.NewMemorySlicer(content, pageSize)
 
 	m := memory.NewMapping([]memory.Region{
 		{
@@ -233,13 +233,14 @@ func crossProcessServe() error {
 	})
 
 	exitUffd := make(chan struct{}, 1)
+	defer close(exitUffd)
 
 	logger, err := zap.NewDevelopment()
 	if err != nil {
 		return fmt.Errorf("exit creating logger: %w", err)
 	}
 
-	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, int64(pageSize), logger)
+	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, logger)
 	if err != nil {
 		return fmt.Errorf("exit creating uffd: %w", err)
 	}
