@@ -36,13 +36,12 @@ type Uffd struct {
 	lis        *net.UnixListener
 	socketPath string
 	memfile    block.ReadonlyDevice
-	dirty      *block.Tracker
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
 
-func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
+func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 	fdExit, err := fdexit.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create fd exit: %w", err)
@@ -54,7 +53,6 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		fdExit:     fdExit,
 		socketPath: socketPath,
 		memfile:    memfile,
-		dirty:      block.NewTracker(blockSize),
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 	}, nil
 }
@@ -191,19 +189,24 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 //
 // After calling Disable(), this uffd is no longer usable—we won't be able to resume the sandbox via API.
 // The uffd itself is not closed though, as that should be done by the sandbox cleanup.
-func (u *Uffd) Disable(ctx context.Context) error {
+func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get uffd: %w", err)
+		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	return uffd.Unregister()
+	err = uffd.Unregister()
+	if err != nil {
+		return nil, fmt.Errorf("failed to unregister uffd: %w", err)
+	}
+
+	return u.dirty(ctx)
 }
 
 // Dirty waits for the current requests to finish and returns the dirty pages.
 //
 // It *MUST* be only called after the sandbox was successfully paused via API.
-func (u *Uffd) Dirty(ctx context.Context) (*block.Tracker, error) {
+func (u *Uffd) dirty(ctx context.Context) (*block.Tracker, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
