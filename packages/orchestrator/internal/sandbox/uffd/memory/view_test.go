@@ -18,10 +18,8 @@ func TestView(t *testing.T) {
 	size, err := data.Size()
 	require.NoError(t, err)
 
-	memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(uint64(size), pagesize)
+	memoryArea, memoryStart, err := testutils.NewPageMmap(t, uint64(size), pagesize)
 	require.NoError(t, err)
-
-	defer unmap()
 
 	n := copy(memoryArea[0:size], data.Content())
 	require.Equal(t, int(size), n)
