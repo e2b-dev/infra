@@ -97,6 +97,10 @@ func ExecCommandWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox,
 				if stdout := msg.GetEvent().GetData().GetStdout(); stdout != nil {
 					output += string(stdout)
 				}
+
+				if stderr := msg.GetEvent().GetData().GetStderr(); stderr != nil {
+					output += string(stderr)
+				}
 			}
 
 			if msg.GetEvent().GetEnd() != nil {

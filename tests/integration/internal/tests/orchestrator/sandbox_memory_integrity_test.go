@@ -20,7 +20,7 @@ func TestSandboxMemoryIntegrity(t *testing.T) {
 
 	c := setup.GetAPIClient()
 
-	t.Run("via tmpfs hash", func(t *testing.T) {
+	t.Run("tmpfs hash", func(t *testing.T) {
 		t.Parallel()
 
 		// Create a sandbox with auto-pause disabled
@@ -94,7 +94,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 		}
 	})
 
-	t.Run("via stress-ng verify", func(t *testing.T) {
+	t.Run("stress-ng verify", func(t *testing.T) {
 		t.Parallel()
 
 		// Create a sandbox with auto-pause disabled
