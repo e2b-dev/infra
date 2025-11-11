@@ -89,11 +89,8 @@ func newUffdioRegister(start, length, mode CULong) UffdioRegister {
 
 func newUffdioWriteProtect(start, length, mode CULong) UffdioWriteProtect {
 	return UffdioWriteProtect{
-		_range: UffdioRange{
-			start: start,
-			len:   length,
-		},
-		mode: mode,
+		_range: newUffdioRange(start, length),
+		mode:   mode,
 	}
 }
 
