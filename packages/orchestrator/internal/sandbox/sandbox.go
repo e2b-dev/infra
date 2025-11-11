@@ -61,7 +61,7 @@ type Config struct {
 	TotalDiskSizeMB int64
 	HugePages       bool
 
-	AllowInternetAccess *bool
+	Network *orchestrator.SandboxNetworkConfig
 
 	Envd EnvdMetadata
 }
@@ -170,7 +170,8 @@ func (f *Factory) CreateSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "create sandbox")
-	defer func() { endSpan(span, e) }()
+	defer span.End()
+	defer handleSpanError(span, &e)
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -181,17 +182,12 @@ func (f *Factory) CreateSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
-			endSpan(execSpan, e)
+			handleSpanError(execSpan, &e)
+			execSpan.End()
 		}
 	}()
 
-	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
-	allowInternet := f.config.AllowSandboxInternet
-	if config.AllowInternetAccess != nil {
-		allowInternet = *config.AllowInternetAccess
-	}
-
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -337,13 +333,13 @@ func (f *Factory) CreateSandbox(
 	return sbx, nil
 }
 
-func endSpan(span trace.Span, err error) {
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+// Usage: defer handleSpanError(span, &err)
+func handleSpanError(span trace.Span, err *error) {
+	defer span.End()
+	if err != nil && *err != nil {
+		span.RecordError(*err)
+		span.SetStatus(codes.Error, (*err).Error())
 	}
-
-	span.End()
 }
 
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
@@ -358,7 +354,8 @@ func (f *Factory) ResumeSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume sandbox")
-	defer func() { endSpan(span, e) }()
+	defer span.End()
+	defer handleSpanError(span, &e)
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -369,18 +366,12 @@ func (f *Factory) ResumeSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
-			endSpan(execSpan, e)
+			handleSpanError(execSpan, &e)
+			execSpan.End()
 		}
 	}()
 
-	// TODO: Temporarily set this based on global config, should be removed later
-	//  (it should be passed as a non nil parameter from API)
-	allowInternet := f.config.AllowSandboxInternet
-	if config.AllowInternetAccess != nil {
-		allowInternet = *config.AllowInternetAccess
-	}
-
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
 		// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -915,7 +906,7 @@ func getNetworkSlotAsync(
 	ctx context.Context,
 	networkPool *network.Pool,
 	cleanup *Cleanup,
-	allowInternet bool,
+	network *orchestrator.SandboxNetworkConfig,
 ) chan networkSlotRes {
 	ctx, span := tracer.Start(ctx, "get-network-slot")
 	defer span.End()
@@ -925,7 +916,7 @@ func getNetworkSlotAsync(
 	go func() {
 		defer close(r)
 
-		ips, err := networkPool.Get(ctx, allowInternet)
+		ips, err := networkPool.Get(ctx, network)
 		if err != nil {
 			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
 

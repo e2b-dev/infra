@@ -31,6 +31,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -204,15 +205,13 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error creating provision rootfs: %w", err)
 	}
 
-	// Allow sandbox internet access during provisioning
-	allowInternetAccess := true
-
 	baseSbxConfig := sandbox.Config{
 		Vcpu:      bb.Config.VCpuCount,
 		RamMB:     bb.Config.MemoryMB,
 		HugePages: bb.Config.HugePages,
 
-		AllowInternetAccess: &allowInternetAccess,
+		// Allow sandbox internet access during provisioning
+		Network: &orchestrator.SandboxNetworkConfig{},
 
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,

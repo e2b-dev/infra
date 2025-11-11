@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -33,6 +34,8 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 const (
 	requestTimeout              = 60 * time.Second
 	maxStartingInstancesPerNode = 3
+
+	internetBlockCIDR = "0.0.0.0/0"
 )
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
@@ -99,6 +102,26 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
+	// Clone the network config to avoid modifying the original request
+	network := proto.CloneOf(req.GetSandbox().GetNetwork())
+
+	// TODO: Temporarily set this based on global config, should be removed later
+	// https://linear.app/e2b/issue/ENG-3291
+	//  (it should be passed network config from API)
+	allowInternet := s.config.AllowSandboxInternet
+	if req.GetSandbox().AllowInternetAccess != nil {
+		allowInternet = req.GetSandbox().GetAllowInternetAccess()
+	}
+	if !allowInternet {
+		if network == nil {
+			network = &orchestrator.SandboxNetworkConfig{}
+		}
+		if network.GetEgress() == nil {
+			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
+		}
+		network.Egress.DeniedCidrs = []string{internetBlockCIDR}
+	}
+
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
@@ -110,7 +133,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
 			HugePages:       req.GetSandbox().GetHugePages(),
 
-			AllowInternetAccess: req.GetSandbox().AllowInternetAccess,
+			Network: network,
 
 			Envd: sandbox.EnvdMetadata{
 				Version:     req.GetSandbox().GetEnvdVersion(),

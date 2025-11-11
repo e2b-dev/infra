@@ -62,3 +62,27 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 	assert.Equal(t, http.StatusOK, readRes.StatusCode())
 	assert.JSONEq(t, fmt.Sprintf("{\"sandboxID\": \"%s\"}", sbx.SandboxID), string(readRes.Body))
 }
+
+func TestAccessingHyperloopServerViaIPWithBlockedInternet(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	client := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(120), utils.WithAllowInternetAccess(false))
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://192.0.2.1/me")
+	require.NoError(t, err, "Should be able to contact hyperloop server")
+
+	readPath := "output.txt"
+	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+		ctx,
+		&envdapi.GetFilesParams{Path: &readPath, Username: sharedUtils.ToPtr("user")},
+		setup.WithSandbox(sbx.SandboxID),
+	)
+
+	require.NoError(t, readErr)
+	assert.Equal(t, http.StatusOK, readRes.StatusCode())
+	assert.JSONEq(t, fmt.Sprintf("{\"sandboxID\": \"%s\"}", sbx.SandboxID), string(readRes.Body))
+}

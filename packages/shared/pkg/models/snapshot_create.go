@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/google/uuid"
@@ -119,6 +120,20 @@ func (sc *SnapshotCreate) SetAllowInternetAccess(b bool) *SnapshotCreate {
 func (sc *SnapshotCreate) SetNillableAllowInternetAccess(b *bool) *SnapshotCreate {
 	if b != nil {
 		sc.SetAllowInternetAccess(*b)
+	}
+	return sc
+}
+
+// SetConfig sets the "config" field.
+func (sc *SnapshotCreate) SetConfig(tsc types.PausedSandboxConfig) *SnapshotCreate {
+	sc.mutation.SetConfig(tsc)
+	return sc
+}
+
+// SetNillableConfig sets the "config" field if the given value is not nil.
+func (sc *SnapshotCreate) SetNillableConfig(tsc *types.PausedSandboxConfig) *SnapshotCreate {
+	if tsc != nil {
+		sc.SetConfig(*tsc)
 	}
 	return sc
 }
@@ -294,6 +309,10 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.AllowInternetAccess(); ok {
 		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
 		_node.AllowInternetAccess = &value
+	}
+	if value, ok := sc.mutation.Config(); ok {
+		_spec.SetField(snapshot.FieldConfig, field.TypeJSON, value)
+		_node.Config = value
 	}
 	if nodes := sc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -488,6 +507,24 @@ func (u *SnapshotUpsert) UpdateAllowInternetAccess() *SnapshotUpsert {
 // ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
 func (u *SnapshotUpsert) ClearAllowInternetAccess() *SnapshotUpsert {
 	u.SetNull(snapshot.FieldAllowInternetAccess)
+	return u
+}
+
+// SetConfig sets the "config" field.
+func (u *SnapshotUpsert) SetConfig(v types.PausedSandboxConfig) *SnapshotUpsert {
+	u.Set(snapshot.FieldConfig, v)
+	return u
+}
+
+// UpdateConfig sets the "config" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateConfig() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldConfig)
+	return u
+}
+
+// ClearConfig clears the value of the "config" field.
+func (u *SnapshotUpsert) ClearConfig() *SnapshotUpsert {
+	u.SetNull(snapshot.FieldConfig)
 	return u
 }
 
@@ -686,6 +723,27 @@ func (u *SnapshotUpsertOne) UpdateAllowInternetAccess() *SnapshotUpsertOne {
 func (u *SnapshotUpsertOne) ClearAllowInternetAccess() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.ClearAllowInternetAccess()
+	})
+}
+
+// SetConfig sets the "config" field.
+func (u *SnapshotUpsertOne) SetConfig(v types.PausedSandboxConfig) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetConfig(v)
+	})
+}
+
+// UpdateConfig sets the "config" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateConfig() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateConfig()
+	})
+}
+
+// ClearConfig clears the value of the "config" field.
+func (u *SnapshotUpsertOne) ClearConfig() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearConfig()
 	})
 }
 
@@ -1051,6 +1109,27 @@ func (u *SnapshotUpsertBulk) UpdateAllowInternetAccess() *SnapshotUpsertBulk {
 func (u *SnapshotUpsertBulk) ClearAllowInternetAccess() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.ClearAllowInternetAccess()
+	})
+}
+
+// SetConfig sets the "config" field.
+func (u *SnapshotUpsertBulk) SetConfig(v types.PausedSandboxConfig) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetConfig(v)
+	})
+}
+
+// UpdateConfig sets the "config" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateConfig() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateConfig()
+	})
+}
+
+// ClearConfig clears the value of the "config" field.
+func (u *SnapshotUpsertBulk) ClearConfig() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearConfig()
 	})
 }
 

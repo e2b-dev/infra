@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
@@ -170,6 +171,26 @@ func (su *SnapshotUpdate) ClearAllowInternetAccess() *SnapshotUpdate {
 	return su
 }
 
+// SetConfig sets the "config" field.
+func (su *SnapshotUpdate) SetConfig(tsc types.PausedSandboxConfig) *SnapshotUpdate {
+	su.mutation.SetConfig(tsc)
+	return su
+}
+
+// SetNillableConfig sets the "config" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableConfig(tsc *types.PausedSandboxConfig) *SnapshotUpdate {
+	if tsc != nil {
+		su.SetConfig(*tsc)
+	}
+	return su
+}
+
+// ClearConfig clears the value of the "config" field.
+func (su *SnapshotUpdate) ClearConfig() *SnapshotUpdate {
+	su.mutation.ClearConfig()
+	return su
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (su *SnapshotUpdate) SetEnv(e *Env) *SnapshotUpdate {
 	return su.SetEnvID(e.ID)
@@ -268,6 +289,12 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if su.mutation.AllowInternetAccessCleared() {
 		_spec.ClearField(snapshot.FieldAllowInternetAccess, field.TypeBool)
+	}
+	if value, ok := su.mutation.Config(); ok {
+		_spec.SetField(snapshot.FieldConfig, field.TypeJSON, value)
+	}
+	if su.mutation.ConfigCleared() {
+		_spec.ClearField(snapshot.FieldConfig, field.TypeJSON)
 	}
 	if su.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -462,6 +489,26 @@ func (suo *SnapshotUpdateOne) ClearAllowInternetAccess() *SnapshotUpdateOne {
 	return suo
 }
 
+// SetConfig sets the "config" field.
+func (suo *SnapshotUpdateOne) SetConfig(tsc types.PausedSandboxConfig) *SnapshotUpdateOne {
+	suo.mutation.SetConfig(tsc)
+	return suo
+}
+
+// SetNillableConfig sets the "config" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableConfig(tsc *types.PausedSandboxConfig) *SnapshotUpdateOne {
+	if tsc != nil {
+		suo.SetConfig(*tsc)
+	}
+	return suo
+}
+
+// ClearConfig clears the value of the "config" field.
+func (suo *SnapshotUpdateOne) ClearConfig() *SnapshotUpdateOne {
+	suo.mutation.ClearConfig()
+	return suo
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (suo *SnapshotUpdateOne) SetEnv(e *Env) *SnapshotUpdateOne {
 	return suo.SetEnvID(e.ID)
@@ -590,6 +637,12 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if suo.mutation.AllowInternetAccessCleared() {
 		_spec.ClearField(snapshot.FieldAllowInternetAccess, field.TypeBool)
+	}
+	if value, ok := suo.mutation.Config(); ok {
+		_spec.SetField(snapshot.FieldConfig, field.TypeJSON, value)
+	}
+	if suo.mutation.ConfigCleared() {
+		_spec.ClearField(snapshot.FieldConfig, field.TypeJSON)
 	}
 	if suo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{

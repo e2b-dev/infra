@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -13,12 +14,13 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	teamtypes "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -26,12 +28,50 @@ import (
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const internetBlockCIDR = "0.0.0.0/0"
+
+// Convert a list of string addresses to the SetData type
+func addressStringsToCIDRs(addressStrings []string) []string {
+	data := make([]string, 0, len(addressStrings))
+
+	for _, addressString := range addressStrings {
+		if !strings.Contains(addressString, "/") {
+			addressString += "/32"
+		}
+		data = append(data, addressString)
+	}
+
+	return data
+}
+
+// buildNetworkConfig constructs the orchestrator network configuration from the input parameters
+func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool) *orchestrator.SandboxNetworkConfig {
+	orchNetwork := &orchestrator.SandboxNetworkConfig{
+		Egress: &orchestrator.SandboxNetworkEgressConfig{},
+	}
+
+	// Copy network configuration if provided
+	if network != nil && network.Egress != nil {
+		orchNetwork.Egress.AllowedCidrs = addressStringsToCIDRs(network.Egress.AllowedAddresses)
+		orchNetwork.Egress.DeniedCidrs = addressStringsToCIDRs(network.Egress.DeniedAddresses)
+	}
+
+	// Handle the case where internet access is explicitly disabled
+	// This should be applied after copying the network config to preserve allowed addresses
+	if allowInternetAccess != nil && !*allowInternetAccess {
+		// Block all internet access - this overrides any other blocked addresses
+		orchNetwork.Egress.DeniedCidrs = []string{internetBlockCIDR}
+	}
+
+	return orchNetwork
+}
+
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
 	executionID,
 	alias string,
-	team *types.Team,
+	team *teamtypes.Team,
 	build queries.EnvBuild,
 	metadata map[string]string,
 	envVars map[string]string,
@@ -44,6 +84,7 @@ func (o *Orchestrator) CreateSandbox(
 	autoPause bool,
 	envdAuthToken *string,
 	allowInternetAccess *bool,
+	network *types.SandboxNetworkConfig,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -138,6 +179,8 @@ func (o *Orchestrator) CreateSandbox(
 		sbxDomain = cluster.SandboxDomain
 	}
 
+	sbxNetwork := buildNetworkConfig(network, allowInternetAccess)
+
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:      baseTemplateID,
@@ -160,6 +203,7 @@ func (o *Orchestrator) CreateSandbox(
 			Snapshot:            isResume,
 			AutoPause:           autoPause,
 			AllowInternetAccess: allowInternetAccess,
+			Network:             sbxNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
 		},
 		StartTime: timestamppb.New(startTime),
@@ -237,6 +281,7 @@ func (o *Orchestrator) CreateSandbox(
 		allowInternetAccess,
 		baseTemplateID,
 		sbxDomain,
+		network,
 	)
 
 	o.sandboxStore.Add(ctx, sbx, true)

@@ -11,6 +11,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/cluster"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
@@ -3826,6 +3827,7 @@ type SnapshotMutation struct {
 	origin_node_id        *string
 	team_id               *uuid.UUID
 	allow_internet_access *bool
+	_config               *types.PausedSandboxConfig
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -4347,6 +4349,55 @@ func (m *SnapshotMutation) ResetAllowInternetAccess() {
 	delete(m.clearedFields, snapshot.FieldAllowInternetAccess)
 }
 
+// SetConfig sets the "config" field.
+func (m *SnapshotMutation) SetConfig(tsc types.PausedSandboxConfig) {
+	m._config = &tsc
+}
+
+// Config returns the value of the "config" field in the mutation.
+func (m *SnapshotMutation) Config() (r types.PausedSandboxConfig, exists bool) {
+	v := m._config
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConfig returns the old "config" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldConfig(ctx context.Context) (v types.PausedSandboxConfig, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConfig is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConfig requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConfig: %w", err)
+	}
+	return oldValue.Config, nil
+}
+
+// ClearConfig clears the value of the "config" field.
+func (m *SnapshotMutation) ClearConfig() {
+	m._config = nil
+	m.clearedFields[snapshot.FieldConfig] = struct{}{}
+}
+
+// ConfigCleared returns if the "config" field was cleared in this mutation.
+func (m *SnapshotMutation) ConfigCleared() bool {
+	_, ok := m.clearedFields[snapshot.FieldConfig]
+	return ok
+}
+
+// ResetConfig resets all changes to the "config" field.
+func (m *SnapshotMutation) ResetConfig() {
+	m._config = nil
+	delete(m.clearedFields, snapshot.FieldConfig)
+}
+
 // ClearEnv clears the "env" edge to the Env entity.
 func (m *SnapshotMutation) ClearEnv() {
 	m.clearedenv = true
@@ -4408,7 +4459,7 @@ func (m *SnapshotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SnapshotMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.created_at != nil {
 		fields = append(fields, snapshot.FieldCreatedAt)
 	}
@@ -4442,6 +4493,9 @@ func (m *SnapshotMutation) Fields() []string {
 	if m.allow_internet_access != nil {
 		fields = append(fields, snapshot.FieldAllowInternetAccess)
 	}
+	if m._config != nil {
+		fields = append(fields, snapshot.FieldConfig)
+	}
 	return fields
 }
 
@@ -4472,6 +4526,8 @@ func (m *SnapshotMutation) Field(name string) (ent.Value, bool) {
 		return m.TeamID()
 	case snapshot.FieldAllowInternetAccess:
 		return m.AllowInternetAccess()
+	case snapshot.FieldConfig:
+		return m.Config()
 	}
 	return nil, false
 }
@@ -4503,6 +4559,8 @@ func (m *SnapshotMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldTeamID(ctx)
 	case snapshot.FieldAllowInternetAccess:
 		return m.OldAllowInternetAccess(ctx)
+	case snapshot.FieldConfig:
+		return m.OldConfig(ctx)
 	}
 	return nil, fmt.Errorf("unknown Snapshot field %s", name)
 }
@@ -4589,6 +4647,13 @@ func (m *SnapshotMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetAllowInternetAccess(v)
 		return nil
+	case snapshot.FieldConfig:
+		v, ok := value.(types.PausedSandboxConfig)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConfig(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Snapshot field %s", name)
 }
@@ -4622,6 +4687,9 @@ func (m *SnapshotMutation) ClearedFields() []string {
 	if m.FieldCleared(snapshot.FieldAllowInternetAccess) {
 		fields = append(fields, snapshot.FieldAllowInternetAccess)
 	}
+	if m.FieldCleared(snapshot.FieldConfig) {
+		fields = append(fields, snapshot.FieldConfig)
+	}
 	return fields
 }
 
@@ -4638,6 +4706,9 @@ func (m *SnapshotMutation) ClearField(name string) error {
 	switch name {
 	case snapshot.FieldAllowInternetAccess:
 		m.ClearAllowInternetAccess()
+		return nil
+	case snapshot.FieldConfig:
+		m.ClearConfig()
 		return nil
 	}
 	return fmt.Errorf("unknown Snapshot nullable field %s", name)
@@ -4679,6 +4750,9 @@ func (m *SnapshotMutation) ResetField(name string) error {
 		return nil
 	case snapshot.FieldAllowInternetAccess:
 		m.ResetAllowInternetAccess()
+		return nil
+	case snapshot.FieldConfig:
+		m.ResetConfig()
 		return nil
 	}
 	return fmt.Errorf("unknown Snapshot field %s", name)

@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/db/types"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
@@ -34,6 +35,7 @@ func NewSandbox(
 	allowInternetAccess *bool,
 	baseTemplateID string,
 	domain *string,
+	network *types.SandboxNetworkConfig,
 ) Sandbox {
 	return Sandbox{
 		SandboxID:  sandboxID,
@@ -62,6 +64,7 @@ func NewSandbox(
 		AutoPause:           autoPause,
 		State:               StateRunning,
 		BaseTemplateID:      baseTemplateID,
+		Network:             network,
 	}
 }
 
@@ -91,6 +94,7 @@ type Sandbox struct {
 	NodeID              string
 	ClusterID           uuid.UUID
 	AutoPause           bool
+	Network             *types.SandboxNetworkConfig
 
 	State State
 }

@@ -9,3 +9,19 @@ type BuildReason struct {
 	// Step that failed
 	Step *string `json:"step,omitempty"`
 }
+
+const PausedSandboxConfigVersion = "v1"
+
+type SandboxNetworkEgressConfig struct {
+	AllowedAddresses []string `json:"allowedAddresses,omitempty"`
+	DeniedAddresses  []string `json:"deniedAddresses,omitempty"`
+}
+
+type SandboxNetworkConfig struct {
+	Egress *SandboxNetworkEgressConfig `json:"egress,omitempty"`
+}
+
+type PausedSandboxConfig struct {
+	Version string                `json:"version"`
+	Network *SandboxNetworkConfig `json:"network,omitempty"`
+}

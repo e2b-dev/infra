@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/google/uuid"
@@ -42,6 +43,8 @@ type Snapshot struct {
 	TeamID uuid.UUID `json:"team_id,omitempty"`
 	// AllowInternetAccess holds the value of the "allow_internet_access" field.
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
+	// Config holds the value of the "config" field.
+	Config types.PausedSandboxConfig `json:"config,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the SnapshotQuery when eager-loading is set.
 	Edges        SnapshotEdges `json:"edges"`
@@ -75,7 +78,7 @@ func (*Snapshot) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case snapshot.FieldMetadata:
+		case snapshot.FieldMetadata, snapshot.FieldConfig:
 			values[i] = new([]byte)
 		case snapshot.FieldEnvSecure, snapshot.FieldAutoPause, snapshot.FieldAllowInternetAccess:
 			values[i] = new(sql.NullBool)
@@ -175,6 +178,14 @@ func (s *Snapshot) assignValues(columns []string, values []any) error {
 				s.AllowInternetAccess = new(bool)
 				*s.AllowInternetAccess = value.Bool
 			}
+		case snapshot.FieldConfig:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field config", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &s.Config); err != nil {
+					return fmt.Errorf("unmarshal field config: %w", err)
+				}
+			}
 		default:
 			s.selectValues.Set(columns[i], values[i])
 		}
@@ -250,6 +261,9 @@ func (s *Snapshot) String() string {
 		builder.WriteString("allow_internet_access=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("config=")
+	builder.WriteString(fmt.Sprintf("%v", s.Config))
 	builder.WriteByte(')')
 	return builder.String()
 }
