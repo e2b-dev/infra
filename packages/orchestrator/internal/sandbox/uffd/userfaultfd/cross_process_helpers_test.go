@@ -81,11 +81,18 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		assert.NoError(t, closeErr)
 	}()
 
-	offsetsReader, offsetsWriter, err := os.Pipe()
+	accessedOffsetsReader, accessedOffsetsWriter, err := os.Pipe()
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		offsetsReader.Close()
+		accessedOffsetsReader.Close()
+	})
+
+	dirtyOffsetsReader, dirtyOffsetsWriter, err := os.Pipe()
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		dirtyOffsetsReader.Close()
 	})
 
 	readyReader, readyWriter, err := os.Pipe()
@@ -106,8 +113,9 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	cmd.ExtraFiles = []*os.File{
 		uffdFile,
 		contentReader,
-		offsetsWriter,
+		accessedOffsetsWriter,
 		readyWriter,
+		dirtyOffsetsWriter,
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -116,9 +124,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	require.NoError(t, err)
 
 	contentReader.Close()
-	offsetsWriter.Close()
+	accessedOffsetsWriter.Close()
 	readyWriter.Close()
 	uffdFile.Close()
+	dirtyOffsetsWriter.Close()
 
 	t.Cleanup(func() {
 		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
@@ -139,13 +148,37 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		)
 	})
 
-	offsetsOnce := func() ([]uint, error) {
+	accessedOffsetsOnce := func() ([]uint, error) {
 		err := cmd.Process.Signal(syscall.SIGUSR2)
 		if err != nil {
 			return nil, err
 		}
 
-		offsetsBytes, err := io.ReadAll(offsetsReader)
+		offsetsBytes, err := io.ReadAll(accessedOffsetsReader)
+		if err != nil {
+			return nil, err
+		}
+
+		var offsetList []uint
+
+		if len(offsetsBytes)%8 != 0 {
+			return nil, fmt.Errorf("invalid offsets bytes length: %d", len(offsetsBytes))
+		}
+
+		for i := 0; i < len(offsetsBytes); i += 8 {
+			offsetList = append(offsetList, uint(binary.LittleEndian.Uint64(offsetsBytes[i:i+8])))
+		}
+
+		return offsetList, nil
+	}
+
+	dirtyOffsetsOnce := func() ([]uint, error) {
+		err := cmd.Process.Signal(syscall.SIGUSR1)
+		if err != nil {
+			return nil, err
+		}
+
+		offsetsBytes, err := io.ReadAll(dirtyOffsetsReader)
 		if err != nil {
 			return nil, err
 		}
@@ -170,10 +203,11 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	}
 
 	return &testHandler{
-		memoryArea:  &memoryArea,
-		pagesize:    tt.pagesize,
-		data:        data,
-		offsetsOnce: offsetsOnce,
+		memoryArea:          &memoryArea,
+		pagesize:            tt.pagesize,
+		data:                data,
+		accessedOffsetsOnce: accessedOffsetsOnce,
+		dirtyOffsetsOnce:    dirtyOffsetsOnce,
 	}, nil
 }
 
@@ -245,24 +279,56 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit creating uffd: %w", err)
 	}
 
-	offsetsFile := os.NewFile(uintptr(5), "offsets")
+	accessedOffsetsFile := os.NewFile(uintptr(5), "accessed-offsets")
 
-	offsetsSignal := make(chan os.Signal, 1)
-	signal.Notify(offsetsSignal, syscall.SIGUSR2)
-	defer signal.Stop(offsetsSignal)
+	accessedOffsestsSignal := make(chan os.Signal, 1)
+	signal.Notify(accessedOffsestsSignal, syscall.SIGUSR2)
+	defer signal.Stop(accessedOffsestsSignal)
 
 	go func() {
-		defer offsetsFile.Close()
+		defer accessedOffsetsFile.Close()
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-offsetsSignal:
-				for offset := range uffd.Dirty().Offsets() {
-					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
+			case <-accessedOffsestsSignal:
+				for offset := range uffd.missingRequests.Offsets() {
+					writeErr := binary.Write(accessedOffsetsFile, binary.LittleEndian, uint64(offset))
 					if writeErr != nil {
-						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
+						msg := fmt.Errorf("error writing accessed offsets to file: %w", writeErr)
+
+						fmt.Fprint(os.Stderr, msg.Error())
+
+						cancel(msg)
+
+						return
+					}
+				}
+
+				return
+			}
+		}
+	}()
+
+	dirtyOffsetsFile := os.NewFile(uintptr(7), "dirty-offsets")
+
+	dirtyOffsetsSignal := make(chan os.Signal, 1)
+	signal.Notify(dirtyOffsetsSignal, syscall.SIGUSR1)
+	defer signal.Stop(dirtyOffsetsSignal)
+
+	go func() {
+		defer dirtyOffsetsFile.Close()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-dirtyOffsetsSignal:
+				for offset := range uffd.writeRequests.Offsets() {
+					writeErr := binary.Write(dirtyOffsetsFile, binary.LittleEndian, uint64(offset))
+					if writeErr != nil {
+						msg := fmt.Errorf("error writing dirty offsets to file: %w", writeErr)
 
 						fmt.Fprint(os.Stderr, msg.Error())
 
@@ -318,7 +384,7 @@ func crossProcessServe() error {
 	defer cleanup()
 
 	exitSignal := make(chan os.Signal, 1)
-	signal.Notify(exitSignal, syscall.SIGUSR1)
+	signal.Notify(exitSignal, syscall.SIGTERM)
 	defer signal.Stop(exitSignal)
 
 	readyFile := os.NewFile(uintptr(6), "ready")

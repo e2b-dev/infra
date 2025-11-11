@@ -133,7 +133,7 @@ func TestWriteProtection(t *testing.T) {
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
 
-			accessedOffsets, err := h.offsetsOnce()
+			accessedOffsets, err := h.accessedOffsetsOnce()
 			require.NoError(t, err)
 
 			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
@@ -172,7 +172,7 @@ func TestParallelWriteProtection(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	accessedOffsets, err := h.offsetsOnce()
+	accessedOffsets, err := h.accessedOffsetsOnce()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
@@ -212,7 +212,7 @@ func TestParallelWriteProtectionWithPrefault(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	accessedOffsets, err := h.offsetsOnce()
+	accessedOffsets, err := h.accessedOffsetsOnce()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
@@ -243,7 +243,7 @@ func TestSerialWriteProtection(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	accessedOffsets, err := h.offsetsOnce()
+	accessedOffsets, err := h.accessedOffsetsOnce()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")

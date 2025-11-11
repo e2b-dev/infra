@@ -41,8 +41,12 @@ type testHandler struct {
 	data       *testutils.MemorySlicer
 	// Returns offsets of the pages that were faulted.
 	// It can only be called once.
-	offsetsOnce func() ([]uint, error)
-	mutex       sync.Mutex
+	accessedOffsetsOnce func() ([]uint, error)
+	// Returns offsets of the pages that were dirtied.
+	// It can only be called once.
+	dirtyOffsetsOnce func() ([]uint, error)
+
+	mutex sync.Mutex
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {

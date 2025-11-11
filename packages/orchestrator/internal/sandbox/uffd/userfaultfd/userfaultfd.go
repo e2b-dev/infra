@@ -58,6 +58,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		fd:              uffdFd(fd),
 		src:             src,
 		missingRequests: block.NewTracker(blockSize),
+		writeRequests:   block.NewTracker(blockSize),
 		ma:              m,
 		logger:          logger,
 	}
