@@ -394,5 +394,6 @@ func verifyImagePlatform(img containerregistry.Image, platform containerregistry
 	if config.Architecture != platform.Architecture {
 		return fmt.Errorf("image is not %s", platform.Architecture)
 	}
+
 	return nil
 }
