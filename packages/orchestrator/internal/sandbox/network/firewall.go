@@ -2,7 +2,6 @@ package network
 
 import (
 	"fmt"
-	"net"
 	"net/netip"
 
 	"github.com/google/nftables"
@@ -207,8 +206,9 @@ func (fw *Firewall) AddAllowedIP(address string) error {
 		return nil
 	}
 
-	if isAddressInBlockedRanges(address) {
-		return fmt.Errorf("address %s is blocked by the provider and cannot be added to the allow list", address)
+	err := canAllowAddress(address)
+	if err != nil {
+		return err
 	}
 
 	data, err := set.AddressStringsToSetData([]string{address})
@@ -261,20 +261,34 @@ func (fw *Firewall) ResetBlockedCustom() error {
 
 // ResetAllowedCustom resets allow set back to original ranges.
 func (fw *Firewall) ResetAllowedCustom() error {
-	return nil
+	if err := fw.allowSet.ClearAndAddElements(fw.conn, nil); err != nil {
+		return err
+	}
+
+	return fw.conn.Flush()
 }
 
-// isAddressInBlockedRanges checks if the address is in the default blocked ranges.
-func isAddressInBlockedRanges(address string) bool {
-	for _, blockedRange := range blockedRanges {
-		_, blockedRangeNet, err := net.ParseCIDR(blockedRange)
-		if err != nil {
-			return false
-		}
-		if blockedRangeNet.Contains(net.ParseIP(address)) {
-			return true
+// canAllowAddress checks if the address is in the default blocked ranges.
+func canAllowAddress(address string) error {
+	blockedData, err := set.AddressStringsToSetData(blockedRanges)
+	if err != nil {
+		return err
+	}
+
+	addressPrefix, err := set.AddressStringsToSetData([]string{address})
+	if err != nil {
+		return err
+	}
+
+	if len(addressPrefix) == 0 {
+		return fmt.Errorf("address %s is not a valid IP address", address)
+	}
+
+	for _, blockedRange := range blockedData {
+		if blockedRange.Prefix.Overlaps(addressPrefix[0].Prefix) {
+			return fmt.Errorf("address %s is blocked by the provider and cannot be added to the allow list", address)
 		}
 	}
 
-	return false
+	return nil
 }

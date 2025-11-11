@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel"
@@ -101,7 +102,11 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	network := req.GetSandbox().GetNetwork()
+	// Clone the network config to avoid modifying the original request
+	network := &orchestrator.SandboxNetworkConfig{}
+	if req.GetSandbox().GetNetwork() != nil {
+		network = proto.Clone(req.GetSandbox().GetNetwork()).(*orchestrator.SandboxNetworkConfig)
+	}
 
 	// TODO: Temporarily set this based on global config, should be removed later
 	//  (it should be passed network config from API)
@@ -110,7 +115,9 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		allowInternet = req.GetSandbox().GetAllowInternetAccess()
 	}
 	if !allowInternet {
-		network.Egress = network.GetEgress()
+		if network.GetEgress() == nil {
+			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
+		}
 		network.Egress.BlockedAddresses = []string{internetBlockAddress}
 	}
 
@@ -125,7 +132,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
 			HugePages:       req.GetSandbox().GetHugePages(),
 
-			Network: req.GetSandbox().GetNetwork(),
+			Network: network,
 
 			Envd: sandbox.EnvdMetadata{
 				Version:     req.GetSandbox().GetEnvdVersion(),
