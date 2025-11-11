@@ -177,6 +177,7 @@ func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, off
 		}
 
 		zap.L().Warn("failed to acquire lock", zap.String("path", chunkPath), zap.Error(err))
+
 		return
 	}
 
@@ -234,6 +235,7 @@ func (c CachedSeekableObjectProvider) writeLocalSize(size int64) {
 		}
 
 		zap.L().Warn("failed to acquire lock", zap.String("path", finalFilename), zap.Error(err))
+
 		return
 	}
 

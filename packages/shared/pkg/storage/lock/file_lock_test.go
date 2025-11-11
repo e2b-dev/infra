@@ -54,7 +54,7 @@ func TestTryAcquireLock_AlreadyHeld(t *testing.T) {
 
 	// Second acquisition should fail (lock already held)
 	file2, err2 := TryAcquireLock(testPath)
-	assert.True(t, errors.Is(err2, ErrLockAlreadyHeld))
+	require.ErrorIs(t, err2, ErrLockAlreadyHeld)
 	assert.Nil(t, file2)
 }
 
@@ -109,16 +109,18 @@ func TestConcurrentLockAcquisition(t *testing.T) {
 	results := make(chan result, 10)
 
 	// Try to acquire lock concurrently from multiple goroutines
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			file, err := TryAcquireLock(testPath)
-			if err == nil {
+
+			switch {
+			case err != nil:
 				time.Sleep(50 * time.Millisecond)
 				_ = ReleaseLock(file)
 				results <- result{acquired: true}
-			} else if errors.Is(err, ErrLockAlreadyHeld) {
+			case errors.Is(err, ErrLockAlreadyHeld):
 				results <- result{alreadyHeld: true}
-			} else {
+			default:
 				results <- result{}
 			}
 		}()
@@ -127,7 +129,7 @@ func TestConcurrentLockAcquisition(t *testing.T) {
 	// Collect results
 	acquiredCount := 0
 	alreadyHeldCount := 0
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		r := <-results
 		if r.acquired {
 			acquiredCount++
@@ -138,8 +140,8 @@ func TestConcurrentLockAcquisition(t *testing.T) {
 	}
 
 	// At least one should have acquired, others should have gotten already-held
-	assert.Greater(t, acquiredCount, 0, "At least one goroutine should acquire the lock")
-	assert.Greater(t, alreadyHeldCount, 0, "Some goroutines should see the lock as already held")
+	assert.Positive(t, acquiredCount, "At least one goroutine should acquire the lock")
+	assert.Positive(t, alreadyHeldCount, "Some goroutines should see the lock as already held")
 }
 
 func TestGetLockFilePath_Consistency(t *testing.T) {

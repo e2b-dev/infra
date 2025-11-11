@@ -125,6 +125,7 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 			return
 		}
 		zap.L().Warn("failed to acquire lock", zap.String("path", finalPath), zap.Error(err))
+
 		return
 	}
 

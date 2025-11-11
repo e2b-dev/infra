@@ -61,6 +61,7 @@ func TryAcquireLock(path string) (*os.File, error) {
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, ErrLockAlreadyHeld
 		}
+
 		return nil, fmt.Errorf("failed to acquire lock: %w", err)
 	}
 
@@ -68,10 +69,12 @@ func TryAcquireLock(path string) (*os.File, error) {
 	timestamp := []byte(fmt.Sprintf("%d", time.Now().Unix()))
 	if err := file.Truncate(0); err != nil {
 		_ = file.Close()
+
 		return nil, fmt.Errorf("failed to truncate lock file: %w", err)
 	}
 	if _, err := file.WriteAt(timestamp, 0); err != nil {
 		_ = file.Close()
+
 		return nil, fmt.Errorf("failed to write timestamp: %w", err)
 	}
 
@@ -79,6 +82,7 @@ func TryAcquireLock(path string) (*os.File, error) {
 	now := time.Now()
 	if err := os.Chtimes(lockPath, now, now); err != nil {
 		_ = file.Close()
+
 		return nil, fmt.Errorf("failed to update lock file mtime: %w", err)
 	}
 
@@ -112,6 +116,7 @@ func ReleaseLock(file *os.File) error {
 		zap.L().Warn("Failed to remove lock file",
 			zap.String("lock_path", lockPath),
 			zap.Error(err))
+
 		return fmt.Errorf("failed to remove lock file: %w", err)
 	}
 
