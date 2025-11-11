@@ -227,7 +227,7 @@ func (s *Slot) InitializeFirewall() error {
 		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
 	}
 
-	fw, err := NewFirewall(s.TapName())
+	fw, err := NewFirewall(s.TapName(), s.HyperloopIPString())
 	if err != nil {
 		return fmt.Errorf("error initializing firewall: %w", err)
 	}

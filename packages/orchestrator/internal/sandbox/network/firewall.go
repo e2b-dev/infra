@@ -17,7 +17,7 @@ const (
 	allInternetTrafficAddress = "0.0.0.0/0"
 )
 
-var blockedRanges = []string{
+var deniedRanges = []string{
 	"10.0.0.0/8",
 	"169.254.0.0/16",
 	"192.168.0.0/16",
@@ -30,12 +30,14 @@ type Firewall struct {
 	chain *nftables.Chain
 
 	blockInternetTraffic bool
-	blockSet             set.Set
+	denySet              set.Set
 	allowSet             set.Set
 	tapInterface         string
+
+	allowedRanges []string
 }
 
-func NewFirewall(tapIf string) (*Firewall, error) {
+func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
@@ -55,10 +57,10 @@ func NewFirewall(tapIf string) (*Firewall, error) {
 		Policy:   &acceptPolicy,
 	})
 
-	// Create block-set and allow-set
-	blockSet, err := set.New(conn, table, "filtered_blocklist", nftables.TypeIPAddr)
+	// Create deny-set and allow-set
+	denySet, err := set.New(conn, table, "filtered_denylist", nftables.TypeIPAddr)
 	if err != nil {
-		return nil, fmt.Errorf("new block set: %w", err)
+		return nil, fmt.Errorf("new deny set: %w", err)
 	}
 	allowSet, err := set.New(conn, table, "filtered_allowlist", nftables.TypeIPAddr)
 	if err != nil {
@@ -70,9 +72,10 @@ func NewFirewall(tapIf string) (*Firewall, error) {
 		table:                table,
 		chain:                chain,
 		blockInternetTraffic: false,
-		blockSet:             blockSet,
+		denySet:              denySet,
 		allowSet:             allowSet,
 		tapInterface:         tapIf,
+		allowedRanges:        []string{fmt.Sprintf("%s/32", hyperloopIP)},
 	}
 
 	// Add firewall rules to the chain
@@ -83,7 +86,7 @@ func NewFirewall(tapIf string) (*Firewall, error) {
 	// Populate the sets with initial data
 	err = fw.ResetAllCustom()
 	if err != nil {
-		return nil, fmt.Errorf("error while configuring initial block set: %w", err)
+		return nil, fmt.Errorf("error while configuring initial deny set: %w", err)
 	}
 
 	return fw, nil
@@ -133,12 +136,12 @@ func (fw *Firewall) installRules() error {
 		),
 	})
 
-	// Drop anything in blockSet
+	// Drop anything in denySet
 	fw.conn.AddRule(&nftables.Rule{
 		Table: fw.table, Chain: fw.chain,
 		Exprs: append(ifaceMatch,
 			expressions.IPv4DestinationAddress(1),
-			expressions.IPSetLookUp(fw.blockSet.Set(), 1),
+			expressions.IPSetLookUp(fw.denySet.Set(), 1),
 			expressions.Drop(),
 		),
 	})
@@ -150,11 +153,11 @@ func (fw *Firewall) installRules() error {
 	return nil
 }
 
-// AddDeniedCIDR adds a single CIDR to the block set at runtime.
+// AddDeniedCIDR adds a single CIDR to the deny set at runtime.
 func (fw *Firewall) AddDeniedCIDR(cidr string) error {
 	if fw.blockInternetTraffic {
-		// If internet is blocked, we don't need to add any other addresses to the block set.
-		// Because 0.0.0.0/0 is not valid IP per GoLang, we can't add new addresses to the block set.
+		// If internet is denied, we don't need to add any other addresses to the deny set.
+		// Because 0.0.0.0/0 is not valid IP per GoLang, we can't add new addresses to the deny set.
 		return nil
 	}
 
@@ -162,7 +165,7 @@ func (fw *Firewall) AddDeniedCIDR(cidr string) error {
 	if cidr == allInternetTrafficAddress {
 		fw.blockInternetTraffic = true
 
-		fw.conn.FlushSet(fw.blockSet.Set())
+		fw.conn.FlushSet(fw.denySet.Set())
 
 		toAppend := []nftables.SetElement{
 			{Key: netip.MustParseAddr("0.0.0.0").AsSlice()},
@@ -172,11 +175,11 @@ func (fw *Firewall) AddDeniedCIDR(cidr string) error {
 			},
 		}
 
-		if err := fw.conn.SetAddElements(fw.blockSet.Set(), toAppend); err != nil {
-			return fmt.Errorf("add elements to block set: %w", err)
+		if err := fw.conn.SetAddElements(fw.denySet.Set(), toAppend); err != nil {
+			return fmt.Errorf("add elements to denied set: %w", err)
 		}
 	} else {
-		current, err := fw.blockSet.Elements(fw.conn)
+		current, err := fw.denySet.Elements(fw.conn)
 		if err != nil {
 			return err
 		}
@@ -186,14 +189,14 @@ func (fw *Firewall) AddDeniedCIDR(cidr string) error {
 			return err
 		}
 		merged := append(current, data...)
-		if err := fw.blockSet.ClearAndAddElements(fw.conn, merged); err != nil {
+		if err := fw.denySet.ClearAndAddElements(fw.conn, merged); err != nil {
 			return err
 		}
 	}
 
 	err := fw.conn.Flush()
 	if err != nil {
-		return fmt.Errorf("flush add blocked IP changes: %w", err)
+		return fmt.Errorf("flush add denied cidr changes: %w", err)
 	}
 
 	return nil
@@ -233,7 +236,7 @@ func (fw *Firewall) AddAllowedCIDR(cidr string) error {
 }
 
 func (fw *Firewall) ResetAllCustom() error {
-	if err := fw.ResetBlockedCustom(); err != nil {
+	if err := fw.ResetDeniedCustom(); err != nil {
 		return fmt.Errorf("clear block set: %w", err)
 	}
 	if err := fw.ResetAllowedCustom(); err != nil {
@@ -243,14 +246,14 @@ func (fw *Firewall) ResetAllCustom() error {
 	return nil
 }
 
-// ResetBlockedCustom resets the block set back to original ranges.
-func (fw *Firewall) ResetBlockedCustom() error {
-	initData, err := set.AddressStringsToSetData(blockedRanges)
+// ResetDeniedCustom resets the deny set back to original ranges.
+func (fw *Firewall) ResetDeniedCustom() error {
+	initData, err := set.AddressStringsToSetData(deniedRanges)
 	if err != nil {
-		return fmt.Errorf("parse initial block CIDRs: %w", err)
+		return fmt.Errorf("parse initial denied CIDRs: %w", err)
 	}
 
-	if err := fw.blockSet.ClearAndAddElements(fw.conn, initData); err != nil {
+	if err := fw.denySet.ClearAndAddElements(fw.conn, initData); err != nil {
 		return err
 	}
 
@@ -261,16 +264,21 @@ func (fw *Firewall) ResetBlockedCustom() error {
 
 // ResetAllowedCustom resets allow set back to original ranges.
 func (fw *Firewall) ResetAllowedCustom() error {
-	if err := fw.allowSet.ClearAndAddElements(fw.conn, nil); err != nil {
+	initData, err := set.AddressStringsToSetData(fw.allowedRanges)
+	if err != nil {
+		return fmt.Errorf("parse initial allowed CIDRs: %w", err)
+	}
+
+	if err := fw.allowSet.ClearAndAddElements(fw.conn, initData); err != nil {
 		return err
 	}
 
 	return fw.conn.Flush()
 }
 
-// canAllowCIDR checks if the address is in the default blocked ranges.
+// canAllowCIDR checks if the address is in the default denied ranges.
 func canAllowCIDR(cidr string) error {
-	blockedData, err := set.AddressStringsToSetData(blockedRanges)
+	deniedData, err := set.AddressStringsToSetData(deniedRanges)
 	if err != nil {
 		return err
 	}
@@ -284,8 +292,8 @@ func canAllowCIDR(cidr string) error {
 		return fmt.Errorf("address %s is not a valid IP address", cidr)
 	}
 
-	for _, blockedRange := range blockedData {
-		if blockedRange.Prefix.Overlaps(addressData[0].Prefix) {
+	for _, deniedRange := range deniedData {
+		if deniedRange.Prefix.Overlaps(addressData[0].Prefix) {
 			return fmt.Errorf("address %s is blocked by the provider and cannot be added to the allow list", cidr)
 		}
 	}
