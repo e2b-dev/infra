@@ -29,14 +29,6 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		return
 	}
 
-	// No data passed
-	if body.Public == nil {
-		zap.L().Error("No data passed")
-		c.String(http.StatusBadRequest, "No data passed")
-
-		return
-	}
-
 	cleanedAliasOrTemplateID, err := id.CleanTemplateID(aliasOrTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID))
@@ -71,46 +63,48 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 	if template.TeamID != team.ID {
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", aliasOrTemplateID))
-		telemetry.ReportError(ctx, "template not found or user has no access", nil, telemetry.WithTemplateID(aliasOrTemplateID))
+		telemetry.ReportError(ctx, "template not found or user has no access", nil, telemetry.WithTemplateID(template.ID))
 
 		return
 	}
 
 	// Update template
-	templateID, err := a.sqlcDB.UpdateTemplate(ctx, queries.UpdateTemplateParams{
-		TemplateIDOrAlias: cleanedAliasOrTemplateID,
-		TeamID:            team.ID,
-		Public:            *body.Public,
-	})
-	if err != nil {
-		if dberrors.IsNotFoundError(err) {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
-			telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(aliasOrTemplateID))
+	if body.Public != nil {
+		_, err := a.sqlcDB.UpdateTemplate(ctx, queries.UpdateTemplateParams{
+			TemplateIDOrAlias: cleanedAliasOrTemplateID,
+			TeamID:            team.ID,
+			Public:            *body.Public,
+		})
+		if err != nil {
+			if dberrors.IsNotFoundError(err) {
+				a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
+				telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(template.ID))
+
+				return
+			}
+
+			telemetry.ReportError(ctx, "error when updating template", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error updating template")
 
 			return
 		}
-
-		telemetry.ReportError(ctx, "error when updating template", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error updating template")
-
-		return
 	}
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
-		telemetry.WithTemplateID(templateID),
+		telemetry.WithTemplateID(template.ID),
 	)
 
-	a.templateCache.Invalidate(templateID)
+	a.templateCache.Invalidate(template.ID)
 
 	telemetry.ReportEvent(ctx, "updated template")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "updated environment", properties.Set("environment", templateID))
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "updated environment", properties.Set("environment", template.ID))
 
-	zap.L().Info("Updated template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
+	zap.L().Info("Updated template", logger.WithTemplateID(template.ID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }
