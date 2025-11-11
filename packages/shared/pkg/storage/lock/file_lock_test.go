@@ -102,15 +102,17 @@ func TestConcurrentLockAcquisition(t *testing.T) {
 	err := os.MkdirAll(testPath, 0o755)
 	require.NoError(t, err)
 
+	routines := 100
+
 	type result struct {
 		acquired    bool
 		alreadyHeld bool
 		err         error
 	}
-	results := make(chan result, 10)
+	results := make(chan result, routines)
 
 	// Try to acquire lock concurrently from multiple goroutines
-	for range 10 {
+	for range routines {
 		go func() {
 			file, err := TryAcquireLock(testPath)
 
@@ -130,7 +132,7 @@ func TestConcurrentLockAcquisition(t *testing.T) {
 	// Collect results
 	acquiredCount := 0
 	alreadyHeldCount := 0
-	for range 10 {
+	for range routines {
 		r := <-results
 		if r.acquired {
 			acquiredCount++
