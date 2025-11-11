@@ -37,7 +37,7 @@ func TryAcquireLock(path string) (*os.File, error) {
 			// Lock is stale, try to remove it
 			zap.L().Debug("Found stale lock file, attempting cleanup",
 				zap.String("path", path),
-				zap.String("lock_path", lockPath),
+				zap.String("path", lockPath),
 				zap.Duration("age", age))
 
 			if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
@@ -97,31 +97,24 @@ func ReleaseLock(file *os.File) error {
 
 	lockPath := file.Name()
 
-	// Release the flock
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_UN); err != nil {
-		zap.L().Warn("Failed to release flock",
-			zap.String("lock_path", lockPath),
-			zap.Error(err))
-	}
-
-	// Close the file
+	// Close the file (which also releases the lock)
 	if err := file.Close(); err != nil {
 		zap.L().Warn("Failed to close lock file",
-			zap.String("lock_path", lockPath),
+			zap.String("path", lockPath),
 			zap.Error(err))
 	}
 
 	// Remove the lock file
 	if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
 		zap.L().Warn("Failed to remove lock file",
-			zap.String("lock_path", lockPath),
+			zap.String("path", lockPath),
 			zap.Error(err))
 
 		return fmt.Errorf("failed to remove lock file: %w", err)
 	}
 
 	zap.L().Debug("Lock released successfully",
-		zap.String("lock_path", lockPath))
+		zap.String("path", lockPath))
 
 	return nil
 }
