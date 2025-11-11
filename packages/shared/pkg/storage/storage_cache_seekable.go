@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 )
 
 var (
@@ -166,6 +168,29 @@ func (c CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int6
 }
 
 func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) {
+	// Try to acquire lock for this chunk write to NFS cache
+	lockFile, err := lock.TryAcquireLock(chunkPath)
+	if err != nil {
+		if errors.Is(err, lock.ErrLockAlreadyHeld) {
+			// Another process is already writing this chunk, so we can skip writing it ourselves
+			return
+		}
+
+		zap.L().Warn("failed to acquire lock", zap.String("path", chunkPath), zap.Error(err))
+		return
+	}
+
+	// Release lock after write completes
+	defer func() {
+		err := lock.ReleaseLock(lockFile)
+		if err != nil {
+			zap.L().Warn("failed to release lock after writing chunk to cache",
+				zap.Int64("offset", offset),
+				zap.String("path", chunkPath),
+				zap.Error(err))
+		}
+	}()
+
 	writeTimer := cacheWriteTimerFactory.Begin()
 
 	tempPath := c.makeTempChunkFilename(offset)
@@ -198,6 +223,31 @@ func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, off
 }
 
 func (c CachedSeekableObjectProvider) writeLocalSize(size int64) {
+	finalFilename := c.sizeFilename()
+
+	// Try to acquire lock for this chunk write to NFS cache
+	lockFile, err := lock.TryAcquireLock(finalFilename)
+	if err != nil {
+		if errors.Is(err, lock.ErrLockAlreadyHeld) {
+			// Another process is already writing this chunk, so we can skip writing it ourselves
+			return
+		}
+
+		zap.L().Warn("failed to acquire lock", zap.String("path", finalFilename), zap.Error(err))
+		return
+	}
+
+	// Release lock after write completes
+	defer func() {
+		err := lock.ReleaseLock(lockFile)
+		if err != nil {
+			zap.L().Warn("failed to release lock after writing chunk to cache",
+				zap.Int64("size", size),
+				zap.String("path", finalFilename),
+				zap.Error(err))
+		}
+	}()
+
 	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
 
 	if err := os.WriteFile(tempFilename, []byte(fmt.Sprintf("%d", size)), cacheFilePermissions); err != nil {
@@ -208,7 +258,6 @@ func (c CachedSeekableObjectProvider) writeLocalSize(size int64) {
 		return
 	}
 
-	finalFilename := c.sizeFilename()
 	if err := moveWithoutReplace(tempFilename, finalFilename); err != nil {
 		zap.L().Warn("failed to move temp file",
 			zap.String("temp_path", tempFilename),

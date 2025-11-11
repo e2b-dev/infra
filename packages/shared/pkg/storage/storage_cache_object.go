@@ -3,12 +3,15 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 )
 
 const (
@@ -112,6 +115,27 @@ func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, ds
 }
 
 func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte) {
+	finalPath := c.fullFilename()
+
+	// Try to acquire lock for this chunk write to NFS cache
+	lockFile, err := lock.TryAcquireLock(finalPath)
+	if err != nil {
+		if errors.Is(err, lock.ErrLockAlreadyHeld) {
+			// Another process is already writing this chunk, so we can skip writing it ourselves
+			return
+		}
+		zap.L().Warn("failed to acquire lock", zap.String("path", finalPath), zap.Error(err))
+		return
+	}
+
+	// Release lock after write completes
+	defer func() {
+		err := lock.ReleaseLock(lockFile)
+		if err != nil {
+			zap.L().Warn("failed to release lock after writing chunk to cache", zap.Error(err), zap.String("path", finalPath))
+		}
+	}()
+
 	timer := cacheWriteTimerFactory.Begin()
 
 	tempPath := c.tempFullFilename()
@@ -126,7 +150,6 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 		return
 	}
 
-	finalPath := c.fullFilename()
 	if err := moveWithoutReplace(tempPath, finalPath); err != nil {
 		zap.L().Error("failed to rename temp file",
 			zap.String("tempPath", tempPath),
