@@ -235,7 +235,7 @@ func (u *Userfaultfd) handleMissing(
 		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 		// even if the errgroup is cancelled or the goroutine returns early.
 		// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
-		// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
+		// The Firecracker pause should return only after the requested memory is copied to the guest memory, so we don't need to guard the pagefault from the moment it is created.
 		u.settleRequests.RLock()
 		defer u.settleRequests.RUnlock()
 
@@ -258,6 +258,7 @@ func (u *Userfaultfd) handleMissing(
 
 		var copyMode CULong
 
+		// If the event is not WRITE, we need to add WP to the page, so we can catch the next WRITE+WP and mark the page as dirty.
 		if !write {
 			copyMode |= UFFDIO_COPY_MODE_WP
 		}
@@ -295,6 +296,10 @@ func (u *Userfaultfd) handleMissing(
 
 func (u *Userfaultfd) handleWriteProtection(addr, pagesize uintptr, offset int64) {
 	u.wg.Go(func() error {
+		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
+		// even if the errgroup is cancelled or the goroutine returns early.
+		// This check protects us against race condition between marking the request as dirty and accessing the writeRequests tracker.
+		// The Firecracker pause should return only after the requested memory is copied to the guest memory, so we don't need to guard the pagefault from the moment it is created.
 		u.settleRequests.RLock()
 		defer u.settleRequests.RUnlock()
 
