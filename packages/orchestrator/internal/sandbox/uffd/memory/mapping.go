@@ -6,6 +6,14 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
+type AddressNotFoundError struct {
+	hostVirtAddr uintptr
+}
+
+func (e AddressNotFoundError) Error() string {
+	return fmt.Sprintf("address %d not found in any mapping", e.hostVirtAddr)
+}
+
 type Mapping struct {
 	Regions []Region
 }
@@ -15,14 +23,14 @@ func NewMapping(regions []Region) *Mapping {
 }
 
 // GetOffset returns the relative offset and the page size of the mapped range for a given address.
-func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uint64, error) {
+func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uintptr, error) {
 	for _, r := range m.Regions {
 		if hostVirtAddr >= r.BaseHostVirtAddr && hostVirtAddr < r.endHostVirtAddr() {
-			return r.shiftedOffset(hostVirtAddr), uint64(r.PageSize), nil
+			return r.shiftedOffset(hostVirtAddr), r.PageSize, nil
 		}
 	}
 
-	return 0, 0, fmt.Errorf("address %d not found in any mapping", hostVirtAddr)
+	return 0, 0, AddressNotFoundError{hostVirtAddr: hostVirtAddr}
 }
 
 // GetHostVirtRanges returns the host virtual addresses and sizes (ranges) that cover exactly the given [offset, offset+length) range in the host virtual address space.

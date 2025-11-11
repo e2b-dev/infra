@@ -62,3 +62,7 @@ func (n *NoDiff) CacheKey() DiffStoreKey {
 func (n *NoDiff) Init(context.Context) error {
 	return NoDiffError{}
 }
+
+func (n *NoDiff) BlockSize() int64 {
+	return 0
+}

@@ -31,6 +31,8 @@ func executeScript(t *testing.T, script string, workDir string) (stdout, stderr 
 	t.Helper()
 	scriptFile := filepath.Join(workDir, "test_script.sh")
 	err := os.WriteFile(scriptFile, []byte(script), 0o755)
+	defer os.Remove(scriptFile)
+
 	require.NoError(t, err, "Failed to write script file")
 
 	cmd := exec.CommandContext(t.Context(), "/bin/bash", scriptFile)
@@ -62,6 +64,7 @@ func executeScript(t *testing.T, script string, workDir string) (stdout, stderr 
 func getCurrentUser() (uid, gid int) {
 	uid = os.Getuid()
 	gid = os.Getgid()
+
 	return uid, gid
 }
 
@@ -70,6 +73,7 @@ func getFilePermissions(t *testing.T, path string) os.FileMode {
 	t.Helper()
 	info, err := os.Stat(path)
 	require.NoError(t, err, "Failed to stat file")
+
 	return info.Mode().Perm()
 }
 
@@ -79,6 +83,7 @@ func renderTemplate(t *testing.T, data copyScriptData) string {
 	var buf bytes.Buffer
 	err := copyScriptTemplate.Execute(&buf, data)
 	require.NoError(t, err, "Template execution should not fail")
+
 	return buf.String()
 }
 

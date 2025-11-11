@@ -17,9 +17,13 @@ job "filestore-cleanup" {
         }
 
         task "filestore-cleanup" {
-            driver = "raw_exec"
+          driver = "raw_exec"
 
-            config {
+          env {
+            NODE_ID = "$${node.unique.name}"
+          }
+
+          config {
                 command = "local/clean-nfs-cache"
                 args = [
                     "--dry-run=${dry_run}",

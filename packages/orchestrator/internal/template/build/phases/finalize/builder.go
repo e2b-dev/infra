@@ -75,7 +75,7 @@ func (ppb *PostProcessingBuilder) Metadata() phases.PhaseMeta {
 	}
 }
 
-func (ppb *PostProcessingBuilder) Hash(sourceLayer phases.LayerResult) (string, error) {
+func (ppb *PostProcessingBuilder) Hash(_ context.Context, sourceLayer phases.LayerResult) (string, error) {
 	return cache.HashKeys(sourceLayer.Hash, "config-run-cmd"), nil
 }
 
@@ -232,7 +232,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 		var startCmdRun errgroup.Group
 		startCmdConfirm := make(chan struct{})
 		if meta.Start.StartCmd != "" {
-			userLogger.Info("Running start command")
+			userLogger.Info(fmt.Sprintf("Running start command: %s", meta.Start.StartCmd))
 			startCmdRun.Go(func() error {
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,

@@ -527,7 +527,6 @@ resource "nomad_job" "template_manager" {
     otel_collector_grpc_endpoint    = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address          = "http://localhost:${var.logs_proxy_port.port}"
     orchestrator_services           = "template-manager"
-    allow_sandbox_internet          = var.allow_sandbox_internet
     clickhouse_connection_string    = local.clickhouse_connection_string
     dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
     launch_darkly_api_key           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)

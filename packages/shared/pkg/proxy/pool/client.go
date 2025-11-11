@@ -2,6 +2,7 @@ package pool
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -13,12 +14,15 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type ProxyClient struct {
 	httputil.ReverseProxy
 
 	transport *http.Transport
+
+	activeConnections *smap.Map[*tracking.Connection]
 }
 
 func newProxyClient(
@@ -30,6 +34,8 @@ func newProxyClient(
 	currentConnsCounter *atomic.Int64,
 	logger *log.Logger,
 ) *ProxyClient {
+	activeConnections := smap.New[*tracking.Connection]()
+
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		// Limit the max connection per host to avoid exhausting the number of available ports to one host.
@@ -56,7 +62,7 @@ func newProxyClient(
 				if err == nil {
 					totalConnsCounter.Add(1)
 
-					return tracking.NewConnection(conn, currentConnsCounter), nil
+					return tracking.NewConnection(conn, currentConnsCounter, activeConnections), nil
 				}
 
 				if ctx.Err() != nil {
@@ -81,89 +87,114 @@ func newProxyClient(
 		DisableCompression: true, // No need to request or manipulate compression
 	}
 
-	return &ProxyClient{
-		transport: transport,
-		ReverseProxy: httputil.ReverseProxy{
-			Transport: transport,
-			Rewrite: func(r *httputil.ProxyRequest) {
-				t, ok := r.In.Context().Value(DestinationContextKey{}).(*Destination)
-				if !ok {
-					zap.L().Error("failed to get routing destination from context")
-
-					// Error from this will be later caught as r.Host == "" in the ErrorHandler
-					r.SetURL(r.In.URL)
-
-					return
-				}
-
-				r.SetURL(t.Url)
-				// We are **not** using SetXForwarded() because servers can sometimes modify the content-location header to be http which might break some customer services.
-				r.Out.Host = r.In.Host
-			},
-			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-				if r.Host == "" {
-					zap.L().Error("error handler called from rewrite because of missing DestinationContext", zap.Error(err))
-
-					http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
-
-					return
-				}
-
-				t, ok := r.Context().Value(DestinationContextKey{}).(*Destination)
-				if !ok {
-					zap.L().Error("failed to get routing destination from context")
-
-					http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
-
-					return
-				}
-
-				if t.DefaultToPortError {
-					err = template.
-						NewPortClosedError(t.SandboxId, r.Host, t.SandboxPort).
-						HandleError(w, r)
-					if err != nil {
-						zap.L().Error("failed to handle error", zap.Error(err))
-
-						http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
-
-						return
-					}
-
-					return
-				}
-
-				zap.L().Error("sandbox error handler called", zap.Error(err))
-
-				http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
-			},
-			ModifyResponse: func(r *http.Response) error {
-				t, ok := r.Request.Context().Value(DestinationContextKey{}).(*Destination)
-				if !ok {
-					zap.L().Error("failed to get routing target from context")
-
-					return nil
-				}
-
-				if r.StatusCode >= 500 {
-					t.RequestLogger.Error(
-						"Reverse proxy error",
-						zap.Int("status_code", r.StatusCode),
-					)
-				} else {
-					t.RequestLogger.Debug("Reverse proxy response",
-						zap.Int("status_code", r.StatusCode),
-					)
-				}
-
-				return nil
-			},
-			// Ideally we would add info about sandbox to each error log, but there is no easy way right now.
-			ErrorLog: logger,
-		},
+	pc := &ProxyClient{
+		transport:         transport,
+		activeConnections: activeConnections,
 	}
+
+	pc.ReverseProxy = httputil.ReverseProxy{
+		Transport: transport,
+		Rewrite: func(r *httputil.ProxyRequest) {
+			t, ok := pc.getDestination(r.In)
+			if !ok {
+				r.SetURL(r.In.URL) // make linters happy, shouldn't matter
+
+				return
+			}
+
+			r.SetURL(t.Url)
+			// We are **not** using SetXForwarded() because servers can sometimes modify the content-location header to be http which might break some customer services.
+			r.Out.Host = r.In.Host
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			t, ok := pc.getDestination(r)
+			if !ok {
+				zap.L().Error("proxy request without sandbox received error", zap.Error(err))
+				http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
+
+				return
+			}
+
+			if r.Host == "" { // kept around for historical reasons, unsure of usefulness. todo: find out if this is useful.
+				t.RequestLogger.Error("error handler called from rewrite because of missing DestinationContext", zap.Error(err))
+				http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
+
+				return
+			}
+
+			if err != nil {
+				t.RequestLogger.Error("sandbox error handler called", zap.Error(err))
+			}
+
+			if t.DefaultToPortError {
+				err = template.
+					NewPortClosedError(t.SandboxId, r.Host, t.SandboxPort).
+					HandleError(w, r)
+				if err != nil {
+					zap.L().Error("failed to handle error", zap.Error(err))
+
+					http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
+
+					return
+				}
+
+				return
+			}
+
+			http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
+		},
+		ModifyResponse: func(r *http.Response) error {
+			t, ok := pc.getDestination(r.Request)
+			if !ok {
+				return nil
+			}
+
+			if r.StatusCode >= 500 {
+				t.RequestLogger.Error(
+					"Reverse proxy error",
+					zap.Int("status_code", r.StatusCode),
+				)
+			} else {
+				t.RequestLogger.Debug("Reverse proxy response",
+					zap.Int("status_code", r.StatusCode),
+				)
+			}
+
+			return nil
+		},
+		// Ideally we would add info about sandbox to each error log, but there is no easy way right now.
+		ErrorLog: logger,
+	}
+
+	return pc
+}
+
+func (p *ProxyClient) getDestination(r *http.Request) (*Destination, bool) {
+	d, ok := getDestination(r.Context())
+	if !ok {
+		zap.L().Error("failed to get routing target from context",
+			zap.String("request_method", r.Method),
+			zap.String("request_url", r.URL.String()))
+
+		return nil, false
+	}
+
+	return d, true
 }
 
 func (p *ProxyClient) closeIdleConnections() {
 	p.transport.CloseIdleConnections()
+}
+
+func (p *ProxyClient) resetAllConnections() error {
+	var errs []error
+
+	for _, conn := range p.activeConnections.Items() {
+		err := conn.Reset()
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
 }

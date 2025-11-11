@@ -130,10 +130,11 @@ func buildTemplate(
 		}
 	}()
 
-	networkPool, err := network.NewPool(8, 8, clientID, networkConfig)
+	slotStorage, err := network.NewStorageLocal(networkConfig)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
+	networkPool := network.NewPool(8, 8, slotStorage, networkConfig)
 	go func() {
 		networkPool.Populate(ctx)
 		logger.Info("network pool done populating")
@@ -190,6 +191,7 @@ func buildTemplate(
 
 	builder := build.NewBuilder(
 		logger,
+		featureFlags,
 		sandboxFactory,
 		persistenceTemplate,
 		persistenceBuild,

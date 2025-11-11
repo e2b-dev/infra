@@ -9,9 +9,9 @@ import (
 )
 
 type MemoryBackend interface {
-	Dirty(ctx context.Context) (*block.Tracker, error)
-	// Disable switch the uffd to start serving empty pages.
-	Disable(ctx context.Context) error
+	// Disable unregisters the uffd from the memory mapping and returns the dirty pages.
+	// It must be called after FC pause finished and before FC snapshot is created.
+	Disable(ctx context.Context) (*block.Tracker, error)
 	Mapping(ctx context.Context) (*memory.Mapping, error)
 
 	Start(ctx context.Context, sandboxId string) error

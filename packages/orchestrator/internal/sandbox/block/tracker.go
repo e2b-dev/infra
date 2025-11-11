@@ -1,11 +1,13 @@
 package block
 
 import (
+	"iter"
 	"sync"
 
 	"github.com/bits-and-blooms/bitset"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Tracker struct {
@@ -37,17 +39,11 @@ func (t *Tracker) Has(off int64) bool {
 	return t.b.Test(uint(header.BlockIdx(off, t.blockSize)))
 }
 
-func (t *Tracker) Add(off int64) bool {
+func (t *Tracker) Add(off int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.b.Test(uint(header.BlockIdx(off, t.blockSize))) {
-		return false
-	}
-
 	t.b.Set(uint(header.BlockIdx(off, t.blockSize)))
-
-	return true
 }
 
 func (t *Tracker) Reset() {
@@ -74,4 +70,14 @@ func (t *Tracker) Clone() *Tracker {
 		b:         t.BitSet(),
 		blockSize: t.BlockSize(),
 	}
+}
+
+func (t *Tracker) Offsets() iter.Seq[int64] {
+	return bitsetOffsets(t.BitSet(), t.BlockSize())
+}
+
+func bitsetOffsets(b *bitset.BitSet, blockSize int64) iter.Seq[int64] {
+	return utils.TransformTo(b.EachSet(), func(idx uint) int64 {
+		return header.BlockOffset(int64(idx), blockSize)
+	})
 }

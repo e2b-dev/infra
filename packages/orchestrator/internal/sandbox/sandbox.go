@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -28,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -43,6 +45,9 @@ var (
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
+	Transport: otelhttp.NewTransport(
+		http.DefaultTransport,
+	),
 }
 
 type Config struct {
@@ -434,6 +439,8 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to serve memory: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "started serving memory")
+
 	// ==== END of resources initialization ====
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
@@ -562,6 +569,8 @@ func (f *Factory) ResumeSandbox(
 		return sbx.Stop(ctx)
 	})
 
+	telemetry.ReportEvent(execCtx, "waiting for envd")
+
 	err = sbx.WaitForEnvd(
 		ctx,
 		f.config.EnvdTimeout,
@@ -569,6 +578,8 @@ func (f *Factory) ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+
+	telemetry.ReportEvent(execCtx, "envd initialized")
 
 	go sbx.Checks.Start(execCtx)
 
@@ -675,11 +686,7 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.memory.Disable(ctx); err != nil {
-		return nil, fmt.Errorf("failed to disable uffd: %w", err)
-	}
-
-	dirty, err := s.memory.Dirty(ctx)
+	dirty, err := s.memory.Disable(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
 	}
@@ -859,6 +866,15 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
 	}
 
+	err = header.ValidateMappings(memfileHeader.Mapping, memfileHeader.Metadata.Size, memfileHeader.Metadata.BlockSize)
+	if err != nil {
+		if memfileHeader.IsNormalizeFixApplied() {
+			return nil, nil, fmt.Errorf("invalid memfile header mappings: %w", err)
+		}
+
+		zap.L().Warn("memfile header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(memfileHeader.Metadata.BuildId.String()))
+	}
+
 	return memfileDiff, memfileHeader, nil
 }
 
@@ -913,6 +929,15 @@ func pauseProcessRootfs(
 	rootfsHeader, err := header.NewHeader(rootfsMetadata, rootfsMappings)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
+	}
+
+	err = header.ValidateMappings(rootfsHeader.Mapping, rootfsHeader.Metadata.Size, rootfsHeader.Metadata.BlockSize)
+	if err != nil {
+		if rootfsHeader.IsNormalizeFixApplied() {
+			return nil, nil, fmt.Errorf("invalid rootfs header mappings: %w", err)
+		}
+
+		zap.L().Warn("rootfs header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(rootfsHeader.Metadata.BuildId.String()))
 	}
 
 	return rootfsDiff, rootfsHeader, nil
@@ -974,9 +999,13 @@ func serveMemory(
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "created uffd")
+
 	if err = fcUffd.Start(ctx, sandboxID); err != nil {
 		return nil, fmt.Errorf("failed to start uffd: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "started uffd")
 
 	cleanup.Add(func(ctx context.Context) error {
 		_, span := tracer.Start(ctx, "uffd-stop")

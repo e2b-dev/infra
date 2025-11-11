@@ -14,7 +14,7 @@ source "googlecompute" "orch" {
   # TODO: Overwrite the image instead of creating timestamped images every time we build its
   image_name    = "e2b-orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
   project_id    = var.gcp_project_id
-  source_image  = "ubuntu-2204-jammy-v20250228"
+  source_image  = "ubuntu-2204-jammy-v20251023"
   ssh_username  = "ubuntu"
   zone          = var.gcp_zone
   disk_size     = 10
@@ -149,6 +149,15 @@ build {
       "sudo mv /tmp/limits.conf /etc/security/limits.conf",
       # Increase the maximum number of connections by 4x
       "echo 'net.netfilter.nf_conntrack_max = 2097152' | sudo tee -a /etc/sysctl.conf",
+    ]
+  }
+
+  # Block GCE's gce-resolved.conf to prevent DNS conflicts with Consul
+  provisioner "shell" {
+    inline = [
+      "echo 'Blocking gce-resolved.conf to prevent DNS conflicts with Consul DNS'",
+      "sudo dpkg-divert --add --rename --divert /etc/systemd/resolved.conf.d/gce-resolved.conf.diverted /etc/systemd/resolved.conf.d/gce-resolved.conf || true",
+      "echo 'dpkg-divert configured successfully'",
     ]
   }
 }

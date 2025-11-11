@@ -13,5 +13,5 @@ func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {
 		panic(err)
 	}
 
-	return newMemorySlicer(buf, int64(pagesize))
+	return NewMemorySlicer(buf, int64(pagesize))
 }

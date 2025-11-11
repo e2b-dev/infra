@@ -59,12 +59,7 @@ data "google_secret_manager_secret_version" "routing_domains" {
 }
 
 locals {
-  // Taking additional domains from local env is there just for backward compatibility
-  additional_domains_from_secret = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
-  additional_domains_from_env = (var.additional_domains != "" ?
-  [for item in split(",", var.additional_domains) : trimspace(item)] : [])
-
-  additional_domains = distinct(concat(local.additional_domains_from_env, local.additional_domains_from_secret))
+  additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
 }
 
 module "init" {
@@ -91,12 +86,8 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  client_cluster_size_max           = var.client_cluster_size_max
-  client_cluster_cache_disk_size_gb = var.client_cluster_cache_disk_size_gb
-  client_cluster_cache_disk_type    = var.client_cluster_cache_disk_type
-  build_cluster_root_disk_size_gb   = var.build_cluster_root_disk_size_gb
-  build_cluster_cache_disk_size_gb  = var.build_cluster_cache_disk_size_gb
-  build_cluster_cache_disk_type     = var.build_cluster_cache_disk_type
+  client_cluster_size_max         = var.client_cluster_size_max
+  build_cluster_root_disk_size_gb = var.build_cluster_root_disk_size_gb
 
   api_cluster_size        = var.api_cluster_size
   build_cluster_size      = var.build_cluster_size
@@ -104,6 +95,9 @@ module "cluster" {
   client_cluster_size     = var.client_cluster_size
   server_cluster_size     = var.server_cluster_size
   loki_cluster_size       = var.loki_cluster_size
+
+  build_cluster_cache_disk_count  = var.build_cluster_cache_disk_count
+  client_cluster_cache_disk_count = var.client_cluster_cache_disk_count
 
   server_machine_type     = var.server_machine_type
   client_machine_type     = var.client_machine_type

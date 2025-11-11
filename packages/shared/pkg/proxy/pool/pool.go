@@ -69,14 +69,17 @@ func (p *ProxyPool) Get(d *Destination) *ProxyClient {
 	})
 }
 
-func (p *ProxyPool) Close(connectionKey string) {
+func (p *ProxyPool) Close(connectionKey string) (err error) {
 	p.pool.RemoveCb(connectionKey, func(_ string, proxy *ProxyClient, _ bool) bool {
 		if proxy != nil {
 			proxy.closeIdleConnections()
+			err = proxy.resetAllConnections()
 		}
 
 		return true
 	})
+
+	return err
 }
 
 func (p *ProxyPool) TotalConnections() uint64 {

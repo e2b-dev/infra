@@ -36,11 +36,7 @@ func NewNoopMemory(size, blockSize int64) *NoopMemory {
 	}
 }
 
-func (m *NoopMemory) Disable(context.Context) error {
-	return nil
-}
-
-func (m *NoopMemory) Dirty(context.Context) (*block.Tracker, error) {
+func (m *NoopMemory) Disable(context.Context) (*block.Tracker, error) {
 	return m.dirty.Clone(), nil
 }
 
@@ -57,7 +53,7 @@ func (m *NoopMemory) Stop() error {
 }
 
 func (m *NoopMemory) Ready() chan struct{} {
-	ch := make(chan struct{})
+	ch := make(chan struct{}, 1)
 	ch <- struct{}{}
 
 	return ch

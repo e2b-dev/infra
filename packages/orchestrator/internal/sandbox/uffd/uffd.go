@@ -53,6 +53,7 @@ func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 		fdExit:     fdExit,
 		socketPath: socketPath,
 		memfile:    memfile,
+		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 	}, nil
 }
 
@@ -139,7 +140,6 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	uffd, err := userfaultfd.NewUserfaultfdFromFd(
 		uintptr(fds[0]),
 		u.memfile,
-		u.memfile.BlockSize(),
 		m,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
@@ -155,20 +155,6 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
-
-	for _, region := range m.Regions {
-		// Register the WP. It is possible that the memory region was already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these.
-		// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
-		// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
-		err := uffd.Register(
-			region.BaseHostVirtAddr+region.Offset,
-			uint64(region.Size),
-			userfaultfd.UFFDIO_REGISTER_MODE_WP|userfaultfd.UFFDIO_REGISTER_MODE_MISSING,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
-		}
-	}
 
 	u.readyCh <- struct{}{}
 
@@ -191,30 +177,43 @@ func (u *Uffd) Ready() chan struct{} {
 	return u.readyCh
 }
 
-func (u *Uffd) Disable(ctx context.Context) error {
-	uffd, err := u.handler.WaitWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get uffd: %w", err)
-	}
-
-	uffd.Disable()
-
-	return nil
-}
-
 func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-// Dirty waits for all the requests in flight to be finished and then returns clone of the dirty tracker.
-// Call *after* pausing the firecracker process—to let the uffd process all the requests.
-func (u *Uffd) Dirty(ctx context.Context) (*block.Tracker, error) {
+// Disable unregisters the uffd from the memory mapping,
+// allowing us to create a "diff" snapshot via FC API without dirty tracking enabled,
+// and without pagefaulting all remaining missing pages.
+//
+// It should be called *after* Dirty().
+//
+// After calling Disable(), this uffd is no longer usable—we won't be able to resume the sandbox via API.
+// The uffd itself is not closed though, as that should be done by the sandbox cleanup.
+func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	return uffd.Dirty(ctx)
+	err = uffd.Unregister()
+	if err != nil {
+		return nil, fmt.Errorf("failed to unregister uffd: %w", err)
+	}
+
+	return u.dirty(ctx)
+}
+
+// Dirty waits for the current requests to finish and returns the dirty pages.
+//
+// It *MUST* be only called after the sandbox was successfully paused via API.
+// It also resets the dirty page trackers.
+func (u *Uffd) dirty(ctx context.Context) (*block.Tracker, error) {
+	uffd, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	return uffd.Dirty(false), nil
 }
 
 func (u *Uffd) Mapping(ctx context.Context) (*memory.Mapping, error) {

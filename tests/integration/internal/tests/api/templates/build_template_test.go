@@ -38,7 +38,7 @@ func buildTemplate(
 	c := setup.GetAPIClient()
 
 	// Request build
-	resp, err := c.PostV2TemplatesWithResponse(ctx, api.TemplateBuildRequestV2{
+	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
 		Alias:    templateAlias,
 		CpuCount: utils.ToPtr[int32](2),
 		MemoryMB: utils.ToPtr[int32](1024),
@@ -732,8 +732,7 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 			expectedLogs: []string{
 				"Running start command",
 				"[start] [stdout]: Hello, World!",
-				"Waiting for template to be ready",
-				"[ready cmd]: sleep 2",
+				"Waiting for template to be ready: sleep 2",
 				"Template is ready",
 			},
 		},
@@ -758,7 +757,6 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 				"[start] [stdout]: Starting with TEST_VAR=test_value",
 				"[start] [stdout]: Initialization complete",
 				"Waiting for template to be ready",
-				"[ready cmd]:",
 				"Template is ready",
 			},
 		},

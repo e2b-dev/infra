@@ -40,8 +40,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/webhooks"
+	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -289,11 +288,11 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	// pubsub
-	var redisPubSub pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]
+	var redisPubSub pubsub.PubSub[event.SandboxEvent, struct{}]
 	if redisClient != nil {
-		redisPubSub = pubsub.NewRedisPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData](redisClient, "sandbox-webhooks")
+		redisPubSub = pubsub.NewRedisPubSub[event.SandboxEvent, struct{}](redisClient, "sandbox-webhooks")
 	} else {
-		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
+		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, struct{}]()
 	}
 	closers = append(closers, closer{"pubsub", redisPubSub.Close})
 
@@ -334,10 +333,11 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"device pool", devicePool.Close})
 
 	// network pool
-	networkPool, err := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
+	slotStorage, err := newStorage(nodeID, config.NetworkConfig)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
+	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
 	startService("network pool", func() error {
 		networkPool.Populate(ctx)
 
@@ -406,6 +406,7 @@ func run(config cfg.Config) (success bool) {
 	if slices.Contains(services, cfg.TemplateManager) {
 		tmpl, err = tmplserver.New(
 			ctx,
+			featureFlags,
 			tel.MeterProvider,
 			globalLogger,
 			tmplSbxLoggerExternal,
@@ -549,4 +550,13 @@ type serviceDoneError struct {
 
 func (e serviceDoneError) Error() string {
 	return fmt.Sprintf("service %s finished", e.name)
+}
+
+// NewStorage creates a new slot storage based on the environment, we are ok with using a memory storage for local
+func newStorage(nodeID string, config network.Config) (network.Storage, error) {
+	if env.IsDevelopment() || config.UseLocalNamespaceStorage {
+		return network.NewStorageLocal(config)
+	}
+
+	return network.NewStorageKV(nodeID, config)
 }

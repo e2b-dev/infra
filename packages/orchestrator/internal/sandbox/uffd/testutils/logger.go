@@ -37,7 +37,7 @@ func NewTestLogger(t *testing.T) *zap.Logger {
 	encoder := zapcore.NewConsoleEncoder(encoderCfg)
 
 	testSyncer := zapcore.AddSync(&testWriter{t})
-	core := zapcore.NewCore(encoder, testSyncer, zap.WarnLevel)
+	core := zapcore.NewCore(encoder, testSyncer, zap.DebugLevel)
 
 	return zap.New(core, zap.AddCaller())
 }
