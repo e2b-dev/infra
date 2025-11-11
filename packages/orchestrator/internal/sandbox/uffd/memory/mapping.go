@@ -52,9 +52,9 @@ func (m *Mapping) GetHostVirtRanges(off int64, size int64) (hostVirtRanges []blo
 		}
 
 		start := region.shiftedHostVirtAddr(currentOff)
-		s := min(int64(region.endHostVirtAddr()-start), size-n)
+		remainingSize := min(int64(region.endHostVirtAddr()-start), size-n)
 
-		r := block.NewRange(int64(start), s)
+		r := block.NewRange(int64(start), remainingSize)
 
 		hostVirtRanges = append(hostVirtRanges, r)
 
