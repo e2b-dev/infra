@@ -23,6 +23,7 @@
 - redis: localhost:6379
 - otel collector (grpc): localhost:4317
 - otel collector (http): localhost:4318
+- vector: localhost:30006
 - e2b api: http://localhost:3000
 - e2b client proxy: http://localhost:3002
 - e2b orchestrator: http://localhost:5008

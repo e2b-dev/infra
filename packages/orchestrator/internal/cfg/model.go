@@ -59,7 +59,7 @@ func makePathsAbsolute(c *BuilderConfig) error {
 
 		dir, err := filepath.Abs(dir)
 		if err != nil {
-			return fmt.Errorf("failed to absolutify %q: %w", *item, err)
+			return fmt.Errorf("failed to resolve %q to absolute path: %w", *item, err)
 		}
 
 		*item = dir
