@@ -685,7 +685,7 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	dirty, err := s.memory.Dirty(ctx)
+	dirty, err := s.memory.Disable(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
 	}
@@ -706,10 +706,6 @@ func (s *Sandbox) Pause(
 	}
 	// Close the file even if an error occurs
 	defer memfile.Close()
-
-	if err := s.memory.Disable(ctx); err != nil {
-		return nil, fmt.Errorf("failed to disable uffd: %w", err)
-	}
 
 	err = s.process.CreateSnapshot(
 		ctx,
@@ -967,7 +963,7 @@ func serveMemory(
 	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
 
-	fcUffd, err := uffd.New(memfile, socketPath, memfile.BlockSize())
+	fcUffd, err := uffd.New(memfile, socketPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
