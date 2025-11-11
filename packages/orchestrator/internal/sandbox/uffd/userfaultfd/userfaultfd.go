@@ -48,14 +48,29 @@ type Userfaultfd struct {
 func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
 	blockSize := src.BlockSize()
 
+	uffd := uffdFd(fd)
+
 	for _, region := range m.Regions {
 		if region.PageSize != uintptr(blockSize) {
 			return nil, fmt.Errorf("block size mismatch: %d != %d for region %d", region.PageSize, blockSize, region.BaseHostVirtAddr)
 		}
+
+		// Register the WP for the regions.
+		// It is possible that the memory region might be already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these registration flags.
+		// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
+		// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
+		err := uffd.register(
+			region.BaseHostVirtAddr,
+			uint64(region.Size),
+			UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
+		}
 	}
 
 	u := &Userfaultfd{
-		fd:              uffdFd(fd),
+		fd:              uffd,
 		src:             src,
 		missingRequests: block.NewTracker(blockSize),
 		writeRequests:   block.NewTracker(blockSize),
@@ -327,25 +342,6 @@ func (u *Userfaultfd) Unregister() error {
 		if err := u.fd.unregister(r.BaseHostVirtAddr, r.Size); err != nil {
 			return fmt.Errorf("failed to unregister: %w", err)
 		}
-	}
-
-	return nil
-}
-
-// RegisterWriteProtecton registers the WP for the region.
-// It is possible that the memory region might be already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these registration flags.
-//
-// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
-//
-// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
-func (u *Userfaultfd) RegisterWriteProtecton(region *memory.Region) error {
-	err := u.fd.register(
-		region.BaseHostVirtAddr,
-		uint64(region.Size),
-		UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
 	}
 
 	return nil

@@ -147,13 +147,6 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("failed to create uffd: %w", err)
 	}
 
-	for _, region := range m.Regions {
-		err := uffd.RegisterWriteProtecton(&region)
-		if err != nil {
-			return err
-		}
-	}
-
 	u.handler.SetValue(uffd)
 
 	defer func() {
