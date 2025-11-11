@@ -142,6 +142,14 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 	testImage, err = mutate.AppendLayers(testImage, layer)
 	require.NoError(t, err)
 
+	// Set the config to include the proper platform
+	configFile, err := testImage.ConfigFile()
+	require.NoError(t, err)
+	configFile.Architecture = "amd64"
+	configFile.OS = "linux"
+	testImage, err = mutate.ConfigFile(testImage, configFile)
+	require.NoError(t, err)
+
 	// Test credentials
 	testUsername := "testuser"
 	testPassword := "testpass"
