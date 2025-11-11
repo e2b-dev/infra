@@ -61,7 +61,8 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 	}
 
 	// Build options
-	opts := []remote.Option{remote.WithPlatform(DefaultPlatform)}
+	platform := DefaultPlatform
+	opts := []remote.Option{remote.WithPlatform(platform)}
 
 	// Use the auth provider if provided
 	if authProvider != nil {
@@ -81,6 +82,11 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 
 	telemetry.ReportEvent(ctx, "pulled public image")
 
+	err = verifyImagePlatform(img, platform)
+	if err != nil {
+		return nil, err
+	}
+
 	return img, nil
 }
 
@@ -88,12 +94,19 @@ func GetImage(ctx context.Context, artifactRegistry artifactsregistry.ArtifactsR
 	childCtx, childSpan := tracer.Start(ctx, "pull-docker-image")
 	defer childSpan.End()
 
-	img, err := artifactRegistry.GetImage(childCtx, templateId, buildId, DefaultPlatform)
+	platform := DefaultPlatform
+
+	img, err := artifactRegistry.GetImage(childCtx, templateId, buildId, platform)
 	if err != nil {
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "pulled image")
+
+	err = verifyImagePlatform(img, platform)
+	if err != nil {
+		return nil, err
+	}
 
 	return img, nil
 }
@@ -365,4 +378,15 @@ func createExport(ctx context.Context, logger *zap.Logger, srcImage containerreg
 	logger.Info("Layers extracted")
 
 	return layerPaths, nil
+}
+
+func verifyImagePlatform(img containerregistry.Image, platform containerregistry.Platform) error {
+	config, err := img.ConfigFile()
+	if err != nil {
+		return fmt.Errorf("error getting image config file: %w", err)
+	}
+	if config.Architecture != platform.Architecture {
+		return fmt.Errorf("image is not %s", platform.Architecture)
+	}
+	return nil
 }
