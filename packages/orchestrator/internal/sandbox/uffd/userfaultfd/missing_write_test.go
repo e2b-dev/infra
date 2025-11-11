@@ -10,6 +10,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+// TODO: Modify to check writes
+
 func TestMissingWrite(t *testing.T) {
 	t.Parallel()
 
