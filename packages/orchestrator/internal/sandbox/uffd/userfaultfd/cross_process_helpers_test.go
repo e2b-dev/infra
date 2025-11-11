@@ -130,7 +130,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	dirtyOffsetsWriter.Close()
 
 	t.Cleanup(func() {
-		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
+		signalErr := cmd.Process.Signal(syscall.SIGTERM)
 		assert.NoError(t, signalErr)
 
 		waitErr := cmd.Wait()

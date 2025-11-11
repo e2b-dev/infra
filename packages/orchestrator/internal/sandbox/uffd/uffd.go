@@ -185,8 +185,6 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 // allowing us to create a "diff" snapshot via FC API without dirty tracking enabled,
 // and without pagefaulting all remaining missing pages.
 //
-// It should be called *after* Dirty().
-//
 // After calling Disable(), this uffd is no longer usable—we won't be able to resume the sandbox via API.
 // The uffd itself is not closed though, as that should be done by the sandbox cleanup.
 func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
