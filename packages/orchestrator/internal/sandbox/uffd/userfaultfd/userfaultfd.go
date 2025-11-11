@@ -190,7 +190,7 @@ outerLoop:
 
 		// Handle write to write protected page (WP+WRITE flag)
 		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 && flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			u.handleWriteProtection(addr, pagesize, offset)
+			u.handleWriteProtected(addr, pagesize, offset)
 
 			continue
 		}
@@ -294,7 +294,7 @@ func (u *Userfaultfd) handleMissing(
 	return nil
 }
 
-func (u *Userfaultfd) handleWriteProtection(addr, pagesize uintptr, offset int64) {
+func (u *Userfaultfd) handleWriteProtected(addr, pagesize uintptr, offset int64) {
 	u.wg.Go(func() error {
 		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 		// even if the errgroup is cancelled or the goroutine returns early.
