@@ -49,8 +49,8 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 
 		network := &types.SandboxNetworkConfig{
 			Egress: &types.SandboxNetworkEgressConfig{
-				AllowedAddresses: config.GetNetwork().GetEgress().GetAllowedAddresses(),
-				BlockedAddresses: config.GetNetwork().GetEgress().GetBlockedAddresses(),
+				AllowedAddresses: config.GetNetwork().GetEgress().GetAllowedCidrs(),
+				DeniedAddresses:  config.GetNetwork().GetEgress().GetDeniedCidrs(),
 			},
 		}
 

@@ -255,7 +255,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	))
 	defer span.End()
 
-	if network == nil || len(network.GetEgress().GetAllowedAddresses()) == 0 && len(network.GetEgress().GetBlockedAddresses()) == 0 {
+	if e := network.GetEgress(); len(e.GetAllowedCidrs()) == 0 && len(e.GetDeniedCidrs()) == 0 {
 		// Internet access is allowed by default.
 		return nil
 	}
@@ -269,15 +269,15 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		for _, address := range network.GetEgress().GetAllowedAddresses() {
-			err = s.Firewall.AddAllowedIP(address)
+		for _, cidr := range network.GetEgress().GetAllowedCidrs() {
+			err = s.Firewall.AddAllowedCIDR(cidr)
 			if err != nil {
 				return fmt.Errorf("error setting firewall rules: %w", err)
 			}
 		}
 
-		for _, address := range network.GetEgress().GetBlockedAddresses() {
-			err = s.Firewall.AddBlockedIP(address)
+		for _, cidr := range network.GetEgress().GetDeniedCidrs() {
+			err = s.Firewall.AddDeniedCIDR(cidr)
 			if err != nil {
 				return fmt.Errorf("error setting firewall rules: %w", err)
 			}

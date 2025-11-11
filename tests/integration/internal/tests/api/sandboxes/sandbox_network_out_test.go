@@ -25,7 +25,7 @@ func TestEgressFirewallAllowSpecificIP(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowedIPs,
-			BlockOut: &[]string{internetBlockAddress},
+			DenyOut:  &[]string{internetBlockAddress},
 		}),
 	)
 
@@ -52,7 +52,7 @@ func TestEgressFirewallBlockSpecificIP(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
-			BlockOut: &blockedIPs,
+			DenyOut: &blockedIPs,
 		}),
 	)
 
@@ -80,7 +80,7 @@ func TestEgressFirewallAllowCIDRRange(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowedRanges,
-			BlockOut: &[]string{internetBlockAddress},
+			DenyOut:  &[]string{internetBlockAddress},
 		}),
 	)
 
@@ -107,7 +107,7 @@ func TestEgressFirewallBlockCIDRRange(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
-			BlockOut: &blockedRanges,
+			DenyOut: &blockedRanges,
 		}),
 	)
 
@@ -141,7 +141,7 @@ func TestEgressFirewallAllowAndBlockCombination(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowedIPs,
-			BlockOut: &blockAll,
+			DenyOut:  &blockAll,
 		}),
 	)
 
@@ -170,7 +170,7 @@ func TestEgressFirewallPersistsAfterResume(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowedIPs,
-			BlockOut: &[]string{internetBlockAddress},
+			DenyOut:  &[]string{internetBlockAddress},
 		}),
 	)
 
@@ -266,7 +266,7 @@ func TestEgressFirewallAllowOverridesBlock(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowedIPs,
-			BlockOut: &blockedIPs,
+			DenyOut:  &blockedIPs,
 		}),
 	)
 
@@ -293,7 +293,7 @@ func TestEgressFirewallMultipleAllowedIPs(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowedIPs,
-			BlockOut: &[]string{internetBlockAddress},
+			DenyOut:  &[]string{internetBlockAddress},
 		}),
 	)
 

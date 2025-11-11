@@ -312,7 +312,7 @@ type NewAccessToken struct {
 
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
-	// AllowInternetAccess Allow sandbox to access the internet
+	// AllowInternetAccess Allow sandbox to access the internet. When set to false, it behaves the same as specifying denyOut to 0.0.0.0/0 in the network config.
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 
 	// AutoPause Automatically pauses the sandbox after the timeout
@@ -600,11 +600,11 @@ type SandboxMetric struct {
 
 // SandboxNetworkConfig defines model for SandboxNetworkConfig.
 type SandboxNetworkConfig struct {
-	// AllowOut List of allowed CIDR blocks or IP addresses for egress traffic
+	// AllowOut List of allowed CIDR blocks or IP addresses for egress traffic. Allowed addresses always take precedence over blocked addresses.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
-	// BlockOut List of blocked CIDR blocks or IP addresses for egress traffic
-	BlockOut *[]string `json:"blockOut,omitempty"`
+	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic
+	DenyOut *[]string `json:"denyOut,omitempty"`
 }
 
 // SandboxState State of the sandbox

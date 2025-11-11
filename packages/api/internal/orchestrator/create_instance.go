@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -27,7 +28,21 @@ import (
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const internetBlockAddress = "0.0.0.0/0"
+const internetBlockCIDR = "0.0.0.0/0"
+
+// Convert a list of string addresses to the SetData type
+func addressStringsToCIDRs(addressStrings []string) []string {
+	data := make([]string, 0, len(addressStrings))
+
+	for _, addressString := range addressStrings {
+		if !strings.Contains(addressString, "/") {
+			addressString += "/32"
+		}
+		data = append(data, addressString)
+	}
+
+	return data
+}
 
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
 func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool) *orchestrator.SandboxNetworkConfig {
@@ -37,15 +52,15 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 
 	// Copy network configuration if provided
 	if network != nil && network.Egress != nil {
-		orchNetwork.Egress.AllowedAddresses = network.Egress.AllowedAddresses
-		orchNetwork.Egress.BlockedAddresses = network.Egress.BlockedAddresses
+		orchNetwork.Egress.AllowedCidrs = addressStringsToCIDRs(network.Egress.AllowedAddresses)
+		orchNetwork.Egress.DeniedCidrs = addressStringsToCIDRs(network.Egress.DeniedAddresses)
 	}
 
 	// Handle the case where internet access is explicitly disabled
 	// This should be applied after copying the network config to preserve allowed addresses
 	if allowInternetAccess != nil && !*allowInternetAccess {
 		// Block all internet access - this overrides any other blocked addresses
-		orchNetwork.Egress.BlockedAddresses = []string{internetBlockAddress}
+		orchNetwork.Egress.DeniedCidrs = []string{internetBlockCIDR}
 	}
 
 	return orchNetwork
@@ -164,7 +179,7 @@ func (o *Orchestrator) CreateSandbox(
 		sbxDomain = cluster.SandboxDomain
 	}
 
-	orchNetwork := buildNetworkConfig(network, allowInternetAccess)
+	sbxNetwork := buildNetworkConfig(network, allowInternetAccess)
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
@@ -188,7 +203,7 @@ func (o *Orchestrator) CreateSandbox(
 			Snapshot:            isResume,
 			AutoPause:           autoPause,
 			AllowInternetAccess: allowInternetAccess,
-			Network:             orchNetwork,
+			Network:             sbxNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
 		},
 		StartTime: timestamppb.New(startTime),

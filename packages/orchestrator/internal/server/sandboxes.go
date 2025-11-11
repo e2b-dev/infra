@@ -35,7 +35,7 @@ const (
 	requestTimeout              = 60 * time.Second
 	maxStartingInstancesPerNode = 3
 
-	internetBlockAddress = "0.0.0.0/0"
+	internetBlockCIDR = "0.0.0.0/0"
 )
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
@@ -106,6 +106,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	network := proto.CloneOf(req.GetSandbox().GetNetwork())
 
 	// TODO: Temporarily set this based on global config, should be removed later
+	// https://linear.app/e2b/issue/ENG-3291
 	//  (it should be passed network config from API)
 	allowInternet := s.config.AllowSandboxInternet
 	if req.GetSandbox().AllowInternetAccess != nil {
@@ -118,7 +119,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if network.GetEgress() == nil {
 			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
 		}
-		network.Egress.BlockedAddresses = []string{internetBlockAddress}
+		network.Egress.DeniedCidrs = []string{internetBlockCIDR}
 	}
 
 	sbx, err := s.sandboxFactory.ResumeSandbox(

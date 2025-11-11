@@ -14,7 +14,7 @@ const PausedSandboxConfigVersion = "v1"
 
 type SandboxNetworkEgressConfig struct {
 	AllowedAddresses []string `json:"allowedAddresses,omitempty"`
-	BlockedAddresses []string `json:"blockedAddresses,omitempty"`
+	DeniedAddresses  []string `json:"deniedAddresses,omitempty"`
 }
 
 type SandboxNetworkConfig struct {

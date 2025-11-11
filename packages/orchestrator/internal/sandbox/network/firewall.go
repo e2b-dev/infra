@@ -150,8 +150,8 @@ func (fw *Firewall) installRules() error {
 	return nil
 }
 
-// AddBlockedIP adds a single CIDR to the block set at runtime.
-func (fw *Firewall) AddBlockedIP(address string) error {
+// AddDeniedCIDR adds a single CIDR to the block set at runtime.
+func (fw *Firewall) AddDeniedCIDR(cidr string) error {
 	if fw.blockInternetTraffic {
 		// If internet is blocked, we don't need to add any other addresses to the block set.
 		// Because 0.0.0.0/0 is not valid IP per GoLang, we can't add new addresses to the block set.
@@ -159,7 +159,7 @@ func (fw *Firewall) AddBlockedIP(address string) error {
 	}
 
 	// 0.0.0.0/0 is not valid IP per GoLang, so we handle it as a special case
-	if address == allInternetTrafficAddress {
+	if cidr == allInternetTrafficAddress {
 		fw.blockInternetTraffic = true
 
 		fw.conn.FlushSet(fw.blockSet.Set())
@@ -181,7 +181,7 @@ func (fw *Firewall) AddBlockedIP(address string) error {
 			return err
 		}
 
-		data, err := set.AddressStringsToSetData([]string{address})
+		data, err := set.AddressStringsToSetData([]string{cidr})
 		if err != nil {
 			return err
 		}
@@ -199,19 +199,19 @@ func (fw *Firewall) AddBlockedIP(address string) error {
 	return nil
 }
 
-// AddAllowedIP adds a single CIDR to the allow set at runtime.
-func (fw *Firewall) AddAllowedIP(address string) error {
-	if address == allInternetTrafficAddress {
+// AddAllowedCIDR adds a single CIDR to the allow set at runtime.
+func (fw *Firewall) AddAllowedCIDR(cidr string) error {
+	if cidr == allInternetTrafficAddress {
 		// Internet is enabled by default.
 		return nil
 	}
 
-	err := canAllowAddress(address)
+	err := canAllowCIDR(cidr)
 	if err != nil {
 		return err
 	}
 
-	data, err := set.AddressStringsToSetData([]string{address})
+	data, err := set.AddressStringsToSetData([]string{cidr})
 	if err != nil {
 		return err
 	}
@@ -268,34 +268,25 @@ func (fw *Firewall) ResetAllowedCustom() error {
 	return fw.conn.Flush()
 }
 
-// canAllowAddress checks if the address is in the default blocked ranges.
-func canAllowAddress(address string) error {
+// canAllowCIDR checks if the address is in the default blocked ranges.
+func canAllowCIDR(cidr string) error {
 	blockedData, err := set.AddressStringsToSetData(blockedRanges)
 	if err != nil {
 		return err
 	}
 
-	addressData, err := set.AddressStringsToSetData([]string{address})
+	addressData, err := set.AddressStringsToSetData([]string{cidr})
 	if err != nil {
 		return err
 	}
 
 	if len(addressData) == 0 {
-		return fmt.Errorf("address %s is not a valid IP address", address)
-	}
-
-	// Convert single IP address to prefix for comparison
-	var addressPrefix netip.Prefix
-	if !addressData[0].Prefix.IsValid() {
-		// If it's a single IP (not a CIDR), convert it to a /32 or /128 prefix
-		addressPrefix = netip.PrefixFrom(addressData[0].Address, addressData[0].Address.BitLen())
-	} else {
-		addressPrefix = addressData[0].Prefix
+		return fmt.Errorf("address %s is not a valid IP address", cidr)
 	}
 
 	for _, blockedRange := range blockedData {
-		if blockedRange.Prefix.Overlaps(addressPrefix) {
-			return fmt.Errorf("address %s is blocked by the provider and cannot be added to the allow list", address)
+		if blockedRange.Prefix.Overlaps(addressData[0].Prefix) {
+			return fmt.Errorf("address %s is blocked by the provider and cannot be added to the allow list", cidr)
 		}
 	}
 

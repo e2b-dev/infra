@@ -163,7 +163,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		network = &types.SandboxNetworkConfig{
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(body.Network.AllowOut, nil),
-				BlockedAddresses: sharedUtils.DerefOrDefault(body.Network.BlockOut, nil),
+				DeniedAddresses:  sharedUtils.DerefOrDefault(body.Network.DenyOut, nil),
 			},
 		}
 	}
