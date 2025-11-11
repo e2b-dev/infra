@@ -75,6 +75,22 @@ runs:
         make -C packages/clickhouse migrate-without-build
       shell: bash
 
+    - name: Run Redis
+      run: |
+        docker run -d --name redis \
+              -p 6379:6379 \
+              --health-cmd="redis-cli ping" \
+              --health-interval=5s \
+              --health-timeout=2s \
+              --health-retries=5 \
+              redis:latest
+
+        while [ "$(docker inspect -f '{{.State.Health.Status}}' redis 2>/dev/null)" != "healthy" ]; do echo "Waiting for Redis to be healthy..."; sleep 2; done
+        echo "Redis is healthy!"
+        
+        echo "REDIS_URL=localhost:6379" >> .env.test
+      shell: bash
+
     - name: Start Services
       env:
         ENVD_TIMEOUT: "60s"

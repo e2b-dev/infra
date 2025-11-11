@@ -11,7 +11,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -20,15 +19,15 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchest
 // cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator.
 const cacheSyncTime = 20 * time.Second
 
-func (o *Orchestrator) GetSandbox(sandboxID string) (sandbox.Sandbox, error) {
-	return o.sandboxStore.Get(sandboxID)
+func (o *Orchestrator) GetSandbox(ctx context.Context, sandboxID string) (sandbox.Sandbox, error) {
+	return o.sandboxStore.Get(ctx, sandboxID)
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *memory.Store, skipSyncingWithNomad bool) {
+func (o *Orchestrator) keepInSync(ctx context.Context, store *sandbox.Store, skipSyncingWithNomad bool) {
 	// Run the first sync immediately
 	zap.L().Info("Running the initial node sync")
-	o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
+	o.syncNodes(ctx, store, skipSyncingWithNomad)
 
 	// Sync the nodes every cacheSyncTime
 	ticker := time.NewTicker(cacheSyncTime)
@@ -41,12 +40,12 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *memory.Sto
 
 			return
 		case <-ticker.C:
-			o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
+			o.syncNodes(ctx, store, skipSyncingWithNomad)
 		}
 	}
 }
 
-func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *memory.Store, skipSyncingWithNomad bool) {
+func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skipSyncingWithNomad bool) {
 	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
@@ -98,9 +97,9 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *memory.Stor
 			// because each of them is taken from different source pool
 			var err error
 			if n.IsNomadManaged() {
-				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, instanceCache)
+				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, store)
 			} else {
-				err = o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)
+				err = o.syncClusterNode(syncNodesSpanCtx, n, store)
 			}
 			if err != nil {
 				zap.L().Error("Error syncing node", zap.Error(err))
@@ -161,7 +160,7 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	}
 }
 
-func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, instanceCache *memory.Store) error {
+func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, store *sandbox.Store) error {
 	ctx, childSpan := tracer.Start(ctx, "sync-cluster-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID), telemetry.WithClusterID(node.ClusterID))
 	defer childSpan.End()
@@ -180,12 +179,12 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 	}
 
 	// Unified call for syncing node state across different node types
-	node.Sync(ctx, instanceCache)
+	node.Sync(ctx, store)
 
 	return nil
 }
 
-func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, instanceCache *memory.Store) error {
+func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, store *sandbox.Store) error {
 	ctx, childSpan := tracer.Start(ctx, "sync-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
 	defer childSpan.End()
@@ -204,7 +203,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, dis
 	}
 
 	// Unified call for syncing node state across different node types
-	node.Sync(ctx, instanceCache)
+	node.Sync(ctx, store)
 
 	return nil
 }

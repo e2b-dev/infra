@@ -31,6 +31,7 @@ tool (
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
+	github.com/bsm/redislock v0.9.4
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/e2b-dev/infra/packages/clickhouse v0.0.0
 	github.com/e2b-dev/infra/packages/db v0.0.0

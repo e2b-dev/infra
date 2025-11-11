@@ -60,7 +60,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 
 	defer func() { go o.countersRemove(context.WithoutCancel(ctx), sbx, stateAction) }()
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, stateAction) }()
-	defer o.sandboxStore.Remove(sbx.TeamID.String(), sbx.SandboxID)
+	defer o.sandboxStore.Remove(ctx, sbx.TeamID.String(), sbx.SandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, stateAction)
 	if err != nil {
 		zap.L().Error("Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
