@@ -58,16 +58,36 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		if errors.Is(err, ErrMissingTrafficAccessToken) {
-			zap.L().Warn("traffic access token header is missing", zap.String("host", r.Host))
-			http.Error(w, "Sandbox is secured with traffic access token. Access token header is missing", http.StatusForbidden)
+		var trafficMissingTokenErr *MissingTrafficAccessTokenError
+		if errors.As(err, &trafficMissingTokenErr) {
+			zap.L().Warn("traffic access token is missing", zap.String("host", r.Host))
+
+			err = template.
+				NewTrafficAccessTokenMissingHeader(trafficMissingTokenErr.SandboxId, r.Host, trafficMissingTokenErr.Header).
+				HandleError(w, r)
+			if err != nil {
+				zap.L().Error("failed to handle traffic missing traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficMissingTokenErr.SandboxId))
+				http.Error(w, "Failed to handle invalid missing access token header error", http.StatusInternalServerError)
+
+				return
+			}
 
 			return
 		}
 
-		if errors.Is(err, ErrInvalidTrafficAccessToken) {
+		var trafficInvalidTokenErr *InvalidTrafficAccessTokenError
+		if errors.As(err, &trafficInvalidTokenErr) {
 			zap.L().Warn("traffic access token is invalid", zap.String("host", r.Host))
-			http.Error(w, "Sandbox is secured with traffic access token. Provided access token is invalid.", http.StatusForbidden)
+
+			err = template.
+				NewTrafficAccessTokenInvalidHeader(trafficInvalidTokenErr.SandboxId, r.Host).
+				HandleError(w, r)
+			if err != nil {
+				zap.L().Error("failed to handle traffic invalid traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficInvalidTokenErr.SandboxId))
+				http.Error(w, "Failed to handle invalid traffic access token header error", http.StatusInternalServerError)
+
+				return
+			}
 
 			return
 		}

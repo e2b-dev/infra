@@ -4,11 +4,7 @@ import (
 	"errors"
 )
 
-var (
-	ErrInvalidHost               = errors.New("invalid url host")
-	ErrInvalidTrafficAccessToken = errors.New("invalid traffic access token")
-	ErrMissingTrafficAccessToken = errors.New("missing traffic access token")
-)
+var ErrInvalidHost = errors.New("invalid url host")
 
 type InvalidSandboxPortError struct {
 	Port    string
@@ -35,4 +31,34 @@ func NewErrSandboxNotFound(sandboxId string) *SandboxNotFoundError {
 
 func (e SandboxNotFoundError) Error() string {
 	return "sandbox not found"
+}
+
+type MissingTrafficAccessTokenError struct {
+	SandboxId string
+	Header    string
+}
+
+func (e MissingTrafficAccessTokenError) Error() string {
+	return "missing traffic access token"
+}
+
+func NewErrMissingTrafficAccessToken(sandboxId, header string) *MissingTrafficAccessTokenError {
+	return &MissingTrafficAccessTokenError{
+		SandboxId: sandboxId,
+		Header:    header,
+	}
+}
+
+type InvalidTrafficAccessTokenError struct {
+	SandboxId string
+}
+
+func (e InvalidTrafficAccessTokenError) Error() string {
+	return "invalid traffic access token"
+}
+
+func NewErrInvalidTrafficAccessToken(sandboxId string) *InvalidTrafficAccessTokenError {
+	return &InvalidTrafficAccessTokenError{
+		SandboxId: sandboxId,
+	}
 }

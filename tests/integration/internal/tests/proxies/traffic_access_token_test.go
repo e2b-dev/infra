@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,9 +21,9 @@ import (
 func TestSandboxWithEnabledTrafficAccessTokenButMissingHeader(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sbxNetAllowPublic := false
+	sbxNetDenyPublic := true
 	sbxNet := &api.SandboxNetworkConfig{
-		AllowPublicAccess: &sbxNetAllowPublic,
+		DenyPublicTraffic: &sbxNetDenyPublic,
 	}
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithNetwork(sbxNet))
 	require.NotNil(t, sbx.TrafficAccessToken)
@@ -34,25 +35,47 @@ func TestSandboxWithEnabledTrafficAccessTokenButMissingHeader(t *testing.T) {
 		Timeout: 1000 * time.Second,
 	}
 
-	resp := waitForStatus(t, client, sbx, url, 8080, nil, http.StatusForbidden)
+	port := 8080
+	resp := waitForStatus(t, client, sbx, url, port, nil, http.StatusForbidden)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 
+	// Parse error response
+	var errorResp struct {
+		Message   string `json:"message"`
+		SandboxID string `json:"sandboxId"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&errorResp)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, "Sandbox is secured with traffic access token. Token header 'x-e2b-traffic-access-token' is missing", errorResp.Message)
+	assert.Equal(t, sbx.SandboxID, errorResp.SandboxID)
+
+	// Pretend to be a browser
+	headers := &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}}
+	resp = waitForStatus(t, client, sbx, url, port, headers, http.StatusForbidden)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 
-	assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
-	assert.Equal(t, "Sandbox is secured with traffic access token. Access token header is missing\n", string(body))
+	assert.True(t, strings.HasPrefix(string(body), "<html"))
+	assert.Contains(t, string(body), "Missing Traffic Access Token")
+	assert.Contains(t, string(body), sbx.SandboxID)
+	assert.True(t, strings.HasSuffix(string(body), "</html>"))
 }
 
 func TestSandboxWithEnabledTrafficAccessTokenButInvalidHeader(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sbxNetAllowPublic := false
+	sbxNetDenyPublic := true
 	sbxNet := &api.SandboxNetworkConfig{
-		AllowPublicAccess: &sbxNetAllowPublic,
+		DenyPublicTraffic: &sbxNetDenyPublic,
 	}
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithNetwork(sbxNet))
 	require.NotNil(t, sbx.TrafficAccessToken)
@@ -64,25 +87,47 @@ func TestSandboxWithEnabledTrafficAccessTokenButInvalidHeader(t *testing.T) {
 	}
 
 	headers := &http.Header{"x-e2b-traffic-access-token": []string{"abcd"}}
-	resp := waitForStatus(t, client, sbx, url, 8080, headers, http.StatusForbidden)
+	port := 8080
+	resp := waitForStatus(t, client, sbx, url, port, headers, http.StatusForbidden)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 
+	// Parse error response
+	var errorResp struct {
+		Message   string `json:"message"`
+		SandboxID string `json:"sandboxId"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&errorResp)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, "Sandbox is secured with traffic access token. Provided token is invalid.", errorResp.Message)
+	assert.Equal(t, sbx.SandboxID, errorResp.SandboxID)
+
+	// Pretend to be a browser
+	headers = &http.Header{"x-e2b-traffic-access-token": []string{"abcd"}, "User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}}
+	resp = waitForStatus(t, client, sbx, url, port, headers, http.StatusForbidden)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 
-	assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
-	assert.Equal(t, "Sandbox is secured with traffic access token. Provided access token is invalid.\n", string(body))
+	assert.True(t, strings.HasPrefix(string(body), "<html"))
+	assert.Contains(t, string(body), "Invalid Traffic Access Token")
+	assert.Contains(t, string(body), sbx.SandboxID)
+	assert.True(t, strings.HasSuffix(string(body), "</html>"))
 }
 
 func TestSandboxWithEnabledTrafficAccessToken(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sbxNetAllowPublic := false
+	sbxNetDenyPublic := true
 	sbxNet := &api.SandboxNetworkConfig{
-		AllowPublicAccess: &sbxNetAllowPublic,
+		DenyPublicTraffic: &sbxNetDenyPublic,
 	}
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithNetwork(sbxNet))
 	require.NotNil(t, sbx.TrafficAccessToken)
@@ -120,9 +165,9 @@ func TestSandboxWithEnabledTrafficAccessToken(t *testing.T) {
 func TestEnvdPortIsNotAffectedByTrafficAccessToken(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sbxNetAllowPublic := false
+	sbxNetDenyPublic := true
 	sbxNet := &api.SandboxNetworkConfig{
-		AllowPublicAccess: &sbxNetAllowPublic,
+		DenyPublicTraffic: &sbxNetDenyPublic,
 	}
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithNetwork(sbxNet))
 	require.NotNil(t, sbx.TrafficAccessToken)
