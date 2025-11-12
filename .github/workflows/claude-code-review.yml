@@ -48,13 +48,13 @@ jobs:
             To comment inline, use this format exactly (MUST be a single line, no backslashes or line breaks):
 
             ```bash
-            gh api --method POST -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments -f body="${BODY}" -f commit_id="${{ github.event.pull_request.head.sha }}" -f path="${PATH}" -F line=${LINE} -f side="RIGHT"
+            gh api --method POST -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments -f body='${BODY}' -f commit_id="${{ github.event.pull_request.head.sha }}" -f path='${PATH}' -F line='${LINE}' -f side="RIGHT"
             ```
 
             IMPORTANT: 
             - The command MUST be on a single line with no backslashes (\\) or line breaks
-            - For the body parameter, escape any double quotes in ${BODY} by replacing " with \"
-            - For the path parameter, escape any special characters if needed
-            - Do NOT use single quotes around the body or path - use double quotes and escape internal quotes
+            - Use single quotes around body, path, and line to prevent shell expansion (prevents command injection)
+            - If the body or path contains a single quote ('), escape it by replacing ' with '\'' (this breaks out of the single-quoted string, adds a literal quote, and continues)
+            - Example: if body is "It's a bug", use: body='It'\''s a bug'
 
           claude_args: '--allowed-tools "Bash(gh api:*), Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
