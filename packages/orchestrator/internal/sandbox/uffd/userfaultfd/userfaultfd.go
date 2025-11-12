@@ -143,7 +143,7 @@ outerLoop:
 				return fmt.Errorf("failed to handle uffd: %w", errMsg)
 			}
 
-			return nil
+			return fdexit.ErrFdExit
 		}
 
 		uffdFd := pollFds[0]
@@ -261,11 +261,11 @@ func (u *Userfaultfd) handleMissing(
 		defer func() {
 			if r := recover(); r != nil {
 				u.logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
-			}
 
-			signalErr := onFailure()
-			if signalErr != nil {
-				u.logger.Error("UFFD handle missing failure error", zap.Error(signalErr))
+				signalErr := onFailure()
+				if signalErr != nil {
+					u.logger.Error("UFFD handle missing failure error", zap.Error(signalErr))
+				}
 			}
 		}()
 
@@ -328,11 +328,11 @@ func (u *Userfaultfd) handleWriteProtected(onFailure func() error, addr, pagesiz
 		defer func() {
 			if r := recover(); r != nil {
 				u.logger.Error("UFFD remove write protection panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
-			}
 
-			signalErr := onFailure()
-			if signalErr != nil {
-				u.logger.Error("UFFD handle write protected failure error", zap.Error(signalErr))
+				signalErr := onFailure()
+				if signalErr != nil {
+					u.logger.Error("UFFD handle write protected failure error", zap.Error(signalErr))
+				}
 			}
 		}()
 

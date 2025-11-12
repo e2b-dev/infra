@@ -105,6 +105,149 @@ func TestRandomOperations(t *testing.T) {
 	}
 }
 
+// Badly configured uffd panic recovery caused silent close of uffd—first operation (or parallel first operations) were always handled ok, but subsequent operations would freeze.
+// This behavior was flaky with the rest of the tests, because it was racy.
+func TestUffdNotClosingAfterOperation(t *testing.T) {
+	t.Parallel()
+
+	pagesize := uint64(header.PageSize)
+	numberOfPages := uint64(4096)
+
+	t.Run("missing write", func(t *testing.T) {
+		t.Parallel()
+
+		h, err := configureCrossProcessTest(t, testConfig{
+			pagesize:      pagesize,
+			numberOfPages: numberOfPages,
+		})
+		require.NoError(t, err)
+
+		write1 := operation{
+			offset: 0,
+			mode:   operationModeWrite,
+		}
+
+		// We need different offset, because kernel would cache the same page for read.
+		write2 := operation{
+			offset: int64(2 * header.PageSize),
+			mode:   operationModeWrite,
+		}
+
+		err = h.executeOperation(t.Context(), write1)
+		require.NoError(t, err)
+
+		// Use the offset helpers to settle the requests.
+
+		accessedOffsets, err := h.accessedOffsetsOnce()
+		require.NoError(t, err)
+
+		assert.ElementsMatch(t, []uint{0}, accessedOffsets, "checking which pages were faulted")
+
+		err = h.executeOperation(t.Context(), write2)
+		require.NoError(t, err)
+
+		dirtyOffsets, err := h.dirtyOffsetsOnce()
+		require.NoError(t, err)
+
+		assert.ElementsMatch(t, []uint{uint(2 * header.PageSize), 0}, dirtyOffsets, "checking which pages were dirty")
+	})
+
+	t.Run("missing read", func(t *testing.T) {
+		t.Parallel()
+
+		h, err := configureCrossProcessTest(t, testConfig{
+			pagesize:      pagesize,
+			numberOfPages: numberOfPages,
+		})
+		require.NoError(t, err)
+
+		read1 := operation{
+			offset: 0,
+			mode:   operationModeRead,
+		}
+
+		// We need different offset, because kernel would cache the same page for read.
+		read2 := operation{
+			offset: 2 * header.PageSize,
+			mode:   operationModeRead,
+		}
+
+		err = h.executeOperation(t.Context(), read1)
+		require.NoError(t, err)
+
+		// Use the offset helpers to settle the requests.
+
+		dirtyOffsets, err := h.dirtyOffsetsOnce()
+		require.NoError(t, err)
+
+		assert.Empty(t, dirtyOffsets, "checking which pages were dirty")
+
+		err = h.executeOperation(t.Context(), read2)
+		require.NoError(t, err)
+
+		accessedOffsets, err := h.accessedOffsetsOnce()
+		require.NoError(t, err)
+
+		assert.ElementsMatch(t, []uint{uint(2 * header.PageSize), 0}, accessedOffsets, "checking which pages were faulted")
+	})
+
+	t.Run("write protected", func(t *testing.T) {
+		t.Parallel()
+
+		h, err := configureCrossProcessTest(t, testConfig{
+			pagesize:      pagesize,
+			numberOfPages: numberOfPages,
+		})
+		require.NoError(t, err)
+
+		read1 := operation{
+			offset: 0,
+			mode:   operationModeRead,
+		}
+
+		read2 := operation{
+			offset: 1 * header.PageSize,
+			mode:   operationModeRead,
+		}
+
+		// We need at least 2 wp events to check the wp handler, so we need to write to 2 different pages.
+
+		write1 := operation{
+			offset: 0,
+			mode:   operationModeWrite,
+		}
+
+		write2 := operation{
+			offset: 1 * header.PageSize,
+			mode:   operationModeWrite,
+		}
+
+		err = h.executeOperation(t.Context(), read1)
+		require.NoError(t, err)
+
+		err = h.executeOperation(t.Context(), read2)
+		require.NoError(t, err)
+
+		// Use the offset helpers to settle the requests.
+
+		accessedOffsets, err := h.accessedOffsetsOnce()
+		require.NoError(t, err)
+
+		assert.ElementsMatch(t, []uint{0, 1 * header.PageSize}, accessedOffsets, "checking which pages were faulted")
+
+		err = h.executeOperation(t.Context(), write1)
+		require.NoError(t, err)
+
+		err = h.executeOperation(t.Context(), write2)
+		require.NoError(t, err)
+
+		dirtyOffsets, err := h.dirtyOffsetsOnce()
+		require.NoError(t, err)
+
+		assert.ElementsMatch(t, []uint{0, 1 * header.PageSize}, dirtyOffsets, "checking which pages were dirty")
+	})
+}
+
 func TestUffdEvents(t *testing.T) {
 	pagesize := uint64(header.PageSize)
 	numberOfPages := uint64(32)
@@ -315,7 +458,7 @@ func TestUffdEvents(t *testing.T) {
 			// When later comparing the events, we will compare the events without the offset.
 			receivedEvents = append(receivedEvents, event{UffdioWriteProtect: &writeProtectEvent.event})
 		case <-t.Context().Done():
-			return
+			t.FailNow()
 		}
 	}
 
@@ -411,7 +554,7 @@ func TestUffdSettleRequests(t *testing.T) {
 			}
 		}
 
-		require.Equal(t, len(blockedCopyEvents)+len(blockedWriteProtectEvents), len(events), "checking blocked events")
+		require.Len(t, events, len(blockedCopyEvents)+len(blockedWriteProtectEvents), "checking blocked events")
 
 		simulatedFCPause := make(chan struct{})
 

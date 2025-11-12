@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"testing"
 
@@ -56,7 +55,9 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	err = uffdFd.register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
 	require.NoError(t, err)
 
-	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
+	// We don't use t.Context() here, because we want to be able to kill the process manually and listen to the correct exit code,
+	// while also handling the cleanup of the uffd. The t.Context seems to trigger before the test cleanup is started.
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestHelperServingProcess")
 	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
@@ -129,23 +130,21 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	uffdFile.Close()
 	dirtyOffsetsWriter.Close()
 
+	go func() {
+		waitErr := cmd.Wait()
+		assert.NoError(t, waitErr)
+
+		assert.NotEqual(t, -1, cmd.ProcessState.ExitCode(), "process was not terminated gracefully")
+		assert.NotEqual(t, 2, cmd.ProcessState.ExitCode(), "fd exit prematurely terminated the serve loop")
+		assert.NotEqual(t, 1, cmd.ProcessState.ExitCode(), "process exited with unexpected exit code")
+
+		assert.Equal(t, 0, cmd.ProcessState.ExitCode())
+	}()
+
 	t.Cleanup(func() {
+		// We are using SIGHUP to actually get exit code, not -1.
 		signalErr := cmd.Process.Signal(syscall.SIGTERM)
 		assert.NoError(t, signalErr)
-
-		waitErr := cmd.Wait()
-		// It can be either nil, an ExitError, a context.Canceled error, or "signal: killed"
-		assert.True(t,
-			(waitErr != nil && func(err error) bool {
-				var exitErr *exec.ExitError
-
-				return errors.As(err, &exitErr)
-			}(waitErr)) ||
-				errors.Is(waitErr, context.Canceled) ||
-				(waitErr != nil && strings.Contains(waitErr.Error(), "signal: killed")) ||
-				waitErr == nil,
-			"unexpected error: %v", waitErr,
-		)
 	})
 
 	accessedOffsetsOnce := func() ([]uint, error) {
@@ -211,15 +210,19 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	}, nil
 }
 
-// Secondary process, orchestrator in our case
+// Secondary process, orchestrator in our case.
 func TestHelperServingProcess(t *testing.T) {
 	if os.Getenv("GO_TEST_HELPER_PROCESS") != "1" {
 		t.Skip("this is a helper process, skipping direct execution")
 	}
 
 	err := crossProcessServe()
+	if errors.Is(err, fdexit.ErrFdExit) {
+		os.Exit(2)
+	}
+
 	if err != nil {
-		fmt.Println("exit serving process", err)
+		fmt.Fprintf(os.Stderr, "error serving: %v", err)
 		os.Exit(1)
 	}
 
@@ -355,6 +358,14 @@ func crossProcessServe() error {
 		}()
 
 		serverErr := uffd.Serve(ctx, fdExit)
+		if errors.Is(serverErr, fdexit.ErrFdExit) {
+			err := fmt.Errorf("serving finished via fd exit: %w", serverErr)
+
+			cancel(err)
+
+			return
+		}
+
 		if serverErr != nil {
 			msg := fmt.Errorf("error serving: %w", serverErr)
 
@@ -364,6 +375,8 @@ func crossProcessServe() error {
 
 			return
 		}
+
+		fmt.Fprint(os.Stderr, "serving finished")
 	}()
 
 	cleanup := func() {
@@ -396,7 +409,7 @@ func crossProcessServe() error {
 
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("context done: %w: %w", ctx.Err(), context.Cause(ctx))
+		return context.Cause(ctx)
 	case <-exitSignal:
 		return nil
 	}
