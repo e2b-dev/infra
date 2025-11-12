@@ -49,13 +49,13 @@ try {
     const localDateStartUnix = localDateStart.getTime() / 1000;
     const dateStdout = await sandbox.commands.run("date +%s%3N");
     const dateUnix = parseFloat(dateStdout.stdout) / 1000;
-    const date = new Date(dateUnix);
+    const sandboxDate = new Date(dateUnix * 1000);
 
     const localDateEnd = new Date();
     const localDateEndUnix = localDateEnd.getTime() / 1000;
 
     log(localDateStart.toISOString(), "local date - start of request");
-    log(date.toISOString(), "sandbox date");
+    log(sandboxDate.toISOString(), "sandbox date");
     log(localDateEnd.toISOString(), "local date - end of request");
 
     // check if the diff between sandbox time and local time is less than 2 second (taking into consideration the request latency)
