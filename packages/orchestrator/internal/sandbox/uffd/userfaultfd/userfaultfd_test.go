@@ -413,7 +413,7 @@ func TestUffdSettleRequests(t *testing.T) {
 
 		require.Equal(t, len(blockedCopyEvents)+len(blockedWriteProtectEvents), len(events), "checking blocked events")
 
-		triggerUnlock := make(chan struct{})
+		simulatedFCPause := make(chan struct{})
 
 		d := make(chan *block.Tracker)
 
@@ -421,7 +421,7 @@ func TestUffdSettleRequests(t *testing.T) {
 			acquired := uffd.settleRequests.TryLock()
 			assert.False(t, acquired, "settleRequests write lock should not be acquired")
 
-			triggerUnlock <- struct{}{}
+			simulatedFCPause <- struct{}{}
 
 			// This should block, until the events are resolved.
 			dirty := uffd.Dirty()
@@ -433,7 +433,8 @@ func TestUffdSettleRequests(t *testing.T) {
 			}
 		}()
 
-		<-triggerUnlock
+		// This would be the place where the FC API Pause would return.
+		<-simulatedFCPause
 
 		// Resolve the events to unblock getting the dirty pages in the goroutine.
 		for _, e := range blockedCopyEvents {
