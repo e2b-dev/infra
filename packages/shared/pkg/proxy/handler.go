@@ -31,7 +31,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var invalidPortErr InvalidSandboxPortError
+		var invalidPortErr *InvalidSandboxPortError
 		if errors.As(err, &invalidPortErr) {
 			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host), zap.String("port", invalidPortErr.Port))
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
@@ -39,7 +39,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var notFoundErr SandboxNotFoundError
+		var notFoundErr *SandboxNotFoundError
 		if errors.As(err, &notFoundErr) {
 			zap.L().Warn("sandbox not found",
 				zap.String("host", r.Host),
