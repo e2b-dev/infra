@@ -25,7 +25,7 @@ const (
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
 
-	accessTokenHeader = "x-e2b-traffic-access-token"
+	trafficAccessTokenHeader = "x-e2b-traffic-access-token"
 )
 
 type SandboxProxy struct {
@@ -59,11 +59,11 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			// Handle traffic access token validation.
 			// We are skipping envd port as it has its own access validation mechanism.
 			if accessToken != nil && int64(port) != consts.DefaultEnvdServerPort {
-				accessTokenRaw := r.Header.Get(accessTokenHeader)
+				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
 				if accessTokenRaw == "" {
-					return nil, reverseproxy.ErrMissingTrafficAccessToken
+					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				} else if accessTokenRaw != *accessToken {
-					return nil, reverseproxy.ErrInvalidTrafficAccessToken
+					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId)
 				}
 			}
 
