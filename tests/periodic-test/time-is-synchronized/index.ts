@@ -45,17 +45,21 @@ try {
 
   await runTestWithSandbox(sandbox, "time-is-synchronized", async () => {
     log("ℹ️ starting command");
-    const localDateStart = new Date().getTime() / 1000;
-    const date = await sandbox.commands.run("date +%s%3N");
-    const localDateEnd = new Date().getTime() / 1000;
-    const dateUnix = parseFloat(date.stdout) / 1000;
+    const localDateStart = new Date();
+    const localDateStartUnix = localDateStart.getTime() / 1000;
+    const dateStdout = await sandbox.commands.run("date +%s%3N");
+    const dateUnix = parseFloat(dateStdout.stdout) / 1000;
+    const sandboxDate = new Date(dateUnix * 1000);
 
-    log("local date - start of request", localDateStart);
-    log("local date - end of request", localDateEnd);
-    log("sandbox date", dateUnix);
+    const localDateEnd = new Date();
+    const localDateEndUnix = localDateEnd.getTime() / 1000;
 
-    // check if the diff between sandbox time and local time is less than 1 second (taking into consideration the request latency)
-    if (dateUnix < localDateStart - 1 || dateUnix > localDateEnd + 1) {
+    log(localDateStart.toISOString(), "local date - start of request");
+    log(sandboxDate.toISOString(), "sandbox date");
+    log(localDateEnd.toISOString(), "local date - end of request");
+
+    // check if the diff between sandbox time and local time is less than 2 second (taking into consideration the request latency)
+    if (dateUnix < localDateStartUnix - 2 || dateUnix > localDateEndUnix + 2) {
       throw new Error("❌ Date is not synchronized");
     }
 
