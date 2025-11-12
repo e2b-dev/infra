@@ -489,6 +489,9 @@ type Sandbox struct {
 
 	// TemplateID Identifier of the template from which is the sandbox created
 	TemplateID string `json:"templateID"`
+
+	// TrafficAccessToken Token required for accessing sandbox via proxy.
+	TrafficAccessToken *string `json:"trafficAccessToken"`
 }
 
 // SandboxDetail defines model for SandboxDetail.
@@ -602,6 +605,9 @@ type SandboxMetric struct {
 type SandboxNetworkConfig struct {
 	// AllowOut List of allowed CIDR blocks or IP addresses for egress traffic. Allowed addresses always take precedence over blocked addresses.
 	AllowOut *[]string `json:"allowOut,omitempty"`
+
+	// AllowPublicAccess Specify if the sandbox URLs should be accessible without authentication.
+	AllowPublicAccess *bool `json:"allowPublicAccess,omitempty"`
 
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic
 	DenyOut *[]string `json:"denyOut,omitempty"`

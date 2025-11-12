@@ -50,11 +50,16 @@ message SandboxConfig {
 
 message SandboxNetworkConfig {
   optional SandboxNetworkEgressConfig egress = 1;
+  optional SandboxNetworkIngressConfig ingress = 2;
 }
 
 message SandboxNetworkEgressConfig {
   repeated string allowed_cidrs = 1;
   repeated string denied_cidrs = 2;
+}
+
+message SandboxNetworkIngressConfig {
+  optional string traffic_access_token = 1;
 }
 
 message SandboxCreateRequest {
