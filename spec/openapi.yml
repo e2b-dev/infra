@@ -338,7 +338,6 @@ components:
         - sandboxID
         - clientID
         - envdVersion
-        - domain
       properties:
         templateID:
           type: string
