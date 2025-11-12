@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -20,7 +21,8 @@ func TestMaskRequestHostAPIParameter(t *testing.T) {
 	c := setup.GetAPIClient()
 	ctx := t.Context()
 
-	maskedURL := "localhost:3000"
+	hostname := "localhost"
+	maskedURL := fmt.Sprintf("%s:%s", hostname, pool.MaskRequestHostPortPlaceholder)
 	sbxNet := &api.SandboxNetworkConfig{
 		MaskRequestHost: &maskedURL,
 	}
@@ -38,21 +40,22 @@ func TestMaskRequestHostAPIParameter(t *testing.T) {
 	err = utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "apt-get", "install", "-y", "netcat-traditional")
 	require.NoError(t, err)
 
-	// Start a netcat listener on port 8080 that outputs request headers to a file
+	port := 8080
+	// Start a netcat listener on port that outputs request headers to a file
 	outputFile := "/tmp/nc_output.txt"
 	go func() {
 		_ = utils.ExecCommandAsRoot(t, ctx, sbx, envdClient,
-			"/bin/bash", "-c", fmt.Sprintf("nc -l -p 8080 > %s", outputFile))
+			"/bin/bash", "-c", fmt.Sprintf("nc -l -p %d > %s", port, outputFile))
 	}()
 
 	// Wait for nc to be up
 	time.Sleep(2 * time.Second)
 
-	// Prepare the sandbox URL using helpers (8080 is the listener port)
+	// Prepare the sandbox URL using helpers
 	url, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
 
-	req := utils.NewRequest(sbx, url, 8080, nil)
+	req := utils.NewRequest(sbx, url, port, nil)
 	// The request doesn't finish properly and blocks, but the headers are still sent to the netcat
 	go func() {
 		resp, err := http.DefaultClient.Do(req)
@@ -71,7 +74,7 @@ func TestMaskRequestHostAPIParameter(t *testing.T) {
 
 	// Verify the Host header seen by netcat is the one set via maskRequestHost
 	t.Logf("Data: %s", data)
-	assert.Contains(t, data, fmt.Sprintf("Host: %s", maskedURL))
+	assert.Contains(t, data, fmt.Sprintf("Host: %s:%d", hostname, port))
 }
 
 func TestMaskRequestHostIncorrectUrl(t *testing.T) {

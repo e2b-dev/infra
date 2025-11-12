@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -72,6 +74,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			// Handle request host masking only for non-envd traffic.
 			var maskRequestHost *string = nil
 			if h := sbx.Config.Network.GetIngress().GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
+				h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
 				maskRequestHost = &h
 			}
 

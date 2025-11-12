@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -161,7 +162,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	var maskRequestHost *string = nil
 	if body.Network != nil && body.Network.MaskRequestHost != nil {
 		host := *body.Network.MaskRequestHost
-		hostname, port, err := net.SplitHostPort(host)
+
+		hostname, _, err := splitHostPortOptional(host)
 		if err != nil {
 			telemetry.ReportError(ctx, "error when splitting mask request host", err, telemetry.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
@@ -169,7 +171,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			return
 		}
 
-		u, err := idna.Display.ToUnicode(hostname)
+		_, err = idna.Display.ToUnicode(hostname)
 		if err != nil {
 			telemetry.ReportError(ctx, "error when parsing mask request host", err, telemetry.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
@@ -177,7 +179,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			return
 		}
 
-		maskRequestHost = sharedUtils.ToPtr(fmt.Sprintf("%s:%s", u, port))
+		maskRequestHost = &host
 	}
 
 	allowInternetAccess := body.AllowInternetAccess
@@ -290,4 +292,17 @@ func firstAlias(aliases []string) string {
 	}
 
 	return aliases[0]
+}
+
+func splitHostPortOptional(hostport string) (host string, port string, err error) {
+	host, port, err = net.SplitHostPort(hostport)
+	if err != nil {
+		if strings.Contains(err.Error(), "missing port") {
+			return hostport, "", nil
+		}
+
+		return "", "", err
+	}
+
+	return host, port, nil
 }

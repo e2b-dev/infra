@@ -6,6 +6,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const MaskRequestHostPortPlaceholder = "${PORT}"
+
 type DestinationContextKey struct{}
 
 // Destination contains information about where to route the request.
