@@ -45,19 +45,16 @@ jobs:
             leave an **inline comment** on that exact file and line.  
             If no issues are found, do not post anything.
 
-            To comment inline, use this format exactly:
+            To comment inline, use this format exactly (MUST be a single line, no backslashes or line breaks):
 
             ```bash
-            gh api \
-              --method POST \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments \
-              -f body='${BODY}' \
-              -f commit_id="${{ github.event.pull_request.head.sha }}" \
-              -f path='${PATH}' \
-              -F line=${LINE} \
-              -f side='RIGHT'
+            gh api --method POST -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments -f body="${BODY}" -f commit_id="${{ github.event.pull_request.head.sha }}" -f path="${PATH}" -F line=${LINE} -f side="RIGHT"
             ```
+
+            IMPORTANT: 
+            - The command MUST be on a single line with no backslashes (\\) or line breaks
+            - For the body parameter, escape any double quotes in ${BODY} by replacing " with \"
+            - For the path parameter, escape any special characters if needed
+            - Do NOT use single quotes around the body or path - use double quotes and escape internal quotes
 
           claude_args: '--allowed-tools "Bash(gh api:*), Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
