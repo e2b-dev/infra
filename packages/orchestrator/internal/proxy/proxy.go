@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
@@ -23,6 +24,8 @@ const (
 	// Also it's a good practice to set it to higher values as you progress in the stack
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
+
+	accessTokenHeader = "x-e2b-traffic-access-token"
 )
 
 type SandboxProxy struct {
@@ -46,6 +49,22 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			sbx, found := sandboxes.Get(sandboxId)
 			if !found {
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+			}
+
+			var accessToken *string = nil
+			if net := sbx.Config.Network; net != nil && net.GetIngress() != nil {
+				accessToken = net.GetIngress().TrafficAccessToken
+			}
+
+			// Handle traffic access token validation.
+			// We are skipping envd port as it has its own access validation mechanism.
+			if accessToken != nil && int64(port) != consts.DefaultEnvdServerPort {
+				accessTokenRaw := r.Header.Get(accessTokenHeader)
+				if accessTokenRaw == "" {
+					return nil, reverseproxy.ErrMissingTrafficAccessToken
+				} else if accessTokenRaw != *accessToken {
+					return nil, reverseproxy.ErrInvalidTrafficAccessToken
+				}
 			}
 
 			url := &url.URL{

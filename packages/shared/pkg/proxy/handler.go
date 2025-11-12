@@ -58,6 +58,20 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		if errors.Is(err, ErrMissingTrafficAccessToken) {
+			zap.L().Warn("traffic access token header is missing", zap.String("host", r.Host))
+			http.Error(w, "Sandbox is secured with traffic access token. Access token header is missing", http.StatusForbidden)
+
+			return
+		}
+
+		if errors.Is(err, ErrInvalidTrafficAccessToken) {
+			zap.L().Warn("traffic access token is invalid", zap.String("host", r.Host))
+			http.Error(w, "Sandbox is secured with traffic access token. Provided access token is invalid.", http.StatusForbidden)
+
+			return
+		}
+
 		if err != nil {
 			zap.L().Error("failed to route request", zap.Error(err), zap.String("host", r.Host))
 			http.Error(w, fmt.Sprintf("Unexpected error when routing request: %s", err), http.StatusInternalServerError)

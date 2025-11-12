@@ -1,8 +1,14 @@
 package proxy
 
-import "errors"
+import (
+	"errors"
+)
 
-var ErrInvalidHost = errors.New("invalid url host")
+var (
+	ErrInvalidHost               = errors.New("invalid url host")
+	ErrInvalidTrafficAccessToken = errors.New("invalid traffic access token")
+	ErrMissingTrafficAccessToken = errors.New("missing traffic access token")
+)
 
 type InvalidSandboxPortError struct {
 	Port    string
