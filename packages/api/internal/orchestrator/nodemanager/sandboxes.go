@@ -51,6 +51,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 		network := &types.SandboxNetworkConfig{
 			Ingress: &types.SandboxNetworkIngressConfig{
 				AllowPublicAccess: networkTrafficAccessToken == nil,
+				MaskRequestHost:  config.GetNetwork().GetIngress().MaskRequestHost,
 			},
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: config.GetNetwork().GetEgress().GetAllowedCidrs(),

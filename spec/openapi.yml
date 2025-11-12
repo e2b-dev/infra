@@ -234,6 +234,9 @@ components:
           description: List of denied CIDR blocks or IP addresses for egress traffic
           items:
             type: string
+        maskRequestHost:
+          type: string
+          description: Specify all sandbox requests host mask.
 
     SandboxLog:
       description: Log entry with timestamp and line

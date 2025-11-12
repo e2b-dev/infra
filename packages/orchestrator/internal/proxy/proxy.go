@@ -56,15 +56,23 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				accessToken = net.GetIngress().TrafficAccessToken
 			}
 
+			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
+
 			// Handle traffic access token validation.
 			// We are skipping envd port as it has its own access validation mechanism.
-			if accessToken != nil && int64(port) != consts.DefaultEnvdServerPort {
+			if accessToken != nil && isNonEnvdTraffic {
 				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
 				if accessTokenRaw == "" {
 					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				} else if accessTokenRaw != *accessToken {
 					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				}
+			}
+
+			// Handle request host masking only for non-envd traffic.
+			var maskRequestHost *string = nil
+			if h := sbx.Config.Network.GetIngress().GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
+				maskRequestHost = &h
 			}
 
 			url := &url.URL{
@@ -93,8 +101,9 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				IncludeSandboxIdInProxyErrorLogger: true,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
-				ConnectionKey: sbx.Runtime.ExecutionID,
-				RequestLogger: logger,
+				ConnectionKey:   sbx.Runtime.ExecutionID,
+				RequestLogger:   logger,
+				MaskRequestHost: maskRequestHost,
 			}, nil
 		},
 	)

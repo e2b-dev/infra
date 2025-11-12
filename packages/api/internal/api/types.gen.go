@@ -611,6 +611,9 @@ type SandboxNetworkConfig struct {
 
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic
 	DenyOut *[]string `json:"denyOut,omitempty"`
+
+	// MaskRequestHost Specify all sandbox requests host mask.
+	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 }
 
 // SandboxState State of the sandbox

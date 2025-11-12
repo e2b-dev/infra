@@ -60,6 +60,7 @@ message SandboxNetworkEgressConfig {
 
 message SandboxNetworkIngressConfig {
   optional string traffic_access_token = 1;
+  optional string mask_request_host = 2;
 }
 
 message SandboxCreateRequest {

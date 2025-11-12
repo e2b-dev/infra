@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -156,6 +158,28 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		envdAccessToken = &accessToken
 	}
 
+	var maskRequestHost *string = nil
+	if body.Network != nil && body.Network.MaskRequestHost != nil {
+		host := *body.Network.MaskRequestHost
+		hostname, port, err := net.SplitHostPort(host)
+		if err != nil {
+			telemetry.ReportError(ctx, "error when splitting mask request host", err, telemetry.WithSandboxID(sandboxID))
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
+
+			return
+		}
+
+		u, err := idna.Display.ToUnicode(hostname)
+		if err != nil {
+			telemetry.ReportError(ctx, "error when parsing mask request host", err, telemetry.WithSandboxID(sandboxID))
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
+
+			return
+		}
+
+		maskRequestHost = sharedUtils.ToPtr(fmt.Sprintf("%s:%s", u, port))
+	}
+
 	allowInternetAccess := body.AllowInternetAccess
 
 	var network *types.SandboxNetworkConfig
@@ -163,6 +187,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		network = &types.SandboxNetworkConfig{
 			Ingress: &types.SandboxNetworkIngressConfig{
 				AllowPublicAccess: sharedUtils.DerefOrDefault(body.Network.AllowPublicTraffic, true),
+				MaskRequestHost:  maskRequestHost,
 			},
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(body.Network.AllowOut, nil),

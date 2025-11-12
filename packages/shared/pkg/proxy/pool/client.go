@@ -103,8 +103,15 @@ func newProxyClient(
 			}
 
 			r.SetURL(t.Url)
-			// We are **not** using SetXForwarded() because servers can sometimes modify the content-location header to be http which might break some customer services.
-			r.Out.Host = r.In.Host
+
+			if t.MaskRequestHost != nil {
+				// Mask the request host to bypass source host protections.
+				r.Out.Header.Set("X-Forwarded-Host", r.In.Host)
+				r.Out.Host = *t.MaskRequestHost
+			} else {
+				// We are **not** using SetXForwarded() because servers can sometimes modify the content-location header to be http which might break some customer services.
+				r.Out.Host = r.In.Host
+			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			t, ok := pc.getDestination(r)

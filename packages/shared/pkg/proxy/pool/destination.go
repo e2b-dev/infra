@@ -20,4 +20,6 @@ type Destination struct {
 	// This is evaluated before checking for existing connection to the IP:port pair.
 	ConnectionKey                      string
 	IncludeSandboxIdInProxyErrorLogger bool
+	// MaskRequestHost is used to mask the request host.
+	MaskRequestHost *string
 }
