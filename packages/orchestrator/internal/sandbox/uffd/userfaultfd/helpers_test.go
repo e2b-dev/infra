@@ -36,14 +36,17 @@ type operation struct {
 }
 
 type testHandler struct {
+	uffd       uffdFd
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *testutils.MemorySlicer
 	// Returns offsets of the pages that were faulted.
 	// It can only be called once.
+	// Sorted in ascending order.
 	accessedOffsetsOnce func() ([]uint, error)
 	// Returns offsets of the pages that were dirtied.
 	// It can only be called once.
+	// Sorted in ascending order.
 	dirtyOffsetsOnce func() ([]uint, error)
 
 	mutex sync.Mutex
@@ -86,6 +89,7 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 }
 
 // Get a bitset of the offsets of the operations for the given mode.
+// Sorted in ascending order.
 func getOperationsOffsets(ops []operation, m operationMode) []uint {
 	b := bitset.New(0)
 

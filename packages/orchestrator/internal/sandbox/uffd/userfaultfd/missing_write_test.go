@@ -10,8 +10,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-// TODO: Modify to check writes
-
 func TestMissingWrite(t *testing.T) {
 	t.Parallel()
 
@@ -65,6 +63,68 @@ func TestMissingWrite(t *testing.T) {
 			},
 		},
 		{
+			name:          "standard 4k page, write after write",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "standard 4k page, reads after writes, different offsets",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 4 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 5 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 2 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 4 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 5 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 2 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
 			name:          "hugepage, operation at start",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
@@ -112,6 +172,68 @@ func TestMissingWrite(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:          "hugepage, write after write",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "hugepage, reads after writes, different offsets",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 4 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 5 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 2 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 4 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 5 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 2 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -122,14 +244,15 @@ func TestMissingWrite(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, operation := range tt.operations {
-				if operation.mode == operationModeRead {
+				switch operation.mode {
+				case operationModeRead:
 					err := h.executeRead(t.Context(), operation)
 					require.NoError(t, err, "for operation %+v", operation)
-				}
-
-				if operation.mode == operationModeWrite {
+				case operationModeWrite:
 					err := h.executeWrite(t.Context(), operation)
 					require.NoError(t, err, "for operation %+v", operation)
+				default:
+					t.FailNow()
 				}
 			}
 
@@ -139,6 +262,13 @@ func TestMissingWrite(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+			expectedDirtyOffsets := getOperationsOffsets(tt.operations, operationModeWrite)
+
+			dirtyOffsets, err := h.dirtyOffsetsOnce()
+			require.NoError(t, err)
+
+			assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 		})
 	}
 }
@@ -178,6 +308,13 @@ func TestParallelMissingWrite(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+	expectedDirtyOffsets := getOperationsOffsets([]operation{writeOp}, operationModeWrite)
+
+	dirtyOffsets, err := h.dirtyOffsetsOnce()
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }
 
 func TestParallelMissingWriteWithPrefault(t *testing.T) {
@@ -218,6 +355,13 @@ func TestParallelMissingWriteWithPrefault(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+	expectedDirtyOffsets := getOperationsOffsets([]operation{writeOp}, operationModeWrite)
+
+	dirtyOffsets, err := h.dirtyOffsetsOnce()
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }
 
 func TestSerialMissingWrite(t *testing.T) {
@@ -249,4 +393,11 @@ func TestSerialMissingWrite(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+	expectedDirtyOffsets := getOperationsOffsets([]operation{writeOp}, operationModeWrite)
+
+	dirtyOffsets, err := h.dirtyOffsetsOnce()
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }

@@ -203,6 +203,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	}
 
 	return &testHandler{
+		uffd:                uffdFd,
 		memoryArea:          &memoryArea,
 		pagesize:            tt.pagesize,
 		data:                data,
@@ -325,7 +326,7 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-dirtyOffsetsSignal:
-				for offset := range uffd.writeRequests.Offsets() {
+				for offset := range uffd.Dirty(false).Offsets() {
 					writeErr := binary.Write(dirtyOffsetsFile, binary.LittleEndian, uint64(offset))
 					if writeErr != nil {
 						msg := fmt.Errorf("error writing dirty offsets to file: %w", writeErr)
