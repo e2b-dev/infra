@@ -17,7 +17,6 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -26,16 +25,10 @@ import (
 
 // CheckAndCancelConcurrentBuilds checks for concurrent builds and cancels them if found
 func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID, teamClusterID uuid.UUID) error {
-	concurrentlyRunningBuilds, err := a.db.
-		Client.
-		EnvBuild.
-		Query().
-		Where(
-			envbuild.EnvID(templateID),
-			envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
-			envbuild.IDNotIn(buildID),
-		).
-		All(ctx)
+	concurrentlyRunningBuilds, err := a.sqlcDB.GetConcurrentTemplateBuilds(ctx, queries.GetConcurrentTemplateBuildsParams{
+		TemplateID:     templateID,
+		CurrentBuildID: buildID,
+	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "Error when getting running builds", err)
 
@@ -44,7 +37,7 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 
 	// make sure there is no other build in progress for the same template
 	if len(concurrentlyRunningBuilds) > 0 {
-		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b *models.EnvBuild) templatemanager.DeleteBuild {
+		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b queries.EnvBuild) templatemanager.DeleteBuild {
 			return templatemanager.DeleteBuild{
 				TemplateID: templateID,
 				BuildID:    b.ID,
