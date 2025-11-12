@@ -120,7 +120,6 @@ func TestConcurrentLockAcquisition(t *testing.T) {
 			case errors.Is(err, ErrLockAlreadyHeld):
 				results <- result{alreadyHeld: true}
 			case err != nil:
-				time.Sleep(50 * time.Millisecond)
 				results <- result{err: err}
 			default:
 				_ = ReleaseLock(file)
