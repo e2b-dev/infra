@@ -50,7 +50,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		uffdFd.close()
 	})
 
-	err = uffdFd.configureApi(tt.pagesize)
+	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
 	err = uffdFd.register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
@@ -203,7 +203,6 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	}
 
 	return &testHandler{
-		uffdio:              uffdFd,
 		memoryArea:          &memoryArea,
 		pagesize:            tt.pagesize,
 		data:                data,
@@ -294,7 +293,7 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-accessedOffsestsSignal:
-				for offset := range uffd.missingRequests.Offsets() {
+				for offset := range accessed(uffd).Offsets() {
 					writeErr := binary.Write(accessedOffsetsFile, binary.LittleEndian, uint64(offset))
 					if writeErr != nil {
 						msg := fmt.Errorf("error writing accessed offsets to file: %w", writeErr)
@@ -326,7 +325,7 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-dirtyOffsetsSignal:
-				for offset := range uffd.Dirty(false).Offsets() {
+				for offset := range uffd.Dirty().Offsets() {
 					writeErr := binary.Write(dirtyOffsetsFile, binary.LittleEndian, uint64(offset))
 					if writeErr != nil {
 						msg := fmt.Errorf("error writing dirty offsets to file: %w", writeErr)

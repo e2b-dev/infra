@@ -9,6 +9,7 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 )
 
@@ -36,7 +37,6 @@ type operation struct {
 }
 
 type testHandler struct {
-	uffdio     uffdio
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *testutils.MemorySlicer
@@ -50,6 +50,17 @@ type testHandler struct {
 	dirtyOffsetsOnce func() ([]uint, error)
 
 	mutex sync.Mutex
+}
+
+func (h *testHandler) executeOperation(ctx context.Context, op operation) error {
+	switch op.mode {
+	case operationModeRead:
+		return h.executeRead(ctx, op)
+	case operationModeWrite:
+		return h.executeWrite(ctx, op)
+	default:
+		return fmt.Errorf("invalid operation mode: %d", op.mode)
+	}
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
@@ -100,4 +111,11 @@ func getOperationsOffsets(ops []operation, m operationMode) []uint {
 	}
 
 	return slices.Collect(b.EachSet())
+}
+
+func accessed(u *Userfaultfd) *block.Tracker {
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
+	return u.missingRequests.Clone()
 }

@@ -174,13 +174,8 @@ func TestMissing(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, operation := range tt.operations {
-				switch operation.mode {
-				case operationModeRead:
-					err := h.executeRead(t.Context(), operation)
-					require.NoError(t, err, "for operation %+v", operation)
-				default:
-					t.FailNow()
-				}
+				err := h.executeOperation(t.Context(), operation)
+				assert.NoError(t, err, "for operation %+v", operation) //nolint:testifylint
 			}
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
@@ -215,7 +210,7 @@ func TestParallelMissing(t *testing.T) {
 
 	for range parallelOperations {
 		verr.Go(func() error {
-			return h.executeRead(t.Context(), readOp)
+			return h.executeOperation(t.Context(), readOp)
 		})
 	}
 
@@ -248,14 +243,14 @@ func TestParallelMissingWithPrefault(t *testing.T) {
 		mode:   operationModeRead,
 	}
 
-	err = h.executeRead(t.Context(), readOp)
+	err = h.executeOperation(t.Context(), readOp)
 	require.NoError(t, err)
 
 	var verr errgroup.Group
 
 	for range parallelOperations {
 		verr.Go(func() error {
-			return h.executeRead(t.Context(), readOp)
+			return h.executeOperation(t.Context(), readOp)
 		})
 	}
 
@@ -289,7 +284,7 @@ func TestSerialMissing(t *testing.T) {
 	}
 
 	for range serialOperations {
-		err := h.executeRead(t.Context(), readOp)
+		err := h.executeOperation(t.Context(), readOp)
 		require.NoError(t, err)
 	}
 
@@ -300,5 +295,3 @@ func TestSerialMissing(t *testing.T) {
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 }
-
-// TODO: Add mock Fd loop to test the ops separately from the serve loop

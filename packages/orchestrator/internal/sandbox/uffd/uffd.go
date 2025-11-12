@@ -204,12 +204,11 @@ func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
 // Dirty waits for the current requests to finish and returns the dirty pages.
 //
 // It *MUST* be only called after the sandbox was successfully paused via API.
-// It also resets the dirty page trackers.
 func (u *Uffd) dirty(ctx context.Context) (*block.Tracker, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	return uffd.Dirty(false), nil
+	return uffd.Dirty(), nil
 }

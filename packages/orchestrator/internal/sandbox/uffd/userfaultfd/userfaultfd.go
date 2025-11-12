@@ -30,8 +30,7 @@ type uffdio interface {
 	unregister(addr, size uintptr) error
 	register(addr uintptr, size uint64, mode CULong) error
 	copy(addr, pagesize uintptr, data []byte, mode CULong) error
-	removeWriteProtection(addr, size uintptr) error
-	addWriteProtection(addr, size uintptr) error
+	writeProtect(addr, size uintptr, mode CULong) error
 	close() error
 	fd() int32
 }
@@ -216,7 +215,7 @@ outerLoop:
 
 		// Handle write to write protected page (WP+WRITE flag)
 		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 && flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			u.handleWriteProtected(addr, pagesize, offset)
+			u.handleWriteProtected(fdExit.SignalExit, addr, pagesize, offset)
 
 			continue
 		}
@@ -225,10 +224,7 @@ outerLoop:
 		// If the event has WRITE flag, it was a write to a missing page.
 		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, true)
-			if err != nil {
-				return fmt.Errorf("failed to handle missing write: %w", err)
-			}
+			u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, true)
 
 			continue
 		}
@@ -236,10 +232,7 @@ outerLoop:
 		// Handle read to missing page ("MISSING" flag)
 		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, false)
-			if err != nil {
-				return fmt.Errorf("failed to handle missing: %w", err)
-			}
+			u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, false)
 
 			continue
 		}
@@ -256,7 +249,7 @@ func (u *Userfaultfd) handleMissing(
 	pagesize uintptr,
 	offset int64,
 	write bool,
-) error {
+) {
 	u.wg.Go(func() error {
 		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 		// even if the errgroup is cancelled or the goroutine returns early.
@@ -268,6 +261,11 @@ func (u *Userfaultfd) handleMissing(
 		defer func() {
 			if r := recover(); r != nil {
 				u.logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
+			}
+
+			signalErr := onFailure()
+			if signalErr != nil {
+				u.logger.Error("UFFD handle missing failure error", zap.Error(signalErr))
 			}
 		}()
 
@@ -303,7 +301,7 @@ func (u *Userfaultfd) handleMissing(
 
 			u.logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
 
-			return fmt.Errorf("failed uffdio copy %w", joinedErr)
+			return fmt.Errorf("failed to copy page %d-%d %w", offset, offset+int64(pagesize), joinedErr)
 		}
 
 		// Add the offset to the missing requests tracker.
@@ -316,11 +314,9 @@ func (u *Userfaultfd) handleMissing(
 
 		return nil
 	})
-
-	return nil
 }
 
-func (u *Userfaultfd) handleWriteProtected(addr, pagesize uintptr, offset int64) {
+func (u *Userfaultfd) handleWriteProtected(onFailure func() error, addr, pagesize uintptr, offset int64) {
 	u.wg.Go(func() error {
 		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 		// even if the errgroup is cancelled or the goroutine returns early.
@@ -333,11 +329,23 @@ func (u *Userfaultfd) handleWriteProtected(addr, pagesize uintptr, offset int64)
 			if r := recover(); r != nil {
 				u.logger.Error("UFFD remove write protection panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
 			}
+
+			signalErr := onFailure()
+			if signalErr != nil {
+				u.logger.Error("UFFD handle write protected failure error", zap.Error(signalErr))
+			}
 		}()
 
-		wpErr := u.uffd.removeWriteProtection(addr, pagesize)
+		// Passing 0 as the mode removed the write protection.
+		wpErr := u.uffd.writeProtect(addr, pagesize, 0)
 		if wpErr != nil {
-			return fmt.Errorf("error removing write protection from page %d", addr)
+			signalErr := onFailure()
+
+			joinedErr := errors.Join(wpErr, signalErr)
+
+			u.logger.Error("UFFD serve write protect error", zap.Error(joinedErr))
+
+			return fmt.Errorf("failed to remove write protection from page %d-%d %w", offset, offset+int64(pagesize), joinedErr)
 		}
 
 		// Add the offset to the write requests tracker.
@@ -357,20 +365,13 @@ func (u *Userfaultfd) Unregister() error {
 	return nil
 }
 
-// Dirty returns the dirty pages and resets the page trackers.
-// If we are making incremental diffs from a running sandbox (checkpoints for example), we should reset the dirty page tracker.
-func (u *Userfaultfd) Dirty(reset bool) *block.Tracker {
+// Dirty returns the dirty pages.
+func (u *Userfaultfd) Dirty() *block.Tracker {
 	// This will be at worst cancelled when the uffd is closed.
 	u.settleRequests.Lock()
 	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
 	// so it is consistent even if there is a another uffd call after.
 	defer u.settleRequests.Unlock()
 
-	writeRequests := u.writeRequests.Clone()
-
-	if reset {
-		u.writeRequests.Reset()
-	}
-
-	return writeRequests
+	return u.writeRequests.Clone()
 }

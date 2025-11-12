@@ -208,16 +208,8 @@ func TestWriteProtection(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, operation := range tt.operations {
-				switch operation.mode {
-				case operationModeRead:
-					err := h.executeRead(t.Context(), operation)
-					require.NoError(t, err, "for operation %+v", operation)
-				case operationModeWrite:
-					err := h.executeWrite(t.Context(), operation)
-					require.NoError(t, err, "for operation %+v", operation)
-				default:
-					t.FailNow()
-				}
+				err := h.executeOperation(t.Context(), operation)
+				assert.NoError(t, err, "for operation %+v", operation) //nolint:testifylint
 			}
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
@@ -248,6 +240,14 @@ func TestParallelWriteProtection(t *testing.T) {
 	}
 
 	h, err := configureCrossProcessTest(t, tt)
+	require.NoError(t, err)
+
+	readOp := operation{
+		offset: 0,
+		mode:   operationModeRead,
+	}
+
+	err = h.executeOperation(t.Context(), readOp)
 	require.NoError(t, err)
 
 	writeOp := operation{
@@ -318,5 +318,3 @@ func TestSerialWriteProtection(t *testing.T) {
 
 	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }
-
-// TODO: Add mock Fd loop to test the ops separately from the serve loop
