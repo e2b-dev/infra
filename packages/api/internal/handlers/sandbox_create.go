@@ -161,6 +161,9 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	var network *types.SandboxNetworkConfig
 	if body.Network != nil {
 		network = &types.SandboxNetworkConfig{
+			Ingress: &types.SandboxNetworkIngressConfig{
+				AllowPublicAccess: sharedUtils.DerefOrDefault(body.Network.AllowPublicAccess, true),
+			},
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(body.Network.AllowOut, nil),
 				DeniedAddresses:  sharedUtils.DerefOrDefault(body.Network.DenyOut, nil),
@@ -223,7 +226,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 		}
 	}
 
-	key, err := a.envdAccessTokenGenerator.GenerateAccessToken(sandboxID)
+	key, err := a.accessTokenGenerator.GenerateEnvdAccessToken(sandboxID)
 	if err != nil {
 		return "", &api.APIError{
 			Code:      http.StatusInternalServerError,

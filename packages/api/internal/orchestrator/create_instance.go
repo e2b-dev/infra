@@ -45,9 +45,12 @@ func addressStringsToCIDRs(addressStrings []string) []string {
 }
 
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
-func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool) *orchestrator.SandboxNetworkConfig {
+func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) *orchestrator.SandboxNetworkConfig {
 	orchNetwork := &orchestrator.SandboxNetworkConfig{
 		Egress: &orchestrator.SandboxNetworkEgressConfig{},
+		Ingress: &orchestrator.SandboxNetworkIngressConfig{
+			TrafficAccessToken: trafficAccessToken,
+		},
 	}
 
 	// Copy network configuration if provided
@@ -179,8 +182,21 @@ func (o *Orchestrator) CreateSandbox(
 		sbxDomain = cluster.SandboxDomain
 	}
 
-	sbxNetwork := buildNetworkConfig(network, allowInternetAccess)
+	var trafficAccessToken *string = nil
+	if network != nil && network.Ingress != nil && !network.Ingress.AllowPublicAccess {
+		accessToken, err := o.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
+		if err != nil {
+			return sandbox.Sandbox{}, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Failed to create traffic access token",
+				Err:       fmt.Errorf("failed to create traffic access token for sandbox %s: %w", sandboxID, err),
+			}
+		}
 
+		trafficAccessToken = &accessToken
+	}
+
+	sbxNetwork := buildNetworkConfig(network, allowInternetAccess, trafficAccessToken)
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:      baseTemplateID,
@@ -282,6 +298,7 @@ func (o *Orchestrator) CreateSandbox(
 		baseTemplateID,
 		sbxDomain,
 		network,
+		trafficAccessToken,
 	)
 
 	o.sandboxStore.Add(ctx, sbx, true)
