@@ -138,7 +138,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	m := memory.NewMapping(regions)
 
 	uffd, err := userfaultfd.NewUserfaultfdFromFd(
-		uintptr(fds[0]),
+		userfaultfd.Fd(fds[0]),
 		u.memfile,
 		m,
 		zap.L().With(logger.WithSandboxID(sandboxId)),

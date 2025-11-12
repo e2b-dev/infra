@@ -28,7 +28,7 @@ func TestNoOperations(t *testing.T) {
 	require.NoError(t, err)
 
 	// Placeholder uffd that does not serve anything
-	uffd, err := NewUserfaultfdFromFd(uintptr(h.uffd), h.data, &memory.Mapping{}, zap.L())
+	uffd, err := NewUserfaultfdFromFd(newMockFd(), h.data, &memory.Mapping{}, zap.L())
 	require.NoError(t, err)
 
 	accessedOffsets, err := h.accessedOffsetsOnce()
@@ -45,128 +45,7 @@ func TestNoOperations(t *testing.T) {
 	assert.Empty(t, slices.Collect(dirty.Offsets()), "checking dirty pages")
 }
 
-// We are using internals from the uffd here, because the cross process helpers make calling these methods very complicated.
-func TestNoDirtyOperationsAfterDirtyReset(t *testing.T) {
-	t.Parallel()
-
-	pagesize := uint64(header.PageSize)
-	numberOfPages := uint64(32)
-
-	h, err := configureCrossProcessTest(t, testConfig{
-		pagesize:      pagesize,
-		numberOfPages: numberOfPages,
-	})
-	require.NoError(t, err)
-
-	// Placeholder uffd that does not serve anything
-	uffd, err := NewUserfaultfdFromFd(uintptr(h.uffd), h.data, &memory.Mapping{}, zap.L())
-	require.NoError(t, err)
-
-	uffd.writeRequests.Add(0)
-	uffd.writeRequests.Add(1 * header.PageSize)
-	uffd.missingRequests.Add(0)
-
-	d1 := uffd.Dirty(true)
-	assert.ElementsMatch(t, []int64{0, 1 * header.PageSize}, slices.Collect(d1.Offsets()), "checking dirty pages")
-
-	d2 := uffd.Dirty(true)
-	assert.ElementsMatch(t, []int64{}, slices.Collect(d2.Offsets()), "checking dirty pages after reset")
-}
-
-// We are using internals from the uffd here, because the cross process helpers make calling these methods very complicated.
-func TestDirtyOperationsAfterDirtyNoReset(t *testing.T) {
-	t.Parallel()
-
-	pagesize := uint64(header.PageSize)
-	numberOfPages := uint64(32)
-
-	h, err := configureCrossProcessTest(t, testConfig{
-		pagesize:      pagesize,
-		numberOfPages: numberOfPages,
-	})
-	require.NoError(t, err)
-
-	// Placeholder uffd that does not serve anything
-	uffd, err := NewUserfaultfdFromFd(uintptr(h.uffd), h.data, &memory.Mapping{}, zap.L())
-	require.NoError(t, err)
-
-	uffd.writeRequests.Add(0)
-	uffd.writeRequests.Add(1 * header.PageSize)
-	uffd.missingRequests.Add(0)
-
-	d1 := uffd.Dirty(false)
-	assert.ElementsMatch(t, []int64{0, 1 * header.PageSize}, slices.Collect(d1.Offsets()), "checking dirty pages")
-
-	d2 := uffd.Dirty(false)
-	assert.ElementsMatch(t, []int64{0, 1 * header.PageSize}, slices.Collect(d2.Offsets()), "checking dirty pages without reset")
-}
-
-// We are using internals from the uffd here, because the cross process helpers make calling these methods very complicated.
-func TestSettleRequestLocking(t *testing.T) {
-	t.Parallel()
-
-	pagesize := uint64(header.PageSize)
-	numberOfPages := uint64(32)
-
-	h, err := configureCrossProcessTest(t, testConfig{
-		pagesize:      pagesize,
-		numberOfPages: numberOfPages,
-	})
-	require.NoError(t, err)
-
-	uffd, err := NewUserfaultfdFromFd(uintptr(h.uffd), h.data, &memory.Mapping{}, zap.L())
-	require.NoError(t, err)
-
-	uffd.writeRequests.Add(0)
-	uffd.writeRequests.Add(1 * header.PageSize)
-	uffd.missingRequests.Add(0)
-
-	uffd.settleRequests.RLock()
-	uffd.settleRequests.RLock()
-	uffd.settleRequests.RLock()
-	uffd.settleRequests.RLock()
-
-	r := make(chan *block.Tracker, 1)
-	go func() {
-		select {
-		case r <- uffd.Dirty(false):
-		case <-t.Context().Done():
-			return
-		}
-	}()
-
-	success := uffd.settleRequests.TryLock()
-	assert.False(t, success, "settleRequests write lock should not be acquired")
-
-	success = uffd.settleRequests.TryLock()
-	assert.False(t, success, "settleRequests write lock should not be acquired")
-
-	uffd.settleRequests.RUnlock()
-	uffd.settleRequests.RUnlock()
-	uffd.settleRequests.RUnlock()
-
-	success = uffd.settleRequests.TryLock()
-	assert.False(t, success, "settleRequests write lock should still not be acquired")
-
-	uffd.settleRequests.RUnlock()
-
-	// This should not get blocked as the Dirty should release the lock after returning.
-	uffd.settleRequests.Lock()
-	// Unlock so we are sure the goroutine is not blocked.
-	uffd.settleRequests.Unlock() //nolint:staticcheck
-
-	select {
-	case result, ok := <-r:
-		if !ok {
-			t.FailNow()
-		}
-
-		assert.ElementsMatch(t, []int64{0, 1 * header.PageSize}, slices.Collect(result.Offsets()), "checking dirty pages")
-	case <-t.Context().Done():
-	}
-}
-
-func TestRandomPagesOperations(t *testing.T) {
+func TestRandomOperations(t *testing.T) {
 	t.Parallel()
 
 	pagesize := uint64(header.PageSize)
@@ -227,5 +106,129 @@ func TestRandomPagesOperations(t *testing.T) {
 
 			assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty (seed: %d)", seed)
 		})
+	}
+}
+
+func TestNoDirtyOperationsAfterDirtyReset(t *testing.T) {
+	t.Parallel()
+
+	pagesize := uint64(header.PageSize)
+	numberOfPages := uint64(32)
+
+	h, err := configureCrossProcessTest(t, testConfig{
+		pagesize:      pagesize,
+		numberOfPages: numberOfPages,
+	})
+	require.NoError(t, err)
+
+	mockFd := newMockFd()
+
+	// Placeholder uffd that does not serve anything
+	uffd, err := NewUserfaultfdFromFd(mockFd, h.data, &memory.Mapping{}, zap.L())
+	require.NoError(t, err)
+
+	uffd.writeRequests.Add(0)
+	uffd.writeRequests.Add(1 * header.PageSize)
+	uffd.missingRequests.Add(0)
+
+	d1 := uffd.Dirty(true)
+	assert.ElementsMatch(t, []int64{0, 1 * header.PageSize}, slices.Collect(d1.Offsets()), "checking dirty pages")
+
+	d2 := uffd.Dirty(true)
+	assert.ElementsMatch(t, []int64{}, slices.Collect(d2.Offsets()), "checking dirty pages after reset")
+}
+
+func TestDirtyOperationsAfterDirtyNoReset(t *testing.T) {
+	t.Parallel()
+
+	pagesize := uint64(header.PageSize)
+	numberOfPages := uint64(32)
+
+	h, err := configureCrossProcessTest(t, testConfig{
+		pagesize:      pagesize,
+		numberOfPages: numberOfPages,
+	})
+	require.NoError(t, err)
+
+	mockFd := newMockFd()
+
+	// Placeholder uffd that does not serve anything
+	uffd, err := NewUserfaultfdFromFd(mockFd, h.data, &memory.Mapping{}, zap.L())
+	require.NoError(t, err)
+
+	uffd.writeRequests.Add(0)
+	uffd.writeRequests.Add(1 * header.PageSize)
+	uffd.missingRequests.Add(0)
+
+	d1 := uffd.Dirty(false)
+	assert.ElementsMatch(t, []int64{0, 1 * header.PageSize}, slices.Collect(d1.Offsets()), "checking dirty pages")
+
+	d2 := uffd.Dirty(false)
+	assert.ElementsMatch(t, []int64{0, 1 * header.PageSize}, slices.Collect(d2.Offsets()), "checking dirty pages without reset")
+}
+
+func TestSettleRequestLocking(t *testing.T) {
+	t.Parallel()
+
+	pagesize := uint64(header.PageSize)
+	numberOfPages := uint64(32)
+
+	h, err := configureCrossProcessTest(t, testConfig{
+		pagesize:      pagesize,
+		numberOfPages: numberOfPages,
+	})
+	require.NoError(t, err)
+
+	mockFd := newMockFd()
+
+	uffd, err := NewUserfaultfdFromFd(mockFd, h.data, &memory.Mapping{}, zap.L())
+	require.NoError(t, err)
+
+	uffd.writeRequests.Add(0)
+	uffd.writeRequests.Add(1 * header.PageSize)
+	uffd.missingRequests.Add(0)
+
+	uffd.settleRequests.RLock()
+	uffd.settleRequests.RLock()
+	uffd.settleRequests.RLock()
+	uffd.settleRequests.RLock()
+
+	r := make(chan *block.Tracker, 1)
+	go func() {
+		select {
+		case r <- uffd.Dirty(false):
+		case <-t.Context().Done():
+			return
+		}
+	}()
+
+	success := uffd.settleRequests.TryLock()
+	assert.False(t, success, "settleRequests write lock should not be acquired")
+
+	success = uffd.settleRequests.TryLock()
+	assert.False(t, success, "settleRequests write lock should not be acquired")
+
+	uffd.settleRequests.RUnlock()
+	uffd.settleRequests.RUnlock()
+	uffd.settleRequests.RUnlock()
+
+	success = uffd.settleRequests.TryLock()
+	assert.False(t, success, "settleRequests write lock should still not be acquired")
+
+	uffd.settleRequests.RUnlock()
+
+	// This should not get blocked as the Dirty should release the lock after returning.
+	uffd.settleRequests.Lock()
+	// Unlock so we are sure the goroutine is not blocked.
+	uffd.settleRequests.Unlock() //nolint:staticcheck
+
+	select {
+	case result, ok := <-r:
+		if !ok {
+			t.FailNow()
+		}
+
+		assert.ElementsMatch(t, []int64{0, 1 * header.PageSize}, slices.Collect(result.Offsets()), "checking dirty pages")
+	case <-t.Context().Done():
 	}
 }

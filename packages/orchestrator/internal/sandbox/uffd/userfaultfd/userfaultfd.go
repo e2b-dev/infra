@@ -26,8 +26,18 @@ const maxRequestsInProgress = 4096
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
+type uffdio interface {
+	unregister(addr, size uintptr) error
+	register(addr uintptr, size uint64, mode CULong) error
+	copy(addr, pagesize uintptr, data []byte, mode CULong) error
+	removeWriteProtection(addr, size uintptr) error
+	addWriteProtection(addr, size uintptr) error
+	close() error
+	fd() int32
+}
+
 type Userfaultfd struct {
-	fd uffdFd
+	uffd uffdio
 
 	src block.Slicer
 	ma  *memory.Mapping
@@ -45,10 +55,8 @@ type Userfaultfd struct {
 }
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
+func NewUserfaultfdFromFd(uffd uffdio, src block.Slicer, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
 	blockSize := src.BlockSize()
-
-	uffd := uffdFd(fd)
 
 	for _, region := range m.Regions {
 		if region.PageSize != uintptr(blockSize) {
@@ -70,7 +78,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	}
 
 	u := &Userfaultfd{
-		fd:              uffd,
+		uffd:            uffd,
 		src:             src,
 		missingRequests: block.NewTracker(blockSize),
 		writeRequests:   block.NewTracker(blockSize),
@@ -87,15 +95,17 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 }
 
 func (u *Userfaultfd) Close() error {
-	return u.fd.close()
+	return u.uffd.close()
 }
 
 func (u *Userfaultfd) Serve(
 	ctx context.Context,
 	fdExit *fdexit.FdExit,
 ) error {
+	uffd := u.uffd.fd()
+
 	pollFds := []unix.PollFd{
-		{Fd: int32(u.fd), Events: unix.POLLIN},
+		{Fd: uffd, Events: unix.POLLIN},
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
 	}
 
@@ -156,7 +166,7 @@ outerLoop:
 		buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
 
 		for {
-			_, err := syscall.Read(int(u.fd), buf)
+			_, err := syscall.Read(int(uffd), buf)
 			if err == syscall.EINTR {
 				u.logger.Debug("uffd: interrupted read, reading again")
 
@@ -279,7 +289,7 @@ func (u *Userfaultfd) handleMissing(
 			copyMode |= UFFDIO_COPY_MODE_WP
 		}
 
-		copyErr := u.fd.copy(addr, pagesize, b, copyMode)
+		copyErr := u.uffd.copy(addr, pagesize, b, copyMode)
 		if errors.Is(copyErr, unix.EEXIST) {
 			// Page is already mapped
 
@@ -325,7 +335,7 @@ func (u *Userfaultfd) handleWriteProtected(addr, pagesize uintptr, offset int64)
 			}
 		}()
 
-		wpErr := u.fd.removeWriteProtection(addr, pagesize)
+		wpErr := u.uffd.removeWriteProtection(addr, pagesize)
 		if wpErr != nil {
 			return fmt.Errorf("error removing write protection from page %d", addr)
 		}
@@ -339,7 +349,7 @@ func (u *Userfaultfd) handleWriteProtected(addr, pagesize uintptr, offset int64)
 
 func (u *Userfaultfd) Unregister() error {
 	for _, r := range u.ma.Regions {
-		if err := u.fd.unregister(r.BaseHostVirtAddr, r.Size); err != nil {
+		if err := u.uffd.unregister(r.BaseHostVirtAddr, r.Size); err != nil {
 			return fmt.Errorf("failed to unregister: %w", err)
 		}
 	}

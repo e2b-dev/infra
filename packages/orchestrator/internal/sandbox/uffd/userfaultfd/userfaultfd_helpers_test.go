@@ -36,7 +36,7 @@ type operation struct {
 }
 
 type testHandler struct {
-	uffd       uffdFd
+	uffdio     uffdio
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *testutils.MemorySlicer

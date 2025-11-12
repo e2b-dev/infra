@@ -10,7 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-func TestMissing(t *testing.T) {
+func TestMissingWrite(t *testing.T) {
 	t.Parallel()
 
 	tests := []testConfig{
@@ -21,7 +21,7 @@ func TestMissing(t *testing.T) {
 			operations: []operation{
 				{
 					offset: 0,
-					mode:   operationModeRead,
+					mode:   operationModeWrite,
 				},
 			},
 		},
@@ -32,7 +32,7 @@ func TestMissing(t *testing.T) {
 			operations: []operation{
 				{
 					offset: 15 * header.PageSize,
-					mode:   operationModeRead,
+					mode:   operationModeWrite,
 				},
 			},
 		},
@@ -43,18 +43,18 @@ func TestMissing(t *testing.T) {
 			operations: []operation{
 				{
 					offset: 31 * header.PageSize,
-					mode:   operationModeRead,
+					mode:   operationModeWrite,
 				},
 			},
 		},
 		{
-			name:          "standard 4k page, read after read",
+			name:          "standard 4k page, read after write",
 			pagesize:      header.PageSize,
 			numberOfPages: 32,
 			operations: []operation{
 				{
 					offset: 0,
-					mode:   operationModeRead,
+					mode:   operationModeWrite,
 				},
 				{
 					offset: 0,
@@ -63,10 +63,45 @@ func TestMissing(t *testing.T) {
 			},
 		},
 		{
-			name:          "standard 4k page, reads, different offsets",
+			name:          "standard 4k page, write after write",
 			pagesize:      header.PageSize,
 			numberOfPages: 32,
 			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "standard 4k page, reads after writes, varying offsets",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 4 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 5 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 2 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeWrite,
+				},
 				{
 					offset: 4 * header.PageSize,
 					mode:   operationModeRead,
@@ -96,7 +131,7 @@ func TestMissing(t *testing.T) {
 			operations: []operation{
 				{
 					offset: 0,
-					mode:   operationModeRead,
+					mode:   operationModeWrite,
 				},
 			},
 		},
@@ -107,7 +142,7 @@ func TestMissing(t *testing.T) {
 			operations: []operation{
 				{
 					offset: 3 * header.HugepageSize,
-					mode:   operationModeRead,
+					mode:   operationModeWrite,
 				},
 			},
 		},
@@ -118,18 +153,18 @@ func TestMissing(t *testing.T) {
 			operations: []operation{
 				{
 					offset: 7 * header.HugepageSize,
-					mode:   operationModeRead,
+					mode:   operationModeWrite,
 				},
 			},
 		},
 		{
-			name:          "hugepage, read after read",
+			name:          "hugepage, read after write",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
 			operations: []operation{
 				{
 					offset: 0,
-					mode:   operationModeRead,
+					mode:   operationModeWrite,
 				},
 				{
 					offset: 0,
@@ -138,10 +173,45 @@ func TestMissing(t *testing.T) {
 			},
 		},
 		{
-			name:          "hugepage, reads, different offsets",
+			name:          "hugepage, write after write",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
 			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "hugepage, reads after writes, varying offsets",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 4 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 5 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 2 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
 				{
 					offset: 4 * header.HugepageSize,
 					mode:   operationModeRead,
@@ -178,6 +248,9 @@ func TestMissing(t *testing.T) {
 				case operationModeRead:
 					err := h.executeRead(t.Context(), operation)
 					require.NoError(t, err, "for operation %+v", operation)
+				case operationModeWrite:
+					err := h.executeWrite(t.Context(), operation)
+					require.NoError(t, err, "for operation %+v", operation)
 				default:
 					t.FailNow()
 				}
@@ -189,11 +262,18 @@ func TestMissing(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+			expectedDirtyOffsets := getOperationsOffsets(tt.operations, operationModeWrite)
+
+			dirtyOffsets, err := h.dirtyOffsetsOnce()
+			require.NoError(t, err)
+
+			assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 		})
 	}
 }
 
-func TestParallelMissing(t *testing.T) {
+func TestParallelMissingWrite(t *testing.T) {
 	t.Parallel()
 
 	parallelOperations := 1_000_000
@@ -206,31 +286,38 @@ func TestParallelMissing(t *testing.T) {
 	h, err := configureCrossProcessTest(t, tt)
 	require.NoError(t, err)
 
-	readOp := operation{
+	writeOp := operation{
 		offset: 0,
-		mode:   operationModeRead,
+		mode:   operationModeWrite,
 	}
 
 	var verr errgroup.Group
 
 	for range parallelOperations {
 		verr.Go(func() error {
-			return h.executeRead(t.Context(), readOp)
+			return h.executeWrite(t.Context(), writeOp)
 		})
 	}
 
 	err = verr.Wait()
 	require.NoError(t, err)
 
-	expectedAccessedOffsets := getOperationsOffsets([]operation{readOp}, operationModeRead)
+	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
 	accessedOffsets, err := h.accessedOffsetsOnce()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+	expectedDirtyOffsets := getOperationsOffsets([]operation{writeOp}, operationModeWrite)
+
+	dirtyOffsets, err := h.dirtyOffsetsOnce()
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }
 
-func TestParallelMissingWithPrefault(t *testing.T) {
+func TestParallelMissingWriteWithPrefault(t *testing.T) {
 	t.Parallel()
 
 	parallelOperations := 10_000
@@ -243,34 +330,41 @@ func TestParallelMissingWithPrefault(t *testing.T) {
 	h, err := configureCrossProcessTest(t, tt)
 	require.NoError(t, err)
 
-	readOp := operation{
+	writeOp := operation{
 		offset: 0,
-		mode:   operationModeRead,
+		mode:   operationModeWrite,
 	}
 
-	err = h.executeRead(t.Context(), readOp)
+	err = h.executeWrite(t.Context(), writeOp)
 	require.NoError(t, err)
 
 	var verr errgroup.Group
 
 	for range parallelOperations {
 		verr.Go(func() error {
-			return h.executeRead(t.Context(), readOp)
+			return h.executeWrite(t.Context(), writeOp)
 		})
 	}
 
 	err = verr.Wait()
 	require.NoError(t, err)
 
-	expectedAccessedOffsets := getOperationsOffsets([]operation{readOp}, operationModeRead)
+	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
 	accessedOffsets, err := h.accessedOffsetsOnce()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+	expectedDirtyOffsets := getOperationsOffsets([]operation{writeOp}, operationModeWrite)
+
+	dirtyOffsets, err := h.dirtyOffsetsOnce()
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }
 
-func TestSerialMissing(t *testing.T) {
+func TestSerialMissingWrite(t *testing.T) {
 	t.Parallel()
 
 	serialOperations := 10_000
@@ -283,20 +377,29 @@ func TestSerialMissing(t *testing.T) {
 	h, err := configureCrossProcessTest(t, tt)
 	require.NoError(t, err)
 
-	readOp := operation{
+	writeOp := operation{
 		offset: 0,
-		mode:   operationModeRead,
+		mode:   operationModeWrite,
 	}
 
 	for range serialOperations {
-		err := h.executeRead(t.Context(), readOp)
+		err := h.executeWrite(t.Context(), writeOp)
 		require.NoError(t, err)
 	}
 
-	expectedAccessedOffsets := getOperationsOffsets([]operation{readOp}, operationModeRead)
+	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
 	accessedOffsets, err := h.accessedOffsetsOnce()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+	expectedDirtyOffsets := getOperationsOffsets([]operation{writeOp}, operationModeWrite)
+
+	dirtyOffsets, err := h.dirtyOffsetsOnce()
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }
+
+// TODO: Add mock Fd loop to test the ops separately from the serve loop

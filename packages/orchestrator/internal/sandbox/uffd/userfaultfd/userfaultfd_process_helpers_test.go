@@ -203,7 +203,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	}
 
 	return &testHandler{
-		uffd:                uffdFd,
+		uffdio:              uffdFd,
 		memoryArea:          &memoryArea,
 		pagesize:            tt.pagesize,
 		data:                data,
@@ -275,7 +275,7 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit creating logger: %w", err)
 	}
 
-	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, logger)
+	uffd, err := NewUserfaultfdFromFd(Fd(uffdFd), data, m, logger)
 	if err != nil {
 		return fmt.Errorf("exit creating uffd: %w", err)
 	}

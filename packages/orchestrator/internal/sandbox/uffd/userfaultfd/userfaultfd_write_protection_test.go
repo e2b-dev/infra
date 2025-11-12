@@ -60,7 +60,7 @@ func TestWriteProtection(t *testing.T) {
 			},
 		},
 		{
-			name:          "standard 4k page, writes after reads, different offsets",
+			name:          "standard 4k page, writes after reads, varying offsets",
 			pagesize:      header.PageSize,
 			numberOfPages: 32,
 			operations: []operation{
@@ -152,7 +152,7 @@ func TestWriteProtection(t *testing.T) {
 			},
 		},
 		{
-			name:          "hugepage, writes after reads, different offsets",
+			name:          "hugepage, writes after reads, varying offsets",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
 			operations: []operation{
@@ -318,3 +318,5 @@ func TestSerialWriteProtection(t *testing.T) {
 
 	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }
+
+// TODO: Add mock Fd loop to test the ops separately from the serve loop
