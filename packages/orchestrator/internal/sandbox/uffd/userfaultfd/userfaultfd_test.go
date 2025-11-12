@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestNoOperations(t *testing.T) {
@@ -138,150 +139,150 @@ func TestUffdEvents(t *testing.T) {
 			},
 			offset: 0,
 		},
-		// {
-		// 	UffdioCopy: &UffdioCopy{
-		// 		dst:  0,
-		// 		len:  header.PageSize,
-		// 		mode: 0,
-		// 	},
-		// 	offset: 0,
-		// },
-		// {
-		// 	UffdioCopy: &UffdioCopy{
-		// 		dst:  0,
-		// 		len:  header.PageSize,
-		// 		mode: UFFDIO_COPY_MODE_WP,
-		// 	},
-		// 	offset: 0,
-		// },
+		{
+			UffdioCopy: &UffdioCopy{
+				dst:  0,
+				len:  header.PageSize,
+				mode: 0,
+			},
+			offset: 0,
+		},
+		{
+			UffdioCopy: &UffdioCopy{
+				dst:  0,
+				len:  header.PageSize,
+				mode: UFFDIO_COPY_MODE_WP,
+			},
+			offset: 0,
+		},
 
-		// // WriteProtect at same offset, repeated
-		// {
-		// 	UffdioWriteProtect: &UffdioWriteProtect{
-		// 		_range: UffdioRange{
-		// 			start: 0,
-		// 			len:   header.PageSize,
-		// 		},
-		// 	},
-		// 	offset: 0,
-		// },
-		// {
-		// 	UffdioWriteProtect: &UffdioWriteProtect{
-		// 		_range: UffdioRange{
-		// 			start: 0,
-		// 			len:   header.PageSize,
-		// 		},
-		// 	},
-		// 	offset: 0,
-		// },
+		// WriteProtect at same offset, repeated
+		{
+			UffdioWriteProtect: &UffdioWriteProtect{
+				_range: UffdioRange{
+					start: 0,
+					len:   header.PageSize,
+				},
+			},
+			offset: 0,
+		},
+		{
+			UffdioWriteProtect: &UffdioWriteProtect{
+				_range: UffdioRange{
+					start: 0,
+					len:   header.PageSize,
+				},
+			},
+			offset: 0,
+		},
 
-		// // Copy at next offset, include both mode 0 and UFFDIO_COPY_MODE_WP
-		// {
-		// 	UffdioCopy: &UffdioCopy{
-		// 		dst:  header.PageSize,
-		// 		len:  header.PageSize,
-		// 		mode: 0,
-		// 	},
-		// 	offset: int64(header.PageSize),
-		// },
-		// {
-		// 	UffdioCopy: &UffdioCopy{
-		// 		dst:  header.PageSize,
-		// 		len:  header.PageSize,
-		// 		mode: UFFDIO_COPY_MODE_WP,
-		// 	},
-		// 	offset: int64(header.PageSize),
-		// },
-		// {
-		// 	UffdioCopy: &UffdioCopy{
-		// 		dst:  header.PageSize,
-		// 		len:  header.PageSize,
-		// 		mode: 0,
-		// 	},
-		// 	offset: int64(header.PageSize),
-		// },
-		// {
-		// 	UffdioCopy: &UffdioCopy{
-		// 		dst:  header.PageSize,
-		// 		len:  header.PageSize,
-		// 		mode: UFFDIO_COPY_MODE_WP,
-		// 	},
-		// 	offset: int64(header.PageSize),
-		// },
+		// Copy at next offset, include both mode 0 and UFFDIO_COPY_MODE_WP
+		{
+			UffdioCopy: &UffdioCopy{
+				dst:  header.PageSize,
+				len:  header.PageSize,
+				mode: 0,
+			},
+			offset: int64(header.PageSize),
+		},
+		{
+			UffdioCopy: &UffdioCopy{
+				dst:  header.PageSize,
+				len:  header.PageSize,
+				mode: UFFDIO_COPY_MODE_WP,
+			},
+			offset: int64(header.PageSize),
+		},
+		{
+			UffdioCopy: &UffdioCopy{
+				dst:  header.PageSize,
+				len:  header.PageSize,
+				mode: 0,
+			},
+			offset: int64(header.PageSize),
+		},
+		{
+			UffdioCopy: &UffdioCopy{
+				dst:  header.PageSize,
+				len:  header.PageSize,
+				mode: UFFDIO_COPY_MODE_WP,
+			},
+			offset: int64(header.PageSize),
+		},
 
-		// // WriteProtect at next offset, repeated
-		// {
-		// 	UffdioWriteProtect: &UffdioWriteProtect{
-		// 		_range: UffdioRange{
-		// 			start: header.PageSize,
-		// 			len:   header.PageSize,
-		// 		},
-		// 	},
-		// 	offset: int64(header.PageSize),
-		// },
-		// {
-		// 	UffdioWriteProtect: &UffdioWriteProtect{
-		// 		_range: UffdioRange{
-		// 			start: header.PageSize,
-		// 			len:   header.PageSize,
-		// 		},
-		// 	},
-		// 	offset: int64(header.PageSize),
-		// },
+		// WriteProtect at next offset, repeated
+		{
+			UffdioWriteProtect: &UffdioWriteProtect{
+				_range: UffdioRange{
+					start: header.PageSize,
+					len:   header.PageSize,
+				},
+			},
+			offset: int64(header.PageSize),
+		},
+		{
+			UffdioWriteProtect: &UffdioWriteProtect{
+				_range: UffdioRange{
+					start: header.PageSize,
+					len:   header.PageSize,
+				},
+			},
+			offset: int64(header.PageSize),
+		},
 
-		// // Copy at another offset, include both mode 0 and UFFDIO_COPY_MODE_WP
-		// {
-		// 	UffdioCopy: &UffdioCopy{
-		// 		dst:  2 * header.PageSize,
-		// 		len:  header.PageSize,
-		// 		mode: 0,
-		// 	},
-		// 	offset: int64(2 * header.PageSize),
-		// },
-		// {
-		// 	UffdioCopy: &UffdioCopy{
-		// 		dst:  2 * header.PageSize,
-		// 		len:  header.PageSize,
-		// 		mode: UFFDIO_COPY_MODE_WP,
-		// 	},
-		// 	offset: int64(2 * header.PageSize),
-		// },
-		// {
-		// 	UffdioCopy: &UffdioCopy{
-		// 		dst:  2 * header.PageSize,
-		// 		len:  header.PageSize,
-		// 		mode: 0,
-		// 	},
-		// 	offset: int64(2 * header.PageSize),
-		// },
-		// {
-		// 	UffdioCopy: &UffdioCopy{
-		// 		dst:  2 * header.PageSize,
-		// 		len:  header.PageSize,
-		// 		mode: UFFDIO_COPY_MODE_WP,
-		// 	},
-		// 	offset: int64(2 * header.PageSize),
-		// },
+		// Copy at another offset, include both mode 0 and UFFDIO_COPY_MODE_WP
+		{
+			UffdioCopy: &UffdioCopy{
+				dst:  2 * header.PageSize,
+				len:  header.PageSize,
+				mode: 0,
+			},
+			offset: int64(2 * header.PageSize),
+		},
+		{
+			UffdioCopy: &UffdioCopy{
+				dst:  2 * header.PageSize,
+				len:  header.PageSize,
+				mode: UFFDIO_COPY_MODE_WP,
+			},
+			offset: int64(2 * header.PageSize),
+		},
+		{
+			UffdioCopy: &UffdioCopy{
+				dst:  2 * header.PageSize,
+				len:  header.PageSize,
+				mode: 0,
+			},
+			offset: int64(2 * header.PageSize),
+		},
+		{
+			UffdioCopy: &UffdioCopy{
+				dst:  2 * header.PageSize,
+				len:  header.PageSize,
+				mode: UFFDIO_COPY_MODE_WP,
+			},
+			offset: int64(2 * header.PageSize),
+		},
 
-		// // WriteProtect at another offset, repeated
-		// {
-		// 	UffdioWriteProtect: &UffdioWriteProtect{
-		// 		_range: UffdioRange{
-		// 			start: 2 * header.PageSize,
-		// 			len:   header.PageSize,
-		// 		},
-		// 	},
-		// 	offset: int64(2 * header.PageSize),
-		// },
-		// {
-		// 	UffdioWriteProtect: &UffdioWriteProtect{
-		// 		_range: UffdioRange{
-		// 			start: 2 * header.PageSize,
-		// 			len:   header.PageSize,
-		// 		},
-		// 	},
-		// 	offset: int64(2 * header.PageSize),
-		// },
+		// WriteProtect at another offset, repeated
+		{
+			UffdioWriteProtect: &UffdioWriteProtect{
+				_range: UffdioRange{
+					start: 2 * header.PageSize,
+					len:   header.PageSize,
+				},
+			},
+			offset: int64(2 * header.PageSize),
+		},
+		{
+			UffdioWriteProtect: &UffdioWriteProtect{
+				_range: UffdioRange{
+					start: 2 * header.PageSize,
+					len:   header.PageSize,
+				},
+			},
+			offset: int64(2 * header.PageSize),
+		},
 	}
 
 	for _, event := range events {
@@ -291,26 +292,35 @@ func TestUffdEvents(t *testing.T) {
 
 	receivedEvents := make([]event, 0, len(events))
 
-	for range len(events) {
+	for range events {
 		select {
 		case copyEvent, ok := <-mockFd.copyCh:
 			if !ok {
 				t.FailNow()
 			}
 
-			receivedEvents = append(receivedEvents, event{UffdioCopy: &copyEvent})
+			copyEvent.resolve()
+
+			// We don't add the offset here, because it is propagated only through the "accessed" and "dirty" sets.
+			// When later comparing the events, we will compare the events without the offset.
+			receivedEvents = append(receivedEvents, event{UffdioCopy: &copyEvent.event})
 		case writeProtectEvent, ok := <-mockFd.writeProtectCh:
 			if !ok {
 				t.FailNow()
 			}
 
-			receivedEvents = append(receivedEvents, event{UffdioWriteProtect: &writeProtectEvent})
+			writeProtectEvent.resolve()
+
+			// We don't add the offset here, because it is propagated only through the "accessed" and "dirty" sets.
+			// When later comparing the events, we will compare the events without the offset.
+			receivedEvents = append(receivedEvents, event{UffdioWriteProtect: &writeProtectEvent.event})
 		case <-t.Context().Done():
 			return
 		}
 	}
 
-	assert.ElementsMatch(t, events, receivedEvents, "checking received events")
+	assert.Len(t, receivedEvents, len(events), "checking received events")
+	assert.ElementsMatch(t, zeroOffsets(events), receivedEvents, "checking received events")
 
 	select {
 	case <-mockFd.copyCh:
@@ -346,9 +356,8 @@ func TestUffdEvents(t *testing.T) {
 	assert.ElementsMatch(t, slices.Collect(maps.Keys(expectedAccessedOffsets)), slices.Collect(accessed.Offsets()), "checking accessed pages")
 }
 
-func TestUffdEventsDirtySettle(t *testing.T) {
+func TestUffdSettleRequests(t *testing.T) {
 	t.Parallel()
-	t.Skip()
 
 	pagesize := uint64(header.PageSize)
 	numberOfPages := uint64(32)
@@ -359,66 +368,179 @@ func TestUffdEventsDirtySettle(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	mockFd := newMockFd()
+	testEventsSettle := func(t *testing.T, events []event) {
+		t.Helper()
 
-	uffd, err := NewUserfaultfdFromFd(mockFd, h.data, &memory.Mapping{}, zap.L())
-	require.NoError(t, err)
+		mockFd := newMockFd()
 
-	uffd.handleWriteProtected(func() error { return nil }, 0, header.PageSize, 0)
-	uffd.handleMissing(t.Context(), func() error { return nil }, 0, header.PageSize, 0, false)
+		// Placeholder uffd that does not serve anything
+		uffd, err := NewUserfaultfdFromFd(mockFd, h.data, &memory.Mapping{}, zap.L())
+		require.NoError(t, err)
 
-	uffd.writeRequests.Add(0)
-	uffd.writeRequests.Add(1 * header.PageSize)
-	uffd.missingRequests.Add(0)
+		for _, e := range events {
+			err = e.trigger(t.Context(), uffd)
+			require.NoError(t, err, "for event %+v", e)
+		}
 
-	uffd.settleRequests.RLock()
-	uffd.settleRequests.RLock()
-	uffd.settleRequests.RLock()
-	uffd.settleRequests.RLock()
+		var blockedCopyEvents []*blockedEvent[UffdioCopy]
+		var blockedWriteProtectEvents []*blockedEvent[UffdioWriteProtect]
 
-	r := make(chan *block.Tracker, 1)
-	go func() {
+		for range events {
+			// Wait until the event is blocked
+			select {
+			case copyEvent, ok := <-mockFd.copyCh:
+				if !ok {
+					t.FailNow()
+				}
+
+				require.NotNil(t, copyEvent.event, "copy event should not be nil")
+				assert.Contains(t, zeroOffsets(events), event{UffdioCopy: &copyEvent.event}, "checking copy event")
+
+				blockedCopyEvents = append(blockedCopyEvents, copyEvent)
+			case writeProtectEvent, ok := <-mockFd.writeProtectCh:
+				if !ok {
+					t.FailNow()
+				}
+
+				require.NotNil(t, writeProtectEvent.event, "write protect event should not be nil")
+				assert.Contains(t, zeroOffsets(events), event{UffdioWriteProtect: &writeProtectEvent.event}, "checking write protect event")
+
+				blockedWriteProtectEvents = append(blockedWriteProtectEvents, writeProtectEvent)
+			case <-t.Context().Done():
+				t.FailNow()
+			}
+		}
+
+		require.Equal(t, len(blockedCopyEvents)+len(blockedWriteProtectEvents), len(events), "checking blocked events")
+
+		triggerUnlock := make(chan struct{})
+
+		d := make(chan *block.Tracker)
+
+		go func() {
+			acquired := uffd.settleRequests.TryLock()
+			assert.False(t, acquired, "settleRequests write lock should not be acquired")
+
+			triggerUnlock <- struct{}{}
+
+			// This should block, until the events are resolved.
+			dirty := uffd.Dirty()
+
+			select {
+			case d <- dirty:
+			case <-t.Context().Done():
+				return
+			}
+		}()
+
+		<-triggerUnlock
+
+		// Resolve the events to unblock getting the dirty pages in the goroutine.
+		for _, e := range blockedCopyEvents {
+			e.resolve()
+		}
+
+		for _, e := range blockedWriteProtectEvents {
+			e.resolve()
+		}
+
 		select {
-		case r <- uffd.Dirty():
+		case <-mockFd.copyCh:
+			t.Fatalf("copy channel should not have any events")
+		case <-mockFd.writeProtectCh:
+			t.Fatalf("write protect channel should not have any events")
 		case <-t.Context().Done():
-			return
-		}
-	}()
-
-	success := uffd.settleRequests.TryLock()
-	assert.False(t, success, "settleRequests write lock should not be acquired")
-
-	success = uffd.settleRequests.TryLock()
-	assert.False(t, success, "settleRequests write lock should not be acquired")
-
-	uffd.settleRequests.RUnlock()
-	uffd.settleRequests.RUnlock()
-	uffd.settleRequests.RUnlock()
-
-	success = uffd.settleRequests.TryLock()
-	assert.False(t, success, "settleRequests write lock should still not be acquired")
-
-	uffd.settleRequests.RUnlock()
-
-	// This should not get blocked as the Dirty should release the lock after returning.
-	uffd.settleRequests.Lock()
-	// Unlock so we are sure the goroutine is not blocked.
-	uffd.settleRequests.Unlock() //nolint:staticcheck
-
-	select {
-	case result, ok := <-r:
-		if !ok {
 			t.FailNow()
+		case dirty, ok := <-d:
+			if !ok {
+				t.FailNow()
+			}
+
+			assert.ElementsMatch(t, dirtyOffsets(events), slices.Collect(dirty.Offsets()), "checking dirty pages")
+		}
+	}
+
+	t.Run("missing", func(t *testing.T) {
+		t.Parallel()
+
+		events := []event{
+			{UffdioCopy: &UffdioCopy{
+				dst:  0,
+				len:  header.PageSize,
+				mode: UFFDIO_COPY_MODE_WP,
+			}, offset: 2 * int64(header.PageSize)},
 		}
 
-		assert.ElementsMatch(t, []int64{0, 1 * header.PageSize}, slices.Collect(result.Offsets()), "checking dirty pages")
-	case <-t.Context().Done():
-	}
+		testEventsSettle(t, events)
+	})
+
+	t.Run("write protect", func(t *testing.T) {
+		t.Parallel()
+
+		events := []event{
+			{UffdioWriteProtect: &UffdioWriteProtect{
+				_range: UffdioRange{
+					start: 0,
+					len:   header.PageSize,
+				},
+			}, offset: 2 * int64(header.PageSize)},
+		}
+
+		testEventsSettle(t, events)
+	})
+
+	t.Run("missing write", func(t *testing.T) {
+		t.Parallel()
+
+		events := []event{
+			{UffdioCopy: &UffdioCopy{
+				dst:  0,
+				len:  header.PageSize,
+				mode: 0,
+			}, offset: 2 * int64(header.PageSize)},
+		}
+
+		testEventsSettle(t, events)
+	})
+
+	t.Run("event mix", func(t *testing.T) {
+		t.Parallel()
+
+		events := []event{
+			{UffdioCopy: &UffdioCopy{
+				dst:  0,
+				len:  header.PageSize,
+				mode: 0,
+			}, offset: 2 * int64(header.PageSize)},
+			{UffdioWriteProtect: &UffdioWriteProtect{
+				_range: UffdioRange{
+					start: 0,
+					len:   header.PageSize,
+				},
+			}, offset: 2 * int64(header.PageSize)},
+			{UffdioCopy: &UffdioCopy{
+				dst:  0,
+				len:  header.PageSize,
+				mode: 0,
+			}, offset: 2 * int64(header.PageSize)},
+			{
+				UffdioWriteProtect: &UffdioWriteProtect{
+					_range: UffdioRange{
+						start: 0,
+						len:   header.PageSize,
+					},
+				}, offset: 0,
+			},
+		}
+
+		testEventsSettle(t, events)
+	})
 }
 
 type event struct {
 	*UffdioCopy
 	*UffdioWriteProtect
+
 	offset int64
 }
 
@@ -433,6 +555,21 @@ func (e event) trigger(ctx context.Context, uffd *Userfaultfd) error {
 	}
 
 	return nil
+}
+
+// Return the event copy without the offset, because the offset is propagated only through the "accessed" and "dirty" sets, so direct comparisons would fail.
+func (e event) withoutOffset() event {
+	return event{
+		UffdioCopy:         e.UffdioCopy,
+		UffdioWriteProtect: e.UffdioWriteProtect,
+	}
+}
+
+// Creates a new slice of events with the offset set to 0, so we can compare the events without the offset.
+func zeroOffsets(events []event) []event {
+	return utils.Map(events, func(e event) event {
+		return e.withoutOffset()
+	})
 }
 
 func triggerMissing(ctx context.Context, uffd *Userfaultfd, c UffdioCopy, offset int64) {
@@ -459,4 +596,22 @@ func triggerWriteProtected(uffd *Userfaultfd, c UffdioWriteProtect, offset int64
 		uintptr(uffd.src.BlockSize()),
 		offset,
 	)
+}
+
+func dirtyOffsets(events []event) []int64 {
+	offsets := make(map[int64]struct{})
+
+	for _, e := range events {
+		if e.UffdioWriteProtect != nil {
+			offsets[e.offset] = struct{}{}
+		}
+
+		if e.UffdioCopy != nil {
+			if e.UffdioCopy.mode != UFFDIO_COPY_MODE_WP {
+				offsets[e.offset] = struct{}{}
+			}
+		}
+	}
+
+	return slices.Collect(maps.Keys(offsets))
 }

@@ -13,14 +13,14 @@ import (
 type mockFd struct {
 	// The channels send back the info about the uffd handled operations
 	// and also allows us to block the methods to test the flow.
-	copyCh         chan UffdioCopy
-	writeProtectCh chan UffdioWriteProtect
+	copyCh         chan *blockedEvent[UffdioCopy]
+	writeProtectCh chan *blockedEvent[UffdioWriteProtect]
 }
 
 func newMockFd() *mockFd {
 	return &mockFd{
-		copyCh:         make(chan UffdioCopy),
-		writeProtectCh: make(chan UffdioWriteProtect),
+		copyCh:         make(chan *blockedEvent[UffdioCopy]),
+		writeProtectCh: make(chan *blockedEvent[UffdioWriteProtect]),
 	}
 }
 
@@ -32,18 +32,36 @@ func (m *mockFd) unregister(_, _ uintptr) error {
 	return nil
 }
 
-func (m *mockFd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
+func (m *mockFd) copy(addr, pagesize uintptr, _ []byte, mode CULong) error {
 	// Don't use the uffdioCopy constructor as it unsafely checks slice address and fails for arbitrary pointer.
-	m.copyCh <- UffdioCopy{CULong(addr), 0, CULong(pagesize), mode, 0}
+	e := newBlockedEvent(UffdioCopy{
+		src:  0,
+		dst:  CULong(addr),
+		len:  CULong(pagesize),
+		mode: mode,
+		copy: 0,
+	})
+
+	m.copyCh <- e
+
+	<-e.resolved
 
 	return nil
 }
 
 func (m *mockFd) writeProtect(addr, size uintptr, mode CULong) error {
-	fmt.Println("writeProtect", addr, size, mode)
-	m.writeProtectCh <- newUffdioWriteProtect(CULong(addr), CULong(size), mode)
+	e := newBlockedEvent(UffdioWriteProtect{
+		_range: newUffdioRange(
+			CULong(addr),
+			CULong(size),
+		),
+		mode: mode,
+	})
 
-	fmt.Println("writeProtect sent", addr, size, mode)
+	m.writeProtectCh <- e
+
+	<-e.resolved
+
 	return nil
 }
 
@@ -84,4 +102,21 @@ func configureApi(f Fd, pagesize uint64) error {
 	}
 
 	return nil
+}
+
+// This wrapped event allows us to simulate the finish of processing of events by FC on FC API Pause.
+type blockedEvent[T UffdioCopy | UffdioWriteProtect] struct {
+	event    T
+	resolved chan struct{}
+}
+
+func newBlockedEvent[T UffdioCopy | UffdioWriteProtect](event T) *blockedEvent[T] {
+	return &blockedEvent[T]{
+		event:    event,
+		resolved: make(chan struct{}),
+	}
+}
+
+func (e *blockedEvent[T]) resolve() {
+	close(e.resolved)
 }
