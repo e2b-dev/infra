@@ -183,7 +183,7 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	var trafficAccessToken *string = nil
-	if network != nil && network.Ingress != nil && !network.Ingress.AllowPublicAccess {
+	if network != nil && network.Ingress != nil && network.Ingress.DenyPublicAccess {
 		accessToken, err := o.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
 		if err != nil {
 			return sandbox.Sandbox{}, &api.APIError{
