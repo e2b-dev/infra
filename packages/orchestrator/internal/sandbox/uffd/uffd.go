@@ -138,7 +138,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	m := memory.NewMapping(regions)
 
 	uffd, err := userfaultfd.NewUserfaultfdFromFd(
-		uintptr(fds[0]),
+		userfaultfd.Fd(fds[0]),
 		u.memfile,
 		m,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
@@ -162,6 +162,10 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		ctx,
 		u.fdExit,
 	)
+	if errors.Is(err, fdexit.ErrFdExit) {
+		return nil
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}
@@ -185,8 +189,6 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 // allowing us to create a "diff" snapshot via FC API without dirty tracking enabled,
 // and without pagefaulting all remaining missing pages.
 //
-// It should be called *after* Dirty().
-//
 // After calling Disable(), this uffd is no longer usable—we won't be able to resume the sandbox via API.
 // The uffd itself is not closed though, as that should be done by the sandbox cleanup.
 func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
@@ -206,14 +208,13 @@ func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
 // Dirty waits for the current requests to finish and returns the dirty pages.
 //
 // It *MUST* be only called after the sandbox was successfully paused via API.
-// It also resets the dirty page trackers.
 func (u *Uffd) dirty(ctx context.Context) (*block.Tracker, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	return uffd.Dirty(false), nil
+	return uffd.Dirty(), nil
 }
 
 func (u *Uffd) Mapping(ctx context.Context) (*memory.Mapping, error) {

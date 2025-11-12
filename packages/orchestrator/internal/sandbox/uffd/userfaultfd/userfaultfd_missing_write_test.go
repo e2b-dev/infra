@@ -10,9 +10,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-// TODO: Modify to capture wp
-
-func TestWriteProtection(t *testing.T) {
+// TODO: Investigate flakyness
+// TODO: It is possible the hugepages trigger the automatic WP
+func TestMissingWrite(t *testing.T) {
 	t.Parallel()
 
 	tests := []testConfig{
@@ -65,6 +65,68 @@ func TestWriteProtection(t *testing.T) {
 			},
 		},
 		{
+			name:          "standard 4k page, write after write",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "standard 4k page, reads after writes, varying offsets",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 4 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 5 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 2 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 4 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 5 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 2 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
 			name:          "hugepage, operation at start",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
@@ -112,6 +174,68 @@ func TestWriteProtection(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:          "hugepage, write after write",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
+			name:          "hugepage, reads after writes, varying offsets",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 4 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 5 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 2 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 4 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 5 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 2 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -122,15 +246,8 @@ func TestWriteProtection(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, operation := range tt.operations {
-				if operation.mode == operationModeRead {
-					err := h.executeRead(t.Context(), operation)
-					require.NoError(t, err, "for operation %+v", operation)
-				}
-
-				if operation.mode == operationModeWrite {
-					err := h.executeWrite(t.Context(), operation)
-					require.NoError(t, err, "for operation %+v", operation)
-				}
+				err := h.executeOperation(t.Context(), operation)
+				assert.NoError(t, err, "for operation %+v", operation) //nolint:testifylint
 			}
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
@@ -139,11 +256,18 @@ func TestWriteProtection(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+			expectedDirtyOffsets := getOperationsOffsets(tt.operations, operationModeWrite)
+
+			dirtyOffsets, err := h.dirtyOffsetsOnce()
+			require.NoError(t, err)
+
+			assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 		})
 	}
 }
 
-func TestParallelWriteProtection(t *testing.T) {
+func TestParallelMissingWrite(t *testing.T) {
 	t.Parallel()
 
 	parallelOperations := 1_000_000
@@ -178,9 +302,16 @@ func TestParallelWriteProtection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+	expectedDirtyOffsets := getOperationsOffsets([]operation{writeOp}, operationModeWrite)
+
+	dirtyOffsets, err := h.dirtyOffsetsOnce()
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }
 
-func TestParallelWriteProtectionWithPrefault(t *testing.T) {
+func TestParallelMissingWriteWithPrefault(t *testing.T) {
 	t.Parallel()
 
 	parallelOperations := 10_000
@@ -218,9 +349,16 @@ func TestParallelWriteProtectionWithPrefault(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+	expectedDirtyOffsets := getOperationsOffsets([]operation{writeOp}, operationModeWrite)
+
+	dirtyOffsets, err := h.dirtyOffsetsOnce()
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }
 
-func TestSerialWriteProtection(t *testing.T) {
+func TestSerialMissingWrite(t *testing.T) {
 	t.Parallel()
 
 	serialOperations := 10_000
@@ -249,4 +387,11 @@ func TestSerialWriteProtection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+	expectedDirtyOffsets := getOperationsOffsets([]operation{writeOp}, operationModeWrite)
+
+	dirtyOffsets, err := h.dirtyOffsetsOnce()
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedDirtyOffsets, dirtyOffsets, "checking which pages were dirty")
 }
