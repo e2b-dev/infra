@@ -3,7 +3,7 @@ package userfaultfd
 // flowchart TD
 // A[missing page] -- write (WRITE flag) --> B(COPY) --> C[dirty page]
 // A -- read (MISSING flag) --> D(COPY + MODE_WP) --> E[faulted page]
-// E -- write (WP+WRITE flag) --> F(remove MODE_WP) --> C
+// E -- write (WP+[WRITE] flag) --> F(remove MODE_WP) --> C
 
 import (
 	"context"
@@ -213,8 +213,10 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		// Handle write to write protected page (WP+WRITE flag)
-		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 && flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+		// Handle write to write protected page (WP flag)
+		// The documentation does not clearly mention if the WRITE flag must be present with the WP flag, even though we saw it being present in the events.
+		// - https://docs.kernel.org/admin-guide/mm/userfaultfd.html#write-protect-notifications
+		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
 			u.handleWriteProtected(fdExit.SignalExit, addr, pagesize, offset)
 
 			continue
@@ -316,6 +318,9 @@ func (u *Userfaultfd) handleMissing(
 	})
 }
 
+// Userfaultfd write-protect mode currently behave differently on none ptes (when e.g. page is missing) over different types of memories (hugepages file backed, etc.).
+// - https://docs.kernel.org/admin-guide/mm/userfaultfd.html#write-protect-notifications - "there will be a userfaultfd write fault message generated when writing to a missing page"
+// This should not affect the handling we have in place as all events are being handled.
 func (u *Userfaultfd) handleWriteProtected(onFailure func() error, addr, pagesize uintptr, offset int64) {
 	u.wg.Go(func() error {
 		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
