@@ -94,7 +94,7 @@ func TestSandboxWithEnabledTrafficAccessTokenButInvalidHeader(t *testing.T) {
 	sbx.TrafficAccessToken = &invalidTrafficAccessToken
 
 	port := 8080
-	resp := utils.WaitForStatus(t, client, sbx, url, port, headers, http.StatusForbidden)
+	resp := utils.WaitForStatus(t, client, sbx, url, port, nil, http.StatusForbidden)
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
