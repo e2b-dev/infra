@@ -18,6 +18,7 @@ type SandboxConfig struct {
 	autoPause           bool
 	network             *api.SandboxNetworkConfig
 	allowInternetAccess *bool
+	secure              *bool
 }
 
 type SandboxOption func(config *SandboxConfig)
@@ -45,6 +46,12 @@ func WithTimeout(timeout int32) SandboxOption {
 func WithAutoPause(autoPause bool) SandboxOption {
 	return func(config *SandboxConfig) {
 		config.autoPause = autoPause
+	}
+}
+
+func WithSecure(secure bool) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.secure = &secure
 	}
 }
 
@@ -86,6 +93,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		AutoPause:           &config.autoPause,
 		Network:             config.network,
 		AllowInternetAccess: config.allowInternetAccess,
+		Secure:              config.secure,
 	}, setup.WithAPIKey())
 
 	require.NoError(t, err)
