@@ -72,7 +72,7 @@ func NewUserfaultfdFromFd(uffd uffdio, src block.Slicer, m *memory.Mapping, logg
 			UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
+			return nil, fmt.Errorf("failed to reregister memory region with write protection %d-%d: %w", region.Offset, region.Offset+region.Size, err)
 		}
 	}
 
