@@ -309,7 +309,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		err := s.Firewall.ResetAllCustom()
+		err := s.Firewall.ResetAllSets()
 		if err != nil {
 			return fmt.Errorf("error cleaning firewall rules: %w", err)
 		}

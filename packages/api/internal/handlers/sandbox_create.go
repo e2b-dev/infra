@@ -23,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -294,19 +293,6 @@ func splitHostPortOptional(hostport string) (host string, port string, err error
 func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 	if network == nil {
 		return nil
-	}
-
-	if network.AllowOut != nil {
-		for _, address := range *network.AllowOut {
-			cidr := sandbox_network.AddressStringToCIDR(address)
-			if err := sandbox_network.CanAllowCIDR(cidr); err != nil {
-				return &api.APIError{
-					Code:      http.StatusBadRequest,
-					Err:       fmt.Errorf("invalid allowOut CIDR (%s): %w", cidr, err),
-					ClientMsg: fmt.Sprintf("address is not allowed for allowOut: %s", address),
-				}
-			}
-		}
 	}
 
 	if maskRequestHost := network.MaskRequestHost; maskRequestHost != nil {

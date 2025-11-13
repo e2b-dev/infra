@@ -1,7 +1,6 @@
 package sandbox_network
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/ngrok/firewall_toolkit/pkg/set"
@@ -20,32 +19,7 @@ var DeniedSandboxCIDRs = []string{
 	"172.16.0.0/12",
 }
 
-var deniedSandboxData = utils.Must(set.AddressStringsToSetData(DeniedSandboxCIDRs))
-
-// CanAllowCIDR checks if the address is in the default denied ranges.
-func CanAllowCIDR(cidr string) error {
-	if cidr == AllInternetTrafficCIDR {
-		// Internet is enabled by default.
-		return nil
-	}
-
-	addressData, err := set.AddressStringsToSetData([]string{cidr})
-	if err != nil {
-		return err
-	}
-
-	if len(addressData) == 0 {
-		return fmt.Errorf("address %s is not a valid IP address", cidr)
-	}
-
-	for _, deniedRange := range deniedSandboxData {
-		if deniedRange.Prefix.Overlaps(addressData[0].Prefix) {
-			return fmt.Errorf("address %s is blocked by the provider and cannot be added to the allow list", cidr)
-		}
-	}
-
-	return nil
-}
+var DeniedSandboxSetData = utils.Must(set.AddressStringsToSetData(DeniedSandboxCIDRs))
 
 // AddressStringToCIDR converts a string address to the CIDR format.
 // Supports only IPv4 addresses.

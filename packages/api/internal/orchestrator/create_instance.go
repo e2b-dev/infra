@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -30,8 +29,7 @@ import (
 )
 
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
-func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) (n *orchestrator.SandboxNetworkConfig, aia *bool) {
-	aia = allowInternetAccess
+func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) *orchestrator.SandboxNetworkConfig {
 	orchNetwork := &orchestrator.SandboxNetworkConfig{
 		Egress: &orchestrator.SandboxNetworkEgressConfig{},
 		Ingress: &orchestrator.SandboxNetworkIngressConfig{
@@ -56,15 +54,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 		orchNetwork.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
-	if slices.Contains(orchNetwork.GetEgress().GetAllowedCidrs(), sandbox_network.AllInternetTrafficCIDR) {
-		// If all traffic is allowed, clear the allowed and denied lists
-		// Internet access is enabled by default.
-		orchNetwork.Egress.AllowedCidrs = nil
-		orchNetwork.Egress.DeniedCidrs = nil
-		aia = ut.ToPtr(true)
-	}
-
-	return orchNetwork, aia
+	return orchNetwork
 }
 
 func (o *Orchestrator) CreateSandbox(
@@ -194,7 +184,7 @@ func (o *Orchestrator) CreateSandbox(
 		trafficAccessToken = &accessToken
 	}
 
-	sbxNetwork, allowInternetAccess := buildNetworkConfig(network, allowInternetAccess, trafficAccessToken)
+	sbxNetwork := buildNetworkConfig(network, allowInternetAccess, trafficAccessToken)
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:      baseTemplateID,
