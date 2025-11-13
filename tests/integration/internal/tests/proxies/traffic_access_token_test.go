@@ -165,7 +165,7 @@ func TestSandboxWithEnabledTrafficAccessToken(t *testing.T) {
 	assert.Equal(t, port, errorResp.Port)
 }
 
-func TestEnvdPortIsEnforcingTrafficAccessToken(t *testing.T) {
+func TestEnvdPortIsNotAffectedByTrafficAccessToken(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	sbxNetAllowPublic := false
@@ -183,10 +183,9 @@ func TestEnvdPortIsEnforcingTrafficAccessToken(t *testing.T) {
 		Timeout: 1000 * time.Second,
 	}
 
-	sbx.TrafficAccessToken = nil // Simulate missing header
-	resp := waitForStatus(t, client, sbx, url, int(consts.DefaultEnvdServerPort), nil, http.StatusForbidden)
-	require.NoError(t, err)
+	headers := &http.Header{"X-Access-Token": []string{*sbx.EnvdAccessToken}}
+	resp := waitForStatus(t, client, sbx, url, int(consts.DefaultEnvdServerPort), headers, http.StatusNotFound)
 	require.NotNil(t, resp)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 }

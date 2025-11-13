@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
@@ -55,8 +56,9 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				accessToken = net.GetIngress().TrafficAccessToken
 			}
 
-			// Handle traffic access token validation
-			if accessToken != nil {
+			// Handle traffic access token validation.
+			// We are skipping envd port as it has its own access validation mechanism.
+			if accessToken != nil && int64(port) != consts.DefaultEnvdServerPort {
 				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
 				if accessTokenRaw == "" {
 					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
