@@ -15,8 +15,7 @@ import (
 
 type Client struct {
 	*database.Queries
-
-	conn *pgxpool.Pool
+	*pgxpool.Pool
 }
 
 type Option func(config *pgxpool.Config)
@@ -64,23 +63,23 @@ func NewClient(ctx context.Context, options ...Option) (*Client, error) {
 	}
 	queries := database.New(pool)
 
-	return &Client{Queries: queries, conn: pool}, nil
+	return &Client{Queries: queries, Pool: pool}, nil
 }
 
 func (db *Client) Close() error {
-	db.conn.Close()
+	db.Pool.Close()
 
 	return nil
 }
 
 // WithTx runs the given function in a transaction.
 func (db *Client) WithTx(ctx context.Context) (*Client, pgx.Tx, error) {
-	tx, err := db.conn.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := db.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	client := &Client{Queries: db.Queries.WithTx(tx), conn: db.conn}
+	client := &Client{Queries: db.Queries.WithTx(tx), Pool: db.Pool}
 
 	return client, tx, nil
 }

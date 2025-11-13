@@ -63,14 +63,15 @@ type APIStore struct {
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
 	zap.L().Info("Initializing API store and services")
 
-	dbClient, err := db.NewClient(40, 20)
-	if err != nil {
-		zap.L().Fatal("Initializing Supabase client", zap.Error(err))
-	}
-
 	sqlcDB, err := sqlcdb.NewClient(ctx, sqlcdb.WithMaxConnections(40), sqlcdb.WithMinIdle(5))
 	if err != nil {
 		zap.L().Fatal("Initializing SQLC client", zap.Error(err))
+	}
+
+	sqlDB := sqlcdb.Open(sqlcDB.Pool)
+	dbClient, err := db.NewClient(sqlDB)
+	if err != nil {
+		zap.L().Fatal("Initializing Supabase client", zap.Error(err))
 	}
 
 	zap.L().Info("Created database client")

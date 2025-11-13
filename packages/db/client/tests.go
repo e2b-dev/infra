@@ -5,7 +5,7 @@ import (
 )
 
 func (db *Client) TestsRawSQL(ctx context.Context, sql string, args ...any) error {
-	_, err := db.conn.Exec(ctx, sql, args...)
+	_, err := db.Pool.Exec(ctx, sql, args...)
 
 	return err
 }
