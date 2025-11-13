@@ -19,6 +19,7 @@ type trafficAccessTokenErrData struct {
 	SandboxId string `json:"sandboxId"`
 	Message   string `json:"message"`
 	Code      int    `json:"code"`
+	Header    string `json:"-"`
 	Host      string `json:"-"`
 }
 
@@ -33,6 +34,7 @@ func NewTrafficAccessTokenMissingHeader(sandboxId, host string, header string) *
 			SandboxId: sandboxId,
 			Message:   fmt.Sprintf("Sandbox is secured with traffic access token. Token header '%s' is missing", header),
 			Host:      host,
+			Header:    header,
 			Code:      http.StatusForbidden,
 		},
 	}
