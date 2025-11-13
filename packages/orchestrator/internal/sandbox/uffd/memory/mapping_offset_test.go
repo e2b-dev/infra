@@ -253,3 +253,33 @@ func TestMapping_MultipleRegionsSparse(t *testing.T) {
 	_, _, err = mapping.GetOffset(0x5000)
 	require.Error(t, err)
 }
+
+// Additional test for hugepage page size
+func TestMapping_HugepagePagesize(t *testing.T) {
+	const hugepageSize = 2 * 1024 * 1024 // 2MB
+	regions := []Region{
+		{
+			BaseHostVirtAddr: 0x400000,
+			Size:             hugepageSize,
+			Offset:           0x800000,
+			PageSize:         hugepageSize,
+		},
+	}
+	mapping := NewMapping(regions)
+
+	// Test valid address in region using hugepages
+	offset, pagesize, err := mapping.GetOffset(0x401000)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0x800000+(0x401000-0x400000)), offset)
+	assert.Equal(t, uintptr(hugepageSize), pagesize)
+
+	// Test start of region
+	offset, pagesize, err = mapping.GetOffset(0x400000)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0x800000), offset)
+	assert.Equal(t, uintptr(hugepageSize), pagesize)
+
+	// Test end of region (exclusive, should fail)
+	_, _, err = mapping.GetOffset(0x400000+uintptr(hugepageSize))
+	require.Error(t, err)
+}

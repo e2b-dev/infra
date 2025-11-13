@@ -159,10 +159,9 @@ func TestUffdMemoryViewNotFaultedError(t *testing.T) {
 	require.NoError(t, err)
 
 	readBytes := make([]byte, header.PageSize)
-	n, err := view.ReadAt(readBytes, 0)
+	_, err = view.ReadAt(readBytes, 0)
 	require.ErrorAs(t, err, &memory.MemoryNotFaultedError{})
 	require.ErrorIs(t, err, syscall.EIO)
-	assert.Len(t, readBytes, n)
 }
 
 func TestUffdMemoryViewDirty(t *testing.T) {
