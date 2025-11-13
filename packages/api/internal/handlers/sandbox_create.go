@@ -169,6 +169,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 				DeniedAddresses:  sharedUtils.DerefOrDefault(body.Network.DenyOut, nil),
 			},
 		}
+
+		// Make sure envd seucre access is enforced when public access is disabled,
+		// this is requirement forcing users using newer features to secure sandboxes properly.
+		if !network.Ingress.AllowPublicAccess && envdAccessToken == nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "You cannot create a sandbox without public access unless you enable secure envd access via 'secure' flag.")
+
+			return
+		}
 	}
 
 	sbx, createErr := a.startSandbox(
