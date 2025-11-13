@@ -58,7 +58,7 @@ func TestRandomOperations(t *testing.T) {
 	repetitions := 8
 
 	for i := range repetitions {
-		t.Run(fmt.Sprintf("Run_%d_of_%d", i+1, repetitions-1), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Run_%d_of_%d", i+1, repetitions), func(t *testing.T) {
 			t.Parallel()
 
 			// Use time-based seed for each run to ensure different random sequences
