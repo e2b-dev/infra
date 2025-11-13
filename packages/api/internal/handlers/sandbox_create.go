@@ -159,33 +159,29 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		envdAccessToken = &accessToken
 	}
 
-	var maskRequestHost *string = nil
-	if body.Network != nil && body.Network.MaskRequestHost != nil {
-		host := *body.Network.MaskRequestHost
-
-		hostname, _, err := splitHostPortOptional(host)
-		if err != nil {
-			telemetry.ReportError(ctx, "error when splitting mask request host", err, telemetry.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
-
-			return
-		}
-
-		_, err = idna.Display.ToUnicode(hostname)
-		if err != nil {
-			telemetry.ReportError(ctx, "error when parsing mask request host", err, telemetry.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
-
-			return
-		}
-
-		maskRequestHost = &host
-	}
-
 	allowInternetAccess := body.AllowInternetAccess
 
 	var network *types.SandboxNetworkConfig
 	if body.Network != nil {
+		maskRequestHost := body.Network.MaskRequestHost
+		if maskRequestHost != nil {
+			hostname, _, err := splitHostPortOptional(*maskRequestHost)
+			if err != nil {
+				telemetry.ReportError(ctx, "error when splitting mask request host", err, telemetry.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
+
+				return
+			}
+
+			_, err = idna.Display.ToUnicode(hostname)
+			if err != nil {
+				telemetry.ReportError(ctx, "error when parsing mask request host", err, telemetry.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
+
+				return
+			}
+		}
+
 		network = &types.SandboxNetworkConfig{
 			Ingress: &types.SandboxNetworkIngressConfig{
 				AllowPublicAccess: sharedUtils.DerefOrDefault(body.Network.AllowPublicTraffic, true),

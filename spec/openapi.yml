@@ -236,7 +236,7 @@ components:
             type: string
         maskRequestHost:
           type: string
-          description: Specify all sandbox requests host mask.
+          description: Specify host mask which will be used for all sandbox requests
 
     SandboxLog:
       description: Log entry with timestamp and line
