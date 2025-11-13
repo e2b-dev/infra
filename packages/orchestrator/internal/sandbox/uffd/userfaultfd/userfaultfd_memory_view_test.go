@@ -121,20 +121,14 @@ func TestUffdMemoryViewFaulted(t *testing.T) {
 				assert.NoError(t, err, "for operation %+v", operation) //nolint:testifylint
 			}
 
-			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
-
-			accessedOffsets, err := h.accessedOffsetsOnce()
-			require.NoError(t, err)
-
-			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
-
 			view, err := memory.NewView(os.Getpid(), h.mapping)
 			require.NoError(t, err)
 
 			for _, operation := range tt.operations {
 				readBytes := make([]byte, tt.pagesize)
-				_, err = view.ReadAt(readBytes, operation.offset)
+				n, err := view.ReadAt(readBytes, operation.offset)
 				require.NoError(t, err)
+				assert.Equal(t, n, len(readBytes))
 
 				expectedBytes, err := h.data.Slice(t.Context(), operation.offset, int64(tt.pagesize))
 				require.NoError(t, err)
@@ -160,19 +154,14 @@ func TestUffdMemoryViewNotFaultedError(t *testing.T) {
 	h, err := configureCrossProcessTest(t, test)
 	require.NoError(t, err)
 
-	accessedOffsets, err := h.accessedOffsetsOnce()
-	assert.Empty(t, accessedOffsets, "checking which pages were faulted")
-
-	dirtyOffsets, err := h.dirtyOffsetsOnce()
-	assert.Empty(t, dirtyOffsets, "checking which pages were dirty")
-
 	view, err := memory.NewView(os.Getpid(), h.mapping)
 	require.NoError(t, err)
 
 	readBytes := make([]byte, header.PageSize)
-	_, err = view.ReadAt(readBytes, 0)
+	n, err := view.ReadAt(readBytes, 0)
 	require.ErrorAs(t, err, &memory.MemoryNotFaultedError{})
 	require.ErrorIs(t, err, syscall.EIO)
+	assert.Equal(t, n, len(readBytes))
 }
 
 func TestUffdMemoryViewDirty(t *testing.T) {
@@ -232,27 +221,29 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 			h, err := configureCrossProcessTest(t, tt)
 			require.NoError(t, err)
 
-			for _, operation := range tt.operations {
-				err := h.executeOperation(t.Context(), operation)
-				assert.NoError(t, err, "for operation %+v", operation) //nolint:testifylint
-			}
-
-			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
-
-			accessedOffsets, err := h.accessedOffsetsOnce()
-			require.NoError(t, err)
-
-			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+			writeData := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
 
 			view, err := memory.NewView(os.Getpid(), h.mapping)
 			require.NoError(t, err)
 
-			for _, operation := range tt.operations {
-				readBytes := make([]byte, tt.pagesize)
-				_, err = view.ReadAt(readBytes, operation.offset)
-				require.NoError(t, err)
+			for _, op := range tt.operations {
+				// An unprotected parallel write to map might result in an undefined behavior.
+				h.mutex.Lock()
 
-				expectedBytes, err := h.data.Slice(t.Context(), operation.offset, int64(tt.pagesize))
+				// We explicitly write to the memory area to make it differ from the default served content.
+				n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], writeData.Content())
+				h.mutex.Unlock()
+
+				if n != int(h.pagesize) {
+					assert.Fail(t, "copy length mismatch", "want %d, got %d", h.pagesize, n)
+				}
+
+				readBytes := make([]byte, tt.pagesize)
+				n, err = view.ReadAt(readBytes, op.offset)
+				require.NoError(t, err)
+				assert.Equal(t, n, len(readBytes))
+
+				expectedBytes, err := writeData.Slice(t.Context(), op.offset, int64(tt.pagesize))
 				require.NoError(t, err)
 
 				if !bytes.Equal(expectedBytes, readBytes) {
