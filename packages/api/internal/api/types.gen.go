@@ -606,11 +606,11 @@ type SandboxNetworkConfig struct {
 	// AllowOut List of allowed CIDR blocks or IP addresses for egress traffic. Allowed addresses always take precedence over blocked addresses.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
+	// AllowPublicTraffic Specify if the sandbox URLs should be accessible only with authentication.
+	AllowPublicTraffic *bool `json:"allowPublicTraffic,omitempty"`
+
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic
 	DenyOut *[]string `json:"denyOut,omitempty"`
-
-	// DenyPublicTraffic Specify if the sandbox URLs should be accessible only with authentication.
-	DenyPublicTraffic *bool `json:"denyPublicTraffic,omitempty"`
 }
 
 // SandboxState State of the sandbox

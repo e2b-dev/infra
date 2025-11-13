@@ -18,7 +18,7 @@ type SandboxNetworkEgressConfig struct {
 }
 
 type SandboxNetworkIngressConfig struct {
-	DenyPublicAccess bool `json:"denyPublicAccess,omitempty"`
+	AllowPublicAccess bool `json:"allowPublicAccess,omitempty"`
 }
 
 type SandboxNetworkConfig struct {
