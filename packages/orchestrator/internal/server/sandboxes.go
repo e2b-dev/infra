@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -34,8 +35,6 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 const (
 	requestTimeout              = 60 * time.Second
 	maxStartingInstancesPerNode = 3
-
-	internetBlockCIDR = "0.0.0.0/0"
 )
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
@@ -119,7 +118,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if network.GetEgress() == nil {
 			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
 		}
-		network.Egress.DeniedCidrs = []string{internetBlockCIDR}
+		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
 	sbx, err := s.sandboxFactory.ResumeSandbox(

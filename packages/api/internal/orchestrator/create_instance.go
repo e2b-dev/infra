@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -24,25 +23,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
-
-const internetBlockCIDR = "0.0.0.0/0"
-
-// Convert a list of string addresses to the SetData type
-func addressStringsToCIDRs(addressStrings []string) []string {
-	data := make([]string, 0, len(addressStrings))
-
-	for _, addressString := range addressStrings {
-		if !strings.Contains(addressString, "/") {
-			addressString += "/32"
-		}
-		data = append(data, addressString)
-	}
-
-	return data
-}
 
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
 func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) *orchestrator.SandboxNetworkConfig {
@@ -55,8 +39,8 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 
 	// Copy network configuration if provided
 	if network != nil && network.Egress != nil {
-		orchNetwork.Egress.AllowedCidrs = addressStringsToCIDRs(network.Egress.AllowedAddresses)
-		orchNetwork.Egress.DeniedCidrs = addressStringsToCIDRs(network.Egress.DeniedAddresses)
+		orchNetwork.Egress.AllowedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.AllowedAddresses)
+		orchNetwork.Egress.DeniedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.DeniedAddresses)
 	}
 
 	if network != nil && network.Ingress != nil {
@@ -67,7 +51,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	// This should be applied after copying the network config to preserve allowed addresses
 	if allowInternetAccess != nil && !*allowInternetAccess {
 		// Block all internet access - this overrides any other blocked addresses
-		orchNetwork.Egress.DeniedCidrs = []string{internetBlockCIDR}
+		orchNetwork.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
 	return orchNetwork

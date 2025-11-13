@@ -9,20 +9,13 @@ import (
 	"github.com/ngrok/firewall_toolkit/pkg/expressions"
 	"github.com/ngrok/firewall_toolkit/pkg/rule"
 	"github.com/ngrok/firewall_toolkit/pkg/set"
+
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 const (
 	tableName = "slot-firewall"
-
-	allInternetTrafficAddress = "0.0.0.0/0"
 )
-
-var deniedRanges = []string{
-	"10.0.0.0/8",
-	"169.254.0.0/16",
-	"192.168.0.0/16",
-	"172.16.0.0/12",
-}
 
 type Firewall struct {
 	conn  *nftables.Conn
@@ -162,7 +155,7 @@ func (fw *Firewall) AddDeniedCIDR(cidr string) error {
 	}
 
 	// 0.0.0.0/0 is not valid IP per GoLang, so we handle it as a special case
-	if cidr == allInternetTrafficAddress {
+	if cidr == sandbox_network.AllInternetTrafficCIDR {
 		fw.blockInternetTraffic = true
 
 		fw.conn.FlushSet(fw.denySet.Set())
@@ -204,12 +197,7 @@ func (fw *Firewall) AddDeniedCIDR(cidr string) error {
 
 // AddAllowedCIDR adds a single CIDR to the allow set at runtime.
 func (fw *Firewall) AddAllowedCIDR(cidr string) error {
-	if cidr == allInternetTrafficAddress {
-		// Internet is enabled by default.
-		return nil
-	}
-
-	err := canAllowCIDR(cidr)
+	err := sandbox_network.CanAllowCIDR(cidr)
 	if err != nil {
 		return err
 	}
@@ -248,7 +236,7 @@ func (fw *Firewall) ResetAllCustom() error {
 
 // ResetDeniedCustom resets the deny set back to original ranges.
 func (fw *Firewall) ResetDeniedCustom() error {
-	initData, err := set.AddressStringsToSetData(deniedRanges)
+	initData, err := set.AddressStringsToSetData(sandbox_network.DeniedSandboxCIDRs)
 	if err != nil {
 		return fmt.Errorf("parse initial denied CIDRs: %w", err)
 	}
@@ -274,29 +262,4 @@ func (fw *Firewall) ResetAllowedCustom() error {
 	}
 
 	return fw.conn.Flush()
-}
-
-// canAllowCIDR checks if the address is in the default denied ranges.
-func canAllowCIDR(cidr string) error {
-	deniedData, err := set.AddressStringsToSetData(deniedRanges)
-	if err != nil {
-		return err
-	}
-
-	addressData, err := set.AddressStringsToSetData([]string{cidr})
-	if err != nil {
-		return err
-	}
-
-	if len(addressData) == 0 {
-		return fmt.Errorf("address %s is not a valid IP address", cidr)
-	}
-
-	for _, deniedRange := range deniedData {
-		if deniedRange.Prefix.Overlaps(addressData[0].Prefix) {
-			return fmt.Errorf("address %s is blocked by the provider and cannot be added to the allow list", cidr)
-		}
-	}
-
-	return nil
 }

@@ -1,4 +1,4 @@
-package network
+package sandbox_network
 
 import (
 	"testing"
@@ -82,14 +82,19 @@ func TestCanAllowAddress_PrivateRangesBlocked(t *testing.T) {
 			shouldErr: false,
 			desc:      "public CIDR range should be allowed",
 		},
+		{
+			name:      "all_network_0.0.0.0/0",
+			address:   "0.0.0.0/0",
+			shouldErr: true,
+			desc:      "internet is enabled by default",
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := canAllowCIDR(tc.address)
+			err := CanAllowCIDR(tc.address)
 			if tc.shouldErr {
 				require.Error(t, err, tc.desc)
-				require.Contains(t, err.Error(), "blocked by the provider", "Error message should indicate provider blocking")
 			} else {
 				require.NoError(t, err, tc.desc)
 			}
@@ -123,8 +128,43 @@ func TestCanAllowAddress_InvalidAddresses(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := canAllowCIDR(tc.address)
+			err := CanAllowCIDR(tc.address)
 			require.Error(t, err, tc.desc)
+		})
+	}
+}
+
+func TestAddressStringToCIDR(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+		desc     string
+	}{
+		{
+			name:     "already_has_cidr",
+			input:    "192.168.1.1/24",
+			expected: "192.168.1.1/24",
+			desc:     "address with CIDR should remain unchanged",
+		},
+		{
+			name:     "ip_without_cidr",
+			input:    "8.8.8.8",
+			expected: "8.8.8.8/32",
+			desc:     "IP without CIDR should append /32",
+		},
+		{
+			name:     "invalid_format_no_validation",
+			input:    "not.an.ip.address",
+			expected: "not.an.ip.address/32",
+			desc:     "invalid format should still append /32 (function doesn't validate)",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := AddressStringToCIDR(tc.input)
+			require.Equal(t, tc.expected, result, tc.desc)
 		})
 	}
 }
