@@ -173,10 +173,17 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 				return
 			}
 
-			_, err = idna.Display.ToUnicode(hostname)
+			host, err := idna.Display.ToASCII(hostname)
 			if err != nil {
 				telemetry.ReportError(ctx, "error when parsing mask request host", err, telemetry.WithSandboxID(sandboxID))
 				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
+
+				return
+			}
+
+			if !strings.EqualFold(host, hostname) {
+				telemetry.ReportError(ctx, "mask request host is not ASCII", nil, telemetry.WithSandboxID(sandboxID), attribute.String("mask_request_host", hostname), attribute.String("mask_request_host_ascii", host))
+				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Mask request host '%s' is not ASCII. Please use ASCII characters only.", hostname))
 
 				return
 			}
