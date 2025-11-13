@@ -21,10 +21,10 @@ func NewMapping(regions []Region) *Mapping {
 }
 
 // GetOffset returns the relative offset and the page size of the mapped range for a given address.
-func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uint64, error) {
+func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uintptr, error) {
 	for _, r := range m.Regions {
 		if hostVirtAddr >= r.BaseHostVirtAddr && hostVirtAddr < r.endHostVirtAddr() {
-			return r.shiftedOffset(hostVirtAddr), uint64(r.PageSize), nil
+			return r.shiftedOffset(hostVirtAddr), r.PageSize, nil
 		}
 	}
 
