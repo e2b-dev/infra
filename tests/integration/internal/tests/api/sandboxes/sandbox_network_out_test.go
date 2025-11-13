@@ -228,31 +228,6 @@ func TestEgressFirewallEmptyConfig(t *testing.T) {
 	require.NoError(t, err, "Expected curl to succeed with empty allowOut list")
 }
 
-// TestEgressFirewallAllowAll tests that 0.0.0.0/0 allows all traffic
-func TestEgressFirewallAllowAll(t *testing.T) {
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Allow all IPs using 0.0.0.0/0
-	allowAll := []string{"0.0.0.0/0"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Test that various IPs are accessible
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", "https://8.8.8.8")
-	require.NoError(t, err, "Expected curl to 8.8.8.8 to succeed with 0.0.0.0/0 allow")
-
-	err = utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", "https://1.1.1.1")
-	require.NoError(t, err, "Expected curl to 1.1.1.1 to succeed with 0.0.0.0/0 allow")
-}
-
 // TestEgressFirewallAllowOverridesBlock tests that allowOut takes precedence over blockOut
 func TestEgressFirewallAllowOverridesBlock(t *testing.T) {
 	ctx := t.Context()
@@ -377,6 +352,11 @@ func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
 			allowedIP: "169.254.0.0/16",
 			testDesc:  "169.254.0.0/16 range (link-local)",
 		},
+		{
+			name:      "all_network_0.0.0.0/0",
+			allowedIP: "0.0.0.0/0",
+			testDesc:  "0.0.0.0/0 range",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -395,7 +375,7 @@ func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
 
 			// The request should either fail or return an error status code (not 201 Created)
 			if err == nil {
-				require.NotEqual(t, http.StatusCreated, resp.StatusCode(),
+				require.Equal(t, http.StatusBadRequest, resp.StatusCode(),
 					"Expected sandbox creation to fail when trying to allow private IP range (%s), but got status %d",
 					tc.testDesc, resp.StatusCode())
 				// If sandbox was somehow created, clean it up
