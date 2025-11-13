@@ -61,7 +61,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				if accessTokenRaw == "" {
 					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				} else if accessTokenRaw != *accessToken {
-					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId)
+					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				}
 			}
 

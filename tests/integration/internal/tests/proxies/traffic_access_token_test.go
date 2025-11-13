@@ -40,7 +40,6 @@ func TestSandboxWithEnabledTrafficAccessTokenButMissingHeader(t *testing.T) {
 
 	port := 8080
 	resp := waitForStatus(t, client, sbx, url, port, nil, http.StatusForbidden)
-	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
@@ -59,7 +58,6 @@ func TestSandboxWithEnabledTrafficAccessTokenButMissingHeader(t *testing.T) {
 	// Pretend to be a browser
 	headers := &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}}
 	resp = waitForStatus(t, client, sbx, url, port, headers, http.StatusForbidden)
-	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
@@ -97,7 +95,6 @@ func TestSandboxWithEnabledTrafficAccessTokenButInvalidHeader(t *testing.T) {
 
 	port := 8080
 	resp := waitForStatus(t, client, sbx, url, port, nil, http.StatusForbidden)
-	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
@@ -110,13 +107,12 @@ func TestSandboxWithEnabledTrafficAccessTokenButInvalidHeader(t *testing.T) {
 	err = json.NewDecoder(resp.Body).Decode(&errorResp)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, "Sandbox is secured with traffic access token. Provided token is invalid.", errorResp.Message)
+	assert.Equal(t, "Sandbox is secured with traffic access token. Provided token in header 'x-e2b-traffic-access-token' is invalid", errorResp.Message)
 	assert.Equal(t, sbx.SandboxID, errorResp.SandboxID)
 
 	// Pretend to be a browser
 	headers := &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}}
 	resp = waitForStatus(t, client, sbx, url, port, headers, http.StatusForbidden)
-	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
@@ -150,7 +146,6 @@ func TestSandboxWithEnabledTrafficAccessToken(t *testing.T) {
 
 	port := 8080
 	resp := waitForStatus(t, client, sbx, url, port, nil, http.StatusBadGateway)
-	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
 

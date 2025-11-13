@@ -40,13 +40,14 @@ func NewTrafficAccessTokenMissingHeader(sandboxId, host string, header string) *
 	}
 }
 
-func NewTrafficAccessTokenInvalidHeader(sandboxId, host string) *TemplatedError[trafficAccessTokenErrData] {
+func NewTrafficAccessTokenInvalidHeader(sandboxId, host string, header string) *TemplatedError[trafficAccessTokenErrData] {
 	return &TemplatedError[trafficAccessTokenErrData]{
 		template: invalidTrafficAccessTokenErrHtmlTemplate,
 		vars: trafficAccessTokenErrData{
 			SandboxId: sandboxId,
-			Message:   "Sandbox is secured with traffic access token. Provided token is invalid.",
+			Message:   fmt.Sprintf("Sandbox is secured with traffic access token. Provided token in header '%s' is invalid", header),
 			Host:      host,
+			Header:    header,
 			Code:      http.StatusForbidden,
 		},
 	}

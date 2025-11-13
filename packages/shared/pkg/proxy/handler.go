@@ -80,7 +80,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			zap.L().Warn("traffic access token is invalid", zap.String("host", r.Host))
 
 			err = template.
-				NewTrafficAccessTokenInvalidHeader(trafficInvalidTokenErr.SandboxId, r.Host).
+				NewTrafficAccessTokenInvalidHeader(trafficInvalidTokenErr.SandboxId, r.Host, trafficInvalidTokenErr.Header).
 				HandleError(w, r)
 			if err != nil {
 				zap.L().Error("failed to handle traffic invalid traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficInvalidTokenErr.SandboxId))

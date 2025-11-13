@@ -51,14 +51,16 @@ func NewErrMissingTrafficAccessToken(sandboxId, header string) *MissingTrafficAc
 
 type InvalidTrafficAccessTokenError struct {
 	SandboxId string
+	Header    string
 }
 
 func (e InvalidTrafficAccessTokenError) Error() string {
 	return "invalid traffic access token"
 }
 
-func NewErrInvalidTrafficAccessToken(sandboxId string) *InvalidTrafficAccessTokenError {
+func NewErrInvalidTrafficAccessToken(sandboxId string, header string) *InvalidTrafficAccessTokenError {
 	return &InvalidTrafficAccessTokenError{
 		SandboxId: sandboxId,
+		Header:    header,
 	}
 }
