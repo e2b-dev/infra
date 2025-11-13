@@ -4,10 +4,26 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
 var _ io.ReaderAt = (*View)(nil)
 var _ io.Closer = (*View)(nil)
+
+// MemoryNotFaultedError is returned on read when the page was not faulted in (syscall.EIO error)
+type MemoryNotFaultedError struct {
+	r   block.Range
+	err error
+}
+
+func (e MemoryNotFaultedError) Error() string {
+	return fmt.Sprintf("memory not faulted: %v: %v", e.r, e.err)
+}
+
+func (e MemoryNotFaultedError) Unwrap() error {
+	return e.err
+}
 
 // View exposes memory of the underlying process, with the mappings applied.
 type View struct {
@@ -40,7 +56,7 @@ func (v *View) ReadAt(d []byte, off int64) (n int, err error) {
 	for _, r := range ranges {
 		written, err := v.procMem.ReadAt(d[n:r.Size], r.Start)
 		if err != nil {
-			return 0, fmt.Errorf("failed to read at: %w", err)
+			return 0, MemoryNotFaultedError{r: r, err: err}
 		}
 
 		n += written

@@ -201,11 +201,21 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	case <-readySignal:
 	}
 
+	mapping := memory.NewMapping([]memory.Region{
+		{
+			BaseHostVirtAddr: memoryStart,
+			Size:             uintptr(size),
+			Offset:           0,
+			PageSize:         uintptr(tt.pagesize),
+		},
+	})
+
 	return &testHandler{
 		memoryArea:          &memoryArea,
 		pagesize:            tt.pagesize,
 		data:                data,
 		accessedOffsetsOnce: accessedOffsetsOnce,
+		mapping:             mapping,
 		dirtyOffsetsOnce:    dirtyOffsetsOnce,
 	}, nil
 }

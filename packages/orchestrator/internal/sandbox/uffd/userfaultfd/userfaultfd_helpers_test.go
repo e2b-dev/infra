@@ -10,6 +10,7 @@ import (
 	"github.com/bits-and-blooms/bitset"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 )
 
@@ -49,7 +50,8 @@ type testHandler struct {
 	// Sorted in ascending order.
 	dirtyOffsetsOnce func() ([]uint, error)
 
-	mutex sync.Mutex
+	mutex   sync.Mutex
+	mapping *memory.Mapping
 }
 
 func (h *testHandler) executeOperation(ctx context.Context, op operation) error {
