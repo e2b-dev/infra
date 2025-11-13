@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type apiClient struct {
@@ -266,7 +267,13 @@ func (c *apiClient) setEntropyDevice(ctx context.Context) error {
 	entropyConfig := operations.PutEntropyDeviceParams{
 		Context: ctx,
 		Body: &models.EntropyDevice{
-			RateLimiter: nil,
+			RateLimiter: &models.RateLimiter{
+				Bandwidth: &models.TokenBucket{
+					OneTimeBurst: utils.ToPtr(entropyOneTimeBurst),
+					Size:         utils.ToPtr(entropyBytesSize),
+					RefillTime:   utils.ToPtr(entropyRefillTime),
+				},
+			},
 		},
 	}
 
