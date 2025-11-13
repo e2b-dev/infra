@@ -47,7 +47,11 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.GetBuildId(), parseErr)
 		}
 
+		networkTrafficAccessToken := config.GetNetwork().GetIngress().TrafficAccessToken
 		network := &types.SandboxNetworkConfig{
+			Ingress: &types.SandboxNetworkIngressConfig{
+				AllowPublicAccess: networkTrafficAccessToken == nil,
+			},
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: config.GetNetwork().GetEgress().GetAllowedCidrs(),
 				DeniedAddresses:  config.GetNetwork().GetEgress().GetDeniedCidrs(),
@@ -82,6 +86,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				config.GetBaseTemplateId(),
 				n.SandboxDomain,
 				network,
+				networkTrafficAccessToken,
 			),
 		)
 	}

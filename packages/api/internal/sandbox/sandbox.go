@@ -36,6 +36,7 @@ func NewSandbox(
 	baseTemplateID string,
 	domain *string,
 	network *types.SandboxNetworkConfig,
+	trafficAccessToken *string,
 ) Sandbox {
 	return Sandbox{
 		SandboxID:  sandboxID,
@@ -58,6 +59,7 @@ func NewSandbox(
 		FirecrackerVersion:  firecrackerVersion,
 		EnvdVersion:         envdVersion,
 		EnvdAccessToken:     envdAccessToken,
+		TrafficAccessToken:  trafficAccessToken,
 		AllowInternetAccess: allowInternetAccess,
 		NodeID:              nodeID,
 		ClusterID:           clusterID,
@@ -90,6 +92,7 @@ type Sandbox struct {
 	FirecrackerVersion  string
 	EnvdVersion         string
 	EnvdAccessToken     *string
+	TrafficAccessToken  *string
 	AllowInternetAccess *bool
 	NodeID              string
 	ClusterID           uuid.UUID
@@ -101,13 +104,14 @@ type Sandbox struct {
 
 func (s Sandbox) ToAPISandbox() *api.Sandbox {
 	return &api.Sandbox{
-		SandboxID:       s.SandboxID,
-		TemplateID:      s.TemplateID,
-		ClientID:        s.ClientID,
-		Alias:           s.Alias,
-		EnvdVersion:     s.EnvdVersion,
-		EnvdAccessToken: s.EnvdAccessToken,
-		Domain:          s.Domain,
+		SandboxID:          s.SandboxID,
+		TemplateID:         s.TemplateID,
+		ClientID:           s.ClientID,
+		Alias:              s.Alias,
+		EnvdVersion:        s.EnvdVersion,
+		EnvdAccessToken:    s.EnvdAccessToken,
+		TrafficAccessToken: s.TrafficAccessToken,
+		Domain:             s.Domain,
 	}
 }
 

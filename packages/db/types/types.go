@@ -17,8 +17,13 @@ type SandboxNetworkEgressConfig struct {
 	DeniedAddresses  []string `json:"deniedAddresses,omitempty"`
 }
 
+type SandboxNetworkIngressConfig struct {
+	AllowPublicAccess bool `json:"allowPublicAccess,omitempty"`
+}
+
 type SandboxNetworkConfig struct {
-	Egress *SandboxNetworkEgressConfig `json:"egress,omitempty"`
+	Egress  *SandboxNetworkEgressConfig  `json:"egress,omitempty"`
+	Ingress *SandboxNetworkIngressConfig `json:"ingress,omitempty"`
 }
 
 type PausedSandboxConfig struct {

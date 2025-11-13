@@ -31,7 +31,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var invalidPortErr InvalidSandboxPortError
+		var invalidPortErr *InvalidSandboxPortError
 		if errors.As(err, &invalidPortErr) {
 			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host), zap.String("port", invalidPortErr.Port))
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
@@ -39,7 +39,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var notFoundErr SandboxNotFoundError
+		var notFoundErr *SandboxNotFoundError
 		if errors.As(err, &notFoundErr) {
 			zap.L().Warn("sandbox not found",
 				zap.String("host", r.Host),
@@ -51,6 +51,40 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			if err != nil {
 				zap.L().Error("failed to handle sandbox not found error", zap.Error(err), logger.WithSandboxID(notFoundErr.SandboxId))
 				http.Error(w, "Failed to handle sandbox not found error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
+		var trafficMissingTokenErr *MissingTrafficAccessTokenError
+		if errors.As(err, &trafficMissingTokenErr) {
+			zap.L().Warn("traffic access token is missing", zap.String("host", r.Host))
+
+			err = template.
+				NewTrafficAccessTokenMissingHeader(trafficMissingTokenErr.SandboxId, r.Host, trafficMissingTokenErr.Header).
+				HandleError(w, r)
+			if err != nil {
+				zap.L().Error("failed to handle traffic missing traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficMissingTokenErr.SandboxId))
+				http.Error(w, "Failed to handle invalid missing access token header error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
+		var trafficInvalidTokenErr *InvalidTrafficAccessTokenError
+		if errors.As(err, &trafficInvalidTokenErr) {
+			zap.L().Warn("traffic access token is invalid", zap.String("host", r.Host))
+
+			err = template.
+				NewTrafficAccessTokenInvalidHeader(trafficInvalidTokenErr.SandboxId, r.Host, trafficInvalidTokenErr.Header).
+				HandleError(w, r)
+			if err != nil {
+				zap.L().Error("failed to handle traffic invalid traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficInvalidTokenErr.SandboxId))
+				http.Error(w, "Failed to handle invalid traffic access token header error", http.StatusInternalServerError)
 
 				return
 			}

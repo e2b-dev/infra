@@ -25,6 +25,10 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 		"Host": []string{host},
 	}
 
+	if sbx.TrafficAccessToken != nil {
+		header.Set("x-e2b-traffic-access-token", *sbx.TrafficAccessToken)
+	}
+
 	if extraHeaders != nil {
 		for key, values := range *extraHeaders {
 			header[key] = values
