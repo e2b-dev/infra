@@ -63,7 +63,7 @@ func NewUserfaultfdFromFd(uffd uffdio, src block.Slicer, m *memory.Mapping, logg
 		}
 
 		// Register the WP for the regions.
-		// It is possible that the memory region might be already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these registration flags.
+		// The memory region is already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these registration flags.
 		// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
 		// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
 		err := uffd.register(
