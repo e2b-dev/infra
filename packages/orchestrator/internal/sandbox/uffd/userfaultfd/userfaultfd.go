@@ -341,7 +341,7 @@ func (u *Userfaultfd) handleWriteProtected(onFailure func() error, addr, pagesiz
 			}
 		}()
 
-		// Passing 0 as the mode removed the write protection.
+		// Passing 0 as the mode removes the write protection.
 		wpErr := u.uffd.writeProtect(addr, pagesize, 0)
 		if wpErr != nil {
 			signalErr := onFailure()
