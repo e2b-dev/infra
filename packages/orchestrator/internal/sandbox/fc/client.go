@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type apiClient struct {
@@ -253,10 +254,32 @@ func (c *apiClient) setMachineConfig(
 		Context: ctx,
 		Body:    machineConfig,
 	}
-
 	_, err := c.client.Operations.PutMachineConfiguration(&machineConfigParams)
 	if err != nil {
 		return fmt.Errorf("error setting fc machine config: %w", err)
+	}
+
+	return nil
+}
+
+// https://github.com/firecracker-microvm/firecracker/blob/main/docs/entropy.md#firecracker-implementation
+func (c *apiClient) setEntropyDevice(ctx context.Context) error {
+	entropyConfig := operations.PutEntropyDeviceParams{
+		Context: ctx,
+		Body: &models.EntropyDevice{
+			RateLimiter: &models.RateLimiter{
+				Bandwidth: &models.TokenBucket{
+					OneTimeBurst: utils.ToPtr(entropyOneTimeBurst),
+					Size:         utils.ToPtr(entropyBytesSize),
+					RefillTime:   utils.ToPtr(entropyRefillTime),
+				},
+			},
+		},
+	}
+
+	_, err := c.client.Operations.PutEntropyDevice(&entropyConfig)
+	if err != nil {
+		return fmt.Errorf("error setting fc entropy config: %w", err)
 	}
 
 	return nil

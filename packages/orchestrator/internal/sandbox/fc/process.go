@@ -315,6 +315,14 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc machine config")
 
+	err = p.client.setEntropyDevice(ctx)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting fc entropy config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc entropy config")
+
 	err = p.client.startVM(ctx)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
