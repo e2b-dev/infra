@@ -45,6 +45,10 @@ func (p *ProxyPool) Get(d *Destination) *ProxyClient {
 			withFields = append(withFields, logger.WithSandboxID(d.SandboxId))
 		}
 
+		if d.MaskRequestHost != nil {
+			withFields = append(withFields, zap.Stringp("mask_request_host", d.MaskRequestHost))
+		}
+
 		logger, err := zap.NewStdLogAt(zap.L().With(withFields...), zap.ErrorLevel)
 		if err != nil {
 			zap.L().Warn("failed to create logger", zap.Error(err))

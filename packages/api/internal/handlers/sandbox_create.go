@@ -3,13 +3,16 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -160,9 +163,36 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	var network *types.SandboxNetworkConfig
 	if body.Network != nil {
+		maskRequestHost := body.Network.MaskRequestHost
+		if maskRequestHost != nil {
+			hostname, _, err := splitHostPortOptional(*maskRequestHost)
+			if err != nil {
+				telemetry.ReportError(ctx, "error when splitting mask request host", err, telemetry.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
+
+				return
+			}
+
+			host, err := idna.Display.ToASCII(hostname)
+			if err != nil {
+				telemetry.ReportError(ctx, "error when parsing mask request host", err, telemetry.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid mask request host: %s", err))
+
+				return
+			}
+
+			if !strings.EqualFold(host, hostname) {
+				telemetry.ReportError(ctx, "mask request host is not ASCII", nil, telemetry.WithSandboxID(sandboxID), attribute.String("mask_request_host", hostname), attribute.String("mask_request_host_ascii", host))
+				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Mask request host '%s' is not ASCII. Please use ASCII characters only.", hostname))
+
+				return
+			}
+		}
+
 		network = &types.SandboxNetworkConfig{
 			Ingress: &types.SandboxNetworkIngressConfig{
 				AllowPublicAccess: sharedUtils.DerefOrDefault(body.Network.AllowPublicTraffic, true),
+				MaskRequestHost:   maskRequestHost,
 			},
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(body.Network.AllowOut, nil),
@@ -265,4 +295,17 @@ func firstAlias(aliases []string) string {
 	}
 
 	return aliases[0]
+}
+
+func splitHostPortOptional(hostport string) (host string, port string, err error) {
+	host, port, err = net.SplitHostPort(hostport)
+	if err != nil {
+		if strings.Contains(err.Error(), "missing port") {
+			return hostport, "", nil
+		}
+
+		return "", "", err
+	}
+
+	return host, port, nil
 }
