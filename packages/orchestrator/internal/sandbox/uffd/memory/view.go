@@ -4,28 +4,29 @@ import (
 	"fmt"
 	"io"
 	"os"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
-var _ io.ReaderAt = (*View)(nil)
-var _ io.Closer = (*View)(nil)
+var (
+	_ io.ReaderAt = (*View)(nil)
+	_ io.Closer   = (*View)(nil)
+)
 
 // MemoryNotFaultedError is returned on read when the page was not faulted in (syscall.EIO error)
 type MemoryNotFaultedError struct {
-	r   block.Range
-	err error
+	addr    uintptr
+	written int
+	err     error
 }
 
 func (e MemoryNotFaultedError) Error() string {
-	return fmt.Sprintf("memory not faulted: %v: %v", e.r, e.err)
+	return fmt.Sprintf("memory not faulted: %v (written %d): %v", e.addr, e.writen, e.err)
 }
 
 func (e MemoryNotFaultedError) Unwrap() error {
 	return e.err
 }
 
-// View exposes memory of the underlying process, with the mappings applied.
+// View exposes memory of the underlying process via offsets, remapped via the mapping to the host virtual address space.
 type View struct {
 	m       *Mapping
 	procMem *os.File
@@ -48,15 +49,17 @@ func NewView(pid int, m *Mapping) (*View, error) {
 //
 // If you try to read missing pages that are not yet faulted in via UFFD, this will return an error.
 func (v *View) ReadAt(d []byte, off int64) (n int, err error) {
-	ranges, err := v.m.GetHostVirtRanges(off, int64(len(d)))
-	if err != nil {
-		return 0, fmt.Errorf("failed to get host virt regions: %w", err)
-	}
-
-	for _, r := range ranges {
-		written, err := v.procMem.ReadAt(d[n:r.Size], r.Start)
+	for n < len(d) {
+		addr, size, err := v.m.GetHostVirtAddr(off + int64(n))
 		if err != nil {
-			return 0, MemoryNotFaultedError{r: r, err: err}
+			return 0, fmt.Errorf("failed to get host virt addr: %w", err)
+		}
+
+		remainingSize := min(int64(size), int64(len(d))-int64(n))
+
+		written, err := v.procMem.ReadAt(d[n:n+int(remainingSize)], int64(addr))
+		if err != nil {
+			return 0, MemoryNotFaultedError{addr: addr, written: written, err: err}
 		}
 
 		n += written

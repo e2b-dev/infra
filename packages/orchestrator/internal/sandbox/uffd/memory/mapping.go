@@ -2,8 +2,6 @@ package memory
 
 import (
 	"fmt"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
 type AddressNotFoundError struct {
@@ -42,35 +40,12 @@ func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uintptr, error) {
 }
 
 // GetHostVirtRanges returns the host virtual addresses and sizes (ranges) that cover exactly the given [offset, offset+length) range in the host virtual address space.
-func (m *Mapping) GetHostVirtRanges(off int64, size int64) (hostVirtRanges []block.Range, err error) {
-	for n := int64(0); n < size; {
-		currentOff := off + n
-
-		region, err := m.getHostVirtRegion(currentOff)
-		if err != nil {
-			return nil, err
-		}
-
-		start := region.shiftedHostVirtAddr(currentOff)
-		remainingSize := min(int64(region.endHostVirtAddr()-start), size-n)
-
-		r := block.NewRange(int64(start), remainingSize)
-
-		hostVirtRanges = append(hostVirtRanges, r)
-
-		n += r.Size
-	}
-
-	return hostVirtRanges, nil
-}
-
-// getHostVirtRegion returns the region that contains the given offset.
-func (m *Mapping) getHostVirtRegion(off int64) (*Region, error) {
+func (m *Mapping) GetHostVirtAddr(off int64) (uintptr, uintptr, error) {
 	for _, r := range m.Regions {
 		if off >= int64(r.Offset) && off < r.endOffset() {
-			return &r, nil
+			return r.shiftedHostVirtAddr(off), uintptr(r.endOffset()) - r.Offset, nil
 		}
 	}
 
-	return nil, OffsetNotFoundError{offset: off}
+	return 0, 0, OffsetNotFoundError{offset: off}
 }

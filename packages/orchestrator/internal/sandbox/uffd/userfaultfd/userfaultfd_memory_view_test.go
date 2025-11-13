@@ -8,11 +8,12 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestUffdMemoryViewFaulted(t *testing.T) {
@@ -128,7 +129,7 @@ func TestUffdMemoryViewFaulted(t *testing.T) {
 				readBytes := make([]byte, tt.pagesize)
 				n, err := view.ReadAt(readBytes, operation.offset)
 				require.NoError(t, err)
-				assert.Equal(t, n, len(readBytes))
+				assert.Len(t, readBytes, n)
 
 				expectedBytes, err := h.data.Slice(t.Context(), operation.offset, int64(tt.pagesize))
 				require.NoError(t, err)
@@ -161,7 +162,7 @@ func TestUffdMemoryViewNotFaultedError(t *testing.T) {
 	n, err := view.ReadAt(readBytes, 0)
 	require.ErrorAs(t, err, &memory.MemoryNotFaultedError{})
 	require.ErrorIs(t, err, syscall.EIO)
-	assert.Equal(t, n, len(readBytes))
+	assert.Len(t, readBytes, n)
 }
 
 func TestUffdMemoryViewDirty(t *testing.T) {
@@ -191,6 +192,17 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 			},
 		},
 		{
+			name:          "standard 4k page, operation at end, write faulted",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 31 * header.PageSize,
+					mode:   operationModeWrite,
+				},
+			},
+		},
+		{
 			name:          "hugepage, operation at start, write faulted",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
@@ -203,6 +215,17 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 		},
 		{
 			name:          "hugepage, operation at middle, write faulted",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 3 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+			},
+		},
+		{
+			name:          "hugepage, operation at end, write faulted",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
 			operations: []operation{
@@ -241,7 +264,7 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 				readBytes := make([]byte, tt.pagesize)
 				n, err = view.ReadAt(readBytes, op.offset)
 				require.NoError(t, err)
-				assert.Equal(t, n, len(readBytes))
+				assert.Len(t, readBytes, n)
 
 				expectedBytes, err := writeData.Slice(t.Context(), op.offset, int64(tt.pagesize))
 				require.NoError(t, err)
