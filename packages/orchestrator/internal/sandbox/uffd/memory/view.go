@@ -19,7 +19,7 @@ type MemoryNotFaultedError struct {
 }
 
 func (e MemoryNotFaultedError) Error() string {
-	return fmt.Sprintf("memory not faulted: %v (written %d): %v", e.addr, e.writen, e.err)
+	return fmt.Sprintf("memory not faulted: %v (written %d): %v", e.addr, e.written, e.err)
 }
 
 func (e MemoryNotFaultedError) Unwrap() error {
@@ -55,7 +55,7 @@ func (v *View) ReadAt(d []byte, off int64) (n int, err error) {
 			return 0, fmt.Errorf("failed to get host virt addr: %w", err)
 		}
 
-		remainingSize := min(int64(size), int64(len(d))-int64(n))
+		remainingSize := min(size, int64(len(d)-n))
 
 		written, err := v.procMem.ReadAt(d[n:n+int(remainingSize)], int64(addr))
 		if err != nil {

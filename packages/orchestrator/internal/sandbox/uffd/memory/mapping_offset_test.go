@@ -24,50 +24,51 @@ func TestMapping_GetOffset(t *testing.T) {
 			PageSize:         header.PageSize,
 		},
 	}
+
 	mapping := NewMapping(regions)
 
 	tests := []struct {
-		name           string
-		hostVirtAddr   uintptr
-		expectedOffset int64
-		expectedSize   uintptr
-		expectError    error
+		name             string
+		hostVirtAddr     uintptr
+		expectedOffset   int64
+		expectedPagesize uintptr
+		expectError      error
 	}{
 		{
-			name:           "valid address in first region",
-			hostVirtAddr:   0x1500,
-			expectedOffset: 0x5500, // 0x5000 + (0x1500 - 0x1000)
-			expectedSize:   0x1000,
+			name:             "valid address in first region",
+			hostVirtAddr:     0x1500,
+			expectedOffset:   0x5500, // 0x5000 + (0x1500 - 0x1000)
+			expectedPagesize: 0x1000,
 		},
 		{
-			name:           "valid address at start of first region",
-			hostVirtAddr:   0x1000,
-			expectedOffset: 0x5000,
-			expectedSize:   0x1000,
+			name:             "valid address at start of first region",
+			hostVirtAddr:     0x1000,
+			expectedOffset:   0x5000,
+			expectedPagesize: 0x1000,
 		},
 		{
-			name:           "valid address at end-1 of first region",
-			hostVirtAddr:   0x2FFF, // 0x1000 + 0x2000 - 1
-			expectedOffset: 0x6FFF, // 0x5000 + (0x2FFF - 0x1000)
-			expectedSize:   0x1000,
+			name:             "valid address at end-1 of first region",
+			hostVirtAddr:     0x2FFF, // 0x1000 + 0x2000 - 1
+			expectedOffset:   0x6FFF, // 0x5000 + (0x2FFF - 0x1000)
+			expectedPagesize: 0x1000,
 		},
 		{
-			name:           "valid address in second region",
-			hostVirtAddr:   0x5500,
-			expectedOffset: 0x8500, // 0x8000 + (0x5500 - 0x5000)
-			expectedSize:   0x1000,
+			name:             "valid address in second region",
+			hostVirtAddr:     0x5500,
+			expectedOffset:   0x8500, // 0x8000 + (0x5500 - 0x5000)
+			expectedPagesize: 0x1000,
 		},
 		{
-			name:           "valid address at start of second region",
-			hostVirtAddr:   0x5000,
-			expectedOffset: 0x8000,
-			expectedSize:   0x1000,
+			name:             "valid address at start of second region",
+			hostVirtAddr:     0x5000,
+			expectedOffset:   0x8000,
+			expectedPagesize: 0x1000,
 		},
 		{
-			name:           "valid address at end-1 of second region",
-			hostVirtAddr:   0x5FFF,
-			expectedOffset: 0x8FFF, // 0x8000 + (0x5FFF - 0x5000)
-			expectedSize:   0x1000,
+			name:             "valid address at end-1 of second region",
+			hostVirtAddr:     0x5FFF,
+			expectedOffset:   0x8FFF, // 0x8000 + (0x5FFF - 0x5000)
+			expectedPagesize: 0x1000,
 		},
 		{
 			name:         "address before first region",
@@ -98,13 +99,13 @@ func TestMapping_GetOffset(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			offset, size, err := mapping.GetOffset(tt.hostVirtAddr)
+			offset, pagesize, err := mapping.GetOffset(tt.hostVirtAddr)
 			if tt.expectError != nil {
 				require.ErrorIs(t, err, tt.expectError)
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, tt.expectedOffset, offset)
-				assert.Equal(t, tt.expectedSize, size)
+				assert.Equal(t, tt.expectedPagesize, pagesize)
 			}
 		})
 	}
@@ -138,18 +139,18 @@ func TestMapping_OverlappingRegions(t *testing.T) {
 	mapping := NewMapping(regions)
 
 	// The first matching region should be returned
-	offset, size, err := mapping.GetOffset(0x2500) // In overlap area
+	offset, pagesize, err := mapping.GetOffset(0x2500) // In overlap area
 	require.NoError(t, err)
 
 	// Should get result from first region
 	assert.Equal(t, int64(0x5000+(0x2500-0x1000)), offset) // 0x6500
-	assert.Equal(t, uintptr(header.PageSize), size)
+	assert.Equal(t, uintptr(header.PageSize), pagesize)
 
 	// Also test that the underlying implementation prefers the first region if both regions contain the address
-	offset2, size2, err2 := mapping.GetOffset(0x2000)
+	offset2, pagesize2, err2 := mapping.GetOffset(0x2000)
 	require.NoError(t, err2)
 	assert.Equal(t, int64(0x5000+(0x2000-0x1000)), offset2) // 0x6000 from first region
-	assert.Equal(t, uintptr(header.PageSize), size2)
+	assert.Equal(t, uintptr(header.PageSize), pagesize2)
 }
 
 func TestMapping_BoundaryConditions(t *testing.T) {
@@ -165,22 +166,24 @@ func TestMapping_BoundaryConditions(t *testing.T) {
 	mapping := NewMapping(regions)
 
 	// Test exact start boundary
-	offset, _, err := mapping.GetOffset(0x1000)
+	offset, pagesize, err := mapping.GetOffset(0x1000)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x5000), offset) // 0x5000 + (0x1000 - 0x1000)
 
 	// Test just before end boundary (exclusive)
-	offset, _, err = mapping.GetOffset(0x2FFF) // 0x1000 + 0x2000 - 1
+	offset, pagesize, err = mapping.GetOffset(0x2FFF) // 0x1000 + 0x2000 - 1
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x5000+(0x2FFF-0x1000)), offset) // 0x6FFF
+	assert.Equal(t, uintptr(header.PageSize), pagesize)
 
 	// Test exact end boundary (should fail - exclusive)
 	_, _, err = mapping.GetOffset(0x3000) // 0x1000 + 0x2000
 	require.Error(t, err)
 
 	// Test below start boundary (should fail)
-	_, _, err = mapping.GetOffset(0x0FFF)
+	_, _, err = mapping.GetOffset(0x0FFF) // 0x1000 - 0x1000
 	require.Error(t, err)
+	assert.Equal(t, uintptr(header.PageSize), pagesize)
 }
 
 func TestMapping_SingleLargeRegion(t *testing.T) {
@@ -195,10 +198,10 @@ func TestMapping_SingleLargeRegion(t *testing.T) {
 	}
 	mapping := NewMapping(regions)
 
-	offset, size, err := mapping.GetOffset(0xABCDEF)
+	offset, pagesize, err := mapping.GetOffset(0xABCDEF)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x100+0xABCDEF), offset)
-	assert.Equal(t, uintptr(header.PageSize), size)
+	assert.Equal(t, uintptr(header.PageSize), pagesize)
 }
 
 func TestMapping_ZeroSizeRegion(t *testing.T) {
@@ -235,16 +238,16 @@ func TestMapping_MultipleRegionsSparse(t *testing.T) {
 	mapping := NewMapping(regions)
 
 	// Should succeed for start of first region
-	offset, size, err := mapping.GetOffset(0x100)
+	offset, pagesize, err := mapping.GetOffset(0x100)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x1000), offset)
-	assert.Equal(t, uintptr(header.PageSize), size)
+	assert.Equal(t, uintptr(header.PageSize), pagesize)
 
 	// Should succeed for start of second region
-	offset, size, err = mapping.GetOffset(0x10000)
+	offset, pagesize, err = mapping.GetOffset(0x10000)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x2000), offset)
-	assert.Equal(t, uintptr(header.PageSize), size)
+	assert.Equal(t, uintptr(header.PageSize), pagesize)
 
 	// In gap
 	_, _, err = mapping.GetOffset(0x5000)

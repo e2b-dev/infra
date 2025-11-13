@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,35 +28,36 @@ func TestMapping_GetHostVirtAddr(t *testing.T) {
 	mapping := NewMapping(regions)
 
 	tests := []struct {
-		name             string
-		offset           int64
-		expectedHostVirt uintptr
-		expectedSize     uintptr
-		expectError      error
+		name                string
+		offset              int64
+		expectedHostVirt    uintptr
+		remainingRegionSize int64
+		expectError         error
 	}{
 		{
 			name:             "valid offset in first region",
 			offset:           0x5500, // 0x5000 + (0x1500 - 0x1000)
 			expectedHostVirt: 0x1500, // 0x1000 + (0x5500 - 0x5000)
-			expectedSize:     0x2000, // Region size: 0x7000 - 0x5000
+			// region ends at 0x7000; remaining = 0x7000 - 0x5500 = 0x1b00
+			remainingRegionSize: 0x1b00,
 		},
 		{
-			name:             "valid offset at start of first region",
-			offset:           0x5000,
-			expectedHostVirt: 0x1000, // 0x1000 + (0x5000 - 0x5000)
-			expectedSize:     0x2000, // Region size: 0x7000 - 0x5000
+			name:                "valid offset at start of first region",
+			offset:              0x5000,
+			expectedHostVirt:    0x1000, // 0x1000 + (0x5000 - 0x5000)
+			remainingRegionSize: 0x2000, // 0x7000 - 0x5000
 		},
 		{
-			name:             "valid offset near end of first region",
-			offset:           0x6000, // 0x5000 + (0x2000 - 0x1000)
-			expectedHostVirt: 0x2000, // 0x1000 + (0x6000 - 0x5000)
-			expectedSize:     0x2000, // Region size: 0x7000 - 0x5000
+			name:                "valid offset near end of first region",
+			offset:              0x6FFF, // 0x7000 - 1
+			expectedHostVirt:    0x2FFF, // 0x1000 + (0x6FFF - 0x5000)
+			remainingRegionSize: 0x1,    // 0x7000 - 0x6FFF
 		},
 		{
-			name:             "valid offset at start of second region",
-			offset:           0x8000,
-			expectedHostVirt: 0x5000, // 0x5000 + (0x8000 - 0x8000)
-			expectedSize:     0x1000, // Region size: 0x9000 - 0x8000
+			name:                "valid offset at start of second region",
+			offset:              0x8000,
+			expectedHostVirt:    0x5000, // 0x5000 + (0x8000 - 0x8000)
+			remainingRegionSize: 0x1000, // 0x9000 - 0x8000
 		},
 		{
 			name:        "offset before first region",
@@ -91,8 +93,8 @@ func TestMapping_GetHostVirtAddr(t *testing.T) {
 				require.ErrorIs(t, err, tt.expectError)
 			} else {
 				require.NoError(t, err)
-				assert.Equal(t, tt.expectedHostVirt, hostVirt)
-				assert.Equal(t, tt.expectedSize, size)
+				assert.Equal(t, tt.expectedHostVirt, hostVirt, "hostVirt: %d, expectedHostVirt: %d", hostVirt, tt.expectedHostVirt)
+				assert.Equal(t, tt.remainingRegionSize, size, "size: %d, expectedSize: %d", size, tt.remainingRegionSize)
 			}
 		})
 	}
@@ -103,7 +105,7 @@ func TestMapping_GetHostVirtAddr_EmptyRegions(t *testing.T) {
 
 	// Test GetHostVirtAddr with empty regions
 	_, _, err := mapping.GetHostVirtAddr(0x1000)
-	require.Error(t, err)
+	require.ErrorIs(t, err, OffsetNotFoundError{offset: 0x1000})
 }
 
 func TestMapping_GetHostVirtAddr_OverlappingRegions(t *testing.T) {
@@ -130,16 +132,15 @@ func TestMapping_GetHostVirtAddr_OverlappingRegions(t *testing.T) {
 	hostVirt, size, err := mapping.GetHostVirtAddr(0x6000)
 	require.NoError(t, err)
 
-	// Should get result from first region
 	assert.Equal(t, uintptr(0x1000+(0x6000-0x5000)), hostVirt) // 0x2000
-	assert.Equal(t, uintptr(0x2000), size)                     // First region size: 0x7000 - 0x5000
+	// remainingRegionSize: endOffset (0x7000) - offset (0x6000) = 0x1000
+	assert.Equal(t, int64(0x7000-0x6000), size)
 
 	// Also test that the underlying implementation prefers the first region if both regions contain the offset
-	// Offset 0x6000 maps to host virt 0x2000 in first region
 	hostVirt2, size2, err2 := mapping.GetHostVirtAddr(0x6000)
 	require.NoError(t, err2)
 	assert.Equal(t, uintptr(0x1000+(0x6000-0x5000)), hostVirt2) // 0x2000 from first region
-	assert.Equal(t, uintptr(0x2000), size2)                     // First region size
+	assert.Equal(t, int64(0x7000-0x6000), size2)
 }
 
 func TestMapping_GetHostVirtAddr_BoundaryConditions(t *testing.T) {
@@ -157,22 +158,22 @@ func TestMapping_GetHostVirtAddr_BoundaryConditions(t *testing.T) {
 	// Test exact start boundary
 	hostVirt, size, err := mapping.GetHostVirtAddr(0x5000)
 	require.NoError(t, err)
-	assert.Equal(t, uintptr(0x1000), hostVirt) // 0x1000 + (0x5000 - 0x5000)
-	assert.Equal(t, uintptr(0x2000), size)     // Region size: 0x7000 - 0x5000
+	assert.Equal(t, uintptr(0x1000), hostVirt)  // 0x1000 + (0x5000 - 0x5000)
+	assert.Equal(t, int64(0x7000-0x5000), size) // 0x2000
 
 	// Test offset before end boundary
-	hostVirt, size, err = mapping.GetHostVirtAddr(0x6000) // 0x5000 + (0x2000 - 0x1000)
+	hostVirt, size, err = mapping.GetHostVirtAddr(0x6FFF) // just before end
 	require.NoError(t, err)
-	assert.Equal(t, uintptr(0x1000+(0x6000-0x5000)), hostVirt) // 0x2000
-	assert.Equal(t, uintptr(0x2000), size)                     // Region size: 0x7000 - 0x5000
+	assert.Equal(t, uintptr(0x1000+(0x6FFF-0x5000)), hostVirt)
+	assert.Equal(t, int64(0x7000-0x6FFF), size)
 
 	// Test exact end boundary (should fail - exclusive)
-	_, _, err = mapping.GetHostVirtAddr(0x7000) // 0x5000 + 0x2000
-	require.Error(t, err)
+	_, _, err = mapping.GetHostVirtAddr(0x7000)
+	require.ErrorIs(t, err, OffsetNotFoundError{offset: 0x7000})
 
 	// Test below start boundary (should fail)
 	_, _, err = mapping.GetHostVirtAddr(0x4000)
-	require.Error(t, err)
+	require.ErrorIs(t, err, OffsetNotFoundError{offset: 0x4000})
 }
 
 func TestMapping_GetHostVirtAddr_SingleLargeRegion(t *testing.T) {
@@ -180,19 +181,17 @@ func TestMapping_GetHostVirtAddr_SingleLargeRegion(t *testing.T) {
 	regions := []Region{
 		{
 			BaseHostVirtAddr: 0x0,
-			Size:             ^uintptr(0), // Max uintptr
+			Size:             math.MaxInt64 - 0x100,
 			Offset:           0x100,
 			PageSize:         header.PageSize,
 		},
 	}
 	mapping := NewMapping(regions)
 
-	// Use an offset that's well within the region
 	hostVirt, size, err := mapping.GetHostVirtAddr(0x100 + 0x1000) // Offset 0x1100
 	require.NoError(t, err)
-	assert.Equal(t, uintptr(0x0+(0x100+0x1000-0x100)), hostVirt) // 0x1000
-	// Size will be max uintptr for unbounded region
-	assert.Equal(t, ^uintptr(0), size)
+	assert.Equal(t, uintptr(0x1000), hostVirt) // 0x1000
+	assert.Equal(t, int64(math.MaxInt64-0x100-0x1000), size)
 }
 
 func TestMapping_GetHostVirtAddr_ZeroSizeRegion(t *testing.T) {
@@ -208,7 +207,7 @@ func TestMapping_GetHostVirtAddr_ZeroSizeRegion(t *testing.T) {
 	mapping := NewMapping(regions)
 
 	_, _, err := mapping.GetHostVirtAddr(0x1000)
-	require.Error(t, err)
+	require.ErrorIs(t, err, OffsetNotFoundError{offset: 0x1000})
 }
 
 func TestMapping_GetHostVirtAddr_MultipleRegionsSparse(t *testing.T) {
@@ -231,16 +230,22 @@ func TestMapping_GetHostVirtAddr_MultipleRegionsSparse(t *testing.T) {
 	// Should succeed for start of first region
 	hostVirt, size, err := mapping.GetHostVirtAddr(0x1000)
 	require.NoError(t, err)
-	assert.Equal(t, uintptr(0x100), hostVirt) // 0x100 + (0x1000 - 0x1000)
-	assert.Equal(t, uintptr(0x100), size)     // Region size: 0x1100 - 0x1000
+	assert.Equal(t, uintptr(0x100), hostVirt)   // 0x100 + (0x1000 - 0x1000)
+	assert.Equal(t, int64(0x1100-0x1000), size) // 0x100
+
+	// Should succeed for just before end of first region
+	hostVirt, size, err = mapping.GetHostVirtAddr(0x10FF) // 0x1100 - 1
+	require.NoError(t, err)
+	assert.Equal(t, uintptr(0x100+(0x10FF-0x1000)), hostVirt)
+	assert.Equal(t, int64(0x1100-0x10FF), size) // 1
 
 	// Should succeed for start of second region
 	hostVirt, size, err = mapping.GetHostVirtAddr(0x2000)
 	require.NoError(t, err)
 	assert.Equal(t, uintptr(0x10000), hostVirt) // 0x10000 + (0x2000 - 0x2000)
-	assert.Equal(t, uintptr(0x100), size)       // Region size: 0x2100 - 0x2000
+	assert.Equal(t, int64(0x2100-0x2000), size) // 0x100
 
 	// In gap
 	_, _, err = mapping.GetHostVirtAddr(0x1500)
-	require.Error(t, err)
+	require.ErrorIs(t, err, OffsetNotFoundError{offset: 0x1500})
 }
