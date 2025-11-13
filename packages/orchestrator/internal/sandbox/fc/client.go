@@ -262,17 +262,11 @@ func (c *apiClient) setMachineConfig(
 }
 
 // https://github.com/firecracker-microvm/firecracker/blob/main/docs/entropy.md#firecracker-implementation
-func (c *apiClient) setEntropyDevice(ctx context.Context, size int64, oneTimeBurst int64, refillTime int64) error {
+func (c *apiClient) setEntropyDevice(ctx context.Context) error {
 	entropyConfig := operations.PutEntropyDeviceParams{
 		Context: ctx,
 		Body: &models.EntropyDevice{
-			RateLimiter: &models.RateLimiter{
-				Bandwidth: &models.TokenBucket{
-					Size:         &size,
-					OneTimeBurst: &oneTimeBurst,
-					RefillTime:   &refillTime,
-				},
-			},
+			RateLimiter: nil,
 		},
 	}
 

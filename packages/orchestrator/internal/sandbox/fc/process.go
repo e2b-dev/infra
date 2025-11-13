@@ -30,12 +30,6 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
 
-const (
-	size         = 1000
-	oneTimeBurst = 0
-	refillTime   = 100
-)
-
 type ProcessOptions struct {
 	// InitScriptPath is the path to the init script that will be executed inside the VM on kernel start.
 	InitScriptPath string
@@ -321,7 +315,7 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc machine config")
 
-	err = p.client.setEntropyDevice(ctx, size, oneTimeBurst, refillTime)
+	err = p.client.setEntropyDevice(ctx)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
