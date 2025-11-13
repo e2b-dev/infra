@@ -13,7 +13,7 @@ type RedisStreamsDelivery[Payload any] struct {
 	streamName  string
 }
 
-const SandboxEventsStreamName = "sandbox-events-stream"
+const SandboxEventsStreamName = "sandbox.events.stream"
 
 func NewRedisStreamsDelivery[Payload any](redisClient redis.UniversalClient, streamName string) *RedisStreamsDelivery[Payload] {
 	return &RedisStreamsDelivery[Payload]{
