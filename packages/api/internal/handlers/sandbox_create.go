@@ -162,7 +162,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if body.Network != nil {
 		network = &types.SandboxNetworkConfig{
 			Ingress: &types.SandboxNetworkIngressConfig{
-				DenyPublicAccess: sharedUtils.DerefOrDefault(body.Network.DenyPublicTraffic, false),
+				AllowPublicAccess: sharedUtils.DerefOrDefault(body.Network.AllowPublicTraffic, true),
 			},
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(body.Network.AllowOut, nil),
