@@ -41,6 +41,7 @@ import (
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
+	sharedFactories "github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -305,12 +306,16 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"sandbox event batcher", sandboxEventBatcher.Close})
 
 	// redis
-	redisClient, err := factories.NewRedisClient(ctx, config)
-	if err != nil && !errors.Is(err, factories.ErrRedisDisabled) {
+	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
+		RedisURL:         config.RedisURL,
+		RedisClusterURL:  config.RedisClusterURL,
+		RedisTLSCABase64: config.RedisTLSCABase64,
+	})
+	if err != nil && !errors.Is(err, sharedFactories.ErrRedisDisabled) {
 		zap.L().Fatal("Could not connect to Redis", zap.Error(err))
 	} else if err == nil {
 		closers = append(closers, closer{"redis client", func(context.Context) error {
-			return factories.CloseCleanly(redisClient)
+			return sharedFactories.CloseCleanly(redisClient)
 		}})
 	}
 

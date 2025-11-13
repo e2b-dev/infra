@@ -201,6 +201,8 @@ module "nomad" {
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
   api_admin_token                           = random_password.api_admin_secret.result
   redis_url_secret_version                  = google_secret_manager_secret_version.redis_url
+  redis_secure_cluster_url_secret_version   = module.init.redis_secure_cluster_url_secret_version
+  redis_tls_ca_base64_secret_version        = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed            = random_password.sandbox_access_token_hash_seed.result
 
   # Click Proxy

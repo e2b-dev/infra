@@ -274,6 +274,8 @@ resource "google_secret_manager_secret" "redis_tls_ca_base64" {
   replication {
     auto {}
   }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
 resource "google_secret_manager_secret_version" "redis_tls_ca_base64" {
@@ -291,6 +293,8 @@ resource "google_secret_manager_secret" "redis_secure_cluster_url" {
   replication {
     auto {}
   }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
 resource "google_secret_manager_secret_version" "redis_secure_cluster_url" {

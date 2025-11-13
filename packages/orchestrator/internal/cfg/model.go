@@ -78,6 +78,7 @@ type Config struct {
 	OrchestratorLockPath       string   `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
 	ProxyPort                  uint16   `env:"PROXY_PORT"                   envDefault:"5007"`
 	RedisClusterURL            string   `env:"REDIS_CLUSTER_URL"`
+	RedisTLSCABase64           string   `env:"REDIS_TLS_CA_BASE64"`
 	RedisURL                   string   `env:"REDIS_URL"`
 	Services                   []string `env:"ORCHESTRATOR_SERVICES"        envDefault:"orchestrator"`
 }
