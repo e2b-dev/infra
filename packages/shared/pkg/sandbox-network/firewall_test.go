@@ -85,7 +85,7 @@ func TestCanAllowAddress_PrivateRangesBlocked(t *testing.T) {
 		{
 			name:      "all_network_0.0.0.0/0",
 			address:   "0.0.0.0/0",
-			shouldErr: true,
+			shouldErr: false,
 			desc:      "internet is enabled by default",
 		},
 	}

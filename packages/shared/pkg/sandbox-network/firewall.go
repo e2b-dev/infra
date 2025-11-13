@@ -26,7 +26,7 @@ var deniedSandboxData = utils.Must(set.AddressStringsToSetData(DeniedSandboxCIDR
 func CanAllowCIDR(cidr string) error {
 	if cidr == AllInternetTrafficCIDR {
 		// Internet is enabled by default.
-		return fmt.Errorf("internet is enabled by default")
+		return nil
 	}
 
 	addressData, err := set.AddressStringsToSetData([]string{cidr})
