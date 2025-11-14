@@ -729,7 +729,7 @@ func (s *Sandbox) Pause(
 	}
 
 	// Start POSTPROCESSING
-	memfileDiff, memfileDiffHeader, err := s.pauseProcessMemory(
+	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
 		buildID,
 		originalMemfile.Header(),
@@ -741,12 +741,13 @@ func (s *Sandbox) Pause(
 				return memfile.Close()
 			},
 		},
+		s.config.DefaultCacheDir,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
-	rootfsDiff, rootfsDiffHeader, err := s.pauseProcessRootfs(
+	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
 		ctx,
 		buildID,
 		originalRootfs.Header(),
@@ -754,6 +755,7 @@ func (s *Sandbox) Pause(
 			rootfs:    s.rootfs,
 			closeHook: s.Close,
 		},
+		s.config.DefaultCacheDir,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -775,17 +777,18 @@ func (s *Sandbox) Pause(
 	}, nil
 }
 
-func (s *Sandbox) pauseProcessMemory(
+func pauseProcessMemory(
 	ctx context.Context,
 	buildId uuid.UUID,
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
+	cacheDir string,
 ) (build.Diff, *header.Header, error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
-		s.config.DefaultCacheDir,
+		cacheDir,
 		buildId.String(),
 		build.Memfile,
 	)
@@ -849,16 +852,17 @@ func (s *Sandbox) pauseProcessMemory(
 	return memfileDiff, memfileHeader, nil
 }
 
-func (s *Sandbox) pauseProcessRootfs(
+func pauseProcessRootfs(
 	ctx context.Context,
 	buildId uuid.UUID,
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
+	cacheDir string,
 ) (build.Diff, *header.Header, error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
 
-	rootfsDiffFile, err := build.NewLocalDiffFile(s.config.DefaultCacheDir, buildId.String(), build.Rootfs)
+	rootfsDiffFile, err := build.NewLocalDiffFile(cacheDir, buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
