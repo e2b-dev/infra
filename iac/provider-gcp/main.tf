@@ -13,7 +13,7 @@ terraform {
 
     google = {
       source  = "hashicorp/google"
-      version = "6.49.3"
+      version = "6.50.0"
     }
 
     cloudflare = {
@@ -269,6 +269,9 @@ module "redis" {
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
+
+  redis_secure_cluster_url_secret_version = module.init.redis_secure_cluster_url_secret_version
+  redis_tls_ca_base64_secret_version      = module.init.redis_tls_ca_base64_secret_version
 
   prefix = var.prefix
 }
