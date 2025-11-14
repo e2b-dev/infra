@@ -452,9 +452,10 @@ locals {
     launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
     clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
     redis_url                    = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
-    redis_cluster_url            = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data : ""
-    redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-    shared_chunk_cache_path      = var.shared_chunk_cache_path
+    # Secure redis url uses " " as a default, redis url uses "redis.service.consul"
+    redis_cluster_url       = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) != "" ? data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data : ""
+    redis_tls_ca_base64     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    shared_chunk_cache_path = var.shared_chunk_cache_path
   }
 
   orchestrator_job_check = templatefile("${path.module}/jobs/orchestrator.hcl", merge(
