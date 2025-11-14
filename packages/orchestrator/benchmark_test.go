@@ -100,15 +100,15 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	// hacks, these should go away
 	b.Setenv("ARTIFACTS_REGISTRY_PROVIDER", "Local")
-	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
-	b.Setenv("STORAGE_PROVIDER", "Local")
-	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
-	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
 	b.Setenv("FIRECRACKER_VERSIONS_DIR", abs(filepath.Join("..", "fc-versions", "builds")))
+	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
 	b.Setenv("HOST_KERNELS_DIR", abs(kernelsDir))
+	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
+	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
 	b.Setenv("SANDBOX_DIR", abs(sandboxDir))
 	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
-	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
+	b.Setenv("STORAGE_PROVIDER", "Local")
+	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
 
 	config, err := cfg.Parse()
 	require.NoError(b, err)
@@ -232,6 +232,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 
 	builder := build.NewBuilder(
+		config.BuilderConfig,
 		logger,
 		featureFlags,
 		sandboxFactory,

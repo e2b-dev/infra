@@ -106,6 +106,7 @@ type Sandbox struct {
 	*Resources
 	*Metadata
 
+	config  cfg.BuilderConfig
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
@@ -194,7 +195,7 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(cleanupFiles(sandboxFiles))
+	cleanup.Add(cleanupFiles(f.config, sandboxFiles))
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
@@ -205,7 +206,7 @@ func (f *Factory) CreateSandbox(
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
 			rootFS,
-			sandboxFiles.SandboxCacheRootfsPath(),
+			sandboxFiles.SandboxCacheRootfsPath(f.config),
 			f.devicePool,
 		)
 	} else {
@@ -302,6 +303,7 @@ func (f *Factory) CreateSandbox(
 		Metadata:  metadata,
 
 		Template: template,
+		config:   f.config,
 		files:    sandboxFiles,
 		process:  fcHandle,
 
@@ -378,7 +380,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(cleanupFiles(sandboxFiles))
+	cleanup.Add(cleanupFiles(f.config, sandboxFiles))
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
@@ -391,7 +393,7 @@ func (f *Factory) ResumeSandbox(
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		readonlyRootfs,
-		sandboxFiles.SandboxCacheRootfsPath(),
+		sandboxFiles.SandboxCacheRootfsPath(f.config),
 		f.devicePool,
 	)
 	if err != nil {
@@ -535,6 +537,7 @@ func (f *Factory) ResumeSandbox(
 		Metadata:  metadata,
 
 		Template: t,
+		config:   f.config,
 		files:    sandboxFiles,
 		process:  fcHandle,
 
@@ -659,7 +662,7 @@ func (s *Sandbox) Pause(
 	ctx, span := tracer.Start(ctx, "sandbox-snapshot")
 	defer span.End()
 
-	snapshotTemplateFiles, err := m.Template.CacheFiles()
+	snapshotTemplateFiles, err := m.Template.CacheFiles(s.config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
@@ -681,7 +684,7 @@ func (s *Sandbox) Pause(
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
-	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
+	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath(s.config))
 	// Memfile is also closed on diff creation processing
 	/* The process of snapshotting memory is as follows:
 	1. Pause FC via API
@@ -690,7 +693,7 @@ func (s *Sandbox) Pause(
 	4. Delete tmpfs file
 	5. Unlock so another snapshot can use tmpfs space
 	*/
-	memfile, err := storage.AcquireTmpMemfile(ctx, buildID.String())
+	memfile, err := storage.AcquireTmpMemfile(ctx, s.config, buildID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
 	}
@@ -729,6 +732,7 @@ func (s *Sandbox) Pause(
 				return memfile.Close()
 			},
 		},
+		s.config.DefaultCacheDir,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -742,12 +746,13 @@ func (s *Sandbox) Pause(
 			rootfs:    s.rootfs,
 			closeHook: s.Close,
 		},
+		s.config.DefaultCacheDir,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
-	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
+	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath(s.config))
 	err = m.ToFile(metadataFileLink.Path())
 	if err != nil {
 		return nil, err
@@ -768,12 +773,13 @@ func pauseProcessMemory(
 	buildId uuid.UUID,
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
+	cacheDir string,
 ) (build.Diff, *header.Header, error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
-		build.DefaultCachePath(),
+		cacheDir,
 		buildId.String(),
 		build.Memfile,
 	)
@@ -842,11 +848,12 @@ func pauseProcessRootfs(
 	buildId uuid.UUID,
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
+	cacheDir string,
 ) (build.Diff, *header.Header, error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
 
-	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath(), buildId.String(), build.Rootfs)
+	rootfsDiffFile, err := build.NewLocalDiffFile(cacheDir, buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
