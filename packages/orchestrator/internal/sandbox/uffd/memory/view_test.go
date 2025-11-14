@@ -49,8 +49,7 @@ func TestViewSingleRegionFullRead(t *testing.T) {
 		expectedBytes := data.Content()[i : i+int(pagesize)]
 
 		if !bytes.Equal(readBytes, expectedBytes) {
-			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d", want, got, idx)
+			assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error())
 		}
 	}
 }
@@ -88,35 +87,35 @@ func TestViewSingleRegionPartialRead(t *testing.T) {
 
 	// Read at the start of the region
 	readBytes := make([]byte, pagesize)
-	n, err = pc.ReadAt(readBytes, 0)
+	offset := int64(0)
+	n, err = pc.ReadAt(readBytes, offset)
 	require.NoError(t, err)
 	assert.Equal(t, int(size), n)
 	expectedBytes := data.Content()
 	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-		assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d", want, got, idx)
+		assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)
 	}
 
 	// Read in the middle of the region
 	readBytes = make([]byte, pagesize)
-	n, err = pc.ReadAt(readBytes, int64(numberOfPages/2*pagesize))
+	offset = int64(numberOfPages / 2 * pagesize)
+	n, err = pc.ReadAt(readBytes, offset)
 	require.NoError(t, err)
 	assert.Equal(t, int(pagesize), n)
 	expectedBytes = data.Content()
 	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-		assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d", want, got, idx)
+		assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)
 	}
 
 	// Read at the end of the region
 	readBytes = make([]byte, pagesize)
-	n, err = pc.ReadAt(readBytes, int64(numberOfPages*pagesize-pagesize))
+	offset = int64(numberOfPages*pagesize - pagesize)
+	n, err = pc.ReadAt(readBytes, offset)
 	require.NoError(t, err)
 	assert.Equal(t, int(size), n)
 	expectedBytes = data.Content()
 	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-		assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d", want, got, idx)
+		assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)
 	}
 }
 
@@ -199,8 +198,7 @@ func TestViewMultipleRegions(t *testing.T) {
 
 		expectedBytes := data1.Content()[i : i+int(pagesize)]
 		if !bytes.Equal(readBytes, expectedBytes) {
-			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			assert.Fail(t, "region 1 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
+			assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", i)
 		}
 	}
 
@@ -212,8 +210,7 @@ func TestViewMultipleRegions(t *testing.T) {
 
 		expectedBytes := data2.Content()[i : i+int(pagesize)]
 		if !bytes.Equal(readBytes, expectedBytes) {
-			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			assert.Fail(t, "region 2 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
+			assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", int64(offset2)+int64(i))
 		}
 	}
 
@@ -225,8 +222,7 @@ func TestViewMultipleRegions(t *testing.T) {
 
 		expectedBytes := data3.Content()[i : i+int(pagesize)]
 		if !bytes.Equal(readBytes, expectedBytes) {
-			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			assert.Fail(t, "region 3 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
+			assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", int64(offset3)+int64(i))
 		}
 	}
 
@@ -240,13 +236,12 @@ func TestViewMultipleRegions(t *testing.T) {
 
 	expectedBytes := data2.Content()[int(pagesize) : int(pagesize)+readSize]
 	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-		assert.Fail(t, "region 2 span read mismatch: want '%x', got '%x' at index %d", want, got, idx)
+		assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", readOffset)
 	}
 
 	// Test reading that would cross region boundary (should fail at gap)
 	// Try to read from end of region 1 into gap
 	readBytes = make([]byte, int(pagesize*2))
 	_, err = pc.ReadAt(readBytes, int64(size1)-int64(pagesize))
-	require.Error(t, err, "reading across region boundary should fail")
+	require.ErrorAs(t, err, &OffsetNotFoundError{offset: int64(size1) - int64(pagesize)})
 }

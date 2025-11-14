@@ -135,8 +135,7 @@ func TestUffdMemoryViewFaulted(t *testing.T) {
 				require.NoError(t, err)
 
 				if !bytes.Equal(expectedBytes, readBytes) {
-					idx, want, got := testutils.FirstDifferentByte(expectedBytes, readBytes)
-					assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d, for operation %+v", want, got, idx, operation)
+					assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "for operation %+v", operation)
 				}
 			}
 		})
@@ -274,8 +273,7 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 				require.NoError(t, err)
 
 				if !bytes.Equal(expectedBytes, readBytes) {
-					idx, want, got := testutils.FirstDifferentByte(expectedBytes, readBytes)
-					assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d, for operation %+v", want, got, idx, op)
+					assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "for operation %+v", op)
 				}
 			}
 		})

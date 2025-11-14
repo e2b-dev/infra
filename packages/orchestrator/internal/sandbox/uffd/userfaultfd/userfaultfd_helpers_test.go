@@ -75,9 +75,7 @@ func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 
 	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
 	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-
-		return fmt.Errorf("content mismatch: want '%x', got '%x' at index %d", want, got, idx)
+		return fmt.Errorf("content mismatch: %w", testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes))
 	}
 
 	return nil
