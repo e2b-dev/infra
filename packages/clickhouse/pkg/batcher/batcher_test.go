@@ -1,6 +1,7 @@
 package batcher
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -9,12 +10,12 @@ import (
 )
 
 func TestBatcherStartStop(t *testing.T) {
-	b, err := NewBatcher[int](func([]int) error { return nil }, BatcherOptions{})
+	b, err := NewBatcher[int](func(context.Context, []int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for range 100 {
-		if err := b.Start(); err != nil {
+		if err := b.Start(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 		if err := b.Stop(); err != nil {
@@ -24,7 +25,7 @@ func TestBatcherStartStop(t *testing.T) {
 }
 
 func TestBatcherPushNotStarted(t *testing.T) {
-	b, err := NewBatcher[int](func([]int) error { return nil }, BatcherOptions{})
+	b, err := NewBatcher[int](func(context.Context, []int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +39,7 @@ func TestBatcherPushNotStarted(t *testing.T) {
 }
 
 func TestBatcherStopNotStarted(t *testing.T) {
-	b, err := NewBatcher[int](func([]int) error { return nil }, BatcherOptions{})
+	b, err := NewBatcher[int](func(context.Context, []int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,11 +49,11 @@ func TestBatcherStopNotStarted(t *testing.T) {
 }
 
 func TestBatcherDoubleStop(t *testing.T) {
-	b, err := NewBatcher[int](func([]int) error { return nil }, BatcherOptions{})
+	b, err := NewBatcher[int](func(context.Context, []int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Start(); err != nil {
+	if err := b.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.Stop(); err != nil {
@@ -64,21 +65,21 @@ func TestBatcherDoubleStop(t *testing.T) {
 }
 
 func TestBatcherDoubleStart(t *testing.T) {
-	b, err := NewBatcher[int](func([]int) error { return nil }, BatcherOptions{})
+	b, err := NewBatcher[int](func(context.Context, []int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Start(); err != nil {
+	if err := b.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Start(); !errors.Is(err, ErrBatcherAlreadyStarted) {
+	if err := b.Start(t.Context()); !errors.Is(err, ErrBatcherAlreadyStarted) {
 		t.Fatalf("expected ErrBatcherAlreadyStarted, got %v", err)
 	}
 }
 
 func TestBatcherPushStop(t *testing.T) {
 	n := 0
-	b, err := NewBatcher[int](func(batch []int) error {
+	b, err := NewBatcher[int](func(_ context.Context, batch []int) error {
 		n += len(batch)
 
 		return nil
@@ -86,7 +87,7 @@ func TestBatcherPushStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Start(); err != nil {
+	if err := b.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 10 {
@@ -124,7 +125,7 @@ func TestBatcherPushMaxDelay(t *testing.T) {
 
 func TestBatcherConcurrentPush(t *testing.T) {
 	s := uint32(0)
-	b, err := NewBatcher[uint32](func(batch []uint32) error {
+	b, err := NewBatcher[uint32](func(_ context.Context, batch []uint32) error {
 		for _, v := range batch {
 			atomic.AddUint32(&s, v)
 		}
@@ -134,7 +135,7 @@ func TestBatcherConcurrentPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Start(); err != nil {
+	if err := b.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
@@ -162,7 +163,7 @@ func TestBatcherConcurrentPush(t *testing.T) {
 func TestBatcherQueueSize(t *testing.T) {
 	ch := make(chan struct{})
 	n := 0
-	b, err := NewBatcher[int](func(batch []int) error {
+	b, err := NewBatcher[int](func(_ context.Context, batch []int) error {
 		<-ch
 		n += len(batch)
 
@@ -175,7 +176,7 @@ func TestBatcherQueueSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Start(); err != nil {
+	if err := b.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 3 {
@@ -236,7 +237,7 @@ func testBatcherPushMaxDelay(t *testing.T, itemsCount int, maxDelay time.Duratio
 	lastTime := time.Now()
 	n := 0
 	nn := 0
-	b, err := NewBatcher[int](func(batch []int) error {
+	b, err := NewBatcher[int](func(_ context.Context, batch []int) error {
 		if time.Since(lastTime) > maxDelay+10*time.Millisecond {
 			t.Fatalf("Unexpected delay between batches: %s. Expected no more than %s. itemsCount=%d",
 				time.Since(lastTime), maxDelay, itemsCount)
@@ -253,7 +254,7 @@ func testBatcherPushMaxDelay(t *testing.T, itemsCount int, maxDelay time.Duratio
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Start(); err != nil {
+	if err := b.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	for i := range itemsCount {
@@ -286,7 +287,7 @@ func testBatcherPushMaxBatchSize(t *testing.T, itemsCount, batchSize int) {
 
 	n := 0
 	nn := 0
-	b, err := NewBatcher[int](func(batch []int) error {
+	b, err := NewBatcher[int](func(_ context.Context, batch []int) error {
 		if len(batch) > batchSize {
 			t.Fatalf("Unexpected batch size=%d. Must not exceed %d. itemsCount=%d", len(batch), batchSize, itemsCount)
 		}
@@ -304,7 +305,7 @@ func testBatcherPushMaxBatchSize(t *testing.T, itemsCount, batchSize int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Start(); err != nil {
+	if err := b.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	for i := range itemsCount {

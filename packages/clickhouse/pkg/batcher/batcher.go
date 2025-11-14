@@ -1,6 +1,7 @@
 package batcher
 
 import (
+	"context"
 	"errors"
 	"time"
 )
@@ -48,7 +49,7 @@ type Batcher[T any] struct {
 //
 // BatcherFunc must process the given batch before returning.
 // It must not hold references to the batch after returning.
-type BatcherFunc[T any] func(batch []T) error
+type BatcherFunc[T any] func(ctx context.Context, batch []T) error
 
 type BatcherOptions struct {
 	// MaxBatchSize is the maximum number of items that will be collected into a single batch
@@ -101,7 +102,7 @@ func NewBatcher[T any](fn BatcherFunc[T], cfg BatcherOptions) (*Batcher[T], erro
 }
 
 // Initialize the synchronization primitives and start batch processing.
-func (b *Batcher[T]) Start() error {
+func (b *Batcher[T]) Start(ctx context.Context) error {
 	if b.ch != nil {
 		return ErrBatcherAlreadyStarted
 	}
@@ -110,7 +111,7 @@ func (b *Batcher[T]) Start() error {
 	b.doneCh = make(chan struct{})
 
 	go func() {
-		processBatches(b.Func, b.ch, b.MaxBatchSize, b.MaxDelay, b.ErrorHandler)
+		processBatches(ctx, b.Func, b.ch, b.MaxBatchSize, b.MaxDelay, b.ErrorHandler)
 		close(b.doneCh)
 	}()
 
@@ -153,7 +154,7 @@ func (b *Batcher[T]) QueueLen() int {
 	return len(b.ch)
 }
 
-func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSize int, maxBatchedItemDelay time.Duration, errorHandler func(error)) {
+func processBatches[T any](ctx context.Context, f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSize int, maxBatchedItemDelay time.Duration, errorHandler func(error)) {
 	var (
 		batch        []T
 		batchedItem  T
@@ -165,7 +166,7 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 		select {
 		case batchedItem, ok = <-ch:
 			if !ok {
-				call(f, batch, errorHandler)
+				call(ctx, f, batch, errorHandler)
 
 				return
 			}
@@ -175,7 +176,7 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 				batchedItem, ok = <-ch
 				// Flush what's left in the buffer if the batcher is stopped
 				if !ok {
-					call(f, batch, errorHandler)
+					call(ctx, f, batch, errorHandler)
 
 					return
 				}
@@ -186,7 +187,7 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 					select {
 					case batchedItem, ok = <-ch:
 						if !ok {
-							call(f, batch, errorHandler)
+							call(ctx, f, batch, errorHandler)
 
 							return
 						}
@@ -200,15 +201,15 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 
 		if len(batch) >= maxBatchedItemBatchSize || time.Since(lastPushTime) > maxBatchedItemDelay {
 			lastPushTime = time.Now()
-			call(f, batch, errorHandler)
+			call(ctx, f, batch, errorHandler)
 			batch = batch[:0]
 		}
 	}
 }
 
-func call[T any](f BatcherFunc[T], batch []T, errorHandler func(error)) {
+func call[T any](ctx context.Context, f BatcherFunc[T], batch []T, errorHandler func(error)) {
 	if len(batch) > 0 {
-		err := f(batch)
+		err := f(ctx, batch)
 		if err != nil {
 			errorHandler(err)
 		}

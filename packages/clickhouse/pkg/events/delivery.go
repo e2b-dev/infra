@@ -63,8 +63,7 @@ func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.
 	}
 
 	return NewClickhouseSandboxEventsDelivery(
-		conn,
-		batcher.BatcherOptions{
+		ctx, conn, batcher.BatcherOptions{
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
 			QueueSize:    batcherQueueSize,
@@ -75,7 +74,7 @@ func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.
 	)
 }
 
-func NewClickhouseSandboxEventsDelivery(conn driver.Conn, opts batcher.BatcherOptions) (*ClickhouseDelivery, error) {
+func NewClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.Conn, opts batcher.BatcherOptions) (*ClickhouseDelivery, error) {
 	var err error
 
 	delivery := &ClickhouseDelivery{conn: conn}
@@ -84,7 +83,7 @@ func NewClickhouseSandboxEventsDelivery(conn driver.Conn, opts batcher.BatcherOp
 		return nil, fmt.Errorf("failed to create batcher: %w", err)
 	}
 
-	if err = delivery.batcher.Start(); err != nil {
+	if err = delivery.batcher.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start batcher: %w", err)
 	}
 
@@ -94,8 +93,6 @@ func NewClickhouseSandboxEventsDelivery(conn driver.Conn, opts batcher.BatcherOp
 func (c *ClickhouseDelivery) Publish(_ context.Context, _ string, event events.SandboxEvent) error {
 	eventDataJson, err := json.Marshal(event.EventData)
 	if err != nil {
-		zap.L().Error("Error marshalling sandbox event data", zap.Error(err))
-
 		return err
 	}
 
@@ -125,11 +122,13 @@ func (c *ClickhouseDelivery) Publish(_ context.Context, _ string, event events.S
 }
 
 func (c *ClickhouseDelivery) Close(context.Context) error {
+	defer c.conn.Close()
+
 	return c.batcher.Stop()
 }
 
-func (c *ClickhouseDelivery) batchInserter(events []SandboxEvent) error {
-	batch, err := c.conn.PrepareBatch(context.TODO(), InsertSandboxEventQuery, driver.WithReleaseConnection())
+func (c *ClickhouseDelivery) batchInserter(ctx context.Context, events []SandboxEvent) error {
+	batch, err := c.conn.PrepareBatch(ctx, InsertSandboxEventQuery, driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("error preparing batch: %w", err)
 	}
