@@ -80,43 +80,57 @@ func TestViewSingleRegionPartialRead(t *testing.T) {
 		},
 	})
 
-	pc, err := NewView(os.Getpid(), m)
+	view, err := NewView(os.Getpid(), m)
 	require.NoError(t, err)
 
-	defer pc.Close()
+	t.Cleanup(func() {
+		view.Close()
+	})
 
-	// Read at the start of the region
-	readBytes := make([]byte, pagesize)
-	offset := int64(0)
-	n, err = pc.ReadAt(readBytes, offset)
-	require.NoError(t, err)
-	assert.Equal(t, int(pagesize), n)
-	expectedBytes := data.Content()
-	if !bytes.Equal(readBytes, expectedBytes) {
-		assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)
-	}
+	t.Run("start of the region", func(t *testing.T) {
+		t.Parallel()
 
-	// Read in the middle of the region
-	readBytes = make([]byte, pagesize)
-	offset = int64(numberOfPages / 2 * pagesize)
-	n, err = pc.ReadAt(readBytes, offset)
-	require.NoError(t, err)
-	assert.Equal(t, int(pagesize), n)
-	expectedBytes = data.Content()
-	if !bytes.Equal(readBytes, expectedBytes) {
-		assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)
-	}
+		readBytes := make([]byte, pagesize)
+		offset := int64(0)
+		n, err = view.ReadAt(readBytes, offset)
+		require.NoError(t, err)
+		assert.Equal(t, int(pagesize), n)
+		expectedBytes, err := data.Slice(t.Context(), offset, int64(pagesize))
+		require.NoError(t, err)
+		if !bytes.Equal(readBytes, expectedBytes) {
+			assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)
+		}
+	})
 
-	// Read at the end of the region
-	readBytes = make([]byte, pagesize)
-	offset = int64(numberOfPages*pagesize - pagesize)
-	n, err = pc.ReadAt(readBytes, offset)
-	require.NoError(t, err)
-	assert.Equal(t, int(pagesize), n)
-	expectedBytes = data.Content()
-	if !bytes.Equal(readBytes, expectedBytes) {
-		assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)
-	}
+	t.Run("middle of the region", func(t *testing.T) {
+		t.Parallel()
+
+		readBytes := make([]byte, pagesize)
+		offset := int64(numberOfPages / 2 * pagesize)
+		n, err := view.ReadAt(readBytes, offset)
+		require.NoError(t, err)
+		assert.Equal(t, int(pagesize), n)
+		expectedBytes, err := data.Slice(t.Context(), offset, int64(pagesize))
+		require.NoError(t, err)
+		if !bytes.Equal(readBytes, expectedBytes) {
+			assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)
+		}
+	})
+
+	t.Run("end of the region", func(t *testing.T) {
+		t.Parallel()
+
+		readBytes := make([]byte, pagesize)
+		offset := int64(numberOfPages*pagesize - pagesize)
+		n, err := view.ReadAt(readBytes, offset)
+		require.NoError(t, err)
+		assert.Equal(t, int(pagesize), n)
+		expectedBytes, err := data.Slice(t.Context(), offset, int64(pagesize))
+		require.NoError(t, err)
+		if !bytes.Equal(readBytes, expectedBytes) {
+			assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)
+		}
+	})
 }
 
 func TestViewMultipleRegions(t *testing.T) {
@@ -242,6 +256,6 @@ func TestViewMultipleRegions(t *testing.T) {
 	// Test reading that would cross region boundary (should fail at gap)
 	// Try to read from end of region 1 into gap
 	readBytes = make([]byte, int(pagesize*2))
-	_, err = pc.ReadAt(readBytes, int64(size1)-int64(pagesize))
-	require.ErrorAs(t, err, &OffsetNotFoundError{offset: int64(size1) - int64(pagesize)})
+	_, err = pc.ReadAt(readBytes, size1-int64(pagesize))
+	require.ErrorAs(t, err, &OffsetNotFoundError{offset: size1 - int64(pagesize)})
 }

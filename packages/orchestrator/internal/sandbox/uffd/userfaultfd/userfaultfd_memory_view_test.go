@@ -244,11 +244,6 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 
 			writeData := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
 
-			// For the first [pagesize] bytes write 1s, for the next [pagesize] bytes write 2s, etc.
-			for i := range writeData.Content() {
-				writeData.Content()[i] = byte((i / int(tt.pagesize)) + 1)
-			}
-
 			view, err := memory.NewView(os.Getpid(), h.mapping)
 			require.NoError(t, err)
 
@@ -256,13 +251,13 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 				// An unprotected parallel write to map might result in an undefined behavior.
 				h.mutex.Lock()
 
+				data, err := writeData.Slice(t.Context(), op.offset, int64(h.pagesize))
+				require.NoError(t, err)
 				// We explicitly write to the memory area to make it differ from the default served content.
-				n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], writeData.Content())
+				n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], data)
 				h.mutex.Unlock()
 
-				if n != int(h.pagesize) {
-					assert.Fail(t, "copy length mismatch", "want %d, got %d, for operation %+v", h.pagesize, n, op)
-				}
+				assert.Equal(t, int(h.pagesize), n, "copy length mismatch for operation %+v", op)
 
 				readBytes := make([]byte, tt.pagesize)
 				n, err = view.ReadAt(readBytes, op.offset)

@@ -143,6 +143,7 @@ func TestMapping_BoundaryConditions(t *testing.T) {
 	offset, pagesize, err := mapping.GetOffset(0x1000)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x5000), offset) // 0x5000 + (0x1000 - 0x1000)
+	assert.Equal(t, uintptr(header.PageSize), pagesize)
 
 	// Test just before end boundary (exclusive)
 	offset, pagesize, err = mapping.GetOffset(0x2FFF) // 0x1000 + 0x2000 - 1
@@ -157,7 +158,6 @@ func TestMapping_BoundaryConditions(t *testing.T) {
 	// Test below start boundary (should fail)
 	_, _, err = mapping.GetOffset(0x0FFF) // 0x1000 - 0x1000
 	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x0FFF})
-
 }
 
 func TestMapping_SingleLargeRegion(t *testing.T) {
