@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -49,10 +50,12 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 				return nil, fmt.Errorf("failed to parse Redis cluster TLS CA certificate")
 			}
 
+			// Remove the port if present
+			serverName := strings.Split(config.RedisClusterURL, ":")[0]
 			clusterOpts.TLSConfig = &tls.Config{
 				RootCAs:    certPool,
 				MinVersion: tls.VersionTLS12,
-				ServerName: config.RedisClusterURL,
+				ServerName: serverName,
 			}
 
 			zap.L().Info("Redis cluster will be started with TLS enabled")
