@@ -266,6 +266,7 @@ func addCIDRToSet(conn *nftables.Conn, ipset set.Set, cidr string) error {
 		return err
 	}
 
+	// The checked range is 0.0.0.0 to 255.255.255.254, because when 255.255.255.255 is added, it's then requested as 255.255.255.254.
 	if len(current) == 1 && current[0].AddressRangeStart == netip.MustParseAddr("0.0.0.0") && current[0].AddressRangeEnd == netip.MustParseAddr("255.255.255.254") {
 		// Because 0.0.0.0/0 is not valid IP per GoLang, we can't add new addresses to the set.
 		return nil
