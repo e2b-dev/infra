@@ -136,7 +136,7 @@ func TestUffdMemoryViewFaulted(t *testing.T) {
 
 				if !bytes.Equal(expectedBytes, readBytes) {
 					idx, want, got := testutils.FirstDifferentByte(expectedBytes, readBytes)
-					assert.Fail(t, "content mismatch", "want %x, got %x at index %d", want, got, idx)
+					assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d, for operation %+v", want, got, idx, operation)
 				}
 			}
 		})
@@ -257,7 +257,7 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 				h.mutex.Unlock()
 
 				if n != int(h.pagesize) {
-					assert.Fail(t, "copy length mismatch", "want %d, got %d", h.pagesize, n)
+					assert.Fail(t, "copy length mismatch", "want %d, got %d, for operation %+v", h.pagesize, n, op)
 				}
 
 				readBytes := make([]byte, tt.pagesize)
@@ -270,7 +270,7 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 
 				if !bytes.Equal(expectedBytes, readBytes) {
 					idx, want, got := testutils.FirstDifferentByte(expectedBytes, readBytes)
-					assert.Fail(t, "content mismatch", "want %x, got %x at index %d", want, got, idx)
+					assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d, for operation %+v", want, got, idx, op)
 				}
 			}
 		})

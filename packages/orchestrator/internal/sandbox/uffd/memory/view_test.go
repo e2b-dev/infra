@@ -47,7 +47,7 @@ func TestViewSingleRegion(t *testing.T) {
 
 		if !bytes.Equal(readBytes, expectedBytes) {
 			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			t.Fatalf("content mismatch: want %x, got %x at index %d", want, got, idx)
+			t.Fatalf("content mismatch: want '%x', got '%x' at index %d", want, got, idx)
 		}
 	}
 }
@@ -130,7 +130,7 @@ func TestViewMultipleRegions(t *testing.T) {
 		expectedBytes := data1.Content()[i : i+int(pagesize)]
 		if !bytes.Equal(readBytes, expectedBytes) {
 			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			t.Fatalf("region 1 content mismatch at offset %d: want %x, got %x at index %d", i, want, got, idx)
+			t.Fatalf("region 1 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
 		}
 	}
 
@@ -143,7 +143,7 @@ func TestViewMultipleRegions(t *testing.T) {
 		expectedBytes := data2.Content()[i : i+int(pagesize)]
 		if !bytes.Equal(readBytes, expectedBytes) {
 			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			t.Fatalf("region 2 content mismatch at offset %d: want %x, got %x at index %d", i, want, got, idx)
+			t.Fatalf("region 2 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
 		}
 	}
 
@@ -156,7 +156,7 @@ func TestViewMultipleRegions(t *testing.T) {
 		expectedBytes := data3.Content()[i : i+int(pagesize)]
 		if !bytes.Equal(readBytes, expectedBytes) {
 			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			t.Fatalf("region 3 content mismatch at offset %d: want %x, got %x at index %d", i, want, got, idx)
+			t.Fatalf("region 3 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
 		}
 	}
 
@@ -171,7 +171,7 @@ func TestViewMultipleRegions(t *testing.T) {
 	expectedBytes := data2.Content()[int(pagesize) : int(pagesize)+readSize]
 	if !bytes.Equal(readBytes, expectedBytes) {
 		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-		t.Fatalf("region 2 span read mismatch: want %x, got %x at index %d", want, got, idx)
+		t.Fatalf("region 2 span read mismatch: want '%x', got '%x' at index %d", want, got, idx)
 	}
 
 	// Test reading that would cross region boundary (should fail at gap)

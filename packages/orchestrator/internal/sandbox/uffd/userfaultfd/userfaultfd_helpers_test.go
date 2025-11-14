@@ -77,7 +77,7 @@ func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 	if !bytes.Equal(readBytes, expectedBytes) {
 		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
 
-		return fmt.Errorf("content mismatch: want '%x, got %x at index %d", want, got, idx)
+		return fmt.Errorf("content mismatch: want '%x', got '%x' at index %d", want, got, idx)
 	}
 
 	return nil
