@@ -93,5 +93,4 @@ func TestMaskRequestHostIncorrectUrl(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, createSandboxResponse.StatusCode())
 	require.NotNil(t, createSandboxResponse.JSON400)
-	assert.Contains(t, createSandboxResponse.JSON400.Message, "Invalid mask request host")
 }

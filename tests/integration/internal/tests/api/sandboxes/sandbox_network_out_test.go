@@ -240,6 +240,7 @@ func TestEgressFirewallAllowAll(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowAll,
+			DenyOut:  &[]string{internetBlockAddress},
 		}),
 	)
 
@@ -355,26 +356,31 @@ func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
 	testCases := []struct {
 		name      string
 		allowedIP string
+		testIP    string
 		testDesc  string
 	}{
 		{
 			name:      "private_range_10.0.0.0/8",
 			allowedIP: "10.0.0.0/8",
+			testIP:    "10.0.0.1",
 			testDesc:  "10.0.0.0/8 range",
 		},
 		{
 			name:      "private_range_192.168.0.0/16",
 			allowedIP: "192.168.0.0/16",
+			testIP:    "192.168.0.1",
 			testDesc:  "192.168.0.0/16 range",
 		},
 		{
 			name:      "private_range_172.16.0.0/12",
 			allowedIP: "172.16.0.0/12",
+			testIP:    "172.16.0.1",
 			testDesc:  "172.16.0.0/12 range",
 		},
 		{
 			name:      "link_local_169.254.0.0/16",
 			allowedIP: "169.254.0.0/16",
+			testIP:    "169.254.0.1",
 			testDesc:  "169.254.0.0/16 range (link-local)",
 		},
 	}
@@ -384,25 +390,99 @@ func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
 			// Try to create a sandbox with a private IP range in allowOut
 			allowedIPs := []string{tc.allowedIP}
 
-			// Sandbox creation should fail when trying to allow private IPs
-			resp, err := client.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
-				TemplateID: setup.SandboxTemplateID,
-				Timeout:    &timeout,
-				Network: &api.SandboxNetworkConfig{
+			sbx := utils.SetupSandboxWithCleanup(t, client,
+				utils.WithTimeout(timeout),
+				utils.WithNetwork(&api.SandboxNetworkConfig{
 					AllowOut: &allowedIPs,
-				},
-			}, setup.WithAPIKey())
+				}),
+			)
 
-			// The request should either fail or return an error status code (not 201 Created)
-			if err == nil {
-				require.NotEqual(t, http.StatusCreated, resp.StatusCode(),
-					"Expected sandbox creation to fail when trying to allow private IP range (%s), but got status %d",
-					tc.testDesc, resp.StatusCode())
-				// If sandbox was somehow created, clean it up
-				if resp.JSON201 != nil {
-					utils.TeardownSandbox(t, client, resp.JSON201.SandboxID)
-				}
-			}
+			envdClient := setup.GetEnvdClient(t, t.Context())
+
+			// Non-allowed IPs should still be blocked
+			err := utils.ExecCommand(t, t.Context(), sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", tc.testIP)
+			require.Error(t, err, "Expected curl to non-allowed IP %s to fail", tc.testIP)
+			require.Contains(t, err.Error(), "failed with exit code", "Expected connection failure message")
 		})
 	}
+}
+
+// TestEgressFirewallAllowAllDuplicate tests that adding 0.0.0.0/0 twice works correctly
+func TestEgressFirewallAllowAllDuplicate(t *testing.T) {
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	// Add 0.0.0.0/0 twice in the allowOut list
+	allowAll := []string{"0.0.0.0/0", "0.0.0.0/0"}
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut: &allowAll,
+			DenyOut:  &[]string{internetBlockAddress},
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Test that various IPs are accessible (duplicate 0.0.0.0/0 should work like a single one)
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", "https://8.8.8.8")
+	require.NoError(t, err, "Expected curl to 8.8.8.8 to succeed with duplicate 0.0.0.0/0 allow")
+
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", "https://1.1.1.1")
+	require.NoError(t, err, "Expected curl to 1.1.1.1 to succeed with duplicate 0.0.0.0/0 allow")
+}
+
+// TestEgressFirewallRegularIPThenAllowAll tests that adding a regular IP and then 0.0.0.0/0 works correctly
+func TestEgressFirewallRegularIPThenAllowAll(t *testing.T) {
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	// Add a specific IP followed by 0.0.0.0/0
+	allowList := []string{"8.8.8.8", "0.0.0.0/0"}
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut: &allowList,
+			DenyOut:  &[]string{internetBlockAddress},
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Test that the specific IP is accessible
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", "https://8.8.8.8")
+	require.NoError(t, err, "Expected curl to 8.8.8.8 to succeed")
+
+	// Test that other IPs are also accessible (0.0.0.0/0 allows everything)
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", "https://1.1.1.1")
+	require.NoError(t, err, "Expected curl to 1.1.1.1 to succeed (0.0.0.0/0 allows all)")
+}
+
+// TestEgressFirewallAllowAllThenRegularIP tests that adding 0.0.0.0/0 and then a regular IP works correctly
+func TestEgressFirewallAllowAllThenRegularIP(t *testing.T) {
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	// Add 0.0.0.0/0 followed by a specific IP
+	allowList := []string{"0.0.0.0/0", "8.8.8.8"}
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut: &allowList,
+			DenyOut:  &[]string{internetBlockAddress},
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Test that the specific IP is accessible
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", "https://8.8.8.8")
+	require.NoError(t, err, "Expected curl to 8.8.8.8 to succeed")
+
+	// Test that other IPs are also accessible (0.0.0.0/0 allows everything)
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", "https://1.1.1.1")
+	require.NoError(t, err, "Expected curl to 1.1.1.1 to succeed (0.0.0.0/0 allows all)")
 }

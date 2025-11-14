@@ -157,6 +157,13 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 
 	err := slot.ConfigureInternet(ctx, network)
 	if err != nil {
+		// Return the slot to the pool if configuring internet fails
+		go func() {
+			if returnErr := p.Return(context.WithoutCancel(ctx), slot); returnErr != nil {
+				zap.L().Error("failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
+			}
+		}()
+
 		return nil, fmt.Errorf("error setting slot internet access: %w", err)
 	}
 
