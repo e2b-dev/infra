@@ -52,7 +52,7 @@ func TestSandboxWithEnabledTrafficAccessTokenButMissingHeader(t *testing.T) {
 	err = json.NewDecoder(resp.Body).Decode(&errorResp)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, "Sandbox is secured with traffic access token. Token header 'x-e2b-traffic-access-token' is missing", errorResp.Message)
+	assert.Equal(t, "Sandbox is secured with traffic access token. Token header 'e2b-traffic-access-token' is missing", errorResp.Message)
 	assert.Equal(t, sbx.SandboxID, errorResp.SandboxID)
 
 	// Pretend to be a browser
@@ -107,7 +107,7 @@ func TestSandboxWithEnabledTrafficAccessTokenButInvalidHeader(t *testing.T) {
 	err = json.NewDecoder(resp.Body).Decode(&errorResp)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, "Sandbox is secured with traffic access token. Provided token in header 'x-e2b-traffic-access-token' is invalid", errorResp.Message)
+	assert.Equal(t, "Sandbox is secured with traffic access token. Provided token in header 'e2b-traffic-access-token' is invalid", errorResp.Message)
 	assert.Equal(t, sbx.SandboxID, errorResp.SandboxID)
 
 	// Pretend to be a browser
