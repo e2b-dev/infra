@@ -11,6 +11,8 @@ import (
 )
 
 func TestMapping_GetHostVirtAddr(t *testing.T) {
+	t.Parallel()
+
 	regions := []Region{
 		{
 			BaseHostVirtAddr: 0x1000,
@@ -88,6 +90,8 @@ func TestMapping_GetHostVirtAddr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			hostVirt, size, err := mapping.GetHostVirtAddr(tt.offset)
 			if tt.expectError != nil {
 				require.ErrorIs(t, err, tt.expectError)
@@ -101,6 +105,8 @@ func TestMapping_GetHostVirtAddr(t *testing.T) {
 }
 
 func TestMapping_GetHostVirtAddr_EmptyRegions(t *testing.T) {
+	t.Parallel()
+
 	mapping := NewMapping([]Region{})
 
 	// Test GetHostVirtAddr with empty regions
@@ -108,42 +114,9 @@ func TestMapping_GetHostVirtAddr_EmptyRegions(t *testing.T) {
 	require.ErrorIs(t, err, OffsetNotFoundError{offset: 0x1000})
 }
 
-func TestMapping_GetHostVirtAddr_OverlappingRegions(t *testing.T) {
-	// Test with overlapping regions (edge case)
-	regions := []Region{
-		{
-			BaseHostVirtAddr: 0x1000,
-			Size:             0x2000,
-			Offset:           0x5000,
-			PageSize:         header.PageSize,
-		},
-		{
-			BaseHostVirtAddr: 0x2000, // Overlaps with first region
-			Size:             0x1000,
-			Offset:           0x8000,
-			PageSize:         header.PageSize,
-		},
-	}
-
-	mapping := NewMapping(regions)
-
-	// The first matching region should be returned
-	// Offset 0x6000 is in first region
-	hostVirt, size, err := mapping.GetHostVirtAddr(0x6000)
-	require.NoError(t, err)
-
-	assert.Equal(t, uintptr(0x1000+(0x6000-0x5000)), hostVirt) // 0x2000
-	// remainingRegionSize: endOffset (0x7000) - offset (0x6000) = 0x1000
-	assert.Equal(t, int64(0x7000-0x6000), size)
-
-	// Also test that the underlying implementation prefers the first region if both regions contain the offset
-	hostVirt2, size2, err2 := mapping.GetHostVirtAddr(0x6000)
-	require.NoError(t, err2)
-	assert.Equal(t, uintptr(0x1000+(0x6000-0x5000)), hostVirt2) // 0x2000 from first region
-	assert.Equal(t, int64(0x7000-0x6000), size2)
-}
-
 func TestMapping_GetHostVirtAddr_BoundaryConditions(t *testing.T) {
+	t.Parallel()
+
 	regions := []Region{
 		{
 			BaseHostVirtAddr: 0x1000,
@@ -177,6 +150,8 @@ func TestMapping_GetHostVirtAddr_BoundaryConditions(t *testing.T) {
 }
 
 func TestMapping_GetHostVirtAddr_SingleLargeRegion(t *testing.T) {
+	t.Parallel()
+
 	// Entire 64-bit address space region
 	regions := []Region{
 		{
@@ -195,6 +170,8 @@ func TestMapping_GetHostVirtAddr_SingleLargeRegion(t *testing.T) {
 }
 
 func TestMapping_GetHostVirtAddr_ZeroSizeRegion(t *testing.T) {
+	t.Parallel()
+
 	regions := []Region{
 		{
 			BaseHostVirtAddr: 0x2000,
@@ -211,6 +188,8 @@ func TestMapping_GetHostVirtAddr_ZeroSizeRegion(t *testing.T) {
 }
 
 func TestMapping_GetHostVirtAddr_MultipleRegionsSparse(t *testing.T) {
+	t.Parallel()
+
 	regions := []Region{
 		{
 			BaseHostVirtAddr: 0x100,

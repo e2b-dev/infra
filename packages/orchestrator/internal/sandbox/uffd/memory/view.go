@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 )
 
 var (
@@ -30,6 +31,7 @@ func (e MemoryNotFaultedError) Unwrap() error {
 type View struct {
 	m       *Mapping
 	procMem *os.File
+	fd      int // File descriptor for syscall.Pread
 }
 
 func NewView(pid int, m *Mapping) (*View, error) {
@@ -40,6 +42,7 @@ func NewView(pid int, m *Mapping) (*View, error) {
 
 	return &View{
 		procMem: fd,
+		fd:      int(fd.Fd()),
 		m:       m,
 	}, nil
 }
@@ -57,9 +60,17 @@ func (v *View) ReadAt(d []byte, off int64) (n int, err error) {
 
 		remainingSize := min(size, int64(len(d)-n))
 
-		written, err := v.procMem.ReadAt(d[n:n+int(remainingSize)], int64(addr))
+		// Use syscall.Pread to read from /proc/[pid]/mem
+		// Note: /proc/[pid]/mem requires the offset parameter to be the virtual address
+		// in the target process's address space, not a file offset.
+		// Some kernel versions may have issues with pread/ReadAt on /proc/[pid]/mem
+		// always reading from address 0. If this occurs, the process may need to be
+		// ptraced or process_vm_readv may need to be used instead.
+		readBuf := d[n : n+int(remainingSize)]
+
+		written, err := syscall.Pread(v.fd, readBuf, int64(addr))
 		if err != nil {
-			return 0, MemoryNotFaultedError{addr: addr, written: written, err: err}
+			return n, MemoryNotFaultedError{addr: addr, written: written, err: err}
 		}
 
 		n += written

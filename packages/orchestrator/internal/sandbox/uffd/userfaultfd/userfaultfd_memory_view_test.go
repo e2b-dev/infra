@@ -245,6 +245,11 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 
 			writeData := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
 
+			// For the first [pagesize] bytes write 1s, for the next [pagesize] bytes write 2s, etc.
+			for i := range writeData.Content() {
+				writeData.Content()[i] = byte((i / int(tt.pagesize)) + 1)
+			}
+
 			view, err := memory.NewView(os.Getpid(), h.mapping)
 			require.NoError(t, err)
 

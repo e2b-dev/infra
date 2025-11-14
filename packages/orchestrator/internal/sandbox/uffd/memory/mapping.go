@@ -39,7 +39,7 @@ func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uintptr, error) {
 	return 0, 0, AddressNotFoundError{hostVirtAddr: hostVirtAddr}
 }
 
-// GetHostVirtRanges returns the host virtual addresses corresponding to the given offset and size of the remaining congiguous mapped host range for the address.
+// GetHostVirtAddr returns the host virtual address and size of the remaining contiguous mapped host range for the given offset.
 func (m *Mapping) GetHostVirtAddr(off int64) (uintptr, int64, error) {
 	for _, r := range m.Regions {
 		if off >= int64(r.Offset) && off < r.endOffset() {

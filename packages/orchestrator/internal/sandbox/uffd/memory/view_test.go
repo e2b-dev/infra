@@ -5,12 +5,15 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 )
 
-func TestViewSingleRegion(t *testing.T) {
+func TestViewSingleRegionFullRead(t *testing.T) {
+	t.Parallel()
+
 	pagesize := uint64(4096)
 
 	data := testutils.RandomPages(pagesize, 128)
@@ -47,12 +50,79 @@ func TestViewSingleRegion(t *testing.T) {
 
 		if !bytes.Equal(readBytes, expectedBytes) {
 			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			t.Fatalf("content mismatch: want '%x', got '%x' at index %d", want, got, idx)
+			assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d", want, got, idx)
 		}
 	}
 }
 
+func TestViewSingleRegionPartialRead(t *testing.T) {
+	t.Parallel()
+
+	pagesize := uint64(4096)
+	numberOfPages := uint64(32)
+
+	data := testutils.RandomPages(pagesize, numberOfPages)
+
+	size, err := data.Size()
+	require.NoError(t, err)
+
+	memoryArea, memoryStart, err := testutils.NewPageMmap(t, uint64(size), pagesize)
+	require.NoError(t, err)
+
+	n := copy(memoryArea[0:size], data.Content())
+	require.Equal(t, int(size), n)
+
+	m := NewMapping([]Region{
+		{
+			BaseHostVirtAddr: memoryStart,
+			Size:             uintptr(size),
+			Offset:           uintptr(0),
+			PageSize:         uintptr(pagesize),
+		},
+	})
+
+	pc, err := NewView(os.Getpid(), m)
+	require.NoError(t, err)
+
+	defer pc.Close()
+
+	// Read at the start of the region
+	readBytes := make([]byte, pagesize)
+	n, err = pc.ReadAt(readBytes, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int(size), n)
+	expectedBytes := data.Content()
+	if !bytes.Equal(readBytes, expectedBytes) {
+		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
+		assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d", want, got, idx)
+	}
+
+	// Read in the middle of the region
+	readBytes = make([]byte, pagesize)
+	n, err = pc.ReadAt(readBytes, int64(numberOfPages/2*pagesize))
+	require.NoError(t, err)
+	assert.Equal(t, int(pagesize), n)
+	expectedBytes = data.Content()
+	if !bytes.Equal(readBytes, expectedBytes) {
+		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
+		assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d", want, got, idx)
+	}
+
+	// Read at the end of the region
+	readBytes = make([]byte, pagesize)
+	n, err = pc.ReadAt(readBytes, int64(numberOfPages*pagesize-pagesize))
+	require.NoError(t, err)
+	assert.Equal(t, int(size), n)
+	expectedBytes = data.Content()
+	if !bytes.Equal(readBytes, expectedBytes) {
+		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
+		assert.Fail(t, "content mismatch", "want '%x', got '%x' at index %d", want, got, idx)
+	}
+}
+
 func TestViewMultipleRegions(t *testing.T) {
+	t.Parallel()
+
 	pagesize := uint64(4096)
 
 	// Create three separate memory regions with gaps between them
@@ -130,7 +200,7 @@ func TestViewMultipleRegions(t *testing.T) {
 		expectedBytes := data1.Content()[i : i+int(pagesize)]
 		if !bytes.Equal(readBytes, expectedBytes) {
 			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			t.Fatalf("region 1 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
+			assert.Fail(t, "region 1 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
 		}
 	}
 
@@ -143,7 +213,7 @@ func TestViewMultipleRegions(t *testing.T) {
 		expectedBytes := data2.Content()[i : i+int(pagesize)]
 		if !bytes.Equal(readBytes, expectedBytes) {
 			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			t.Fatalf("region 2 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
+			assert.Fail(t, "region 2 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
 		}
 	}
 
@@ -156,7 +226,7 @@ func TestViewMultipleRegions(t *testing.T) {
 		expectedBytes := data3.Content()[i : i+int(pagesize)]
 		if !bytes.Equal(readBytes, expectedBytes) {
 			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			t.Fatalf("region 3 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
+			assert.Fail(t, "region 3 content mismatch at offset %d: want '%x', got '%x' at index %d", i, want, got, idx)
 		}
 	}
 
@@ -171,7 +241,7 @@ func TestViewMultipleRegions(t *testing.T) {
 	expectedBytes := data2.Content()[int(pagesize) : int(pagesize)+readSize]
 	if !bytes.Equal(readBytes, expectedBytes) {
 		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-		t.Fatalf("region 2 span read mismatch: want '%x', got '%x' at index %d", want, got, idx)
+		assert.Fail(t, "region 2 span read mismatch: want '%x', got '%x' at index %d", want, got, idx)
 	}
 
 	// Test reading that would cross region boundary (should fail at gap)

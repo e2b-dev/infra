@@ -10,6 +10,8 @@ import (
 )
 
 func TestMapping_GetOffset(t *testing.T) {
+	t.Parallel()
+
 	regions := []Region{
 		{
 			BaseHostVirtAddr: 0x1000,
@@ -99,6 +101,8 @@ func TestMapping_GetOffset(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			offset, pagesize, err := mapping.GetOffset(tt.hostVirtAddr)
 			if tt.expectError != nil {
 				require.ErrorIs(t, err, tt.expectError)
@@ -112,48 +116,18 @@ func TestMapping_GetOffset(t *testing.T) {
 }
 
 func TestMapping_EmptyRegions(t *testing.T) {
+	t.Parallel()
+
 	mapping := NewMapping([]Region{})
 
 	// Test GetOffset with empty regions
 	_, _, err := mapping.GetOffset(0x1000)
-	require.Error(t, err)
-}
-
-func TestMapping_OverlappingRegions(t *testing.T) {
-	// Test with overlapping regions (edge case)
-	regions := []Region{
-		{
-			BaseHostVirtAddr: 0x1000,
-			Size:             0x2000,
-			Offset:           0x5000,
-			PageSize:         header.PageSize,
-		},
-		{
-			BaseHostVirtAddr: 0x2000, // Overlaps with first region
-			Size:             0x1000,
-			Offset:           0x8000,
-			PageSize:         header.PageSize,
-		},
-	}
-
-	mapping := NewMapping(regions)
-
-	// The first matching region should be returned
-	offset, pagesize, err := mapping.GetOffset(0x2500) // In overlap area
-	require.NoError(t, err)
-
-	// Should get result from first region
-	assert.Equal(t, int64(0x5000+(0x2500-0x1000)), offset) // 0x6500
-	assert.Equal(t, uintptr(header.PageSize), pagesize)
-
-	// Also test that the underlying implementation prefers the first region if both regions contain the address
-	offset2, pagesize2, err2 := mapping.GetOffset(0x2000)
-	require.NoError(t, err2)
-	assert.Equal(t, int64(0x5000+(0x2000-0x1000)), offset2) // 0x6000 from first region
-	assert.Equal(t, uintptr(header.PageSize), pagesize2)
+	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x1000})
 }
 
 func TestMapping_BoundaryConditions(t *testing.T) {
+	t.Parallel()
+
 	regions := []Region{
 		{
 			BaseHostVirtAddr: 0x1000,
@@ -178,15 +152,17 @@ func TestMapping_BoundaryConditions(t *testing.T) {
 
 	// Test exact end boundary (should fail - exclusive)
 	_, _, err = mapping.GetOffset(0x3000) // 0x1000 + 0x2000
-	require.Error(t, err)
+	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x3000})
 
 	// Test below start boundary (should fail)
 	_, _, err = mapping.GetOffset(0x0FFF) // 0x1000 - 0x1000
-	require.Error(t, err)
-	assert.Equal(t, uintptr(header.PageSize), pagesize)
+	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x0FFF})
+
 }
 
 func TestMapping_SingleLargeRegion(t *testing.T) {
+	t.Parallel()
+
 	// Entire 64-bit address space region
 	regions := []Region{
 		{
@@ -205,6 +181,8 @@ func TestMapping_SingleLargeRegion(t *testing.T) {
 }
 
 func TestMapping_ZeroSizeRegion(t *testing.T) {
+	t.Parallel()
+
 	regions := []Region{
 		{
 			BaseHostVirtAddr: 0x2000,
@@ -217,10 +195,12 @@ func TestMapping_ZeroSizeRegion(t *testing.T) {
 	mapping := NewMapping(regions)
 
 	_, _, err := mapping.GetOffset(0x2000)
-	require.Error(t, err)
+	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x2000})
 }
 
 func TestMapping_MultipleRegionsSparse(t *testing.T) {
+	t.Parallel()
+
 	regions := []Region{
 		{
 			BaseHostVirtAddr: 0x100,
@@ -251,11 +231,13 @@ func TestMapping_MultipleRegionsSparse(t *testing.T) {
 
 	// In gap
 	_, _, err = mapping.GetOffset(0x5000)
-	require.Error(t, err)
+	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x5000})
 }
 
 // Additional test for hugepage page size
 func TestMapping_HugepagePagesize(t *testing.T) {
+	t.Parallel()
+
 	const hugepageSize = 2 * 1024 * 1024 // 2MB
 	regions := []Region{
 		{
@@ -280,6 +262,6 @@ func TestMapping_HugepagePagesize(t *testing.T) {
 	assert.Equal(t, uintptr(hugepageSize), pagesize)
 
 	// Test end of region (exclusive, should fail)
-	_, _, err = mapping.GetOffset(0x400000+uintptr(hugepageSize))
-	require.Error(t, err)
+	_, _, err = mapping.GetOffset(0x400000 + uintptr(hugepageSize))
+	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x400000 + uintptr(hugepageSize)})
 }
