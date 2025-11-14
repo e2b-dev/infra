@@ -30,7 +30,7 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 	}
 
 	if sbx.TrafficAccessToken != nil {
-		header.Set("x-e2b-traffic-access-token", *sbx.TrafficAccessToken)
+		header.Set("e2b-traffic-access-token", *sbx.TrafficAccessToken)
 	}
 
 	if extraHeaders != nil {
