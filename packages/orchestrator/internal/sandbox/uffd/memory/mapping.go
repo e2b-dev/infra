@@ -9,7 +9,15 @@ type AddressNotFoundError struct {
 }
 
 func (e AddressNotFoundError) Error() string {
-	return fmt.Sprintf("address %d not found in any mapping", e.hostVirtAddr)
+	return fmt.Sprintf("host virtual address %d not found in any mapping", e.hostVirtAddr)
+}
+
+type OffsetNotFoundError struct {
+	offset int64
+}
+
+func (e OffsetNotFoundError) Error() string {
+	return fmt.Sprintf("offset %d not found in any mapping", e.offset)
 }
 
 type Mapping struct {
@@ -20,7 +28,7 @@ func NewMapping(regions []Region) *Mapping {
 	return &Mapping{Regions: regions}
 }
 
-// GetOffset returns the relative offset and the page size of the mapped range for a given address.
+// GetOffset returns the relative offset and the pagesize of the mapped range for a given address.
 func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uintptr, error) {
 	for _, r := range m.Regions {
 		if hostVirtAddr >= r.BaseHostVirtAddr && hostVirtAddr < r.endHostVirtAddr() {
@@ -29,4 +37,15 @@ func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uintptr, error) {
 	}
 
 	return 0, 0, AddressNotFoundError{hostVirtAddr: hostVirtAddr}
+}
+
+// GetHostVirtAddr returns the host virtual address and size of the remaining contiguous mapped host range for the given offset.
+func (m *Mapping) GetHostVirtAddr(off int64) (uintptr, int64, error) {
+	for _, r := range m.Regions {
+		if off >= int64(r.Offset) && off < r.endOffset() {
+			return r.shiftedHostVirtAddr(off), r.endOffset() - off, nil
+		}
+	}
+
+	return 0, 0, OffsetNotFoundError{offset: off}
 }

@@ -39,7 +39,7 @@ type Userfaultfd struct {
 	uffd uffdio
 
 	src block.Slicer
-	ma  *memory.Mapping
+	m   *memory.Mapping
 
 	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
 	// For hugepages this should not be a problem, but might theoretically happen to normal pages with swap
@@ -81,7 +81,7 @@ func NewUserfaultfdFromFd(uffd uffdio, src block.Slicer, m *memory.Mapping, logg
 		src:             src,
 		missingRequests: block.NewTracker(blockSize),
 		writeRequests:   block.NewTracker(blockSize),
-		ma:              m,
+		m:               m,
 		logger:          logger,
 	}
 
@@ -206,7 +206,7 @@ outerLoop:
 
 		addr := getPagefaultAddress(&pagefault)
 
-		offset, pagesize, err := u.ma.GetOffset(addr)
+		offset, pagesize, err := u.m.GetOffset(addr)
 		if err != nil {
 			u.logger.Error("UFFD serve get mapping error", zap.Error(err))
 
@@ -361,7 +361,7 @@ func (u *Userfaultfd) handleWriteProtected(onFailure func() error, addr, pagesiz
 }
 
 func (u *Userfaultfd) Unregister() error {
-	for _, r := range u.ma.Regions {
+	for _, r := range u.m.Regions {
 		if err := u.uffd.unregister(r.BaseHostVirtAddr, r.Size); err != nil {
 			return fmt.Errorf("failed to unregister: %w", err)
 		}
@@ -379,4 +379,8 @@ func (u *Userfaultfd) Dirty() *block.Tracker {
 	defer u.settleRequests.Unlock()
 
 	return u.writeRequests.Clone()
+}
+
+func (u *Userfaultfd) Mapping() *memory.Mapping {
+	return u.m
 }

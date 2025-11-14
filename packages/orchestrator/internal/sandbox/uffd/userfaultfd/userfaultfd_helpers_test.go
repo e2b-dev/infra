@@ -10,6 +10,7 @@ import (
 	"github.com/bits-and-blooms/bitset"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 )
 
@@ -49,7 +50,8 @@ type testHandler struct {
 	// Sorted in ascending order.
 	dirtyOffsetsOnce func() ([]uint, error)
 
-	mutex sync.Mutex
+	mutex   sync.Mutex
+	mapping *memory.Mapping
 }
 
 func (h *testHandler) executeOperation(ctx context.Context, op operation) error {
@@ -73,9 +75,7 @@ func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 
 	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
 	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-
-		return fmt.Errorf("content mismatch: want '%x, got %x at index %d", want, got, idx)
+		return fmt.Errorf("content mismatch: %w", testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes))
 	}
 
 	return nil
