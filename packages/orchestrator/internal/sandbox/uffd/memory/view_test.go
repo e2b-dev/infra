@@ -90,7 +90,7 @@ func TestViewSingleRegionPartialRead(t *testing.T) {
 	offset := int64(0)
 	n, err = pc.ReadAt(readBytes, offset)
 	require.NoError(t, err)
-	assert.Equal(t, int(size), n)
+	assert.Equal(t, int(pagesize), n)
 	expectedBytes := data.Content()
 	if !bytes.Equal(readBytes, expectedBytes) {
 		assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)
@@ -112,7 +112,7 @@ func TestViewSingleRegionPartialRead(t *testing.T) {
 	offset = int64(numberOfPages*pagesize - pagesize)
 	n, err = pc.ReadAt(readBytes, offset)
 	require.NoError(t, err)
-	assert.Equal(t, int(size), n)
+	assert.Equal(t, int(pagesize), n)
 	expectedBytes = data.Content()
 	if !bytes.Equal(readBytes, expectedBytes) {
 		assert.Fail(t, testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes).Error(), "at offset %d", offset)

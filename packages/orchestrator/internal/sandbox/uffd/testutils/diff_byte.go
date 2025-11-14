@@ -22,6 +22,8 @@ func ErrorFromByteSlicesDifference(expected, actual []byte) error {
 	for i := range smallerSize {
 		if expected[i] != actual[i] {
 			errs = append(errs, fmt.Errorf("first different byte: want '%x', got '%x' at index %d", expected[i], actual[i], i))
+
+			break
 		}
 	}
 
