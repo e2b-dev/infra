@@ -8,7 +8,7 @@ func FirstDifferentByte(a, b []byte) (idx int, want, got byte) {
 
 	for i := range smallerSize {
 		if a[i] != b[i] {
-			return i, b[i], a[i]
+			return i, a[i], b[i]
 		}
 	}
 
