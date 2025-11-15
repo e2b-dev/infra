@@ -679,8 +679,9 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.memory.Disable(); err != nil {
-		return nil, fmt.Errorf("failed to disable uffd: %w", err)
+	dirty, err := s.memory.Disable(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
@@ -726,7 +727,7 @@ func (s *Sandbox) Pause(
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
 			memfile:    memfile,
-			dirtyPages: s.memory.Dirty(),
+			dirtyPages: dirty.BitSet(),
 			blockSize:  originalMemfile.BlockSize(),
 			doneHook: func(context.Context) error {
 				return memfile.Close()
@@ -960,7 +961,7 @@ func serveMemory(
 	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
 
-	fcUffd, err := uffd.New(memfile, socketPath, memfile.BlockSize())
+	fcUffd, err := uffd.New(memfile, socketPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}

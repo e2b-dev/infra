@@ -8,7 +8,7 @@ type Region struct {
 	Size             uintptr `json:"size"`
 	Offset           uintptr `json:"offset"`
 	// This field is deprecated in the newer version of the Firecracker with a new field `page_size`.
-	PageSize uintptr `json:"page_size_kib"`
+	PageSize uintptr `json:"page_size_kib"` // This is actually in bytes in the deprecated version.
 }
 
 // endHostVirtAddr returns the end address of the region in host virtual address.
