@@ -47,16 +47,22 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.GetBuildId(), parseErr)
 		}
 
-		networkTrafficAccessToken := config.GetNetwork().GetIngress().TrafficAccessToken
 		network := &types.SandboxNetworkConfig{
-			Ingress: &types.SandboxNetworkIngressConfig{
-				AllowPublicAccess: networkTrafficAccessToken == nil,
-				MaskRequestHost:   config.GetNetwork().GetIngress().MaskRequestHost,
-			},
-			Egress: &types.SandboxNetworkEgressConfig{
-				AllowedAddresses: config.GetNetwork().GetEgress().GetAllowedCidrs(),
-				DeniedAddresses:  config.GetNetwork().GetEgress().GetDeniedCidrs(),
-			},
+			Ingress: &types.SandboxNetworkIngressConfig{},
+			Egress:  &types.SandboxNetworkEgressConfig{},
+		}
+
+		var networkTrafficAccessToken *string
+		if ingress := config.GetNetwork().GetIngress(); ingress != nil {
+			networkTrafficAccessToken = ingress.TrafficAccessToken
+
+			network.Ingress.AllowPublicAccess = networkTrafficAccessToken == nil
+			network.Ingress.MaskRequestHost = ingress.MaskRequestHost
+		}
+
+		if egress := config.GetNetwork().GetEgress(); egress != nil {
+			network.Egress.AllowedAddresses = egress.GetAllowedCidrs()
+			network.Egress.DeniedAddresses = egress.GetDeniedCidrs()
 		}
 
 		sandboxesInfo = append(
