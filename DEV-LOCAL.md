@@ -13,7 +13,7 @@
 9. `cd packages/api && make run-local` run the api locally 
 10. `cd packages/orchestrator && make run-local` run the orchestrator and template-manager locally.
 11. `cd packages/client-proxy && make run-local` run the client-proxy locally.
-12. `cd packages/shared/script && make local-build-base-template` instructs orchestrator to create the 'base' template
+12. `cd packages/shared/scripts && make local-build-base-template` instructs orchestrator to create the 'base' template
 
 # Services
 - grafana: http://localhost:53000

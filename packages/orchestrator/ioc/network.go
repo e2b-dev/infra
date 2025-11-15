@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewNetworkStorage(config cfg.Config, state State) (network.Storage, error) {
+func newNetworkStorage(config cfg.Config, state State) (network.Storage, error) {
 	if env.IsDevelopment() || config.NetworkConfig.UseLocalNamespaceStorage {
 		return network.NewStorageLocal(config.NetworkConfig)
 	}
@@ -18,7 +18,7 @@ func NewNetworkStorage(config cfg.Config, state State) (network.Storage, error) 
 	return network.NewStorageKV(state.NodeID, config.NetworkConfig)
 }
 
-func NewNetworkPool(
+func newNetworkPool(
 	lc fx.Lifecycle,
 	config cfg.Config,
 	globalLogger *zap.Logger,

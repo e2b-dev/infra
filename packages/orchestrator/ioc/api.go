@@ -22,47 +22,88 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
-func NewGRPCCMUXServer(
-	lc fx.Lifecycle,
-	grpcServer *grpc.Server,
-	cmuxServer cmux.CMux,
-	logger *zap.Logger,
-) net.Listener {
-	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			logger.Info("Starting gRPC server to serve all registered services")
-			go func() {
-				err := grpcServer.Serve(grpcListener)
-				if err != nil {
-					logger.Error("gRPC server error", zap.Error(err))
-				}
-			}()
-			return nil
-		},
-		OnStop: func(ctx context.Context) error {
-			logger.Info("Shutting down grpc server")
-			grpcServer.GracefulStop()
-			return nil
-		},
-	})
-	return grpcListener
+func NewGRPCModule() fx.Option {
+	return fx.Module("grpc",
+		fx.Provide(
+			// create cmux server
+			fx.Annotate(
+				newCMUXServer,
+				fx.OnStart(startCMUXServer),
+				fx.OnStop(stopCMUXServer),
+			),
+
+			newInfoService,
+			newGRPCServer,
+		),
+		fx.Invoke(
+			func(CMUXOut) {},
+		),
+	)
 }
 
-func NewCMUXServer(
+type CMUXOut struct {
+	CMUX         cmux.CMux
+	GRPCListener net.Listener
+	HTTPListener net.Listener
+}
+
+func newCMUXServer(
 	config cfg.Config,
-	globalLogger *zap.Logger,
-) cmux.CMux {
+	_ *zap.Logger,
+	_ *sandbox.Factory,
+	_ fx.Shutdowner,
+	_ *grpc.Server,
+	_ HealthHTTPServer,
+) (CMUXOut, error) {
 	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
 	cmuxServer, err := factories.NewCMUXServer(context.Background(), config.GRPCPort)
 	if err != nil {
-		globalLogger.Fatal("failed to create cmux server", zap.Error(err))
+		return CMUXOut{}, err
 	}
 
-	return cmuxServer
+	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
+	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
+
+	return CMUXOut{
+		CMUX:         cmuxServer,
+		GRPCListener: grpcListener,
+		HTTPListener: httpListener,
+	}, nil
 }
 
-func NewInfoService(
+func startCMUXServer(logger *zap.Logger, s fx.Shutdowner, input CMUXOut, grpcServer *grpc.Server, httpServer HealthHTTPServer) {
+	invokeAsync("cmux server", logger, s, func() error {
+		return input.CMUX.Serve()
+	})
+
+	invokeAsync("http server", logger, s, func() error {
+		return httpServer.Serve(input.HTTPListener)
+	})
+
+	invokeAsync("grpc server", logger, s, func() error {
+		return grpcServer.Serve(input.GRPCListener)
+	})
+}
+
+func stopCMUXServer(logger *zap.Logger, sandboxFactory *sandbox.Factory, input CMUXOut, grpcServer *grpc.Server, httpServer HealthHTTPServer) {
+	sandboxFactory.Wait()
+
+	grpcServer.GracefulStop()
+	if err := input.GRPCListener.Close(); err != nil {
+		logger.Error("failed to close grpc listener", zap.Error(err))
+	}
+
+	if err := httpServer.Shutdown(context.Background()); err != nil {
+		logger.Error("failed to shutdown cmux server", zap.Error(err))
+	}
+	if err := input.HTTPListener.Close(); err != nil {
+		logger.Error("failed to close http listener", zap.Error(err))
+	}
+
+	input.CMUX.Close()
+}
+
+func newInfoService(
 	sandboxes *sandbox.Map,
 	serviceInfo *service.ServiceInfo,
 	globalLogger *zap.Logger,
@@ -72,7 +113,7 @@ func NewInfoService(
 	return s
 }
 
-func NewGRPCServer(
+func newGRPCServer(
 	tel *telemetry.Client,
 	orchestratorService *server.Server,
 	globalLogger *zap.Logger,

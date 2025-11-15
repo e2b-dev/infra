@@ -13,9 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/soheilhy/cmux"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 func NewSandboxLoggerInternal(lc fx.Lifecycle, tel *telemetry.Client, state State) {
@@ -64,32 +62,6 @@ func NewSandboxLoggerExternal(lc fx.Lifecycle, tel *telemetry.Client, state Stat
 		},
 	})
 	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
-}
-
-// StartCMUXServer starts the CMUX server and must be invoked before HTTP/gRPC servers start
-func StartCMUXServer(
-	lc fx.Lifecycle,
-	cmuxServer cmux.CMux,
-	config cfg.Config,
-	globalLogger *zap.Logger,
-) {
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			globalLogger.Info("Starting network server", zap.Uint16("port", config.GRPCPort))
-			go func() {
-				err := cmuxServer.Serve()
-				if err != nil {
-					globalLogger.Error("CMUX server error", zap.Error(err))
-				}
-			}()
-			return nil
-		},
-		OnStop: func(ctx context.Context) error {
-			globalLogger.Info("Shutting down cmux server")
-			cmuxServer.Close()
-			return nil
-		},
-	})
 }
 
 func NewDrainingHandler(

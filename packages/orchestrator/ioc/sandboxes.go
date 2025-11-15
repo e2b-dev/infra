@@ -22,13 +22,28 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewSandboxesMap() *sandbox.Map {
+func NewSandboxesModule() fx.Option {
+	return fx.Module("sandboxes",
+		fx.Provide(
+			newDevicePool,
+			newNetworkPool,
+			newNetworkStorage,
+			newOrchestratorService,
+			newSandboxFactory,
+			newSandboxProxy,
+			newSandboxesMap,
+		),
+		fx.Invoke(),
+	)
+}
+
+func newSandboxesMap() *sandbox.Map {
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
 	return sandbox.NewSandboxesMap()
 }
 
-func NewOrchestratorService(
+func newOrchestratorService(
 	sandboxFactory *sandbox.Factory,
 	tel *telemetry.Client,
 	networkPool *network.Pool,
@@ -56,7 +71,7 @@ func NewOrchestratorService(
 	})
 }
 
-func NewSandboxFactory(
+func newSandboxFactory(
 	config cfg.Config,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
@@ -65,7 +80,7 @@ func NewSandboxFactory(
 	return sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 }
 
-func NewDevicePool(
+func newDevicePool(
 	lc fx.Lifecycle,
 	globalLogger *zap.Logger,
 ) (*nbd.DevicePool, error) {
@@ -89,7 +104,7 @@ func NewDevicePool(
 	return devicePool, nil
 }
 
-func NewSandboxProxy(
+func newSandboxProxy(
 	lc fx.Lifecycle,
 	tel *telemetry.Client,
 	config cfg.Config,

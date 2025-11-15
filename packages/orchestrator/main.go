@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"net"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/ioc"
 	"go.uber.org/fx"
@@ -22,45 +21,31 @@ func main() {
 		fx.Supply(config),
 
 		ioc.NewClickhouseModule(config),
-		ioc.NewHyperloopModule(),
-		ioc.NewRedisModule(),
 
+		ioc.NewGRPCModule(),
 		ioc.NewHealthModule(),
-
+		ioc.NewHyperloopModule(),
+		ioc.NewObservabilityModule(),
+		ioc.NewRedisModule(),
+		ioc.NewSandboxesModule(),
 		ioc.NewTemplateManagerModule(config),
 
 		fx.Provide(
 			ioc.NewVersionInfo(version, commitSHA),
 			ioc.NewState,
-			ioc.NewTelemetry,
-			ioc.NewGlobalLogger,
 			ioc.NewFeatureFlagsClient,
 			ioc.NewLimiter,
 			ioc.NewPersistence,
-			ioc.NewSandboxesMap,
 			ioc.NewBlockMetrics,
 			ioc.NewTemplateCache,
 			ioc.WithDeliveryTargets(ioc.NewSandboxEventsService),
-			ioc.NewSandboxObserver,
-			ioc.NewSandboxProxy,
-			ioc.NewDevicePool,
-			ioc.NewNetworkStorage,
-			ioc.NewNetworkPool,
-			ioc.NewSandboxFactory,
-			ioc.NewOrchestratorService,
 			ioc.NewServiceInfo,
-			ioc.NewGRPCServer,
-			ioc.NewInfoService,
-			ioc.NewCMUXServer,
-			ioc.NewGRPCCMUXServer,
 		),
 		fx.Invoke(
 			ioc.NewSingleOrchestratorCheck, // Lock file check for single orchestrator
 			ioc.NewDrainingHandler,         // Graceful shutdown handler
 			ioc.NewSandboxLoggerInternal,   // Initialize sandbox internal logger
 			ioc.NewSandboxLoggerExternal,   // Initialize sandbox external logger
-			ioc.StartCMUXServer,            // Start CMUX (FX ensures this runs before HTTP/gRPC)
-			func(net.Listener) {},          // gRPC server
 		),
 	).Run()
 }

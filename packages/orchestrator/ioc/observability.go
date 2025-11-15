@@ -14,7 +14,17 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func NewTelemetry(lc fx.Lifecycle, state State, version VersionInfo) *telemetry.Client {
+func NewObservabilityModule() fx.Option {
+	return fx.Module("observability",
+		fx.Provide(
+			newTelemetry,
+			newGlobalLogger,
+			newSandboxObserver,
+		),
+	)
+}
+
+func newTelemetry(lc fx.Lifecycle, state State, version VersionInfo) *telemetry.Client {
 	// Setup telemetry
 	tel, err := telemetry.New(context.Background(), state.NodeID, state.ServiceName, version.Commit, version.Version, state.ServiceInstanceID)
 	if err != nil {
@@ -34,7 +44,7 @@ func NewTelemetry(lc fx.Lifecycle, state State, version VersionInfo) *telemetry.
 	return tel
 }
 
-func NewSandboxObserver(
+func newSandboxObserver(
 	lc fx.Lifecycle,
 	state State,
 	sandboxes *sandbox.Map,
@@ -55,7 +65,7 @@ func NewSandboxObserver(
 	return sandboxObserver, nil
 }
 
-func NewGlobalLogger(
+func newGlobalLogger(
 	lc fx.Lifecycle,
 	tel *telemetry.Client,
 	state State,
