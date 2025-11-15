@@ -18,7 +18,7 @@ type SandboxNetworkEgressConfig struct {
 }
 
 type SandboxNetworkIngressConfig struct {
-	AllowPublicAccess bool    `json:"allowPublicAccess,omitempty"`
+	AllowPublicAccess *bool   `json:"allowPublicAccess,omitempty"`
 	MaskRequestHost   *string `json:"maskRequestHost,omitempty"`
 }
 
