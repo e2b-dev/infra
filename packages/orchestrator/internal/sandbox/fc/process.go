@@ -1,195 +1,164 @@
 package fc
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
-	txtTemplate "text/template"
+	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapio"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const startScript = `mount --make-rprivate / &&
-mount -t tmpfs tmpfs {{ .buildDir }} -o X-mount.mkdir &&
-mount -t tmpfs tmpfs {{ .buildKernelDir }} -o X-mount.mkdir &&
-ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
-ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
-ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
 
-var startScriptTemplate = txtTemplate.Must(txtTemplate.New("fc-start").Parse(startScript))
+type ProcessOptions struct {
+	// InitScriptPath is the path to the init script that will be executed inside the VM on kernel start.
+	InitScriptPath string
+
+	// KernelLogs is a flag to enable kernel logs output to the process stdout.
+	KernelLogs bool
+
+	// SystemdToKernelLogs is a flag to enable systemd logs output to the console.
+	// It enabled the kernel logs by default too.
+	SystemdToKernelLogs bool
+
+	// KvmClock is a flag to enable kvm-clock as the clocksource for the kernel.
+	KvmClock bool
+
+	// Stdout is the writer to which the process stdout will be written.
+	Stdout io.Writer
+
+	// Stderr is the writer to which the process stderr will be written.
+	Stderr io.Writer
+}
 
 type Process struct {
-	uffdReady chan struct{}
-	snapfile  template.File
+	Versions FirecrackerVersions
 
 	cmd *exec.Cmd
 
-	stdout *io.PipeReader
-	stderr *io.PipeReader
-
-	metadata *MmdsMetadata
-
-	uffdSocketPath        string
+	config                cfg.BuilderConfig
 	firecrackerSocketPath string
 
-	rootfs *rootfs.CowDevice
-	files  *storage.SandboxFiles
+	slot               *network.Slot
+	providerRootfsPath string
+	rootfsPath         string
+	kernelPath         string
+	files              *storage.SandboxFiles
 
-	Exit chan error
+	Exit *utils.ErrorOnce
 
 	client *apiClient
 }
 
 func NewProcess(
 	ctx context.Context,
-	tracer trace.Tracer,
-	slot network.Slot,
+	execCtx context.Context,
+	config cfg.BuilderConfig,
+	slot *network.Slot,
 	files *storage.SandboxFiles,
-	mmdsMetadata *MmdsMetadata,
-	snapfile template.File,
-	rootfs *rootfs.CowDevice,
-	uffdReady chan struct{},
-	baseTemplateID string,
+	versions FirecrackerVersions,
+	rootfsProviderPath string,
+	rootfsPaths RootfsPaths,
 ) (*Process, error) {
-	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
-		attribute.String("sandbox.id", mmdsMetadata.SandboxId),
+	ctx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.Int("sandbox.slot.index", slot.Idx),
 	))
 	defer childSpan.End()
 
-	var fcStartScript bytes.Buffer
-
-	baseBuild := storage.NewTemplateFiles(
-		baseTemplateID,
-		rootfs.BaseBuildId,
-		files.KernelVersion,
-		files.FirecrackerVersion,
-		files.Hugepages(),
-	)
-
-	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
-		"rootfsPath":        files.SandboxCacheRootfsLinkPath(),
-		"kernelPath":        files.CacheKernelPath(),
-		"buildDir":          baseBuild.BuildDir(),
-		"buildRootfsPath":   baseBuild.BuildRootfsPath(),
-		"buildKernelPath":   files.BuildKernelPath(),
-		"buildKernelDir":    files.BuildKernelDir(),
-		"namespaceID":       slot.NamespaceID(),
-		"firecrackerPath":   files.FirecrackerPath(),
-		"firecrackerSocket": files.SandboxFirecrackerSocketPath(),
-	})
+	// Build the firecracker start script and get computed paths
+	startBuilder := NewStartScriptBuilder(config)
+	startScript, err := startBuilder.Build(versions, files, rootfsPaths, slot.NamespaceID())
 	if err != nil {
-		return nil, fmt.Errorf("error executing fc start script template: %w", err)
+		return nil, err
 	}
 
-	telemetry.SetAttributes(childCtx,
-		attribute.String("sandbox.cmd", fcStartScript.String()),
+	telemetry.SetAttributes(ctx,
+		attribute.String("sandbox.cmd", startScript.Value),
 	)
 
-	cmd := exec.Command(
+	_, err = os.Stat(versions.FirecrackerPath(config))
+	if err != nil {
+		return nil, fmt.Errorf("error stating firecracker binary: %w", err)
+	}
+
+	_, err = os.Stat(versions.HostKernelPath(config))
+	if err != nil {
+		return nil, fmt.Errorf("error stating kernel file: %w", err)
+	}
+
+	cmd := exec.CommandContext(execCtx,
 		"unshare",
-		"-pfm",
-		"--kill-child",
+		"-m",
 		"--",
 		"bash",
 		"-c",
-		fcStartScript.String(),
+		startScript.Value,
 	)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // Create a new session
 	}
 
-	cmdStdoutReader, cmdStdoutWriter := io.Pipe()
-	cmd.Stdout = cmdStdoutWriter
-
-	cmdStderrReader, cmdStderrWriter := io.Pipe()
-	cmd.Stderr = cmdStderrWriter
-
 	return &Process{
-		Exit:                  make(chan error, 1),
-		uffdReady:             uffdReady,
+		Versions:              versions,
+		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
-		stdout:                cmdStdoutReader,
-		stderr:                cmdStderrReader,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
-		metadata:              mmdsMetadata,
-		uffdSocketPath:        files.SandboxUffdSocketPath(),
-		snapfile:              snapfile,
+		config:                config,
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
-		rootfs:                rootfs,
+		providerRootfsPath:    rootfsProviderPath,
 		files:                 files,
+		slot:                  slot,
+
+		kernelPath: startScript.KernelPath,
+		rootfsPath: startScript.RootfsPath,
 	}, nil
 }
 
-func (p *Process) Start(
+func (p *Process) configure(
 	ctx context.Context,
-	tracer trace.Tracer,
-	logger *logs.SandboxLogger,
+	sbxMetadata sbxlogger.LoggerMetadata,
+	stdoutExternal io.Writer,
+	stderrExternal io.Writer,
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "start-fc")
+	ctx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
 
-	go func() {
-		defer func() {
-			readerErr := p.stdout.Close()
-			if readerErr != nil {
-				logger.Errorf("[sandbox %s]: error closing fc stdout reader: %v\n", p.metadata.SandboxId, readerErr)
-			}
-		}()
+	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.InfoLevel}
+	stdoutWriters := []io.Writer{stdoutWriter}
+	if stdoutExternal != nil {
+		stdoutWriters = append(stdoutWriters, stdoutExternal)
+	}
+	p.cmd.Stdout = io.MultiWriter(stdoutWriters...)
 
-		scanner := bufio.NewScanner(p.stdout)
+	stderrWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.ErrorLevel}
+	stderrWriters := []io.Writer{stderrWriter}
+	if stderrExternal != nil {
+		stderrWriters = append(stderrWriters, stderrExternal)
+	}
+	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			logger.Infof("[sandbox %s]: stdout: %s\n", p.metadata.SandboxId, line)
-		}
-
-		readerErr := scanner.Err()
-		if readerErr != nil {
-			logger.Errorf("[sandbox %s]: error reading fc stdout: %v\n", p.metadata.SandboxId, readerErr)
-		}
-	}()
-
-	go func() {
-		defer func() {
-			readerErr := p.stderr.Close()
-			if readerErr != nil {
-				logger.Errorf("[sandbox %s]: error closing fc stderr reader: %v\n", p.metadata.SandboxId, readerErr)
-			}
-		}()
-
-		scanner := bufio.NewScanner(p.stderr)
-
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			logger.Warnf("[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
-		}
-
-		readerErr := scanner.Err()
-		if readerErr != nil {
-			logger.Errorf("[sandbox %s]: error reading fc stderr: %v\n", p.metadata.SandboxId, readerErr)
-		}
-	}()
-
-	err := os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -199,32 +168,36 @@ func (p *Process) Start(
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
-	startCtx, cancelStart := context.WithCancelCause(childCtx)
+	startCtx, cancelStart := context.WithCancelCause(ctx)
 	defer cancelStart(fmt.Errorf("fc finished starting"))
 
 	go func() {
+		defer stderrWriter.Close()
+		defer stdoutWriter.Close()
+
 		waitErr := p.cmd.Wait()
 		if waitErr != nil {
 			var exitErr *exec.ExitError
 			if errors.As(waitErr, &exitErr) {
 				// Check if the process was killed by a signal
-				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGKILL {
-					p.Exit <- nil
+				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && (status.Signal() == syscall.SIGKILL || status.Signal() == syscall.SIGTERM) {
+					p.Exit.SetError(nil)
 
 					return
 				}
 			}
 
-			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
+			zap.L().Error("error waiting for fc process", zap.Error(waitErr))
 
-			p.Exit <- errMsg
+			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
+			p.Exit.SetError(errMsg)
 
 			cancelStart(errMsg)
 
 			return
 		}
 
-		p.Exit <- nil
+		p.Exit.SetError(nil)
 	}()
 
 	// Wait for the FC process to start so we can use FC API
@@ -232,54 +205,202 @@ func (p *Process) Start(
 	if err != nil {
 		errMsg := fmt.Errorf("error waiting for fc socket: %w", err)
 
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(errMsg, fcStopErr)
 	}
 
-	device, err := p.rootfs.Path()
+	return nil
+}
+
+func (p *Process) Create(
+	ctx context.Context,
+	sbxMetadata sbxlogger.LoggerMetadata,
+	vCPUCount int64,
+	memoryMB int64,
+	hugePages bool,
+	options ProcessOptions,
+) error {
+	ctx, childSpan := tracer.Start(ctx, "create-fc")
+	defer childSpan.End()
+
+	err := p.configure(
+		ctx,
+		sbxMetadata,
+		options.Stdout,
+		options.Stderr,
+	)
 	if err != nil {
-		return fmt.Errorf("error getting rootfs path: %w", err)
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
 
-	err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
-	if err != nil {
-		return fmt.Errorf("error removing rootfs symlink: %w", err)
+	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
+	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", p.slot.NamespaceIP(), p.slot.TapIPString(), p.slot.TapMaskString(), p.slot.VpeerName(), p.slot.TapName())
+	args := KernelArgs{
+		// Disable kernel logs for production to speed the FC operations
+		// https://github.com/firecracker-microvm/firecracker/blob/main/docs/prod-host-setup.md#logging-and-performance
+		"quiet":    "",
+		"loglevel": "1",
+
+		// Define kernel init path
+		"init": options.InitScriptPath,
+
+		// Networking IPv4 and IPv6
+		"ip":            ipv4,
+		"ipv6.disable":  "0",
+		"ipv6.autoconf": "1",
+
+		// Wait 1 second before exiting FC after panic or reboot
+		"panic": "1",
+
+		"reboot":           "k",
+		"pci":              "off",
+		"i8042.nokbd":      "",
+		"i8042.noaux":      "",
+		"random.trust_cpu": "on",
 	}
 
-	err = os.Symlink(device, p.files.SandboxCacheRootfsLinkPath())
+	if options.KvmClock {
+		args["clocksource"] = "kvm-clock"
+	}
+
+	if options.SystemdToKernelLogs {
+		args["systemd.journald.forward_to_console"] = ""
+	}
+
+	if options.KernelLogs || options.SystemdToKernelLogs {
+		// Forward kernel logs to the ttyS0, which will be picked up by the stdout of FC process
+		delete(args, "quiet")
+		args["console"] = "ttyS0"
+		args["loglevel"] = "5" // KERN_NOTICE
+	}
+
+	kernelArgs := args.String()
+	err = p.client.setBootSource(ctx, kernelArgs, p.kernelPath)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting fc boot source %q): %w", p.kernelPath, err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc boot source config")
+
+	// Rootfs
+	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
-	err = p.client.loadSnapshot(
-		startCtx,
-		p.uffdSocketPath,
-		p.uffdReady,
-		p.snapfile,
+	err = p.client.setRootfsDrive(ctx, p.rootfsPath)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting fc drivers config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc drivers config")
+
+	// Network
+	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC())
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting fc network config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc network config")
+
+	err = p.client.setMachineConfig(ctx, vCPUCount, memoryMB, hugePages)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting fc machine config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc machine config")
+
+	err = p.client.setEntropyDevice(ctx)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting fc entropy config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc entropy config")
+
+	err = p.client.startVM(ctx)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error starting fc: %w", err), fcStopErr)
+	}
+
+	telemetry.ReportEvent(ctx, "started fc")
+
+	return nil
+}
+
+func (p *Process) Resume(
+	ctx context.Context,
+	sbxMetadata sbxlogger.SandboxMetadata,
+	uffdSocketPath string,
+	snapfile template.File,
+	uffdReady chan struct{},
+	slot *network.Slot,
+) error {
+	ctx, span := tracer.Start(ctx, "resume-fc")
+	defer span.End()
+
+	err := p.configure(
+		ctx,
+		sbxMetadata,
+		nil,
+		nil,
 	)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
+	}
+
+	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "symlinked rootfs")
+
+	err = p.client.loadSnapshot(
+		ctx,
+		uffdSocketPath,
+		uffdReady,
+		snapfile,
+	)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
-	err = p.client.resumeVM(startCtx)
+	err = p.client.resumeVM(ctx)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
-	err = p.client.setMmds(startCtx, p.metadata)
+	meta := &MmdsMetadata{
+		SandboxID:            sbxMetadata.SandboxID,
+		TemplateID:           sbxMetadata.TemplateID,
+		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
+	}
+
+	err = p.client.setMmds(ctx, meta)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
 	}
 
 	telemetry.SetAttributes(
-		childCtx,
+		ctx,
 		attribute.String("sandbox.cmd.dir", p.cmd.Dir),
 		attribute.String("sandbox.cmd.path", p.cmd.Path),
 	)
@@ -295,28 +416,75 @@ func (p *Process) Pid() (int, error) {
 	return p.cmd.Process.Pid, nil
 }
 
-func (p *Process) Stop() error {
+// getProcessState returns the state of the process.
+// It's used to check if the process is in the D state, because gopsutil doesn't show that.
+func getProcessState(ctx context.Context, pid int) (string, error) {
+	output, err := exec.CommandContext(ctx, "ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
+	if err != nil {
+		return "", fmt.Errorf("error getting state of pid=%d: %w", pid, err)
+	}
+
+	state := strings.TrimSpace(string(output))
+
+	return state, nil
+}
+
+func (p *Process) Stop(ctx context.Context) error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("fc process not started")
 	}
 
-	err := p.cmd.Process.Kill()
+	// this function should never fail b/c a previous context was canceled.
+	ctx = context.WithoutCancel(ctx)
+
+	state, err := getProcessState(ctx, p.cmd.Process.Pid)
 	if err != nil {
-		return fmt.Errorf("failed to send KILL to FC process: %w", err)
+		zap.L().Warn("failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+	} else if state == "D" {
+		zap.L().Info("fc process is in the D state before we call SIGTERM", logger.WithSandboxID(p.files.SandboxID))
 	}
+
+	err = p.cmd.Process.Signal(syscall.SIGTERM)
+	if err != nil {
+		zap.L().Warn("failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+	}
+
+	go func() {
+		select {
+		// Wait 10 sec for the FC process to exit, if it doesn't, send SIGKILL.
+		case <-time.After(10 * time.Second):
+			err := p.cmd.Process.Kill()
+			if err != nil {
+				zap.L().Warn("failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+			} else {
+				zap.L().Info("sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
+			}
+
+			state, err := getProcessState(ctx, p.cmd.Process.Pid)
+			if err != nil {
+				zap.L().Warn("failed to get fc process state after sending SIGKILL", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+			} else if state == "D" {
+				zap.L().Info("fc process is in the D state after we call SIGKILL", logger.WithSandboxID(p.files.SandboxID))
+			}
+
+		// If the FC process exited, we can return.
+		case <-p.Exit.Done():
+			return
+		}
+	}()
 
 	return nil
 }
 
-func (p *Process) Pause(ctx context.Context, tracer trace.Tracer) error {
+func (p *Process) Pause(ctx context.Context) error {
 	ctx, childSpan := tracer.Start(ctx, "pause-fc")
 	defer childSpan.End()
 
 	return p.client.pauseVM(ctx)
 }
 
-// VM needs to be paused before creating a snapshot.
-func (p *Process) CreateSnapshot(ctx context.Context, tracer trace.Tracer, snapfilePath string, memfilePath string) error {
+// CreateSnapshot VM needs to be paused before creating a snapshot.
+func (p *Process) CreateSnapshot(ctx context.Context, snapfilePath string, memfilePath string) error {
 	ctx, childSpan := tracer.Start(ctx, "create-snapshot-fc")
 	defer childSpan.End()
 

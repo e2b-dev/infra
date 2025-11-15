@@ -5,149 +5,120 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// DeleteTemplatesTemplateID serves to delete an env (e.g. in CLI)
+// DeleteTemplatesTemplateID serves to delete a template (e.g. in CLI)
 func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	ctx := c.Request.Context()
+	team := c.Value(auth.TeamContextKey).(*types.Team)
 
-	cleanedAliasOrEnvID, err := id.CleanEnvID(aliasOrTemplateID)
+	cleanedAliasOrTemplateID, err := id.CleanTemplateID(aliasOrTemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid env ID: %s", aliasOrTemplateID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID))
 
-		err = fmt.Errorf("invalid env ID: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "invalid template ID", err)
 
 		return
 	}
 
-	// Prepare info for deleting env
-	userID, teams, err := a.GetUserAndTeams(c)
+	builds, err := a.sqlcDB.GetTemplateBuildsByIdOrAlias(ctx, queries.GetTemplateBuildsByIdOrAliasParams{
+		TeamID:            team.ID,
+		TemplateIDOrAlias: cleanedAliasOrTemplateID,
+	})
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
-
-		err = fmt.Errorf("error when getting default team: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportError(ctx, "failed to get template", fmt.Errorf("failed to get template: %w", err), telemetry.WithTemplateID(aliasOrTemplateID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
 
 		return
 	}
 
-	template, err := a.db.
-		Client.
-		Env.
-		Query().
-		Where(
-			env.Or(
-				env.HasEnvAliasesWith(envalias.ID(aliasOrTemplateID)),
-				env.ID(aliasOrTemplateID),
-			),
-		).Only(ctx)
-
-	notFound := models.IsNotFound(err)
-	if notFound {
-		telemetry.ReportError(ctx, fmt.Errorf("template '%s' not found", aliasOrTemplateID))
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("the sandbox template '%s' wasn't found", cleanedAliasOrEnvID))
-
-		return
-	} else if err != nil {
-		telemetry.ReportError(ctx, fmt.Errorf("failed to get env '%s': %w", aliasOrTemplateID, err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting env")
+	if len(builds) == 0 {
+		telemetry.ReportError(ctx, "template not found", nil, telemetry.WithTemplateID(aliasOrTemplateID))
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
 
 		return
 	}
 
-	var team *models.Team
-	for _, t := range teams {
-		if t.ID == template.TeamID {
-			team = t
-			break
-		}
-	}
-
-	if team == nil {
-		errMsg := fmt.Errorf("user '%s' doesn't have access to the sandbox template '%s'", userID, cleanedAliasOrEnvID)
-		telemetry.ReportError(ctx, errMsg)
-
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) don't have access to sandbox template '%s'", userID, cleanedAliasOrEnvID))
-
-		return
-	}
+	templateID := builds[0].Env.ID
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", userID.String()),
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
-		attribute.String("env.id", template.ID),
+		telemetry.WithTemplateID(templateID),
 	)
 
-	// check if base env has snapshots
-	hasSnapshots, err := a.db.CheckBaseEnvHasSnapshots(ctx, template.ID)
+	// check if base template has snapshots
+	hasSnapshots, err := a.sqlcDB.ExistsTemplateSnapshots(ctx, templateID)
 	if err != nil {
-		telemetry.ReportError(ctx, fmt.Errorf("error when checking if base env has snapshots: %w", err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking if base env has snapshots")
+		telemetry.ReportError(ctx, "error when checking if base template has snapshots", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking if template has snapshots")
 
 		return
 	}
 
 	if hasSnapshots {
-		telemetry.ReportError(ctx, fmt.Errorf("base template '%s' has paused sandboxes", template.ID))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are paused sandboxes using it", template.ID))
+		telemetry.ReportError(ctx, "base template has paused sandboxes", nil, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are paused sandboxes using it", templateID))
 
 		return
 	}
 
-	// get all template builds
-	builds, err := a.db.GetEnvBuilds(ctx, template.ID)
+	err = a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+		TemplateID: templateID,
+		TeamID:     team.ID,
+	})
 	if err != nil {
-		telemetry.ReportError(ctx, fmt.Errorf("error when getting env builds: %w", err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting env builds")
+		telemetry.ReportCriticalError(ctx, "error when deleting template from db", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting template")
 
 		return
 	}
 
 	// get all build ids
-	buildIds := make([]uuid.UUID, len(builds))
-	for i, build := range builds {
-		buildIds[i] = build.ID
+	buildIds := make([]template_manager.DeleteBuild, 0)
+	for _, build := range builds {
+		// Skip if there was no build
+		if build.BuildID == nil || build.ClusterNodeID == nil {
+			continue
+		}
+
+		buildIds = append(buildIds, template_manager.DeleteBuild{
+			BuildID:    *build.BuildID,
+			TemplateID: build.Env.ID,
+			ClusterID:  utils.WithClusterFallback(team.ClusterID),
+			NodeID:     *build.ClusterNodeID,
+		})
 	}
 
 	// delete all builds
-	deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIds)
-	if deleteJobErr != nil {
-		errMsg := fmt.Errorf("error when deleting env files from storage: %w", deleteJobErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
+	err = a.templateManager.DeleteBuilds(ctx, buildIds)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when deleting template files from storage", err)
 	} else {
-		telemetry.ReportEvent(ctx, "deleted env from storage")
+		telemetry.ReportEvent(ctx, "deleted template from storage")
 	}
 
-	dbErr := a.db.DeleteEnv(ctx, template.ID)
-	if dbErr != nil {
-		errMsg := fmt.Errorf("error when deleting env from db: %w", dbErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
+	a.templateCache.Invalidate(templateID)
 
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting env")
-
-		return
-	}
-
-	a.templateCache.Invalidate(template.ID)
-
-	telemetry.ReportEvent(ctx, "deleted env from db")
+	telemetry.ReportEvent(ctx, "deleted template from db")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "deleted environment", properties.Set("environment", template.ID))
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "deleted environment", properties.Set("environment", templateID))
 
-	a.logger.Infof("Deleted env '%s' from team '%s'", template.ID, team.ID)
+	zap.L().Info("Deleted template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }

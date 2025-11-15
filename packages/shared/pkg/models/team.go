@@ -10,7 +10,6 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/google/uuid"
 )
 
@@ -33,6 +32,8 @@ type Team struct {
 	Tier string `json:"tier,omitempty"`
 	// Email holds the value of the "email" field.
 	Email string `json:"email,omitempty"`
+	// ClusterID holds the value of the "cluster_id" field.
+	ClusterID *uuid.UUID `json:"cluster_id,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the TeamQuery when eager-loading is set.
 	Edges        TeamEdges `json:"edges"`
@@ -43,17 +44,13 @@ type Team struct {
 type TeamEdges struct {
 	// Users holds the value of the users edge.
 	Users []*User `json:"users,omitempty"`
-	// TeamAPIKeys holds the value of the team_api_keys edge.
-	TeamAPIKeys []*TeamAPIKey `json:"team_api_keys,omitempty"`
-	// TeamTier holds the value of the team_tier edge.
-	TeamTier *Tier `json:"team_tier,omitempty"`
 	// Envs holds the value of the envs edge.
 	Envs []*Env `json:"envs,omitempty"`
 	// UsersTeams holds the value of the users_teams edge.
 	UsersTeams []*UsersTeams `json:"users_teams,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [5]bool
+	loadedTypes [3]bool
 }
 
 // UsersOrErr returns the Users value or an error if the edge
@@ -65,32 +62,10 @@ func (e TeamEdges) UsersOrErr() ([]*User, error) {
 	return nil, &NotLoadedError{edge: "users"}
 }
 
-// TeamAPIKeysOrErr returns the TeamAPIKeys value or an error if the edge
-// was not loaded in eager-loading.
-func (e TeamEdges) TeamAPIKeysOrErr() ([]*TeamAPIKey, error) {
-	if e.loadedTypes[1] {
-		return e.TeamAPIKeys, nil
-	}
-	return nil, &NotLoadedError{edge: "team_api_keys"}
-}
-
-// TeamTierOrErr returns the TeamTier value or an error if the edge
-// was not loaded in eager-loading, or loaded but was not found.
-func (e TeamEdges) TeamTierOrErr() (*Tier, error) {
-	if e.loadedTypes[2] {
-		if e.TeamTier == nil {
-			// Edge was loaded but was not found.
-			return nil, &NotFoundError{label: tier.Label}
-		}
-		return e.TeamTier, nil
-	}
-	return nil, &NotLoadedError{edge: "team_tier"}
-}
-
 // EnvsOrErr returns the Envs value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) EnvsOrErr() ([]*Env, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[1] {
 		return e.Envs, nil
 	}
 	return nil, &NotLoadedError{edge: "envs"}
@@ -99,7 +74,7 @@ func (e TeamEdges) EnvsOrErr() ([]*Env, error) {
 // UsersTeamsOrErr returns the UsersTeams value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) UsersTeamsOrErr() ([]*UsersTeams, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[2] {
 		return e.UsersTeams, nil
 	}
 	return nil, &NotLoadedError{edge: "users_teams"}
@@ -110,6 +85,8 @@ func (*Team) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case team.FieldClusterID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case team.FieldIsBanned, team.FieldIsBlocked:
 			values[i] = new(sql.NullBool)
 		case team.FieldBlockedReason, team.FieldName, team.FieldTier, team.FieldEmail:
@@ -182,6 +159,13 @@ func (t *Team) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				t.Email = value.String
 			}
+		case team.FieldClusterID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field cluster_id", values[i])
+			} else if value.Valid {
+				t.ClusterID = new(uuid.UUID)
+				*t.ClusterID = *value.S.(*uuid.UUID)
+			}
 		default:
 			t.selectValues.Set(columns[i], values[i])
 		}
@@ -198,16 +182,6 @@ func (t *Team) Value(name string) (ent.Value, error) {
 // QueryUsers queries the "users" edge of the Team entity.
 func (t *Team) QueryUsers() *UserQuery {
 	return NewTeamClient(t.config).QueryUsers(t)
-}
-
-// QueryTeamAPIKeys queries the "team_api_keys" edge of the Team entity.
-func (t *Team) QueryTeamAPIKeys() *TeamAPIKeyQuery {
-	return NewTeamClient(t.config).QueryTeamAPIKeys(t)
-}
-
-// QueryTeamTier queries the "team_tier" edge of the Team entity.
-func (t *Team) QueryTeamTier() *TierQuery {
-	return NewTeamClient(t.config).QueryTeamTier(t)
 }
 
 // QueryEnvs queries the "envs" edge of the Team entity.
@@ -265,6 +239,11 @@ func (t *Team) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("email=")
 	builder.WriteString(t.Email)
+	builder.WriteString(", ")
+	if v := t.ClusterID; v != nil {
+		builder.WriteString("cluster_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

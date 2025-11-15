@@ -7,16 +7,14 @@ import "context"
 // SchemaConfig represents alternative schema names for all tables
 // that can be passed at runtime.
 type SchemaConfig struct {
-	AccessToken string // AccessToken table.
-	Env         string // Env table.
-	EnvAlias    string // EnvAlias table.
-	EnvBuild    string // EnvBuild table.
-	Snapshot    string // Snapshot table.
-	Team        string // Team table.
-	TeamAPIKey  string // TeamAPIKey table.
-	Tier        string // Tier table.
-	User        string // User table.
-	UsersTeams  string // UsersTeams table.
+	Cluster    string // Cluster table.
+	Env        string // Env table.
+	EnvAlias   string // EnvAlias table.
+	EnvBuild   string // EnvBuild table.
+	Snapshot   string // Snapshot table.
+	Team       string // Team table.
+	User       string // User table.
+	UsersTeams string // UsersTeams table.
 }
 
 type schemaCtxKey struct{}

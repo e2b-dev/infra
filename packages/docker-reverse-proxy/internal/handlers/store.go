@@ -1,26 +1,28 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 
+	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 )
 
 type APIStore struct {
-	db        *db.DB
+	db        *client.Client
 	AuthCache *cache.AuthCache
 	proxy     *httputil.ReverseProxy
 }
 
-func NewStore() *APIStore {
+func NewStore(ctx context.Context) *APIStore {
 	authCache := cache.New()
-	database, err := db.NewClient()
+	database, err := client.NewClient(ctx, client.WithMaxConnections(3))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,7 +37,8 @@ func NewStore() *APIStore {
 	// Custom ModifyResponse function
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		if resp.StatusCode == http.StatusUnauthorized {
-			log.Printf("Unauthorized request:[%s] %s\n", resp.Request.Method, resp.Request.URL.String())
+			respBody, _ := io.ReadAll(resp.Body)
+			log.Printf("Unauthorized request:[%s] %s\n", resp.Request.Method, respBody)
 		}
 
 		// You can also modify the response here if needed
@@ -47,4 +50,11 @@ func NewStore() *APIStore {
 		AuthCache: authCache,
 		proxy:     proxy,
 	}
+}
+
+func (a *APIStore) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	// Set the host to the URL host
+	req.Host = req.URL.Host
+
+	a.proxy.ServeHTTP(rw, req)
 }

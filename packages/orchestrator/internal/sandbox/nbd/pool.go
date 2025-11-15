@@ -4,37 +4,61 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"math"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // maxSlotsReady is the number of slots that are ready to be used.
-const maxSlotsReady = 64
+const (
+	maxSlotsReady                 = 64
+	waitOnNBDError                = 50 * time.Millisecond
+	devicePoolCloseReleaseTimeout = 10 * time.Minute
+)
 
-// ErrNoFreeSlots is returned when there are no free slots.
+var (
+	meter       = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd")
+	slotCounter = utils.Must(meter.Int64UpDownCounter("orchestrator.nbd.slots_pool.ready",
+		metric.WithDescription("Number of nbd slots ready to be used."),
+		metric.WithUnit("{slot}"),
+	))
+	acquired = utils.Must(meter.Int64Counter("orchestrator.nbd.slots_pool.acquired",
+		metric.WithDescription("Number of nbd slots acquired."),
+		metric.WithUnit("{slot}"),
+	))
+	released = utils.Must(meter.Int64Counter("orchestrator.nbd.slots_pool.released",
+		metric.WithDescription("Number of nbd slots released."),
+		metric.WithUnit("{slot}"),
+	))
+)
+
+// NoFreeSlotsError is returned when there are no free slots.
 // You can retry the request after some time.
-type ErrNoFreeSlots struct{}
+type NoFreeSlotsError struct{}
 
-func (ErrNoFreeSlots) Error() string {
+func (NoFreeSlotsError) Error() string {
 	return "no free slots"
 }
 
-// ErrDeviceInUse is returned when the device that you wanted to release is still in use.
+// DeviceInUseError is returned when the device that you wanted to release is still in use.
 // You can retry the request after ensuring that the device is not in use anymore.
-type ErrDeviceInUse struct{}
+type DeviceInUseError struct{}
 
-func (ErrDeviceInUse) Error() string {
+func (DeviceInUseError) Error() string {
 	return "device in use"
 }
+
+var ErrClosed = errors.New("cannot read from a closed pool")
 
 type (
 	// DevicePath is the path to the nbd device.
@@ -47,55 +71,42 @@ type (
 //
 // Use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
 type DevicePool struct {
-	ctx context.Context
+	done     chan struct{}
+	doneOnce sync.Once
+
 	// We use the bitset to speedup the free device lookup.
 	usedSlots *bitset.BitSet
 	mu        sync.Mutex
 
 	slots chan DeviceSlot
-
-	slotCounter metric.Int64UpDownCounter
 }
 
-var Pool *DevicePool
-
-func init() {
+func NewDevicePool() (*DevicePool, error) {
 	maxDevices, err := getMaxDevices()
 	if err != nil {
-		panic(fmt.Errorf("failed to get current max devices: %w", err))
+		return nil, fmt.Errorf("failed to get max devices: %w", err)
 	}
 
 	if maxDevices == 0 {
-		panic(fmt.Errorf("nbd module is not loaded or max devices is set to 0"))
-	}
-
-	counter, err := meters.GetUpDownCounter(meters.NBDkSlotSReadyPoolCounterMeterName)
-	if err != nil {
-		panic(fmt.Errorf("failed to get nbd slot pool counter: %w", err))
+		return nil, errors.New("max devices is 0")
 	}
 
 	pool := &DevicePool{
-		ctx:         context.Background(),
-		usedSlots:   bitset.New(maxDevices),
-		slots:       make(chan DeviceSlot, maxSlotsReady),
-		slotCounter: counter,
+		done:      make(chan struct{}),
+		usedSlots: bitset.New(maxDevices),
+		slots:     make(chan DeviceSlot, int(math.Min(maxSlotsReady, float64(maxDevices)))),
 	}
 
-	go func() {
-		err = pool.Populate()
-		if err != nil {
-			log.Fatalf("failed during populating device pool: %v\n", err)
-		}
-	}()
-
-	Pool = pool
+	return pool, nil
 }
+
+var ErrNBDModuleNotLoaded = errors.New("NBD module not loaded")
 
 func getMaxDevices() (uint, error) {
 	data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")
 
 	if errors.Is(err, os.ErrNotExist) {
-		return 0, nil
+		return 0, ErrNBDModuleNotLoaded
 	}
 
 	if err != nil {
@@ -110,23 +121,37 @@ func getMaxDevices() (uint, error) {
 	return uint(maxDevices), nil
 }
 
-func (d *DevicePool) Populate() error {
+func (d *DevicePool) Populate(ctx context.Context) {
 	defer close(d.slots)
 
+	failedCount := 0
 	for {
-		select {
-		case <-d.ctx.Done():
-			return d.ctx.Err()
-		default:
-			device, err := d.getFreeDeviceSlot()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "[nbd pool]: failed to create network: %v\n", err)
-
-				continue
+		device, err := d.getFreeDeviceSlot()
+		if err != nil {
+			if failedCount%100 == 0 {
+				zap.L().Error("[nbd pool]: failed to create network",
+					zap.Error(err),
+					zap.Int("failed_count", failedCount),
+				)
 			}
 
-			d.slotCounter.Add(d.ctx, 1)
-			d.slots <- *device
+			failedCount++
+			time.Sleep(waitOnNBDError)
+
+			continue
+		}
+		failedCount = 0
+
+		slotCounter.Add(ctx, 1)
+
+		// Use select to avoid panic if context is canceled before writing
+		select {
+		case <-ctx.Done():
+			return
+		case <-d.done:
+			return
+		case d.slots <- *device:
+			// sent successfully
 		}
 	}
 }
@@ -201,7 +226,7 @@ func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 		if !ok {
 			cleanup()
 
-			return nil, ErrNoFreeSlots{}
+			return nil, NoFreeSlotsError{}
 		}
 
 		free, err := d.isDeviceFree(slot)
@@ -225,56 +250,129 @@ func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 	}
 }
 
-// Get device slot if there is one available.
+// GetDevice returns a slot if there is one available.
 func (d *DevicePool) GetDevice(ctx context.Context) (DeviceSlot, error) {
-	for {
-		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		default:
-		}
-
-		slot := <-d.slots
-		d.slotCounter.Add(d.ctx, -1)
+	select {
+	case <-d.done:
+		return 0, ErrClosed
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	case slot := <-d.slots:
+		acquired.Add(ctx, 1)
+		slotCounter.Add(ctx, -1)
 
 		return slot, nil
 	}
 }
 
-// ReleaseDevice will return an error if the device is not free and not release the slot — you can retry.
-func (d *DevicePool) ReleaseDevice(idx DeviceSlot) error {
+func (d *DevicePool) release(ctx context.Context, idx DeviceSlot) error {
 	free, err := d.isDeviceFree(idx)
 	if err != nil {
 		return fmt.Errorf("failed to check if device is free: %w", err)
 	}
 
 	if !free {
-		return ErrDeviceInUse{}
+		return DeviceInUseError{}
 	}
 
 	d.mu.Lock()
 	d.usedSlots.Clear(uint(idx))
 	d.mu.Unlock()
 
+	released.Add(ctx, 1)
+
 	return nil
+}
+
+// ReleaseDevice will return an error if the device is not free and not release the slot — you can retry.
+func (d *DevicePool) ReleaseDevice(ctx context.Context, idx DeviceSlot, opts ...ReleaseOption) error {
+	opt := releaseOptions{}
+	for _, o := range opts {
+		o(&opt)
+	}
+
+	if opt.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opt.timeout)
+		defer cancel()
+	}
+
+	attempt := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		attempt++
+
+		err := d.release(ctx, idx)
+		if err == nil {
+			return nil
+		}
+
+		if !opt.infiniteRetry {
+			return err
+		}
+
+		if attempt%100 == 0 {
+			zap.L().Error("error releasing device", zap.Int("attempt", attempt), zap.Error(err))
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func GetDevicePath(slot DeviceSlot) DevicePath {
 	return fmt.Sprintf("/dev/nbd%d", slot)
 }
 
-var reSlot = regexp.MustCompile(`^/dev/nbd(\d+)$`)
+func (d *DevicePool) Close(ctx context.Context) error {
+	zap.L().Info("Closing device pool", zap.Uint("used_slots", d.usedSlots.Count()))
 
-func GetDeviceSlot(path DevicePath) (DeviceSlot, error) {
-	matches := reSlot.FindStringSubmatch(path)
-	if len(matches) != 2 {
-		return 0, fmt.Errorf("invalid nbd path: %s", path)
+	d.doneOnce.Do(func() {
+		close(d.done)
+	})
+
+	d.mu.Lock()
+
+	var slotsToRelease []DeviceSlot
+	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {
+		slotsToRelease = append(slotsToRelease, DeviceSlot(slotIdx))
 	}
 
-	slot, err := strconv.ParseUint(matches[1], 10, 0)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse slot from path: %w", err)
+	d.mu.Unlock()
+
+	var errs error
+	for _, slot := range slotsToRelease {
+		err := d.ReleaseDevice(ctx, slot,
+			WithInfiniteRetry(),
+			WithTimeout(devicePoolCloseReleaseTimeout),
+		)
+		if err != nil {
+			errs = errors.Join(errs, fmt.Errorf("failed to release device %d: %w", slot, err))
+		}
 	}
 
-	return DeviceSlot(slot), nil
+	return errs
+}
+
+type releaseOptions struct {
+	timeout       time.Duration
+	infiniteRetry bool
+}
+
+type ReleaseOption func(*releaseOptions)
+
+func WithTimeout(timeout time.Duration) ReleaseOption {
+	return func(opts *releaseOptions) {
+		opts.timeout = timeout
+	}
+}
+
+func WithInfiniteRetry() ReleaseOption {
+	return func(opts *releaseOptions) {
+		opts.infiniteRetry = true
+	}
 }

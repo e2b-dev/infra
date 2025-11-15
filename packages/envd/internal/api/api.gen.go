@@ -4,12 +4,18 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+const (
+	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
 )
 
 // Defines values for EntryInfoType.
@@ -44,8 +50,38 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// Metrics Resource usage metrics
+type Metrics struct {
+	// CpuCount Number of CPU cores
+	CpuCount *int `json:"cpu_count,omitempty"`
+
+	// CpuUsedPct CPU usage percentage
+	CpuUsedPct *float32 `json:"cpu_used_pct,omitempty"`
+
+	// DiskTotal Total disk space in bytes
+	DiskTotal *int `json:"disk_total,omitempty"`
+
+	// DiskUsed Used disk space in bytes
+	DiskUsed *int `json:"disk_used,omitempty"`
+
+	// MemTotal Total virtual memory in bytes
+	MemTotal *int `json:"mem_total,omitempty"`
+
+	// MemUsed Used virtual memory in bytes
+	MemUsed *int `json:"mem_used,omitempty"`
+
+	// Ts Unix timestamp in UTC for current sandbox time
+	Ts *int64 `json:"ts,omitempty"`
+}
+
 // FilePath defines model for FilePath.
 type FilePath = string
+
+// Signature defines model for Signature.
+type Signature = string
+
+// SignatureExpiration defines model for SignatureExpiration.
+type SignatureExpiration = int
 
 // User defines model for User.
 type User = string
@@ -74,7 +110,13 @@ type GetFilesParams struct {
 	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
 	// Username User used for setting the owner, or resolving relative paths.
-	Username User `form:"username" json:"username"`
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
+
+	// Signature Signature used for file access permission verification.
+	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
+
+	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
 // PostFilesMultipartBody defines parameters for PostFiles.
@@ -88,13 +130,34 @@ type PostFilesParams struct {
 	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
 	// Username User used for setting the owner, or resolving relative paths.
-	Username User `form:"username" json:"username"`
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
+
+	// Signature Signature used for file access permission verification.
+	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
+
+	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
+	// AccessToken Access token for secure access to envd service
+	AccessToken *string `json:"accessToken,omitempty"`
+
+	// DefaultUser The default user to use for operations
+	DefaultUser *string `json:"defaultUser,omitempty"`
+
+	// DefaultWorkdir The default working directory to use for operations
+	DefaultWorkdir *string `json:"defaultWorkdir,omitempty"`
+
 	// EnvVars Environment variables to set
 	EnvVars *EnvVars `json:"envVars,omitempty"`
+
+	// HyperloopIP IP address of the hyperloop server to connect to
+	HyperloopIP *string `json:"hyperloopIP,omitempty"`
+
+	// Timestamp The current timestamp in RFC3339 format
+	Timestamp *time.Time `json:"timestamp,omitempty"`
 }
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
@@ -117,7 +180,7 @@ type ServerInterface interface {
 	// Check the health of the service
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
-	// Set env vars, ensure the time and metadata is synced with the host
+	// Set initial vars, ensure the time and metadata is synced with the host
 	// (POST /init)
 	PostInit(w http.ResponseWriter, r *http.Request)
 	// Get the stats of the service
@@ -153,7 +216,7 @@ func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Set env vars, ensure the time and metadata is synced with the host
+// Set initial vars, ensure the time and metadata is synced with the host
 // (POST /init)
 func (_ Unimplemented) PostInit(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -177,6 +240,12 @@ type MiddlewareFunc func(http.Handler) http.Handler
 // GetEnvs operation middleware
 func (siw *ServerInterfaceWrapper) GetEnvs(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetEnvs(w, r)
 	}))
@@ -193,6 +262,12 @@ func (siw *ServerInterfaceWrapper) GetFiles(w http.ResponseWriter, r *http.Reque
 
 	var err error
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetFilesParams
 
@@ -204,18 +279,27 @@ func (siw *ServerInterfaceWrapper) GetFiles(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// ------------- Required query parameter "username" -------------
+	// ------------- Optional query parameter "username" -------------
 
-	if paramValue := r.URL.Query().Get("username"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "username"})
+	err = runtime.BindQueryParameter("form", true, false, "username", r.URL.Query(), &params.Username)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
 		return
 	}
 
-	err = runtime.BindQueryParameter("form", true, true, "username", r.URL.Query(), &params.Username)
+	// ------------- Optional query parameter "signature" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "signature", r.URL.Query(), &params.Signature)
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "signature_expiration" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "signature_expiration", r.URL.Query(), &params.SignatureExpiration)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature_expiration", Err: err})
 		return
 	}
 
@@ -235,6 +319,12 @@ func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Requ
 
 	var err error
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params PostFilesParams
 
@@ -246,18 +336,27 @@ func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// ------------- Required query parameter "username" -------------
+	// ------------- Optional query parameter "username" -------------
 
-	if paramValue := r.URL.Query().Get("username"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "username"})
+	err = runtime.BindQueryParameter("form", true, false, "username", r.URL.Query(), &params.Username)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
 		return
 	}
 
-	err = runtime.BindQueryParameter("form", true, true, "username", r.URL.Query(), &params.Username)
+	// ------------- Optional query parameter "signature" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "signature", r.URL.Query(), &params.Signature)
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "signature_expiration" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "signature_expiration", r.URL.Query(), &params.SignatureExpiration)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature_expiration", Err: err})
 		return
 	}
 
@@ -289,6 +388,12 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 // PostInit operation middleware
 func (siw *ServerInterfaceWrapper) PostInit(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostInit(w, r)
 	}))
@@ -302,6 +407,12 @@ func (siw *ServerInterfaceWrapper) PostInit(w http.ResponseWriter, r *http.Reque
 
 // GetMetrics operation middleware
 func (siw *ServerInterfaceWrapper) GetMetrics(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMetrics(w, r)

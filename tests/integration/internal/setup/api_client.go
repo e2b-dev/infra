@@ -1,0 +1,95 @@
+package setup
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"testing"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/tests"
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
+)
+
+func GetAPIClient() *api.ClientWithResponses {
+	hc := http.Client{
+		Timeout: apiTimeout,
+	}
+
+	c, err := api.NewClientWithResponses(APIServerURL, api.WithHTTPClient(&hc))
+	if err != nil {
+		panic(err)
+	}
+
+	return c
+}
+
+func WithAPIKey(apiKey ...string) func(ctx context.Context, req *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
+		apiKey_ := APIKey
+		if len(apiKey) > 0 {
+			apiKey_ = apiKey[0]
+		}
+		req.Header.Set("X-API-Key", apiKey_)
+
+		return nil
+	}
+}
+
+func WithTestsUserAgent() api.RequestEditorFn {
+	return WithUserAgent("e2b-tests/infra")
+}
+
+func WithUserAgent(userAgent string) api.RequestEditorFn {
+	return func(_ context.Context, req *http.Request) error {
+		req.Header.Set("User-Agent", userAgent)
+
+		return nil
+	}
+}
+
+func WithAccessToken() func(ctx context.Context, req *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", AccessToken))
+
+		return nil
+	}
+}
+
+func WithSupabaseToken(t *testing.T, userID ...string) func(ctx context.Context, req *http.Request) error {
+	t.Helper()
+
+	if SupabaseJWTSecret == "" {
+		t.Skip("Supabase JWT secret is not set")
+	}
+
+	userID_ := UserID
+	if len(userID) > 0 {
+		userID_ = userID[0]
+	}
+
+	token := tests.SignTestToken(t, SupabaseJWTSecret, userID_)
+
+	return func(_ context.Context, req *http.Request) error {
+		req.Header.Set("X-Supabase-Token", token)
+
+		return nil
+	}
+}
+
+func WithSupabaseTeam(t *testing.T, teamID ...string) func(ctx context.Context, req *http.Request) error {
+	t.Helper()
+
+	teamID_ := TeamID
+	if len(teamID) > 0 {
+		teamID_ = teamID[0]
+	}
+	if teamID_ == "" {
+		t.Skip("Supabase team ID is not set")
+	}
+
+	return func(_ context.Context, req *http.Request) error {
+		req.Header.Set("X-Supabase-Team", teamID_)
+
+		return nil
+	}
+}

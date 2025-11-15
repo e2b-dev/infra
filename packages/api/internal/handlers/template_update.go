@@ -6,15 +6,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/db/dberrors"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // PatchTemplatesTemplateID serves to update a template
@@ -28,97 +29,82 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		return
 	}
 
-	cleanedAliasOrEnvID, err := id.CleanEnvID(aliasOrTemplateID)
+	cleanedAliasOrTemplateID, err := id.CleanTemplateID(aliasOrTemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid env ID: %s", aliasOrTemplateID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID))
 
-		err = fmt.Errorf("invalid env ID: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "invalid template ID", err)
 
 		return
 	}
 
-	// Prepare info for updating env
-	userID, teams, err := a.GetUserAndTeams(c)
+	template, err := a.sqlcDB.GetTemplateByIdOrAlias(ctx, cleanedAliasOrTemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
+		if dberrors.IsNotFoundError(err) {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", aliasOrTemplateID))
+			telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(aliasOrTemplateID))
 
-		err = fmt.Errorf("error when getting default team: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+			return
+		}
 
-		return
-	}
-
-	template, err := a.db.
-		Client.
-		Env.
-		Query().
-		Where(
-			env.Or(
-				env.HasEnvAliasesWith(envalias.ID(aliasOrTemplateID)),
-				env.ID(aliasOrTemplateID),
-			),
-		).Only(ctx)
-
-	notFound := models.IsNotFound(err)
-	if notFound {
-		telemetry.ReportError(ctx, fmt.Errorf("template '%s' not found", aliasOrTemplateID))
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("the sandbox template '%s' wasn't found", cleanedAliasOrEnvID))
-
-		return
-	} else if err != nil {
-		telemetry.ReportError(ctx, fmt.Errorf("failed to get env '%s': %w", aliasOrTemplateID, err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting env")
+		telemetry.ReportError(ctx, "error when getting template", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting template")
 
 		return
 	}
 
-	var team *models.Team
-	for _, t := range teams {
-		if t.ID == template.TeamID {
-			team = t
-			break
+	team, apiErr := a.GetTeam(ctx, c, sharedUtils.ToPtr(template.TeamID.String()))
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
+
+		return
+	}
+
+	if template.TeamID != team.ID {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", aliasOrTemplateID))
+		telemetry.ReportError(ctx, "template not found or user has no access", nil, telemetry.WithTemplateID(template.ID))
+
+		return
+	}
+
+	// Update template
+	if body.Public != nil {
+		_, err := a.sqlcDB.UpdateTemplate(ctx, queries.UpdateTemplateParams{
+			TemplateIDOrAlias: cleanedAliasOrTemplateID,
+			TeamID:            team.ID,
+			Public:            *body.Public,
+		})
+		if err != nil {
+			if dberrors.IsNotFoundError(err) {
+				a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
+				telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(template.ID))
+
+				return
+			}
+
+			telemetry.ReportError(ctx, "error when updating template", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error updating template")
+
+			return
 		}
 	}
 
-	if team == nil {
-		errMsg := fmt.Errorf("user '%s' doesn't have access to the sandbox template '%s'", userID, cleanedAliasOrEnvID)
-		telemetry.ReportError(ctx, errMsg)
-
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) don't have access to sandbox template '%s'", userID, cleanedAliasOrEnvID))
-
-		return
-	}
-
-	// Update env
-	dbErr := a.db.UpdateEnv(ctx, template.ID, db.UpdateEnvInput{
-		Public: *body.Public,
-	})
-
-	if dbErr != nil {
-		errMsg := fmt.Errorf("error when updating env: %w", dbErr)
-		telemetry.ReportError(ctx, errMsg)
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
-		return
-	}
-
 	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", userID.String()),
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
-		attribute.String("env.id", template.ID),
+		telemetry.WithTemplateID(template.ID),
 	)
 
 	a.templateCache.Invalidate(template.ID)
 
-	telemetry.ReportEvent(ctx, "updated env")
+	telemetry.ReportEvent(ctx, "updated template")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "updated environment", properties.Set("environment", template.ID))
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "updated environment", properties.Set("environment", template.ID))
 
-	a.logger.Infof("Updated env '%s' from team '%s'", template.ID, team.ID)
+	zap.L().Info("Updated template", logger.WithTemplateID(template.ID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }

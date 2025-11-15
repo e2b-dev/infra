@@ -92,6 +92,11 @@ func Email(v string) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldEmail, v))
 }
 
+// ClusterID applies equality check predicate on the "cluster_id" field. It's identical to ClusterIDEQ.
+func ClusterID(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldClusterID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldCreatedAt, v))
@@ -442,6 +447,56 @@ func EmailContainsFold(v string) predicate.Team {
 	return predicate.Team(sql.FieldContainsFold(FieldEmail, v))
 }
 
+// ClusterIDEQ applies the EQ predicate on the "cluster_id" field.
+func ClusterIDEQ(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldClusterID, v))
+}
+
+// ClusterIDNEQ applies the NEQ predicate on the "cluster_id" field.
+func ClusterIDNEQ(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldNEQ(FieldClusterID, v))
+}
+
+// ClusterIDIn applies the In predicate on the "cluster_id" field.
+func ClusterIDIn(vs ...uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldIn(FieldClusterID, vs...))
+}
+
+// ClusterIDNotIn applies the NotIn predicate on the "cluster_id" field.
+func ClusterIDNotIn(vs ...uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldNotIn(FieldClusterID, vs...))
+}
+
+// ClusterIDGT applies the GT predicate on the "cluster_id" field.
+func ClusterIDGT(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldGT(FieldClusterID, v))
+}
+
+// ClusterIDGTE applies the GTE predicate on the "cluster_id" field.
+func ClusterIDGTE(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldGTE(FieldClusterID, v))
+}
+
+// ClusterIDLT applies the LT predicate on the "cluster_id" field.
+func ClusterIDLT(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldLT(FieldClusterID, v))
+}
+
+// ClusterIDLTE applies the LTE predicate on the "cluster_id" field.
+func ClusterIDLTE(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldLTE(FieldClusterID, v))
+}
+
+// ClusterIDIsNil applies the IsNil predicate on the "cluster_id" field.
+func ClusterIDIsNil() predicate.Team {
+	return predicate.Team(sql.FieldIsNull(FieldClusterID))
+}
+
+// ClusterIDNotNil applies the NotNil predicate on the "cluster_id" field.
+func ClusterIDNotNil() predicate.Team {
+	return predicate.Team(sql.FieldNotNull(FieldClusterID))
+}
+
 // HasUsers applies the HasEdge predicate on the "users" edge.
 func HasUsers() predicate.Team {
 	return predicate.Team(func(s *sql.Selector) {
@@ -463,64 +518,6 @@ func HasUsersWith(preds ...predicate.User) predicate.Team {
 		schemaConfig := internal.SchemaConfigFromContext(s.Context())
 		step.To.Schema = schemaConfig.User
 		step.Edge.Schema = schemaConfig.UsersTeams
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
-// HasTeamAPIKeys applies the HasEdge predicate on the "team_api_keys" edge.
-func HasTeamAPIKeys() predicate.Team {
-	return predicate.Team(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, TeamAPIKeysTable, TeamAPIKeysColumn),
-		)
-		schemaConfig := internal.SchemaConfigFromContext(s.Context())
-		step.To.Schema = schemaConfig.TeamAPIKey
-		step.Edge.Schema = schemaConfig.TeamAPIKey
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasTeamAPIKeysWith applies the HasEdge predicate on the "team_api_keys" edge with a given conditions (other predicates).
-func HasTeamAPIKeysWith(preds ...predicate.TeamAPIKey) predicate.Team {
-	return predicate.Team(func(s *sql.Selector) {
-		step := newTeamAPIKeysStep()
-		schemaConfig := internal.SchemaConfigFromContext(s.Context())
-		step.To.Schema = schemaConfig.TeamAPIKey
-		step.Edge.Schema = schemaConfig.TeamAPIKey
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
-// HasTeamTier applies the HasEdge predicate on the "team_tier" edge.
-func HasTeamTier() predicate.Team {
-	return predicate.Team(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, TeamTierTable, TeamTierColumn),
-		)
-		schemaConfig := internal.SchemaConfigFromContext(s.Context())
-		step.To.Schema = schemaConfig.Tier
-		step.Edge.Schema = schemaConfig.Team
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasTeamTierWith applies the HasEdge predicate on the "team_tier" edge with a given conditions (other predicates).
-func HasTeamTierWith(preds ...predicate.Tier) predicate.Team {
-	return predicate.Team(func(s *sql.Selector) {
-		step := newTeamTierStep()
-		schemaConfig := internal.SchemaConfigFromContext(s.Context())
-		step.To.Schema = schemaConfig.Tier
-		step.Edge.Schema = schemaConfig.Team
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

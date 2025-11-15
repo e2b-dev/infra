@@ -1,0 +1,102 @@
+data_dir = "alloc/data/vector/"
+
+[api]
+enabled = true
+address = "0.0.0.0:44313"
+
+[sources.infra]
+type = "http_server"
+address = "0.0.0.0:30006"
+encoding = "json"
+path_key = "_path"
+
+[transforms.add_fields]
+type = "remap"
+inputs = ["infra"]
+source = """
+del(."_path")
+
+ts = .timestamp
+
+. = parse_json!(.message)
+
+.timestamp = parse_timestamp!(.timestamp, "%+") || ts || now()
+
+if !exists(.service) {
+  .service = "envd"
+}
+if !exists(.category) {
+  .category = "default"
+}
+"""
+
+[transforms.internal_routing]
+type = "route"
+inputs = [ "add_fields" ]
+
+[transforms.internal_routing.route]
+internal = '.internal == true'
+
+[transforms.remove_internal]
+type = "remap"
+inputs = [ "internal_routing._unmatched" ]
+source = '''
+del(.internal)
+'''
+[transforms.metrics_routing]
+type = "route"
+inputs = [ "add_fields" ]
+
+[transforms.metrics_routing.route]
+metrics = '.category == "metrics"'
+
+[sinks.local_loki_logs]
+type = "loki"
+inputs = [ "remove_internal" ]
+endpoint = "http://loki.service.consul:3100"
+encoding.codec = "json"
+
+[sinks.local_loki_logs.labels]
+source = "logs-collector"
+service = "{{ service }}"
+teamID = "{{ teamID }}"
+envID = "{{ envID }}"
+sandboxID = "{{ sandboxID }}"
+category = "{{ category }}"
+
+[sinks.grafana]
+type = "loki"
+inputs = [ "metrics_routing._unmatched" ]
+endpoint = "https://logs-prod-021.grafana.net"
+encoding.codec = "json"
+auth.strategy = "basic"
+auth.user = "1135928"
+auth.password = "glc_xxx"
+
+[sinks.grafana.labels]
+source = "logs-collector"
+
+# Here we begin configuring our test suite
+[[tests]]
+name = "Test add_fields transform"
+
+# The inputs for the test
+[[tests.inputs]]
+insert_at = "add_fields" # The transform into which the testing event is inserted
+value = "{\"level\":\"info\",\"timestamp\":\"2025-02-27T00:12:26Z\",\"message\":\"Starting orchestrator server\",\"internal\":true,\"pid\":49648,\"service\":\"orchestrator\",\"port\":5008}"
+
+# The expected outputs of the test
+[[tests.outputs]]
+extract_from = "add_fields" # The transform from which the resulting event is extracted
+
+# The declaration of what we expect
+[[tests.outputs.conditions]]
+type = "vrl"
+source = '''
+assert!(exists(.timestamp))
+assert!(is_timestamp(.timestamp))
+assert_eq!(.message, "Starting orchestrator server")
+assert_eq!(.category, "default")
+assert_eq!(.service, "orchestrator")
+assert_eq!(.level, "info")
+'''

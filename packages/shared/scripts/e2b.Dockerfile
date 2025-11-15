@@ -1,1 +1,0 @@
-FROM e2bdev/base:latest

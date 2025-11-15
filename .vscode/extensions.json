@@ -11,6 +11,7 @@
     "christian-kohler.path-intellisense",
     "googlecloudtools.cloudcode",
     "ms-azuretools.vscode-docker",
-    "timonwong.shellcheck"
+    "timonwong.shellcheck",
+    "hverlin.mise-vscode"
   ]
 }

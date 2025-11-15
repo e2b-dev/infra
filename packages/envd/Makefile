@@ -2,13 +2,11 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
 BUILD := $(shell git rev-parse --short HEAD)
-LDFLAGS=-ldflags "-X=main.commit=$(BUILD)"
+LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
 
 .PHONY: init
 init:
 	brew install protobuf
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
 
 upload:
 	./upload.sh $(GCP_PROJECT_ID)
@@ -20,9 +18,11 @@ build-debug:
 	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
 
 start-docker:
-	DOCKER_BUILDKIT=1 docker build -t envd-debug . -f debug.Dockerfile
+	make build
+	DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -t envd-debug . -f debug.Dockerfile
 	docker run \
 	--name envd \
+	--platform linux/amd64 \
 	-p 49983:49983 \
 	-p 2345:2345 \
 	-p 9999:9999 \
@@ -30,7 +30,7 @@ start-docker:
 	-p 8001:8001 \
 	--rm \
 	-i envd-debug \
-	/usr/bin/envd -debug
+	/usr/bin/envd -isnotfc
 
 build-and-upload:
 	make build
@@ -39,22 +39,9 @@ build-and-upload:
 .PHONY: generate
 generate:
 	go generate ./...
-	@if ! command -v buf >/dev/null 2>&1; then \
-		echo "buf is not installed. Do you want to install it?  (Y/n): "; \
-		read choice; \
-		if [ "$$choice" = "Y" ]; then \
-			go install github.com/bufbuild/buf/cmd/buf@latest && \
-			go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
-			go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest; \
-		else \
-			exit 1; \
-		fi; \
-	fi
-	cd spec && buf generate
+	docker build -t proto-gen -f generate.Dockerfile .
+	docker run --rm -v .:/workspace -v ./../shared/pkg/grpc:/shared/pkg/grpc proto-gen
 
-.PHONY: init-generate
-init-generate:
-	go install github.com/bufbuild/buf/cmd/buf@latest
-	go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-	go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+.PHONY: test
+test:
+	go test -race -v ./...

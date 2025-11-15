@@ -14,29 +14,51 @@ paths:
       responses:
         "204":
           description: The service is healthy
-          
+
   /metrics:
     get:
       summary: Get the stats of the service
+      security:
+        - AccessTokenAuth: []
+        - {}
       responses:
         "200":
           description: The resource usage metrics of the service
           content:
             application/json:
-                schema:
-                  $ref: "#/components/schemas/Metrics"
+              schema:
+                $ref: "#/components/schemas/Metrics"
 
   /init:
     post:
-      summary: Set env vars, ensure the time and metadata is synced with the host
+      summary: Set initial vars, ensure the time and metadata is synced with the host
+      security:
+        - AccessTokenAuth: []
+        - {}
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
+                hyperloopIP:
+                  type: string
+                  description: IP address of the hyperloop server to connect to
                 envVars:
                   $ref: "#/components/schemas/EnvVars"
+                accessToken:
+                  type: string
+                  description: Access token for secure access to envd service
+                timestamp:
+                  type: string
+                  format: date-time
+                  description: The current timestamp in RFC3339 format
+                defaultUser:
+                  type: string
+                  description: The default user to use for operations
+                defaultWorkdir:
+                  type: string
+                  description: The default working directory to use for operations
       responses:
         "204":
           description: Env vars set, the time and metadata is synced with the host
@@ -44,6 +66,9 @@ paths:
   /envs:
     get:
       summary: Get the environment variables
+      security:
+        - AccessTokenAuth: []
+        - {}
       responses:
         "200":
           description: Environment variables
@@ -56,9 +81,14 @@ paths:
     get:
       summary: Download a file
       tags: [files]
+      security:
+        - AccessTokenAuth: []
+        - {}
       parameters:
         - $ref: "#/components/parameters/FilePath"
         - $ref: "#/components/parameters/User"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/SignatureExpiration"
       responses:
         "200":
           $ref: "#/components/responses/DownloadSuccess"
@@ -73,9 +103,14 @@ paths:
     post:
       summary: Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
       tags: [files]
+      security:
+        - AccessTokenAuth: []
+        - {}
       parameters:
         - $ref: "#/components/parameters/FilePath"
         - $ref: "#/components/parameters/User"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/SignatureExpiration"
       requestBody:
         $ref: "#/components/requestBodies/File"
       responses:
@@ -91,6 +126,12 @@ paths:
           $ref: "#/components/responses/NotEnoughDiskSpace"
 
 components:
+  securitySchemes:
+    AccessTokenAuth:
+      type: apiKey
+      scheme: header
+      name: X-Access-Token
+
   parameters:
     FilePath:
       name: path
@@ -102,11 +143,24 @@ components:
     User:
       name: username
       in: query
-      required: true
+      required: false
       description: User used for setting the owner, or resolving relative paths.
       schema:
         type: string
-        pattern: "^(root|user)$"
+    Signature:
+      name: signature
+      in: query
+      required: false
+      description: Signature used for file access permission verification.
+      schema:
+        type: string
+    SignatureExpiration:
+      name: signature_expiration
+      in: query
+      required: false
+      description: Signature expiration used for defining the expiration time of the signature.
+      schema:
+        type: integer
 
   requestBodies:
     File:
@@ -197,20 +251,36 @@ components:
           type: string
           description: Type of the file
           enum:
-              - file
+            - file
     EnvVars:
       type: object
       description: Environment variables to set
       additionalProperties:
-          type: string
+        type: string
     Metrics:
       type: object
       description: Resource usage metrics
       properties:
+        ts:
+          type: integer
+          format: int64
+          description: Unix timestamp in UTC for current sandbox time
+        cpu_count:
+          type: integer
+          description: Number of CPU cores
         cpu_used_pct:
           type: number
           format: float
           description: CPU usage percentage
-        mem_bytes:
+        mem_total:
           type: integer
-          description: Total virtual memory usage in bytes
+          description: Total virtual memory in bytes
+        mem_used:
+          type: integer
+          description: Used virtual memory in bytes
+        disk_used:
+          type: integer
+          description: Used disk space in bytes
+        disk_total:
+          type: integer
+          description: Total disk space in bytes

@@ -9,34 +9,51 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/host"
 )
 
+const ExporterTimeout = 10 * time.Second
+
 type HTTPExporter struct {
-	ctx      context.Context
 	client   http.Client
-	triggers chan struct{}
 	logs     [][]byte
-	sync.Mutex
-	debug bool
+	isNotFC  bool
+	mmdsOpts *host.MMDSOpts
+
+	// Concurrency coordination
+	triggers  chan struct{}
+	logLock   sync.RWMutex
+	mmdsLock  sync.RWMutex
+	startOnce sync.Once
 }
 
-func NewHTTPLogsExporter(ctx context.Context, debug bool) *HTTPExporter {
+func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, mmdsChan <-chan *host.MMDSOpts) *HTTPExporter {
 	exporter := &HTTPExporter{
 		client: http.Client{
-			Timeout: 2 * time.Second,
+			Timeout: ExporterTimeout,
 		},
-		triggers: make(chan struct{}, 1),
-		debug:    debug,
-		ctx:      ctx,
+		triggers:  make(chan struct{}, 1),
+		isNotFC:   isNotFC,
+		startOnce: sync.Once{},
+		mmdsOpts: &host.MMDSOpts{
+			SandboxID:            "unknown",
+			TemplateID:           "unknown",
+			LogsCollectorAddress: "",
+		},
 	}
 
-	go exporter.start()
+	go exporter.listenForMMDSOptsAndStart(ctx, mmdsChan)
 
 	return exporter
 }
 
-func (w *HTTPExporter) sendInstanceLogs(logs []byte, address string) error {
-	request, err := http.NewRequestWithContext(w.ctx, http.MethodPost, address, bytes.NewBuffer(logs))
+func (w *HTTPExporter) sendInstanceLogs(ctx context.Context, logs []byte, address string) error {
+	if address == "" {
+		return nil
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, address, bytes.NewBuffer(logs))
 	if err != nil {
 		return err
 	}
@@ -56,9 +73,28 @@ func printLog(logs []byte) {
 	fmt.Fprintf(os.Stdout, "%v", string(logs))
 }
 
-func (w *HTTPExporter) start() {
-	w.waitForMMDS(w.ctx)
+func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <-chan *host.MMDSOpts) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case mmdsOpts, ok := <-mmdsChan:
+			if !ok {
+				return
+			}
 
+			w.mmdsLock.Lock()
+			w.mmdsOpts.Update(mmdsOpts.SandboxID, mmdsOpts.TemplateID, mmdsOpts.LogsCollectorAddress)
+			w.mmdsLock.Unlock()
+
+			w.startOnce.Do(func() {
+				go w.start(ctx)
+			})
+		}
+	}
+}
+
+func (w *HTTPExporter) start(ctx context.Context) {
 	for range w.triggers {
 		logs := w.getAllLogs()
 
@@ -66,7 +102,7 @@ func (w *HTTPExporter) start() {
 			continue
 		}
 
-		if w.debug {
+		if w.isNotFC {
 			for _, log := range logs {
 				fmt.Fprintf(os.Stdout, "%v", string(log))
 			}
@@ -74,41 +110,21 @@ func (w *HTTPExporter) start() {
 			continue
 		}
 
-		token, err := w.getMMDSToken(w.ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting mmds token: %v\n", err)
-
-			for _, log := range logs {
-				printLog(log)
-			}
-
-			continue
-		}
-
-		mmdsOpts, err := w.getMMDSOpts(w.ctx, token)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting instance logging options from mmds (token %s): %v\n", token, err)
-
-			for _, log := range logs {
-				printLog(log)
-			}
-
-			continue
-		}
-
 		for _, logLine := range logs {
-			logsWithOpts, jsonErr := mmdsOpts.addOptsToJSON(logLine)
-			if jsonErr != nil {
-				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", mmdsOpts, logLine, jsonErr)
+			w.mmdsLock.RLock()
+			logLineWithOpts, err := w.mmdsOpts.AddOptsToJSON(logLine)
+			w.mmdsLock.RUnlock()
+			if err != nil {
+				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", w.mmdsOpts, logLine, err)
 
 				printLog(logLine)
 
 				continue
 			}
 
-			err = w.sendInstanceLogs(logsWithOpts, mmdsOpts.Address)
+			err = w.sendInstanceLogs(ctx, logLineWithOpts, w.mmdsOpts.LogsCollectorAddress)
 			if err != nil {
-				log.Printf(fmt.Sprintf("error sending instance logs: %+v", err))
+				log.Printf("error sending instance logs: %+v", err)
 
 				printLog(logLine)
 
@@ -137,8 +153,8 @@ func (w *HTTPExporter) Write(logs []byte) (int, error) {
 }
 
 func (w *HTTPExporter) getAllLogs() [][]byte {
-	w.Lock()
-	defer w.Unlock()
+	w.logLock.Lock()
+	defer w.logLock.Unlock()
 
 	logs := w.logs
 	w.logs = nil
@@ -147,8 +163,8 @@ func (w *HTTPExporter) getAllLogs() [][]byte {
 }
 
 func (w *HTTPExporter) addLogs(logs []byte) {
-	w.Lock()
-	defer w.Unlock()
+	w.logLock.Lock()
+	defer w.logLock.Unlock()
 
 	w.logs = append(w.logs, logs)
 

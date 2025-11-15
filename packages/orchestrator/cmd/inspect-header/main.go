@@ -8,7 +8,6 @@ import (
 	"unsafe"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -18,36 +17,51 @@ func main() {
 
 	flag.Parse()
 
-	template := storage.NewTemplateFiles(
-		"",
-		*buildId,
-		"",
-		"",
-		false,
-	)
+	template := storage.TemplateFiles{
+		BuildID: *buildId,
+	}
 
 	var storagePath string
+	var objectType storage.ObjectType
 
-	if *kind == "memfile" {
+	switch *kind {
+	case "memfile":
 		storagePath = template.StorageMemfileHeaderPath()
-	} else if *kind == "rootfs" {
+		objectType = storage.MemfileHeaderObjectType
+	case "rootfs":
 		storagePath = template.StorageRootfsHeaderPath()
-	} else {
+		objectType = storage.RootFSHeaderObjectType
+	default:
 		log.Fatalf("invalid kind: %s", *kind)
+
+		return
 	}
 
 	ctx := context.Background()
+	storage, err := storage.GetTemplateStorageProvider(ctx, nil)
+	if err != nil {
+		log.Fatalf("failed to get storage provider: %s", err)
+	}
 
-	obj := gcs.NewObject(ctx, gcs.TemplateBucket, storagePath)
+	obj, err := storage.OpenObject(ctx, storagePath, objectType)
+	if err != nil {
+		log.Fatalf("failed to open object: %s", err)
+	}
 
-	h, err := header.Deserialize(obj)
+	h, err := header.Deserialize(ctx, obj)
 	if err != nil {
 		log.Fatalf("failed to deserialize header: %s", err)
 	}
 
+	// Validate mappings
+	err = header.ValidateMappings(h.Mapping, h.Metadata.Size, h.Metadata.BlockSize)
+	if err != nil {
+		fmt.Printf("\n⚠️  WARNING: Mapping validation failed!\n%s\n\n", err)
+	}
+
 	fmt.Printf("\nMETADATA\n")
 	fmt.Printf("========\n")
-	fmt.Printf("Storage path       %s/%s\n", gcs.TemplateBucket.BucketName(), storagePath)
+	fmt.Printf("Storage            %s/%s\n", storage.GetDetails(), storagePath)
 	fmt.Printf("Version            %d\n", h.Metadata.Version)
 	fmt.Printf("Generation         %d\n", h.Metadata.Generation)
 	fmt.Printf("Build ID           %s\n", h.Metadata.BuildId)

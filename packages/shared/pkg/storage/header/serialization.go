@@ -2,12 +2,18 @@ package header
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+const metadataVersion = 3
 
 type Metadata struct {
 	Version    uint64
@@ -19,8 +25,29 @@ type Metadata struct {
 	BaseBuildId uuid.UUID
 }
 
+func NewTemplateMetadata(buildId uuid.UUID, blockSize, size uint64) *Metadata {
+	return &Metadata{
+		Version:     metadataVersion,
+		Generation:  0,
+		BlockSize:   blockSize,
+		Size:        size,
+		BuildId:     buildId,
+		BaseBuildId: buildId,
+	}
+}
 
-func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
+func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
+	return &Metadata{
+		Version:     m.Version,
+		Generation:  m.Generation + 1,
+		BlockSize:   m.BlockSize,
+		Size:        m.Size,
+		BuildId:     buildID,
+		BaseBuildId: m.BaseBuildId,
+	}
+}
+
+func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	var buf bytes.Buffer
 
 	err := binary.Write(&buf, binary.LittleEndian, metadata)
@@ -35,13 +62,13 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
 		}
 	}
 
-	return &buf, nil
+	return buf.Bytes(), nil
 }
 
-func Deserialize(in io.WriterTo) (*Header, error) {
+func Deserialize(ctx context.Context, in storage.WriterToCtx) (*Header, error) {
 	var buf bytes.Buffer
 
-	_, err := in.WriteTo(&buf)
+	_, err := in.WriteTo(ctx, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write to buffer: %w", err)
 	}
@@ -60,7 +87,7 @@ func Deserialize(in io.WriterTo) (*Header, error) {
 	for {
 		var m BuildMap
 		err := binary.Read(reader, binary.LittleEndian, &m)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 
@@ -71,5 +98,5 @@ func Deserialize(in io.WriterTo) (*Header, error) {
 		mappings = append(mappings, &m)
 	}
 
-	return NewHeader(&metadata, mappings), nil
+	return NewHeader(&metadata, mappings)
 }

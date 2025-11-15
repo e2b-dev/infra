@@ -3,33 +3,34 @@ package process
 import (
 	"fmt"
 
+	"connectrpc.com/connect"
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	spec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process/processconnect"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
-
-	"connectrpc.com/connect"
-	"github.com/go-chi/chi/v5"
-	"github.com/rs/zerolog"
 )
 
 type Service struct {
 	processes *utils.Map[uint32, *handler.Handler]
 	logger    *zerolog.Logger
-	envs      *utils.Map[string, string]
+	defaults  *execcontext.Defaults
 }
 
-func newService(l *zerolog.Logger, envs *utils.Map[string, string]) *Service {
+func newService(l *zerolog.Logger, defaults *execcontext.Defaults) *Service {
 	return &Service{
 		logger:    l,
 		processes: utils.NewMap[uint32, *handler.Handler](),
-		envs:      envs,
+		defaults:  defaults,
 	}
 }
 
-func Handle(server *chi.Mux, l *zerolog.Logger, envs *utils.Map[string, string]) *Service {
-	service := newService(l, envs)
+func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults) *Service {
+	service := newService(l, defaults)
 
 	interceptors := connect.WithInterceptors(logs.NewUnaryLogInterceptor(l))
 
@@ -61,6 +62,7 @@ func (s *Service) getProcess(selector *rpc.ProcessSelector) (*handler.Handler, e
 
 			if *value.Tag == tag {
 				proc = value
+
 				return true
 			}
 

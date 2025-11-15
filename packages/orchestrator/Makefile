@@ -1,70 +1,129 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-client := gcloud compute instances list --format='csv(name)' --project $(GCP_PROJECT_ID) | grep "client"
-
 .PHONY: init
 init:
 	brew install protobuf
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
+
+openapi := ../../spec/openapi-hyperloop.yml
+codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 .PHONY: generate
 generate:
-	# You need to install protobuf (brew install protobuf) and following go packages: protoc-gen-go, protoc-gen-go-grpc
-	# https://grpc.io/docs/languages/go/quickstart/
 	@echo "Generating..."
-	@protoc --go_out=../shared/pkg/grpc/orchestrator/ --go_opt=paths=source_relative --go-grpc_out=../shared/pkg/grpc/orchestrator/ --go-grpc_opt=paths=source_relative orchestrator.proto
+	docker build -t proto-gen -f generate.Dockerfile .
+	docker run --rm -v .:/workspace -v ./../shared/pkg/grpc:/shared/pkg/grpc proto-gen
+	@echo "Generating hyperloop api..."
+	$(codegen) -old-config-style -generate gin --package api $(openapi) > ../shared/pkg/http/hyperloop/api.gen.go
+	$(codegen) -old-config-style -generate types --package api $(openapi) > ../shared/pkg/http/hyperloop/types.gen.go
+	$(codegen) -old-config-style -generate spec --package api $(openapi) > ../shared/pkg/http/hyperloop/spec.gen.go
 	@echo "Done"
 
 .PHONY: build
 build:
-	@rm -rf .shared/
-	@cp -r ../shared .shared/
-	@docker build --platform linux/amd64 --output=bin .
-	@rm -rf .shared/
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
+	@docker build --platform linux/amd64 --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
 .PHONY: build-local
 build-local:
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator .
+	# Allow for passing commit sha directly for docker builds
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
 
 .PHONY: build-debug
 build-debug:
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
-.PHONY: upload
-upload:
-	./upload.sh $(GCP_PROJECT_ID)
+.PHONY: run-debug
+run-debug:
+	make build-debug
+	sudo -E GOTRACEBACK=crash \
+	GODEBUG=madvdontneed=1 \
+	NODE_ID="testclient" \
+	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	ENVD_TIMEOUT=$(ENVD_TIMEOUT) \
+	ORCHESTRATOR_SERVICES=$(ORCHESTRATOR_SERVICES) \
+	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
+	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
+	OTEL_COLLECTOR_GRPC_ENDPOINT=$(OTEL_COLLECTOR_GRPC_ENDPOINT) \
+	MAX_PARALLEL_MEMFILE_SNAPSHOTTING=$(MAX_PARALLEL_MEMFILE_SNAPSHOTTING) \
+	./bin/orchestrator
 
-.PHONY: build-and-upload
-build-and-upload: build upload
+define setup_local_env
+	$(eval include .env.local)
+	$(eval export $(shell sed 's/=.*//' .env.local))
+endef
+
+.PHONY: run-local
+run-local:
+	$(call setup_local_env)
+	NODE_ID=$$(hostname) ./bin/orchestrator
+
+.PHONY: upload/clean-nfs-cache
+upload/clean-nfs-cache:
+	./upload-clean-nfs-cache.sh $(GCP_PROJECT_ID)
+
+.PHONY: upload/orchestrator
+upload/orchestrator:
+	./upload-orchestrator.sh $(GCP_PROJECT_ID)
+
+.PHONY: upload/template-manager
+upload/template-manager:
+	./upload-template-manager.sh $(GCP_PROJECT_ID)
+
+.PHONY: build-and-upload/clean-nfs-cache
+build-and-upload/clean-nfs-cache: build upload/clean-nfs-cache
+
+.PHONY: build-and-upload/orchestrator
+build-and-upload/orchestrator: build upload/orchestrator
+
+.PHONY: build-and-upload/template-manager
+build-and-upload/template-manager: build upload/template-manager
 
 .PHONY: mock
 mock:
-	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="test-client" go run cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -build "f0370054-b669-eeee-b33b-573d5287c6ef" -alive 1 -count 2
+	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="testclient" go run cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -build "f0370054-b669-eeee-b33b-573d5287c6ef" -alive 1 -count 2
 
 .PHONY: mock-nbd
 mock-nbd:
 	sudo go run -gcflags=all="-N -l" cmd/mock-nbd/mock.go
 
-.PHONY: killall
-killall:
-	gcloud compute instance-groups list-instances $(PREFIX)orch-client-ig \
-          	  --zone=$(GCP_ZONE) \
-          	  --project=$(GCP_PROJECT_ID) \
-          	  --format="value(instance)" \
-          	  --quiet | xargs -I {} -P 5 sh -c "gcloud compute ssh {} --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) --command='sudo killall -9 firecracker'"
-	@echo "Killing all firecracker processes"
-
-.PHONY: kill-old
-kill-old:
-	gcloud compute instance-groups list-instances $(PREFIX)orch-client-ig \
-          	  --zone=$(GCP_ZONE) \
-          	  --project=$(GCP_PROJECT_ID) \
-          	  --format="value(instance)" \
-          	  --quiet | xargs -I {} -P 5 sh -c "gcloud compute ssh {} --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) --command='sudo killall -9 --older-than 24h firecracker'"
-	@echo "Killing all firecracker processes"
-
 .PHONY: mock-snapshot
 mock-snapshot:
-	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="test-client" go run cmd/mock-snapshot/mock.go  -template 5wzg6c91u51yaebviysf -build "f0370054-b669-4d7e-b33b-573d5287c6ef" -alive 1 -count 1
+	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="testclient" go run cmd/mock-snapshot/mock.go  -template 5wzg6c91u51yaebviysf -build "f0370054-b669-4d7e-b33b-573d5287c6ef" -alive 1 -count 1
+
+.PHONY: test
+test:
+	go test -race -v ./...
+
+.PHONY: test-docker
+test-docker:
+	@echo "Running orchestrator tests in Docker (AMD64 Linux)..."
+	@rm -rf .shared/
+	@cp -r ../shared .shared/
+	@rm -rf .clickhouse/
+	@cp -r ../clickhouse .clickhouse/
+	@docker build --platform linux/amd64 -f test.Dockerfile --no-cache-filter runner --progress=plain -t orchestrator-test .
+	@rm -rf .shared/
+	@rm -rf .clickhouse/
+	@echo "Done"
+
+.PHONY: build-template
+build-template:
+	sudo -E TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
+	DOCKER_AUTH_BASE64=$(DOCKER_AUTH_BASE64) \
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) \
+	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
+	GCP_REGION=$(GCP_REGION) \
+	ENVIRONMENT=local \
+	go run cmd/build-template/main.go \
+	-template $(TEMPLATE_ID) \
+	-build $(BUILD_ID) \
+	-kernel $(KERNEL_VERSION) \
+	-firecracker $(FIRECRACKER_VERSION)
+
+.PHONY: migrate
+migrate:
+	./upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)

@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 )
 
 // EnvBuildUpdate is the builder for updating EnvBuild entities.
@@ -79,12 +80,6 @@ func (ebu *EnvBuildUpdate) SetNillableEnvID(s *string) *EnvBuildUpdate {
 	return ebu
 }
 
-// ClearEnvID clears the value of the "env_id" field.
-func (ebu *EnvBuildUpdate) ClearEnvID() *EnvBuildUpdate {
-	ebu.mutation.ClearEnvID()
-	return ebu
-}
-
 // SetStatus sets the "status" field.
 func (ebu *EnvBuildUpdate) SetStatus(e envbuild.Status) *EnvBuildUpdate {
 	ebu.mutation.SetStatus(e)
@@ -136,6 +131,26 @@ func (ebu *EnvBuildUpdate) SetNillableStartCmd(s *string) *EnvBuildUpdate {
 // ClearStartCmd clears the value of the "start_cmd" field.
 func (ebu *EnvBuildUpdate) ClearStartCmd() *EnvBuildUpdate {
 	ebu.mutation.ClearStartCmd()
+	return ebu
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (ebu *EnvBuildUpdate) SetReadyCmd(s string) *EnvBuildUpdate {
+	ebu.mutation.SetReadyCmd(s)
+	return ebu
+}
+
+// SetNillableReadyCmd sets the "ready_cmd" field if the given value is not nil.
+func (ebu *EnvBuildUpdate) SetNillableReadyCmd(s *string) *EnvBuildUpdate {
+	if s != nil {
+		ebu.SetReadyCmd(*s)
+	}
+	return ebu
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (ebu *EnvBuildUpdate) ClearReadyCmd() *EnvBuildUpdate {
+	ebu.mutation.ClearReadyCmd()
 	return ebu
 }
 
@@ -277,6 +292,54 @@ func (ebu *EnvBuildUpdate) ClearEnvdVersion() *EnvBuildUpdate {
 	return ebu
 }
 
+// SetClusterNodeID sets the "cluster_node_id" field.
+func (ebu *EnvBuildUpdate) SetClusterNodeID(s string) *EnvBuildUpdate {
+	ebu.mutation.SetClusterNodeID(s)
+	return ebu
+}
+
+// SetNillableClusterNodeID sets the "cluster_node_id" field if the given value is not nil.
+func (ebu *EnvBuildUpdate) SetNillableClusterNodeID(s *string) *EnvBuildUpdate {
+	if s != nil {
+		ebu.SetClusterNodeID(*s)
+	}
+	return ebu
+}
+
+// SetReason sets the "reason" field.
+func (ebu *EnvBuildUpdate) SetReason(sr schema.BuildReason) *EnvBuildUpdate {
+	ebu.mutation.SetReason(sr)
+	return ebu
+}
+
+// SetNillableReason sets the "reason" field if the given value is not nil.
+func (ebu *EnvBuildUpdate) SetNillableReason(sr *schema.BuildReason) *EnvBuildUpdate {
+	if sr != nil {
+		ebu.SetReason(*sr)
+	}
+	return ebu
+}
+
+// SetVersion sets the "version" field.
+func (ebu *EnvBuildUpdate) SetVersion(s string) *EnvBuildUpdate {
+	ebu.mutation.SetVersion(s)
+	return ebu
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (ebu *EnvBuildUpdate) SetNillableVersion(s *string) *EnvBuildUpdate {
+	if s != nil {
+		ebu.SetVersion(*s)
+	}
+	return ebu
+}
+
+// ClearVersion clears the value of the "version" field.
+func (ebu *EnvBuildUpdate) ClearVersion() *EnvBuildUpdate {
+	ebu.mutation.ClearVersion()
+	return ebu
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (ebu *EnvBuildUpdate) SetEnv(e *Env) *EnvBuildUpdate {
 	return ebu.SetEnvID(e.ID)
@@ -327,6 +390,9 @@ func (ebu *EnvBuildUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`models: validator failed for field "EnvBuild.status": %w`, err)}
 		}
 	}
+	if _, ok := ebu.mutation.EnvID(); ebu.mutation.EnvCleared() && !ok {
+		return errors.New(`models: clearing a required unique edge "EnvBuild.env"`)
+	}
 	return nil
 }
 
@@ -372,6 +438,12 @@ func (ebu *EnvBuildUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if ebu.mutation.StartCmdCleared() {
 		_spec.ClearField(envbuild.FieldStartCmd, field.TypeString)
 	}
+	if value, ok := ebu.mutation.ReadyCmd(); ok {
+		_spec.SetField(envbuild.FieldReadyCmd, field.TypeString, value)
+	}
+	if ebu.mutation.ReadyCmdCleared() {
+		_spec.ClearField(envbuild.FieldReadyCmd, field.TypeString)
+	}
 	if value, ok := ebu.mutation.Vcpu(); ok {
 		_spec.SetField(envbuild.FieldVcpu, field.TypeInt64, value)
 	}
@@ -410,6 +482,18 @@ func (ebu *EnvBuildUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if ebu.mutation.EnvdVersionCleared() {
 		_spec.ClearField(envbuild.FieldEnvdVersion, field.TypeString)
+	}
+	if value, ok := ebu.mutation.ClusterNodeID(); ok {
+		_spec.SetField(envbuild.FieldClusterNodeID, field.TypeString, value)
+	}
+	if value, ok := ebu.mutation.Reason(); ok {
+		_spec.SetField(envbuild.FieldReason, field.TypeJSON, value)
+	}
+	if value, ok := ebu.mutation.Version(); ok {
+		_spec.SetField(envbuild.FieldVersion, field.TypeString, value)
+	}
+	if ebu.mutation.VersionCleared() {
+		_spec.ClearField(envbuild.FieldVersion, field.TypeString)
 	}
 	if ebu.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -514,12 +598,6 @@ func (ebuo *EnvBuildUpdateOne) SetNillableEnvID(s *string) *EnvBuildUpdateOne {
 	return ebuo
 }
 
-// ClearEnvID clears the value of the "env_id" field.
-func (ebuo *EnvBuildUpdateOne) ClearEnvID() *EnvBuildUpdateOne {
-	ebuo.mutation.ClearEnvID()
-	return ebuo
-}
-
 // SetStatus sets the "status" field.
 func (ebuo *EnvBuildUpdateOne) SetStatus(e envbuild.Status) *EnvBuildUpdateOne {
 	ebuo.mutation.SetStatus(e)
@@ -571,6 +649,26 @@ func (ebuo *EnvBuildUpdateOne) SetNillableStartCmd(s *string) *EnvBuildUpdateOne
 // ClearStartCmd clears the value of the "start_cmd" field.
 func (ebuo *EnvBuildUpdateOne) ClearStartCmd() *EnvBuildUpdateOne {
 	ebuo.mutation.ClearStartCmd()
+	return ebuo
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (ebuo *EnvBuildUpdateOne) SetReadyCmd(s string) *EnvBuildUpdateOne {
+	ebuo.mutation.SetReadyCmd(s)
+	return ebuo
+}
+
+// SetNillableReadyCmd sets the "ready_cmd" field if the given value is not nil.
+func (ebuo *EnvBuildUpdateOne) SetNillableReadyCmd(s *string) *EnvBuildUpdateOne {
+	if s != nil {
+		ebuo.SetReadyCmd(*s)
+	}
+	return ebuo
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (ebuo *EnvBuildUpdateOne) ClearReadyCmd() *EnvBuildUpdateOne {
+	ebuo.mutation.ClearReadyCmd()
 	return ebuo
 }
 
@@ -712,6 +810,54 @@ func (ebuo *EnvBuildUpdateOne) ClearEnvdVersion() *EnvBuildUpdateOne {
 	return ebuo
 }
 
+// SetClusterNodeID sets the "cluster_node_id" field.
+func (ebuo *EnvBuildUpdateOne) SetClusterNodeID(s string) *EnvBuildUpdateOne {
+	ebuo.mutation.SetClusterNodeID(s)
+	return ebuo
+}
+
+// SetNillableClusterNodeID sets the "cluster_node_id" field if the given value is not nil.
+func (ebuo *EnvBuildUpdateOne) SetNillableClusterNodeID(s *string) *EnvBuildUpdateOne {
+	if s != nil {
+		ebuo.SetClusterNodeID(*s)
+	}
+	return ebuo
+}
+
+// SetReason sets the "reason" field.
+func (ebuo *EnvBuildUpdateOne) SetReason(sr schema.BuildReason) *EnvBuildUpdateOne {
+	ebuo.mutation.SetReason(sr)
+	return ebuo
+}
+
+// SetNillableReason sets the "reason" field if the given value is not nil.
+func (ebuo *EnvBuildUpdateOne) SetNillableReason(sr *schema.BuildReason) *EnvBuildUpdateOne {
+	if sr != nil {
+		ebuo.SetReason(*sr)
+	}
+	return ebuo
+}
+
+// SetVersion sets the "version" field.
+func (ebuo *EnvBuildUpdateOne) SetVersion(s string) *EnvBuildUpdateOne {
+	ebuo.mutation.SetVersion(s)
+	return ebuo
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (ebuo *EnvBuildUpdateOne) SetNillableVersion(s *string) *EnvBuildUpdateOne {
+	if s != nil {
+		ebuo.SetVersion(*s)
+	}
+	return ebuo
+}
+
+// ClearVersion clears the value of the "version" field.
+func (ebuo *EnvBuildUpdateOne) ClearVersion() *EnvBuildUpdateOne {
+	ebuo.mutation.ClearVersion()
+	return ebuo
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (ebuo *EnvBuildUpdateOne) SetEnv(e *Env) *EnvBuildUpdateOne {
 	return ebuo.SetEnvID(e.ID)
@@ -775,6 +921,9 @@ func (ebuo *EnvBuildUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`models: validator failed for field "EnvBuild.status": %w`, err)}
 		}
 	}
+	if _, ok := ebuo.mutation.EnvID(); ebuo.mutation.EnvCleared() && !ok {
+		return errors.New(`models: clearing a required unique edge "EnvBuild.env"`)
+	}
 	return nil
 }
 
@@ -837,6 +986,12 @@ func (ebuo *EnvBuildUpdateOne) sqlSave(ctx context.Context) (_node *EnvBuild, er
 	if ebuo.mutation.StartCmdCleared() {
 		_spec.ClearField(envbuild.FieldStartCmd, field.TypeString)
 	}
+	if value, ok := ebuo.mutation.ReadyCmd(); ok {
+		_spec.SetField(envbuild.FieldReadyCmd, field.TypeString, value)
+	}
+	if ebuo.mutation.ReadyCmdCleared() {
+		_spec.ClearField(envbuild.FieldReadyCmd, field.TypeString)
+	}
 	if value, ok := ebuo.mutation.Vcpu(); ok {
 		_spec.SetField(envbuild.FieldVcpu, field.TypeInt64, value)
 	}
@@ -875,6 +1030,18 @@ func (ebuo *EnvBuildUpdateOne) sqlSave(ctx context.Context) (_node *EnvBuild, er
 	}
 	if ebuo.mutation.EnvdVersionCleared() {
 		_spec.ClearField(envbuild.FieldEnvdVersion, field.TypeString)
+	}
+	if value, ok := ebuo.mutation.ClusterNodeID(); ok {
+		_spec.SetField(envbuild.FieldClusterNodeID, field.TypeString, value)
+	}
+	if value, ok := ebuo.mutation.Reason(); ok {
+		_spec.SetField(envbuild.FieldReason, field.TypeJSON, value)
+	}
+	if value, ok := ebuo.mutation.Version(); ok {
+		_spec.SetField(envbuild.FieldVersion, field.TypeString, value)
+	}
+	if ebuo.mutation.VersionCleared() {
+		_spec.ClearField(envbuild.FieldVersion, field.TypeString)
 	}
 	if ebuo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{

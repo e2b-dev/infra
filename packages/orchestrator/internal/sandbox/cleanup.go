@@ -1,50 +1,84 @@
 package sandbox
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type Cleanup struct {
-	cleanup         []func() error
-	priorityCleanup []func() error
+	cleanup         []func(ctx context.Context) error
+	priorityCleanup []func(ctx context.Context) error
 	error           error
 	once            sync.Once
+
+	hasRun atomic.Bool
+	mu     sync.Mutex
 }
 
 func NewCleanup() *Cleanup {
 	return &Cleanup{}
 }
 
-func (c *Cleanup) Add(f func() error) {
+func (c *Cleanup) Add(f func(ctx context.Context) error) {
+	if c.hasRun.Load() == true {
+		zap.L().Error("Add called after cleanup has run, ignoring function")
+
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.cleanup = append(c.cleanup, f)
 }
 
-func (c *Cleanup) AddPriority(f func() error) {
+func (c *Cleanup) AddPriority(f func(ctx context.Context) error) {
+	if c.hasRun.Load() == true {
+		zap.L().Error("AddPriority called after cleanup has run, ignoring function")
+
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.priorityCleanup = append(c.priorityCleanup, f)
 }
 
-func (c *Cleanup) Run() error {
-	c.once.Do(c.run)
+func (c *Cleanup) Run(ctx context.Context) error {
+	c.once.Do(func() {
+		c.run(context.WithoutCancel(ctx))
+	})
+
 	return c.error
 }
 
-func (c *Cleanup) run() {
+func (c *Cleanup) run(ctx context.Context) {
+	c.hasRun.Store(true)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	var errs []error
 
 	for i := len(c.priorityCleanup) - 1; i >= 0; i-- {
-		err := c.priorityCleanup[i]()
+		err := c.priorityCleanup[i](ctx)
 		if err != nil {
 			errs = append(errs, err)
 		}
 	}
 
 	for i := len(c.cleanup) - 1; i >= 0; i-- {
-		err := c.cleanup[i]()
+		err := c.cleanup[i](ctx)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -53,19 +87,25 @@ func (c *Cleanup) run() {
 	c.error = errors.Join(errs...)
 }
 
-func cleanupFiles(files *storage.SandboxFiles) error {
-	var errs []error
+func cleanupFiles(config cfg.BuilderConfig, files *storage.SandboxFiles) func(context.Context) error {
+	return func(context.Context) error {
+		var errs []error
 
-	for _, p := range []string{
-		files.SandboxFirecrackerSocketPath(),
-		files.SandboxUffdSocketPath(),
-		files.SandboxCacheRootfsLinkPath(),
-	} {
-		err := os.RemoveAll(p)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to delete '%s': %w", p, err))
+		for _, p := range []string{
+			files.SandboxFirecrackerSocketPath(),
+			files.SandboxUffdSocketPath(),
+			files.SandboxCacheRootfsLinkPath(config),
+		} {
+			err := os.RemoveAll(p)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("failed to delete '%s': %w", p, err))
+			}
 		}
-	}
 
-	return errors.Join(errs...)
+		if len(errs) == 0 {
+			return nil
+		}
+
+		return fmt.Errorf("failed to cleanup files: %w", errors.Join(errs...))
+	}
 }

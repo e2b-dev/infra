@@ -8,25 +8,42 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/google/uuid"
 	"github.com/pojntfx/go-nbd/pkg/backend"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const blockSize = 4096
 
 type DeviceWithClose struct {
-	backend.Backend
+	b backend.Backend
+}
+
+var _ block.Device = (*DeviceWithClose)(nil)
+
+func (d *DeviceWithClose) ReadAt(_ context.Context, p []byte, off int64) (n int, err error) {
+	return d.b.ReadAt(p, off)
+}
+
+func (d *DeviceWithClose) Size() (int64, error) {
+	return d.b.Size()
+}
+
+func (d *DeviceWithClose) WriteAt(p []byte, off int64) (n int, err error) {
+	return d.b.WriteAt(p, off)
 }
 
 func (d *DeviceWithClose) Close() error {
 	return nil
 }
 
-func (d *DeviceWithClose) Slice(offset, length int64) ([]byte, error) {
+func (d *DeviceWithClose) Slice(_ context.Context, offset, length int64) ([]byte, error) {
 	b := make([]byte, length)
 
-	_, err := d.Backend.ReadAt(b, offset)
+	_, err := d.b.ReadAt(b, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -34,12 +51,34 @@ func (d *DeviceWithClose) Slice(offset, length int64) ([]byte, error) {
 	return b, nil
 }
 
+func (d *DeviceWithClose) BlockSize() int64 {
+	return blockSize
+}
+
+func (d *DeviceWithClose) Header() *header.Header {
+	size, err := d.b.Size()
+	if err != nil {
+		panic(err)
+	}
+
+	h, err := header.NewHeader(header.NewTemplateMetadata(
+		uuid.New(),
+		uint64(blockSize),
+		uint64(size),
+	), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return h
+}
+
 func main() {
 	data := make([]byte, blockSize*8)
 	rand.Read(data)
 
 	device := &DeviceWithClose{
-		Backend: backend.NewMemoryBackend(data),
+		b: backend.NewMemoryBackend(data),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -47,6 +86,24 @@ func main() {
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
+	devicePool, err := nbd.NewDevicePool()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create device pool: %v\n", err)
+
+		return
+	}
+	go func() {
+		devicePool.Populate(ctx)
+		fmt.Fprintf(os.Stderr, "device pool done populating\n")
+	}()
+	defer func() {
+		err = devicePool.Close(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close device pool: %v\n", err)
+
+			return
+		}
+	}()
 
 	go func() {
 		<-done
@@ -63,7 +120,7 @@ func main() {
 		fmt.Printf("----------------------------------------\n")
 		fmt.Printf("[%d] starting mock nbd server\n", i)
 
-		readData, err := MockNbd(ctx, device, i)
+		readData, err := MockNbd(ctx, device, i, devicePool)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[%d] failed to mock nbd: %v\n", i, err)
 
@@ -78,7 +135,7 @@ func main() {
 	}
 }
 
-func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, error) {
+func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool *nbd.DevicePool) ([]byte, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -87,7 +144,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, e
 		return nil, fmt.Errorf("failed to get size: %w", err)
 	}
 
-	deviceIndex, err := nbd.Pool.GetDevice(ctx)
+	deviceIndex, err := devicePool.GetDevice(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get device: %w", err)
 	}
@@ -98,15 +155,15 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, e
 		counter := 0
 
 		for {
-			counter += 1
-			err = nbd.Pool.ReleaseDevice(deviceIndex)
+			counter++
+			err = devicePool.ReleaseDevice(ctx, deviceIndex)
 			if err != nil {
 				if counter%10 == 0 {
 					fmt.Printf("[%d] failed to release device: %v\n", index, err)
 				}
 
 				if mnt != nil {
-					mnt.Close()
+					mnt.Close(ctx)
 				}
 
 				continue
@@ -118,12 +175,12 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, e
 		}
 	}()
 
-	mnt = nbd.NewDirectPathMount(device)
+	mnt = nbd.NewDirectPathMount(device, devicePool)
 
 	go func() {
 		<-ctx.Done()
 
-		mnt.Close()
+		mnt.Close(context.Background()) //nolint:contextcheck // TODO: fix this later
 	}()
 
 	_, err = mnt.Open(ctx)
@@ -132,7 +189,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, e
 	}
 
 	data := make([]byte, size)
-	_, err = mnt.Backend.ReadAt(data, 0)
+	_, err = mnt.Backend.ReadAt(ctx, data, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read: %w", err)
 	}

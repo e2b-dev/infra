@@ -14,8 +14,6 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 	"github.com/google/uuid"
@@ -103,6 +101,20 @@ func (tc *TeamCreate) SetEmail(s string) *TeamCreate {
 	return tc
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (tc *TeamCreate) SetClusterID(u uuid.UUID) *TeamCreate {
+	tc.mutation.SetClusterID(u)
+	return tc
+}
+
+// SetNillableClusterID sets the "cluster_id" field if the given value is not nil.
+func (tc *TeamCreate) SetNillableClusterID(u *uuid.UUID) *TeamCreate {
+	if u != nil {
+		tc.SetClusterID(*u)
+	}
+	return tc
+}
+
 // SetID sets the "id" field.
 func (tc *TeamCreate) SetID(u uuid.UUID) *TeamCreate {
 	tc.mutation.SetID(u)
@@ -122,32 +134,6 @@ func (tc *TeamCreate) AddUsers(u ...*User) *TeamCreate {
 		ids[i] = u[i].ID
 	}
 	return tc.AddUserIDs(ids...)
-}
-
-// AddTeamAPIKeyIDs adds the "team_api_keys" edge to the TeamAPIKey entity by IDs.
-func (tc *TeamCreate) AddTeamAPIKeyIDs(ids ...uuid.UUID) *TeamCreate {
-	tc.mutation.AddTeamAPIKeyIDs(ids...)
-	return tc
-}
-
-// AddTeamAPIKeys adds the "team_api_keys" edges to the TeamAPIKey entity.
-func (tc *TeamCreate) AddTeamAPIKeys(t ...*TeamAPIKey) *TeamCreate {
-	ids := make([]uuid.UUID, len(t))
-	for i := range t {
-		ids[i] = t[i].ID
-	}
-	return tc.AddTeamAPIKeyIDs(ids...)
-}
-
-// SetTeamTierID sets the "team_tier" edge to the Tier entity by ID.
-func (tc *TeamCreate) SetTeamTierID(id string) *TeamCreate {
-	tc.mutation.SetTeamTierID(id)
-	return tc
-}
-
-// SetTeamTier sets the "team_tier" edge to the Tier entity.
-func (tc *TeamCreate) SetTeamTier(t *Tier) *TeamCreate {
-	return tc.SetTeamTierID(t.ID)
 }
 
 // AddEnvIDs adds the "envs" edge to the Env entity by IDs.
@@ -240,9 +226,6 @@ func (tc *TeamCreate) check() error {
 			return &ValidationError{Name: "email", err: fmt.Errorf(`models: validator failed for field "Team.email": %w`, err)}
 		}
 	}
-	if _, ok := tc.mutation.TeamTierID(); !ok {
-		return &ValidationError{Name: "team_tier", err: errors.New(`models: missing required edge "Team.team_tier"`)}
-	}
 	return nil
 }
 
@@ -300,9 +283,17 @@ func (tc *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 		_spec.SetField(team.FieldName, field.TypeString, value)
 		_node.Name = value
 	}
+	if value, ok := tc.mutation.Tier(); ok {
+		_spec.SetField(team.FieldTier, field.TypeString, value)
+		_node.Tier = value
+	}
 	if value, ok := tc.mutation.Email(); ok {
 		_spec.SetField(team.FieldEmail, field.TypeString, value)
 		_node.Email = value
+	}
+	if value, ok := tc.mutation.ClusterID(); ok {
+		_spec.SetField(team.FieldClusterID, field.TypeUUID, value)
+		_node.ClusterID = &value
 	}
 	if nodes := tc.mutation.UsersIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -323,41 +314,6 @@ func (tc *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
-		_spec.Edges = append(_spec.Edges, edge)
-	}
-	if nodes := tc.mutation.TeamAPIKeysIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   team.TeamAPIKeysTable,
-			Columns: []string{team.TeamAPIKeysColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
-			},
-		}
-		edge.Schema = tc.schemaConfig.TeamAPIKey
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges = append(_spec.Edges, edge)
-	}
-	if nodes := tc.mutation.TeamTierIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
-			Inverse: true,
-			Table:   team.TeamTierTable,
-			Columns: []string{team.TeamTierColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(tier.FieldID, field.TypeString),
-			},
-		}
-		edge.Schema = tc.schemaConfig.Team
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_node.Tier = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := tc.mutation.EnvsIDs(); len(nodes) > 0 {
@@ -536,6 +492,24 @@ func (u *TeamUpsert) UpdateEmail() *TeamUpsert {
 	return u
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (u *TeamUpsert) SetClusterID(v uuid.UUID) *TeamUpsert {
+	u.Set(team.FieldClusterID, v)
+	return u
+}
+
+// UpdateClusterID sets the "cluster_id" field to the value that was provided on create.
+func (u *TeamUpsert) UpdateClusterID() *TeamUpsert {
+	u.SetExcluded(team.FieldClusterID)
+	return u
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (u *TeamUpsert) ClearClusterID() *TeamUpsert {
+	u.SetNull(team.FieldClusterID)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -689,6 +663,27 @@ func (u *TeamUpsertOne) SetEmail(v string) *TeamUpsertOne {
 func (u *TeamUpsertOne) UpdateEmail() *TeamUpsertOne {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateEmail()
+	})
+}
+
+// SetClusterID sets the "cluster_id" field.
+func (u *TeamUpsertOne) SetClusterID(v uuid.UUID) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetClusterID(v)
+	})
+}
+
+// UpdateClusterID sets the "cluster_id" field to the value that was provided on create.
+func (u *TeamUpsertOne) UpdateClusterID() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateClusterID()
+	})
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (u *TeamUpsertOne) ClearClusterID() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.ClearClusterID()
 	})
 }
 
@@ -1012,6 +1007,27 @@ func (u *TeamUpsertBulk) SetEmail(v string) *TeamUpsertBulk {
 func (u *TeamUpsertBulk) UpdateEmail() *TeamUpsertBulk {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateEmail()
+	})
+}
+
+// SetClusterID sets the "cluster_id" field.
+func (u *TeamUpsertBulk) SetClusterID(v uuid.UUID) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetClusterID(v)
+	})
+}
+
+// UpdateClusterID sets the "cluster_id" field to the value that was provided on create.
+func (u *TeamUpsertBulk) UpdateClusterID() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateClusterID()
+	})
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (u *TeamUpsertBulk) ClearClusterID() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.ClearClusterID()
 	})
 }
 

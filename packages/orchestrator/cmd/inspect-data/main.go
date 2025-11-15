@@ -8,7 +8,6 @@ import (
 	"log"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 func main() {
@@ -19,24 +18,24 @@ func main() {
 
 	flag.Parse()
 
-	template := storage.NewTemplateFiles(
-		"",
-		*buildId,
-		"",
-		"",
-		false,
-	)
+	template := storage.TemplateFiles{
+		BuildID: *buildId,
+	}
 
 	var storagePath string
 	var blockSize int64
+	var objectType storage.SeekableObjectType
 
-	if *kind == "memfile" {
+	switch *kind {
+	case "memfile":
 		storagePath = template.StorageMemfilePath()
 		blockSize = 2097152
-	} else if *kind == "rootfs" {
+		objectType = storage.MemfileObjectType
+	case "rootfs":
 		storagePath = template.StorageRootfsPath()
 		blockSize = 4096
-	} else {
+		objectType = storage.RootFSObjectType
+	default:
 		log.Fatalf("invalid kind: %s", *kind)
 	}
 
@@ -46,9 +45,17 @@ func main() {
 
 	ctx := context.Background()
 
-	obj := gcs.NewObject(ctx, gcs.TemplateBucket, storagePath)
+	storage, err := storage.GetTemplateStorageProvider(ctx, nil)
+	if err != nil {
+		log.Fatalf("failed to get storage provider: %s", err)
+	}
 
-	size, err := obj.Size()
+	obj, err := storage.OpenSeekableObject(ctx, storagePath, objectType)
+	if err != nil {
+		log.Fatalf("failed to open object: %s", err)
+	}
+
+	size, err := obj.Size(ctx)
 	if err != nil {
 		log.Fatalf("failed to get object size: %s", err)
 	}
@@ -67,7 +74,7 @@ func main() {
 
 	fmt.Printf("\nMETADATA\n")
 	fmt.Printf("========\n")
-	fmt.Printf("Storage path       %s/%s\n", gcs.TemplateBucket.BucketName(), storagePath)
+	fmt.Printf("Storage            %s/%s\n", storage.GetDetails(), storagePath)
 	fmt.Printf("Build ID           %s\n", *buildId)
 	fmt.Printf("Size               %d B (%d MiB)\n", size, size/1024/1024)
 	fmt.Printf("Block size         %d B\n", blockSize)
@@ -81,7 +88,7 @@ func main() {
 	nonEmptyCount := 0
 
 	for i := *start * blockSize; i < *end*blockSize; i += blockSize {
-		_, err := obj.ReadAt(b, i)
+		_, err := obj.ReadAt(ctx, b, i)
 		if err != nil {
 			log.Fatalf("failed to read block: %s", err)
 		}

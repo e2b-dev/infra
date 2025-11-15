@@ -1,0 +1,106 @@
+name: "Start Services"
+description: "Sets up and starts the required services, including PostgreSQL."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run PostgreSQL Database
+      env:
+        TESTS_E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
+        TESTS_E2B_ACCESS_TOKEN: "sk_e2b_17bd3933af21f80dc10bba686691c4fcd7057123"
+        TESTS_SANDBOX_TEAM_ID: "834777bd-9956-45ca-b088-9bac9290e2ac"
+        TESTS_SANDBOX_USER_ID: "2a5a9fc5-db8d-4af7-ac9e-d0f9272463bc"
+        SUPABASE_JWT_SECRET: "supabasejwtsecretsupabasejwtsecret"
+      run: |
+        docker run -d --name postgres \
+                      -e POSTGRES_USER=postgres \
+                      -e POSTGRES_PASSWORD=local \
+                      -e POSTGRES_DB=mydatabase \
+                      -p 5432:5432 \
+                      --health-cmd="pg_isready -U postgres" \
+                      --health-interval=5s \
+                      --health-timeout=2s \
+                      --health-retries=5 \
+                      postgres:latest
+        while [ "$(docker inspect -f '{{.State.Health.Status}}' postgres 2>/dev/null)" != "healthy" ]; do echo "Waiting for PostgreSQL to be healthy..."; sleep 2; done
+        echo "PostgreSQL is healthy!"
+
+        # Install extensions
+        docker exec postgres psql -U postgres -d mydatabase -c "CREATE SCHEMA extensions; CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA extensions;"
+        echo "extensions installed"
+
+        echo "TESTS_E2B_API_KEY=${TESTS_E2B_API_KEY}" >> .env.test
+        echo "TESTS_E2B_ACCESS_TOKEN=${TESTS_E2B_ACCESS_TOKEN}" >> .env.test
+        echo "TESTS_SANDBOX_TEAM_ID=${TESTS_SANDBOX_TEAM_ID}" >> .env.test
+        echo "TESTS_SANDBOX_USER_ID=${TESTS_SANDBOX_USER_ID}" >> .env.test
+        echo "TESTS_SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}" >> .env.test
+        echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRET}" >> .env.test
+        set -x
+        make migrate
+        make -C tests/integration seed
+      shell: bash
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build codegen image with caching
+      uses: docker/build-push-action@v6
+      with:
+        context: packages/clickhouse
+        file: packages/clickhouse/Dockerfile
+        tags: clickhouse-migrator:latest
+        load: true # makes the image available for `docker run`
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Run Clickhouse
+      env:
+        CLICKHOUSE_USERNAME: "e2b"
+        CLICKHOUSE_PASSWORD: "clickity-clicky-click"
+        CLICKHOUSE_PORT: "9000"
+        CLICKHOUSE_DATABASE: "default"
+      run: |
+        echo "CLICKHOUSE_MIGRATOR_IMAGE=clickhouse-migrator" >> .env.test
+        echo "CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME}" >> .env.test
+        echo "CLICKHOUSE_PORT=${CLICKHOUSE_PORT}" >> .env.test
+        echo "CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}" >> .env.test
+        echo "CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE}" >> .env.test
+        echo "CLICKHOUSE_CONNECTION_STRING=clickhouse://${CLICKHOUSE_USERNAME}:${CLICKHOUSE_PASSWORD}@$localhost:${CLICKHOUSE_PORT}/${CLICKHOUSE_DATABASE}" >> .env.test
+
+        make -C packages/clickhouse run &
+        while [ "$(docker inspect -f '{{.State.Health.Status}}' clickhouse 2>/dev/null)" != "healthy" ]; do echo "Waiting for Clickhouse to be healthy..."; sleep 2; done
+        echo "Clickhouse is healthy!"
+
+        # We build the image in separate step to cache it and avoid rebuilding it every time
+        make -C packages/clickhouse migrate-without-build
+      shell: bash
+
+    - name: Start Services
+      env:
+        ENVD_TIMEOUT: "60s"
+        ORCHESTRATOR_SERVICES: "orchestrator,template-manager"
+        SANDBOX_ACCESS_TOKEN_HASH_SEED: "abcdefghijklmnopqrstuvwxyz"
+        TEMPLATE_MANAGER_HOST: "localhost:5008"
+        ARTIFACTS_REGISTRY_PROVIDER: "Local"
+        STORAGE_PROVIDER: "Local"
+        ENVIRONMENT: "local"
+        OTEL_COLLECTOR_GRPC_ENDPOINT: "localhost:4317"
+        MAX_PARALLEL_MEMFILE_SNAPSHOTTING: "2"
+        SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
+        EDGE_TOKEN: "abdcdefghijklmnop"
+      run: |
+        mkdir -p $SHARED_CHUNK_CACHE_PATH
+        mkdir -p ~/logs
+
+        # Start otel-collector
+        bash ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
+
+        # Start orchestrator
+        bash ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
+
+        # Start Edge API
+        bash ./scripts/start-service.sh "Edge" packages/client-proxy run ~/logs/edge.log http://localhost:3001/health
+
+        # Start API
+        bash ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
+      shell: bash

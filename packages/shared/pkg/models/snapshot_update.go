@@ -6,14 +6,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
+	"github.com/google/uuid"
 )
 
 // SnapshotUpdate is the builder for updating Snapshot entities.
@@ -75,6 +78,116 @@ func (su *SnapshotUpdate) SetNillableSandboxID(s *string) *SnapshotUpdate {
 // SetMetadata sets the "metadata" field.
 func (su *SnapshotUpdate) SetMetadata(m map[string]string) *SnapshotUpdate {
 	su.mutation.SetMetadata(m)
+	return su
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (su *SnapshotUpdate) SetSandboxStartedAt(t time.Time) *SnapshotUpdate {
+	su.mutation.SetSandboxStartedAt(t)
+	return su
+}
+
+// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdate {
+	if t != nil {
+		su.SetSandboxStartedAt(*t)
+	}
+	return su
+}
+
+// SetEnvSecure sets the "env_secure" field.
+func (su *SnapshotUpdate) SetEnvSecure(b bool) *SnapshotUpdate {
+	su.mutation.SetEnvSecure(b)
+	return su
+}
+
+// SetNillableEnvSecure sets the "env_secure" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableEnvSecure(b *bool) *SnapshotUpdate {
+	if b != nil {
+		su.SetEnvSecure(*b)
+	}
+	return su
+}
+
+// SetAutoPause sets the "auto_pause" field.
+func (su *SnapshotUpdate) SetAutoPause(b bool) *SnapshotUpdate {
+	su.mutation.SetAutoPause(b)
+	return su
+}
+
+// SetNillableAutoPause sets the "auto_pause" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableAutoPause(b *bool) *SnapshotUpdate {
+	if b != nil {
+		su.SetAutoPause(*b)
+	}
+	return su
+}
+
+// SetOriginNodeID sets the "origin_node_id" field.
+func (su *SnapshotUpdate) SetOriginNodeID(s string) *SnapshotUpdate {
+	su.mutation.SetOriginNodeID(s)
+	return su
+}
+
+// SetNillableOriginNodeID sets the "origin_node_id" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableOriginNodeID(s *string) *SnapshotUpdate {
+	if s != nil {
+		su.SetOriginNodeID(*s)
+	}
+	return su
+}
+
+// SetTeamID sets the "team_id" field.
+func (su *SnapshotUpdate) SetTeamID(u uuid.UUID) *SnapshotUpdate {
+	su.mutation.SetTeamID(u)
+	return su
+}
+
+// SetNillableTeamID sets the "team_id" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableTeamID(u *uuid.UUID) *SnapshotUpdate {
+	if u != nil {
+		su.SetTeamID(*u)
+	}
+	return su
+}
+
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (su *SnapshotUpdate) SetAllowInternetAccess(b bool) *SnapshotUpdate {
+	su.mutation.SetAllowInternetAccess(b)
+	return su
+}
+
+// SetNillableAllowInternetAccess sets the "allow_internet_access" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableAllowInternetAccess(b *bool) *SnapshotUpdate {
+	if b != nil {
+		su.SetAllowInternetAccess(*b)
+	}
+	return su
+}
+
+// ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
+func (su *SnapshotUpdate) ClearAllowInternetAccess() *SnapshotUpdate {
+	su.mutation.ClearAllowInternetAccess()
+	return su
+}
+
+// SetConfig sets the "config" field.
+func (su *SnapshotUpdate) SetConfig(tsc types.PausedSandboxConfig) *SnapshotUpdate {
+	su.mutation.SetConfig(tsc)
+	return su
+}
+
+// SetNillableConfig sets the "config" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableConfig(tsc *types.PausedSandboxConfig) *SnapshotUpdate {
+	if tsc != nil {
+		su.SetConfig(*tsc)
+	}
+	return su
+}
+
+// ClearConfig clears the value of the "config" field.
+func (su *SnapshotUpdate) ClearConfig() *SnapshotUpdate {
+	su.mutation.ClearConfig()
 	return su
 }
 
@@ -155,6 +268,33 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := su.mutation.Metadata(); ok {
 		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
+	}
+	if value, ok := su.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
+	}
+	if value, ok := su.mutation.EnvSecure(); ok {
+		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
+	}
+	if value, ok := su.mutation.AutoPause(); ok {
+		_spec.SetField(snapshot.FieldAutoPause, field.TypeBool, value)
+	}
+	if value, ok := su.mutation.OriginNodeID(); ok {
+		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
+	}
+	if value, ok := su.mutation.TeamID(); ok {
+		_spec.SetField(snapshot.FieldTeamID, field.TypeUUID, value)
+	}
+	if value, ok := su.mutation.AllowInternetAccess(); ok {
+		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
+	}
+	if su.mutation.AllowInternetAccessCleared() {
+		_spec.ClearField(snapshot.FieldAllowInternetAccess, field.TypeBool)
+	}
+	if value, ok := su.mutation.Config(); ok {
+		_spec.SetField(snapshot.FieldConfig, field.TypeJSON, value)
+	}
+	if su.mutation.ConfigCleared() {
+		_spec.ClearField(snapshot.FieldConfig, field.TypeJSON)
 	}
 	if su.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -256,6 +396,116 @@ func (suo *SnapshotUpdateOne) SetNillableSandboxID(s *string) *SnapshotUpdateOne
 // SetMetadata sets the "metadata" field.
 func (suo *SnapshotUpdateOne) SetMetadata(m map[string]string) *SnapshotUpdateOne {
 	suo.mutation.SetMetadata(m)
+	return suo
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (suo *SnapshotUpdateOne) SetSandboxStartedAt(t time.Time) *SnapshotUpdateOne {
+	suo.mutation.SetSandboxStartedAt(t)
+	return suo
+}
+
+// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdateOne {
+	if t != nil {
+		suo.SetSandboxStartedAt(*t)
+	}
+	return suo
+}
+
+// SetEnvSecure sets the "env_secure" field.
+func (suo *SnapshotUpdateOne) SetEnvSecure(b bool) *SnapshotUpdateOne {
+	suo.mutation.SetEnvSecure(b)
+	return suo
+}
+
+// SetNillableEnvSecure sets the "env_secure" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableEnvSecure(b *bool) *SnapshotUpdateOne {
+	if b != nil {
+		suo.SetEnvSecure(*b)
+	}
+	return suo
+}
+
+// SetAutoPause sets the "auto_pause" field.
+func (suo *SnapshotUpdateOne) SetAutoPause(b bool) *SnapshotUpdateOne {
+	suo.mutation.SetAutoPause(b)
+	return suo
+}
+
+// SetNillableAutoPause sets the "auto_pause" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableAutoPause(b *bool) *SnapshotUpdateOne {
+	if b != nil {
+		suo.SetAutoPause(*b)
+	}
+	return suo
+}
+
+// SetOriginNodeID sets the "origin_node_id" field.
+func (suo *SnapshotUpdateOne) SetOriginNodeID(s string) *SnapshotUpdateOne {
+	suo.mutation.SetOriginNodeID(s)
+	return suo
+}
+
+// SetNillableOriginNodeID sets the "origin_node_id" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableOriginNodeID(s *string) *SnapshotUpdateOne {
+	if s != nil {
+		suo.SetOriginNodeID(*s)
+	}
+	return suo
+}
+
+// SetTeamID sets the "team_id" field.
+func (suo *SnapshotUpdateOne) SetTeamID(u uuid.UUID) *SnapshotUpdateOne {
+	suo.mutation.SetTeamID(u)
+	return suo
+}
+
+// SetNillableTeamID sets the "team_id" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableTeamID(u *uuid.UUID) *SnapshotUpdateOne {
+	if u != nil {
+		suo.SetTeamID(*u)
+	}
+	return suo
+}
+
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (suo *SnapshotUpdateOne) SetAllowInternetAccess(b bool) *SnapshotUpdateOne {
+	suo.mutation.SetAllowInternetAccess(b)
+	return suo
+}
+
+// SetNillableAllowInternetAccess sets the "allow_internet_access" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableAllowInternetAccess(b *bool) *SnapshotUpdateOne {
+	if b != nil {
+		suo.SetAllowInternetAccess(*b)
+	}
+	return suo
+}
+
+// ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
+func (suo *SnapshotUpdateOne) ClearAllowInternetAccess() *SnapshotUpdateOne {
+	suo.mutation.ClearAllowInternetAccess()
+	return suo
+}
+
+// SetConfig sets the "config" field.
+func (suo *SnapshotUpdateOne) SetConfig(tsc types.PausedSandboxConfig) *SnapshotUpdateOne {
+	suo.mutation.SetConfig(tsc)
+	return suo
+}
+
+// SetNillableConfig sets the "config" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableConfig(tsc *types.PausedSandboxConfig) *SnapshotUpdateOne {
+	if tsc != nil {
+		suo.SetConfig(*tsc)
+	}
+	return suo
+}
+
+// ClearConfig clears the value of the "config" field.
+func (suo *SnapshotUpdateOne) ClearConfig() *SnapshotUpdateOne {
+	suo.mutation.ClearConfig()
 	return suo
 }
 
@@ -366,6 +616,33 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if value, ok := suo.mutation.Metadata(); ok {
 		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
+	}
+	if value, ok := suo.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
+	}
+	if value, ok := suo.mutation.EnvSecure(); ok {
+		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
+	}
+	if value, ok := suo.mutation.AutoPause(); ok {
+		_spec.SetField(snapshot.FieldAutoPause, field.TypeBool, value)
+	}
+	if value, ok := suo.mutation.OriginNodeID(); ok {
+		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
+	}
+	if value, ok := suo.mutation.TeamID(); ok {
+		_spec.SetField(snapshot.FieldTeamID, field.TypeUUID, value)
+	}
+	if value, ok := suo.mutation.AllowInternetAccess(); ok {
+		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
+	}
+	if suo.mutation.AllowInternetAccessCleared() {
+		_spec.ClearField(snapshot.FieldAllowInternetAccess, field.TypeBool)
+	}
+	if value, ok := suo.mutation.Config(); ok {
+		_spec.SetField(snapshot.FieldConfig, field.TypeJSON, value)
+	}
+	if suo.mutation.ConfigCleared() {
+		_spec.ClearField(snapshot.FieldConfig, field.TypeJSON)
 	}
 	if suo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
