@@ -120,12 +120,12 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	err = a.db.Client.EnvBuild.Update().
-		SetNillableStartCmd(body.StartCmd).
-		SetNillableReadyCmd(body.ReadyCmd).
-		SetDockerfile(string(stepsMarshalled)).
-		Where(envbuild.ID(buildUUID)).
-		Exec(ctx)
+	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
+		StartCmd:   body.StartCmd,
+		ReadyCmd:   body.ReadyCmd,
+		Dockerfile: utils.ToPtr(string(stepsMarshalled)),
+		BuildUuid:  buildUUID,
+	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when updating build", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err))

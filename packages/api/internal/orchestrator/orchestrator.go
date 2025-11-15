@@ -52,6 +52,7 @@ type Orchestrator struct {
 	metricsRegistration     metric.Registration
 	createdSandboxesCounter metric.Int64Counter
 	teamMetricsObserver     *metrics.TeamObserver
+	accessTokenGenerator    *sandbox.AccessTokenGenerator
 	sandboxCounter          metric.Int64UpDownCounter
 	createdCounter          metric.Int64Counter
 }
@@ -67,6 +68,7 @@ func New(
 	sqlcDB *sqlcdb.Client,
 	clusters *edge.Pool,
 	featureFlags *featureflags.Client,
+	accessTokenGenerator *sandbox.AccessTokenGenerator,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		config.AnalyticsCollectorHost,
@@ -111,19 +113,20 @@ func New(
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
 	o := Orchestrator{
-		httpClient:         httpClient,
-		analytics:          analyticsInstance,
-		posthogClient:      posthogClient,
-		nomadClient:        nomadClient,
-		nodes:              smap.New[*nodemanager.Node](),
-		leastBusyAlgorithm: leastBusyAlgorithm,
-		bestOfKAlgorithm:   bestOfKAlgorithm,
-		featureFlagsClient: featureFlags,
-		routingCatalog:     routingCatalog,
-		dbClient:           dbClient,
-		sqlcDB:             sqlcDB,
-		tel:                tel,
-		clusters:           clusters,
+		httpClient:           httpClient,
+		analytics:            analyticsInstance,
+		posthogClient:        posthogClient,
+		nomadClient:          nomadClient,
+		nodes:                smap.New[*nodemanager.Node](),
+		leastBusyAlgorithm:   leastBusyAlgorithm,
+		bestOfKAlgorithm:     bestOfKAlgorithm,
+		featureFlagsClient:   featureFlags,
+		accessTokenGenerator: accessTokenGenerator,
+		routingCatalog:       routingCatalog,
+		dbClient:             dbClient,
+		sqlcDB:               sqlcDB,
+		tel:                  tel,
+		clusters:             clusters,
 
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,

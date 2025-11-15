@@ -121,7 +121,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	var sbxAccessToken *string = nil
 	if lastSnapshot.Snapshot.EnvSecure {
-		key, err := a.envdAccessTokenGenerator.GenerateAccessToken(lastSnapshot.Snapshot.SandboxID)
+		key, err := a.accessTokenGenerator.GenerateEnvdAccessToken(lastSnapshot.Snapshot.SandboxID)
 		if err != nil {
 			telemetry.ReportError(ctx, "error generating sandbox access token", err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error generating sandbox access token: %s", err))

@@ -28,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -60,7 +61,7 @@ type Config struct {
 	TotalDiskSizeMB int64
 	HugePages       bool
 
-	AllowInternetAccess *bool
+	Network *orchestrator.SandboxNetworkConfig
 
 	Envd EnvdMetadata
 }
@@ -105,6 +106,7 @@ type Sandbox struct {
 	*Resources
 	*Metadata
 
+	config  cfg.BuilderConfig
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
@@ -169,7 +171,8 @@ func (f *Factory) CreateSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "create sandbox")
-	defer func() { endSpan(span, e) }()
+	defer span.End()
+	defer handleSpanError(span, &e)
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -180,24 +183,19 @@ func (f *Factory) CreateSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
-			endSpan(execSpan, e)
+			handleSpanError(execSpan, &e)
+			execSpan.End()
 		}
 	}()
 
-	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
-	allowInternet := f.config.AllowSandboxInternet
-	if config.AllowInternetAccess != nil {
-		allowInternet = *config.AllowInternetAccess
-	}
-
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
 	}()
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(cleanupFiles(sandboxFiles))
+	cleanup.Add(cleanupFiles(f.config, sandboxFiles))
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
@@ -208,7 +206,7 @@ func (f *Factory) CreateSandbox(
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
 			rootFS,
-			sandboxFiles.SandboxCacheRootfsPath(),
+			sandboxFiles.SandboxCacheRootfsPath(f.config),
 			f.devicePool,
 		)
 	} else {
@@ -305,6 +303,7 @@ func (f *Factory) CreateSandbox(
 		Metadata:  metadata,
 
 		Template: template,
+		config:   f.config,
 		files:    sandboxFiles,
 		process:  fcHandle,
 
@@ -336,13 +335,13 @@ func (f *Factory) CreateSandbox(
 	return sbx, nil
 }
 
-func endSpan(span trace.Span, err error) {
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+// Usage: defer handleSpanError(span, &err)
+func handleSpanError(span trace.Span, err *error) {
+	defer span.End()
+	if err != nil && *err != nil {
+		span.RecordError(*err)
+		span.SetStatus(codes.Error, (*err).Error())
 	}
-
-	span.End()
 }
 
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
@@ -357,7 +356,8 @@ func (f *Factory) ResumeSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume sandbox")
-	defer func() { endSpan(span, e) }()
+	defer span.End()
+	defer handleSpanError(span, &e)
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -368,25 +368,19 @@ func (f *Factory) ResumeSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
-			endSpan(execSpan, e)
+			handleSpanError(execSpan, &e)
+			execSpan.End()
 		}
 	}()
 
-	// TODO: Temporarily set this based on global config, should be removed later
-	//  (it should be passed as a non nil parameter from API)
-	allowInternet := f.config.AllowSandboxInternet
-	if config.AllowInternetAccess != nil {
-		allowInternet = *config.AllowInternetAccess
-	}
-
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
 		// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
 		<-ipsCh
 	}()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(cleanupFiles(sandboxFiles))
+	cleanup.Add(cleanupFiles(f.config, sandboxFiles))
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
@@ -399,7 +393,7 @@ func (f *Factory) ResumeSandbox(
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		readonlyRootfs,
-		sandboxFiles.SandboxCacheRootfsPath(),
+		sandboxFiles.SandboxCacheRootfsPath(f.config),
 		f.devicePool,
 	)
 	if err != nil {
@@ -543,6 +537,7 @@ func (f *Factory) ResumeSandbox(
 		Metadata:  metadata,
 
 		Template: t,
+		config:   f.config,
 		files:    sandboxFiles,
 		process:  fcHandle,
 
@@ -667,7 +662,7 @@ func (s *Sandbox) Pause(
 	ctx, span := tracer.Start(ctx, "sandbox-snapshot")
 	defer span.End()
 
-	snapshotTemplateFiles, err := m.Template.CacheFiles()
+	snapshotTemplateFiles, err := m.Template.CacheFiles(s.config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
@@ -689,7 +684,7 @@ func (s *Sandbox) Pause(
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
-	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
+	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath(s.config))
 	// Memfile is also closed on diff creation processing
 	/* The process of snapshotting memory is as follows:
 	1. Pause FC via API
@@ -698,7 +693,7 @@ func (s *Sandbox) Pause(
 	4. Delete tmpfs file
 	5. Unlock so another snapshot can use tmpfs space
 	*/
-	memfile, err := storage.AcquireTmpMemfile(ctx, buildID.String())
+	memfile, err := storage.AcquireTmpMemfile(ctx, s.config, buildID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
 	}
@@ -737,6 +732,7 @@ func (s *Sandbox) Pause(
 				return memfile.Close()
 			},
 		},
+		s.config.DefaultCacheDir,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -750,12 +746,13 @@ func (s *Sandbox) Pause(
 			rootfs:    s.rootfs,
 			closeHook: s.Close,
 		},
+		s.config.DefaultCacheDir,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
-	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
+	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath(s.config))
 	err = m.ToFile(metadataFileLink.Path())
 	if err != nil {
 		return nil, err
@@ -776,12 +773,13 @@ func pauseProcessMemory(
 	buildId uuid.UUID,
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
+	cacheDir string,
 ) (build.Diff, *header.Header, error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
-		build.DefaultCachePath(),
+		cacheDir,
 		buildId.String(),
 		build.Memfile,
 	)
@@ -833,6 +831,15 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
 	}
 
+	err = header.ValidateMappings(memfileHeader.Mapping, memfileHeader.Metadata.Size, memfileHeader.Metadata.BlockSize)
+	if err != nil {
+		if memfileHeader.IsNormalizeFixApplied() {
+			return nil, nil, fmt.Errorf("invalid memfile header mappings: %w", err)
+		}
+
+		zap.L().Warn("memfile header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(memfileHeader.Metadata.BuildId.String()))
+	}
+
 	return memfileDiff, memfileHeader, nil
 }
 
@@ -841,11 +848,12 @@ func pauseProcessRootfs(
 	buildId uuid.UUID,
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
+	cacheDir string,
 ) (build.Diff, *header.Header, error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
 
-	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath(), buildId.String(), build.Rootfs)
+	rootfsDiffFile, err := build.NewLocalDiffFile(cacheDir, buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
@@ -889,6 +897,15 @@ func pauseProcessRootfs(
 		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
 	}
 
+	err = header.ValidateMappings(rootfsHeader.Mapping, rootfsHeader.Metadata.Size, rootfsHeader.Metadata.BlockSize)
+	if err != nil {
+		if rootfsHeader.IsNormalizeFixApplied() {
+			return nil, nil, fmt.Errorf("invalid rootfs header mappings: %w", err)
+		}
+
+		zap.L().Warn("rootfs header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(rootfsHeader.Metadata.BuildId.String()))
+	}
+
 	return rootfsDiff, rootfsHeader, nil
 }
 
@@ -896,7 +913,7 @@ func getNetworkSlotAsync(
 	ctx context.Context,
 	networkPool *network.Pool,
 	cleanup *Cleanup,
-	allowInternet bool,
+	network *orchestrator.SandboxNetworkConfig,
 ) chan networkSlotRes {
 	ctx, span := tracer.Start(ctx, "get-network-slot")
 	defer span.End()
@@ -906,7 +923,7 @@ func getNetworkSlotAsync(
 	go func() {
 		defer close(r)
 
-		ips, err := networkPool.Get(ctx, allowInternet)
+		ips, err := networkPool.Get(ctx, network)
 		if err != nil {
 			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
 

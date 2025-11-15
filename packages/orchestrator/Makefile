@@ -58,7 +58,7 @@ endef
 .PHONY: run-local
 run-local:
 	$(call setup_local_env)
-	NODE_ID=$$(hostname) ./bin/orchestrator --port 3000
+	NODE_ID=$$(hostname) ./bin/orchestrator
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:

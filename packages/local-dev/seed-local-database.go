@@ -10,13 +10,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/lib/pq"
 
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
 
 var (
@@ -46,61 +43,53 @@ func run(ctx context.Context) error {
 		}
 	}
 
-	// init database
-	database, err := db.NewClient(1, 0)
-	if err != nil {
-		return fmt.Errorf("failed to initialize db: %w", err)
-	}
-	defer database.Close()
-
-	sqlcDB, err := client.NewClient(ctx)
+	db, err := client.NewClient(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer sqlcDB.Close()
+	defer db.Close()
 
 	// create user
-	user, err := upsertUser(ctx, database)
-	if err != nil {
+	if err := upsertUser(ctx, db); err != nil {
 		return fmt.Errorf("failed to upsert user: %w", err)
 	}
 
 	// create team
-	team, err := upsertTeam(ctx, database)
+	teamID, err := upsertTeam(ctx, db)
 	if err != nil {
 		return fmt.Errorf("failed to upsert team: %w", err)
 	}
 
-	if err = ensureUserIsOnTeam(ctx, database, user, team); err != nil {
+	if err = ensureUserIsOnTeam(ctx, db, teamID); err != nil {
 		return fmt.Errorf("failed to ensure user is on team: %w", err)
 	}
 
 	// create user token
-	if err = upsertUserToken(ctx, sqlcDB, user, keys.AccessTokenPrefix, userTokenValue); err != nil {
+	if err = upsertUserToken(ctx, db, keys.AccessTokenPrefix, userTokenValue); err != nil {
 		return fmt.Errorf("failed to upsert token: %w", err)
 	}
 
 	// create team token
-	if err = upsertTeamAPIKey(ctx, sqlcDB, team, keys.ApiKeyPrefix, teamTokenValue); err != nil {
+	if err = upsertTeamAPIKey(ctx, db, teamID, keys.ApiKeyPrefix, teamTokenValue); err != nil {
 		return fmt.Errorf("failed to upsert token: %w", err)
 	}
 
 	// create local cluster
-	// if err = upsertLocalCluster(ctx, database); err != nil {
+	// if err = upsertLocalCluster(ctx, db); err != nil {
 	//	return fmt.Errorf("failed to upsert local cluster: %w", err)
 	// }
 
 	return nil
 }
 
-func upsertTeamAPIKey(ctx context.Context, sqlcDB *client.Client, team *models.Team, tokenPrefix, token string) error {
+func upsertTeamAPIKey(ctx context.Context, db *client.Client, teamID uuid.UUID, tokenPrefix, token string) error {
 	tokenHash, tokenMask, err := createTokenHash(tokenPrefix, token)
 	if err != nil {
 		return fmt.Errorf("failed to create token hash: %w", err)
 	}
 
-	if _, err = sqlcDB.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
-		TeamID:           team.ID,
+	if _, err = db.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
+		TeamID:           teamID,
 		CreatedBy:        &userID,
 		ApiKeyHash:       tokenHash,
 		ApiKeyPrefix:     tokenMask.Prefix,
@@ -108,27 +97,26 @@ func upsertTeamAPIKey(ctx context.Context, sqlcDB *client.Client, team *models.T
 		ApiKeyMaskPrefix: tokenMask.MaskedValuePrefix,
 		ApiKeyMaskSuffix: tokenMask.MaskedValueSuffix,
 		Name:             "local dev seed token",
-	}); err != nil {
+	}); ignoreConstraints(err) != nil {
 		return fmt.Errorf("failed to create team api key: %w", err)
 	}
 
 	return nil
 }
 
-func ensureUserIsOnTeam(ctx context.Context, database *db.DB, user *models.User, team *models.Team) error {
-	if _, err := database.Client.UsersTeams.Create().
-		SetTeamID(team.ID).
-		SetUserID(user.ID).
-		Save(ctx); err != nil {
-		if !models.IsConstraintError(err) {
-			return fmt.Errorf("failed to add user to team: %w", err)
-		}
+func ensureUserIsOnTeam(ctx context.Context, db *client.Client, teamID uuid.UUID) error {
+	if err := db.TestsRawSQL(ctx, `
+INSERT INTO users_teams (user_id, team_id, is_default)
+VALUES ($1, $2, $3)
+ON CONFLICT DO NOTHING
+`, userID, teamID, true); ignoreConstraints(err) != nil {
+		return fmt.Errorf("failed to add user to team: %w", err)
 	}
 
 	return nil
 }
 
-func upsertUserToken(ctx context.Context, db *client.Client, user *models.User, tokenPrefix, token string) error {
+func upsertUserToken(ctx context.Context, db *client.Client, tokenPrefix, token string) error {
 	tokenHash, tokenMask, err := createTokenHash(tokenPrefix, token)
 	if err != nil {
 		return fmt.Errorf("failed to create token hash: %w", err)
@@ -136,7 +124,7 @@ func upsertUserToken(ctx context.Context, db *client.Client, user *models.User, 
 
 	if _, err = db.CreateAccessToken(ctx, queries.CreateAccessTokenParams{
 		ID:                    tokenID,
-		UserID:                user.ID,
+		UserID:                userID,
 		AccessTokenHash:       tokenHash,
 		AccessTokenPrefix:     tokenMask.Prefix,
 		AccessTokenLength:     int32(tokenMask.ValueLength),
@@ -151,14 +139,6 @@ func upsertUserToken(ctx context.Context, db *client.Client, user *models.User, 
 }
 
 func ignoreConstraints(err error) error {
-	// entgo check
-	var pqerr *pq.Error
-	if errors.As(err, &pqerr) {
-		if pqerr.Code == "23505" {
-			return nil
-		}
-	}
-
 	// sqlc check
 	var pgconnErr *pgconn.PgError
 	if errors.As(err, &pgconnErr) {
@@ -170,60 +150,36 @@ func ignoreConstraints(err error) error {
 	return err
 }
 
-func updateTeam[T interface {
-	SetEmail(value string) T
-	SetName(value string) T
-	SetTier(value string) T
-}](cmd T) T {
-	return cmd.
-		SetEmail("team@e2b-dev.local").
-		SetName("local-dev team").
-		SetTier("base_v1")
-}
-
-func upsertTeam(ctx context.Context, database *db.DB) (*models.Team, error) {
+func upsertTeam(ctx context.Context, db *client.Client) (uuid.UUID, error) {
 	teamID := uuid.MustParse("0b8a3ded-4489-4722-afd1-1d82e64ec2d5")
-	team, err := database.Client.Team.Get(ctx, teamID)
-	if err == nil {
-		cmd := database.Client.Team.UpdateOne(team)
-		cmd = updateTeam(cmd)
-		team, err = cmd.Save(ctx)
-	} else if models.IsNotFound(err) {
-		cmd := database.Client.Team.Create()
-		cmd = updateTeam(cmd).SetID(teamID)
-		team, err = cmd.Save(ctx)
-	}
+
+	err := db.TestsRawSQL(ctx, `
+INSERT INTO teams (id, email, name, tier, is_blocked)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (id) DO UPDATE SET
+	email = EXCLUDED.email,
+	name = EXCLUDED.name,
+	tier = EXCLUDED.tier
+`, teamID, "team@e2b-dev.local", "local-dev team", "base_v1", false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create team: %w", err)
+		return uuid.Nil, fmt.Errorf("failed to upsert team: %w", err)
 	}
 
-	return team, nil
+	return teamID, nil
 }
 
-func upsertUser(ctx context.Context, database *db.DB) (*models.User, error) {
-	user, err := database.Client.User.Get(ctx, userID)
-	if err == nil {
-		cmd := database.Client.User.UpdateOne(user)
-		cmd = updateUser(cmd)
-		user, err = cmd.Save(ctx)
-	} else if models.IsNotFound(err) {
-		cmd := database.Client.User.Create()
-		cmd = updateUser(cmd).SetID(userID)
-		user, err = cmd.Save(ctx)
-	}
+func upsertUser(ctx context.Context, db *client.Client) error {
+	err := db.TestsRawSQL(ctx, `
+INSERT INTO auth.users (id, email)
+VALUES ($1, $2)
+ON CONFLICT (id) DO UPDATE SET
+	email = EXCLUDED.email
+`, userID, "user@e2b-dev.local")
 	if err != nil {
-		return nil, fmt.Errorf("failed to upsert user: %w", err)
+		return fmt.Errorf("failed to upsert user: %w", err)
 	}
 
-	return user, nil
-}
-
-func updateUser[T interface {
-	SetEmail(email string) T
-	AddTeams(teams ...*models.Team) T
-}](cmd T) T {
-	return cmd.
-		SetEmail("user@e2b-dev.local")
+	return nil
 }
 
 func createTokenHash(prefix, accessToken string) (string, keys.MaskedIdentifier, error) {

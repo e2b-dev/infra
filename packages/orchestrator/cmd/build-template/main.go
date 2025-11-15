@@ -47,12 +47,17 @@ func main() {
 	fcVersion := flag.String("firecracker", "", "firecracker version")
 	flag.Parse()
 
-	networkConfig, err := network.ParseConfig()
+	builderConfig, err := cfg.ParseBuilder()
 	if err != nil {
-		log.Fatalf("error parsing config: %v", err)
+		log.Fatalf("error parsing builder config: %v", err)
 	}
 
-	err = buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID, networkConfig)
+	networkConfig, err := network.ParseConfig()
+	if err != nil {
+		log.Fatalf("error parsing network config: %v", err)
+	}
+
+	err = buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatalf("error building template: %v", err)
 	}
@@ -64,6 +69,7 @@ func buildTemplate(
 	fcVersion,
 	templateID,
 	buildID string,
+	builderConfig cfg.BuilderConfig,
 	networkConfig network.Config,
 ) error {
 	ctx, cancel := context.WithTimeout(parentCtx, time.Minute*5)
@@ -130,10 +136,11 @@ func buildTemplate(
 		}
 	}()
 
-	networkPool, err := network.NewPool(8, 8, clientID, networkConfig)
+	slotStorage, err := network.NewStorageLocal(networkConfig)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
+	networkPool := network.NewPool(8, 8, slotStorage, networkConfig)
 	go func() {
 		networkPool.Populate(ctx)
 		logger.Info("network pool done populating")
@@ -189,6 +196,7 @@ func buildTemplate(
 	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags)
 
 	builder := build.NewBuilder(
+		builderConfig,
 		logger,
 		featureFlags,
 		sandboxFactory,

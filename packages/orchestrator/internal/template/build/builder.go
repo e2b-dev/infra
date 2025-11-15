@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -47,6 +48,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type Builder struct {
 	logger *zap.Logger
 
+	config              cfg.BuilderConfig
 	sandboxFactory      *sandbox.Factory
 	templateStorage     storage.StorageProvider
 	buildStorage        storage.StorageProvider
@@ -60,6 +62,7 @@ type Builder struct {
 }
 
 func NewBuilder(
+	config cfg.BuilderConfig,
 	logger *zap.Logger,
 	featureFlags *featureflags.Client,
 	sandboxFactory *sandbox.Factory,
@@ -73,6 +76,7 @@ func NewBuilder(
 	buildMetrics *metrics.BuildMetrics,
 ) *Builder {
 	return &Builder{
+		config:              config,
 		logger:              logger,
 		featureFlags:        featureFlags,
 		sandboxFactory:      sandboxFactory,
@@ -188,6 +192,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	}()
 
 	buildContext := buildcontext.BuildContext{
+		BuilderConfig:  b.config,
 		Config:         cfg,
 		Template:       template,
 		UploadErrGroup: &uploadErrGroup,
@@ -337,7 +342,7 @@ func getRootfsSize(
 	s storage.StorageProvider,
 	metadata storage.TemplateFiles,
 ) (uint64, error) {
-	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath())
+	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -99,6 +101,26 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
+	// Clone the network config to avoid modifying the original request
+	network := proto.CloneOf(req.GetSandbox().GetNetwork())
+
+	// TODO: Temporarily set this based on global config, should be removed later
+	// https://linear.app/e2b/issue/ENG-3291
+	//  (it should be passed network config from API)
+	allowInternet := s.config.AllowSandboxInternet
+	if req.GetSandbox().AllowInternetAccess != nil {
+		allowInternet = req.GetSandbox().GetAllowInternetAccess()
+	}
+	if !allowInternet {
+		if network == nil {
+			network = &orchestrator.SandboxNetworkConfig{}
+		}
+		if network.GetEgress() == nil {
+			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
+		}
+		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
+	}
+
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
@@ -110,7 +132,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
 			HugePages:       req.GetSandbox().GetHugePages(),
 
-			AllowInternetAccess: req.GetSandbox().AllowInternetAccess,
+			Network: network,
 
 			Envd: sandbox.EnvdMetadata{
 				Version:     req.GetSandbox().GetEnvdVersion(),
@@ -171,22 +193,23 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:   events.StructureVersionV2,
-		ID:        uuid.New(),
-		Type:      eventType.Type,
-		Timestamp: time.Now().UTC(),
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
 
-		EventCategory: eventType.LegacyCategory,
-		EventLabel:    eventType.LegacyLabel,
-		EventData:     eventData,
-
-		SandboxID:          sbx.Runtime.SandboxID,
-		SandboxExecutionID: sbx.Runtime.ExecutionID,
-		SandboxTemplateID:  sbx.Config.BaseTemplateID,
-		SandboxBuildID:     buildId,
-		SandboxTeamID:      teamID,
-	})
+			EventData:          eventData,
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &orchestrator.SandboxCreateResponse{
 		ClientId: s.info.ClientId,
@@ -215,22 +238,23 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
 	eventType := events.SandboxUpdatedEventPair
 
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:   events.StructureVersionV2,
-		ID:        uuid.New(),
-		Type:      eventType.Type,
-		Timestamp: time.Now().UTC(),
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
 
-		EventCategory: eventType.LegacyCategory,
-		EventLabel:    eventType.LegacyLabel,
-		EventData:     eventData,
-
-		SandboxID:          sbx.Runtime.SandboxID,
-		SandboxExecutionID: sbx.Runtime.ExecutionID,
-		SandboxTemplateID:  sbx.Config.BaseTemplateID,
-		SandboxBuildID:     buildId,
-		SandboxTeamID:      teamID,
-	})
+			EventData:          eventData,
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &emptypb.Empty{}, nil
 }
@@ -306,22 +330,23 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 
 	eventType := events.SandboxKilledEventPair
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:   events.StructureVersionV2,
-		ID:        uuid.New(),
-		Type:      eventType.Type,
-		Timestamp: time.Now().UTC(),
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
 
-		EventCategory: eventType.LegacyCategory,
-		EventLabel:    eventType.LegacyLabel,
-		EventData:     eventData,
-
-		SandboxID:          sbx.Runtime.SandboxID,
-		SandboxExecutionID: sbx.Runtime.ExecutionID,
-		SandboxTemplateID:  sbx.Config.BaseTemplateID,
-		SandboxBuildID:     buildId,
-		SandboxTeamID:      teamID,
-	})
+			EventData:          eventData,
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &emptypb.Empty{}, nil
 }
@@ -418,22 +443,23 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 
 	eventType := events.SandboxPausedEventPair
-	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:   events.StructureVersionV2,
-		ID:        uuid.New(),
-		Type:      eventType.Type,
-		Timestamp: time.Now().UTC(),
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
 
-		EventCategory: eventType.LegacyCategory,
-		EventLabel:    eventType.LegacyLabel,
-		EventData:     eventData,
-
-		SandboxID:          sbx.Runtime.SandboxID,
-		SandboxExecutionID: sbx.Runtime.ExecutionID,
-		SandboxTemplateID:  sbx.Config.BaseTemplateID,
-		SandboxBuildID:     buildId,
-		SandboxTeamID:      teamID,
-	})
+			EventData:          eventData,
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &emptypb.Empty{}, nil
 }

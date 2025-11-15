@@ -97,6 +97,11 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
+.PHONY: download-public-kernels
+download-public-kernels:
+	mkdir -p ./packages/fc-kernels
+	gsutil cp -r gs://e2b-prod-public-builds/kernels/* ./packages/fc-kernels/
+
 .PHONY: generate
 generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate/shared generate-tests generate-mocks
 generate/%:
@@ -153,7 +158,7 @@ fmt:
 .PHONY: lint
 lint:
 	@./scripts/golangci-lint-install.sh "2.4.0"
-	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/... --fix
+	go work edit -json | jq -r '.Use[].DiskPath' | xargs -P 10 -I{} golangci-lint run {}/... --fix
 
 .PHONY: generate-mocks
 generate-mocks:

@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -86,14 +87,14 @@ func (c *Cleanup) run(ctx context.Context) {
 	c.error = errors.Join(errs...)
 }
 
-func cleanupFiles(files *storage.SandboxFiles) func(context.Context) error {
+func cleanupFiles(config cfg.BuilderConfig, files *storage.SandboxFiles) func(context.Context) error {
 	return func(context.Context) error {
 		var errs []error
 
 		for _, p := range []string{
 			files.SandboxFirecrackerSocketPath(),
 			files.SandboxUffdSocketPath(),
-			files.SandboxCacheRootfsLinkPath(),
+			files.SandboxCacheRootfsLinkPath(config),
 		} {
 			err := os.RemoveAll(p)
 			if err != nil {

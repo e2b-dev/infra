@@ -13,25 +13,56 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	teamtypes "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// buildNetworkConfig constructs the orchestrator network configuration from the input parameters
+func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) *orchestrator.SandboxNetworkConfig {
+	orchNetwork := &orchestrator.SandboxNetworkConfig{
+		Egress: &orchestrator.SandboxNetworkEgressConfig{},
+		Ingress: &orchestrator.SandboxNetworkIngressConfig{
+			TrafficAccessToken: trafficAccessToken,
+		},
+	}
+
+	// Copy network configuration if provided
+	if network != nil && network.Egress != nil {
+		orchNetwork.Egress.AllowedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.AllowedAddresses)
+		orchNetwork.Egress.DeniedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.DeniedAddresses)
+	}
+
+	if network != nil && network.Ingress != nil {
+		orchNetwork.Ingress.MaskRequestHost = network.Ingress.MaskRequestHost
+	}
+
+	// Handle the case where internet access is explicitly disabled
+	// This should be applied after copying the network config to preserve allowed addresses
+	if allowInternetAccess != nil && !*allowInternetAccess {
+		// Block all internet access - this overrides any other blocked addresses
+		orchNetwork.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
+	}
+
+	return orchNetwork
+}
 
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
 	executionID,
 	alias string,
-	team *types.Team,
+	team *teamtypes.Team,
 	build queries.EnvBuild,
 	metadata map[string]string,
 	envVars map[string]string,
@@ -44,6 +75,7 @@ func (o *Orchestrator) CreateSandbox(
 	autoPause bool,
 	envdAuthToken *string,
 	allowInternetAccess *bool,
+	network *types.SandboxNetworkConfig,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -138,6 +170,21 @@ func (o *Orchestrator) CreateSandbox(
 		sbxDomain = cluster.SandboxDomain
 	}
 
+	var trafficAccessToken *string = nil
+	if network != nil && network.Ingress != nil && !network.Ingress.AllowPublicAccess {
+		accessToken, err := o.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
+		if err != nil {
+			return sandbox.Sandbox{}, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Failed to create traffic access token",
+				Err:       fmt.Errorf("failed to create traffic access token for sandbox %s: %w", sandboxID, err),
+			}
+		}
+
+		trafficAccessToken = &accessToken
+	}
+
+	sbxNetwork := buildNetworkConfig(network, allowInternetAccess, trafficAccessToken)
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:      baseTemplateID,
@@ -160,6 +207,7 @@ func (o *Orchestrator) CreateSandbox(
 			Snapshot:            isResume,
 			AutoPause:           autoPause,
 			AllowInternetAccess: allowInternetAccess,
+			Network:             sbxNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
 		},
 		StartTime: timestamppb.New(startTime),
@@ -184,12 +232,12 @@ func (o *Orchestrator) CreateSandbox(
 	algorithm := o.getPlacementAlgorithm(ctx)
 	node, err = placement.PlaceSandbox(ctx, algorithm, clusterNodes, node, sbxRequest)
 	if err != nil {
-		telemetry.ReportError(ctx, "failed to create sandbox", err)
+		telemetry.ReportError(ctx, "failed to place sandbox", err)
 
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
-			ClientMsg: "Failed to create sandbox",
-			Err:       fmt.Errorf("failed to get create sandbox: %w", err),
+			ClientMsg: "Failed to place sandbox",
+			Err:       fmt.Errorf("failed to place sandbox: %w", err),
 		}
 	}
 
@@ -237,6 +285,8 @@ func (o *Orchestrator) CreateSandbox(
 		allowInternetAccess,
 		baseTemplateID,
 		sbxDomain,
+		network,
+		trafficAccessToken,
 	)
 
 	o.sandboxStore.Add(ctx, sbx, true)

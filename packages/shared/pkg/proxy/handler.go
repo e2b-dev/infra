@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,38 +12,19 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 )
 
-type InvalidHostError struct{}
-
-func (e *InvalidHostError) Error() string {
-	return "invalid url host"
-}
-
-type InvalidSandboxPortError struct{}
-
-func (e *InvalidSandboxPortError) Error() string {
-	return "invalid sandbox port"
-}
-
-func NewErrSandboxNotFound(sandboxId string) *SandboxNotFoundError {
-	return &SandboxNotFoundError{
-		SandboxId: sandboxId,
-	}
-}
-
-type SandboxNotFoundError struct {
-	SandboxId string
-}
-
-func (e *SandboxNotFoundError) Error() string {
-	return "sandbox not found"
-}
-
 func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Destination, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		d, err := getDestination(r)
 
-		var invalidHostErr *InvalidHostError
-		if errors.As(err, &invalidHostErr) {
+		var mhe MissingHeaderError
+		if errors.As(err, &mhe) {
+			zap.L().Warn("missing header", zap.Error(mhe))
+			http.Error(w, "missing header", http.StatusBadRequest)
+
+			return
+		}
+
+		if errors.Is(err, ErrInvalidHost) {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
 
@@ -53,7 +33,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var invalidPortErr *InvalidSandboxPortError
 		if errors.As(err, &invalidPortErr) {
-			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host))
+			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host), zap.String("port", invalidPortErr.Port))
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
 
 			return
@@ -61,7 +41,9 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var notFoundErr *SandboxNotFoundError
 		if errors.As(err, &notFoundErr) {
-			zap.L().Warn("sandbox not found", zap.String("host", r.Host), logger.WithSandboxID(notFoundErr.SandboxId))
+			zap.L().Warn("sandbox not found",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(notFoundErr.SandboxId))
 
 			err := template.
 				NewSandboxNotFoundError(notFoundErr.SandboxId, r.Host).
@@ -69,6 +51,40 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			if err != nil {
 				zap.L().Error("failed to handle sandbox not found error", zap.Error(err), logger.WithSandboxID(notFoundErr.SandboxId))
 				http.Error(w, "Failed to handle sandbox not found error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
+		var trafficMissingTokenErr *MissingTrafficAccessTokenError
+		if errors.As(err, &trafficMissingTokenErr) {
+			zap.L().Warn("traffic access token is missing", zap.String("host", r.Host))
+
+			err = template.
+				NewTrafficAccessTokenMissingHeader(trafficMissingTokenErr.SandboxId, r.Host, trafficMissingTokenErr.Header).
+				HandleError(w, r)
+			if err != nil {
+				zap.L().Error("failed to handle traffic missing traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficMissingTokenErr.SandboxId))
+				http.Error(w, "Failed to handle invalid missing access token header error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
+		var trafficInvalidTokenErr *InvalidTrafficAccessTokenError
+		if errors.As(err, &trafficInvalidTokenErr) {
+			zap.L().Warn("traffic access token is invalid", zap.String("host", r.Host))
+
+			err = template.
+				NewTrafficAccessTokenInvalidHeader(trafficInvalidTokenErr.SandboxId, r.Host, trafficInvalidTokenErr.Header).
+				HandleError(w, r)
+			if err != nil {
+				zap.L().Error("failed to handle traffic invalid traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficInvalidTokenErr.SandboxId))
+				http.Error(w, "Failed to handle invalid traffic access token header error", http.StatusInternalServerError)
 
 				return
 			}
@@ -85,9 +101,11 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		d.RequestLogger.Debug("proxying request")
 
-		ctx := context.WithValue(r.Context(), pool.DestinationContextKey{}, d)
+		ctx := r.Context()
+		ctx = pool.WithDestination(ctx, d)
+		r = r.WithContext(ctx)
 
 		proxy := p.Get(d)
-		proxy.ServeHTTP(w, r.WithContext(ctx))
+		proxy.ServeHTTP(w, r)
 	}
 }

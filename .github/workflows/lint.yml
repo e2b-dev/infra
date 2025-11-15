@@ -4,8 +4,6 @@ on: [workflow_call]
 
 permissions:
   contents: read
-env:
-  GOLANGCI_LINT_VERSION: v2.4.0
 
 jobs:
   detect-modules:
@@ -30,8 +28,12 @@ jobs:
         uses: ./.github/actions/go-setup-cache
         with:
           job_key: lint-${{ matrix.modules }}
+
+      - name: Parse .tool-versions
+        uses: wistia/parse-tool-versions@v2.1.1
+
       - name: golangci-lint ${{ matrix.modules }}
         uses: golangci/golangci-lint-action@v8
         with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          version: "v${{ env.GOLANGCI_LINT }}"
           working-directory: ${{ matrix.modules }}

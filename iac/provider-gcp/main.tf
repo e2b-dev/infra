@@ -13,7 +13,7 @@ terraform {
 
     google = {
       source  = "hashicorp/google"
-      version = "6.49.3"
+      version = "6.50.0"
     }
 
     cloudflare = {
@@ -59,12 +59,7 @@ data "google_secret_manager_secret_version" "routing_domains" {
 }
 
 locals {
-  // Taking additional domains from local env is there just for backward compatibility
-  additional_domains_from_secret = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
-  additional_domains_from_env = (var.additional_domains != "" ?
-  [for item in split(",", var.additional_domains) : trimspace(item)] : [])
-
-  additional_domains = distinct(concat(local.additional_domains_from_env, local.additional_domains_from_secret))
+  additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
 }
 
 module "init" {
@@ -206,6 +201,8 @@ module "nomad" {
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
   api_admin_token                           = random_password.api_admin_secret.result
   redis_url_secret_version                  = google_secret_manager_secret_version.redis_url
+  redis_secure_cluster_url_secret_version   = module.init.redis_secure_cluster_url_secret_version
+  redis_tls_ca_base64_secret_version        = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed            = random_password.sandbox_access_token_hash_seed.result
 
   # Click Proxy
@@ -274,6 +271,9 @@ module "redis" {
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
+
+  redis_secure_cluster_url_secret_version = module.init.redis_secure_cluster_url_secret_version
+  redis_tls_ca_base64_secret_version      = module.init.redis_tls_ca_base64_secret_version
 
   prefix = var.prefix
 }

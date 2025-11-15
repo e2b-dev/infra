@@ -17,20 +17,24 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID, teamClusterID *uuid.UUID) error {
-	env, builds, err := a.db.GetSnapshotBuilds(ctx, sandboxID, teamID)
+	template, builds, err := a.db.GetSnapshotBuilds(ctx, sandboxID, teamID)
 	if err != nil {
 		return err
 	}
 
-	dbErr := a.db.DeleteEnv(ctx, env.ID)
+	dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+		TeamID:     teamID,
+		TemplateID: template.ID,
+	})
 	if dbErr != nil {
-		return fmt.Errorf("error deleting env from db: %w", dbErr)
+		return fmt.Errorf("error deleting template from db: %w", dbErr)
 	}
 
 	go func(ctx context.Context) {
@@ -38,7 +42,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		ctx, span := tracer.Start(ctx, "delete-snapshot")
 		defer span.End()
 		span.SetAttributes(telemetry.WithSandboxID(sandboxID))
-		span.SetAttributes(telemetry.WithTemplateID(env.ID))
+		span.SetAttributes(telemetry.WithTemplateID(template.ID))
 
 		envBuildIDs := make([]template_manager.DeleteBuild, 0)
 		for _, build := range builds {
@@ -63,7 +67,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		}
 	}(context.WithoutCancel(ctx))
 
-	a.templateCache.Invalidate(env.ID)
+	a.templateCache.Invalidate(template.ID)
 
 	return nil
 }

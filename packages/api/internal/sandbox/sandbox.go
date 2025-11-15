@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/db/types"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
@@ -34,6 +35,8 @@ func NewSandbox(
 	allowInternetAccess *bool,
 	baseTemplateID string,
 	domain *string,
+	network *types.SandboxNetworkConfig,
+	trafficAccessToken *string,
 ) Sandbox {
 	return Sandbox{
 		SandboxID:  sandboxID,
@@ -56,12 +59,14 @@ func NewSandbox(
 		FirecrackerVersion:  firecrackerVersion,
 		EnvdVersion:         envdVersion,
 		EnvdAccessToken:     envdAccessToken,
+		TrafficAccessToken:  trafficAccessToken,
 		AllowInternetAccess: allowInternetAccess,
 		NodeID:              nodeID,
 		ClusterID:           clusterID,
 		AutoPause:           autoPause,
 		State:               StateRunning,
 		BaseTemplateID:      baseTemplateID,
+		Network:             network,
 	}
 }
 
@@ -87,23 +92,26 @@ type Sandbox struct {
 	FirecrackerVersion  string
 	EnvdVersion         string
 	EnvdAccessToken     *string
+	TrafficAccessToken  *string
 	AllowInternetAccess *bool
 	NodeID              string
 	ClusterID           uuid.UUID
 	AutoPause           bool
+	Network             *types.SandboxNetworkConfig
 
 	State State
 }
 
 func (s Sandbox) ToAPISandbox() *api.Sandbox {
 	return &api.Sandbox{
-		SandboxID:       s.SandboxID,
-		TemplateID:      s.TemplateID,
-		ClientID:        s.ClientID,
-		Alias:           s.Alias,
-		EnvdVersion:     s.EnvdVersion,
-		EnvdAccessToken: s.EnvdAccessToken,
-		Domain:          s.Domain,
+		SandboxID:          s.SandboxID,
+		TemplateID:         s.TemplateID,
+		ClientID:           s.ClientID,
+		Alias:              s.Alias,
+		EnvdVersion:        s.EnvdVersion,
+		EnvdAccessToken:    s.EnvdAccessToken,
+		TrafficAccessToken: s.TrafficAccessToken,
+		Domain:             s.Domain,
 	}
 }
 

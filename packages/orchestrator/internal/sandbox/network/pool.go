@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -72,14 +73,9 @@ type Pool struct {
 
 var ErrClosed = errors.New("cannot read from a closed pool")
 
-func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
+func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, slotStorage Storage, config Config) *Pool {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
-
-	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create slot storage: %w", err)
-	}
 
 	pool := &Pool{
 		config:      config,
@@ -89,7 +85,7 @@ func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Co
 		slotStorage: slotStorage,
 	}
 
-	return pool, nil
+	return pool
 }
 
 func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
@@ -132,7 +128,7 @@ func (p *Pool) Populate(ctx context.Context) {
 	}
 }
 
-func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
+func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (*Slot, error) {
 	var slot *Slot
 
 	select {
@@ -159,8 +155,15 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 		}
 	}
 
-	err := slot.ConfigureInternet(ctx, allowInternet)
+	err := slot.ConfigureInternet(ctx, network)
 	if err != nil {
+		// Return the slot to the pool if configuring internet fails
+		go func() {
+			if returnErr := p.Return(context.WithoutCancel(ctx), slot); returnErr != nil {
+				zap.L().Error("failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
+			}
+		}()
+
 		return nil, fmt.Errorf("error setting slot internet access: %w", err)
 	}
 

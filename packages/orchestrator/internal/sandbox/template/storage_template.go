@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -19,7 +20,8 @@ import (
 )
 
 type storageTemplate struct {
-	files storage.TemplateCacheFiles
+	config cfg.BuilderConfig
+	files  storage.TemplateCacheFiles
 
 	memfile  *utils.SetOnce[block.ReadonlyDevice]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
@@ -36,6 +38,7 @@ type storageTemplate struct {
 }
 
 func newTemplateFromStorage(
+	config cfg.BuilderConfig,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
@@ -50,12 +53,13 @@ func newTemplateFromStorage(
 		BuildID:            buildId,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
-	}.CacheFiles()
+	}.CacheFiles(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
 	}
 
 	return &storageTemplate{
+		config:        config,
 		files:         files,
 		localSnapfile: localSnapfile,
 		localMetafile: localMetafile,
@@ -86,7 +90,8 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			ctx,
 			t.persistence,
 			t.files.StorageSnapfilePath(),
-			t.files.CacheSnapfilePath(),
+			t.files.CacheSnapfilePath(t.config),
+			storage.SnapfileObjectType,
 		)
 		if snapfileErr != nil {
 			errMsg := fmt.Errorf("failed to fetch snapfile: %w", snapfileErr)
@@ -118,7 +123,8 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			ctx,
 			t.persistence,
 			t.files.StorageMetadataPath(),
-			t.files.CacheMetadataPath(),
+			t.files.CacheMetadataPath(t.config),
+			storage.MetadataObjectType,
 		)
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
 			sourceErr := fmt.Errorf("failed to fetch metafile: %w", err)
@@ -137,7 +143,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 				zap.Error(err),
 			)
 			oldTemplateMetadata := metadata.V1TemplateVersion()
-			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath())
+			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath(t.config))
 			if err != nil {
 				sourceErr := fmt.Errorf("failed to write v1 template metadata to a file: %w", err)
 				if err := t.metafile.SetError(sourceErr); err != nil {
@@ -148,7 +154,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			}
 
 			if err := t.metafile.SetValue(&storageFile{
-				path: t.files.CacheMetadataPath(),
+				path: t.files.CacheMetadataPath(t.config),
 			}); err != nil {
 				return fmt.Errorf("failed to set metafile v1: %w", err)
 			}

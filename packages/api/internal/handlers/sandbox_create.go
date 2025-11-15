@@ -3,22 +3,25 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -43,7 +46,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey
-	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
+	teamInfo := c.Value(auth.TeamContextKey).(*typesteam.Team)
 
 	c.Set("teamID", teamInfo.Team.ID.String())
 
@@ -62,7 +65,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
-	cleanedAliasOrEnvID, err := id.CleanEnvID(body.TemplateID)
+	cleanedAliasOrEnvID, err := id.CleanTemplateID(body.TemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid environment ID: %s", err))
 
@@ -146,7 +149,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if body.Secure != nil && *body.Secure == true {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithSandboxID(sandboxID), logger.WithBuildID(build.ID.String()))
+			telemetry.ReportError(ctx, "secure envd access token error", tokenErr.Err, telemetry.WithSandboxID(sandboxID), telemetry.WithBuildID(build.ID.String()))
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 
 			return
@@ -156,6 +159,35 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	allowInternetAccess := body.AllowInternetAccess
+
+	var network *types.SandboxNetworkConfig
+	if n := body.Network; n != nil {
+		if err := validateNetworkConfig(n); err != nil {
+			telemetry.ReportError(ctx, "invalid network config", err.Err, telemetry.WithSandboxID(sandboxID))
+			a.sendAPIStoreError(c, err.Code, err.ClientMsg)
+
+			return
+		}
+
+		network = &types.SandboxNetworkConfig{
+			Ingress: &types.SandboxNetworkIngressConfig{
+				AllowPublicAccess: sharedUtils.DerefOrDefault(n.AllowPublicTraffic, true),
+				MaskRequestHost:   n.MaskRequestHost,
+			},
+			Egress: &types.SandboxNetworkEgressConfig{
+				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
+				DeniedAddresses:  sharedUtils.DerefOrDefault(n.DenyOut, nil),
+			},
+		}
+
+		// Make sure envd seucre access is enforced when public access is disabled,
+		// this is requirement forcing users using newer features to secure sandboxes properly.
+		if !network.Ingress.AllowPublicAccess && envdAccessToken == nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "You cannot create a sandbox without public access unless you enable secure envd access via 'secure' flag.")
+
+			return
+		}
+	}
 
 	sbx, createErr := a.startSandbox(
 		ctx,
@@ -173,6 +205,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause,
 		envdAccessToken,
 		allowInternetAccess,
+		network,
 		mcp,
 	)
 	if createErr != nil {
@@ -211,7 +244,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 		}
 	}
 
-	key, err := a.envdAccessTokenGenerator.GenerateAccessToken(sandboxID)
+	key, err := a.accessTokenGenerator.GenerateEnvdAccessToken(sandboxID)
 	if err != nil {
 		return "", &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -242,4 +275,53 @@ func firstAlias(aliases []string) string {
 	}
 
 	return aliases[0]
+}
+
+func splitHostPortOptional(hostport string) (host string, port string, err error) {
+	host, port, err = net.SplitHostPort(hostport)
+	if err != nil {
+		if strings.Contains(err.Error(), "missing port") {
+			return hostport, "", nil
+		}
+
+		return "", "", err
+	}
+
+	return host, port, nil
+}
+
+func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
+	if network == nil {
+		return nil
+	}
+
+	if maskRequestHost := network.MaskRequestHost; maskRequestHost != nil {
+		hostname, _, err := splitHostPortOptional(*maskRequestHost)
+		if err != nil {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid mask request host (%s): %w", *maskRequestHost, err),
+				ClientMsg: fmt.Sprintf("mask request host is not valid: %s", *maskRequestHost),
+			}
+		}
+
+		host, err := idna.Display.ToASCII(hostname)
+		if err != nil {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid mask request host (%s): %w", *maskRequestHost, err),
+				ClientMsg: fmt.Sprintf("mask request host is not valid: %s", *maskRequestHost),
+			}
+		}
+
+		if !strings.EqualFold(host, hostname) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("mask request host is not ASCII (%s)!=(%s)", host, hostname),
+				ClientMsg: fmt.Sprintf("mask request host '%s' is not ASCII. Please use ASCII characters only.", hostname),
+			}
+		}
+	}
+
+	return nil
 }

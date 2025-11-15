@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	team_ "github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -27,13 +26,10 @@ func TestBannedTeam(t *testing.T) {
 	teamID := utils.CreateTeamWithUser(t, db, teamName, setup.UserID)
 	apiKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, teamID)
 
-	err := db.Client.Team.UpdateOneID(teamID).SetIsBanned(true).Exec(ctx)
+	err := db.TestsRawSQL(ctx, `
+UPDATE teams SET is_banned = $1 WHERE id = $2
+`, true, teamID)
 	require.NoError(t, err)
-
-	team, err := db.Client.Team.Query().Where(team_.ID(teamID)).First(ctx)
-	require.NoError(t, err)
-
-	assert.True(t, team.IsBanned)
 
 	resp, err := c.GetSandboxesWithResponse(ctx, nil, setup.WithAPIKey(apiKey))
 	require.NoError(t, err)
@@ -58,14 +54,10 @@ func TestBlockedTeam(t *testing.T) {
 	teamID := utils.CreateTeamWithUser(t, db, teamName, setup.UserID)
 	apiKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, teamID)
 
-	err := db.Client.Team.UpdateOneID(teamID).SetIsBlocked(true).SetBlockedReason(blockReason).Exec(ctx)
+	err := db.TestsRawSQL(ctx, `
+UPDATE teams SET is_blocked = $1, blocked_reason = $2 WHERE id = $3
+`, true, blockReason, teamID)
 	require.NoError(t, err)
-
-	team, err := db.Client.Team.Query().Where(team_.ID(teamID)).First(ctx)
-	require.NoError(t, err)
-
-	assert.True(t, team.IsBlocked)
-	assert.Equal(t, teamID, team.ID)
 
 	resp, err := c.GetSandboxesWithResponse(ctx, nil, setup.WithAPIKey(apiKey))
 	require.NoError(t, err)

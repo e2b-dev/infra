@@ -42,22 +42,22 @@ const minSupabaseJWTSecretLength = 16
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	Healthy                  bool
-	config                   cfg.Config
-	posthog                  *analyticscollector.PosthogClient
-	Telemetry                *telemetry.Client
-	orchestrator             *orchestrator.Orchestrator
-	templateManager          *template_manager.TemplateManager
-	db                       *db.DB
-	sqlcDB                   *sqlcdb.Client
-	templateCache            *templatecache.TemplateCache
-	templateBuildsCache      *templatecache.TemplatesBuildCache
-	authCache                *authcache.TeamAuthCache
-	templateSpawnCounter     *utils.TemplateSpawnCounter
-	clickhouseStore          clickhouse.Clickhouse
-	envdAccessTokenGenerator *sandbox.EnvdAccessTokenGenerator
-	featureFlags             *featureflags.Client
-	clustersPool             *edge.Pool
+	Healthy              bool
+	config               cfg.Config
+	posthog              *analyticscollector.PosthogClient
+	Telemetry            *telemetry.Client
+	orchestrator         *orchestrator.Orchestrator
+	templateManager      *template_manager.TemplateManager
+	db                   *db.DB
+	sqlcDB               *sqlcdb.Client
+	templateCache        *templatecache.TemplateCache
+	templateBuildsCache  *templatecache.TemplatesBuildCache
+	authCache            *authcache.TeamAuthCache
+	templateSpawnCounter *utils.TemplateSpawnCounter
+	clickhouseStore      clickhouse.Clickhouse
+	accessTokenGenerator *sandbox.AccessTokenGenerator
+	featureFlags         *featureflags.Client
+	clustersPool         *edge.Pool
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
@@ -101,7 +101,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	if err != nil {
 		zap.L().Fatal("Initializing Nomad client", zap.Error(err))
 	}
-
 	var redisClient redis.UniversalClient
 	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
 		// For managed Redis Cluster in GCP we should use Cluster Client, because
@@ -140,7 +139,12 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, dbClient, sqlcDB, clustersPool, featureFlags)
+	accessTokenGenerator, err := sandbox.NewAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
+	if err != nil {
+		zap.L().Fatal("Initializing access token generator failed", zap.Error(err))
+	}
+
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, dbClient, sqlcDB, clustersPool, featureFlags, accessTokenGenerator)
 	if err != nil {
 		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
@@ -148,11 +152,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(sqlcDB)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
-
-	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
-	if err != nil {
-		zap.L().Fatal("Initializing access token generator failed", zap.Error(err))
-	}
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
 	templateManager, err := template_manager.New(config, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
@@ -164,22 +163,22 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	a := &APIStore{
-		config:                   config,
-		Healthy:                  false,
-		orchestrator:             orch,
-		templateManager:          templateManager,
-		db:                       dbClient,
-		sqlcDB:                   sqlcDB,
-		Telemetry:                tel,
-		posthog:                  posthogClient,
-		templateCache:            templateCache,
-		templateBuildsCache:      templateBuildsCache,
-		authCache:                authCache,
-		templateSpawnCounter:     templateSpawnCounter,
-		clickhouseStore:          clickhouseStore,
-		envdAccessTokenGenerator: accessTokenGenerator,
-		clustersPool:             clustersPool,
-		featureFlags:             featureFlags,
+		config:               config,
+		Healthy:              false,
+		orchestrator:         orch,
+		templateManager:      templateManager,
+		db:                   dbClient,
+		sqlcDB:               sqlcDB,
+		Telemetry:            tel,
+		posthog:              posthogClient,
+		templateCache:        templateCache,
+		templateBuildsCache:  templateBuildsCache,
+		authCache:            authCache,
+		templateSpawnCounter: templateSpawnCounter,
+		clickhouseStore:      clickhouseStore,
+		accessTokenGenerator: accessTokenGenerator,
+		clustersPool:         clustersPool,
+		featureFlags:         featureFlags,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet

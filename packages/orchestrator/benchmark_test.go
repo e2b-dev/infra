@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -34,6 +33,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -50,16 +50,17 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	// test configuration
 	const (
-		testType            = onlyStart
-		baseImage           = "e2bdev/base"
-		kernelVersion       = "vmlinux-6.1.102"
-		fcVersion           = "v1.10.1_1fcdaec08"
-		templateID          = "fcb33d09-3141-42c4-8d3b-c2df411681db"
-		buildID             = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
-		useHugePages        = false
-		allowInternetAccess = true
-		templateVersion     = "v2.0.0"
+		testType        = onlyStart
+		baseImage       = "e2bdev/base"
+		kernelVersion   = "vmlinux-6.1.102"
+		fcVersion       = "v1.10.1_1fcdaec08"
+		templateID      = "fcb33d09-3141-42c4-8d3b-c2df411681db"
+		buildID         = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
+		useHugePages    = false
+		templateVersion = "v2.0.0"
 	)
+
+	sbxNetwork := &orchestrator.SandboxNetworkConfig{}
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
 	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
@@ -70,7 +71,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	// ephemeral data
 	tempDir := b.TempDir()
-	clientID := uuid.NewString()
 
 	abs := func(s string) string {
 		return utils.Must(filepath.Abs(s))
@@ -100,15 +100,15 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	// hacks, these should go away
 	b.Setenv("ARTIFACTS_REGISTRY_PROVIDER", "Local")
-	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
-	b.Setenv("STORAGE_PROVIDER", "Local")
-	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
-	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
 	b.Setenv("FIRECRACKER_VERSIONS_DIR", abs(filepath.Join("..", "fc-versions", "builds")))
+	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
 	b.Setenv("HOST_KERNELS_DIR", abs(kernelsDir))
+	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
+	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
 	b.Setenv("SANDBOX_DIR", abs(sandboxDir))
 	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
-	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
+	b.Setenv("STORAGE_PROVIDER", "Local")
+	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
 
 	config, err := cfg.Parse()
 	require.NoError(b, err)
@@ -126,8 +126,9 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	sbxlogger.SetSandboxLoggerInternal(logger)
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
-	networkPool, err := network.NewPool(8, 8, clientID, config.NetworkConfig)
+	slotStorage, err := network.NewStorageLocal(config.NetworkConfig)
 	require.NoError(b, err)
+	networkPool := network.NewPool(8, 8, slotStorage, config.NetworkConfig)
 	go func() {
 		networkPool.Populate(b.Context())
 		logger.Info("network pool populated")
@@ -183,12 +184,12 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	accessToken := "access-token"
 	sandboxConfig := sandbox.Config{
-		BaseTemplateID:      templateID,
-		Vcpu:                2,
-		RamMB:               512,
-		TotalDiskSizeMB:     2 * 1024,
-		HugePages:           useHugePages,
-		AllowInternetAccess: ptr(allowInternetAccess),
+		BaseTemplateID:  templateID,
+		Vcpu:            2,
+		RamMB:           512,
+		TotalDiskSizeMB: 2 * 1024,
+		HugePages:       useHugePages,
+		Network:         sbxNetwork,
 		Envd: sandbox.EnvdMetadata{
 			Vars:        map[string]string{"HELLO": "WORLD"},
 			AccessToken: &accessToken,
@@ -231,6 +232,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 
 	builder := build.NewBuilder(
+		config.BuilderConfig,
 		logger,
 		featureFlags,
 		sandboxFactory,
@@ -291,10 +293,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	for b.Loop() {
 		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
 	}
-}
-
-func ptr[T any](v T) *T {
-	return &v
 }
 
 type testCycle string

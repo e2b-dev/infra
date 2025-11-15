@@ -9,6 +9,8 @@ import (
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/db/types"
 )
 
 type Snapshot struct {
@@ -32,6 +34,7 @@ func (Snapshot) Fields() []ent.Field {
 		field.String("origin_node_id").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.UUID("team_id", uuid.UUID{}),
 		field.Bool("allow_internet_access").Nillable().Optional(),
+		field.JSON("config", types.PausedSandboxConfig{}).SchemaType(map[string]string{dialect.Postgres: "jsonb"}).Optional(),
 	}
 }
 
