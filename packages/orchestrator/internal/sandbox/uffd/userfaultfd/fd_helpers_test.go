@@ -69,6 +69,10 @@ func (m *mockFd) close() error {
 	return nil
 }
 
+func (m *mockFd) wake(addr, size uintptr) error {
+	return nil
+}
+
 func (m *mockFd) fd() int32 {
 	return 0
 }

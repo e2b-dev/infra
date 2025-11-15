@@ -132,11 +132,15 @@ func (v *Memory) SoftDirty() (*block.Tracker, error) {
 		softDirty := (entry >> 55) & 1
 		// Optional: require Present=1
 		// present := (entry >> 63) & 1
+		present := (entry >> 63) & 1
+		// What are other bits here
 
-		if softDirty == 1 {
+		if softDirty == 1 && present == 1 {
 			dirty.Add(off)
 		}
 	}
 
 	return dirty, nil
 }
+
+// TODO: One page dirty flip by WP mode=0

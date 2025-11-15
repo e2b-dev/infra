@@ -4,6 +4,7 @@ package userfaultfd
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"syscall"
 	"testing"
@@ -275,66 +276,41 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 	}
 }
 
-
-
 func TestUffdMemoryViewSoftDirty(t *testing.T) {
 	t.Parallel()
 
-	pagesize := uint64(4096)
-	numberOfPages := uint64(32)
+	test := testConfig{
+		name:          "standard 4k page, operation at start",
+		pagesize:      header.PageSize,
+		numberOfPages: 32,
+	}
 
-	data := testutils.RandomPages(pagesize, numberOfPages)
-
-	size, err := data.Size()
+	h, err := configureCrossProcessTest(t, test)
 	require.NoError(t, err)
 
-	memoryArea, memoryStart, err := testutils.NewPageMmap(t, uint64(size), pagesize)
+	pc, err := memory.NewMemory(os.Getpid(), h.mapping)
 	require.NoError(t, err)
+	// err = pc.ResetSoftDirty()
+	// require.NoError(t, err)
 
-	// n := copy(memoryArea[0:size], data.Content())
-	// require.Equal(t, int(size), n)
-
-	m, err := NewMapping([]Region{
+	ops := []operation{
 		{
-			BaseHostVirtAddr: memoryStart,
-			Size:             uintptr(size),
-			Offset:           0,
-			PageSize:         uintptr(pagesize),
+			offset: 0,
+			mode:   operationModeRead,
 		},
-	})
-	require.NoError(t, err)
-
-	pc, err := NewMemory(os.Getpid(), m)
-	require.NoError(t, err)
-
-	err = pc.ResetSoftDirty()
-	require.NoError(t, err)
-
-	defer pc.Close()
-
-	ops := []struct {
-		offset int64
-		length int64
-	}{
-		{offset: 0, length: 1024},
-		{offset: 1024, length: 1024},
-		{offset: 2048, length: 1024},
-
-		{offset: 3072, length: 1024},
-		{offset: 4096, length: 1024},
-		{offset: 5120, length: 1024},
-		{offset: 6144, length: 1024},
-		{offset: 7168, length: 1024},
-		{offset: 8192, length: 1024},
-		{offset: 9216, length: 1024},
-		{offset: 10240, length: 1024},
+		{
+			offset: 15 * header.PageSize,
+			mode:   operationModeWrite,
+		},
 	}
 
 	for _, op := range ops {
-		res := memoryArea[op.offset : op.offset+op.length]
-		require.NotNil(t, res)
-		require.Zero(t, res[0])
+		h.executeOperation(t.Context(), op)
 	}
+
+	require.NoError(t, err)
+
+	defer pc.Close()
 
 	dirty, err := pc.SoftDirty()
 	require.NoError(t, err)

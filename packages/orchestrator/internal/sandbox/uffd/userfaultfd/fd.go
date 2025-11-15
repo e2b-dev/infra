@@ -36,12 +36,14 @@ const (
 
 	UFFDIO_WRITEPROTECT_MODE_WP = C.UFFDIO_WRITEPROTECT_MODE_WP
 	UFFDIO_COPY_MODE_WP         = C.UFFDIO_COPY_MODE_WP
+	UFFDIO_COPY_MODE_DONTWAKE   = C.UFFDIO_COPY_MODE_DONTWAKE
 
 	UFFDIO_API          = C.UFFDIO_API
 	UFFDIO_REGISTER     = C.UFFDIO_REGISTER
 	UFFDIO_UNREGISTER   = C.UFFDIO_UNREGISTER
 	UFFDIO_COPY         = C.UFFDIO_COPY
 	UFFDIO_WRITEPROTECT = C.UFFDIO_WRITEPROTECT
+	UFFDIO_WAKE         = C.UFFDIO_WAKE
 
 	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
 	UFFD_PAGEFAULT_FLAG_WP    = C.UFFD_PAGEFAULT_FLAG_WP
@@ -167,6 +169,17 @@ func (f Fd) writeProtect(addr, size uintptr, mode CULong) error {
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_WRITEPROTECT ioctl failed: %w (ret=%d)", errno, ret)
+	}
+
+	return nil
+}
+
+func (f Fd) wake(addr, size uintptr) error {
+	wake := newUffdioRange(CULong(addr), CULong(size))
+
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_WAKE, uintptr(unsafe.Pointer(&wake)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_WAKE ioctl failed: %w (ret=%d)", errno, ret)
 	}
 
 	return nil

@@ -265,7 +265,7 @@ func TestViewMultipleRegions(t *testing.T) {
 	require.ErrorAs(t, err, &OffsetNotFoundError{offset: size1 - int64(pagesize)})
 }
 
-func TestMemory_Dirty(t *testing.T) {
+func TestMemory_SoftDirtyRead(t *testing.T) {
 	t.Parallel()
 
 	pagesize := uint64(4096)
@@ -322,6 +322,65 @@ func TestMemory_Dirty(t *testing.T) {
 		res := memoryArea[op.offset : op.offset+op.length]
 		require.NotNil(t, res)
 		require.Zero(t, res[0])
+	}
+
+	dirty, err := pc.SoftDirty()
+	require.NoError(t, err)
+
+	fmt.Fprintf(os.Stdout, "dirty:\n")
+	for off := range dirty.Offsets() {
+		fmt.Fprintf(os.Stdout, "%d [%d, %d)\n", header.BlockIdx(off, dirty.BlockSize()), off, off+dirty.BlockSize())
+	}
+}
+
+func TestMemory_SoftDirtyWrite(t *testing.T) {
+	t.Parallel()
+
+	pagesize := uint64(4096)
+	numberOfPages := uint64(32)
+
+	data := testutils.RandomPages(pagesize, numberOfPages)
+
+	size, err := data.Size()
+	require.NoError(t, err)
+
+	memoryArea, memoryStart, err := testutils.NewPageMmap(t, uint64(size), pagesize)
+	require.NoError(t, err)
+
+	m, err := NewMapping([]Region{
+		{
+			BaseHostVirtAddr: memoryStart,
+			Size:             uintptr(size),
+			Offset:           0,
+			PageSize:         uintptr(pagesize),
+		},
+	})
+
+	require.NoError(t, err)
+
+	pc, err := NewMemory(os.Getpid(), m)
+	require.NoError(t, err)
+
+	// err = pc.ResetSoftDirty()
+	// require.NoError(t, err)
+
+	defer pc.Close()
+
+	ops := []struct {
+		offset int64
+		length int64
+	}{
+		{offset: 0, length: 1024},
+		{offset: 1024, length: 1024},
+		{offset: 2048, length: 1024},
+	}
+
+	for _, op := range ops {
+		d, err := data.Slice(t.Context(), op.offset, op.length)
+		require.NoError(t, err)
+
+		n := copy(memoryArea[op.offset:op.offset+op.length], d)
+		require.Equal(t, int(op.length), n)
 	}
 
 	dirty, err := pc.SoftDirty()
