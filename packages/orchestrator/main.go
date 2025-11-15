@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/ioc"
 	"go.uber.org/fx"
@@ -18,6 +19,9 @@ func main() {
 	}
 
 	fx.New(
+		fx.StartTimeout(15*time.Second),
+		fx.StopTimeout(24*time.Hour),
+
 		fx.Supply(config),
 
 		ioc.NewClickhouseModule(config),
