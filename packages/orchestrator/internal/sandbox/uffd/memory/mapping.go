@@ -2,6 +2,8 @@ package memory
 
 import (
 	"fmt"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type AddressNotFoundError struct {
@@ -21,11 +23,24 @@ func (e OffsetNotFoundError) Error() string {
 }
 
 type Mapping struct {
-	Regions []Region
+	Regions  []Region
+	pageSize int64
 }
 
-func NewMapping(regions []Region) *Mapping {
-	return &Mapping{Regions: regions}
+func NewMapping(regions []Region) (*Mapping, error) {
+	if len(regions) == 0 {
+		return nil, fmt.Errorf("no regions provided")
+	}
+
+	expectedPageSize := regions[0].PageSize
+
+	for i, region := range regions {
+		if region.PageSize != expectedPageSize {
+			return nil, fmt.Errorf("page size mismatch: region at index %d has page size %d, expected %d", i, region.PageSize, expectedPageSize)
+		}
+	}
+
+	return &Mapping{Regions: regions, pageSize: int64(expectedPageSize)}, nil
 }
 
 // GetOffset returns the relative offset and the pagesize of the mapped range for a given address.
@@ -48,4 +63,20 @@ func (m *Mapping) GetHostVirtAddr(off int64) (uintptr, int64, error) {
 	}
 
 	return 0, 0, OffsetNotFoundError{offset: off}
+}
+
+func (m *Mapping) PageSize() int64 {
+	return m.pageSize
+}
+
+func (m *Mapping) TotalPages() (pages int64) {
+	return header.TotalBlocks(m.TotalSize(), m.pageSize)
+}
+
+func (m *Mapping) TotalSize() (size int64) {
+	for _, r := range m.Regions {
+		size += int64(r.Size)
+	}
+
+	return size
 }

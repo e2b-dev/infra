@@ -1,5 +1,9 @@
 package memory
 
+import (
+	"iter"
+)
+
 // Region is a mapping of a region of memory of the guest to a region of memory on the host.
 // The serialization is based on the Firecracker UFFD protocol communication.
 // https://github.com/firecracker-microvm/firecracker/blob/ceeca6a14284537ae0b2a192cd2ffef10d3a81e2/src/vmm/src/persist.rs#L96
@@ -31,4 +35,14 @@ func (r *Region) shiftedOffset(addr uintptr) int64 {
 // shiftedHostVirtAddr returns the host virtual address of the given offset in the region.
 func (r *Region) shiftedHostVirtAddr(off int64) uintptr {
 	return uintptr(off) + r.BaseHostVirtAddr - r.Offset
+}
+
+func (r *Region) pages() iter.Seq2[uintptr, int64] {
+	return func(yield func(uintptr, int64) bool) {
+		for off := int64(r.Offset); off < r.endOffset(); off += int64(r.PageSize) {
+			if !yield(r.BaseHostVirtAddr+uintptr(off), off) {
+				break
+			}
+		}
+	}
 }

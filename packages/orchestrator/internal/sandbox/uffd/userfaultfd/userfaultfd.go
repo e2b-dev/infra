@@ -57,11 +57,11 @@ type Userfaultfd struct {
 func NewUserfaultfdFromFd(uffd uffdio, src block.Slicer, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
 	blockSize := src.BlockSize()
 
-	for _, region := range m.Regions {
-		if region.PageSize != uintptr(blockSize) {
-			return nil, fmt.Errorf("block size mismatch: %d != %d for region %d", region.PageSize, blockSize, region.BaseHostVirtAddr)
-		}
+	if m.PageSize() != blockSize {
+		return nil, fmt.Errorf("page size mismatch: %d != %d for mapping", m.PageSize(), blockSize)
+	}
 
+	for _, region := range m.Regions {
 		// Register the WP for the regions.
 		// The memory region is already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these registration flags.
 		// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477

@@ -752,7 +752,7 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to get memory mapping: %w", err)
 	}
 
-	memoryView, err := memory.NewView(pid, memoryMapping)
+	memoryView, err := memory.NewMemory(pid, memoryMapping)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memory view: %w", err)
 	}

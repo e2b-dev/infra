@@ -201,7 +201,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	case <-readySignal:
 	}
 
-	mapping := memory.NewMapping([]memory.Region{
+	mapping, err := memory.NewMapping([]memory.Region{
 		{
 			BaseHostVirtAddr: memoryStart,
 			Size:             uintptr(size),
@@ -209,6 +209,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 			PageSize:         uintptr(tt.pagesize),
 		},
 	})
+	require.NoError(t, err)
 
 	return &testHandler{
 		memoryArea:          &memoryArea,
@@ -270,7 +271,7 @@ func crossProcessServe() error {
 
 	data := testutils.NewMemorySlicer(content, pageSize)
 
-	m := memory.NewMapping([]memory.Region{
+	m, err := memory.NewMapping([]memory.Region{
 		{
 			BaseHostVirtAddr: memoryStart,
 			Size:             uintptr(len(content)),
@@ -278,6 +279,9 @@ func crossProcessServe() error {
 			PageSize:         uintptr(pageSize),
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("exit creating memory mapping: %w", err)
+	}
 
 	exitUffd := make(chan struct{}, 1)
 	defer close(exitUffd)

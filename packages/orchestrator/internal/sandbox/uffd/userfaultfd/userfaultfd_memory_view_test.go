@@ -122,7 +122,7 @@ func TestUffdMemoryViewFaulted(t *testing.T) {
 				assert.NoError(t, err, "for operation %+v", operation) //nolint:testifylint
 			}
 
-			view, err := memory.NewView(os.Getpid(), h.mapping)
+			view, err := memory.NewMemory(os.Getpid(), h.mapping)
 			require.NoError(t, err)
 
 			for _, operation := range tt.operations {
@@ -154,7 +154,7 @@ func TestUffdMemoryViewNotFaultedError(t *testing.T) {
 	h, err := configureCrossProcessTest(t, test)
 	require.NoError(t, err)
 
-	view, err := memory.NewView(os.Getpid(), h.mapping)
+	view, err := memory.NewMemory(os.Getpid(), h.mapping)
 	require.NoError(t, err)
 
 	readBytes := make([]byte, header.PageSize)
@@ -244,7 +244,7 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 
 			writeData := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
 
-			view, err := memory.NewView(os.Getpid(), h.mapping)
+			view, err := memory.NewMemory(os.Getpid(), h.mapping)
 			require.NoError(t, err)
 
 			for _, op := range tt.operations {
@@ -272,5 +272,75 @@ func TestUffdMemoryViewDirty(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+
+
+func TestUffdMemoryViewSoftDirty(t *testing.T) {
+	t.Parallel()
+
+	pagesize := uint64(4096)
+	numberOfPages := uint64(32)
+
+	data := testutils.RandomPages(pagesize, numberOfPages)
+
+	size, err := data.Size()
+	require.NoError(t, err)
+
+	memoryArea, memoryStart, err := testutils.NewPageMmap(t, uint64(size), pagesize)
+	require.NoError(t, err)
+
+	// n := copy(memoryArea[0:size], data.Content())
+	// require.Equal(t, int(size), n)
+
+	m, err := NewMapping([]Region{
+		{
+			BaseHostVirtAddr: memoryStart,
+			Size:             uintptr(size),
+			Offset:           0,
+			PageSize:         uintptr(pagesize),
+		},
+	})
+	require.NoError(t, err)
+
+	pc, err := NewMemory(os.Getpid(), m)
+	require.NoError(t, err)
+
+	err = pc.ResetSoftDirty()
+	require.NoError(t, err)
+
+	defer pc.Close()
+
+	ops := []struct {
+		offset int64
+		length int64
+	}{
+		{offset: 0, length: 1024},
+		{offset: 1024, length: 1024},
+		{offset: 2048, length: 1024},
+
+		{offset: 3072, length: 1024},
+		{offset: 4096, length: 1024},
+		{offset: 5120, length: 1024},
+		{offset: 6144, length: 1024},
+		{offset: 7168, length: 1024},
+		{offset: 8192, length: 1024},
+		{offset: 9216, length: 1024},
+		{offset: 10240, length: 1024},
+	}
+
+	for _, op := range ops {
+		res := memoryArea[op.offset : op.offset+op.length]
+		require.NotNil(t, res)
+		require.Zero(t, res[0])
+	}
+
+	dirty, err := pc.SoftDirty()
+	require.NoError(t, err)
+
+	fmt.Fprintf(os.Stdout, "dirty:\n")
+	for off := range dirty.Offsets() {
+		fmt.Fprintf(os.Stdout, "%d [%d, %d)\n", header.BlockIdx(off, dirty.BlockSize()), off, off+dirty.BlockSize())
 	}
 }

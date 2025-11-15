@@ -2,6 +2,7 @@ package memory
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 func TestViewSingleRegionFullRead(t *testing.T) {
@@ -27,7 +29,7 @@ func TestViewSingleRegionFullRead(t *testing.T) {
 	n := copy(memoryArea[0:size], data.Content())
 	require.Equal(t, int(size), n)
 
-	m := NewMapping([]Region{
+	m, err := NewMapping([]Region{
 		{
 			BaseHostVirtAddr: memoryStart,
 			Size:             uintptr(size),
@@ -35,8 +37,9 @@ func TestViewSingleRegionFullRead(t *testing.T) {
 			PageSize:         uintptr(pagesize),
 		},
 	})
+	require.NoError(t, err)
 
-	pc, err := NewView(os.Getpid(), m)
+	pc, err := NewMemory(os.Getpid(), m)
 	require.NoError(t, err)
 
 	defer pc.Close()
@@ -71,7 +74,7 @@ func TestViewSingleRegionPartialRead(t *testing.T) {
 	n := copy(memoryArea[0:size], data.Content())
 	require.Equal(t, int(size), n)
 
-	m := NewMapping([]Region{
+	m, err := NewMapping([]Region{
 		{
 			BaseHostVirtAddr: memoryStart,
 			Size:             uintptr(size),
@@ -79,8 +82,9 @@ func TestViewSingleRegionPartialRead(t *testing.T) {
 			PageSize:         uintptr(pagesize),
 		},
 	})
+	require.NoError(t, err)
 
-	view, err := NewView(os.Getpid(), m)
+	view, err := NewMemory(os.Getpid(), m)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -178,7 +182,7 @@ func TestViewMultipleRegions(t *testing.T) {
 	offset2 := uint64(size1) + gap
 	offset3 := offset2 + uint64(size2) + gap
 
-	m := NewMapping([]Region{
+	m, err := NewMapping([]Region{
 		{
 			BaseHostVirtAddr: memoryStart1,
 			Size:             uintptr(size1),
@@ -198,8 +202,9 @@ func TestViewMultipleRegions(t *testing.T) {
 			PageSize:         uintptr(pagesize),
 		},
 	})
+	require.NoError(t, err)
 
-	pc, err := NewView(os.Getpid(), m)
+	pc, err := NewMemory(os.Getpid(), m)
 	require.NoError(t, err)
 
 	defer pc.Close()
@@ -258,4 +263,72 @@ func TestViewMultipleRegions(t *testing.T) {
 	readBytes = make([]byte, int(pagesize*2))
 	_, err = pc.ReadAt(readBytes, size1-int64(pagesize))
 	require.ErrorAs(t, err, &OffsetNotFoundError{offset: size1 - int64(pagesize)})
+}
+
+func TestMemory_Dirty(t *testing.T) {
+	t.Parallel()
+
+	pagesize := uint64(4096)
+	numberOfPages := uint64(32)
+
+	data := testutils.RandomPages(pagesize, numberOfPages)
+
+	size, err := data.Size()
+	require.NoError(t, err)
+
+	memoryArea, memoryStart, err := testutils.NewPageMmap(t, uint64(size), pagesize)
+	require.NoError(t, err)
+
+	// n := copy(memoryArea[0:size], data.Content())
+	// require.Equal(t, int(size), n)
+
+	m, err := NewMapping([]Region{
+		{
+			BaseHostVirtAddr: memoryStart,
+			Size:             uintptr(size),
+			Offset:           0,
+			PageSize:         uintptr(pagesize),
+		},
+	})
+	require.NoError(t, err)
+
+	pc, err := NewMemory(os.Getpid(), m)
+	require.NoError(t, err)
+
+	err = pc.ResetSoftDirty()
+	require.NoError(t, err)
+
+	defer pc.Close()
+
+	ops := []struct {
+		offset int64
+		length int64
+	}{
+		{offset: 0, length: 1024},
+		{offset: 1024, length: 1024},
+		{offset: 2048, length: 1024},
+
+		{offset: 3072, length: 1024},
+		{offset: 4096, length: 1024},
+		{offset: 5120, length: 1024},
+		{offset: 6144, length: 1024},
+		{offset: 7168, length: 1024},
+		{offset: 8192, length: 1024},
+		{offset: 9216, length: 1024},
+		{offset: 10240, length: 1024},
+	}
+
+	for _, op := range ops {
+		res := memoryArea[op.offset : op.offset+op.length]
+		require.NotNil(t, res)
+		require.Zero(t, res[0])
+	}
+
+	dirty, err := pc.SoftDirty()
+	require.NoError(t, err)
+
+	fmt.Fprintf(os.Stdout, "dirty:\n")
+	for off := range dirty.Offsets() {
+		fmt.Fprintf(os.Stdout, "%d [%d, %d)\n", header.BlockIdx(off, dirty.BlockSize()), off, off+dirty.BlockSize())
+	}
 }

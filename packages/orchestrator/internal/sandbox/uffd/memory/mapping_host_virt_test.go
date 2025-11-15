@@ -27,7 +27,8 @@ func TestMapping_GetHostVirtAddr(t *testing.T) {
 			PageSize:         header.PageSize,
 		},
 	}
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name                string
@@ -107,11 +108,8 @@ func TestMapping_GetHostVirtAddr(t *testing.T) {
 func TestMapping_GetHostVirtAddr_EmptyRegions(t *testing.T) {
 	t.Parallel()
 
-	mapping := NewMapping([]Region{})
-
-	// Test GetHostVirtAddr with empty regions
-	_, _, err := mapping.GetHostVirtAddr(0x1000)
-	require.ErrorIs(t, err, OffsetNotFoundError{offset: 0x1000})
+	_, err := NewMapping([]Region{})
+	require.Error(t, err)
 }
 
 func TestMapping_GetHostVirtAddr_BoundaryConditions(t *testing.T) {
@@ -126,7 +124,8 @@ func TestMapping_GetHostVirtAddr_BoundaryConditions(t *testing.T) {
 		},
 	}
 
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
 	// Test exact start boundary
 	hostVirt, size, err := mapping.GetHostVirtAddr(0x5000)
@@ -161,7 +160,8 @@ func TestMapping_GetHostVirtAddr_SingleLargeRegion(t *testing.T) {
 			PageSize:         header.PageSize,
 		},
 	}
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
 	hostVirt, size, err := mapping.GetHostVirtAddr(0x100 + 0x1000) // Offset 0x1100
 	require.NoError(t, err)
@@ -181,9 +181,10 @@ func TestMapping_GetHostVirtAddr_ZeroSizeRegion(t *testing.T) {
 		},
 	}
 
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
-	_, _, err := mapping.GetHostVirtAddr(0x1000)
+	_, _, err = mapping.GetHostVirtAddr(0x1000)
 	require.ErrorIs(t, err, OffsetNotFoundError{offset: 0x1000})
 }
 
@@ -204,7 +205,8 @@ func TestMapping_GetHostVirtAddr_MultipleRegionsSparse(t *testing.T) {
 			PageSize:         header.PageSize,
 		},
 	}
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
 	// Should succeed for start of first region
 	hostVirt, size, err := mapping.GetHostVirtAddr(0x1000)

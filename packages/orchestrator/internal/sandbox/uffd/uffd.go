@@ -135,7 +135,10 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("expected 1 fd: found %d", len(fds))
 	}
 
-	m := memory.NewMapping(regions)
+	m, err := memory.NewMapping(regions)
+	if err != nil {
+		return fmt.Errorf("failed to create memory mapping: %w", err)
+	}
 
 	uffd, err := userfaultfd.NewUserfaultfdFromFd(
 		userfaultfd.Fd(fds[0]),

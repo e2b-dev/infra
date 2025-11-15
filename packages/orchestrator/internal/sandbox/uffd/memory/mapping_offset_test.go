@@ -27,7 +27,8 @@ func TestMapping_GetOffset(t *testing.T) {
 		},
 	}
 
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name             string
@@ -118,11 +119,8 @@ func TestMapping_GetOffset(t *testing.T) {
 func TestMapping_EmptyRegions(t *testing.T) {
 	t.Parallel()
 
-	mapping := NewMapping([]Region{})
-
-	// Test GetOffset with empty regions
-	_, _, err := mapping.GetOffset(0x1000)
-	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x1000})
+	_, err := NewMapping([]Region{})
+	require.Error(t, err)
 }
 
 func TestMapping_BoundaryConditions(t *testing.T) {
@@ -137,7 +135,8 @@ func TestMapping_BoundaryConditions(t *testing.T) {
 		},
 	}
 
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
 	// Test exact start boundary
 	offset, pagesize, err := mapping.GetOffset(0x1000)
@@ -172,7 +171,8 @@ func TestMapping_SingleLargeRegion(t *testing.T) {
 			PageSize:         header.PageSize,
 		},
 	}
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
 	offset, pagesize, err := mapping.GetOffset(0xABCDEF)
 	require.NoError(t, err)
@@ -192,9 +192,10 @@ func TestMapping_ZeroSizeRegion(t *testing.T) {
 		},
 	}
 
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
-	_, _, err := mapping.GetOffset(0x2000)
+	_, _, err = mapping.GetOffset(0x2000)
 	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x2000})
 }
 
@@ -215,7 +216,8 @@ func TestMapping_MultipleRegionsSparse(t *testing.T) {
 			PageSize:         header.PageSize,
 		},
 	}
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
 	// Should succeed for start of first region
 	offset, pagesize, err := mapping.GetOffset(0x100)
@@ -247,7 +249,8 @@ func TestMapping_HugepagePagesize(t *testing.T) {
 			PageSize:         hugepageSize,
 		},
 	}
-	mapping := NewMapping(regions)
+	mapping, err := NewMapping(regions)
+	require.NoError(t, err)
 
 	// Test valid address in region using hugepages
 	offset, pagesize, err := mapping.GetOffset(0x401000)
