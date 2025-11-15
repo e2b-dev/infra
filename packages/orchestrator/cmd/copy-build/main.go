@@ -154,6 +154,9 @@ func main() {
 	snapfilePath := template.StorageSnapfilePath()
 	filesToCopy = append(filesToCopy, snapfilePath)
 
+	metadataPath := template.StorageMetadataPath()
+	filesToCopy = append(filesToCopy, metadataPath)
+
 	// sort files to copy
 	sort.Strings(filesToCopy)
 
