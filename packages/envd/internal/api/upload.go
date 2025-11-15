@@ -14,6 +14,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
@@ -61,7 +62,7 @@ func processFile(r *http.Request, path string, part *multipart.Part, user *user.
 
 	// Sometimes the size can be unknown resulting in ContentLength being -1 or 0.
 	// We are still comparing these values — this condition will just always evaluate false for them.
-	if int64(freeSpace) < r.ContentLength {
+	if r.ContentLength > 0 && freeSpace < uint64(r.ContentLength) {
 		errMsg := fmt.Errorf("not enough disk space on '%s': %d bytes required, %d bytes free", filepath.Dir(path), r.ContentLength, freeSpace)
 
 		return http.StatusInsufficientStorage, errMsg
@@ -108,7 +109,7 @@ func processFile(r *http.Request, path string, part *multipart.Part, user *user.
 	return http.StatusNoContent, nil
 }
 
-func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, params PostFilesParams) (string, error) {
+func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defaultPath *string, params PostFilesParams) (string, error) {
 	var pathToResolve string
 
 	if params.Path != nil {
@@ -122,7 +123,7 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, param
 		}
 	}
 
-	filePath, err := permissions.ExpandAndResolve(pathToResolve, u)
+	filePath, err := permissions.ExpandAndResolve(pathToResolve, u, defaultPath)
 	if err != nil {
 		return "", fmt.Errorf("error resolving path: %w", err)
 	}
@@ -139,7 +140,7 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, param
 			errMsg := fmt.Errorf("you cannot upload multiple files to the same path '%s' in one upload request, only the first specified file was uploaded", filePath)
 
 			if len(alreadyUploaded) > 1 {
-				errMsg = fmt.Errorf("%s, also the following files were uploaded: %v", errMsg, strings.Join(alreadyUploaded, ", "))
+				errMsg = fmt.Errorf("%w, also the following files were uploaded: %v", errMsg, strings.Join(alreadyUploaded, ", "))
 			}
 
 			return "", errMsg
@@ -153,7 +154,6 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	defer r.Body.Close()
 
 	var errorCode int
-
 	var errMsg error
 
 	var path string
@@ -163,13 +163,30 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 
 	operationID := logs.AssignOperationID()
 
+	// signing authorization if needed
+	err := a.validateSigning(r, params.Signature, params.SignatureExpiration, params.Username, path, SigningWriteOperation)
+	if err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error during auth validation")
+		jsonError(w, http.StatusUnauthorized, err)
+
+		return
+	}
+
+	username, err := execcontext.ResolveDefaultUsername(params.Username, a.defaults.User)
+	if err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("no user specified")
+		jsonError(w, http.StatusBadRequest, err)
+
+		return
+	}
+
 	defer func() {
 		l := a.logger.
 			Err(errMsg).
 			Str("method", r.Method+" "+r.URL.Path).
 			Str(string(logs.OperationIDKey), operationID).
 			Str("path", path).
-			Str("username", params.Username)
+			Str("username", username)
 
 		if errMsg != nil {
 			l = l.Int("error_code", errorCode)
@@ -187,9 +204,9 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
-	u, err := user.Lookup(params.Username)
+	u, err := user.Lookup(username)
 	if err != nil {
-		errMsg = fmt.Errorf("error looking up user '%s': %w", params.Username, err)
+		errMsg = fmt.Errorf("error looking up user '%s': %w", username, err)
 		errorCode = http.StatusUnauthorized
 
 		jsonError(w, errorCode, errMsg)
@@ -214,7 +231,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		}
 
 		if part.FormName() == "file" {
-			filePath, err := resolvePath(part, &paths, u, params)
+			filePath, err := resolvePath(part, &paths, u, a.defaults.Workdir, params)
 			if err != nil {
 				errorCode = http.StatusBadRequest
 				errMsg = err

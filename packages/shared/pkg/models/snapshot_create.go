@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/google/uuid"
@@ -60,6 +61,80 @@ func (sc *SnapshotCreate) SetSandboxID(s string) *SnapshotCreate {
 // SetMetadata sets the "metadata" field.
 func (sc *SnapshotCreate) SetMetadata(m map[string]string) *SnapshotCreate {
 	sc.mutation.SetMetadata(m)
+	return sc
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (sc *SnapshotCreate) SetSandboxStartedAt(t time.Time) *SnapshotCreate {
+	sc.mutation.SetSandboxStartedAt(t)
+	return sc
+}
+
+// SetEnvSecure sets the "env_secure" field.
+func (sc *SnapshotCreate) SetEnvSecure(b bool) *SnapshotCreate {
+	sc.mutation.SetEnvSecure(b)
+	return sc
+}
+
+// SetNillableEnvSecure sets the "env_secure" field if the given value is not nil.
+func (sc *SnapshotCreate) SetNillableEnvSecure(b *bool) *SnapshotCreate {
+	if b != nil {
+		sc.SetEnvSecure(*b)
+	}
+	return sc
+}
+
+// SetAutoPause sets the "auto_pause" field.
+func (sc *SnapshotCreate) SetAutoPause(b bool) *SnapshotCreate {
+	sc.mutation.SetAutoPause(b)
+	return sc
+}
+
+// SetNillableAutoPause sets the "auto_pause" field if the given value is not nil.
+func (sc *SnapshotCreate) SetNillableAutoPause(b *bool) *SnapshotCreate {
+	if b != nil {
+		sc.SetAutoPause(*b)
+	}
+	return sc
+}
+
+// SetOriginNodeID sets the "origin_node_id" field.
+func (sc *SnapshotCreate) SetOriginNodeID(s string) *SnapshotCreate {
+	sc.mutation.SetOriginNodeID(s)
+	return sc
+}
+
+// SetTeamID sets the "team_id" field.
+func (sc *SnapshotCreate) SetTeamID(u uuid.UUID) *SnapshotCreate {
+	sc.mutation.SetTeamID(u)
+	return sc
+}
+
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (sc *SnapshotCreate) SetAllowInternetAccess(b bool) *SnapshotCreate {
+	sc.mutation.SetAllowInternetAccess(b)
+	return sc
+}
+
+// SetNillableAllowInternetAccess sets the "allow_internet_access" field if the given value is not nil.
+func (sc *SnapshotCreate) SetNillableAllowInternetAccess(b *bool) *SnapshotCreate {
+	if b != nil {
+		sc.SetAllowInternetAccess(*b)
+	}
+	return sc
+}
+
+// SetConfig sets the "config" field.
+func (sc *SnapshotCreate) SetConfig(tsc types.PausedSandboxConfig) *SnapshotCreate {
+	sc.mutation.SetConfig(tsc)
+	return sc
+}
+
+// SetNillableConfig sets the "config" field if the given value is not nil.
+func (sc *SnapshotCreate) SetNillableConfig(tsc *types.PausedSandboxConfig) *SnapshotCreate {
+	if tsc != nil {
+		sc.SetConfig(*tsc)
+	}
 	return sc
 }
 
@@ -113,6 +188,14 @@ func (sc *SnapshotCreate) defaults() {
 		v := snapshot.DefaultCreatedAt()
 		sc.mutation.SetCreatedAt(v)
 	}
+	if _, ok := sc.mutation.EnvSecure(); !ok {
+		v := snapshot.DefaultEnvSecure
+		sc.mutation.SetEnvSecure(v)
+	}
+	if _, ok := sc.mutation.AutoPause(); !ok {
+		v := snapshot.DefaultAutoPause
+		sc.mutation.SetAutoPause(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -131,6 +214,21 @@ func (sc *SnapshotCreate) check() error {
 	}
 	if _, ok := sc.mutation.Metadata(); !ok {
 		return &ValidationError{Name: "metadata", err: errors.New(`models: missing required field "Snapshot.metadata"`)}
+	}
+	if _, ok := sc.mutation.SandboxStartedAt(); !ok {
+		return &ValidationError{Name: "sandbox_started_at", err: errors.New(`models: missing required field "Snapshot.sandbox_started_at"`)}
+	}
+	if _, ok := sc.mutation.EnvSecure(); !ok {
+		return &ValidationError{Name: "env_secure", err: errors.New(`models: missing required field "Snapshot.env_secure"`)}
+	}
+	if _, ok := sc.mutation.AutoPause(); !ok {
+		return &ValidationError{Name: "auto_pause", err: errors.New(`models: missing required field "Snapshot.auto_pause"`)}
+	}
+	if _, ok := sc.mutation.OriginNodeID(); !ok {
+		return &ValidationError{Name: "origin_node_id", err: errors.New(`models: missing required field "Snapshot.origin_node_id"`)}
+	}
+	if _, ok := sc.mutation.TeamID(); !ok {
+		return &ValidationError{Name: "team_id", err: errors.New(`models: missing required field "Snapshot.team_id"`)}
 	}
 	if _, ok := sc.mutation.EnvID(); !ok {
 		return &ValidationError{Name: "env", err: errors.New(`models: missing required edge "Snapshot.env"`)}
@@ -187,6 +285,34 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.Metadata(); ok {
 		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
 		_node.Metadata = value
+	}
+	if value, ok := sc.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
+		_node.SandboxStartedAt = value
+	}
+	if value, ok := sc.mutation.EnvSecure(); ok {
+		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
+		_node.EnvSecure = value
+	}
+	if value, ok := sc.mutation.AutoPause(); ok {
+		_spec.SetField(snapshot.FieldAutoPause, field.TypeBool, value)
+		_node.AutoPause = value
+	}
+	if value, ok := sc.mutation.OriginNodeID(); ok {
+		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
+		_node.OriginNodeID = value
+	}
+	if value, ok := sc.mutation.TeamID(); ok {
+		_spec.SetField(snapshot.FieldTeamID, field.TypeUUID, value)
+		_node.TeamID = value
+	}
+	if value, ok := sc.mutation.AllowInternetAccess(); ok {
+		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
+		_node.AllowInternetAccess = &value
+	}
+	if value, ok := sc.mutation.Config(); ok {
+		_spec.SetField(snapshot.FieldConfig, field.TypeJSON, value)
+		_node.Config = value
 	}
 	if nodes := sc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -306,6 +432,102 @@ func (u *SnapshotUpsert) UpdateMetadata() *SnapshotUpsert {
 	return u
 }
 
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (u *SnapshotUpsert) SetSandboxStartedAt(v time.Time) *SnapshotUpsert {
+	u.Set(snapshot.FieldSandboxStartedAt, v)
+	return u
+}
+
+// UpdateSandboxStartedAt sets the "sandbox_started_at" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateSandboxStartedAt() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldSandboxStartedAt)
+	return u
+}
+
+// SetEnvSecure sets the "env_secure" field.
+func (u *SnapshotUpsert) SetEnvSecure(v bool) *SnapshotUpsert {
+	u.Set(snapshot.FieldEnvSecure, v)
+	return u
+}
+
+// UpdateEnvSecure sets the "env_secure" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateEnvSecure() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldEnvSecure)
+	return u
+}
+
+// SetAutoPause sets the "auto_pause" field.
+func (u *SnapshotUpsert) SetAutoPause(v bool) *SnapshotUpsert {
+	u.Set(snapshot.FieldAutoPause, v)
+	return u
+}
+
+// UpdateAutoPause sets the "auto_pause" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateAutoPause() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldAutoPause)
+	return u
+}
+
+// SetOriginNodeID sets the "origin_node_id" field.
+func (u *SnapshotUpsert) SetOriginNodeID(v string) *SnapshotUpsert {
+	u.Set(snapshot.FieldOriginNodeID, v)
+	return u
+}
+
+// UpdateOriginNodeID sets the "origin_node_id" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateOriginNodeID() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldOriginNodeID)
+	return u
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *SnapshotUpsert) SetTeamID(v uuid.UUID) *SnapshotUpsert {
+	u.Set(snapshot.FieldTeamID, v)
+	return u
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateTeamID() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldTeamID)
+	return u
+}
+
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (u *SnapshotUpsert) SetAllowInternetAccess(v bool) *SnapshotUpsert {
+	u.Set(snapshot.FieldAllowInternetAccess, v)
+	return u
+}
+
+// UpdateAllowInternetAccess sets the "allow_internet_access" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateAllowInternetAccess() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldAllowInternetAccess)
+	return u
+}
+
+// ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
+func (u *SnapshotUpsert) ClearAllowInternetAccess() *SnapshotUpsert {
+	u.SetNull(snapshot.FieldAllowInternetAccess)
+	return u
+}
+
+// SetConfig sets the "config" field.
+func (u *SnapshotUpsert) SetConfig(v types.PausedSandboxConfig) *SnapshotUpsert {
+	u.Set(snapshot.FieldConfig, v)
+	return u
+}
+
+// UpdateConfig sets the "config" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateConfig() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldConfig)
+	return u
+}
+
+// ClearConfig clears the value of the "config" field.
+func (u *SnapshotUpsert) ClearConfig() *SnapshotUpsert {
+	u.SetNull(snapshot.FieldConfig)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -410,6 +632,118 @@ func (u *SnapshotUpsertOne) SetMetadata(v map[string]string) *SnapshotUpsertOne 
 func (u *SnapshotUpsertOne) UpdateMetadata() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateMetadata()
+	})
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (u *SnapshotUpsertOne) SetSandboxStartedAt(v time.Time) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetSandboxStartedAt(v)
+	})
+}
+
+// UpdateSandboxStartedAt sets the "sandbox_started_at" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateSandboxStartedAt() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateSandboxStartedAt()
+	})
+}
+
+// SetEnvSecure sets the "env_secure" field.
+func (u *SnapshotUpsertOne) SetEnvSecure(v bool) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetEnvSecure(v)
+	})
+}
+
+// UpdateEnvSecure sets the "env_secure" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateEnvSecure() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateEnvSecure()
+	})
+}
+
+// SetAutoPause sets the "auto_pause" field.
+func (u *SnapshotUpsertOne) SetAutoPause(v bool) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetAutoPause(v)
+	})
+}
+
+// UpdateAutoPause sets the "auto_pause" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateAutoPause() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateAutoPause()
+	})
+}
+
+// SetOriginNodeID sets the "origin_node_id" field.
+func (u *SnapshotUpsertOne) SetOriginNodeID(v string) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetOriginNodeID(v)
+	})
+}
+
+// UpdateOriginNodeID sets the "origin_node_id" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateOriginNodeID() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateOriginNodeID()
+	})
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *SnapshotUpsertOne) SetTeamID(v uuid.UUID) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetTeamID(v)
+	})
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateTeamID() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateTeamID()
+	})
+}
+
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (u *SnapshotUpsertOne) SetAllowInternetAccess(v bool) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetAllowInternetAccess(v)
+	})
+}
+
+// UpdateAllowInternetAccess sets the "allow_internet_access" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateAllowInternetAccess() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateAllowInternetAccess()
+	})
+}
+
+// ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
+func (u *SnapshotUpsertOne) ClearAllowInternetAccess() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearAllowInternetAccess()
+	})
+}
+
+// SetConfig sets the "config" field.
+func (u *SnapshotUpsertOne) SetConfig(v types.PausedSandboxConfig) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetConfig(v)
+	})
+}
+
+// UpdateConfig sets the "config" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateConfig() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateConfig()
+	})
+}
+
+// ClearConfig clears the value of the "config" field.
+func (u *SnapshotUpsertOne) ClearConfig() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearConfig()
 	})
 }
 
@@ -684,6 +1018,118 @@ func (u *SnapshotUpsertBulk) SetMetadata(v map[string]string) *SnapshotUpsertBul
 func (u *SnapshotUpsertBulk) UpdateMetadata() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateMetadata()
+	})
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (u *SnapshotUpsertBulk) SetSandboxStartedAt(v time.Time) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetSandboxStartedAt(v)
+	})
+}
+
+// UpdateSandboxStartedAt sets the "sandbox_started_at" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateSandboxStartedAt() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateSandboxStartedAt()
+	})
+}
+
+// SetEnvSecure sets the "env_secure" field.
+func (u *SnapshotUpsertBulk) SetEnvSecure(v bool) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetEnvSecure(v)
+	})
+}
+
+// UpdateEnvSecure sets the "env_secure" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateEnvSecure() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateEnvSecure()
+	})
+}
+
+// SetAutoPause sets the "auto_pause" field.
+func (u *SnapshotUpsertBulk) SetAutoPause(v bool) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetAutoPause(v)
+	})
+}
+
+// UpdateAutoPause sets the "auto_pause" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateAutoPause() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateAutoPause()
+	})
+}
+
+// SetOriginNodeID sets the "origin_node_id" field.
+func (u *SnapshotUpsertBulk) SetOriginNodeID(v string) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetOriginNodeID(v)
+	})
+}
+
+// UpdateOriginNodeID sets the "origin_node_id" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateOriginNodeID() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateOriginNodeID()
+	})
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *SnapshotUpsertBulk) SetTeamID(v uuid.UUID) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetTeamID(v)
+	})
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateTeamID() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateTeamID()
+	})
+}
+
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (u *SnapshotUpsertBulk) SetAllowInternetAccess(v bool) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetAllowInternetAccess(v)
+	})
+}
+
+// UpdateAllowInternetAccess sets the "allow_internet_access" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateAllowInternetAccess() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateAllowInternetAccess()
+	})
+}
+
+// ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
+func (u *SnapshotUpsertBulk) ClearAllowInternetAccess() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearAllowInternetAccess()
+	})
+}
+
+// SetConfig sets the "config" field.
+func (u *SnapshotUpsertBulk) SetConfig(v types.PausedSandboxConfig) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetConfig(v)
+	})
+}
+
+// UpdateConfig sets the "config" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateConfig() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateConfig()
+	})
+}
+
+// ClearConfig clears the value of the "config" field.
+func (u *SnapshotUpsertBulk) ClearConfig() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearConfig()
 	})
 }
 

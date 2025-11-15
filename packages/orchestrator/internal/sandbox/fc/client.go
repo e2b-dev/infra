@@ -12,6 +12,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type apiClient struct {
@@ -35,10 +37,15 @@ func (c *apiClient) loadSnapshot(
 	uffdReady chan struct{},
 	snapfile template.File,
 ) error {
+	ctx, span := tracer.Start(ctx, "load-snapshot")
+	defer span.End()
+
 	err := socket.Wait(ctx, uffdSocketPath)
 	if err != nil {
 		return fmt.Errorf("error waiting for uffd socket: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "uffd socket ready")
 
 	backendType := models.MemoryBackendBackendTypeUffd
 	backend := &models.MemoryBackend{
@@ -47,6 +54,9 @@ func (c *apiClient) loadSnapshot(
 	}
 
 	snapfilePath := snapfile.Path()
+
+	telemetry.ReportEvent(ctx, "got snapfile path")
+
 	snapshotConfig := operations.LoadSnapshotParams{
 		Context: ctx,
 		Body: &models.SnapshotLoadParams{
@@ -62,6 +72,8 @@ func (c *apiClient) loadSnapshot(
 		return fmt.Errorf("error loading snapshot: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "loaded snapshot")
+
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("context canceled while waiting for uffd ready: %w", ctx.Err())
@@ -69,10 +81,15 @@ func (c *apiClient) loadSnapshot(
 		// Wait for the uffd to be ready to serve requests
 	}
 
+	telemetry.ReportEvent(ctx, "uffd ready")
+
 	return nil
 }
 
 func (c *apiClient) resumeVM(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "resume-vm")
+	defer span.End()
+
 	state := models.VMStateResumed
 	pauseConfig := operations.PatchVMParams{
 		Context: ctx,
@@ -114,6 +131,7 @@ func (c *apiClient) createSnapshot(
 	snapshotConfig := operations.CreateSnapshotParams{
 		Context: ctx,
 		Body: &models.SnapshotCreateParams{
+			SnapshotType: models.SnapshotCreateParamsSnapshotTypeFull,
 			MemFilePath:  &memfilePath,
 			SnapshotPath: &snapfilePath,
 		},
@@ -128,6 +146,9 @@ func (c *apiClient) createSnapshot(
 }
 
 func (c *apiClient) setMmds(ctx context.Context, metadata *MmdsMetadata) error {
+	ctx, span := tracer.Start(ctx, "set-mmds")
+	defer span.End()
+
 	mmdsConfig := operations.PutMmdsParams{
 		Context: ctx,
 		Body:    metadata,
@@ -136,6 +157,146 @@ func (c *apiClient) setMmds(ctx context.Context, metadata *MmdsMetadata) error {
 	_, err := c.client.Operations.PutMmds(&mmdsConfig)
 	if err != nil {
 		return fmt.Errorf("error setting mmds data: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernelPath string) error {
+	bootSourceConfig := operations.PutGuestBootSourceParams{
+		Context: ctx,
+		Body: &models.BootSource{
+			BootArgs:        kernelArgs,
+			KernelImagePath: &kernelPath,
+		},
+	}
+
+	_, err := c.client.Operations.PutGuestBootSource(&bootSourceConfig)
+
+	return err
+}
+
+func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error {
+	rootfs := "rootfs"
+	ioEngine := "Async"
+	isRootDevice := true
+	driversConfig := operations.PutGuestDriveByIDParams{
+		Context: ctx,
+		DriveID: rootfs,
+		Body: &models.Drive{
+			DriveID:      &rootfs,
+			PathOnHost:   rootfsPath,
+			IsRootDevice: &isRootDevice,
+			IsReadOnly:   false,
+			IoEngine:     &ioEngine,
+		},
+	}
+
+	_, err := c.client.Operations.PutGuestDriveByID(&driversConfig)
+	if err != nil {
+		return fmt.Errorf("error setting fc drivers config: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) setNetworkInterface(ctx context.Context, ifaceID string, tapName string, tapMac string) error {
+	networkConfig := operations.PutGuestNetworkInterfaceByIDParams{
+		Context: ctx,
+		IfaceID: ifaceID,
+		Body: &models.NetworkInterface{
+			IfaceID:     &ifaceID,
+			GuestMac:    tapMac,
+			HostDevName: &tapName,
+		},
+	}
+
+	_, err := c.client.Operations.PutGuestNetworkInterfaceByID(&networkConfig)
+	if err != nil {
+		return fmt.Errorf("error setting fc network config: %w", err)
+	}
+
+	mmdsVersion := "V2"
+	mmdsConfig := operations.PutMmdsConfigParams{
+		Context: ctx,
+		Body: &models.MmdsConfig{
+			Version:           &mmdsVersion,
+			NetworkInterfaces: []string{ifaceID},
+		},
+	}
+
+	_, err = c.client.Operations.PutMmdsConfig(&mmdsConfig)
+	if err != nil {
+		return fmt.Errorf("error setting network mmds data: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) setMachineConfig(
+	ctx context.Context,
+	vCPUCount int64,
+	memoryMB int64,
+	hugePages bool,
+) error {
+	smt := true
+	trackDirtyPages := false
+	machineConfig := &models.MachineConfiguration{
+		VcpuCount:       &vCPUCount,
+		MemSizeMib:      &memoryMB,
+		Smt:             &smt,
+		TrackDirtyPages: &trackDirtyPages,
+	}
+	if hugePages {
+		machineConfig.HugePages = models.MachineConfigurationHugePagesNr2M
+	}
+	machineConfigParams := operations.PutMachineConfigurationParams{
+		Context: ctx,
+		Body:    machineConfig,
+	}
+	_, err := c.client.Operations.PutMachineConfiguration(&machineConfigParams)
+	if err != nil {
+		return fmt.Errorf("error setting fc machine config: %w", err)
+	}
+
+	return nil
+}
+
+// https://github.com/firecracker-microvm/firecracker/blob/main/docs/entropy.md#firecracker-implementation
+func (c *apiClient) setEntropyDevice(ctx context.Context) error {
+	entropyConfig := operations.PutEntropyDeviceParams{
+		Context: ctx,
+		Body: &models.EntropyDevice{
+			RateLimiter: &models.RateLimiter{
+				Bandwidth: &models.TokenBucket{
+					OneTimeBurst: utils.ToPtr(entropyOneTimeBurst),
+					Size:         utils.ToPtr(entropyBytesSize),
+					RefillTime:   utils.ToPtr(entropyRefillTime),
+				},
+			},
+		},
+	}
+
+	_, err := c.client.Operations.PutEntropyDevice(&entropyConfig)
+	if err != nil {
+		return fmt.Errorf("error setting fc entropy config: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) startVM(ctx context.Context) error {
+	start := models.InstanceActionInfoActionTypeInstanceStart
+	startActionParams := operations.CreateSyncActionParams{
+		Context: ctx,
+		Info: &models.InstanceActionInfo{
+			ActionType: &start,
+		},
+	}
+
+	_, err := c.client.Operations.CreateSyncAction(&startActionParams)
+	if err != nil {
+		return fmt.Errorf("error starting fc: %w", err)
 	}
 
 	return nil

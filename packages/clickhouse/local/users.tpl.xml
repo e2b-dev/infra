@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <users>
+        <${USERNAME}>
+            <password>${PASSWORD}</password>
+            <networks>
+                <ip>0.0.0.0/0</ip> <!-- allow all access -->
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <access_management>1</access_management>
+        </${USERNAME}>
+    </users>
+</clickhouse>

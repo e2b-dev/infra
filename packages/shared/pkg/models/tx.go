@@ -12,8 +12,8 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
-	// AccessToken is the client for interacting with the AccessToken builders.
-	AccessToken *AccessTokenClient
+	// Cluster is the client for interacting with the Cluster builders.
+	Cluster *ClusterClient
 	// Env is the client for interacting with the Env builders.
 	Env *EnvClient
 	// EnvAlias is the client for interacting with the EnvAlias builders.
@@ -24,10 +24,6 @@ type Tx struct {
 	Snapshot *SnapshotClient
 	// Team is the client for interacting with the Team builders.
 	Team *TeamClient
-	// TeamAPIKey is the client for interacting with the TeamAPIKey builders.
-	TeamAPIKey *TeamAPIKeyClient
-	// Tier is the client for interacting with the Tier builders.
-	Tier *TierClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UsersTeams is the client for interacting with the UsersTeams builders.
@@ -163,14 +159,12 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
-	tx.AccessToken = NewAccessTokenClient(tx.config)
+	tx.Cluster = NewClusterClient(tx.config)
 	tx.Env = NewEnvClient(tx.config)
 	tx.EnvAlias = NewEnvAliasClient(tx.config)
 	tx.EnvBuild = NewEnvBuildClient(tx.config)
 	tx.Snapshot = NewSnapshotClient(tx.config)
 	tx.Team = NewTeamClient(tx.config)
-	tx.TeamAPIKey = NewTeamAPIKeyClient(tx.config)
-	tx.Tier = NewTierClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UsersTeams = NewUsersTeamsClient(tx.config)
 }
@@ -182,7 +176,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: AccessToken.QueryXXX(), the query will be executed
+// applies a query, for example: Cluster.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

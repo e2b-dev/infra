@@ -1,0 +1,39 @@
+name: Lint
+
+on: [workflow_call]
+
+permissions:
+  contents: read
+
+jobs:
+  detect-modules:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.set-modules.outputs.modules }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set-modules
+        run: echo "modules=$(go list -m -json | jq -s '.' | jq -c '[.[].Dir]')" >> $GITHUB_OUTPUT
+
+  golangci-lint:
+    needs: detect-modules
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        modules: ${{ fromJSON(needs.detect-modules.outputs.modules) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
+        with:
+          job_key: lint-${{ matrix.modules }}
+
+      - name: Parse .tool-versions
+        uses: wistia/parse-tool-versions@v2.1.1
+
+      - name: golangci-lint ${{ matrix.modules }}
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: "v${{ env.GOLANGCI_LINT }}"
+          working-directory: ${{ matrix.modules }}

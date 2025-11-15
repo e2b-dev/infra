@@ -1,0 +1,41 @@
+package legacy
+
+import (
+	"net/http"
+
+	"connectrpc.com/connect"
+)
+
+type streamConverter struct {
+	conn connect.StreamingHandlerConn
+}
+
+func (s streamConverter) Spec() connect.Spec {
+	return s.conn.Spec()
+}
+
+func (s streamConverter) Peer() connect.Peer {
+	return s.conn.Peer()
+}
+
+func (s streamConverter) Receive(a any) error {
+	return s.conn.Receive(a)
+}
+
+func (s streamConverter) RequestHeader() http.Header {
+	return s.conn.RequestHeader()
+}
+
+func (s streamConverter) Send(a any) error {
+	a = maybeConvertValue(a)
+
+	return s.conn.Send(a)
+}
+
+func (s streamConverter) ResponseHeader() http.Header {
+	return s.conn.ResponseHeader()
+}
+
+func (s streamConverter) ResponseTrailer() http.Header {
+	return s.conn.ResponseTrailer()
+}

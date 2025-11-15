@@ -1,41 +1,43 @@
 package build
 
 import (
+	"context"
 	"fmt"
 	"io"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type File struct {
-	header   *header.Header
-	store    *DiffStore
-	fileType DiffType
+	header      *header.Header
+	store       *DiffStore
+	fileType    DiffType
+	persistence storage.StorageProvider
+	metrics     blockmetrics.Metrics
 }
 
 func NewFile(
 	header *header.Header,
 	store *DiffStore,
 	fileType DiffType,
+	persistence storage.StorageProvider,
+	metrics blockmetrics.Metrics,
 ) *File {
 	return &File{
-		header:   header,
-		store:    store,
-		fileType: fileType,
+		header:      header,
+		store:       store,
+		fileType:    fileType,
+		persistence: persistence,
+		metrics:     metrics,
 	}
 }
 
-func min(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-
-	return b
-}
-
-func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
+func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
 	for n < len(p) {
 		mappedOffset, mappedLength, buildID, err := b.header.GetShiftedMapping(off + int64(n))
 		if err != nil {
@@ -47,8 +49,8 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 		readLength := min(mappedLength, remainingReadLength)
 
 		if readLength <= 0 {
-			fmt.Printf(
-				"(%d bytes left to read, off %d) reading %d bytes from %+v/%+v: [%d:] -> [%d:%d] <> %d (mapped length: %d, remaining read length: %d)\n",
+			zap.L().Error(fmt.Sprintf(
+				"(%d bytes left to read, off %d) reading %d bytes from %+v/%+v: [%d:] -> [%d:%d] <> %d (mapped length: %d, remaining read length: %d)\n>>> EOF\n",
 				len(p)-n,
 				off,
 				readLength,
@@ -60,9 +62,7 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 				n,
 				mappedLength,
 				remainingReadLength,
-			)
-
-			fmt.Printf(">>> EOF\n")
+			))
 
 			return n, io.EOF
 		}
@@ -76,12 +76,12 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 			continue
 		}
 
-		mappedBuild, err := b.getBuild(buildID)
+		mappedBuild, err := b.getBuild(ctx, buildID)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		buildN, err := mappedBuild.ReadAt(
+		buildN, err := mappedBuild.ReadAt(ctx,
 			p[n:int64(n)+readLength],
 			mappedOffset,
 		)
@@ -96,30 +96,39 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 // The slice access must be in the predefined blocksize of the build.
-func (b *File) Slice(off, length int64) ([]byte, error) {
+func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 	mappedOffset, _, buildID, err := b.header.GetShiftedMapping(off)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
 	}
 
+	// Pass empty huge page when the build id is nil.
 	if *buildID == uuid.Nil {
 		return header.EmptyHugePage, nil
 	}
 
-	build, err := b.getBuild(buildID)
+	build, err := b.getBuild(ctx, buildID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
 
-	return build.Slice(mappedOffset, int64(b.header.Metadata.BlockSize))
+	return build.Slice(ctx, mappedOffset, int64(b.header.Metadata.BlockSize))
 }
 
-func (b *File) getBuild(buildID *uuid.UUID) (Diff, error) {
-	source, err := b.store.Get(
+func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
+	storageDiff, err := newStorageDiff(
+		b.store.cachePath,
 		buildID.String(),
 		b.fileType,
 		int64(b.header.Metadata.BlockSize),
+		b.metrics,
+		b.persistence,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create storage diff: %w", err)
+	}
+
+	source, err := b.store.Get(ctx, storageDiff)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build from store: %w", err)
 	}

@@ -2,170 +2,267 @@ package template
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
-	"sync"
 
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type storageTemplate struct {
-	files *storage.TemplateCacheFiles
+	config cfg.BuilderConfig
+	files  storage.TemplateCacheFiles
 
-	memfile  *utils.SetOnce[*Storage]
-	rootfs   *utils.SetOnce[*Storage]
+	memfile  *utils.SetOnce[block.ReadonlyDevice]
+	rootfs   *utils.SetOnce[block.ReadonlyDevice]
 	snapfile *utils.SetOnce[File]
-
-	isSnapshot bool
+	metafile *utils.SetOnce[File]
 
 	memfileHeader *header.Header
 	rootfsHeader  *header.Header
-	localSnapfile *LocalFile
+	localSnapfile File
+	localMetafile File
 
-	bucket *gcs.BucketHandle
+	metrics     blockmetrics.Metrics
+	persistence storage.StorageProvider
 }
 
 func newTemplateFromStorage(
-	templateId,
+	config cfg.BuilderConfig,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
-	hugePages bool,
-	isSnapshot bool,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
-	bucket *gcs.BucketHandle,
-	localSnapfile *LocalFile,
+	persistence storage.StorageProvider,
+	metrics blockmetrics.Metrics,
+	localSnapfile File,
+	localMetafile File,
 ) (*storageTemplate, error) {
-	files, err := storage.NewTemplateFiles(
-		templateId,
-		buildId,
-		kernelVersion,
-		firecrackerVersion,
-		hugePages,
-	).NewTemplateCacheFiles()
+	files, err := storage.TemplateFiles{
+		BuildID:            buildId,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: firecrackerVersion,
+	}.CacheFiles(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
 	}
 
 	return &storageTemplate{
+		config:        config,
 		files:         files,
 		localSnapfile: localSnapfile,
-		isSnapshot:    isSnapshot,
+		localMetafile: localMetafile,
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
-		bucket:        bucket,
-		memfile:       utils.NewSetOnce[*Storage](),
-		rootfs:        utils.NewSetOnce[*Storage](),
+		metrics:       metrics,
+		persistence:   persistence,
+		memfile:       utils.NewSetOnce[block.ReadonlyDevice](),
+		rootfs:        utils.NewSetOnce[block.ReadonlyDevice](),
 		snapfile:      utils.NewSetOnce[File](),
+		metafile:      utils.NewSetOnce[File](),
 	}, nil
 }
 
 func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
-	err := os.MkdirAll(t.files.CacheDir(), os.ModePerm)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create directory %s: %w", t.files.CacheDir(), err)
+	var wg errgroup.Group
 
-		t.memfile.SetError(errMsg)
-		t.rootfs.SetError(errMsg)
-		t.snapfile.SetError(errMsg)
-
-		return
-	}
-
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go func() error {
-		defer wg.Done()
+	wg.Go(func() error {
 		if t.localSnapfile != nil {
-			return t.snapfile.SetValue(t.localSnapfile)
+			if err := t.snapfile.SetValue(t.localSnapfile); err != nil {
+				return fmt.Errorf("failed to set local snapfile: %w", err)
+			}
+
+			return nil
 		}
 
 		snapfile, snapfileErr := newStorageFile(
 			ctx,
-			t.bucket,
+			t.persistence,
 			t.files.StorageSnapfilePath(),
-			t.files.CacheSnapfilePath(),
+			t.files.CacheSnapfilePath(t.config),
+			storage.SnapfileObjectType,
 		)
 		if snapfileErr != nil {
 			errMsg := fmt.Errorf("failed to fetch snapfile: %w", snapfileErr)
 
-			return t.snapfile.SetError(errMsg)
+			if err := t.snapfile.SetError(errMsg); err != nil {
+				return fmt.Errorf("failed to set snapfile error: %w", errors.Join(errMsg, err))
+			}
+
+			return nil
 		}
 
-		return t.snapfile.SetValue(snapfile)
-	}()
+		if err := t.snapfile.SetValue(snapfile); err != nil {
+			return fmt.Errorf("failed to set snapfile: %w", err)
+		}
 
-	wg.Add(1)
-	go func() error {
-		defer wg.Done()
+		return nil
+	})
 
+	wg.Go(func() error {
+		if t.localMetafile != nil {
+			if err := t.metafile.SetValue(t.localMetafile); err != nil {
+				return fmt.Errorf("failed to set local metafile: %w", err)
+			}
+
+			return nil
+		}
+
+		meta, err := newStorageFile(
+			ctx,
+			t.persistence,
+			t.files.StorageMetadataPath(),
+			t.files.CacheMetadataPath(t.config),
+			storage.MetadataObjectType,
+		)
+		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
+			sourceErr := fmt.Errorf("failed to fetch metafile: %w", err)
+			if err := t.metafile.SetError(sourceErr); err != nil {
+				return fmt.Errorf("failed to set metafile error: %w", errors.Join(sourceErr, err))
+			}
+
+			return nil
+		}
+
+		if err != nil {
+			// If we can't find the metadata, we still want to return the metafile.
+			// This is used for templates that don't have metadata, like v1 templates.
+			zap.L().Info("failed to fetch metafile, falling back to v1 template metadata",
+				logger.WithBuildID(t.files.BuildID),
+				zap.Error(err),
+			)
+			oldTemplateMetadata := metadata.V1TemplateVersion()
+			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath(t.config))
+			if err != nil {
+				sourceErr := fmt.Errorf("failed to write v1 template metadata to a file: %w", err)
+				if err := t.metafile.SetError(sourceErr); err != nil {
+					return fmt.Errorf("failed to set metafile error: %w", errors.Join(sourceErr, err))
+				}
+
+				return nil
+			}
+
+			if err := t.metafile.SetValue(&storageFile{
+				path: t.files.CacheMetadataPath(t.config),
+			}); err != nil {
+				return fmt.Errorf("failed to set metafile v1: %w", err)
+			}
+
+			return nil
+		}
+
+		if err := t.metafile.SetValue(meta); err != nil {
+			return fmt.Errorf("failed to set metafile value: %w", err)
+		}
+
+		return nil
+	})
+
+	wg.Go(func() error {
 		memfileStorage, memfileErr := NewStorage(
 			ctx,
 			buildStore,
-			t.files.BuildId,
+			t.files.BuildID,
 			build.Memfile,
-			t.files.MemfilePageSize(),
-			t.isSnapshot,
 			t.memfileHeader,
-			t.bucket,
+			t.persistence,
+			t.metrics,
 		)
+
 		if memfileErr != nil {
 			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
 
-			return t.memfile.SetError(errMsg)
+			if err := t.memfile.SetError(errMsg); err != nil {
+				return fmt.Errorf("failed to set memfile error: %w", errors.Join(errMsg, err))
+			}
+
+			return nil
 		}
 
-		return t.memfile.SetValue(memfileStorage)
-	}()
+		if err := t.memfile.SetValue(memfileStorage); err != nil {
+			return fmt.Errorf("failed to set memfile value: %w", err)
+		}
 
-	wg.Add(1)
-	go func() error {
-		defer wg.Done()
+		return nil
+	})
 
+	wg.Go(func() error {
 		rootfsStorage, rootfsErr := NewStorage(
 			ctx,
 			buildStore,
-			t.files.BuildId,
+			t.files.BuildID,
 			build.Rootfs,
-			t.files.RootfsBlockSize(),
-			t.isSnapshot,
 			t.rootfsHeader,
-			t.bucket,
+			t.persistence,
+			t.metrics,
 		)
 		if rootfsErr != nil {
 			errMsg := fmt.Errorf("failed to create rootfs storage: %w", rootfsErr)
 
-			return t.rootfs.SetError(errMsg)
+			if err := t.rootfs.SetError(errMsg); err != nil {
+				return fmt.Errorf("failed to set rootfs error: %w", errors.Join(errMsg, err))
+			}
+
+			return nil
 		}
 
-		return t.rootfs.SetValue(rootfsStorage)
-	}()
+		if err := t.rootfs.SetValue(rootfsStorage); err != nil {
+			return fmt.Errorf("failed to set rootfs value: %w", err)
+		}
 
-	wg.Wait()
+		return nil
+	})
+
+	err := wg.Wait()
+	if err != nil {
+		zap.L().Error("failed to fetch template files",
+			logger.WithBuildID(t.files.BuildID),
+			zap.Error(err),
+		)
+
+		return
+	}
 }
 
-func (t *storageTemplate) Close() error {
-	return closeTemplate(t)
+func (t *storageTemplate) Close(ctx context.Context) error {
+	return closeTemplate(ctx, t)
 }
 
-func (t *storageTemplate) Files() *storage.TemplateCacheFiles {
+func (t *storageTemplate) Files() storage.TemplateCacheFiles {
 	return t.files
 }
 
-func (t *storageTemplate) Memfile() (*Storage, error) {
+func (t *storageTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {
+	_, span := tracer.Start(ctx, "storage-template-memfile")
+	defer span.End()
+
 	return t.memfile.Wait()
 }
 
-func (t *storageTemplate) Rootfs() (*Storage, error) {
+func (t *storageTemplate) Rootfs() (block.ReadonlyDevice, error) {
 	return t.rootfs.Wait()
 }
 
 func (t *storageTemplate) Snapfile() (File, error) {
 	return t.snapfile.Wait()
+}
+
+func (t *storageTemplate) Metadata() (metadata.Template, error) {
+	metafile, err := t.metafile.Wait()
+	if err != nil {
+		return metadata.Template{}, fmt.Errorf("failed to get metafile: %w", err)
+	}
+
+	return metadata.FromFile(metafile.Path())
 }

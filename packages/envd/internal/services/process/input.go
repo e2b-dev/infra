@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"connectrpc.com/connect"
+	"github.com/rs/zerolog"
+
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
-
-	"connectrpc.com/connect"
-	"github.com/rs/zerolog"
 )
 
 func handleInput(ctx context.Context, process *handler.Handler, in *rpc.ProcessInput, logger *zerolog.Logger) error {
@@ -30,10 +30,10 @@ func handleInput(ctx context.Context, process *handler.Handler, in *rpc.ProcessI
 			Str("event_type", "stdin").
 			Interface("stdin", in.GetStdin()).
 			Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).
-			Send()
+			Msg("Streaming input to process")
 
 	default:
-		return connect.NewError(connect.CodeUnimplemented, fmt.Errorf("invalid input type %T", in.Input))
+		return connect.NewError(connect.CodeUnimplemented, fmt.Errorf("invalid input type %T", in.GetInput()))
 	}
 
 	return nil
@@ -77,15 +77,14 @@ func (s *Service) streamInputHandler(ctx context.Context, stream *connect.Client
 				return nil, err
 			}
 		case *rpc.StreamInputRequest_Keepalive:
-			break
 		default:
-			return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("invalid event type %T", req.Event))
+			return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("invalid event type %T", req.GetEvent()))
 		}
 	}
 
 	err := stream.Err()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnknown, err)
+		return nil, connect.NewError(connect.CodeUnknown, fmt.Errorf("error streaming input: %w", err))
 	}
 
 	return connect.NewResponse(&rpc.StreamInputResponse{}), nil

@@ -1,0 +1,43 @@
+name: Push Main
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  generated-code-check:
+    uses: ./.github/workflows/pr-no-generated-changes.yml
+  unit-tests:
+    uses: ./.github/workflows/pr-tests.yml
+  integration-tests:
+    uses: ./.github/workflows/integration_tests.yml
+  publish-test-results:
+    needs:
+      - unit-tests
+      - integration-tests
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    if: always()
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          # Docker build artifacts have to ignored
+          # https://github.com/actions/toolkit/pull/1874
+          pattern: "!*.dockerbuild"
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          comment_mode: off
+          fail_on: 'errors'
+          files: "artifacts/**/*.xml"

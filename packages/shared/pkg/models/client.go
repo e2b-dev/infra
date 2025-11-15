@@ -16,14 +16,12 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/cluster"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 
@@ -35,8 +33,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
-	// AccessToken is the client for interacting with the AccessToken builders.
-	AccessToken *AccessTokenClient
+	// Cluster is the client for interacting with the Cluster builders.
+	Cluster *ClusterClient
 	// Env is the client for interacting with the Env builders.
 	Env *EnvClient
 	// EnvAlias is the client for interacting with the EnvAlias builders.
@@ -47,10 +45,6 @@ type Client struct {
 	Snapshot *SnapshotClient
 	// Team is the client for interacting with the Team builders.
 	Team *TeamClient
-	// TeamAPIKey is the client for interacting with the TeamAPIKey builders.
-	TeamAPIKey *TeamAPIKeyClient
-	// Tier is the client for interacting with the Tier builders.
-	Tier *TierClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UsersTeams is the client for interacting with the UsersTeams builders.
@@ -66,14 +60,12 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
-	c.AccessToken = NewAccessTokenClient(c.config)
+	c.Cluster = NewClusterClient(c.config)
 	c.Env = NewEnvClient(c.config)
 	c.EnvAlias = NewEnvAliasClient(c.config)
 	c.EnvBuild = NewEnvBuildClient(c.config)
 	c.Snapshot = NewSnapshotClient(c.config)
 	c.Team = NewTeamClient(c.config)
-	c.TeamAPIKey = NewTeamAPIKeyClient(c.config)
-	c.Tier = NewTierClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.UsersTeams = NewUsersTeamsClient(c.config)
 }
@@ -169,18 +161,16 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:         ctx,
-		config:      cfg,
-		AccessToken: NewAccessTokenClient(cfg),
-		Env:         NewEnvClient(cfg),
-		EnvAlias:    NewEnvAliasClient(cfg),
-		EnvBuild:    NewEnvBuildClient(cfg),
-		Snapshot:    NewSnapshotClient(cfg),
-		Team:        NewTeamClient(cfg),
-		TeamAPIKey:  NewTeamAPIKeyClient(cfg),
-		Tier:        NewTierClient(cfg),
-		User:        NewUserClient(cfg),
-		UsersTeams:  NewUsersTeamsClient(cfg),
+		ctx:        ctx,
+		config:     cfg,
+		Cluster:    NewClusterClient(cfg),
+		Env:        NewEnvClient(cfg),
+		EnvAlias:   NewEnvAliasClient(cfg),
+		EnvBuild:   NewEnvBuildClient(cfg),
+		Snapshot:   NewSnapshotClient(cfg),
+		Team:       NewTeamClient(cfg),
+		User:       NewUserClient(cfg),
+		UsersTeams: NewUsersTeamsClient(cfg),
 	}, nil
 }
 
@@ -198,25 +188,23 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:         ctx,
-		config:      cfg,
-		AccessToken: NewAccessTokenClient(cfg),
-		Env:         NewEnvClient(cfg),
-		EnvAlias:    NewEnvAliasClient(cfg),
-		EnvBuild:    NewEnvBuildClient(cfg),
-		Snapshot:    NewSnapshotClient(cfg),
-		Team:        NewTeamClient(cfg),
-		TeamAPIKey:  NewTeamAPIKeyClient(cfg),
-		Tier:        NewTierClient(cfg),
-		User:        NewUserClient(cfg),
-		UsersTeams:  NewUsersTeamsClient(cfg),
+		ctx:        ctx,
+		config:     cfg,
+		Cluster:    NewClusterClient(cfg),
+		Env:        NewEnvClient(cfg),
+		EnvAlias:   NewEnvAliasClient(cfg),
+		EnvBuild:   NewEnvBuildClient(cfg),
+		Snapshot:   NewSnapshotClient(cfg),
+		Team:       NewTeamClient(cfg),
+		User:       NewUserClient(cfg),
+		UsersTeams: NewUsersTeamsClient(cfg),
 	}, nil
 }
 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		AccessToken.
+//		Cluster.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -239,8 +227,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AccessToken, c.Env, c.EnvAlias, c.EnvBuild, c.Snapshot, c.Team, c.TeamAPIKey,
-		c.Tier, c.User, c.UsersTeams,
+		c.Cluster, c.Env, c.EnvAlias, c.EnvBuild, c.Snapshot, c.Team, c.User,
+		c.UsersTeams,
 	} {
 		n.Use(hooks...)
 	}
@@ -250,8 +238,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AccessToken, c.Env, c.EnvAlias, c.EnvBuild, c.Snapshot, c.Team, c.TeamAPIKey,
-		c.Tier, c.User, c.UsersTeams,
+		c.Cluster, c.Env, c.EnvAlias, c.EnvBuild, c.Snapshot, c.Team, c.User,
+		c.UsersTeams,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -260,8 +248,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
-	case *AccessTokenMutation:
-		return c.AccessToken.mutate(ctx, m)
+	case *ClusterMutation:
+		return c.Cluster.mutate(ctx, m)
 	case *EnvMutation:
 		return c.Env.mutate(ctx, m)
 	case *EnvAliasMutation:
@@ -272,10 +260,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Snapshot.mutate(ctx, m)
 	case *TeamMutation:
 		return c.Team.mutate(ctx, m)
-	case *TeamAPIKeyMutation:
-		return c.TeamAPIKey.mutate(ctx, m)
-	case *TierMutation:
-		return c.Tier.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	case *UsersTeamsMutation:
@@ -285,107 +269,107 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	}
 }
 
-// AccessTokenClient is a client for the AccessToken schema.
-type AccessTokenClient struct {
+// ClusterClient is a client for the Cluster schema.
+type ClusterClient struct {
 	config
 }
 
-// NewAccessTokenClient returns a client for the AccessToken from the given config.
-func NewAccessTokenClient(c config) *AccessTokenClient {
-	return &AccessTokenClient{config: c}
+// NewClusterClient returns a client for the Cluster from the given config.
+func NewClusterClient(c config) *ClusterClient {
+	return &ClusterClient{config: c}
 }
 
 // Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `accesstoken.Hooks(f(g(h())))`.
-func (c *AccessTokenClient) Use(hooks ...Hook) {
-	c.hooks.AccessToken = append(c.hooks.AccessToken, hooks...)
+// A call to `Use(f, g, h)` equals to `cluster.Hooks(f(g(h())))`.
+func (c *ClusterClient) Use(hooks ...Hook) {
+	c.hooks.Cluster = append(c.hooks.Cluster, hooks...)
 }
 
 // Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `accesstoken.Intercept(f(g(h())))`.
-func (c *AccessTokenClient) Intercept(interceptors ...Interceptor) {
-	c.inters.AccessToken = append(c.inters.AccessToken, interceptors...)
+// A call to `Intercept(f, g, h)` equals to `cluster.Intercept(f(g(h())))`.
+func (c *ClusterClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Cluster = append(c.inters.Cluster, interceptors...)
 }
 
-// Create returns a builder for creating a AccessToken entity.
-func (c *AccessTokenClient) Create() *AccessTokenCreate {
-	mutation := newAccessTokenMutation(c.config, OpCreate)
-	return &AccessTokenCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Create returns a builder for creating a Cluster entity.
+func (c *ClusterClient) Create() *ClusterCreate {
+	mutation := newClusterMutation(c.config, OpCreate)
+	return &ClusterCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
-// CreateBulk returns a builder for creating a bulk of AccessToken entities.
-func (c *AccessTokenClient) CreateBulk(builders ...*AccessTokenCreate) *AccessTokenCreateBulk {
-	return &AccessTokenCreateBulk{config: c.config, builders: builders}
+// CreateBulk returns a builder for creating a bulk of Cluster entities.
+func (c *ClusterClient) CreateBulk(builders ...*ClusterCreate) *ClusterCreateBulk {
+	return &ClusterCreateBulk{config: c.config, builders: builders}
 }
 
 // MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
 // a builder and applies setFunc on it.
-func (c *AccessTokenClient) MapCreateBulk(slice any, setFunc func(*AccessTokenCreate, int)) *AccessTokenCreateBulk {
+func (c *ClusterClient) MapCreateBulk(slice any, setFunc func(*ClusterCreate, int)) *ClusterCreateBulk {
 	rv := reflect.ValueOf(slice)
 	if rv.Kind() != reflect.Slice {
-		return &AccessTokenCreateBulk{err: fmt.Errorf("calling to AccessTokenClient.MapCreateBulk with wrong type %T, need slice", slice)}
+		return &ClusterCreateBulk{err: fmt.Errorf("calling to ClusterClient.MapCreateBulk with wrong type %T, need slice", slice)}
 	}
-	builders := make([]*AccessTokenCreate, rv.Len())
+	builders := make([]*ClusterCreate, rv.Len())
 	for i := 0; i < rv.Len(); i++ {
 		builders[i] = c.Create()
 		setFunc(builders[i], i)
 	}
-	return &AccessTokenCreateBulk{config: c.config, builders: builders}
+	return &ClusterCreateBulk{config: c.config, builders: builders}
 }
 
-// Update returns an update builder for AccessToken.
-func (c *AccessTokenClient) Update() *AccessTokenUpdate {
-	mutation := newAccessTokenMutation(c.config, OpUpdate)
-	return &AccessTokenUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Update returns an update builder for Cluster.
+func (c *ClusterClient) Update() *ClusterUpdate {
+	mutation := newClusterMutation(c.config, OpUpdate)
+	return &ClusterUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // UpdateOne returns an update builder for the given entity.
-func (c *AccessTokenClient) UpdateOne(at *AccessToken) *AccessTokenUpdateOne {
-	mutation := newAccessTokenMutation(c.config, OpUpdateOne, withAccessToken(at))
-	return &AccessTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+func (c *ClusterClient) UpdateOne(cl *Cluster) *ClusterUpdateOne {
+	mutation := newClusterMutation(c.config, OpUpdateOne, withCluster(cl))
+	return &ClusterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // UpdateOneID returns an update builder for the given id.
-func (c *AccessTokenClient) UpdateOneID(id string) *AccessTokenUpdateOne {
-	mutation := newAccessTokenMutation(c.config, OpUpdateOne, withAccessTokenID(id))
-	return &AccessTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+func (c *ClusterClient) UpdateOneID(id uuid.UUID) *ClusterUpdateOne {
+	mutation := newClusterMutation(c.config, OpUpdateOne, withClusterID(id))
+	return &ClusterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
-// Delete returns a delete builder for AccessToken.
-func (c *AccessTokenClient) Delete() *AccessTokenDelete {
-	mutation := newAccessTokenMutation(c.config, OpDelete)
-	return &AccessTokenDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Delete returns a delete builder for Cluster.
+func (c *ClusterClient) Delete() *ClusterDelete {
+	mutation := newClusterMutation(c.config, OpDelete)
+	return &ClusterDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // DeleteOne returns a builder for deleting the given entity.
-func (c *AccessTokenClient) DeleteOne(at *AccessToken) *AccessTokenDeleteOne {
-	return c.DeleteOneID(at.ID)
+func (c *ClusterClient) DeleteOne(cl *Cluster) *ClusterDeleteOne {
+	return c.DeleteOneID(cl.ID)
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *AccessTokenClient) DeleteOneID(id string) *AccessTokenDeleteOne {
-	builder := c.Delete().Where(accesstoken.ID(id))
+func (c *ClusterClient) DeleteOneID(id uuid.UUID) *ClusterDeleteOne {
+	builder := c.Delete().Where(cluster.ID(id))
 	builder.mutation.id = &id
 	builder.mutation.op = OpDeleteOne
-	return &AccessTokenDeleteOne{builder}
+	return &ClusterDeleteOne{builder}
 }
 
-// Query returns a query builder for AccessToken.
-func (c *AccessTokenClient) Query() *AccessTokenQuery {
-	return &AccessTokenQuery{
+// Query returns a query builder for Cluster.
+func (c *ClusterClient) Query() *ClusterQuery {
+	return &ClusterQuery{
 		config: c.config,
-		ctx:    &QueryContext{Type: TypeAccessToken},
+		ctx:    &QueryContext{Type: TypeCluster},
 		inters: c.Interceptors(),
 	}
 }
 
-// Get returns a AccessToken entity by its id.
-func (c *AccessTokenClient) Get(ctx context.Context, id string) (*AccessToken, error) {
-	return c.Query().Where(accesstoken.ID(id)).Only(ctx)
+// Get returns a Cluster entity by its id.
+func (c *ClusterClient) Get(ctx context.Context, id uuid.UUID) (*Cluster, error) {
+	return c.Query().Where(cluster.ID(id)).Only(ctx)
 }
 
 // GetX is like Get, but panics if an error occurs.
-func (c *AccessTokenClient) GetX(ctx context.Context, id string) *AccessToken {
+func (c *ClusterClient) GetX(ctx context.Context, id uuid.UUID) *Cluster {
 	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
@@ -393,47 +377,28 @@ func (c *AccessTokenClient) GetX(ctx context.Context, id string) *AccessToken {
 	return obj
 }
 
-// QueryUser queries the user edge of a AccessToken.
-func (c *AccessTokenClient) QueryUser(at *AccessToken) *UserQuery {
-	query := (&UserClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := at.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(accesstoken.Table, accesstoken.FieldID, id),
-			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, accesstoken.UserTable, accesstoken.UserColumn),
-		)
-		schemaConfig := at.schemaConfig
-		step.To.Schema = schemaConfig.User
-		step.Edge.Schema = schemaConfig.AccessToken
-		fromV = sqlgraph.Neighbors(at.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
 // Hooks returns the client hooks.
-func (c *AccessTokenClient) Hooks() []Hook {
-	return c.hooks.AccessToken
+func (c *ClusterClient) Hooks() []Hook {
+	return c.hooks.Cluster
 }
 
 // Interceptors returns the client interceptors.
-func (c *AccessTokenClient) Interceptors() []Interceptor {
-	return c.inters.AccessToken
+func (c *ClusterClient) Interceptors() []Interceptor {
+	return c.inters.Cluster
 }
 
-func (c *AccessTokenClient) mutate(ctx context.Context, m *AccessTokenMutation) (Value, error) {
+func (c *ClusterClient) mutate(ctx context.Context, m *ClusterMutation) (Value, error) {
 	switch m.Op() {
 	case OpCreate:
-		return (&AccessTokenCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+		return (&ClusterCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
 	case OpUpdate:
-		return (&AccessTokenUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+		return (&ClusterUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
 	case OpUpdateOne:
-		return (&AccessTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+		return (&ClusterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
 	case OpDelete, OpDeleteOne:
-		return (&AccessTokenDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+		return (&ClusterDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
-		return nil, fmt.Errorf("models: unknown AccessToken mutation op: %q", m.Op())
+		return nil, fmt.Errorf("models: unknown Cluster mutation op: %q", m.Op())
 	}
 }
 
@@ -1248,44 +1213,6 @@ func (c *TeamClient) QueryUsers(t *Team) *UserQuery {
 	return query
 }
 
-// QueryTeamAPIKeys queries the team_api_keys edge of a Team.
-func (c *TeamClient) QueryTeamAPIKeys(t *Team) *TeamAPIKeyQuery {
-	query := (&TeamAPIKeyClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := t.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(team.Table, team.FieldID, id),
-			sqlgraph.To(teamapikey.Table, teamapikey.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, team.TeamAPIKeysTable, team.TeamAPIKeysColumn),
-		)
-		schemaConfig := t.schemaConfig
-		step.To.Schema = schemaConfig.TeamAPIKey
-		step.Edge.Schema = schemaConfig.TeamAPIKey
-		fromV = sqlgraph.Neighbors(t.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryTeamTier queries the team_tier edge of a Team.
-func (c *TeamClient) QueryTeamTier(t *Team) *TierQuery {
-	query := (&TierClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := t.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(team.Table, team.FieldID, id),
-			sqlgraph.To(tier.Table, tier.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, team.TeamTierTable, team.TeamTierColumn),
-		)
-		schemaConfig := t.schemaConfig
-		step.To.Schema = schemaConfig.Tier
-		step.Edge.Schema = schemaConfig.Team
-		fromV = sqlgraph.Neighbors(t.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
 // QueryEnvs queries the envs edge of a Team.
 func (c *TeamClient) QueryEnvs(t *Team) *EnvQuery {
 	query := (&EnvClient{config: c.config}).Query()
@@ -1346,329 +1273,6 @@ func (c *TeamClient) mutate(ctx context.Context, m *TeamMutation) (Value, error)
 		return (&TeamDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("models: unknown Team mutation op: %q", m.Op())
-	}
-}
-
-// TeamAPIKeyClient is a client for the TeamAPIKey schema.
-type TeamAPIKeyClient struct {
-	config
-}
-
-// NewTeamAPIKeyClient returns a client for the TeamAPIKey from the given config.
-func NewTeamAPIKeyClient(c config) *TeamAPIKeyClient {
-	return &TeamAPIKeyClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `teamapikey.Hooks(f(g(h())))`.
-func (c *TeamAPIKeyClient) Use(hooks ...Hook) {
-	c.hooks.TeamAPIKey = append(c.hooks.TeamAPIKey, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `teamapikey.Intercept(f(g(h())))`.
-func (c *TeamAPIKeyClient) Intercept(interceptors ...Interceptor) {
-	c.inters.TeamAPIKey = append(c.inters.TeamAPIKey, interceptors...)
-}
-
-// Create returns a builder for creating a TeamAPIKey entity.
-func (c *TeamAPIKeyClient) Create() *TeamAPIKeyCreate {
-	mutation := newTeamAPIKeyMutation(c.config, OpCreate)
-	return &TeamAPIKeyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of TeamAPIKey entities.
-func (c *TeamAPIKeyClient) CreateBulk(builders ...*TeamAPIKeyCreate) *TeamAPIKeyCreateBulk {
-	return &TeamAPIKeyCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *TeamAPIKeyClient) MapCreateBulk(slice any, setFunc func(*TeamAPIKeyCreate, int)) *TeamAPIKeyCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &TeamAPIKeyCreateBulk{err: fmt.Errorf("calling to TeamAPIKeyClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*TeamAPIKeyCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &TeamAPIKeyCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for TeamAPIKey.
-func (c *TeamAPIKeyClient) Update() *TeamAPIKeyUpdate {
-	mutation := newTeamAPIKeyMutation(c.config, OpUpdate)
-	return &TeamAPIKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *TeamAPIKeyClient) UpdateOne(tak *TeamAPIKey) *TeamAPIKeyUpdateOne {
-	mutation := newTeamAPIKeyMutation(c.config, OpUpdateOne, withTeamAPIKey(tak))
-	return &TeamAPIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *TeamAPIKeyClient) UpdateOneID(id uuid.UUID) *TeamAPIKeyUpdateOne {
-	mutation := newTeamAPIKeyMutation(c.config, OpUpdateOne, withTeamAPIKeyID(id))
-	return &TeamAPIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for TeamAPIKey.
-func (c *TeamAPIKeyClient) Delete() *TeamAPIKeyDelete {
-	mutation := newTeamAPIKeyMutation(c.config, OpDelete)
-	return &TeamAPIKeyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *TeamAPIKeyClient) DeleteOne(tak *TeamAPIKey) *TeamAPIKeyDeleteOne {
-	return c.DeleteOneID(tak.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *TeamAPIKeyClient) DeleteOneID(id uuid.UUID) *TeamAPIKeyDeleteOne {
-	builder := c.Delete().Where(teamapikey.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &TeamAPIKeyDeleteOne{builder}
-}
-
-// Query returns a query builder for TeamAPIKey.
-func (c *TeamAPIKeyClient) Query() *TeamAPIKeyQuery {
-	return &TeamAPIKeyQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeTeamAPIKey},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a TeamAPIKey entity by its id.
-func (c *TeamAPIKeyClient) Get(ctx context.Context, id uuid.UUID) (*TeamAPIKey, error) {
-	return c.Query().Where(teamapikey.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *TeamAPIKeyClient) GetX(ctx context.Context, id uuid.UUID) *TeamAPIKey {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// QueryTeam queries the team edge of a TeamAPIKey.
-func (c *TeamAPIKeyClient) QueryTeam(tak *TeamAPIKey) *TeamQuery {
-	query := (&TeamClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := tak.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(teamapikey.Table, teamapikey.FieldID, id),
-			sqlgraph.To(team.Table, team.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, teamapikey.TeamTable, teamapikey.TeamColumn),
-		)
-		schemaConfig := tak.schemaConfig
-		step.To.Schema = schemaConfig.Team
-		step.Edge.Schema = schemaConfig.TeamAPIKey
-		fromV = sqlgraph.Neighbors(tak.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryCreator queries the creator edge of a TeamAPIKey.
-func (c *TeamAPIKeyClient) QueryCreator(tak *TeamAPIKey) *UserQuery {
-	query := (&UserClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := tak.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(teamapikey.Table, teamapikey.FieldID, id),
-			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, teamapikey.CreatorTable, teamapikey.CreatorColumn),
-		)
-		schemaConfig := tak.schemaConfig
-		step.To.Schema = schemaConfig.User
-		step.Edge.Schema = schemaConfig.TeamAPIKey
-		fromV = sqlgraph.Neighbors(tak.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// Hooks returns the client hooks.
-func (c *TeamAPIKeyClient) Hooks() []Hook {
-	return c.hooks.TeamAPIKey
-}
-
-// Interceptors returns the client interceptors.
-func (c *TeamAPIKeyClient) Interceptors() []Interceptor {
-	return c.inters.TeamAPIKey
-}
-
-func (c *TeamAPIKeyClient) mutate(ctx context.Context, m *TeamAPIKeyMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&TeamAPIKeyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&TeamAPIKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&TeamAPIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&TeamAPIKeyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("models: unknown TeamAPIKey mutation op: %q", m.Op())
-	}
-}
-
-// TierClient is a client for the Tier schema.
-type TierClient struct {
-	config
-}
-
-// NewTierClient returns a client for the Tier from the given config.
-func NewTierClient(c config) *TierClient {
-	return &TierClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `tier.Hooks(f(g(h())))`.
-func (c *TierClient) Use(hooks ...Hook) {
-	c.hooks.Tier = append(c.hooks.Tier, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `tier.Intercept(f(g(h())))`.
-func (c *TierClient) Intercept(interceptors ...Interceptor) {
-	c.inters.Tier = append(c.inters.Tier, interceptors...)
-}
-
-// Create returns a builder for creating a Tier entity.
-func (c *TierClient) Create() *TierCreate {
-	mutation := newTierMutation(c.config, OpCreate)
-	return &TierCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of Tier entities.
-func (c *TierClient) CreateBulk(builders ...*TierCreate) *TierCreateBulk {
-	return &TierCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *TierClient) MapCreateBulk(slice any, setFunc func(*TierCreate, int)) *TierCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &TierCreateBulk{err: fmt.Errorf("calling to TierClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*TierCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &TierCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for Tier.
-func (c *TierClient) Update() *TierUpdate {
-	mutation := newTierMutation(c.config, OpUpdate)
-	return &TierUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *TierClient) UpdateOne(t *Tier) *TierUpdateOne {
-	mutation := newTierMutation(c.config, OpUpdateOne, withTier(t))
-	return &TierUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *TierClient) UpdateOneID(id string) *TierUpdateOne {
-	mutation := newTierMutation(c.config, OpUpdateOne, withTierID(id))
-	return &TierUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for Tier.
-func (c *TierClient) Delete() *TierDelete {
-	mutation := newTierMutation(c.config, OpDelete)
-	return &TierDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *TierClient) DeleteOne(t *Tier) *TierDeleteOne {
-	return c.DeleteOneID(t.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *TierClient) DeleteOneID(id string) *TierDeleteOne {
-	builder := c.Delete().Where(tier.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &TierDeleteOne{builder}
-}
-
-// Query returns a query builder for Tier.
-func (c *TierClient) Query() *TierQuery {
-	return &TierQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeTier},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a Tier entity by its id.
-func (c *TierClient) Get(ctx context.Context, id string) (*Tier, error) {
-	return c.Query().Where(tier.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *TierClient) GetX(ctx context.Context, id string) *Tier {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// QueryTeams queries the teams edge of a Tier.
-func (c *TierClient) QueryTeams(t *Tier) *TeamQuery {
-	query := (&TeamClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := t.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(tier.Table, tier.FieldID, id),
-			sqlgraph.To(team.Table, team.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, tier.TeamsTable, tier.TeamsColumn),
-		)
-		schemaConfig := t.schemaConfig
-		step.To.Schema = schemaConfig.Team
-		step.Edge.Schema = schemaConfig.Team
-		fromV = sqlgraph.Neighbors(t.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// Hooks returns the client hooks.
-func (c *TierClient) Hooks() []Hook {
-	return c.hooks.Tier
-}
-
-// Interceptors returns the client interceptors.
-func (c *TierClient) Interceptors() []Interceptor {
-	return c.inters.Tier
-}
-
-func (c *TierClient) mutate(ctx context.Context, m *TierMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&TierCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&TierUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&TierUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&TierDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("models: unknown Tier mutation op: %q", m.Op())
 	}
 }
 
@@ -1812,44 +1416,6 @@ func (c *UserClient) QueryCreatedEnvs(u *User) *EnvQuery {
 		schemaConfig := u.schemaConfig
 		step.To.Schema = schemaConfig.Env
 		step.Edge.Schema = schemaConfig.Env
-		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryAccessTokens queries the access_tokens edge of a User.
-func (c *UserClient) QueryAccessTokens(u *User) *AccessTokenQuery {
-	query := (&AccessTokenClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := u.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(user.Table, user.FieldID, id),
-			sqlgraph.To(accesstoken.Table, accesstoken.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, user.AccessTokensTable, user.AccessTokensColumn),
-		)
-		schemaConfig := u.schemaConfig
-		step.To.Schema = schemaConfig.AccessToken
-		step.Edge.Schema = schemaConfig.AccessToken
-		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryCreatedAPIKeys queries the created_api_keys edge of a User.
-func (c *UserClient) QueryCreatedAPIKeys(u *User) *TeamAPIKeyQuery {
-	query := (&TeamAPIKeyClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := u.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(user.Table, user.FieldID, id),
-			sqlgraph.To(teamapikey.Table, teamapikey.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, user.CreatedAPIKeysTable, user.CreatedAPIKeysColumn),
-		)
-		schemaConfig := u.schemaConfig
-		step.To.Schema = schemaConfig.TeamAPIKey
-		step.Edge.Schema = schemaConfig.TeamAPIKey
 		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
 		return fromV, nil
 	}
@@ -2074,11 +1640,10 @@ func (c *UsersTeamsClient) mutate(ctx context.Context, m *UsersTeamsMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AccessToken, Env, EnvAlias, EnvBuild, Snapshot, Team, TeamAPIKey, Tier, User,
-		UsersTeams []ent.Hook
+		Cluster, Env, EnvAlias, EnvBuild, Snapshot, Team, User, UsersTeams []ent.Hook
 	}
 	inters struct {
-		AccessToken, Env, EnvAlias, EnvBuild, Snapshot, Team, TeamAPIKey, Tier, User,
+		Cluster, Env, EnvAlias, EnvBuild, Snapshot, Team, User,
 		UsersTeams []ent.Interceptor
 	}
 )
@@ -2086,16 +1651,14 @@ type (
 var (
 	// DefaultSchemaConfig represents the default schema names for all tables as defined in ent/schema.
 	DefaultSchemaConfig = SchemaConfig{
-		AccessToken: tableSchemas[1],
-		Env:         tableSchemas[1],
-		EnvAlias:    tableSchemas[1],
-		EnvBuild:    tableSchemas[1],
-		Snapshot:    tableSchemas[1],
-		Team:        tableSchemas[1],
-		TeamAPIKey:  tableSchemas[1],
-		Tier:        tableSchemas[1],
-		User:        tableSchemas[0],
-		UsersTeams:  tableSchemas[1],
+		Cluster:    tableSchemas[1],
+		Env:        tableSchemas[1],
+		EnvAlias:   tableSchemas[1],
+		EnvBuild:   tableSchemas[1],
+		Snapshot:   tableSchemas[1],
+		Team:       tableSchemas[1],
+		User:       tableSchemas[0],
+		UsersTeams: tableSchemas[1],
 	}
 	tableSchemas = [...]string{"auth", "public"}
 )

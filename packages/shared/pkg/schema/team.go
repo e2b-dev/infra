@@ -27,14 +27,13 @@ func (Team) Fields() []ent.Field {
 		field.String("name").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("tier").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("email").MaxLen(255).SchemaType(map[string]string{dialect.Postgres: "character varying(255)"}),
+		field.UUID("cluster_id", uuid.UUID{}).Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "uuid"}),
 	}
 }
 
 func (Team) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("users", User.Type).Through("users_teams", UsersTeams.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
-		edge.To("team_api_keys", TeamAPIKey.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
-		edge.From("team_tier", Tier.Type).Ref("teams").Unique().Field("tier").Required(),
 		edge.To("envs", Env.Type),
 	}
 }

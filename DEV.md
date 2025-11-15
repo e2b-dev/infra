@@ -1,22 +1,5 @@
 # Development
 
-## Deployment
-
-Run `make version` and commit the changes the command generates.
-Then push to `main` to deploy these changes. Changed packages will be automatically deployed.
-
-**If the deployment fails don't run the previous commands again, just fix the error and push to `main`.**
-
-### Errors in the env-instance-task-driver
-
-If you are not developing env-instance-task-driver module on a unix machine you won't be able to complile the module because you will miss constants like "netlink.SCOPE_UNIVERSE".
-Use the ubuntu devcontainer to develop this module.
-
-### FC API Client
-
-For generating the FC client use go swagger (https://goswagger.io/install.html).
-Right now you need to manually check and update the [firecracker yml](./internal/client/firecracker.yml) version. It should match the version of the firecracker binary you are using specified in the [terraform file](../cluster-disk-image/variables.pkr.hcl).
-
 ### Remote development setup (VSCode)
 
 
@@ -34,14 +17,3 @@ Right now you need to manually check and update the [firecracker yml](./internal
 
 - `git config --global user.email "MY_NAME@example.com"`
 - `git config --global user.name "NAME"`
-
-#### Developing env-build-task-driver
-
-To debug env-build-task-driver setup remote development and then use the following methods:
-
-- Use the [make test](./packages/env-build-task-driver/Makefile#L36) command to quickly test the build process without any Nomad interaction. You may need to override the `env` (env ID) and `build` (build ID) flags to match the build you want to test
-- Use VSCode launch task `Debug env-build-task-driver` to start the build process with an attached debugger
-- Use VSCode launch task `Attack to process` and search for the `env-build-` process to attach the debugger to the running env build task driver that is used by Nomad.
-  - **This will restart Nomad** You may need to rebuild and replace the Nomad env-build-task driver binary with the `make update-driver-locally` command
-
-> **This will restart Nomad** You can build and replace the current running task driver from you local machine with `make update-driver`

@@ -2,231 +2,294 @@ package orchestrator
 
 import (
 	"context"
-	_ "embed"
+	"errors"
 	"fmt"
-	"log"
+	"net/http"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
-	"google.golang.org/grpc/connectivity"
+	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	teamtypes "github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// buildNetworkConfig constructs the orchestrator network configuration from the input parameters
+func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) *orchestrator.SandboxNetworkConfig {
+	orchNetwork := &orchestrator.SandboxNetworkConfig{
+		Egress: &orchestrator.SandboxNetworkEgressConfig{},
+		Ingress: &orchestrator.SandboxNetworkIngressConfig{
+			TrafficAccessToken: trafficAccessToken,
+		},
+	}
+
+	// Copy network configuration if provided
+	if network != nil && network.Egress != nil {
+		orchNetwork.Egress.AllowedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.AllowedAddresses)
+		orchNetwork.Egress.DeniedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.DeniedAddresses)
+	}
+
+	if network != nil && network.Ingress != nil {
+		orchNetwork.Ingress.MaskRequestHost = network.Ingress.MaskRequestHost
+	}
+
+	// Handle the case where internet access is explicitly disabled
+	// This should be applied after copying the network config to preserve allowed addresses
+	if allowInternetAccess != nil && !*allowInternetAccess {
+		// Block all internet access - this overrides any other blocked addresses
+		orchNetwork.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
+	}
+
+	return orchNetwork
+}
 
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
+	executionID,
 	alias string,
-	team authcache.AuthTeamInfo,
-	build *models.EnvBuild,
-	metadata,
+	team *teamtypes.Team,
+	build queries.EnvBuild,
+	metadata map[string]string,
 	envVars map[string]string,
 	startTime time.Time,
 	endTime time.Time,
 	timeout time.Duration,
-	logger *logs.SandboxLogger,
 	isResume bool,
-	clientID *string,
+	nodeID *string,
 	baseTemplateID string,
-) (*api.Sandbox, error) {
-	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
+	autoPause bool,
+	envdAuthToken *string,
+	allowInternetAccess *bool,
+	network *types.SandboxNetworkConfig,
+) (sbx sandbox.Sandbox, apiErr *api.APIError) {
+	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
 
-	// // Check if team has reached max instances
-	// err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, teamID, maxInstancesPerTeam)
-	// if err != nil {
-	// 	errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", teamID, maxInstancesPerTeam)
-	// 	telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
-	//
-	// 	return nil, fmt.Errorf(
-	// 		"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-	// 			"please contact us at 'https://e2b.dev/docs/getting-help'", maxInstancesPerTeam)
-	// }
-	//
-	// telemetry.ReportEvent(childCtx, "Reserved sandbox for team")
-	// defer releaseTeamSandboxReservation()
+	// Calculate total concurrent instances including addons
+	totalConcurrentInstances := team.Limits.SandboxConcurrency
+
+	// Check if team has reached max instances
+	finishStart, waitForStart, err := o.sandboxStore.Reserve(team.Team.ID.String(), sandboxID, totalConcurrentInstances)
+	if err != nil {
+		var limitErr *sandbox.LimitExceededError
+
+		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
+
+		switch {
+		case errors.As(err, &limitErr):
+			return sandbox.Sandbox{}, &api.APIError{
+				Code: http.StatusTooManyRequests,
+				ClientMsg: fmt.Sprintf(
+					"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
+						"please contact us at 'https://e2b.dev/docs/getting-help'", totalConcurrentInstances),
+				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
+			}
+		default:
+			zap.L().Error("failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
+
+			return sandbox.Sandbox{}, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),
+				Err:       err,
+			}
+		}
+	}
+
+	if waitForStart != nil {
+		zap.L().Info("sandbox is already being started, waiting for it to be ready", logger.WithSandboxID(sandboxID))
+
+		sbx, err = waitForStart(ctx)
+		if err != nil {
+			zap.L().Warn("Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
+
+			var apiErr *api.APIError
+			if errors.As(err, &apiErr) {
+				return sandbox.Sandbox{}, apiErr
+			}
+
+			return sandbox.Sandbox{}, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Error waiting for sandbox to start",
+				Err:       err,
+			}
+		}
+
+		return sbx, nil
+	}
+
+	telemetry.ReportEvent(ctx, "Reserved sandbox for team")
+	defer func() {
+		// Don't change this handling
+		// https://go.dev/play/p/4oy02s7BDMc
+		if apiErr != nil {
+			finishStart(sbx, apiErr)
+		} else {
+			finishStart(sbx, nil)
+		}
+	}()
 
 	features, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get features for firecracker version '%s': %w", build.FirecrackerVersion, err)
 
-		return nil, errMsg
+		return sandbox.Sandbox{}, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Failed to get build information for the template",
+			Err:       errMsg,
+		}
 	}
 
-	telemetry.ReportEvent(childCtx, "Got FC version info")
+	telemetry.ReportEvent(ctx, "Got FC version info")
 
+	var sbxDomain *string
+	if team.ClusterID != nil {
+		cluster, ok := o.clusters.GetClusterById(*team.ClusterID)
+		if !ok {
+			return sandbox.Sandbox{}, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Error while looking for sandbox cluster information",
+				Err:       fmt.Errorf("cannot access cluster %s associated with team id %s that spawned sandbox %s", *team.ClusterID, team.ID, sandboxID),
+			}
+		}
+
+		sbxDomain = cluster.SandboxDomain
+	}
+
+	var trafficAccessToken *string = nil
+	if network != nil && network.Ingress != nil && !network.Ingress.AllowPublicAccess {
+		accessToken, err := o.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
+		if err != nil {
+			return sandbox.Sandbox{}, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Failed to create traffic access token",
+				Err:       fmt.Errorf("failed to create traffic access token for sandbox %s: %w", sandboxID, err),
+			}
+		}
+
+		trafficAccessToken = &accessToken
+	}
+
+	sbxNetwork := buildNetworkConfig(network, allowInternetAccess, trafficAccessToken)
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
-			BaseTemplateId:     baseTemplateID,
-			TemplateId:         *build.EnvID,
-			Alias:              &alias,
-			TeamId:             team.Team.ID.String(),
-			BuildId:            build.ID.String(),
-			SandboxId:          sandboxID,
-			KernelVersion:      build.KernelVersion,
-			FirecrackerVersion: build.FirecrackerVersion,
-			EnvdVersion:        *build.EnvdVersion,
-			Metadata:           metadata,
-			EnvVars:            envVars,
-			MaxSandboxLength:   team.Tier.MaxLengthHours,
-			HugePages:          features.HasHugePages(),
-			RamMb:              build.RAMMB,
-			Vcpu:               build.Vcpu,
-			Snapshot:           isResume,
+			BaseTemplateId:      baseTemplateID,
+			TemplateId:          build.EnvID,
+			Alias:               &alias,
+			TeamId:              team.ID.String(),
+			BuildId:             build.ID.String(),
+			SandboxId:           sandboxID,
+			ExecutionId:         executionID,
+			KernelVersion:       build.KernelVersion,
+			FirecrackerVersion:  build.FirecrackerVersion,
+			EnvdVersion:         *build.EnvdVersion,
+			Metadata:            metadata,
+			EnvVars:             envVars,
+			EnvdAccessToken:     envdAuthToken,
+			MaxSandboxLength:    team.Limits.MaxLengthHours,
+			HugePages:           features.HasHugePages(),
+			RamMb:               build.RamMb,
+			Vcpu:                build.Vcpu,
+			Snapshot:            isResume,
+			AutoPause:           autoPause,
+			AllowInternetAccess: allowInternetAccess,
+			Network:             sbxNetwork,
+			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
 	}
 
-	var node *Node
+	var node *nodemanager.Node
 
-	if isResume && clientID != nil {
-		telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
+	if isResume && nodeID != nil {
+		telemetry.ReportEvent(ctx, "Placing sandbox on the node where the snapshot was taken")
 
-		node, _ = o.nodes.Get(*clientID)
+		clusterID := utils.WithClusterFallback(team.ClusterID)
+		node = o.GetNode(clusterID, *nodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}
 	}
 
-	for {
-		if node == nil {
-			node, err = o.getLeastBusyNode(childCtx)
-			if err != nil {
-				errMsg := fmt.Errorf("failed to get least busy node: %w", err)
-				telemetry.ReportError(childCtx, errMsg)
+	nodeClusterID := utils.WithClusterFallback(team.ClusterID)
+	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-				return nil, errMsg
-			}
+	algorithm := o.getPlacementAlgorithm(ctx)
+	node, err = placement.PlaceSandbox(ctx, algorithm, clusterNodes, node, sbxRequest)
+	if err != nil {
+		telemetry.ReportError(ctx, "failed to place sandbox", err)
+
+		return sandbox.Sandbox{}, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Failed to place sandbox",
+			Err:       fmt.Errorf("failed to place sandbox: %w", err),
 		}
-
-		// To creating a lot of sandboxes at once on the same node
-		node.sbxsInProgress.Insert(sandboxID, &sbxInProgress{
-			MiBMemory: build.RAMMB,
-			CPUs:      build.Vcpu,
-		})
-
-		_, err = node.Client.Sandbox.Create(ctx, sbxRequest)
-		// The request is done, we will either add it to the cache or remove it from the node
-
-		if err == nil {
-			// The sandbox was created successfully
-			break
-		}
-
-		err = utils.UnwrapGRPCError(err)
-		if err != nil {
-			node.sbxsInProgress.Remove(sandboxID)
-			if node.Client.connection.GetState() != connectivity.Ready {
-				// If the connection is not ready, we should remove the node from the list
-				o.nodes.Remove(node.Info.ID)
-			} else {
-				log.Printf("failed to create sandbox on node '%s': %v", node.Info.ID, err)
-
-				return nil, fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
-			}
-		}
-
-		// The node is not available, try again with another node
-		node = nil
 	}
+
+	// The sandbox was created successfully
+	attributes := []attribute.KeyValue{
+		attribute.Bool("is_resume", isResume),
+		attribute.Bool("node_affinity_requested", nodeID != nil),
+		attribute.Bool("node_affinity_success", nodeID != nil && node.ID == *nodeID),
+	}
+	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 
 	// The build should be cached on the node now
 	node.InsertBuild(build.ID.String())
 
-	// The sandbox was created successfully, the resources will be counted in cache
-	defer node.sbxsInProgress.Remove(sandboxID)
-
-	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.Info.ID))
-	telemetry.ReportEvent(childCtx, "Created sandbox")
-
-	sbx := api.Sandbox{
-		ClientID:    node.Info.ID,
-		SandboxID:   sandboxID,
-		TemplateID:  *build.EnvID,
-		Alias:       &alias,
-		EnvdVersion: *build.EnvdVersion,
-	}
+	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
+	telemetry.ReportEvent(ctx, "Created sandbox")
 
 	// This is to compensate for the time it takes to start the instance
 	// Otherwise it could cause the instance to expire before user has a chance to use it
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 
-	instanceInfo := instance.InstanceInfo{
-		Logger:             logger,
-		StartTime:          startTime,
-		EndTime:            endTime,
-		Instance:           &sbx,
-		BuildID:            &build.ID,
-		TeamID:             &team.Team.ID,
-		Metadata:           metadata,
-		VCpu:               build.Vcpu,
-		RamMB:              build.RAMMB,
-		TotalDiskSizeMB:    *build.TotalDiskSizeMB,
-		KernelVersion:      build.KernelVersion,
-		FirecrackerVersion: build.FirecrackerVersion,
-		EnvdVersion:        *build.EnvdVersion,
-		MaxInstanceLength:  time.Duration(team.Tier.MaxLengthHours) * time.Hour,
-		Node:               node.Info,
-	}
+	sbx = sandbox.NewSandbox(
+		sandboxID,
+		build.EnvID,
+		consts.ClientID,
+		&alias,
+		executionID,
+		team.ID,
+		build.ID,
+		metadata,
+		time.Duration(team.Limits.MaxLengthHours)*time.Hour,
+		startTime,
+		endTime,
+		build.Vcpu,
+		*build.TotalDiskSizeMb,
+		build.RamMb,
+		build.KernelVersion,
+		build.FirecrackerVersion,
+		*build.EnvdVersion,
+		node.ID,
+		node.ClusterID,
+		autoPause,
+		envdAuthToken,
+		allowInternetAccess,
+		baseTemplateID,
+		sbxDomain,
+		network,
+		trafficAccessToken,
+	)
 
-	cacheErr := o.instanceCache.Add(instanceInfo, true)
-	if cacheErr != nil {
-		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
-		telemetry.ReportError(ctx, errMsg)
+	o.sandboxStore.Add(ctx, sbx, true)
 
-		deleted := o.DeleteInstance(childCtx, sbx.SandboxID)
-		if !deleted {
-			telemetry.ReportEvent(ctx, "instance wasn't found in cache when deleting")
-		}
-
-		return nil, errMsg
-	}
-
-	return &sbx, nil
-}
-
-func (o *Orchestrator) getLeastBusyNode(ctx context.Context) (leastBusyNode *Node, err error) {
-	childCtx, childSpan := o.tracer.Start(ctx, "get-least-busy-node")
-	defer childSpan.End()
-
-	for {
-		if childCtx.Err() != nil {
-			return nil, fmt.Errorf("context was canceled")
-		}
-
-		// TODO: Incorporate the node's cached builds and total resources into the decision
-		for _, node := range o.nodes.Items() {
-			// To prevent overloading the node
-			if len(node.sbxsInProgress.Items()) > 3 || node.Status() != api.NodeStatusReady {
-				continue
-			}
-
-			cpuUsage := int64(0)
-			for _, sbx := range node.sbxsInProgress.Items() {
-				cpuUsage += sbx.CPUs
-			}
-
-			if leastBusyNode == nil || (node.CPUUsage.Load()+cpuUsage) < leastBusyNode.CPUUsage.Load() {
-				leastBusyNode = node
-			}
-		}
-
-		if leastBusyNode != nil {
-			return leastBusyNode, nil
-		}
-
-		// If no node is available, wait for a bit
-		time.Sleep(10 * time.Millisecond)
-	}
+	return sbx, nil
 }

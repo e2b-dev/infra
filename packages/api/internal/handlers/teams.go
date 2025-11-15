@@ -1,16 +1,13 @@
 package handlers
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
+	"github.com/e2b-dev/infra/packages/api/internal/team"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetTeams(c *gin.Context) {
@@ -18,28 +15,32 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 
 	userID := a.GetUserID(c)
 
-	teamsDB, err := a.db.Client.Team.Query().
-		Where(team.HasUsersWith(user.ID(userID))).
-		WithTeamAPIKeys().
-		WithUsersTeams(func(query *models.UsersTeamsQuery) {
-			query.Where(usersteams.UserID(userID))
-		}).
-		All(ctx)
+	results, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
-		log.Println("Error when starting transaction: ", err)
-		c.JSON(http.StatusInternalServerError, "Error when starting transaction")
+		telemetry.ReportCriticalError(ctx, "error when getting teams", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when starting transaction")
 
 		return
 	}
 
-	teams := make([]api.Team, len(teamsDB))
-	for i, teamDB := range teamsDB {
+	teams := make([]api.Team, len(results))
+	for i, row := range results {
+		// We create a new API key for the CLI and backwards compatibility with API Keys hashing
+		apiKey, err := team.CreateAPIKey(ctx, a.sqlcDB, row.Team.ID, userID, "CLI login/configure")
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error when creating team API key", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating team API key")
+
+			return
+		}
+
 		teams[i] = api.Team{
-			TeamID:    teamDB.ID.String(),
-			Name:      teamDB.Name,
-			ApiKey:    teamDB.Edges.TeamAPIKeys[0].APIKey,
-			IsDefault: teamDB.Edges.UsersTeams[0].IsDefault,
+			TeamID:    row.Team.ID.String(),
+			Name:      row.Team.Name,
+			ApiKey:    apiKey.RawAPIKey,
+			IsDefault: row.UsersTeam.IsDefault,
 		}
 	}
+
 	c.JSON(http.StatusOK, teams)
 }

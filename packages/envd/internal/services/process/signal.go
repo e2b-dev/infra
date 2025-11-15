@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"syscall"
 
-	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
-
 	"connectrpc.com/connect"
+
+	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
 
-func (s *Service) SendSignal(ctx context.Context, req *connect.Request[rpc.SendSignalRequest]) (*connect.Response[rpc.SendSignalResponse], error) {
-	proc, err := s.getProcess(req.Msg.Process)
+func (s *Service) SendSignal(
+	_ context.Context,
+	req *connect.Request[rpc.SendSignalRequest],
+) (*connect.Response[rpc.SendSignalResponse], error) {
+	handler, err := s.getProcess(req.Msg.GetProcess())
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +29,7 @@ func (s *Service) SendSignal(ctx context.Context, req *connect.Request[rpc.SendS
 		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("invalid signal: %s", req.Msg.GetSignal()))
 	}
 
-	err = proc.SendSignal(signal)
+	err = handler.SendSignal(signal)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error sending signal: %w", err))
 	}

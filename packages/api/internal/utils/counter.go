@@ -2,33 +2,39 @@ package utils
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"go.uber.org/zap"
+
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
 type TemplateCounter struct {
-	count      int
+	count      int64
 	lastUpdate time.Time
 }
 
 type TemplateSpawnCounter struct {
-	counters map[string]*TemplateCounter
-	mu       sync.Mutex
-	ticker   *time.Ticker
-	done     chan bool
+	db        *sqlcdb.Client
+	counters  map[string]*TemplateCounter
+	mu        sync.Mutex
+	ticker    *time.Ticker
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
-func NewTemplateSpawnCounter(tickerDuration time.Duration, dbClient *db.DB) *TemplateSpawnCounter {
+func NewTemplateSpawnCounter(ctx context.Context, tickerDuration time.Duration, dbClient *sqlcdb.Client) *TemplateSpawnCounter {
 	counter := &TemplateSpawnCounter{
+		db:       dbClient,
 		counters: make(map[string]*TemplateCounter),
 		ticker:   time.NewTicker(tickerDuration),
-		done:     make(chan bool),
+		done:     make(chan struct{}),
 	}
 
-	go counter.processUpdates(dbClient)
+	go counter.processUpdates(ctx)
+
 	return counter
 }
 
@@ -42,19 +48,24 @@ func (t *TemplateSpawnCounter) IncreaseTemplateSpawnCount(templateID string, tim
 	t.mu.Unlock()
 }
 
-func (t *TemplateSpawnCounter) processUpdates(dbClient *db.DB) {
+func (t *TemplateSpawnCounter) processUpdates(ctx context.Context) {
 	for {
 		select {
 		case <-t.ticker.C:
-			t.flushCounters(dbClient)
+			t.flushCounters(ctx)
+		case <-ctx.Done():
+			t.ticker.Stop()
+
+			return
 		case <-t.done:
 			t.ticker.Stop()
+
 			return
 		}
 	}
 }
 
-func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
+func (t *TemplateSpawnCounter) flushCounters(ctx context.Context) {
 	t.mu.Lock()
 	updates := make(map[string]*TemplateCounter)
 	for templateID, counter := range t.counters {
@@ -67,13 +78,20 @@ func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
 	t.mu.Unlock()
 
 	for templateID, counter := range updates {
-		err := dbClient.UpdateEnvLastUsed(context.Background(), int64(counter.count), counter.lastUpdate, templateID)
+		err := t.db.UpdateTemplateSpawnCount(ctx, queries.UpdateTemplateSpawnCountParams{
+			SpawnCount:    counter.count,
+			LastSpawnedAt: &counter.lastUpdate,
+			TemplateID:    templateID,
+		})
 		if err != nil {
-			log.Println("Error updating template spawn count:", err)
+			zap.L().Error("error updating template spawn count", zap.Error(err))
 		}
 	}
 }
 
-func (t *TemplateSpawnCounter) Close() {
-	t.done <- true
+func (t *TemplateSpawnCounter) Close(ctx context.Context) {
+	t.closeOnce.Do(func() {
+		close(t.done)
+		t.flushCounters(ctx)
+	})
 }

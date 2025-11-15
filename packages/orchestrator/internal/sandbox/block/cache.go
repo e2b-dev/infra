@@ -4,27 +4,31 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
+	"sort"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-type ErrCacheClosed struct {
+type CacheClosedError struct {
 	filePath string
 }
 
-func (e *ErrCacheClosed) Error() string {
+func (e *CacheClosedError) Error() string {
 	return fmt.Sprintf("block cache already closed for path %s", e.filePath)
 }
 
-func NewErrCacheClosed(filePath string) *ErrCacheClosed {
-	return &ErrCacheClosed{
+func NewErrCacheClosed(filePath string) *CacheClosedError {
+	return &CacheClosedError{
 		filePath: filePath,
 	}
 }
@@ -55,6 +59,10 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("error allocating file: %w", err)
 	}
 
+	if size > math.MaxInt {
+		return nil, fmt.Errorf("size too big: %d > %d", size, math.MaxInt)
+	}
+
 	mm, err := mmap.MapRegion(f, int(size), unix.PROT_READ|unix.PROT_WRITE, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping file: %w", err)
@@ -73,7 +81,7 @@ func (m *Cache) isClosed() bool {
 	return m.closed.Load()
 }
 
-func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
+func (m *Cache) ExportToDiff(out io.Writer) (*header.DiffMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -86,24 +94,38 @@ func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 		return nil, fmt.Errorf("error flushing mmap: %w", err)
 	}
 
-	tracked := bitset.New(uint(header.TotalBlocks(m.size, m.blockSize)))
+	dirty := bitset.New(uint(header.TotalBlocks(m.size, m.blockSize)))
+	empty := bitset.New(0)
 
-	m.dirty.Range(func(key, value any) bool {
-		block := header.BlockIdx(key.(int64), m.blockSize)
+	for _, key := range m.dirtySortedKeys() {
+		blockIdx := header.BlockIdx(key, m.blockSize)
 
-		tracked.Set(uint(block))
-
-		_, err := out.Write((*m.mmap)[key.(int64) : key.(int64)+m.blockSize])
+		block := (*m.mmap)[key : key+m.blockSize]
+		isEmpty, err := header.IsEmptyBlock(block, m.blockSize)
 		if err != nil {
-			fmt.Printf("error writing to out: %v\n", err)
+			return nil, fmt.Errorf("error checking empty block: %w", err)
+		}
+		if isEmpty {
+			empty.Set(uint(blockIdx))
 
-			return false
+			continue
 		}
 
-		return true
-	})
+		dirty.Set(uint(blockIdx))
+		_, err = out.Write(block)
+		if err != nil {
+			zap.L().Error("error writing to out", zap.Error(err))
 
-	return tracked, nil
+			return nil, err
+		}
+	}
+
+	return &header.DiffMetadata{
+		Dirty: dirty,
+		Empty: empty,
+
+		BlockSize: m.blockSize,
+	}, nil
 }
 
 func (m *Cache) ReadAt(b []byte, off int64) (int, error) {
@@ -133,7 +155,7 @@ func (m *Cache) WriteAt(b []byte, off int64) (int, error) {
 	return m.WriteAtWithoutLock(b, off)
 }
 
-func (m *Cache) Close() error {
+func (m *Cache) Close() (e error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -142,10 +164,15 @@ func (m *Cache) Close() error {
 		return NewErrCacheClosed(m.filePath)
 	}
 
-	return errors.Join(
-		m.mmap.Unmap(),
-		os.RemoveAll(m.filePath),
-	)
+	err := m.mmap.Unmap()
+	if err != nil {
+		e = errors.Join(e, fmt.Errorf("error unmapping mmap: %w", err))
+	}
+
+	// TODO: Move to to the scope of the caller
+	e = errors.Join(e, os.RemoveAll(m.filePath))
+
+	return e
 }
 
 func (m *Cache) Size() (int64, error) {
@@ -172,7 +199,7 @@ func (m *Cache) Slice(off, length int64) ([]byte, error) {
 		return (*m.mmap)[off:end], nil
 	}
 
-	return nil, ErrBytesNotAvailable{}
+	return nil, BytesNotAvailableError{}
 }
 
 func (m *Cache) isCached(off, length int64) bool {
@@ -208,4 +235,42 @@ func (m *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	m.setIsCached(off, end-off)
 
 	return n, nil
+}
+
+// dirtySortedKeys returns a sorted list of dirty keys.
+// Key represents a block offset.
+func (m *Cache) dirtySortedKeys() []int64 {
+	var keys []int64
+	m.dirty.Range(func(key, _ any) bool {
+		keys = append(keys, key.(int64))
+
+		return true
+	})
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+
+	return keys
+}
+
+func (m *Cache) MarkAllAsDirty() {
+	m.setIsCached(0, m.size)
+}
+
+// FileSize returns the size of the cache on disk.
+// The size might differ from the dirty size, as it may not be fully on disk.
+func (m *Cache) FileSize() (int64, error) {
+	var stat syscall.Stat_t
+	err := syscall.Stat(m.filePath, &stat)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get file stats: %w", err)
+	}
+
+	var fsStat syscall.Statfs_t
+	err = syscall.Statfs(m.filePath, &fsStat)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get disk stats for path %s: %w", m.filePath, err)
+	}
+
+	return stat.Blocks * fsStat.Bsize, nil
 }

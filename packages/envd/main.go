@@ -6,47 +6,61 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"time"
-
-	"github.com/e2b-dev/infra/packages/envd/internal/api"
-	"github.com/e2b-dev/infra/packages/envd/internal/logs"
-	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
-	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
-	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
-	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
-	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 
 	"connectrpc.com/authn"
 	connectcors "connectrpc.com/cors"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/cors"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/api"
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
+	"github.com/e2b-dev/infra/packages/envd/internal/host"
+	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
+	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
+	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
+	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
+	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
+	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
 const (
-	// We limit the timeout more in proxies.
-	maxTimeout = 24 * time.Hour
-	maxAge     = 2 * time.Hour
+	// Downstream timeout should be greater than upstream (in orchestrator proxy).
+	idleTimeout = 640 * time.Second
+	maxAge      = 2 * time.Hour
 
 	defaultPort = 49983
+
+	portScannerInterval = 1000 * time.Millisecond
+
+	// This is the default user used in the container if not specified otherwise.
+	// It should be always overridden by the user in /init when building the template.
+	defaultUser = "root"
 )
 
 var (
-	// These vars are automatically set by goreleaser.
-	Version = "0.1.5"
+	Version = "0.4.2"
 
-	debug bool
-	port  int64
+	commitSHA string
+
+	isNotFC bool
+	port    int64
 
 	versionFlag  bool
+	commitFlag   bool
 	startCmdFlag string
 )
 
 func parseFlags() {
 	flag.BoolVar(
-		&debug,
-		"debug",
+		&isNotFC,
+		"isnotfc",
 		false,
-		"debug mode prints all logs to stdout",
+		"isNotFCmode prints all logs to stdout",
 	)
 
 	flag.BoolVar(
@@ -54,6 +68,13 @@ func parseFlags() {
 		"version",
 		false,
 		"print envd version",
+	)
+
+	flag.BoolVar(
+		&commitFlag,
+		"commit",
+		false,
+		"print envd source commit",
 	)
 
 	flag.Int64Var(
@@ -77,24 +98,14 @@ func withCORS(h http.Handler) http.Handler {
 	middleware := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{
-			"GET",
-			"POST",
+			http.MethodHead,
+			http.MethodGet,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
 		},
-		AllowedHeaders: append(
-			connectcors.AllowedHeaders(),
-			"Origin",
-			"Accept",
-			"Authorization",
-			"Content-Type",
-			"Cache-Control",
-			"X-Requested-With",
-			"X-Content-Type-Options",
-			"Access-Control-Request-Method",
-			"Access-Control-Request-Headers",
-			"Access-Control-Request-Private-Network",
-			"Access-Control-Expose-Headers",
-			"Keepalive-Ping-Interval", // for gRPC
-		),
+		AllowedHeaders: []string{"*"},
 		ExposedHeaders: append(
 			connectcors.ExposedHeaders(),
 			"Location",
@@ -103,6 +114,7 @@ func withCORS(h http.Handler) http.Handler {
 		),
 		MaxAge: int(maxAge.Seconds()),
 	})
+
 	return middleware.Handler(h)
 }
 
@@ -115,55 +127,94 @@ func main() {
 		return
 	}
 
+	if commitFlag {
+		fmt.Printf("%s\n", commitSHA)
+
+		return
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	l := logs.NewLogger(ctx, debug)
+	if err := os.MkdirAll(host.E2BRunDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "error creating E2B run directory: %v\n", err)
+	}
+
+	defaults := &execcontext.Defaults{
+		User:    defaultUser,
+		EnvVars: utils.NewMap[string, string](),
+	}
+	isFCBoolStr := strconv.FormatBool(!isNotFC)
+	defaults.EnvVars.Store("E2B_SANDBOX", isFCBoolStr)
+	if err := os.WriteFile(filepath.Join(host.E2BRunDir, ".E2B_SANDBOX"), []byte(isFCBoolStr), 0o444); err != nil {
+		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
+	}
+
+	mmdsChan := make(chan *host.MMDSOpts, 1)
+	defer close(mmdsChan)
+	if !isNotFC {
+		go host.PollForMMDSOpts(ctx, mmdsChan, defaults.EnvVars)
+	}
+
+	l := logs.NewLogger(ctx, isNotFC, mmdsChan)
 
 	m := chi.NewRouter()
 
 	envLogger := l.With().Str("logger", "envd").Logger()
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
-	filesystemRpc.Handle(m, &fsLogger)
-
-	envVars := utils.NewMap[string, string]()
-
-	envVars.Store("E2B_SANDBOX", "true")
+	filesystemRpc.Handle(m, &fsLogger, defaults)
 
 	processLogger := l.With().Str("logger", "process").Logger()
-	processService := processRpc.Handle(m, &processLogger, envVars)
+	processService := processRpc.Handle(m, &processLogger, defaults)
 
-	handler := api.HandlerFromMux(api.New(&envLogger, envVars), m)
-
+	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
+	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
 	s := &http.Server{
-		Handler:           withCORS(middleware.Wrap(handler)),
-		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       maxTimeout,
-		WriteTimeout:      maxTimeout,
-		IdleTimeout:       maxTimeout,
+		Handler: withCORS(
+			service.WithAuthorization(
+				middleware.Wrap(handler),
+			),
+		),
+		Addr: fmt.Sprintf("0.0.0.0:%d", port),
+		// We remove the timeouts as the connection is terminated by closing of the sandbox and keepalive close.
+		ReadTimeout:  0,
+		WriteTimeout: 0,
+		IdleTimeout:  idleTimeout,
 	}
 
+	// TODO: Not used anymore in template build, replaced by direct envd command call.
 	if startCmdFlag != "" {
 		tag := "startCmd"
 		cwd := "/home/user"
 		user, err := permissions.GetUser("root")
-		if err == nil {
-			processService.InitializeStartProcess(ctx, user, &processSpec.StartRequest{
-				Tag: &tag,
-				Process: &processSpec.ProcessConfig{
-					Envs: make(map[string]string),
-					Cmd:  "/bin/bash",
-					Args: []string{"-l", "-c", startCmdFlag},
-					Cwd:  &cwd,
-				},
-			})
-		} else {
-			log.Fatalf("error getting user: %v", err)
+		if err != nil {
+			log.Fatalf("error getting user: %v", err) //nolint:gocritic // probably fine to bail if we're done?
+		}
+
+		if err = processService.InitializeStartProcess(ctx, user, &processSpec.StartRequest{
+			Tag: &tag,
+			Process: &processSpec.ProcessConfig{
+				Envs: make(map[string]string),
+				Cmd:  "/bin/bash",
+				Args: []string{"-l", "-c", startCmdFlag},
+				Cwd:  &cwd,
+			},
+		}); err != nil {
+			log.Fatalf("error starting process: %v", err)
 		}
 	}
+
+	// Bind all open ports on 127.0.0.1 and localhost to the eth0 interface
+	portScanner := publicport.NewScanner(portScannerInterval)
+	defer portScanner.Destroy()
+
+	portLogger := l.With().Str("logger", "port-forwarder").Logger()
+	portForwarder := publicport.NewForwarder(&portLogger, portScanner)
+	go portForwarder.StartForwarding(ctx)
+
+	go portScanner.ScanAndBroadcast()
 
 	err := s.ListenAndServe()
 	if err != nil {

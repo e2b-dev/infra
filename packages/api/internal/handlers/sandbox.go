@@ -2,63 +2,54 @@ package handlers
 
 import (
 	"context"
-	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"time"
 
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/handlers")
 
 func (a *APIStore) startSandbox(
 	ctx context.Context,
 	sandboxID string,
 	timeout time.Duration,
-	envVars,
+	envVars map[string]string,
 	metadata map[string]string,
 	alias string,
-	team authcache.AuthTeamInfo,
-	build *models.EnvBuild,
-	logger *logs.SandboxLogger,
+	team *typesteam.Team,
+	build queries.EnvBuild,
 	requestHeader *http.Header,
 	isResume bool,
-	clientID *string,
+	nodeID *string,
 	baseTemplateID string,
-) (*api.Sandbox, error) {
-	_, rateSpan := a.Tracer.Start(ctx, "rate-limit")
-	counter, err := meters.GetUpDownCounter(meters.RateLimitCounterMeterName)
-	if err != nil {
-		a.logger.Errorf("error getting counter: %s", err)
-	}
-
-	counter.Add(ctx, 1)
-	limitErr := sandboxStartRequestLimit.Acquire(ctx, 1)
-	counter.Add(ctx, -1)
-	if limitErr != nil {
-		errMsg := fmt.Errorf("error when acquiring parallel lock: %w", limitErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, errMsg
-	}
-
-	defer sandboxStartRequestLimit.Release(1)
-	telemetry.ReportEvent(ctx, "create sandbox parallel limit semaphore slot acquired")
-
-	rateSpan.End()
-	telemetry.ReportEvent(ctx, "Reserved team sandbox slot")
-
+	autoPause bool,
+	envdAccessToken *string,
+	allowInternetAccess *bool,
+	network *types.SandboxNetworkConfig,
+	mcp api.Mcp,
+) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
 
+	// Unique ID for the execution (from start/resume to stop/pause)
+	executionID := uuid.New().String()
 	sandbox, instanceErr := a.orchestrator.CreateSandbox(
 		ctx,
 		sandboxID,
+		executionID,
 		alias,
 		team,
 		build,
@@ -67,29 +58,35 @@ func (a *APIStore) startSandbox(
 		startTime,
 		endTime,
 		timeout,
-		logger,
 		isResume,
-		clientID,
+		nodeID,
 		baseTemplateID,
+		autoPause,
+		envdAccessToken,
+		allowInternetAccess,
+		network,
 	)
 	if instanceErr != nil {
-		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)
 
-		return nil, errMsg
+		return nil, instanceErr
 	}
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
-	_, analyticsSpan := a.Tracer.Start(ctx, "analytics")
-	a.posthog.IdentifyAnalyticsTeam(team.Team.ID.String(), team.Team.Name)
+	_, analyticsSpan := tracer.Start(ctx, "analytics")
+	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
-	a.posthog.CreateAnalyticsTeamEvent(team.Team.ID.String(), "created_instance",
-		properties.
-			Set("environment", *build.EnvID).
-			Set("instance_id", sandbox.SandboxID).
-			Set("alias", alias),
-	)
+	props := properties.
+		Set("environment", build.EnvID).
+		Set("instance_id", sandbox.SandboxID).
+		Set("alias", alias)
+
+	if mcp != nil {
+		props = props.Set("mcp_servers", slices.Collect(maps.Keys(mcp)))
+	}
+
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "created_instance", props)
 	analyticsSpan.End()
 
 	telemetry.ReportEvent(ctx, "Created analytics event")
@@ -102,13 +99,11 @@ func (a *APIStore) startSandbox(
 		attribute.String("instance.id", sandbox.SandboxID),
 	)
 
-	logger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))
+	sbxlogger.E(&sbxlogger.SandboxMetadata{
+		SandboxID:  sandbox.SandboxID,
+		TemplateID: build.EnvID,
+		TeamID:     team.ID.String(),
+	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
-	return &api.Sandbox{
-		ClientID:    sandbox.ClientID,
-		SandboxID:   sandbox.SandboxID,
-		TemplateID:  *build.EnvID,
-		Alias:       &alias,
-		EnvdVersion: *build.EnvdVersion,
-	}, nil
+	return sandbox.ToAPISandbox(), nil
 }

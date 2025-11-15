@@ -2,133 +2,106 @@ package sandbox
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
+	"errors"
+	"sync/atomic"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
-	"golang.org/x/mod/semver"
+	"go.opentelemetry.io/otel"
+	"go.uber.org/zap"
+
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox")
 
 const (
-	healthCheckInterval      = 10 * time.Second
-	metricsCheckInterval     = 2 * time.Second
-	minEnvdVersionForMetrcis = "0.1.5"
+	healthCheckInterval = 20 * time.Second
+	healthCheckTimeout  = 100 * time.Millisecond
 )
 
-func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
+type Checks struct {
+	sandbox *Sandbox
+
+	cancelCtx context.CancelCauseFunc
+
+	healthy atomic.Bool
+
+	UseClickhouseMetrics bool
+}
+
+var ErrChecksStopped = errors.New("checks stopped")
+
+func NewChecks(sandbox *Sandbox, useClickhouseMetrics bool) *Checks {
+	// Create background context, passed ctx is from create/resume request and will be canceled after the request is processed.
+	h := &Checks{
+		sandbox:              sandbox,
+		healthy:              atomic.Bool{}, // defaults to `false`
+		UseClickhouseMetrics: useClickhouseMetrics,
+	}
+
+	// By default, the sandbox should be healthy, if the status change we report it.
+	h.healthy.Store(true)
+
+	return h
+}
+
+func (c *Checks) Start(ctx context.Context) {
+	ctx, c.cancelCtx = context.WithCancelCause(ctx)
+
+	c.logHealth(ctx)
+}
+
+func (c *Checks) Stop() {
+	if c.cancelCtx != nil {
+		c.cancelCtx(ErrChecksStopped)
+	}
+}
+
+func (c *Checks) logHealth(ctx context.Context) {
 	healthTicker := time.NewTicker(healthCheckInterval)
-	metricsTicker := time.NewTicker(metricsCheckInterval)
 	defer func() {
 		healthTicker.Stop()
-		metricsTicker.Stop()
 	}()
 
-	// Get metrics on sandbox startup
-	go s.LogMetrics(ctx)
-
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
+	// Get metrics and health status on sandbox startup
+	go c.Healthcheck(ctx, false)
 
 	for {
 		select {
 		case <-healthTicker.C:
-			childCtx, cancel := context.WithTimeout(ctx, time.Second)
-
-			ctx.Lock()
-			s.Healthcheck(childCtx, false)
-			ctx.Unlock()
-
-			cancel()
-		case <-metricsTicker.C:
-			s.LogMetrics(ctx)
+			c.Healthcheck(ctx, false)
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
-	var err error
-	defer func() {
-		s.Logger.Healthcheck(err == nil, alwaysReport)
-	}()
-
-	address := fmt.Sprintf("http://%s:%d/health", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
-
-	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
-	if err != nil {
+func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
+	ok, err := c.getHealth(ctx, healthCheckTimeout)
+	// Sandbox stopped
+	if errors.Is(err, ErrChecksStopped) {
 		return
 	}
 
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return
-	}
-	defer response.Body.Close()
+	if !ok && c.healthy.CompareAndSwap(true, false) {
+		sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.Fail)
+		sbxlogger.I(c.sandbox).Error("healthcheck failed", zap.Error(err))
 
-	if response.StatusCode != http.StatusNoContent {
-		err = fmt.Errorf("unexpected status code: %d", response.StatusCode)
 		return
 	}
 
-	_, err = io.Copy(io.Discard, response.Body)
-	if err != nil {
+	if ok && c.healthy.CompareAndSwap(false, true) {
+		sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.Success)
+
 		return
 	}
-}
 
-func (s *Sandbox) GetMetrics(ctx context.Context) (SandboxMetrics, error) {
-	address := fmt.Sprintf("http://%s:%d/metrics", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
-
-	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
-	if err != nil {
-		return SandboxMetrics{}, err
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return SandboxMetrics{}, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		err = fmt.Errorf("unexpected status code: %d", response.StatusCode)
-		return SandboxMetrics{}, err
-	}
-
-	var metrics SandboxMetrics
-	err = json.NewDecoder(response.Body).Decode(&metrics)
-	if err != nil {
-		return SandboxMetrics{}, err
-	}
-
-	return metrics, nil
-}
-
-func (s *Sandbox) LogMetrics(ctx context.Context) {
-	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
-		metrics, err := s.GetMetrics(ctx)
-		if err != nil {
-			s.Logger.Warnf("failed to get metrics: %s", err)
+	if alwaysReport {
+		if ok {
+			sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.ReportSuccess)
 		} else {
-			s.Logger.Metrics(
-				metrics.MemTotalMiB, metrics.MemUsedMiB, metrics.CPUCount, metrics.CPUUsedPercent)
+			sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.ReportFail)
+			sbxlogger.I(c.sandbox).Error("control healthcheck failed", zap.Error(err))
 		}
 	}
-}
-
-func isGTEVersion(curVersion, minVersion string) bool {
-	if len(curVersion) > 0 && curVersion[0] != 'v' {
-		curVersion = "v" + curVersion
-	}
-
-	if !semver.IsValid(curVersion) {
-		return false
-	}
-
-	return semver.Compare(curVersion, minVersion) >= 0
 }

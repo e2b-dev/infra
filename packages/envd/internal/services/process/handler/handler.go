@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,14 +11,14 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/e2b-dev/infra/packages/envd/internal/logs"
-	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
-	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
-	"github.com/e2b-dev/infra/packages/envd/internal/utils"
-
 	"connectrpc.com/connect"
 	"github.com/creack/pty"
 	"github.com/rs/zerolog"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
+	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
+	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
 
 const (
@@ -43,7 +44,11 @@ type Handler struct {
 	cmd *exec.Cmd
 	tty *os.File
 
-	outWg *sync.WaitGroup
+	cancel context.CancelFunc
+
+	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
+	outCancel context.CancelFunc
+
 	stdin io.WriteCloser
 
 	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
@@ -55,8 +60,15 @@ func (p *Handler) Pid() uint32 {
 	return uint32(p.cmd.Process.Pid)
 }
 
-func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string]) (*Handler, error) {
-	cmd := exec.Command(req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
+func New(
+	ctx context.Context,
+	user *user.User,
+	req *rpc.StartRequest,
+	logger *zerolog.Logger,
+	defaults *execcontext.Defaults,
+	cancel context.CancelFunc,
+) (*Handler, error) {
+	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
 
 	uid, gid, err := permissions.GetUserIds(user)
 	if err != nil {
@@ -71,9 +83,14 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 		NoSetGroups: true,
 	}
 
-	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user)
+	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	// Check if the cwd resolved path exists
+	if _, err := os.Stat(resolvedPath); errors.Is(err, os.ErrNotExist) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cwd '%s' does not exist", resolvedPath))
 	}
 
 	cmd.Dir = resolvedPath
@@ -88,9 +105,10 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 	formattedVars = append(formattedVars, "LOGNAME="+user.Username)
 
 	// Add the environment variables from the global environment
-	if envVars != nil {
-		envVars.Range(func(key string, value string) bool {
+	if defaults.EnvVars != nil {
+		defaults.EnvVars.Range(func(key string, value string) bool {
 			formattedVars = append(formattedVars, key+"="+value)
+
 			return true
 		})
 	}
@@ -103,21 +121,37 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 	cmd.Env = formattedVars
 
 	outMultiplex := NewMultiplexedChannel[rpc.ProcessEvent_Data](outputBufferSize)
+
 	var outWg sync.WaitGroup
+
+	// Create a context for waiting for and cancelling output pipes.
+	// Cancellation of the process via timeout will propagate and cancel this context too.
+	outCtx, outCancel := context.WithCancel(ctx)
+
+	h := &Handler{
+		Config:    req.GetProcess(),
+		cmd:       cmd,
+		Tag:       req.Tag,
+		DataEvent: outMultiplex,
+		cancel:    cancel,
+		outCtx:    outCtx,
+		outCancel: outCancel,
+		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		logger:    logger,
+	}
 
 	if req.GetPty() != nil {
 		// The pty should ideally start only in the Start method, but the package does not support that and we would have to code it manually.
 		// The output of the pty should correctly be passed though.
 		tty, err := pty.StartWithSize(cmd, &pty.Winsize{
-			Cols: uint16(req.GetPty().GetSize().Cols),
-			Rows: uint16(req.GetPty().GetSize().Rows),
+			Cols: uint16(req.GetPty().GetSize().GetCols()),
+			Rows: uint16(req.GetPty().GetSize().GetRows()),
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", cmd, cmd.Dir, req.GetPty().GetSize().Cols, req.GetPty().GetSize().Rows, err))
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", cmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err))
 		}
 
 		outWg.Add(1)
-
 		go func() {
 			defer outWg.Done()
 
@@ -148,128 +182,126 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 			}
 		}()
 
-		return &Handler{
-			Config:    req.GetProcess(),
-			cmd:       cmd,
-			tty:       tty,
-			Tag:       req.Tag,
-			DataEvent: outMultiplex,
-			outWg:     &outWg,
-			EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-			logger:    logger,
-		}, nil
-	}
+		h.tty = tty
+	} else {
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdout pipe for command '%s': %w", cmd, err))
+		}
 
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdin pipe for command '%s': %w", cmd, err))
-	}
+		outWg.Add(1)
+		go func() {
+			defer outWg.Done()
+			stdoutLogs := make(chan []byte, outputBufferSize)
+			defer close(stdoutLogs)
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdout pipe for command '%s': %w", cmd, err))
-	}
+			stdoutLogger := logger.With().Str("event_type", "stdout").Logger()
 
-	outWg.Add(1)
-	go func() {
-		defer outWg.Done()
+			go logs.LogBufferedDataEvents(stdoutLogs, &stdoutLogger, "data")
 
-		stdoutLogs := make(chan []byte, outputBufferSize)
-		defer close(stdoutLogs)
+			for {
+				buf := make([]byte, stdChunkSize)
 
-		stdoutLogger := logger.With().Str("event_type", "stdout").Logger()
+				n, readErr := stdout.Read(buf)
 
-		go logs.LogBufferedDataEvents(stdoutLogs, &stdoutLogger, "data")
-
-		for {
-			buf := make([]byte, stdChunkSize)
-
-			n, readErr := stdout.Read(buf)
-
-			if n > 0 {
-				outMultiplex.Source <- rpc.ProcessEvent_Data{
-					Data: &rpc.ProcessEvent_DataEvent{
-						Output: &rpc.ProcessEvent_DataEvent_Stdout{
-							Stdout: buf[:n],
+				if n > 0 {
+					outMultiplex.Source <- rpc.ProcessEvent_Data{
+						Data: &rpc.ProcessEvent_DataEvent{
+							Output: &rpc.ProcessEvent_DataEvent_Stdout{
+								Stdout: buf[:n],
+							},
 						},
-					},
+					}
+
+					stdoutLogs <- buf[:n]
 				}
 
-				stdoutLogs <- buf[:n]
-			}
-
-			if errors.Is(readErr, io.EOF) {
-				break
-			}
-
-			if readErr != nil {
-				fmt.Fprintf(os.Stderr, "error reading from stdout: %s\n", readErr)
-
-				break
-			}
-		}
-	}()
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stderr pipe for command '%s': %w", cmd, err))
-	}
-
-	outWg.Add(1)
-	go func() {
-		defer outWg.Done()
-
-		stderrLogs := make(chan []byte, outputBufferSize)
-		defer close(stderrLogs)
-
-		stderrLogger := logger.With().Str("event_type", "stderr").Logger()
-
-		go logs.LogBufferedDataEvents(stderrLogs, &stderrLogger, "data")
-
-		for {
-			buf := make([]byte, stdChunkSize)
-
-			n, readErr := stderr.Read(buf)
-
-			if n > 0 {
-				outMultiplex.Source <- rpc.ProcessEvent_Data{
-					Data: &rpc.ProcessEvent_DataEvent{
-						Output: &rpc.ProcessEvent_DataEvent_Stderr{
-							Stderr: buf[:n],
-						},
-					},
+				if errors.Is(readErr, io.EOF) {
+					break
 				}
 
-				stderrLogs <- buf[:n]
-			}
+				if readErr != nil {
+					fmt.Fprintf(os.Stderr, "error reading from stdout: %s\n", readErr)
 
-			if errors.Is(readErr, io.EOF) {
-				break
+					break
+				}
 			}
+		}()
 
-			if readErr != nil {
-				fmt.Fprintf(os.Stderr, "error reading from stderr: %s\n", readErr)
-
-				break
-			}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stderr pipe for command '%s': %w", cmd, err))
 		}
+
+		outWg.Add(1)
+		go func() {
+			defer outWg.Done()
+			stderrLogs := make(chan []byte, outputBufferSize)
+			defer close(stderrLogs)
+
+			stderrLogger := logger.With().Str("event_type", "stderr").Logger()
+
+			go logs.LogBufferedDataEvents(stderrLogs, &stderrLogger, "data")
+
+			for {
+				buf := make([]byte, stdChunkSize)
+
+				n, readErr := stderr.Read(buf)
+
+				if n > 0 {
+					outMultiplex.Source <- rpc.ProcessEvent_Data{
+						Data: &rpc.ProcessEvent_DataEvent{
+							Output: &rpc.ProcessEvent_DataEvent_Stderr{
+								Stderr: buf[:n],
+							},
+						},
+					}
+
+					stderrLogs <- buf[:n]
+				}
+
+				if errors.Is(readErr, io.EOF) {
+					break
+				}
+
+				if readErr != nil {
+					fmt.Fprintf(os.Stderr, "error reading from stderr: %s\n", readErr)
+
+					break
+				}
+			}
+		}()
+
+		// For backwards compatibility we still set the stdin if not explicitly disabled
+		// If stdin is disabled, the process will use /dev/null as stdin
+		if req.Stdin == nil || req.GetStdin() == true {
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdin pipe for command '%s': %w", cmd, err))
+			}
+
+			h.stdin = stdin
+		}
+	}
+
+	go func() {
+		outWg.Wait()
+
+		close(outMultiplex.Source)
+
+		outCancel()
 	}()
 
-	return &Handler{
-		Config:    req.GetProcess(),
-		cmd:       cmd,
-		stdin:     stdin,
-		Tag:       req.Tag,
-		DataEvent: outMultiplex,
-		outWg:     &outWg,
-		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:    logger,
-	}, nil
+	return h, nil
 }
 
 func (p *Handler) SendSignal(signal syscall.Signal) error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("process not started")
+	}
+
+	if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
+		p.outCancel()
 	}
 
 	return p.cmd.Process.Signal(signal)
@@ -286,6 +318,10 @@ func (p *Handler) ResizeTty(size *pty.Winsize) error {
 func (p *Handler) WriteStdin(data []byte) error {
 	if p.tty != nil {
 		return fmt.Errorf("tty assigned to process — input should be written to the pty, not the stdin")
+	}
+
+	if p.stdin == nil {
+		return fmt.Errorf("stdin not enabled — set stdin to true when starting the command")
 	}
 
 	_, err := p.stdin.Write(data)
@@ -328,19 +364,18 @@ func (p *Handler) Start() (uint32, error) {
 		Str("event_type", "process_start").
 		Int("pid", p.cmd.Process.Pid).
 		Str("command", p.cmd.String()).
-		Send()
+		Msg(fmt.Sprintf("Process with pid %d started", p.cmd.Process.Pid))
 
 	return uint32(p.cmd.Process.Pid), nil
 }
 
 func (p *Handler) Wait() {
-	p.outWg.Wait()
-
-	close(p.DataEvent.Source)
-
-	p.tty.Close()
+	// Wait for the output pipes to be closed or cancelled.
+	<-p.outCtx.Done()
 
 	err := p.cmd.Wait()
+
+	p.tty.Close()
 
 	var errMsg *string
 
@@ -366,5 +401,9 @@ func (p *Handler) Wait() {
 		Info().
 		Str("event_type", "process_end").
 		Interface("process_result", endEvent).
-		Send()
+		Msg(fmt.Sprintf("Process with pid %d ended", p.cmd.Process.Pid))
+
+	// Ensure the process cancel is called to cleanup resources.
+	// As it is called after end event and Wait, it should not affect command execution or returned events.
+	p.cancel()
 }

@@ -3,196 +3,208 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
-	"github.com/posthog/posthog-go"
-	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/node"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
-	item, err := o.instanceCache.Get(sandboxID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sandbox '%s': %w", sandboxID, err)
-	}
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 
-	sbx := item.Value()
+// cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator.
+const cacheSyncTime = 20 * time.Second
 
-	return &sbx, nil
+func (o *Orchestrator) GetSandbox(sandboxID string) (sandbox.Sandbox, error) {
+	return o.sandboxStore.Get(sandboxID)
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *memory.Store, skipSyncingWithNomad bool) {
+	// Run the first sync immediately
+	zap.L().Info("Running the initial node sync")
+	o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
+
+	// Sync the nodes every cacheSyncTime
+	ticker := time.NewTicker(cacheSyncTime)
+	defer ticker.Stop()
+
 	for {
-		ctx, span := o.tracer.Start(context.Background(), "keep-in-sync")
-		nodes, err := o.listNomadNodes(ctx)
-		if err != nil {
-			o.logger.Errorf("Error listing nodes: %v", err)
-			span.End()
+		select {
+		case <-ctx.Done():
+			zap.L().Info("Stopping keepInSync")
 
-			continue
+			return
+		case <-ticker.C:
+			o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
 		}
-
-		var wg sync.WaitGroup
-		for _, n := range nodes {
-			// If the node is not in the list, connect to it
-			if o.GetNode(n.ID) == nil {
-				wg.Add(1)
-				go func(n *node.NodeInfo) {
-					defer wg.Done()
-					err = o.connectToNode(ctx, n)
-					if err != nil {
-						o.logger.Errorf("Error connecting to node: %v", err)
-					}
-				}(n)
-			}
-		}
-		wg.Wait()
-
-		for _, n := range o.nodes.Items() {
-			wg.Add(1)
-			go func(n *Node) {
-				defer wg.Done()
-				o.syncNode(ctx, n, nodes, instanceCache)
-			}(n)
-		}
-		wg.Wait()
-
-		span.End()
-		// Sleep for a while before syncing again
-		time.Sleep(instance.CacheSyncTime)
 	}
 }
 
-func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.NodeInfo, instanceCache *instance.InstanceCache) {
-	ctx, childSpan := o.tracer.Start(ctx, "sync-node")
-	telemetry.SetAttributes(ctx, attribute.String("node.id", node.Info.ID))
+func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *memory.Store, skipSyncingWithNomad bool) {
+	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
+	defer cancel()
+
+	spanCtx, span := tracer.Start(ctxTimeout, "keep-in-sync")
+	defer span.End()
+
+	var wg sync.WaitGroup
+
+	nomadNodes := make([]nodemanager.NomadServiceDiscovery, 0)
+
+	// Optionally, skip syncing from Nomad service discovery
+	if !skipSyncingWithNomad {
+		nomadSD, err := o.listNomadNodes(spanCtx)
+		if err != nil {
+			zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
+
+			return
+		}
+
+		nomadNodes = nomadSD
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		o.syncLocalDiscoveredNodes(spanCtx, nomadNodes)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		o.syncClusterDiscoveredNodes(spanCtx)
+	}()
+
+	// Wait for nodes discovery to finish
+	wg.Wait()
+
+	// Sync state of all nodes currently in the pool
+	syncNodesSpanCtx, syncNodesSpan := tracer.Start(spanCtx, "keep-in-sync-existing")
+	defer syncNodesSpan.End()
+
+	defer wg.Wait()
+	for _, n := range o.nodes.Items() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			// cluster and local nodes needs to by synced differently,
+			// because each of them is taken from different source pool
+			var err error
+			if n.IsNomadManaged() {
+				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, instanceCache)
+			} else {
+				err = o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)
+			}
+			if err != nil {
+				zap.L().Error("Error syncing node", zap.Error(err))
+				err = n.Close()
+				if err != nil {
+					zap.L().Error("Error closing grpc connection", zap.Error(err))
+				}
+
+				o.deregisterNode(n)
+			}
+		}()
+	}
+}
+
+func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered []nodemanager.NomadServiceDiscovery) {
+	// Connect local nodes that are not in the list, yet
+	connectLocalSpanCtx, connectLocalSpan := tracer.Start(ctx, "keep-in-sync-connect-local-nodes")
+	defer connectLocalSpan.End()
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	for _, n := range discovered {
+		// If the node is not in the list, connect to it
+		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				err := o.connectToNode(connectLocalSpanCtx, n)
+				if err != nil {
+					zap.L().Error("Error connecting to node", zap.Error(err))
+				}
+			}()
+		}
+	}
+}
+
+func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	_, connectClusteredSpan := tracer.Start(ctx, "keep-in-sync-connect-clustered-nodes")
+	defer connectClusteredSpan.End()
+
+	// Connect clustered nodes that are not in the list, yet
+	// We need to iterate over all clusters and their nodes
+	for _, cluster := range o.clusters.GetClusters() {
+		for _, n := range cluster.GetOrchestrators() {
+			// If the node is not in the list, connect to it
+			if o.GetNode(cluster.ID, n.NodeID) == nil {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					o.connectToClusterNode(ctx, cluster, n)
+				}()
+			}
+		}
+	}
+}
+
+func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, instanceCache *memory.Store) error {
+	ctx, childSpan := tracer.Start(ctx, "sync-cluster-node")
+	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID), telemetry.WithClusterID(node.ClusterID))
+	defer childSpan.End()
+
+	cluster, clusterFound := o.clusters.GetClusterById(node.ClusterID)
+	if !clusterFound {
+		return fmt.Errorf("cluster not found")
+	}
+
+	// We want to find not just node, but explicitly node with expected service instance ID
+	// because node can stay same and instance id will change after node restart, witch should trigger node de-registration from pool.
+	instanceID := node.Metadata().ServiceInstanceID
+	_, found := cluster.GetByServiceInstanceID(instanceID)
+	if !found {
+		return fmt.Errorf("node instance not found with instance ID '%s'", instanceID)
+	}
+
+	// Unified call for syncing node state across different node types
+	node.Sync(ctx, instanceCache)
+
+	return nil
+}
+
+func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, instanceCache *memory.Store) error {
+	ctx, childSpan := tracer.Start(ctx, "sync-node")
+	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
 	defer childSpan.End()
 
 	found := false
-	for _, activeNode := range nodes {
-		if node.Info.ID == activeNode.ID {
+	for _, activeNode := range discovered {
+		if node.NomadNodeShortID == activeNode.NomadNodeShortID {
 			found = true
+
 			break
 		}
 	}
 
 	if !found {
-		o.logger.Infof("Node %s is not active anymore", node.Info.ID)
-
-		// Close the connection to the node
-		err := node.Client.Close()
-		if err != nil {
-			o.logger.Errorf("Error closing connection to node: %v", err)
-		}
-
-		o.nodes.Remove(node.Info.ID)
-
-		return
+		return fmt.Errorf("node '%s' not found in the discovered nodes", node.NomadNodeShortID)
 	}
 
-	activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
-	if instancesErr != nil {
-		o.logger.Errorf("Error getting instances: %v", instancesErr)
-		return
-	}
+	// Unified call for syncing node state across different node types
+	node.Sync(ctx, instanceCache)
 
-	instanceCache.Sync(activeInstances, node.Info.ID)
-
-	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
-	if buildsErr != nil {
-		o.logger.Errorf("Error listing cached builds: %v", buildsErr)
-		return
-	}
-
-	node.SyncBuilds(builds)
-}
-
-func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *analyticscollector.PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
-	return func(info instance.InstanceInfo) error {
-		duration := time.Since(info.StartTime).Seconds()
-
-		_, err := o.analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
-			TeamId:        info.TeamID.String(),
-			EnvironmentId: info.Instance.TemplateID,
-			InstanceId:    info.Instance.SandboxID,
-			Timestamp:     timestamppb.Now(),
-			Duration:      float32(duration),
-		})
-		if err != nil {
-			logger.Errorf("error sending Analytics event: %v", err)
-		}
-
-		posthogClient.CreateAnalyticsTeamEvent(
-			info.TeamID.String(),
-			"closed_instance", posthog.NewProperties().
-				Set("instance_id", info.Instance.SandboxID).
-				Set("environment", info.Instance.TemplateID).
-				Set("duration", duration),
-		)
-
-		node := o.GetNode(info.Instance.ClientID)
-		if node == nil {
-			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)
-		} else {
-			node.CPUUsage.Add(-info.VCpu)
-			node.RamUsage.Add(-info.RamMB)
-
-			o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
-		}
-
-		req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
-		if node == nil {
-			log.Printf("node '%s' not found", info.Instance.ClientID)
-			return fmt.Errorf("node '%s' not found", info.Instance.ClientID)
-		}
-
-		if node.Client == nil {
-			log.Printf("client for node '%s' not found", info.Instance.ClientID)
-			return fmt.Errorf("client for node '%s' not found", info.Instance.ClientID)
-		}
-
-		_, err = node.Client.Sandbox.Delete(ctx, req)
-		if err != nil {
-			return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
-		}
-
-		return nil
-	}
-}
-
-func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
-	return func(info instance.InstanceInfo) error {
-		node := o.GetNode(info.Instance.ClientID)
-		if node == nil {
-			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)
-		} else {
-			node.CPUUsage.Add(info.VCpu)
-			node.RamUsage.Add(info.RamMB)
-
-			o.dns.Add(ctx, info.Instance.SandboxID, node.Info.IPAddress)
-		}
-
-		_, err := o.analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
-			InstanceId:    info.Instance.SandboxID,
-			EnvironmentId: info.Instance.TemplateID,
-			BuildId:       info.BuildID.String(),
-			TeamId:        info.TeamID.String(),
-			Timestamp:     timestamppb.Now(),
-		})
-		if err != nil {
-			logger.Errorf("Error sending Analytics event: %v", err)
-		}
-
-		return nil
-	}
+	return nil
 }

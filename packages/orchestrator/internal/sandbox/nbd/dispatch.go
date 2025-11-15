@@ -3,13 +3,20 @@ package nbd
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
+
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
+
 type Provider interface {
-	io.ReaderAt
+	storage.ReaderAtCtx
 	io.WriterAt
 	Size() (int64, error)
 }
@@ -47,32 +54,33 @@ type Response struct {
 }
 
 type Dispatch struct {
-	ctx              context.Context
-	fp               io.ReadWriteCloser
+	fp               io.ReadWriter
 	responseHeader   []byte
 	writeLock        sync.Mutex
 	prov             Provider
-	fatal            chan error
 	pendingResponses sync.WaitGroup
-	pendingMu        sync.Mutex
+	shuttingDown     bool
+	shuttingDownLock sync.Mutex
+	fatal            chan error
 }
 
-func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dispatch {
+func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
 	d := &Dispatch{
 		responseHeader: make([]byte, 16),
-		fatal:          make(chan error, 8),
 		fp:             fp,
 		prov:           prov,
-		ctx:            ctx,
+		fatal:          make(chan error, 1),
 	}
 
 	binary.BigEndian.PutUint32(d.responseHeader, NBDResponseMagic)
+
 	return d
 }
 
-func (d *Dispatch) Wait() {
-	d.pendingMu.Lock()
-	defer d.pendingMu.Unlock()
+func (d *Dispatch) Drain() {
+	d.shuttingDownLock.Lock()
+	d.shuttingDown = true
+	defer d.shuttingDownLock.Unlock()
 
 	// Wait for any pending responses
 	d.pendingResponses.Wait()
@@ -85,8 +93,6 @@ func (d *Dispatch) Wait() {
 func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []byte) error {
 	d.writeLock.Lock()
 	defer d.writeLock.Unlock()
-
-	//	fmt.Printf("WriteResponse %v %x -> %d\n", d.fp, respHandle, len(chunk))
 
 	binary.BigEndian.PutUint32(d.responseHeader[4:], respError)
 	binary.BigEndian.PutUint64(d.responseHeader[8:], respHandle)
@@ -109,7 +115,7 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  * This dispatches incoming NBD requests sequentially to the provider.
  *
  */
-func (d *Dispatch) Handle() error {
+func (d *Dispatch) Handle(ctx context.Context) error {
 	buffer := make([]byte, dispatchBufferSize)
 	wp := 0
 
@@ -126,11 +132,12 @@ func (d *Dispatch) Handle() error {
 		rp := 0
 	process:
 		for {
-
-			// If the context has been cancelled, quit
+			// Check if there is a fatal error from an async read/write to return
 			select {
-			case <-d.ctx.Done():
-				return d.ctx.Err()
+			case err := <-d.fatal:
+				return err
+			case <-ctx.Done():
+				return ctx.Err()
 			default:
 			}
 
@@ -156,7 +163,7 @@ func (d *Dispatch) Handle() error {
 					return fmt.Errorf("not supported: Flush")
 				case NBDCmdRead:
 					rp += 28
-					err := d.cmdRead(request.Handle, request.From, request.Length)
+					err := d.cmdRead(ctx, request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
 					}
@@ -164,25 +171,25 @@ func (d *Dispatch) Handle() error {
 					rp += 28
 					if wp-rp < int(request.Length) {
 						rp -= 28
+
 						break process // We don't have enough data yet... Wait for next read
 					}
 					data := make([]byte, request.Length)
 					copy(data, buffer[rp:rp+int(request.Length)])
 					rp += int(request.Length)
-					err := d.cmdWrite(request.Handle, request.From, data)
+					err := d.cmdWrite(ctx, request.Handle, request.From, data)
 					if err != nil {
 						return err
 					}
 				case NBDCmdTrim:
 					rp += 28
-					err = d.cmdTrim(request.Handle, request.From, request.Length)
+					err := d.cmdTrim(request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
 					}
 				default:
 					return fmt.Errorf("nbd not implemented %d", request.Type)
 				}
-
 			} else {
 				break // Try again when we have more data...
 			}
@@ -195,77 +202,98 @@ func (d *Dispatch) Handle() error {
 	}
 }
 
-func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
-	d.pendingMu.Lock()
-	d.pendingResponses.Add(1)
-	d.pendingMu.Unlock()
+func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
+	d.shuttingDownLock.Lock()
+	if !d.shuttingDown {
+		d.pendingResponses.Add(1)
+	} else {
+		d.shuttingDownLock.Unlock()
+
+		return ErrShuttingDown
+	}
+	d.shuttingDownLock.Unlock()
 
 	performRead := func(handle uint64, from uint64, length uint32) error {
-		errchan := make(chan error)
+		// buffered to avoid goroutine leak
+		errchan := make(chan error, 1)
 		data := make([]byte, length)
 
 		go func() {
-			_, e := d.prov.ReadAt(data, int64(from))
-			errchan <- e
+			_, err := d.prov.ReadAt(ctx, data, int64(from))
+			errchan <- err
 		}()
 
 		// Wait until either the ReadAt completed, or our context is cancelled...
-		var e error
 		select {
-		case <-d.ctx.Done():
-			e = d.ctx.Err()
-		case e = <-errchan:
+		case <-ctx.Done():
+			return d.writeResponse(1, handle, []byte{})
+		case err := <-errchan:
+			if err != nil {
+				return d.writeResponse(1, handle, []byte{})
+			}
 		}
 
-		errorValue := uint32(0)
-		if e != nil {
-			errorValue = 1
-			data = make([]byte, 0) // If there was an error, don't send data
-		}
-		return d.writeResponse(errorValue, handle, data)
+		// read was successful
+		return d.writeResponse(0, handle, data)
 	}
 
 	go func() {
 		err := performRead(cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
-			d.fatal <- err
+			select {
+			case d.fatal <- err:
+			default:
+				zap.L().Error("nbd error cmd read", zap.Error(err))
+			}
 		}
-
 		d.pendingResponses.Done()
 	}()
 
 	return nil
 }
 
-func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
-	d.pendingMu.Lock()
-	d.pendingResponses.Add(1)
-	d.pendingMu.Unlock()
+func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+	d.shuttingDownLock.Lock()
+	if !d.shuttingDown {
+		d.pendingResponses.Add(1)
+	} else {
+		d.shuttingDownLock.Unlock()
 
-	go func() {
-		errchan := make(chan error)
+		return ErrShuttingDown
+	}
+	d.shuttingDownLock.Unlock()
+
+	performWrite := func(handle uint64, from uint64, data []byte) error {
+		// buffered to avoid goroutine leak
+		errchan := make(chan error, 1)
 		go func() {
-			_, e := d.prov.WriteAt(cmdData, int64(cmdFrom))
-			errchan <- e
+			_, err := d.prov.WriteAt(data, int64(from))
+			errchan <- err
 		}()
 
 		// Wait until either the WriteAt completed, or our context is cancelled...
-		var e error
 		select {
-		case <-d.ctx.Done():
-			e = d.ctx.Err()
-		case e = <-errchan:
+		case <-ctx.Done():
+			return d.writeResponse(1, handle, []byte{})
+		case err := <-errchan:
+			if err != nil {
+				return d.writeResponse(1, handle, []byte{})
+			}
 		}
 
-		errorValue := uint32(0)
-		if e != nil {
-			errorValue = 1
-		}
-		err := d.writeResponse(errorValue, cmdHandle, []byte{})
+		// write was successful
+		return d.writeResponse(0, handle, []byte{})
+	}
+
+	go func() {
+		err := performWrite(cmdHandle, cmdFrom, cmdData)
 		if err != nil {
-			d.fatal <- err
+			select {
+			case d.fatal <- err:
+			default:
+				zap.L().Error("nbd error cmd write", zap.Error(err))
+			}
 		}
-
 		d.pendingResponses.Done()
 	}()
 

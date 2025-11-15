@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-
-	"github.com/gin-gonic/gin"
 )
 
 func (a *APIStore) PostSandboxesSandboxIDTimeout(
@@ -25,8 +25,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
-		errMsg := fmt.Errorf("error when parsing request: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
 
 		return
 	}
@@ -37,11 +36,10 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 		duration = time.Duration(body.Timeout) * time.Second
 	}
 
-	err = a.orchestrator.KeepAliveFor(sandboxID, duration, true)
-	if err != nil {
-		errMsg := fmt.Errorf("error setting sandbox timeout: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error setting sandbox timeout for sandbox '%s'", sandboxID))
+	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, true)
+	if apiErr != nil {
+		telemetry.ReportError(ctx, "error when setting timeout", apiErr.Err)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}

@@ -52,13 +52,19 @@
   "editor.tabCompletion": "on",
   "go.lintTool": "golangci-lint",
   "go.lintFlags": [
-    "--fast"
+    "--path-mode=abs",
+    "--fast-only",
+  ],
+  "go.formatTool": "custom",
+  "go.formatFlags": [
+    "fmt",
+    "--stdin"
   ],
   "go.liveErrors": {
     "enabled": true,
     "delay": 500
   },
-  "go.lintOnSave": "workspace",
+  "go.lintOnSave": "package",
   "editor.codeActionsOnSave": {
     "source.organizeImports": "explicit",
   },
@@ -80,8 +86,6 @@
   "go.inlayHints.functionTypeParameters": true,
   "go.inlayHints.rangeVariableTypes": true,
   "go.inlayHints.parameterNames": true,
-  "go.buildOnSave": "off",
-  "go.formatTool": "gofumpt",
   "go.survey.prompt": false,
   "go.useCodeSnippetsOnFunctionSuggestWithoutType": true,
   "go.useCodeSnippetsOnFunctionSuggest": true,
@@ -89,5 +93,13 @@
     "editor.codeActionsOnSave": {
       "source.organizeImports": "explicit"
     }
-  }
+  },
+  "go.goroot": "${workspaceFolder}/.vscode/mise-tools/goRoot",
+  "go.alternateTools": {
+    "customFormatter": "golangci-lint",
+    "go": "${workspaceFolder}/.vscode/mise-tools/go",
+    "gopls": "${workspaceFolder}/.vscode/mise-tools/gopls",
+    "dlv": "${workspaceFolder}/.vscode/mise-tools/dlv"
+  },
+  "mise.configureExtensionsUseSymLinks": true
 }

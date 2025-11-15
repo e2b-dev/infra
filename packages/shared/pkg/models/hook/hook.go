@@ -9,16 +9,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
 
-// The AccessTokenFunc type is an adapter to allow the use of ordinary
-// function as AccessToken mutator.
-type AccessTokenFunc func(context.Context, *models.AccessTokenMutation) (models.Value, error)
+// The ClusterFunc type is an adapter to allow the use of ordinary
+// function as Cluster mutator.
+type ClusterFunc func(context.Context, *models.ClusterMutation) (models.Value, error)
 
 // Mutate calls f(ctx, m).
-func (f AccessTokenFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, error) {
-	if mv, ok := m.(*models.AccessTokenMutation); ok {
+func (f ClusterFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, error) {
+	if mv, ok := m.(*models.ClusterMutation); ok {
 		return f(ctx, mv)
 	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.AccessTokenMutation", m)
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.ClusterMutation", m)
 }
 
 // The EnvFunc type is an adapter to allow the use of ordinary
@@ -79,30 +79,6 @@ func (f TeamFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, 
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.TeamMutation", m)
-}
-
-// The TeamAPIKeyFunc type is an adapter to allow the use of ordinary
-// function as TeamAPIKey mutator.
-type TeamAPIKeyFunc func(context.Context, *models.TeamAPIKeyMutation) (models.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f TeamAPIKeyFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, error) {
-	if mv, ok := m.(*models.TeamAPIKeyMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.TeamAPIKeyMutation", m)
-}
-
-// The TierFunc type is an adapter to allow the use of ordinary
-// function as Tier mutator.
-type TierFunc func(context.Context, *models.TierMutation) (models.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f TierFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, error) {
-	if mv, ok := m.(*models.TierMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.TierMutation", m)
 }
 
 // The UserFunc type is an adapter to allow the use of ordinary

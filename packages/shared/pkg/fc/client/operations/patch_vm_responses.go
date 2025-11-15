@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PatchVMNoContent) Code() int {
 }
 
 func (o *PatchVMNoContent) Error() string {
-	return fmt.Sprintf("[PATCH /vm][%d] patchVmNoContent ", 204)
+	return fmt.Sprintf("[PATCH /vm][%d] patchVmNoContent", 204)
 }
 
 func (o *PatchVMNoContent) String() string {
-	return fmt.Sprintf("[PATCH /vm][%d] patchVmNoContent ", 204)
+	return fmt.Sprintf("[PATCH /vm][%d] patchVmNoContent", 204)
 }
 
 func (o *PatchVMNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PatchVMBadRequest) Code() int {
 }
 
 func (o *PatchVMBadRequest) Error() string {
-	return fmt.Sprintf("[PATCH /vm][%d] patchVmBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /vm][%d] patchVmBadRequest %s", 400, payload)
 }
 
 func (o *PatchVMBadRequest) String() string {
-	return fmt.Sprintf("[PATCH /vm][%d] patchVmBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /vm][%d] patchVmBadRequest %s", 400, payload)
 }
 
 func (o *PatchVMBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PatchVMDefault) Code() int {
 }
 
 func (o *PatchVMDefault) Error() string {
-	return fmt.Sprintf("[PATCH /vm][%d] patchVm default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /vm][%d] patchVm default %s", o._statusCode, payload)
 }
 
 func (o *PatchVMDefault) String() string {
-	return fmt.Sprintf("[PATCH /vm][%d] patchVm default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /vm][%d] patchVm default %s", o._statusCode, payload)
 }
 
 func (o *PatchVMDefault) GetPayload() *models.Error {
