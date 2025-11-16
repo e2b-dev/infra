@@ -12,13 +12,15 @@ import (
 type Overlay struct {
 	device       ReadonlyDevice
 	cache        *Cache
-	blockSize    int64
 	cacheEjected atomic.Bool
+	blockSize    int64
 }
 
 var _ Device = (*Overlay)(nil)
 
-func NewOverlay(device ReadonlyDevice, cache *Cache, blockSize int64) *Overlay {
+func NewOverlay(device ReadonlyDevice, cache *Cache) *Overlay {
+	blockSize := device.BlockSize()
+
 	return &Overlay{
 		device:    device,
 		cache:     cache,
