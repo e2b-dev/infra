@@ -249,7 +249,7 @@ func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
 
 	fmt.Fprintf(os.Stdout, "creating mount path directory: %s\n", mountPath)
 
-	defer os.RemoveAll(mountPath)
+	// We don't remote the dir as it might have been user created.
 
 	err = unix.Mount(devicePath, mountPath, "ext4", unix.MS_RDONLY, "")
 	if err != nil {
@@ -260,10 +260,13 @@ func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
 		ticker := time.NewTicker(600 * time.Millisecond)
 		defer ticker.Stop()
 
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+
 		for {
 			select {
-			case <-time.After(30 * time.Second):
-				fmt.Fprintf(os.Stderr, "failed to unmount device from mount path: %v\n", err)
+			case <-cleanupCtx.Done():
+				fmt.Fprintf(os.Stderr, "failed to unmount device from mount path in time\n")
 
 				return
 			case <-ticker.C:
