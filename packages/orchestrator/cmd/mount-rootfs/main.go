@@ -250,7 +250,7 @@ func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
 
 	defer os.RemoveAll(mountPath)
 
-	err = unix.Mount(devicePath, mountPath, "ext4", 0, "")
+	err = unix.Mount(devicePath, mountPath, "ext4", unix.MS_RDONLY, "")
 	if err != nil {
 		return fmt.Errorf("failed to mount device to mount path: %w", err)
 	}
