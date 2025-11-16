@@ -16,10 +16,12 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout PR head commit
+        id: pr-sha
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
       - name: Run Claude Code Review
         id: claude-review
