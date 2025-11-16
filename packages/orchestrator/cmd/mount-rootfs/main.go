@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -82,43 +81,43 @@ func main() {
 		cancel()
 	}()
 
-	err := mountRootfs(ctx, *buildId, *mountPath)
+	// We use a separate ctx for majority of the operations as cancelling context for the NBD+storage and *then* doing cleanup for these often resulted in deadlocks.
+	nbdContext := context.Background()
+
+	err := mountRootfs(ctx, nbdContext, *buildId, *mountPath)
 	if err != nil {
-		log.Fatalf("failed to mount rootfs: %s", err)
+		panic(fmt.Errorf("failed to mount rootfs: %w", err))
 	}
 }
 
-func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
-	// We use a separate ctx for majority of the operations as cancelling context for the NBD+storage and *then* doing cleanup for these often resulted in deadlocks.
-	ctx := context.Background()
-
+func mountRootfs(ctx, nbdContext context.Context, buildID, mountPath string) error {
 	files := storage.TemplateFiles{
 		BuildID: buildID,
 	}
 
-	s, err := storage.GetTemplateStorageProvider(ctx, nil)
+	s, err := storage.GetTemplateStorageProvider(nbdContext, nil)
 	if err != nil {
 		return fmt.Errorf("failed to get storage provider: %w", err)
 	}
 
-	obj, err := s.OpenObject(ctx, files.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
+	obj, err := s.OpenObject(nbdContext, files.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return fmt.Errorf("failed to open object: %w", err)
 	}
 
-	h, err := header.Deserialize(ctx, obj)
+	h, err := header.Deserialize(nbdContext, obj)
 	if err != nil {
 		id, err := uuid.Parse(buildID)
 		if err != nil {
 			return fmt.Errorf("failed to parse build id: %w", err)
 		}
 
-		r, err := s.OpenSeekableObject(ctx, files.StorageRootfsPath(), storage.RootFSObjectType)
+		r, err := s.OpenSeekableObject(nbdContext, files.StorageRootfsPath(), storage.RootFSObjectType)
 		if err != nil {
 			return fmt.Errorf("failed to open object: %w", err)
 		}
 
-		size, err := r.Size(ctx)
+		size, err := r.Size(nbdContext)
 		if err != nil {
 			return fmt.Errorf("failed to get object size: %w", err)
 		}
@@ -151,7 +150,7 @@ func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
 	}
 
 	store, err := build.NewDiffStore(
-		ctx,
+		nbdContext,
 		cfg.Config{},
 		flags,
 		diffCacheDir,
@@ -201,7 +200,7 @@ func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
 
 	poolClosed := make(chan struct{})
 
-	defer func() {
+	defer func() { //nolint:contextcheck // we need to use separate context otherwise the cleanup can be problematic
 		<-poolClosed
 
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 30*time.Second)
@@ -213,7 +212,7 @@ func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
 		}
 	}()
 
-	poolCtx, poolCancel := context.WithCancel(ctx)
+	poolCtx, poolCancel := context.WithCancel(nbdContext)
 	defer poolCancel()
 
 	go func() {
@@ -223,12 +222,12 @@ func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
 
 	mnt := nbd.NewDirectPathMount(overlay, devicePool)
 
-	mntIndex, err := mnt.Open(ctx)
+	mntIndex, err := mnt.Open(nbdContext)
 	if err != nil {
 		return fmt.Errorf("failed to open nbd mount: %w", err)
 	}
 
-	defer func() {
+	defer func() { //nolint:contextcheck // we need to use separate context otherwise the cleanup can be problematic
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancelCleanup()
 
@@ -282,7 +281,7 @@ func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
 
 	fmt.Printf("rootfs mounted at path: %s\n", mountPath)
 
-	<-mainCtx.Done()
+	<-ctx.Done()
 
 	fmt.Println("closing rootfs mount")
 
