@@ -77,6 +77,36 @@ func SandboxID(v string) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldSandboxID, v))
 }
 
+// SandboxStartedAt applies equality check predicate on the "sandbox_started_at" field. It's identical to SandboxStartedAtEQ.
+func SandboxStartedAt(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldSandboxStartedAt, v))
+}
+
+// EnvSecure applies equality check predicate on the "env_secure" field. It's identical to EnvSecureEQ.
+func EnvSecure(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldEnvSecure, v))
+}
+
+// AutoPause applies equality check predicate on the "auto_pause" field. It's identical to AutoPauseEQ.
+func AutoPause(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldAutoPause, v))
+}
+
+// OriginNodeID applies equality check predicate on the "origin_node_id" field. It's identical to OriginNodeIDEQ.
+func OriginNodeID(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldOriginNodeID, v))
+}
+
+// TeamID applies equality check predicate on the "team_id" field. It's identical to TeamIDEQ.
+func TeamID(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldTeamID, v))
+}
+
+// AllowInternetAccess applies equality check predicate on the "allow_internet_access" field. It's identical to AllowInternetAccessEQ.
+func AllowInternetAccess(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldAllowInternetAccess, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldCreatedAt, v))
@@ -310,6 +340,201 @@ func SandboxIDEqualFold(v string) predicate.Snapshot {
 // SandboxIDContainsFold applies the ContainsFold predicate on the "sandbox_id" field.
 func SandboxIDContainsFold(v string) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldContainsFold(FieldSandboxID, v))
+}
+
+// SandboxStartedAtEQ applies the EQ predicate on the "sandbox_started_at" field.
+func SandboxStartedAtEQ(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldSandboxStartedAt, v))
+}
+
+// SandboxStartedAtNEQ applies the NEQ predicate on the "sandbox_started_at" field.
+func SandboxStartedAtNEQ(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldSandboxStartedAt, v))
+}
+
+// SandboxStartedAtIn applies the In predicate on the "sandbox_started_at" field.
+func SandboxStartedAtIn(vs ...time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIn(FieldSandboxStartedAt, vs...))
+}
+
+// SandboxStartedAtNotIn applies the NotIn predicate on the "sandbox_started_at" field.
+func SandboxStartedAtNotIn(vs ...time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotIn(FieldSandboxStartedAt, vs...))
+}
+
+// SandboxStartedAtGT applies the GT predicate on the "sandbox_started_at" field.
+func SandboxStartedAtGT(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGT(FieldSandboxStartedAt, v))
+}
+
+// SandboxStartedAtGTE applies the GTE predicate on the "sandbox_started_at" field.
+func SandboxStartedAtGTE(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGTE(FieldSandboxStartedAt, v))
+}
+
+// SandboxStartedAtLT applies the LT predicate on the "sandbox_started_at" field.
+func SandboxStartedAtLT(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLT(FieldSandboxStartedAt, v))
+}
+
+// SandboxStartedAtLTE applies the LTE predicate on the "sandbox_started_at" field.
+func SandboxStartedAtLTE(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLTE(FieldSandboxStartedAt, v))
+}
+
+// EnvSecureEQ applies the EQ predicate on the "env_secure" field.
+func EnvSecureEQ(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldEnvSecure, v))
+}
+
+// EnvSecureNEQ applies the NEQ predicate on the "env_secure" field.
+func EnvSecureNEQ(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldEnvSecure, v))
+}
+
+// AutoPauseEQ applies the EQ predicate on the "auto_pause" field.
+func AutoPauseEQ(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldAutoPause, v))
+}
+
+// AutoPauseNEQ applies the NEQ predicate on the "auto_pause" field.
+func AutoPauseNEQ(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldAutoPause, v))
+}
+
+// OriginNodeIDEQ applies the EQ predicate on the "origin_node_id" field.
+func OriginNodeIDEQ(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDNEQ applies the NEQ predicate on the "origin_node_id" field.
+func OriginNodeIDNEQ(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDIn applies the In predicate on the "origin_node_id" field.
+func OriginNodeIDIn(vs ...string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIn(FieldOriginNodeID, vs...))
+}
+
+// OriginNodeIDNotIn applies the NotIn predicate on the "origin_node_id" field.
+func OriginNodeIDNotIn(vs ...string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotIn(FieldOriginNodeID, vs...))
+}
+
+// OriginNodeIDGT applies the GT predicate on the "origin_node_id" field.
+func OriginNodeIDGT(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGT(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDGTE applies the GTE predicate on the "origin_node_id" field.
+func OriginNodeIDGTE(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGTE(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDLT applies the LT predicate on the "origin_node_id" field.
+func OriginNodeIDLT(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLT(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDLTE applies the LTE predicate on the "origin_node_id" field.
+func OriginNodeIDLTE(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLTE(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDContains applies the Contains predicate on the "origin_node_id" field.
+func OriginNodeIDContains(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldContains(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDHasPrefix applies the HasPrefix predicate on the "origin_node_id" field.
+func OriginNodeIDHasPrefix(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldHasPrefix(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDHasSuffix applies the HasSuffix predicate on the "origin_node_id" field.
+func OriginNodeIDHasSuffix(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldHasSuffix(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDEqualFold applies the EqualFold predicate on the "origin_node_id" field.
+func OriginNodeIDEqualFold(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEqualFold(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDContainsFold applies the ContainsFold predicate on the "origin_node_id" field.
+func OriginNodeIDContainsFold(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldContainsFold(FieldOriginNodeID, v))
+}
+
+// TeamIDEQ applies the EQ predicate on the "team_id" field.
+func TeamIDEQ(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldTeamID, v))
+}
+
+// TeamIDNEQ applies the NEQ predicate on the "team_id" field.
+func TeamIDNEQ(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldTeamID, v))
+}
+
+// TeamIDIn applies the In predicate on the "team_id" field.
+func TeamIDIn(vs ...uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIn(FieldTeamID, vs...))
+}
+
+// TeamIDNotIn applies the NotIn predicate on the "team_id" field.
+func TeamIDNotIn(vs ...uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotIn(FieldTeamID, vs...))
+}
+
+// TeamIDGT applies the GT predicate on the "team_id" field.
+func TeamIDGT(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGT(FieldTeamID, v))
+}
+
+// TeamIDGTE applies the GTE predicate on the "team_id" field.
+func TeamIDGTE(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGTE(FieldTeamID, v))
+}
+
+// TeamIDLT applies the LT predicate on the "team_id" field.
+func TeamIDLT(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLT(FieldTeamID, v))
+}
+
+// TeamIDLTE applies the LTE predicate on the "team_id" field.
+func TeamIDLTE(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLTE(FieldTeamID, v))
+}
+
+// AllowInternetAccessEQ applies the EQ predicate on the "allow_internet_access" field.
+func AllowInternetAccessEQ(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldAllowInternetAccess, v))
+}
+
+// AllowInternetAccessNEQ applies the NEQ predicate on the "allow_internet_access" field.
+func AllowInternetAccessNEQ(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldAllowInternetAccess, v))
+}
+
+// AllowInternetAccessIsNil applies the IsNil predicate on the "allow_internet_access" field.
+func AllowInternetAccessIsNil() predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIsNull(FieldAllowInternetAccess))
+}
+
+// AllowInternetAccessNotNil applies the NotNil predicate on the "allow_internet_access" field.
+func AllowInternetAccessNotNil() predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotNull(FieldAllowInternetAccess))
+}
+
+// ConfigIsNil applies the IsNil predicate on the "config" field.
+func ConfigIsNil() predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIsNull(FieldConfig))
+}
+
+// ConfigNotNil applies the NotNil predicate on the "config" field.
+func ConfigNotNil() predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotNull(FieldConfig))
 }
 
 // HasEnv applies the HasEdge predicate on the "env" edge.

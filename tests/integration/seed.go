@@ -1,0 +1,225 @@
+package main
+
+import (
+	"context"
+	"encoding/hex"
+	"fmt"
+	"log"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
+)
+
+type SeedData struct {
+	AccessToken string
+	APIKey      string
+	EnvID       string
+	BuildID     uuid.UUID
+	TeamID      uuid.UUID
+	UserID      uuid.UUID
+}
+
+func main() {
+	ctx := context.Background()
+
+	exitCode := run(ctx)
+	if exitCode != 0 {
+		log.Printf("Seed failed with exit code %d", exitCode)
+		os.Exit(exitCode)
+	}
+
+	fmt.Println("Seed completed successfully.")
+}
+
+func run(ctx context.Context) int {
+	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
+	if connectionString == "" {
+		log.Printf("POSTGRES_CONNECTION_STRING is not set")
+
+		return 1
+	}
+
+	db, err := client.NewClient(ctx)
+	if err != nil {
+		log.Printf("Failed to connect to database: %v", err)
+
+		return 1
+	}
+	defer db.Close()
+
+	data := SeedData{
+		AccessToken: os.Getenv("TESTS_E2B_ACCESS_TOKEN"),
+		APIKey:      os.Getenv("TESTS_E2B_API_KEY"),
+		EnvID:       os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
+		BuildID:     uuid.MustParse(os.Getenv("TESTS_SANDBOX_BUILD_ID")),
+		TeamID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_TEAM_ID")),
+		UserID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
+	}
+
+	err = seed(ctx, db, data)
+	if err != nil {
+		log.Printf("Failed to execute seed: %v", err)
+
+		return 1
+	}
+
+	fmt.Println("Seed completed successfully.")
+
+	return 0
+}
+
+func seed(ctx context.Context, db *client.Client, data SeedData) error {
+	hasher := keys.NewSHA256Hashing()
+
+	// User
+	err := db.TestsRawSQL(ctx, `
+INSERT INTO auth.users (id, email)
+VALUES ($1, $2)
+`, data.UserID, "user-test-integration@e2b.dev")
+	if err != nil {
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Access token
+	tokenWithoutPrefix := strings.TrimPrefix(data.AccessToken, keys.AccessTokenPrefix)
+	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to decode access token: %w", err)
+	}
+
+	accessTokenHash := hasher.Hash(accessTokenBytes)
+
+	accessTokenMask, err := keys.MaskKey(keys.AccessTokenPrefix, tokenWithoutPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to mask access token: %w", err)
+	}
+
+	_, err = db.CreateAccessToken(ctx, queries.CreateAccessTokenParams{
+		ID:                    uuid.New(),
+		UserID:                data.UserID,
+		AccessTokenHash:       accessTokenHash,
+		AccessTokenPrefix:     accessTokenMask.Prefix,
+		AccessTokenLength:     int32(accessTokenMask.ValueLength),
+		AccessTokenMaskPrefix: accessTokenMask.MaskedValuePrefix,
+		AccessTokenMaskSuffix: accessTokenMask.MaskedValueSuffix,
+		Name:                  "Integration Tests Access Token",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create access token: %w", err)
+	}
+
+	// Team
+	err = db.TestsRawSQL(ctx, `
+INSERT INTO teams (id, email, name, tier, is_blocked)
+VALUES ($1, $2, $3, $4, $5)
+`, data.TeamID, "test-integration@e2b.dev", "E2B", "base_v1", false)
+	if err != nil {
+		return fmt.Errorf("failed to create team: %w", err)
+	}
+
+	// User-Team
+	err = db.TestsRawSQL(ctx, `
+INSERT INTO users_teams (user_id, team_id, is_default)
+VALUES ($1, $2, $3)
+`, data.UserID, data.TeamID, true)
+	if err != nil {
+		return fmt.Errorf("failed to create user-team: %w", err)
+	}
+
+	// Team API Key
+	keyWithoutPrefix := strings.TrimPrefix(data.APIKey, keys.ApiKeyPrefix)
+	apiKeyBytes, err := hex.DecodeString(keyWithoutPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to decode api key: %w", err)
+	}
+	apiKeyHash := hasher.Hash(apiKeyBytes)
+	apiKeyMask, err := keys.MaskKey(keys.ApiKeyPrefix, keyWithoutPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to mask api key: %w", err)
+	}
+	_, err = db.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
+		TeamID:           data.TeamID,
+		CreatedBy:        &data.UserID,
+		ApiKeyHash:       apiKeyHash,
+		ApiKeyPrefix:     apiKeyMask.Prefix,
+		ApiKeyLength:     int32(apiKeyMask.ValueLength),
+		ApiKeyMaskPrefix: apiKeyMask.MaskedValuePrefix,
+		ApiKeyMaskSuffix: apiKeyMask.MaskedValueSuffix,
+		Name:             "Integration Tests API Key",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create team api key: %w", err)
+	}
+
+	// Env
+	err = db.TestsRawSQL(ctx, `
+INSERT INTO envs (id, team_id, public, build_count, spawn_count, updated_at)
+VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+`, data.EnvID, data.TeamID, true, 2, 0)
+	if err != nil {
+		return fmt.Errorf("failed to create env: %w", err)
+	}
+
+	type buildData struct {
+		id        uuid.UUID
+		createdAt *time.Time
+	}
+
+	oldBuildTime := time.Now().Add(-time.Hour)
+	builds := []buildData{
+		{
+			id:        data.BuildID,
+			createdAt: nil,
+		},
+		// An older build, so we have multiple builds
+		{
+			id:        uuid.New(),
+			createdAt: &oldBuildTime,
+		},
+	}
+
+	for _, build := range builds {
+		if build.createdAt != nil {
+			err = db.TestsRawSQL(ctx, `
+INSERT INTO env_builds (
+	id, env_id, dockerfile, status, vcpu, ram_mb, free_disk_size_mb,
+	total_disk_size_mb, kernel_version, firecracker_version, envd_version,
+	cluster_node_id, version, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP)
+`, build.id, data.EnvID, "FROM e2bdev/base:latest", envbuild.StatusUploaded,
+				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_d990331", "0.2.4",
+				"integration-test-node", templates.TemplateV1Version, build.createdAt)
+		} else {
+			err = db.TestsRawSQL(ctx, `
+INSERT INTO env_builds (
+	id, env_id, dockerfile, status, vcpu, ram_mb, free_disk_size_mb,
+	total_disk_size_mb, kernel_version, firecracker_version, envd_version,
+	cluster_node_id, version, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
+`, build.id, data.EnvID, "FROM e2bdev/base:latest", envbuild.StatusUploaded,
+				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_d990331", "0.2.4",
+				"integration-test-node", templates.TemplateV1Version)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to create env build: %w", err)
+		}
+	}
+
+	err = db.TestsRawSQL(ctx, `
+INSERT INTO env_aliases (alias, is_renamable, env_id)
+VALUES ($1, $2, $3)
+`, "base", true, data.EnvID)
+	if err != nil {
+		return fmt.Errorf("failed to create env alias: %w", err)
+	}
+
+	return nil
+}

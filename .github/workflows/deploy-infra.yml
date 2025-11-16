@@ -1,0 +1,62 @@
+name: Deploy Infra
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Specific commit SHA to checkout"
+        required: true
+        type: string
+      tracking_id:
+        description: "Unique tracking ID used for identifying the workflow run"
+        required: false
+        type: string
+      environment:
+        description: "Target environment for deployment, e.g. staging"
+        required: true
+        type: string
+      plan_only:
+        description: "Only plan the infrastructure changes without applying them"
+        required: false
+        type: string
+        default: "false"
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Infra to the ${{ inputs.environment }} environment
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Setup environment
+        uses: ./.github/actions/deploy-setup
+        with:
+          environment: ${{ inputs.environment }}
+          infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+
+      - name: Copy public builds
+        run: |
+          make copy-public-builds
+
+      - name: Plan infrastructure
+        run: |
+          make plan-without-jobs
+
+      - name: Apply infrastructure
+        if: inputs.plan_only == 'false'
+        env:
+          AUTO_CONFIRM_DEPLOY: true
+        run: |
+          make apply

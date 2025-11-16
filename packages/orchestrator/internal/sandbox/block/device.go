@@ -1,21 +1,33 @@
 package block
 
-import "io"
+import (
+	"context"
+	"io"
 
-type ErrBytesNotAvailable struct{}
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+)
 
-func (ErrBytesNotAvailable) Error() string {
+type BytesNotAvailableError struct{}
+
+func (BytesNotAvailableError) Error() string {
 	return "The requested bytes are not available on the device"
 }
 
+type Slicer interface {
+	Slice(ctx context.Context, off, length int64) ([]byte, error)
+}
+
 type ReadonlyDevice interface {
-	io.ReaderAt
-	Slice(off, length int64) ([]byte, error)
+	storage.ReaderAtCtx
+	io.Closer
+	Slicer
 	Size() (int64, error)
+	BlockSize() int64
+	Header() *header.Header
 }
 
 type Device interface {
 	ReadonlyDevice
 	io.WriterAt
-	Close() error
 }

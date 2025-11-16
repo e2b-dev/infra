@@ -3,20 +3,36 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 
 	"github.com/rs/zerolog"
 
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
 type API struct {
-	logger  *zerolog.Logger
-	envVars *utils.Map[string, string]
+	isNotFC     bool
+	logger      *zerolog.Logger
+	accessToken *string
+	defaults    *execcontext.Defaults
+
+	mmdsChan      chan *host.MMDSOpts
+	hyperloopLock sync.Mutex
+
+	lastSetTime *utils.AtomicMax
+	initLock    sync.Mutex
 }
 
-func New(l *zerolog.Logger, envVars *utils.Map[string, string]) *API {
-	return &API{logger: l, envVars: envVars}
+func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
+	return &API{
+		logger:      l,
+		defaults:    defaults,
+		mmdsChan:    mmdsChan,
+		isNotFC:     isNotFC,
+		lastSetTime: utils.NewAtomicMax(),
+	}
 }
 
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +58,7 @@ func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.logger.Error().Err(err).Msg("Failed to get metrics")
 		w.WriteHeader(http.StatusInternalServerError)
+
 		return
 	}
 

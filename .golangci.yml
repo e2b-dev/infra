@@ -1,110 +1,137 @@
-linters-settings:
-  funlen:
-    lines: 120
-    statements: 50
-  gocyclo:
-    min-complexity: 15
-  goimports:
-    local-prefixes: github.com/e2b-dev/infra
-  govet:
-    # Enable all analyzers.
-    # Default: false
-    enable-all: true
-    # Disable analyzers by name.
-    # Run `go tool vet help` to see all analyzers.
-    # Default: []
-    # Settings per analyzer.
-    settings:
-      shadow:
-        # Whether to be strict about shadowing; can be noisy.
-        # Default: false
-        strict: true
-  misspell:
-    locale: US
-  nolintlint:
-    allow-leading-space: false # require machine-readable nolint directives (with no leading space)
-    allow-unused: false # report any unused nolint directives
-    require-explanation: true # require an explanation for nolint directives
-    require-specific: false # don't require nolint directives to be specific about which linter is being skipped
-  revive:
-    rules:
-      - name: exported
-        disabled: true
-      - name: package-comments
-        disabled: true
-    confidence: 0
-  stylecheck:
-    checks: [all, -ST1000, -ST1020]
+version: "2"
+
+formatters:
+  enable:
+    - gci
+    - gofumpt
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/e2b-dev/infra)
 
 linters:
-  enable:
-    - asasalint
-    - asciicheck
-    - bidichk
-    - contextcheck
-    - durationcheck
-    - errname
-    - testableexamples
-    - thelper
-    - tparallel
-    - tagliatelle
-    - errorlint
-    - bodyclose
-    - dogsled
+  default: all
+  disable:
+    # these are in other PRs already
+    - forcetypeassert
+
+    # todo: determine if we want this
+    - canonicalheader
+    - cyclop
+    - depguard
     - dupl
+    - dupword
     - errcheck
+    - errchkjson
     - exhaustive
     - exhaustruct
-    - gci
-    - gocheckcompilerdirectives
-    - goconst
-    - makezero
-    - mirror
-    - nestif
-    - nilerr
-    - nilnil
-    - nlreturn
-    - importas
-    - reassign
-    - tagalign
-    - tenv
-    - predeclared
-    - interfacer
-    - unconvert
-    - unparam
-    - usestdlibvars
-    - wastedassign
-    - wsl
-    - gofmt
-    - wrapcheck
-    - copyloopvar
+    - funcorder
+    - funlen
+    - gochecknoglobals
     - gochecknoinits
-    - gocritic
+    - gocognit
     - goconst
-    - godot
     - gocyclo
-    - gofumpt
-    - goimports
-    - revive
-    - mnd
-    - goprintffuncname
+    - godot
+    - godox
+    - gomoddirectives
+    - gomodguard
     - gosec
-    - gosimple
-    - govet
-    - ineffassign
-    - misspell
-    - nakedret
-    - noctx
-    - nolintlint
+    - ireturn
+    - lll
+    - maintidx
+    - mnd
+    - nestif
+    - nilnil
+    - noinlineerr
+    - nonamedreturns
+    - nosprintfhostport
+    - paralleltest
+    - perfsprint
     - prealloc
-    - staticcheck
-    - stylecheck
-    - typecheck
-    - unconvert
+    - predeclared
+    - tagliatelle
+    - testpackage
     - unparam
-    - unused
-    - whitespace
+    - varnamelen
+    - wrapcheck
+
+    # todo: enable these
+    - err113
+
+    # deprecated, remove when golangci-lint makes us
+    - wsl
+    - wsl_v5
+
+    # disabled intentionally
+
+  settings:
+    forbidigo:
+      forbid:
+        - pattern: "^new$"
+          msg: "Use &Type{} instead."
+    #        - pattern: os\.Getenv
+    #          msg: "Add your field to the configuration model instead."
+
+    gocritic:
+      disabled-checks:
+        - appendAssign
+    revive:
+      enable-all-rules: true
+      rules:
+        - { disabled: true, name: add-constant } # todo: enable this
+        - { disabled: true, name: argument-limit }
+        - { disabled: true, name: bare-return }
+        - { disabled: true, name: blank-imports }
+        - { disabled: true, name: bool-literal-in-expr }
+        - { disabled: true, name: cognitive-complexity }
+        - { disabled: true, name: comment-spacings }
+        - { disabled: true, name: confusing-naming }
+        - { disabled: true, name: confusing-results }
+        - { disabled: true, name: context-as-argument }
+        - { disabled: true, name: cyclomatic }
+        - { disabled: true, name: deep-exit }
+        - { disabled: true, name: early-return }
+        - { disabled: true, name: enforce-switch-style }
+        - { disabled: true, name: exported }
+        - { disabled: true, name: flag-parameter } # todo: enable this
+        - { disabled: true, name: function-length }
+        - { disabled: true, name: function-result-limit }
+        - { disabled: true, name: get-return }
+        - { disabled: true, name: import-alias-naming }
+        - { disabled: true, name: import-shadowing }
+        - { disabled: true, name: line-length-limit }
+        - { disabled: true, name: max-control-nesting }
+        - { disabled: true, name: max-public-structs }
+        - { disabled: true, name: nested-structs }
+        - { disabled: true, name: package-comments }
+        - { disabled: true, name: unchecked-type-assertion }
+        - { disabled: true, name: unexported-naming }
+        - { disabled: true, name: unhandled-error } #  todo: enable this
+        - { disabled: true, name: unnecessary-format } # todo: enable this
+        - { disabled: true, name: unnecessary-stmt } # todo: enable this
+        - { disabled: true, name: unused-receiver }
+        - { disabled: true, name: use-errors-new } # todo: enable this
+        - { disabled: true, name: var-declaration }
+        - { disabled: true, name: var-naming }
+
+    staticcheck:
+      checks:
+        - all
+        - -S1002 # Omit comparison with boolean constant
+        - -SA1019 # TODO: Remove (Using a deprecated function, variable, constant or field)
+        - -ST1000 # Incorrect or missing package comment
+        - -ST1020 # The documentation of an exported function should start with the function’s name
+        - -ST1021 # The documentation of an exported type should start with type’s name
+        - -ST1003 # Poorly chosen identifier
+        - -QF1008 # Omit embedded fields from selector expression
+
+run:
+  go: 1.24.7
+  allow-parallel-runners: true
 
 issues:
-  # enable issues excluded by default
-  exclude-use-default: false
+  max-issues-per-linter: 50
+  max-same-issues: 50

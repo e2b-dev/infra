@@ -26,6 +26,10 @@ func (m *Map[V]) Insert(key string, value V) {
 	m.m.Set(key, value)
 }
 
+func (m *Map[V]) Upsert(key string, value V, cb cmap.UpsertCb[V]) V {
+	return m.m.Upsert(key, value, cb)
+}
+
 func (m *Map[V]) InsertIfAbsent(key string, value V) bool {
 	return m.m.SetIfAbsent(key, value)
 }
@@ -36,4 +40,8 @@ func (m *Map[V]) Items() map[string]V {
 
 func (m *Map[V]) RemoveCb(key string, cb func(key string, v V, exists bool) bool) bool {
 	return m.m.RemoveCb(key, cb)
+}
+
+func (m *Map[V]) Count() int {
+	return m.m.Count()
 }

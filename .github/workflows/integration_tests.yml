@@ -1,0 +1,50 @@
+name: Integration Tests
+
+on: [workflow_call]
+
+jobs:
+  integration_tests:
+    runs-on: infra-integration-tests
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Packages
+        uses: ./.github/actions/build-packages
+
+      - name: Initialize Host
+        uses: ./.github/actions/host-init
+
+      - name: Build Template
+        uses: ./.github/actions/build-sandbox-template
+
+      - name: Start Services
+        uses: ./.github/actions/start-services
+
+      - name: Run Integration Tests
+        env:
+          TESTS_API_SERVER_URL: "http://localhost:3000"
+          TESTS_ORCHESTRATOR_HOST: "localhost:5008"
+          TESTS_ENVD_PROXY: "http://localhost:5007"
+        run: |
+          # Run the integration tests
+          make test-integration
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Integration Tests Results
+          path: ./tests/integration/test-results.xml
+
+      - name: Upload Service Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Service Logs
+          path: ~/logs/*.log

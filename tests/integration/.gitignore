@@ -1,0 +1,7 @@
+bin
+.env
+.shared
+
+seed.sql
+
+test-results.*

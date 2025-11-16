@@ -1,0 +1,610 @@
+openapi: 3.0.0
+info:
+  version: 0.1.0
+  title: E2B Edge API
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  responses:
+    "400":
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "401":
+      description: Authentication error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "404":
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "409":
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "500":
+      description: Server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    ClusterNodeInfo:
+      required:
+        - nodeID
+        - serviceInstanceID
+        - serviceVersion
+        - serviceVersionCommit
+        - serviceStartup
+        - serviceStatus
+      properties:
+        nodeID:
+          type: string
+          description: Node ID
+        serviceInstanceID:
+          type: string
+          description: Service ID
+        serviceVersion:
+          type: string
+          description: Version of the service
+        serviceVersionCommit:
+          type: string
+          description: Version of the service
+        serviceStartup:
+          type: string
+          format: date-time
+          description: Time when the node started
+        serviceStatus:
+          $ref: "#/components/schemas/ClusterNodeStatus"
+
+    ClusterNode:
+      required:
+        - nodeID
+        - serviceInstanceID
+        - serviceVersion
+        - serviceVersionCommit
+        - serviceStartedAt
+        - serviceType
+        - serviceStatus
+        - serviceHost
+      properties:
+        nodeID:
+          type: string
+          description: Node ID
+        serviceInstanceID:
+          type: string
+          description: Service instance ID
+        serviceVersion:
+          type: string
+          description: Version of the service
+        serviceVersionCommit:
+          type: string
+          description: Source code version of the service
+        serviceStartedAt:
+          type: string
+          format: date-time
+          description: Time when the node was registered
+        serviceType:
+          $ref: "#/components/schemas/ClusterNodeType"
+        serviceStatus:
+          $ref: "#/components/schemas/ClusterNodeStatus"
+        serviceHost:
+          type: string
+          description: Node private host address and service port
+
+    ClusterNodeStatus:
+      type: string
+      description: State of the cluster node
+      enum:
+        - healthy
+        - draining
+        - unhealthy
+
+    ClusterNodeType:
+      type: string
+      description: Cluster node type
+      enum:
+        - orchestrator
+        - edge
+
+    ClusterOrchestratorRole:
+      type: string
+      description: Capability of the orchestrator
+      enum:
+        - orchestrator
+        - template-builder
+
+    ClusterOrchestratorNode:
+      required:
+        - nodeID
+        - serviceInstanceID
+        - serviceVersion
+        - serviceVersionCommit
+        - serviceStartedAt
+        - serviceHost
+        - serviceStatus
+        - roles
+
+      properties:
+        nodeID:
+          type: string
+          description: Node ID
+        serviceInstanceID:
+          type: string
+          description: Service instance ID
+        serviceVersion:
+          type: string
+          description: Service Version
+        serviceVersionCommit:
+          type: string
+          description: Service Version
+        serviceHost:
+          type: string
+          description: Node private host address and service port
+        serviceStartedAt:
+          type: string
+          format: date-time
+          description: Time when the node was registered
+        serviceStatus:
+          $ref: "#/components/schemas/ClusterNodeStatus"
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterOrchestratorRole"
+
+    Error:
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Error code
+        message:
+          type: string
+          description: Error
+
+    LogLevel:
+      type: string
+      description: State of the sandbox
+      enum:
+        - debug
+        - info
+        - warn
+        - error
+
+    BuildLogEntry:
+      required:
+        - timestamp
+        - message
+        - level
+        - fields
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the log entry
+        message:
+          type: string
+          description: Log message content
+        level:
+          $ref: "#/components/schemas/LogLevel"
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+            description: Additional fields for the log entry
+
+    SandboxLog:
+      description: Log entry with timestamp and line
+      required:
+        - timestamp
+        - line
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the log entry
+        line:
+          type: string
+          description: Log line content
+
+    SandboxLogEntry:
+      required:
+        - timestamp
+        - level
+        - message
+        - fields
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the log entry
+        message:
+          type: string
+          description: Log message content
+        level:
+          $ref: "#/components/schemas/LogLevel"
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+
+    TemplateBuildLogsResponse:
+      required:
+        - logs
+        - logEntries
+      properties:
+        logs:
+          default: []
+          description: Build logs
+          type: array
+          items:
+            type: string
+        logEntries:
+          default: []
+          description: Build logs structured
+          type: array
+          items:
+            $ref: "#/components/schemas/BuildLogEntry"
+
+    SandboxCreateCatalogRequest:
+      type: object
+      required:
+        - orchestratorID
+        - executionID
+        - sandboxID
+        - sandboxMaxLength
+        - sandboxStartTime
+      properties:
+        orchestratorID:
+          type: string
+          description: Orchestrator where the sandbox is placed
+        executionID:
+          type: string
+        sandboxID:
+          type: string
+        sandboxMaxLength:
+          type: integer
+          format: int64
+          description: Maximum duration in hours
+        sandboxStartTime:
+          $ref: "#/components/schemas/Timestamp"
+
+    SandboxDeleteCatalogRequest:
+      type: object
+      required:
+        - executionID
+        - sandboxID
+      properties:
+        executionID:
+          type: string
+        sandboxID:
+          type: string
+
+    SandboxLogsResponse:
+      required:
+        - logs
+        - logEntries
+      properties:
+        logs:
+          default: []
+          description: Sandbox logs
+          type: array
+          items:
+            $ref: "#/components/schemas/SandboxLog"
+        logEntries:
+          description: Structured logs of the sandbox
+          type: array
+          items:
+            $ref: "#/components/schemas/SandboxLogEntry"
+
+    ServiceDiscoveryNodeStatusRequest:
+      type: object
+      required:
+        - serviceType
+        - serviceInstanceID
+      properties:
+        serviceType:
+          $ref: "#/components/schemas/ClusterNodeType"
+        serviceInstanceID:
+          type: string
+          description: Service instance ID that should be handled by the request
+
+    Timestamp:
+      type: string
+      format: date-time
+
+tags:
+  - name: service-discovery
+  - name: sandboxes
+
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      description: Health check
+      responses:
+        "200":
+          description: Request was successful
+
+  /health/traffic:
+    get:
+      operationId: healthCheckTraffic
+      description: Health check for traffic proxy
+      responses:
+        "200":
+          description: Request was successful
+
+  /health/machine:
+    get:
+      operationId: healthCheckMachine
+      description: Health check for machine status
+      responses:
+        "200":
+          description: Request was successful
+
+  /v1/info:
+    get:
+      operationId: v1Info
+      description: Edge service information
+      responses:
+        "200":
+          description: Successfully returned node information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterNodeInfo"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/service-discovery/nodes:
+    get:
+      operationId: v1ServiceDiscoveryNodes
+      description: Get the service discovery information
+      security:
+        - ApiKeyAuth: []
+      tags: [service-discovery]
+      responses:
+        "200":
+          description: Successfully returned all cluster nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: "#/components/schemas/ClusterNode"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/service-discovery/nodes/drain:
+    post:
+      operationId: v1ServiceDiscoveryNodeDrain
+      description: Mark service places on node as draining
+      security:
+        - ApiKeyAuth: []
+      tags: [service-discovery]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceDiscoveryNodeStatusRequest"
+      responses:
+        "200":
+          description: Successfully start of node draining
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/service-discovery/nodes/kill:
+    post:
+      operationId: v1ServiceDiscoveryNodeKill
+      description: Kill the node
+      security:
+        - ApiKeyAuth: []
+      tags: [service-discovery]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceDiscoveryNodeStatusRequest"
+      responses:
+        "200":
+          description: Successfully start of node kill
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/service-discovery/nodes/orchestrators:
+    get:
+      operationId: v1ServiceDiscoveryGetOrchestrators
+      summary: Get the orchestrators
+      security:
+        - ApiKeyAuth: []
+      tags: [service-discovery]
+      responses:
+        "200":
+          description: Successfully returned all orchestrators
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClusterOrchestratorNode"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/sandboxes/catalog:
+    post:
+      operationId: v1SandboxCatalogCreate
+      summary: Create a sandbox catalog entry
+      security:
+        - ApiKeyAuth: []
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxCreateCatalogRequest"
+      responses:
+        "200":
+          description: Successfully created the sandbox catalog entry
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+    delete:
+      operationId: v1SandboxCatalogDelete
+      summary: Delete a sandbox catalog entry
+      security:
+        - ApiKeyAuth: []
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxDeleteCatalogRequest"
+      responses:
+        "200":
+          description: Successfully deleted the sandbox catalog entry
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/sandboxes/{sandboxID}/logs:
+    get:
+      operationId: v1SandboxLogs
+      summary: List structured sandbox logs
+      security:
+        - ApiKeyAuth: []
+      tags: [sandboxes]
+      parameters:
+        - name: sandboxID
+          in: path
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: teamID
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: start
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Starting timestamp of the logs that should be returned in milliseconds
+        - in: query
+          name: limit
+          schema:
+            default: 1000
+            format: int32
+            minimum: 0
+            type: integer
+          description: Maximum number of logs that should be returned
+      responses:
+        "200":
+          description: Successfully returned the sandbox logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxLogsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/templates/builds/{buildID}/logs:
+    get:
+      operationId: v1TemplateBuildLogs
+      summary: Template build logs
+      security:
+        - ApiKeyAuth: []
+      tags: [templates]
+      parameters:
+        - name: buildID
+          in: path
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: orchestratorID
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: templateID
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: offset
+          schema:
+            default: 0
+            type: integer
+            format: int32
+            minimum: 0
+          description: Index of the starting build log that should be returned with the template
+        - in: query
+          name: level
+          schema:
+            $ref: "#/components/schemas/LogLevel"
+      responses:
+        "200":
+          description: Successfully returned the template build logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateBuildLogsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"

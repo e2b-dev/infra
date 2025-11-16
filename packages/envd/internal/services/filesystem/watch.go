@@ -6,13 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"connectrpc.com/connect"
+	"github.com/e2b-dev/fsnotify"
+
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
-
-	"connectrpc.com/connect"
-	"github.com/e2b-dev/fsnotify"
 )
 
 func (s Service) WatchDir(ctx context.Context, req *connect.Request[rpc.WatchDirRequest], stream *connect.ServerStream[rpc.WatchDirResponse]) error {
@@ -20,12 +20,12 @@ func (s Service) WatchDir(ctx context.Context, req *connect.Request[rpc.WatchDir
 }
 
 func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.WatchDirRequest], stream *connect.ServerStream[rpc.WatchDirResponse]) error {
-	u, err := permissions.GetAuthUser(ctx)
+	u, err := permissions.GetAuthUser(ctx, s.defaults.User)
 	if err != nil {
 		return err
 	}
 
-	watchPath, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u)
+	watchPath, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u, s.defaults.Workdir)
 	if err != nil {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -49,7 +49,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 	}
 	defer w.Close()
 
-	err = w.Add(utils.FsnotifyPath(watchPath, req.Msg.Recursive))
+	err = w.Add(utils.FsnotifyPath(watchPath, req.Msg.GetRecursive()))
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", watchPath, err))
 	}
@@ -75,7 +75,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 				},
 			})
 			if streamErr != nil {
-				return connect.NewError(connect.CodeUnknown, streamErr)
+				return connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending keepalive: %w", streamErr))
 			}
 		case <-ctx.Done():
 			return ctx.Err()
@@ -140,7 +140,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 					Msg("Streaming filesystem event")
 
 				if streamErr != nil {
-					return connect.NewError(connect.CodeUnknown, streamErr)
+					return connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending filesystem event: %w", streamErr))
 				}
 
 				resetKeepalive()

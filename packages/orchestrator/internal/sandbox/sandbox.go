@@ -5,541 +5,1060 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/mod/semver"
-	"golang.org/x/sys/unix"
+	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+var (
+	meter                        = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox")
+	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
+	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
+)
+
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
+	Transport: otelhttp.NewTransport(
+		http.DefaultTransport,
+	),
+}
+
+type Config struct {
+	// TODO: Remove when the rootfs path is constant.
+	// Only used for v1 rootfs paths format.
+	BaseTemplateID string
+
+	Vcpu  int64
+	RamMB int64
+
+	// TotalDiskSizeMB optional, now used only for metrics.
+	TotalDiskSizeMB int64
+	HugePages       bool
+
+	Network *orchestrator.SandboxNetworkConfig
+
+	Envd EnvdMetadata
+}
+
+type EnvdMetadata struct {
+	Vars           map[string]string
+	DefaultUser    *string
+	DefaultWorkdir *string
+	AccessToken    *string
+	Version        string
+}
+
+type RuntimeMetadata struct {
+	TemplateID  string
+	SandboxID   string
+	ExecutionID string
+
+	// TeamID optional, used only for logging
+	TeamID string
+}
+
+type Resources struct {
+	Slot   *network.Slot
+	rootfs rootfs.Provider
+	memory uffd.MemoryBackend
+}
+
+type internalConfig struct {
+	EnvdInitRequestTimeout time.Duration
+}
+
+type Metadata struct {
+	internalConfig internalConfig
+	Config         Config
+	Runtime        RuntimeMetadata
+
+	StartedAt time.Time
+	EndAt     time.Time
 }
 
 type Sandbox struct {
+	*Resources
+	*Metadata
+
+	config  cfg.BuilderConfig
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
 	process *fc.Process
-	uffd    *uffd.Uffd
-	rootfs  *rootfs.CowDevice
 
-	Config    *orchestrator.SandboxConfig
-	StartedAt time.Time
-	EndAt     time.Time
+	Template template.Template
 
-	Slot   network.Slot
-	Logger *logs.SandboxLogger
-	stats  *stats.Handle
+	Checks *Checks
 
-	uffdExit chan error
+	// Deprecated: to be removed in the future
+	// It was used to store the config to allow API restarts
+	APIStoredConfig *orchestrator.SandboxConfig
 
-	template template.Template
-
-	healthcheckCtx *utils.LockableCancelableContext
+	exit *utils.ErrorOnce
 }
 
-// Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
-func NewSandbox(
-	ctx context.Context,
-	tracer trace.Tracer,
-	dns *dns.DNS,
+func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
+	return sbxlogger.SandboxMetadata{
+		SandboxID:  s.Runtime.SandboxID,
+		TemplateID: s.Runtime.TemplateID,
+		TeamID:     s.Runtime.TeamID,
+	}
+}
+
+type networkSlotRes struct {
+	slot *network.Slot
+	err  error
+}
+
+type Factory struct {
+	config       cfg.BuilderConfig
+	networkPool  *network.Pool
+	devicePool   *nbd.DevicePool
+	featureFlags *featureflags.Client
+}
+
+func NewFactory(
+	config cfg.BuilderConfig,
 	networkPool *network.Pool,
-	templateCache *template.Cache,
-	config *orchestrator.SandboxConfig,
-	traceID string,
-	startedAt time.Time,
-	endAt time.Time,
-	logger *logs.SandboxLogger,
-	isSnapshot bool,
-	baseTemplateID string,
-) (*Sandbox, *Cleanup, error) {
-	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
-	defer childSpan.End()
+	devicePool *nbd.DevicePool,
+	featureFlags *featureflags.Client,
+) *Factory {
+	return &Factory{
+		config:       config,
+		networkPool:  networkPool,
+		devicePool:   devicePool,
+		featureFlags: featureFlags,
+	}
+}
+
+// CreateSandbox creates the sandbox.
+// IMPORTANT: You must Close() the sandbox after you are done with it.
+func (f *Factory) CreateSandbox(
+	ctx context.Context,
+	config Config,
+	runtime RuntimeMetadata,
+	fcVersions fc.FirecrackerVersions,
+	template template.Template,
+	sandboxTimeout time.Duration,
+	rootfsCachePath string,
+	processOptions fc.ProcessOptions,
+	apiConfigToStore *orchestrator.SandboxConfig,
+) (s *Sandbox, e error) {
+	ctx, span := tracer.Start(ctx, "create sandbox")
+	defer span.End()
+	defer handleSpanError(span, &e)
+
+	execCtx, execSpan := startExecutionSpan(ctx)
+
+	exit := utils.NewErrorOnce()
 
 	cleanup := NewCleanup()
-
-	t, err := templateCache.GetTemplate(
-		config.TemplateId,
-		config.BuildId,
-		config.KernelVersion,
-		config.FirecrackerVersion,
-		config.HugePages,
-		isSnapshot,
-	)
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
-	}
-
-	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
-
-	ips, err := networkPool.Get(networkCtx)
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
-	}
-
-	cleanup.Add(func() error {
-		returnErr := networkPool.Return(ips)
-		if returnErr != nil {
-			return fmt.Errorf("failed to return network slot: %w", returnErr)
-		}
-
-		return nil
-	})
-
-	networkSpan.End()
-
-	sandboxFiles := t.Files().NewSandboxFiles(config.SandboxId)
-
-	cleanup.Add(func() error {
-		filesErr := cleanupFiles(sandboxFiles)
-		if filesErr != nil {
-			return fmt.Errorf("failed to cleanup files: %w", filesErr)
-		}
-
-		return nil
-	})
-
-	_, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
-
-	readonlyRootfs, err := t.Rootfs()
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get rootfs: %w", err)
-	}
-
-	rootfsOverlay, err := rootfs.NewCowDevice(
-		readonlyRootfs,
-		sandboxFiles.SandboxCacheRootfsPath(),
-		sandboxFiles.RootfsBlockSize(),
-	)
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to create overlay file: %w", err)
-	}
-
-	cleanup.Add(func() error {
-		rootfsOverlay.Close()
-
-		return nil
-	})
-
-	go func() {
-		runErr := rootfsOverlay.Start(childCtx)
-		if runErr != nil {
-			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
+	defer func() {
+		if e != nil {
+			cleanupErr := cleanup.Run(ctx)
+			e = errors.Join(e, cleanupErr)
+			handleSpanError(execSpan, &e)
+			execSpan.End()
 		}
 	}()
 
-	memfile, err := t.Memfile()
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
+	defer func() {
+		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
+		<-ipsCh
+	}()
+
+	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
+	cleanup.Add(cleanupFiles(f.config, sandboxFiles))
+
+	rootFS, err := template.Rootfs()
 	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get memfile: %w", err)
-	}
-	overlaySpan.End()
-
-	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath(), sandboxFiles.MemfilePageSize())
-	if uffdErr != nil {
-		return nil, cleanup, fmt.Errorf("failed to create uffd: %w", uffdErr)
+		return nil, fmt.Errorf("failed to get rootfs: %w", err)
 	}
 
-	uffdStartErr := fcUffd.Start(config.SandboxId)
-	if uffdStartErr != nil {
-		return nil, cleanup, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
+	var rootfsProvider rootfs.Provider
+	if rootfsCachePath == "" {
+		rootfsProvider, err = rootfs.NewNBDProvider(
+			rootFS,
+			sandboxFiles.SandboxCacheRootfsPath(f.config),
+			f.devicePool,
+		)
+	} else {
+		rootfsProvider, err = rootfs.NewDirectProvider(
+			rootFS,
+			// Populate direct cache directly from the source file
+			// This is needed for marking all blocks as dirty and being able to read them directly
+			rootfsCachePath,
+		)
 	}
-
-	cleanup.Add(func() error {
-		stopErr := fcUffd.Stop()
-		if stopErr != nil {
-			return fmt.Errorf("failed to stop uffd: %w", stopErr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
+	}
+	cleanup.Add(rootfsProvider.Close)
+	go func() {
+		runErr := rootfsProvider.Start(execCtx)
+		if runErr != nil {
+			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
+	}()
 
-		return nil
-	})
+	memfile, err := template.Memfile(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memfile: %w", err)
+	}
 
-	uffdExit := make(chan error, 1)
+	memfileSize, err := memfile.Size()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memfile size: %w", err)
+	}
 
-	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(childCtx)
+	// / ==== END of resources initialization ====
+	rootfsPath, err := rootfsProvider.Path()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
+	}
+	ips := <-ipsCh
+	if ips.err != nil {
+		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
+	}
+	fcHandle, err := fc.NewProcess(
+		ctx,
+		execCtx,
+		f.config,
+		ips.slot,
+		sandboxFiles,
+		fcVersions,
+		rootfsPath,
+		fc.ConstantRootfsPaths,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init FC: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "created fc client")
+
+	err = fcHandle.Create(
+		ctx,
+		sbxlogger.SandboxMetadata{
+			SandboxID:  runtime.SandboxID,
+			TemplateID: runtime.TemplateID,
+			TeamID:     runtime.TeamID,
+		},
+		config.Vcpu,
+		config.RamMB,
+		config.HugePages,
+		processOptions,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create FC: %w", err)
+	}
+	telemetry.ReportEvent(ctx, "created fc process")
+
+	resources := &Resources{
+		Slot:   ips.slot,
+		rootfs: rootfsProvider,
+		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
+	}
+
+	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
+		Config:  config,
+		Runtime: runtime,
+
+		StartedAt: time.Now(),
+		EndAt:     time.Now().Add(sandboxTimeout),
+	}
+
+	sbx := &Sandbox{
+		Resources: resources,
+		Metadata:  metadata,
+
+		Template: template,
+		config:   f.config,
+		files:    sandboxFiles,
+		process:  fcHandle,
+
+		cleanup: cleanup,
+
+		APIStoredConfig: apiConfigToStore,
+
+		exit: exit,
+	}
+
+	sbx.Checks = NewChecks(sbx, false)
+
+	// Stop the sandbox first if it is still running, otherwise do nothing
+	cleanup.AddPriority(sbx.Stop)
+
+	go func() {
+		defer execSpan.End()
+
+		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
+		defer span.End()
+
+		// If the process exists, stop the sandbox properly
+		fcErr := fcHandle.Exit.Wait()
+		err := sbx.Stop(ctx)
+
+		exit.SetError(errors.Join(err, fcErr))
+	}()
+
+	return sbx, nil
+}
+
+// Usage: defer handleSpanError(span, &err)
+func handleSpanError(span trace.Span, err *error) {
+	defer span.End()
+	if err != nil && *err != nil {
+		span.RecordError(*err)
+		span.SetStatus(codes.Error, (*err).Error())
+	}
+}
+
+// ResumeSandbox resumes the sandbox from already saved template or snapshot.
+// IMPORTANT: You must Close() the sandbox after you are done with it.
+func (f *Factory) ResumeSandbox(
+	ctx context.Context,
+	t template.Template,
+	config Config,
+	runtime RuntimeMetadata,
+	startedAt time.Time,
+	endAt time.Time,
+	apiConfigToStore *orchestrator.SandboxConfig,
+) (s *Sandbox, e error) {
+	ctx, span := tracer.Start(ctx, "resume sandbox")
+	defer span.End()
+	defer handleSpanError(span, &e)
+
+	execCtx, execSpan := startExecutionSpan(ctx)
+
+	exit := utils.NewErrorOnce()
+
+	cleanup := NewCleanup()
+	defer func() {
+		if e != nil {
+			cleanupErr := cleanup.Run(ctx)
+			e = errors.Join(e, cleanupErr)
+			handleSpanError(execSpan, &e)
+			execSpan.End()
+		}
+	}()
+
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
+	defer func() {
+		// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
+		<-ipsCh
+	}()
+
+	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
+	cleanup.Add(cleanupFiles(f.config, sandboxFiles))
+
+	telemetry.ReportEvent(ctx, "created sandbox files")
+
+	readonlyRootfs, err := t.Rootfs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rootfs: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "got template rootfs")
+
+	rootfsOverlay, err := rootfs.NewNBDProvider(
+		readonlyRootfs,
+		sandboxFiles.SandboxCacheRootfsPath(f.config),
+		f.devicePool,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
+	}
+
+	cleanup.Add(rootfsOverlay.Close)
+
+	telemetry.ReportEvent(ctx, "created rootfs overlay")
+
+	go func() {
+		runErr := rootfsOverlay.Start(execCtx)
+		if runErr != nil {
+			zap.L().Error("rootfs overlay error", zap.Error(runErr))
+		}
+	}()
+
+	memfile, err := t.Memfile(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memfile: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "got template memfile")
+
+	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
+
+	fcUffd, err := serveMemory(
+		execCtx,
+		cleanup,
+		memfile,
+		fcUffdPath,
+		runtime.SandboxID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serve memory: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "started serving memory")
+
+	// ==== END of resources initialization ====
+	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
 
 	go func() {
-		uffdWaitErr := <-fcUffd.Exit
-		uffdExit <- uffdWaitErr
+		uffdWaitErr := fcUffd.Exit().Wait()
 
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
+	rootfsPath, err := rootfsOverlay.Path()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "got rootfs path")
+
+	ips := <-ipsCh
+	if ips.err != nil {
+		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
+	}
+
+	telemetry.ReportEvent(ctx, "got network slot")
+
+	meta, err := t.Metadata()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get metadata: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "got metadata")
+
+	fcHandle, fcErr := fc.NewProcess(
+		ctx,
+		execCtx,
+		f.config,
+		ips.slot,
+		sandboxFiles,
+		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
+		fc.FirecrackerVersions{
+			KernelVersion:      sandboxFiles.KernelVersion,
+			FirecrackerVersion: sandboxFiles.FirecrackerVersion,
+		},
+		rootfsPath,
+		fc.RootfsPaths{
+			TemplateVersion: meta.Version,
+			TemplateID:      config.BaseTemplateID,
+			BuildID:         readonlyRootfs.Header().Metadata.BaseBuildId.String(),
+		},
+	)
+	if fcErr != nil {
+		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
+	}
+
+	telemetry.ReportEvent(ctx, "created FC process")
+
 	// todo: check if kernel, firecracker, and envd versions exist
 	snapfile, err := t.Snapfile()
 	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get snapfile: %w", err)
+		return nil, fmt.Errorf("failed to get snapfile: %w", err)
 	}
 
-	fcHandle, fcErr := fc.NewProcess(
+	telemetry.ReportEvent(ctx, "got snapfile")
+
+	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
-		tracer,
-		ips,
-		sandboxFiles,
-		&fc.MmdsMetadata{
-			SandboxId:            config.SandboxId,
-			TemplateId:           config.TemplateId,
-			LogsCollectorAddress: logs.CollectorPublicIP,
-			TraceId:              traceID,
-			TeamId:               config.TeamId,
+		sbxlogger.SandboxMetadata{
+			SandboxID:  runtime.SandboxID,
+			TemplateID: runtime.TemplateID,
+			TeamID:     runtime.TeamID,
 		},
+		fcUffdPath,
 		snapfile,
-		rootfsOverlay,
-		fcUffd.Ready,
-		baseTemplateID,
+		fcUffd.Ready(),
+		ips.slot,
 	)
-	if fcErr != nil {
-		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
-	}
-
-	internalLogger := logger.GetInternalLogger()
-	fcStartErr := fcHandle.Start(uffdStartCtx, tracer, internalLogger)
 	if fcStartErr != nil {
-		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
+		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
 
-	telemetry.ReportEvent(childCtx, "initialized FC")
+	telemetry.ReportEvent(ctx, "initialized FC")
 
-	pid, err := fcHandle.Pid()
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get FC PID: %w", err)
+	resources := &Resources{
+		Slot:   ips.slot,
+		rootfs: rootfsOverlay,
+		memory: fcUffd,
 	}
 
-	sandboxStats := stats.NewHandle(int32(pid))
+	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
 
-	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
+		Config:  config,
+		Runtime: runtime,
+
+		StartedAt: startedAt,
+		EndAt:     endAt,
+	}
 
 	sbx := &Sandbox{
-		uffdExit:       uffdExit,
-		files:          sandboxFiles,
-		Slot:           ips,
-		template:       t,
-		process:        fcHandle,
-		uffd:           fcUffd,
-		Config:         config,
-		StartedAt:      startedAt,
-		EndAt:          endAt,
-		rootfs:         rootfsOverlay,
-		stats:          sandboxStats,
-		Logger:         logger,
-		cleanup:        cleanup,
-		healthcheckCtx: healthcheckCtx,
+		Resources: resources,
+		Metadata:  metadata,
+
+		Template: t,
+		config:   f.config,
+		files:    sandboxFiles,
+		process:  fcHandle,
+
+		cleanup: cleanup,
+
+		APIStoredConfig: apiConfigToStore,
+
+		exit: exit,
 	}
 
-	cleanup.AddPriority(func() error {
-		var errs []error
+	useClickhouseMetrics, flagErr := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
+	if flagErr != nil {
+		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+	}
 
-		fcStopErr := fcHandle.Stop()
-		if fcStopErr != nil {
-			errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
-		}
+	// Part of the sandbox as we need to stop Checks before pausing the sandbox
+	// This is to prevent race condition of reporting unhealthy sandbox
+	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
 
-		uffdStopErr := fcUffd.Stop()
-		if uffdStopErr != nil {
-			errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
-		}
-
-		healthcheckCtx.Lock()
-		healthcheckCtx.Cancel()
-		healthcheckCtx.Unlock()
-
-		return errors.Join(errs...)
+	cleanup.AddPriority(func(ctx context.Context) error {
+		// Stop the sandbox first if it is still running, otherwise do nothing
+		return sbx.Stop(ctx)
 	})
 
-	// Ensure the syncing takes at most 10 seconds.
-	syncCtx, syncCancel := context.WithTimeout(childCtx, 10*time.Second)
-	defer syncCancel()
+	telemetry.ReportEvent(execCtx, "waiting for envd")
 
-	// Sync envds.
-	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		initErr := sbx.initEnvd(syncCtx, tracer, config.EnvVars)
-		if initErr != nil {
-			return nil, cleanup, fmt.Errorf("failed to init new envd: %w", initErr)
-		} else {
-			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxId))
-		}
-	} else {
-		syncErr := sbx.syncOldEnvd(syncCtx)
-		if syncErr != nil {
-			telemetry.ReportError(childCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
-		} else {
-			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxId))
-		}
-	}
-
-	sbx.StartedAt = time.Now()
-
-	dns.Add(config.SandboxId, ips.HostIP())
-
-	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
-
-	cleanup.Add(func() error {
-		dns.Remove(config.SandboxId, ips.HostIP())
-
-		return nil
-	})
-
-	go sbx.logHeathAndUsage(healthcheckCtx)
-
-	return sbx, cleanup, nil
-}
-
-func (s *Sandbox) Wait() error {
-	select {
-	case fcErr := <-s.process.Exit:
-		stopErr := s.Stop()
-		uffdErr := <-s.uffdExit
-
-		return errors.Join(fcErr, stopErr, uffdErr)
-	case uffdErr := <-s.uffdExit:
-		stopErr := s.Stop()
-		fcErr := <-s.process.Exit
-
-		return errors.Join(uffdErr, stopErr, fcErr)
-	}
-}
-
-func (s *Sandbox) Stop() error {
-	err := s.cleanup.Run()
+	err = sbx.WaitForEnvd(
+		ctx,
+		f.config.EnvdTimeout,
+	)
 	if err != nil {
-		return fmt.Errorf("failed to stop sandbox: %w", err)
+		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+	}
+
+	telemetry.ReportEvent(execCtx, "envd initialized")
+
+	go sbx.Checks.Start(execCtx)
+
+	go func() {
+		defer execSpan.End()
+
+		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
+		defer span.End()
+
+		// Wait for either uffd or fc process to exit
+		select {
+		case <-fcUffd.Exit().Done():
+		case <-fcHandle.Exit.Done():
+		}
+
+		err := sbx.Stop(ctx)
+
+		uffdWaitErr := fcUffd.Exit().Wait()
+		fcErr := fcHandle.Exit.Wait()
+		exit.SetError(errors.Join(err, fcErr, uffdWaitErr))
+	}()
+
+	return sbx, nil
+}
+
+func startExecutionSpan(ctx context.Context) (context.Context, trace.Span) {
+	parentSpan := trace.SpanFromContext(ctx)
+
+	ctx = context.WithoutCancel(ctx)
+	ctx, span := tracer.Start(ctx, "execute sandbox", //nolint:spancheck // this is still just a helper method
+		trace.WithNewRoot(),
+	)
+
+	parentSpan.AddLink(trace.LinkFromContext(ctx))
+
+	return ctx, span //nolint:spancheck // this is still just a helper method
+}
+
+func (s *Sandbox) Wait(ctx context.Context) error {
+	return s.exit.WaitWithContext(ctx)
+}
+
+func (s *Sandbox) Close(ctx context.Context) error {
+	err := s.cleanup.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to cleanup sandbox: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Sandbox) Snapshot(
-	ctx context.Context,
-	tracer trace.Tracer,
-	snapshotTemplateFiles *storage.TemplateCacheFiles,
-	releaseLock func(),
-) (*Snapshot, error) {
-	ctx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
-	defer childSpan.End()
+// Stop kills the sandbox.
+func (s *Sandbox) Stop(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "sandbox-close")
+	defer span.End()
 
-	buildId, err := uuid.Parse(snapshotTemplateFiles.BuildId)
+	var errs []error
+
+	// Stop the health checks before stopping the sandbox
+	s.Checks.Stop()
+
+	fcStopErr := s.process.Stop(ctx)
+	if fcStopErr != nil {
+		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
+	}
+
+	// The process exited, we can continue with the rest of the cleanup.
+	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
+	<-s.process.Exit.Done()
+
+	uffdStopErr := s.Resources.memory.Stop()
+	if uffdStopErr != nil {
+		errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
+	return s.process.Versions
+}
+
+func (s *Sandbox) Pause(
+	ctx context.Context,
+	m metadata.Template,
+) (*Snapshot, error) {
+	ctx, span := tracer.Start(ctx, "sandbox-snapshot")
+	defer span.End()
+
+	snapshotTemplateFiles, err := m.Template.CacheFiles(s.config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template files: %w", err)
+	}
+
+	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse build id: %w", err)
 	}
 
-	// MEMFILE & SNAPFILE
-	originalMemfile, err := s.template.Memfile()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get original memfile: %w", err)
+	// Stop the health check before pausing the VM
+	s.Checks.Stop()
+
+	if err := s.process.Pause(ctx); err != nil {
+		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	memfileMetadata := &header.Metadata{
-		Version:     1,
-		Generation:  originalMemfile.Header().Metadata.Generation + 1,
-		BlockSize:   originalMemfile.Header().Metadata.BlockSize,
-		Size:        originalMemfile.Header().Metadata.Size,
-		BuildId:     buildId,
-		BaseBuildId: originalMemfile.Header().Metadata.BaseBuildId,
-	}
-
-	s.healthcheckCtx.Lock()
-	s.healthcheckCtx.Cancel()
-	s.healthcheckCtx.Unlock()
-
-	err = s.process.Pause(ctx, tracer)
-	if err != nil {
-		return nil, fmt.Errorf("error pausing vm: %w", err)
-	}
-
-	err = s.uffd.Disable()
-	if err != nil {
+	if err := s.memory.Disable(); err != nil {
 		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
-	defer os.RemoveAll(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
+	// Snapfile is not closed as it's returned and cached for later use (like resume)
+	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath(s.config))
+	// Memfile is also closed on diff creation processing
+	/* The process of snapshotting memory is as follows:
+	1. Pause FC via API
+	2. Snapshot FC via API—memory dump to “file on disk” that is actually tmpfs, because it is too slow
+	3. Create the diff - copy the diff pages from tmpfs to normal disk file
+	4. Delete tmpfs file
+	5. Unlock so another snapshot can use tmpfs space
+	*/
+	memfile, err := storage.AcquireTmpMemfile(ctx, s.config, buildID.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
+	}
+	// Close the file even if an error occurs
+	defer memfile.Close()
 
 	err = s.process.CreateSnapshot(
 		ctx,
-		tracer,
-		snapshotTemplateFiles.CacheSnapfilePath(),
-		snapshotTemplateFiles.CacheMemfileFullSnapshotPath(),
+		snapfile.Path(),
+		memfile.Path(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
 
-	memfileDirtyPages := s.uffd.Dirty()
-
-	sourceFile, err := os.Open(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
+	// Gather data for postprocessing
+	originalMemfile, err := s.Template.Memfile(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open memfile: %w", err)
+		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
-
-	memfileDiffFile, err := build.NewLocalDiffFile(
-		buildId.String(),
-		build.Memfile,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create memfile diff file: %w", err)
-	}
-
-	err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "created memfile diff")
-
-	os.RemoveAll(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
-
-	releaseLock()
-
-	memfileMapping := header.CreateMapping(
-		memfileMetadata,
-		&buildId,
-		memfileDirtyPages,
-	)
-
-	telemetry.ReportEvent(ctx, "created memfile mapping")
-
-	memfileMappings := header.MergeMappings(
-		originalMemfile.Header().Mapping,
-		memfileMapping,
-	)
-
-	telemetry.ReportEvent(ctx, "merged memfile mappings")
-
-	snapfile, err := template.NewLocalFile(snapshotTemplateFiles.CacheSnapfilePath())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create local snapfile: %w", err)
-	}
-
-	// ROOTFS
-	originalRootfs, err := s.template.Rootfs()
+	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	rootfsMetadata := &header.Metadata{
-		Version:     1,
-		Generation:  originalRootfs.Header().Metadata.Generation + 1,
-		BlockSize:   originalRootfs.Header().Metadata.BlockSize,
-		Size:        originalRootfs.Header().Metadata.Size,
-		BuildId:     buildId,
-		BaseBuildId: originalRootfs.Header().Metadata.BaseBuildId,
-	}
-
-	nbdPath, err := s.rootfs.Path()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
-	}
-
-	// Flush the data to the operating system's buffer
-	file, err := os.Open(nbdPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open rootfs path: %w", err)
-	}
-
-	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
-		return nil, fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
-	}
-
-	err = syscall.Fsync(int(file.Fd()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to fsync rootfs path: %w", err)
-	}
-
-	err = file.Sync()
-	if err != nil {
-		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "synced rootfs")
-
-	rootfsDiffFile, err := build.NewLocalDiffFile(buildId.String(), build.Rootfs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create rootfs diff: %w", err)
-	}
-
-	rootfsDirtyBlocks, err := s.rootfs.Export(ctx, rootfsDiffFile, s.Stop)
-	if err != nil {
-		return nil, fmt.Errorf("failed to export rootfs: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "exported rootfs")
-
-	rootfsMapping := header.CreateMapping(
-		rootfsMetadata,
-		&buildId,
-		rootfsDirtyBlocks,
+	// Start POSTPROCESSING
+	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
+		ctx,
+		buildID,
+		originalMemfile.Header(),
+		&MemoryDiffCreator{
+			memfile:    memfile,
+			dirtyPages: s.memory.Dirty(),
+			blockSize:  originalMemfile.BlockSize(),
+			doneHook: func(context.Context) error {
+				return memfile.Close()
+			},
+		},
+		s.config.DefaultCacheDir,
 	)
-
-	telemetry.ReportEvent(ctx, "created rootfs mapping")
-
-	rootfsMappings := header.MergeMappings(
-		originalRootfs.Header().Mapping,
-		rootfsMapping,
-	)
-
-	telemetry.ReportEvent(ctx, "merged rootfs mappings")
-
-	rootfsDiff, err := rootfsDiffFile.ToDiff(int64(originalRootfs.Header().Metadata.BlockSize))
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
+		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
-	telemetry.ReportEvent(ctx, "converted rootfs diff file to local diff")
-
-	memfileDiff, err := memfileDiffFile.ToDiff(int64(originalMemfile.Header().Metadata.BlockSize))
+	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
+		ctx,
+		buildID,
+		originalRootfs.Header(),
+		&RootfsDiffCreator{
+			rootfs:    s.rootfs,
+			closeHook: s.Close,
+		},
+		s.config.DefaultCacheDir,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
+		return nil, fmt.Errorf("error while post processing: %w", err)
+	}
+
+	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath(s.config))
+	err = m.ToFile(metadataFileLink.Path())
+	if err != nil {
+		return nil, err
+	}
+
+	return &Snapshot{
+		Snapfile:          snapfile,
+		Metafile:          metadataFileLink,
+		MemfileDiff:       memfileDiff,
+		MemfileDiffHeader: memfileDiffHeader,
+		RootfsDiff:        rootfsDiff,
+		RootfsDiffHeader:  rootfsDiffHeader,
+	}, nil
+}
+
+func pauseProcessMemory(
+	ctx context.Context,
+	buildId uuid.UUID,
+	originalHeader *header.Header,
+	diffCreator DiffCreator,
+	cacheDir string,
+) (build.Diff, *header.Header, error) {
+	ctx, span := tracer.Start(ctx, "process-memory")
+	defer span.End()
+
+	memfileDiffFile, err := build.NewLocalDiffFile(
+		cacheDir,
+		buildId.String(),
+		build.Memfile,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create memfile diff file: %w", err)
+	}
+
+	m, err := diffCreator.process(ctx, memfileDiffFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating diff: %w", err)
+	}
+	telemetry.ReportEvent(ctx, "created diff")
+
+	memfileMapping, err := m.CreateMapping(ctx, buildId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create memfile mapping: %w", err)
+	}
+
+	memfileMappings := header.MergeMappings(
+		originalHeader.Mapping,
+		memfileMapping,
+	)
+	// TODO: We can run normalization only when empty mappings are not empty for this snapshot
+	memfileMappings = header.NormalizeMappings(memfileMappings)
+	telemetry.ReportEvent(ctx, "merged memfile mappings")
+
+	memfileDiff, err := memfileDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "converted memfile diff file to local diff")
 
+	memfileMetadata := originalHeader.Metadata.NextGeneration(buildId)
+
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("snapshot.memfile.header.mappings.length", int64(len(memfileMappings))),
-		attribute.Int64("snapshot.rootfs.header.mappings.length", int64(len(rootfsMappings))),
-		attribute.Int64("snapshot.memfile.diff.size", int64(memfileDirtyPages.Count()*uint(originalMemfile.Header().Metadata.BlockSize))),
+		attribute.Int64("snapshot.memfile.diff.size", int64(m.Dirty.Count()*uint(originalHeader.Metadata.BlockSize))),
 		attribute.Int64("snapshot.memfile.mapped_size", int64(memfileMetadata.Size)),
 		attribute.Int64("snapshot.memfile.block_size", int64(memfileMetadata.BlockSize)),
-		attribute.Int64("snapshot.rootfs.diff.size", int64(rootfsDirtyBlocks.Count()*uint(originalRootfs.Header().Metadata.BlockSize))),
-		attribute.Int64("snapshot.rootfs.mapped_size", int64(rootfsMetadata.Size)),
-		attribute.Int64("snapshot.rootfs.block_size", int64(rootfsMetadata.BlockSize)),
 		attribute.Int64("snapshot.metadata.version", int64(memfileMetadata.Version)),
 		attribute.Int64("snapshot.metadata.generation", int64(memfileMetadata.Generation)),
 		attribute.String("snapshot.metadata.build_id", memfileMetadata.BuildId.String()),
 		attribute.String("snapshot.metadata.base_build_id", memfileMetadata.BaseBuildId.String()),
 	)
 
-	return &Snapshot{
-		Snapfile:          snapfile,
-		MemfileDiff:       memfileDiff,
-		MemfileDiffHeader: header.NewHeader(memfileMetadata, memfileMappings),
-		RootfsDiff:        rootfsDiff,
-		RootfsDiffHeader:  header.NewHeader(rootfsMetadata, rootfsMappings),
-	}, nil
+	memfileHeader, err := header.NewHeader(memfileMetadata, memfileMappings)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
+	}
+
+	err = header.ValidateMappings(memfileHeader.Mapping, memfileHeader.Metadata.Size, memfileHeader.Metadata.BlockSize)
+	if err != nil {
+		if memfileHeader.IsNormalizeFixApplied() {
+			return nil, nil, fmt.Errorf("invalid memfile header mappings: %w", err)
+		}
+
+		zap.L().Warn("memfile header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(memfileHeader.Metadata.BuildId.String()))
+	}
+
+	return memfileDiff, memfileHeader, nil
 }
 
-type Snapshot struct {
-	MemfileDiff       build.Diff
-	MemfileDiffHeader *header.Header
-	RootfsDiff        build.Diff
-	RootfsDiffHeader  *header.Header
-	Snapfile          *template.LocalFile
+func pauseProcessRootfs(
+	ctx context.Context,
+	buildId uuid.UUID,
+	originalHeader *header.Header,
+	diffCreator DiffCreator,
+	cacheDir string,
+) (build.Diff, *header.Header, error) {
+	ctx, span := tracer.Start(ctx, "process-rootfs")
+	defer span.End()
+
+	rootfsDiffFile, err := build.NewLocalDiffFile(cacheDir, buildId.String(), build.Rootfs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
+	}
+
+	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating diff: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "exported rootfs")
+	rootfsMapping, err := rootfsDiffMetadata.CreateMapping(ctx, buildId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
+	}
+
+	rootfsMappings := header.MergeMappings(
+		originalHeader.Mapping,
+		rootfsMapping,
+	)
+	// TODO: We can run normalization only when empty mappings are not empty for this snapshot
+	rootfsMappings = header.NormalizeMappings(rootfsMappings)
+	telemetry.ReportEvent(ctx, "merged rootfs mappings")
+
+	rootfsDiff, err := rootfsDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
+	}
+	telemetry.ReportEvent(ctx, "converted rootfs diff file to local diff")
+
+	rootfsMetadata := originalHeader.Metadata.NextGeneration(buildId)
+
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("snapshot.rootfs.header.mappings.length", int64(len(rootfsMappings))),
+		attribute.Int64("snapshot.rootfs.diff.size", int64(rootfsDiffMetadata.Dirty.Count()*uint(originalHeader.Metadata.BlockSize))),
+		attribute.Int64("snapshot.rootfs.mapped_size", int64(rootfsMetadata.Size)),
+		attribute.Int64("snapshot.rootfs.block_size", int64(rootfsMetadata.BlockSize)),
+	)
+
+	rootfsHeader, err := header.NewHeader(rootfsMetadata, rootfsMappings)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
+	}
+
+	err = header.ValidateMappings(rootfsHeader.Mapping, rootfsHeader.Metadata.Size, rootfsHeader.Metadata.BlockSize)
+	if err != nil {
+		if rootfsHeader.IsNormalizeFixApplied() {
+			return nil, nil, fmt.Errorf("invalid rootfs header mappings: %w", err)
+		}
+
+		zap.L().Warn("rootfs header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(rootfsHeader.Metadata.BuildId.String()))
+	}
+
+	return rootfsDiff, rootfsHeader, nil
+}
+
+func getNetworkSlotAsync(
+	ctx context.Context,
+	networkPool *network.Pool,
+	cleanup *Cleanup,
+	network *orchestrator.SandboxNetworkConfig,
+) chan networkSlotRes {
+	ctx, span := tracer.Start(ctx, "get-network-slot")
+	defer span.End()
+
+	r := make(chan networkSlotRes, 1)
+
+	go func() {
+		defer close(r)
+
+		ips, err := networkPool.Get(ctx, network)
+		if err != nil {
+			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
+
+			return
+		}
+
+		cleanup.Add(func(ctx context.Context) error {
+			_, span := tracer.Start(ctx, "network-slot-clean")
+			defer span.End()
+
+			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
+			go func(ctx context.Context) {
+				returnErr := networkPool.Return(ctx, ips)
+				if returnErr != nil {
+					zap.L().Error("failed to return network slot", zap.Error(returnErr))
+				}
+			}(context.WithoutCancel(ctx))
+
+			return nil
+		})
+
+		r <- networkSlotRes{ips, nil}
+	}()
+
+	return r
+}
+
+func serveMemory(
+	ctx context.Context,
+	cleanup *Cleanup,
+	memfile block.ReadonlyDevice,
+	socketPath, sandboxID string,
+) (uffd.MemoryBackend, error) {
+	ctx, span := tracer.Start(ctx, "serve-memory")
+	defer span.End()
+
+	fcUffd, err := uffd.New(memfile, socketPath, memfile.BlockSize())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create uffd: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "created uffd")
+
+	if err = fcUffd.Start(ctx, sandboxID); err != nil {
+		return nil, fmt.Errorf("failed to start uffd: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "started uffd")
+
+	cleanup.Add(func(ctx context.Context) error {
+		_, span := tracer.Start(ctx, "uffd-stop")
+		defer span.End()
+
+		if err := fcUffd.Stop(); err != nil {
+			return fmt.Errorf("failed to stop uffd: %w", err)
+		}
+
+		return nil
+	})
+
+	return fcUffd, nil
+}
+
+func (s *Sandbox) WaitForExit(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "sandbox-wait-for-exit")
+	defer span.End()
+
+	timeout := time.Until(s.EndAt)
+
+	select {
+	case <-time.After(timeout):
+		return fmt.Errorf("waiting for exit took too long")
+	case <-ctx.Done():
+		return nil
+	case <-s.exit.Done():
+		err := s.exit.Error()
+		if err == nil {
+			return nil
+		}
+
+		return fmt.Errorf("fc process exited prematurely: %w", err)
+	}
+}
+
+func (s *Sandbox) WaitForEnvd(
+	ctx context.Context,
+	timeout time.Duration,
+) (e error) {
+	start := time.Now()
+	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
+	defer span.End()
+
+	defer func() {
+		if e != nil {
+			return
+		}
+		duration := time.Since(start).Milliseconds()
+		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
+			telemetry.WithEnvdVersion(s.Config.Envd.Version),
+			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+		))
+		// Update the sandbox as started now
+		s.Metadata.StartedAt = time.Now()
+	}()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+
+	go func() {
+		select {
+		// Ensure the syncing takes at most timeout seconds.
+		case <-time.After(timeout):
+			cancel(fmt.Errorf("syncing took too long"))
+		case <-ctx.Done():
+			return
+		case <-s.process.Exit.Done():
+			err := s.process.Exit.Error()
+
+			cancel(fmt.Errorf("fc process exited prematurely: %w", err))
+		}
+	}()
+
+	if err := s.initEnvd(ctx); err != nil {
+		return fmt.Errorf("failed to init new envd: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
+
+	return nil
+}
+
+func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
+	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
+	if err != nil {
+		zap.L().Warn("failed to get envd timeout from feature flag, using default", zap.Error(err))
+	}
+
+	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
 }

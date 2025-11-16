@@ -19,10 +19,19 @@ type BuildMap struct {
 	BuildStorageOffset uint64
 }
 
+func (mapping *BuildMap) Copy() *BuildMap {
+	return &BuildMap{
+		Offset:             mapping.Offset,
+		Length:             mapping.Length,
+		BuildId:            mapping.BuildId,
+		BuildStorageOffset: mapping.BuildStorageOffset,
+	}
+}
+
 func CreateMapping(
-	metadata *Metadata,
 	buildId *uuid.UUID,
 	dirty *bitset.BitSet,
+	blockSize int64,
 ) []*BuildMap {
 	var mappings []*BuildMap
 
@@ -39,9 +48,9 @@ func CreateMapping(
 
 		if blockLength > 0 {
 			m := &BuildMap{
-				Offset:             uint64(int64(startBlock) * int64(metadata.BlockSize)),
+				Offset:             uint64(startBlock) * uint64(blockSize),
 				BuildId:            *buildId,
-				Length:             uint64(blockLength) * uint64(metadata.BlockSize),
+				Length:             uint64(blockLength) * uint64(blockSize),
 				BuildStorageOffset: buildStorageOffset,
 			}
 
@@ -56,9 +65,9 @@ func CreateMapping(
 
 	if blockLength > 0 {
 		mappings = append(mappings, &BuildMap{
-			Offset:             uint64(startBlock) * metadata.BlockSize,
+			Offset:             uint64(startBlock) * uint64(blockSize),
 			BuildId:            *buildId,
-			Length:             uint64(blockLength) * uint64(metadata.BlockSize),
+			Length:             uint64(blockLength) * uint64(blockSize),
 			BuildStorageOffset: buildStorageOffset,
 		})
 	}
@@ -233,4 +242,33 @@ func MergeMappings(
 	mappings = append(mappings, diffMapping[diffIdx:]...)
 
 	return mappings
+}
+
+// NormalizeMappings joins adjacent mappings that have the same buildId.
+func NormalizeMappings(mappings []*BuildMap) []*BuildMap {
+	if len(mappings) == 0 {
+		return nil
+	}
+
+	result := make([]*BuildMap, 0, len(mappings))
+
+	// Start with a copy of the first mapping
+	current := mappings[0].Copy()
+
+	for i := 1; i < len(mappings); i++ {
+		mp := mappings[i]
+		if mp.BuildId != current.BuildId {
+			// BuildId changed, add the current map to results and start a new one
+			result = append(result, current)
+			current = mp.Copy() // New copy
+		} else {
+			// Same BuildId, just add the length
+			current.Length += mp.Length
+		}
+	}
+
+	// Add the last mapping
+	result = append(result, current)
+
+	return result
 }

@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/google/uuid"
@@ -30,6 +31,20 @@ type Snapshot struct {
 	SandboxID string `json:"sandbox_id,omitempty"`
 	// Metadata holds the value of the "metadata" field.
 	Metadata map[string]string `json:"metadata,omitempty"`
+	// SandboxStartedAt holds the value of the "sandbox_started_at" field.
+	SandboxStartedAt time.Time `json:"sandbox_started_at,omitempty"`
+	// EnvSecure holds the value of the "env_secure" field.
+	EnvSecure bool `json:"env_secure,omitempty"`
+	// AutoPause holds the value of the "auto_pause" field.
+	AutoPause bool `json:"auto_pause,omitempty"`
+	// OriginNodeID holds the value of the "origin_node_id" field.
+	OriginNodeID string `json:"origin_node_id,omitempty"`
+	// TeamID holds the value of the "team_id" field.
+	TeamID uuid.UUID `json:"team_id,omitempty"`
+	// AllowInternetAccess holds the value of the "allow_internet_access" field.
+	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
+	// Config holds the value of the "config" field.
+	Config types.PausedSandboxConfig `json:"config,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the SnapshotQuery when eager-loading is set.
 	Edges        SnapshotEdges `json:"edges"`
@@ -63,13 +78,15 @@ func (*Snapshot) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case snapshot.FieldMetadata:
+		case snapshot.FieldMetadata, snapshot.FieldConfig:
 			values[i] = new([]byte)
-		case snapshot.FieldBaseEnvID, snapshot.FieldEnvID, snapshot.FieldSandboxID:
+		case snapshot.FieldEnvSecure, snapshot.FieldAutoPause, snapshot.FieldAllowInternetAccess:
+			values[i] = new(sql.NullBool)
+		case snapshot.FieldBaseEnvID, snapshot.FieldEnvID, snapshot.FieldSandboxID, snapshot.FieldOriginNodeID:
 			values[i] = new(sql.NullString)
-		case snapshot.FieldCreatedAt:
+		case snapshot.FieldCreatedAt, snapshot.FieldSandboxStartedAt:
 			values[i] = new(sql.NullTime)
-		case snapshot.FieldID:
+		case snapshot.FieldID, snapshot.FieldTeamID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -122,6 +139,51 @@ func (s *Snapshot) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &s.Metadata); err != nil {
 					return fmt.Errorf("unmarshal field metadata: %w", err)
+				}
+			}
+		case snapshot.FieldSandboxStartedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field sandbox_started_at", values[i])
+			} else if value.Valid {
+				s.SandboxStartedAt = value.Time
+			}
+		case snapshot.FieldEnvSecure:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field env_secure", values[i])
+			} else if value.Valid {
+				s.EnvSecure = value.Bool
+			}
+		case snapshot.FieldAutoPause:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field auto_pause", values[i])
+			} else if value.Valid {
+				s.AutoPause = value.Bool
+			}
+		case snapshot.FieldOriginNodeID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field origin_node_id", values[i])
+			} else if value.Valid {
+				s.OriginNodeID = value.String
+			}
+		case snapshot.FieldTeamID:
+			if value, ok := values[i].(*uuid.UUID); !ok {
+				return fmt.Errorf("unexpected type %T for field team_id", values[i])
+			} else if value != nil {
+				s.TeamID = *value
+			}
+		case snapshot.FieldAllowInternetAccess:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_internet_access", values[i])
+			} else if value.Valid {
+				s.AllowInternetAccess = new(bool)
+				*s.AllowInternetAccess = value.Bool
+			}
+		case snapshot.FieldConfig:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field config", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &s.Config); err != nil {
+					return fmt.Errorf("unmarshal field config: %w", err)
 				}
 			}
 		default:
@@ -179,6 +241,29 @@ func (s *Snapshot) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("metadata=")
 	builder.WriteString(fmt.Sprintf("%v", s.Metadata))
+	builder.WriteString(", ")
+	builder.WriteString("sandbox_started_at=")
+	builder.WriteString(s.SandboxStartedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("env_secure=")
+	builder.WriteString(fmt.Sprintf("%v", s.EnvSecure))
+	builder.WriteString(", ")
+	builder.WriteString("auto_pause=")
+	builder.WriteString(fmt.Sprintf("%v", s.AutoPause))
+	builder.WriteString(", ")
+	builder.WriteString("origin_node_id=")
+	builder.WriteString(s.OriginNodeID)
+	builder.WriteString(", ")
+	builder.WriteString("team_id=")
+	builder.WriteString(fmt.Sprintf("%v", s.TeamID))
+	builder.WriteString(", ")
+	if v := s.AllowInternetAccess; v != nil {
+		builder.WriteString("allow_internet_access=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("config=")
+	builder.WriteString(fmt.Sprintf("%v", s.Config))
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -7,10 +7,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 func main() {
@@ -21,52 +21,60 @@ func main() {
 
 	flag.Parse()
 
-	baseTemplate := storage.NewTemplateFiles(
-		"",
-		*baseBuildId,
-		"",
-		"",
-		false,
-	)
+	baseTemplate := storage.TemplateFiles{
+		BuildID: *baseBuildId,
+	}
 
-	diffTemplate := storage.NewTemplateFiles(
-		"",
-		*diffBuildId,
-		"",
-		"",
-		false,
-	)
+	diffTemplate := storage.TemplateFiles{
+		BuildID: *diffBuildId,
+	}
 
 	var baseStoragePath string
 	var diffStoragePath string
+	var objectType storage.ObjectType
 
-	if *kind == "memfile" {
+	switch *kind {
+	case "memfile":
 		baseStoragePath = baseTemplate.StorageMemfileHeaderPath()
 		diffStoragePath = diffTemplate.StorageMemfileHeaderPath()
-	} else if *kind == "rootfs" {
+		objectType = storage.MemfileHeaderObjectType
+	case "rootfs":
 		baseStoragePath = baseTemplate.StorageRootfsHeaderPath()
 		diffStoragePath = diffTemplate.StorageRootfsHeaderPath()
-	} else {
+		objectType = storage.RootFSHeaderObjectType
+	default:
 		log.Fatalf("invalid kind: %s", *kind)
 	}
 
 	ctx := context.Background()
 
-	baseObj := gcs.NewObject(ctx, gcs.TemplateBucket, baseStoragePath)
-	diffObj := gcs.NewObject(ctx, gcs.TemplateBucket, diffStoragePath)
+	storageProvider, err := storage.GetTemplateStorageProvider(ctx, nil)
+	if err != nil {
+		log.Fatalf("failed to get storage provider: %s", err)
+	}
 
-	baseHeader, err := header.Deserialize(baseObj)
+	baseObj, err := storageProvider.OpenObject(ctx, baseStoragePath, objectType)
+	if err != nil {
+		log.Fatalf("failed to open object: %s", err)
+	}
+
+	diffObj, err := storageProvider.OpenObject(ctx, diffStoragePath, objectType)
+	if err != nil {
+		log.Fatalf("failed to open object: %s", err)
+	}
+
+	baseHeader, err := header.Deserialize(ctx, baseObj)
 	if err != nil {
 		log.Fatalf("failed to deserialize base header: %s", err)
 	}
 
-	diffHeader, err := header.Deserialize(diffObj)
+	diffHeader, err := header.Deserialize(ctx, diffObj)
 	if err != nil {
 		log.Fatalf("failed to deserialize diff header: %s", err)
 	}
 
 	fmt.Printf("\nBASE METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", gcs.TemplateBucket.BucketName(), baseStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", storageProvider.GetDetails(), baseStoragePath)
 	fmt.Printf("========\n")
 
 	for _, mapping := range baseHeader.Mapping {
@@ -97,7 +105,7 @@ func main() {
 	}
 
 	fmt.Printf("\nDIFF METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", gcs.TemplateBucket.BucketName(), diffStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", storageProvider.GetDetails(), diffStoragePath)
 	fmt.Printf("========\n")
 
 	onlyDiffMappings := make([]*header.BuildMap, 0)

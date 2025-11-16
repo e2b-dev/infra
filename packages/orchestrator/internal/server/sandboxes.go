@@ -4,120 +4,263 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
-	"os"
-	"sync"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"golang.org/x/sync/semaphore"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/events"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const maxParalellSnapshotting = 8
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/server")
 
-func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
-	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-create")
+const (
+	requestTimeout              = 60 * time.Second
+	maxStartingInstancesPerNode = 3
+)
+
+func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+	// set max request timeout for this request
+	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
+	defer cancel()
+
+	// set up tracing
+	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
-		attribute.String("template.id", req.Sandbox.TemplateId),
-		attribute.String("kernel.version", req.Sandbox.KernelVersion),
-		attribute.String("sandbox.id", req.Sandbox.SandboxId),
-		attribute.String("client.id", consul.ClientID),
-		attribute.String("envd.version", req.Sandbox.EnvdVersion),
+		telemetry.WithTemplateID(req.GetSandbox().GetTemplateId()),
+		attribute.String("kernel.version", req.GetSandbox().GetKernelVersion()),
+		telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()),
+		attribute.String("client.id", s.info.ClientId),
+		attribute.String("envd.version", req.GetSandbox().GetEnvdVersion()),
 	)
 
-	logger := logs.NewSandboxLogger(
-		req.Sandbox.SandboxId,
-		req.Sandbox.TemplateId,
-		req.Sandbox.TeamId,
-		req.Sandbox.Vcpu,
-		req.Sandbox.RamMb,
-		false,
+	// setup launch darkly
+	ctx = featureflags.SetContext(
+		ctx,
+		ldcontext.NewBuilder(req.GetSandbox().GetSandboxId()).
+			Kind(featureflags.SandboxKind).
+			SetString(featureflags.SandboxTemplateAttribute, req.GetSandbox().GetTemplateId()).
+			SetString(featureflags.SandboxKernelVersionAttribute, req.GetSandbox().GetKernelVersion()).
+			SetString(featureflags.SandboxFirecrackerVersionAttribute, req.GetSandbox().GetFirecrackerVersion()).
+			Build(),
+		ldcontext.NewBuilder(req.GetSandbox().GetTeamId()).
+			Kind(featureflags.TeamKind).
+			Build(),
 	)
 
-	sbx, cleanup, err := sandbox.NewSandbox(
-		childCtx,
-		s.tracer,
-		s.dns,
-		s.networkPool,
-		s.templateCache,
-		req.Sandbox,
-		childSpan.SpanContext().TraceID().String(),
-		req.StartTime.AsTime(),
-		req.EndTime.AsTime(),
-		logger,
-		req.Sandbox.Snapshot,
-		req.Sandbox.BaseTemplateId,
-	)
+	maxRunningSandboxesPerNode, err := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
 	if err != nil {
-		log.Printf("failed to create sandbox -> clean up: %v", err)
-		cleanupErr := cleanup.Run()
-
-		errMsg := fmt.Errorf("failed to create sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+		zap.L().Error("Failed to get MaxSandboxesPerNode flag", zap.Error(err))
 	}
 
-	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
+	runningSandboxes := s.sandboxes.Count()
+	if runningSandboxes >= maxRunningSandboxesPerNode {
+		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
 
+		return nil, status.Errorf(codes.ResourceExhausted, "max number of running sandboxes on node reached (%d), please retry", maxRunningSandboxesPerNode)
+	}
+
+	// Check if we've reached the max number of starting instances on this node
+	acquired := s.startingSandboxes.TryAcquire(1)
+	if !acquired {
+		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
+
+		return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
+	}
+	defer s.startingSandboxes.Release(1)
+
+	template, err := s.templateCache.GetTemplate(
+		ctx,
+		req.GetSandbox().GetBuildId(),
+		req.GetSandbox().GetKernelVersion(),
+		req.GetSandbox().GetFirecrackerVersion(),
+		req.GetSandbox().GetSnapshot(),
+		false,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
+	}
+
+	// Clone the network config to avoid modifying the original request
+	network := proto.CloneOf(req.GetSandbox().GetNetwork())
+
+	// TODO: Temporarily set this based on global config, should be removed later
+	// https://linear.app/e2b/issue/ENG-3291
+	//  (it should be passed network config from API)
+	allowInternet := s.config.AllowSandboxInternet
+	if req.GetSandbox().AllowInternetAccess != nil {
+		allowInternet = req.GetSandbox().GetAllowInternetAccess()
+	}
+	if !allowInternet {
+		if network == nil {
+			network = &orchestrator.SandboxNetworkConfig{}
+		}
+		if network.GetEgress() == nil {
+			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
+		}
+		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
+	}
+
+	sbx, err := s.sandboxFactory.ResumeSandbox(
+		ctx,
+		template,
+		sandbox.Config{
+			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
+
+			Vcpu:            req.GetSandbox().GetVcpu(),
+			RamMB:           req.GetSandbox().GetRamMb(),
+			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
+			HugePages:       req.GetSandbox().GetHugePages(),
+
+			Network: network,
+
+			Envd: sandbox.EnvdMetadata{
+				Version:     req.GetSandbox().GetEnvdVersion(),
+				AccessToken: req.GetSandbox().EnvdAccessToken,
+				Vars:        req.GetSandbox().GetEnvVars(),
+			},
+		},
+		sandbox.RuntimeMetadata{
+			TemplateID:  req.GetSandbox().GetTemplateId(),
+			SandboxID:   req.GetSandbox().GetSandboxId(),
+			ExecutionID: req.GetSandbox().GetExecutionId(),
+			TeamID:      req.GetSandbox().GetTeamId(),
+		},
+		req.GetStartTime().AsTime(),
+		req.GetEndTime().AsTime(),
+		req.GetSandbox(),
+	)
+	if err != nil {
+		err := errors.Join(err, context.Cause(ctx))
+		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
+
+		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
+	}
+
+	s.sandboxes.Insert(sbx)
 	go func() {
-		waitErr := sbx.Wait()
+		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "sandbox-create-stop", trace.WithNewRoot())
+		defer childSpan.End()
+
+		waitErr := sbx.Wait(ctx)
 		if waitErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %v\n", waitErr)
+			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
 
-		cleanupErr := cleanup.Run()
+		cleanupErr := sbx.Close(ctx)
 		if cleanupErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to cleanup Sandbox: %v\n", cleanupErr)
+			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
 
-		s.sandboxes.Remove(req.Sandbox.SandboxId)
+		// Remove the sandbox from cache only if the cleanup IDs match.
+		// This prevents us from accidentally removing started sandbox (via resume) from the cache if cleanup is taking longer than the request timeout.
+		// This could have caused the "invisible" sandboxes that are not in orchestrator or API, but are still on client.
+		s.sandboxes.RemoveByExecutionID(req.GetSandbox().GetSandboxId(), sbx.Runtime.ExecutionID)
 
-		logger.Infof("Sandbox killed")
+		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
+		closeErr := s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		if closeErr != nil {
+			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
+			sbxlogger.I(sbx).Warn("errors when manually closing connections to sandbox", zap.Error(closeErr))
+		}
+
+		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()
 
+	eventType := events.SandboxCreatedEventPair
+	if req.GetSandbox().GetSnapshot() {
+		eventType = events.SandboxResumedEventPair
+	}
+
+	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
+
+			EventData:          eventData,
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
+
 	return &orchestrator.SandboxCreateResponse{
-		ClientId: consul.ClientID,
+		ClientId: s.info.ClientId,
 	}, nil
 }
 
-func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
-	ctx, childSpan := s.tracer.Start(ctx, "sandbox-update")
+func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
+	ctx, childSpan := tracer.Start(ctx, "sandbox-update")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
-		attribute.String("sandbox.id", req.SandboxId),
-		attribute.String("client.id", consul.ClientID),
+		telemetry.WithSandboxID(req.GetSandboxId()),
+		attribute.String("client.id", s.info.ClientId),
 	)
 
-	item, ok := s.sandboxes.Get(req.SandboxId)
+	sbx, ok := s.sandboxes.Get(req.GetSandboxId())
 	if !ok {
-		errMsg := fmt.Errorf("sandbox not found")
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
 
-		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
+		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	item.EndAt = req.EndTime.AsTime()
+	sbx.EndAt = req.GetEndTime().AsTime()
+
+	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
+	eventType := events.SandboxUpdatedEventPair
+
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
+
+			EventData:          eventData,
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &emptypb.Empty{}, nil
 }
 
-func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListResponse, error) {
-	_, childSpan := s.tracer.Start(ctx, "sandbox-list")
+func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListResponse, error) {
+	_, childSpan := tracer.Start(ctx, "sandbox-list")
 	defer childSpan.End()
 
 	items := s.sandboxes.Items()
@@ -129,13 +272,13 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			continue
 		}
 
-		if sbx.Config == nil {
+		if sbx.APIStoredConfig == nil {
 			continue
 		}
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
-			Config:    sbx.Config,
-			ClientId:  consul.ClientID,
+			Config:    sbx.APIStoredConfig,
+			ClientId:  s.info.ClientId,
 			StartTime: timestamppb.New(sbx.StartedAt),
 			EndTime:   timestamppb.New(sbx.EndAt),
 		})
@@ -146,193 +289,197 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 	}, nil
 }
 
-func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
-	ctx, childSpan := s.tracer.Start(ctx, "sandbox-delete")
+func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
+	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
+	defer cancel()
+
+	ctx, childSpan := tracer.Start(ctx, "sandbox-delete")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
-		attribute.String("sandbox.id", in.SandboxId),
-		attribute.String("client.id", consul.ClientID),
+		telemetry.WithSandboxID(in.GetSandboxId()),
+		attribute.String("client.id", s.info.ClientId),
 	)
 
-	sbx, ok := s.sandboxes.Get(in.SandboxId)
+	sbx, ok := s.sandboxes.Get(in.GetSandboxId())
 	if !ok {
-		errMsg := fmt.Errorf("sandbox '%s' not found", in.SandboxId)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
+		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
-
-	// Don't allow connecting to the sandbox anymore.
-	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
 
 	// Remove the sandbox from the cache to prevent loading it again in API during the time the instance is stopping.
 	// Old comment:
 	// 	Ensure the sandbox is removed from cache.
 	// 	Ideally we would rely only on the goroutine defer.
-	s.sandboxes.Remove(in.SandboxId)
+	// Don't allow connecting to the sandbox anymore.
+	s.sandboxes.Remove(in.GetSandboxId())
 
 	// Check health metrics before stopping the sandbox
-	sbx.Healthcheck(ctx, true)
-	sbx.LogMetrics(ctx)
+	sbx.Checks.Healthcheck(ctx, true)
 
-	err := sbx.Stop()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error stopping sandbox '%s': %v\n", in.SandboxId, err)
-	}
+	// Start the cleanup in a goroutine—the initial kill request should be send as the first thing in stop, and at this point you cannot route to the sandbox anymore.
+	// We don't wait for the whole cleanup to finish here.
+	go func() {
+		err := sbx.Stop(context.WithoutCancel(ctx))
+		if err != nil {
+			sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.GetSandboxId()), zap.Error(err))
+		}
+	}()
+
+	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+
+	eventType := events.SandboxKilledEventPair
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
+
+			EventData:          eventData,
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &emptypb.Empty{}, nil
 }
 
-var pauseQueue = semaphore.NewWeighted(maxParalellSnapshotting)
-
-func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
-	ctx, childSpan := s.tracer.Start(ctx, "sandbox-pause")
+func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
+	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
-	err := pauseQueue.Acquire(ctx, 1)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, err)
-
-		return nil, status.New(codes.ResourceExhausted, err.Error()).Err()
-	}
-
-	releaseOnce := sync.OnceFunc(func() {
-		pauseQueue.Release(1)
-	})
-
-	defer releaseOnce()
+	// setup launch darkly
+	ctx = featureflags.SetContext(
+		ctx,
+		ldcontext.NewBuilder(in.GetSandboxId()).
+			Kind(featureflags.SandboxKind).
+			SetString(featureflags.SandboxTemplateAttribute, in.GetTemplateId()).
+			Build(),
+	)
 
 	s.pauseMu.Lock()
 
-	sbx, ok := s.sandboxes.Get(in.SandboxId)
+	sbx, ok := s.sandboxes.Get(in.GetSandboxId())
 	if !ok {
 		s.pauseMu.Unlock()
 
-		errMsg := fmt.Errorf("sandbox not found")
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
 
-		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
+		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
-	s.sandboxes.Remove(in.SandboxId)
+	s.sandboxes.Remove(in.GetSandboxId())
 
 	s.pauseMu.Unlock()
 
-	snapshotTemplateFiles, err := storage.NewTemplateFiles(
-		in.TemplateId,
-		in.BuildId,
-		sbx.Config.KernelVersion,
-		sbx.Config.FirecrackerVersion,
-		sbx.Config.HugePages,
-	).NewTemplateCacheFiles()
-	if err != nil {
-		errMsg := fmt.Errorf("error creating template files: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
-	}
-
-	defer func() {
+	defer func(ctx context.Context) {
 		// sbx.Stop sometimes blocks for several seconds,
-		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and DNS.
+		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and proxy.
 		go func() {
-			err := sbx.Stop()
+			ctx, childSpan := tracer.Start(ctx, "sandbox-pause-stop", trace.WithNewRoot())
+			defer childSpan.End()
+
+			err := sbx.Stop(ctx)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "error stopping sandbox after snapshot '%s': %v\n", in.SandboxId, err)
+				sbxlogger.I(sbx).Error("error stopping sandbox after snapshot", logger.WithSandboxID(in.GetSandboxId()), zap.Error(err))
 			}
 		}()
-	}()
+	}(context.WithoutCancel(ctx))
 
-	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
+	meta, err := sbx.Template.Metadata()
 	if err != nil {
-		errMsg := fmt.Errorf("error creating sandbox cache dir '%s': %w", snapshotTemplateFiles.CacheDir(), err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+		return nil, fmt.Errorf("no metadata found in template: %w", err)
 	}
 
-	snapshot, err := sbx.Snapshot(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
+	fcVersions := sbx.FirecrackerVersions()
+	meta = meta.SameVersionTemplate(storage.TemplateFiles{
+		BuildID:            in.GetBuildId(),
+		KernelVersion:      fcVersions.KernelVersion,
+		FirecrackerVersion: fcVersions.FirecrackerVersion,
+	})
+	snapshot, err := sbx.Pause(ctx, meta)
 	if err != nil {
-		errMsg := fmt.Errorf("error snapshotting sandbox '%s': %w", in.SandboxId, err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.GetSandboxId(), err)
 	}
 
 	err = s.templateCache.AddSnapshot(
-		snapshotTemplateFiles.TemplateId,
-		snapshotTemplateFiles.BuildId,
-		snapshotTemplateFiles.KernelVersion,
-		snapshotTemplateFiles.FirecrackerVersion,
-		snapshotTemplateFiles.Hugepages(),
+		ctx,
+		meta.Template.BuildID,
+		meta.Template.KernelVersion,
+		meta.Template.FirecrackerVersion,
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
+		snapshot.Metafile,
 		snapshot.MemfileDiff,
 		snapshot.RootfsDiff,
 	)
 	if err != nil {
-		errMsg := fmt.Errorf("error adding snapshot to template cache: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error adding snapshot to template cache", err)
 
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+		return nil, status.Errorf(codes.Internal, "error adding snapshot to template cache: %s", err)
 	}
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
-	go func() {
-		var memfilePath *string
-
-		switch r := snapshot.MemfileDiff.(type) {
-		case *build.NoDiff:
-			break
-		default:
-			memfileLocalPath, err := r.CachePath()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error getting memfile diff path: %v\n", err)
-
-				return
-			}
-
-			memfilePath = &memfileLocalPath
-		}
-
-		var rootfsPath *string
-
-		switch r := snapshot.RootfsDiff.(type) {
-		case *build.NoDiff:
-			break
-		default:
-			rootfsLocalPath, err := r.CachePath()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error getting rootfs diff path: %v\n", err)
-
-				return
-			}
-
-			rootfsPath = &rootfsLocalPath
-		}
-
-		b := storage.NewTemplateBuild(
-			snapshot.MemfileDiffHeader,
-			snapshot.RootfsDiffHeader,
-			snapshotTemplateFiles.TemplateFiles,
-		)
-
-		err = <-b.Upload(
-			context.Background(),
-			snapshotTemplateFiles.CacheSnapfilePath(),
-			memfilePath,
-			rootfsPath,
-		)
+	go func(ctx context.Context) {
+		err := snapshot.Upload(ctx, s.persistence, meta.Template)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)
+			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
 
 			return
 		}
-	}()
+	}(context.WithoutCancel(ctx))
+
+	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+
+	eventType := events.SandboxPausedEventPair
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
+
+			EventData:          eventData,
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &emptypb.Empty{}, nil
+}
+
+// Extracts common data needed for sandbox events
+func (s *Server) prepareSandboxEventData(sbx *sandbox.Sandbox) (uuid.UUID, string, map[string]any) {
+	teamID, err := uuid.Parse(sbx.Runtime.TeamID)
+	if err != nil {
+		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
+	}
+
+	buildId := ""
+	eventData := make(map[string]any)
+	if sbx.APIStoredConfig != nil {
+		buildId = sbx.APIStoredConfig.GetBuildId()
+		if sbx.APIStoredConfig.Metadata != nil {
+			// Copy the map to avoid race conditions
+			eventData["sandbox_metadata"] = utils.ShallowCopyMap(sbx.APIStoredConfig.GetMetadata())
+		}
+	}
+
+	return teamID, buildId, eventData
 }

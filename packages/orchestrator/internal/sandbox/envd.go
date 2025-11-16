@@ -9,102 +9,148 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const maxRetries = 120
+const (
+	loopDelay = 5 * time.Millisecond
+)
 
-func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
-	address := fmt.Sprintf("http://%s:%d/sync", s.Slot.HostIP(), consts.OldEnvdServerPort)
+// doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
+// The parent context should have a deadline or a timeout.
+func doRequestWithInfiniteRetries(
+	ctx context.Context,
+	method,
+	address string,
+	accessToken *string,
+	envdInitRequestTimeout time.Duration,
+	envVars map[string]string,
+	sandboxID,
+	envdVersion,
+	hyperloopIP string,
+	defaultUser *string,
+	defaultWorkdir *string,
+) (*http.Response, int64, error) {
+	requestCount := int64(0)
+	for {
+		now := time.Now()
 
-	var response *http.Response
-	for i := 0; i < maxRetries; i++ {
-		reqCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
-		request, err := http.NewRequestWithContext(reqCtx, "POST", address, nil)
+		jsonBody := &PostInitJSONBody{
+			EnvVars:        &envVars,
+			HyperloopIP:    &hyperloopIP,
+			AccessToken:    accessToken,
+			Timestamp:      &now,
+			DefaultUser:    defaultUser,
+			DefaultWorkdir: defaultWorkdir,
+		}
+
+		body, err := json.Marshal(jsonBody)
+		if err != nil {
+			return nil, requestCount, err
+		}
+
+		requestCount++
+		reqCtx, cancel := context.WithTimeout(ctx, envdInitRequestTimeout)
+		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(body))
 		if err != nil {
 			cancel()
-			return err
+
+			return nil, requestCount, err
 		}
 
-		response, err = httpClient.Do(request)
-		if err == nil {
-			cancel()
-			break
+		// make sure request to already authorized envd will not fail
+		// this can happen in sandbox resume and in some edge cases when previous request was success, but we continued
+		if accessToken != nil {
+			request.Header.Set("X-Access-Token", *accessToken)
 		}
 
+		response, err := httpClient.Do(request)
 		cancel()
-		time.Sleep(5 * time.Millisecond)
-	}
 
-	if response == nil {
-		return fmt.Errorf("failed to sync envd")
-	}
+		if err == nil {
+			return response, requestCount, nil
+		}
 
-	_, err := io.Copy(io.Discard, response.Body)
-	if err != nil {
-		return err
-	}
+		zap.L().Warn("failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
 
-	err = response.Body.Close()
-	if err != nil {
-		return err
+		select {
+		case <-ctx.Done():
+			return nil, requestCount, fmt.Errorf("%w with cause: %w", ctx.Err(), context.Cause(ctx))
+		case <-time.After(loopDelay):
+		}
 	}
-
-	return nil
 }
 
 type PostInitJSONBody struct {
-	EnvVars *map[string]string `json:"envVars"`
+	EnvVars        *map[string]string `json:"envVars"`
+	AccessToken    *string            `json:"accessToken,omitempty"`
+	HyperloopIP    *string            `json:"hyperloopIP,omitempty"`
+	Timestamp      *time.Time         `json:"timestamp,omitempty"`
+	DefaultUser    *string            `json:"defaultUser,omitempty"`
+	DefaultWorkdir *string            `json:"defaultWorkdir,omitempty"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string) error {
-	childCtx, childSpan := tracer.Start(ctx, "envd-init")
-	defer childSpan.End()
+func (s *Sandbox) initEnvd(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "envd-init", trace.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version)))
+	defer span.End()
 
-	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
+	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds())}
+	attributesFail := append(attributes, attribute.Bool("success", false))
+	attributesSuccess := append(attributes, attribute.Bool("success", true))
 
-	jsonBody := &PostInitJSONBody{
-		EnvVars: &envVars,
-	}
+	hyperloopIP := s.Slot.HyperloopIPString()
+	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
-	envVarsJSON, err := json.Marshal(jsonBody)
+	response, count, err := doRequestWithInfiniteRetries(
+		ctx,
+		http.MethodPost,
+		address,
+		s.Config.Envd.AccessToken,
+		s.internalConfig.EnvdInitRequestTimeout,
+		s.Config.Envd.Vars,
+		s.Runtime.SandboxID,
+		s.Config.Envd.Version,
+		hyperloopIP,
+		s.Config.Envd.DefaultUser,
+		s.Config.Envd.DefaultWorkdir,
+	)
 	if err != nil {
-		return err
+		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
+
+		return fmt.Errorf("failed to init envd: %w", err)
 	}
 
-	var response *http.Response
-	for i := 0; i < maxRetries; i++ {
-		reqCtx, cancel := context.WithTimeout(childCtx, 50*time.Millisecond)
-		request, err := http.NewRequestWithContext(reqCtx, "POST", address, bytes.NewReader(envVarsJSON))
-		if err != nil {
-			cancel()
-			return err
-		}
-
-		response, err = httpClient.Do(request)
-		if err == nil {
-			cancel()
-			break
-		}
-
-		cancel()
-		time.Sleep(5 * time.Millisecond)
+	if count > 1 {
+		// Track failed envd init calls
+		envdInitCalls.Add(ctx, count-1, metric.WithAttributes(attributesFail...))
 	}
 
-	if response == nil {
-		return fmt.Errorf("failed to init envd")
-	}
+	// Track successful envd init
+	envdInitCalls.Add(ctx, 1, metric.WithAttributes(attributesSuccess...))
 
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read envd init response body: %w", err)
 	}
 
-	_, err = io.Copy(io.Discard, response.Body)
-	if err != nil {
-		return err
+	if response.StatusCode != http.StatusNoContent {
+		zap.L().Error("envd init request failed",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			logger.WithEnvdVersion(s.Config.Envd.Version),
+			zap.Int("status_code", response.StatusCode),
+			zap.String("response_body", utils.Truncate(string(body), 100)),
+		)
+
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 
 	return nil

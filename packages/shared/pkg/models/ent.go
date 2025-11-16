@@ -12,14 +12,12 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/cluster"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 )
@@ -82,16 +80,14 @@ var (
 func checkColumn(table, column string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			accesstoken.Table: accesstoken.ValidColumn,
-			env.Table:         env.ValidColumn,
-			envalias.Table:    envalias.ValidColumn,
-			envbuild.Table:    envbuild.ValidColumn,
-			snapshot.Table:    snapshot.ValidColumn,
-			team.Table:        team.ValidColumn,
-			teamapikey.Table:  teamapikey.ValidColumn,
-			tier.Table:        tier.ValidColumn,
-			user.Table:        user.ValidColumn,
-			usersteams.Table:  usersteams.ValidColumn,
+			cluster.Table:    cluster.ValidColumn,
+			env.Table:        env.ValidColumn,
+			envalias.Table:   envalias.ValidColumn,
+			envbuild.Table:   envbuild.ValidColumn,
+			snapshot.Table:   snapshot.ValidColumn,
+			team.Table:       team.ValidColumn,
+			user.Table:       user.ValidColumn,
+			usersteams.Table: usersteams.ValidColumn,
 		})
 	})
 	return columnCheck(table, column)

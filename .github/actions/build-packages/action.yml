@@ -1,0 +1,20 @@
+name: "Build Packages"
+description: "Compiles and builds Go services."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Go
+      uses: ./.github/actions/go-setup-cache
+      with:
+        job_key: build-packages
+
+    - name: Build Packages
+      run: |
+        make -C tests/integration build-debug
+        make -C packages/db build-debug
+        make -C packages/orchestrator build-debug
+        make -C packages/api build-debug
+        make -C packages/envd build-debug
+        make -C packages/client-proxy build-debug
+      shell: bash

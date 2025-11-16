@@ -2,44 +2,48 @@ package storage
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
 )
 
-const (
-	templateCacheDir = "/orchestrator/template"
-	snapshotCacheDir = "/mnt/snapshot-cache"
-)
-
 type TemplateCacheFiles struct {
-	*TemplateFiles
+	TemplateFiles
+
 	// CacheIdentifier is used to distinguish between each entry in the cache to prevent deleting the cache files when the template cache entry is being closed and a new one is being created.
 	CacheIdentifier string
 }
 
-func (f *TemplateFiles) NewTemplateCacheFiles() (*TemplateCacheFiles, error) {
+func (t TemplateFiles) CacheFiles(config BuilderConfig) (TemplateCacheFiles, error) {
 	identifier, err := uuid.NewRandom()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate identifier: %w", err)
+		return TemplateCacheFiles{}, fmt.Errorf("failed to generate identifier: %w", err)
 	}
 
-	return &TemplateCacheFiles{
-		TemplateFiles:   f,
+	tcf := TemplateCacheFiles{
+		TemplateFiles:   t,
 		CacheIdentifier: identifier.String(),
-	}, nil
+	}
+
+	cacheDir := tcf.cacheDir(config)
+
+	err = os.MkdirAll(cacheDir, os.ModePerm)
+	if err != nil {
+		return TemplateCacheFiles{}, fmt.Errorf("failed to create cache dir '%s': %w", cacheDir, err)
+	}
+
+	return tcf, nil
 }
 
-func (c *TemplateCacheFiles) CacheDir() string {
-	return filepath.Join(templateCacheDir, c.TemplateId, c.BuildId, "cache", c.CacheIdentifier)
+func (c TemplateCacheFiles) CacheSnapfilePath(config BuilderConfig) string {
+	return filepath.Join(c.cacheDir(config), SnapfileName)
 }
 
-func (c *TemplateCacheFiles) CacheMemfileFullSnapshotPath() string {
-	name := fmt.Sprintf("%s-%s-%s.full", c.BuildId, MemfileName, c.CacheIdentifier)
-
-	return filepath.Join(snapshotCacheDir, name)
+func (c TemplateCacheFiles) CacheMetadataPath(config BuilderConfig) string {
+	return filepath.Join(c.cacheDir(config), MetadataName)
 }
 
-func (c *TemplateCacheFiles) CacheSnapfilePath() string {
-	return filepath.Join(c.CacheDir(), SnapfileName)
+func (c TemplateCacheFiles) cacheDir(config BuilderConfig) string {
+	return filepath.Join(config.GetTemplateCacheDir(), c.BuildID, "cache", c.CacheIdentifier)
 }

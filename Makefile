@@ -1,32 +1,7 @@
 ENV := $(shell cat .last_used_env || echo "not-set")
--include .env.${ENV}
+ENV_FILE := $(PWD)/.env.${ENV}
 
-OTEL_TRACING_PRINT ?= false
-EXCLUDE_GITHUB ?= 1
-TEMPLATE_BUCKET_LOCATION := $(GCP_REGION)
-
-tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
-	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
-	TF_VAR_api_machine_type=$(API_MACHINE_TYPE) \
-	TF_VAR_api_cluster_size=$(API_CLUSTER_SIZE) \
-	TF_VAR_server_machine_type=$(SERVER_MACHINE_TYPE) \
-	TF_VAR_server_cluster_size=$(SERVER_CLUSTER_SIZE) \
-	TF_VAR_gcp_project_id=$(GCP_PROJECT_ID) \
-	TF_VAR_gcp_region=$(GCP_REGION) \
-	TF_VAR_gcp_zone=$(GCP_ZONE) \
-	TF_VAR_domain_name=$(DOMAIN_NAME) \
-	TF_VAR_prefix=$(PREFIX) \
-	TF_VAR_terraform_state_bucket=$(TERRAFORM_STATE_BUCKET) \
-	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
-	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
-	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME) \
-	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION)
-
-ifeq ($(EXCLUDE_GITHUB),1)
-	ALL_MODULES := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | grep -v -e "github_tf")
-else
-	ALL_MODULES := $(shell cat main.tf | grep "^module" | awk '{print $$2}')
-endif
+-include ${ENV_FILE}
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -36,106 +11,122 @@ login-gcloud:
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
 	gcloud --quiet auth application-default login
-	gcloud auth configure-docker "us-west-1-docker.pkg.dev"
 
 .PHONY: init
 init:
-	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
-	terraform init -input=false -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
-	$(MAKE) -C packages/cluster-disk-image init
-	$(tf_vars) terraform apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
-	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-gcp init
+
+# Setup production environment variables, this is used only for E2B.dev production
+# Uses Infisical CLI to read secrets from Infisical Vault
+# To update them, use the Infisical UI directly
+# On a first use, you need to run `infisical login` and `infisical init`
+.PHONY: download-prod-env
+download-prod-env:
+	@  ./scripts/download-prod-env.sh ${ENV}
 
 .PHONY: plan
 plan:
-	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	terraform fmt -recursive
-	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs))
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode $(TARGET)
+	$(MAKE) -C iac/provider-gcp plan
 
+# Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
 plan-only-jobs:
-	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	terraform fmt -recursive
-	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs))
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad
+	$(MAKE) -C iac/provider-gcp plan-only-jobs
 
-
-.PHONY: apply
-apply:
-	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
-	$(tf_vars) \
-	terraform apply \
-	-auto-approve \
-	-input=false \
-	-compact-warnings \
-	-parallelism=20 \
-	.tfplan.$(ENV)
-	@ rm .tfplan.$(ENV)
+# Deploy a specific job name in Nomad
+# When job name is specified, all '-' are replaced with '_' in the job name
+.PHONY: plan-only-jobs/%
+plan-only-jobs/%:
+	$(MAKE) -C iac/provider-gcp plan-only-jobs/$(subst -,_,$(notdir $@))
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
-	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
-	$(tf_vars) \
-	terraform plan \
-	-out=.tfplan.$(ENV) \
-	-input=false \
-	-compact-warnings \
-	-parallelism=20 \
-  	$(TARGET)
+	$(MAKE) -C iac/provider-gcp plan-without-jobs
 
-.PHONY: destroy
-destroy:
-	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
-	$(tf_vars) \
-	terraform destroy \
-	-compact-warnings \
-	-parallelism=20 \
-	$$(terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
+.PHONY: apply
+apply:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-gcp apply
 
+# Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
+.PHONY: import
+import:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-gcp import
 
 .PHONY: version
 version:
 	./scripts/increment-version.sh
 
+.PHONY: build
+build/%:
+	$(MAKE) -C packages/$(notdir $@) build
+
 .PHONY: build-and-upload
-build-and-upload:
-	$(MAKE) -C packages/cluster-disk-image build
+build-and-upload:build-and-upload/api
+build-and-upload:build-and-upload/client-proxy
+build-and-upload:build-and-upload/docker-reverse-proxy
+build-and-upload:build-and-upload/clean-nfs-cache
+build-and-upload:build-and-upload/orchestrator
+build-and-upload:build-and-upload/template-manager
+build-and-upload:build-and-upload/envd
+build-and-upload:build-and-upload/clickhouse-migrator
+build-and-upload/clean-nfs-cache:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/clean-nfs-cache
+build-and-upload/template-manager:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/template-manager
+build-and-upload/orchestrator:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
+build-and-upload/api:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/api build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/docker-reverse-proxy build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/template-manager build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/envd build-and-upload
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/db build-and-upload
+build-and-upload/clickhouse-migrator:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/clickhouse build-and-upload
+build-and-upload/%:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
 
 .PHONY: copy-public-builds
 copy-public-builds:
-	gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-env-pipeline/envd-v0.0.1
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
+.PHONY: download-public-kernels
+download-public-kernels:
+	mkdir -p ./packages/fc-kernels
+	gsutil cp -r gs://e2b-prod-public-builds/kernels/* ./packages/fc-kernels/
 
-@.PHONY: migrate
+.PHONY: generate
+generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate/shared generate-tests generate-mocks
+generate/%:
+	@echo "Generating code for *$(notdir $@)*"
+	$(MAKE) -C packages/$(notdir $@) generate
+	@printf "\n\n"
+
+.PHONY: generate-tests
+generate-tests: generate-tests/integration
+generate-tests/%:
+		@echo "Generating code for *$(notdir $@)*"
+		$(MAKE) -C tests/$(notdir $@) generate
+		@printf "\n\n"
+
+.PHONY: migrate
 migrate:
-	$(MAKE) -C packages/shared migrate
+	$(MAKE) -C packages/db migrate
 
 .PHONY: switch-env
 switch-env:
 	@ touch .last_used_env
 	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ echo $(ENV) > .last_used_env
-	@ . .env.${ENV}
-	terraform init -input=false -upgrade -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
-
-# Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
-.PHONY: import
-import:
-	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
-	$(tf_vars) terraform import $(TARGET) $(ID)
+	@ . ${ENV_FILE}
+	make -C iac/provider-gcp switch
 
 .PHONY: setup-ssh
 setup-ssh:
@@ -143,3 +134,40 @@ setup-ssh:
 	@ gcloud compute config-ssh --remove
 	@ gcloud compute config-ssh --project $(GCP_PROJECT_ID) --quiet
 	@ printf "SSH setup complete\n"
+
+.PHONY: test
+test:
+	go work edit -json \
+		| jq -r '.Use[] | select (.DiskPath | contains("packages")) | .DiskPath' \
+		| xargs -I{} $(MAKE) -C {} test
+
+.PHONY: test-integration
+test-integration:
+	$(MAKE) -C tests/integration test
+
+.PHONY: connect-orchestrator
+connect-orchestrator:
+	$(MAKE) -C tests/integration connect-orchestrator
+
+.PHONY: fmt
+fmt:
+	@./scripts/golangci-lint-install.sh "2.4.0"
+	golangci-lint fmt
+	terraform fmt -recursive
+
+.PHONY: lint
+lint:
+	@./scripts/golangci-lint-install.sh "2.4.0"
+	go work edit -json | jq -r '.Use[].DiskPath' | xargs -P 10 -I{} golangci-lint run {}/... --fix
+
+.PHONY: generate-mocks
+generate-mocks:
+	go run github.com/vektra/mockery/v3@v3.5.0
+
+.PHONY: tidy
+tidy:
+	scripts/golang-dependencies-integrity.sh
+
+.PHONY: local-infra
+local-infra:
+	docker compose --file ./packages/local-dev/docker-compose.yaml up --abort-on-container-failure

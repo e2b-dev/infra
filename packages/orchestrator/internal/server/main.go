@@ -2,79 +2,84 @@ package server
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"sync"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
+	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const ServiceName = "orchestrator"
-
-type server struct {
+type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
-	sandboxes     *smap.Map[*sandbox.Sandbox]
-	dns           *dns.DNS
-	tracer        trace.Tracer
-	networkPool   *network.Pool
-	templateCache *template.Cache
 
-	pauseMu sync.Mutex
+	config            cfg.Config
+	sandboxFactory    *sandbox.Factory
+	info              *service.ServiceInfo
+	sandboxes         *sandbox.Map
+	proxy             *proxy.SandboxProxy
+	networkPool       *network.Pool
+	templateCache     *template.Cache
+	pauseMu           sync.Mutex
+	devicePool        *nbd.DevicePool
+	persistence       storage.StorageProvider
+	featureFlags      *featureflags.Client
+	sbxEventsService  *events.EventsService
+	startingSandboxes *semaphore.Weighted
 }
 
-func New() (*grpc.Server, error) {
-	ctx := context.Background()
+type ServiceConfig struct {
+	Config           cfg.Config
+	Tel              *telemetry.Client
+	NetworkPool      *network.Pool
+	DevicePool       *nbd.DevicePool
+	TemplateCache    *template.Cache
+	Info             *service.ServiceInfo
+	Proxy            *proxy.SandboxProxy
+	SandboxFactory   *sandbox.Factory
+	Sandboxes        *sandbox.Map
+	Persistence      storage.StorageProvider
+	FeatureFlags     *featureflags.Client
+	SbxEventsService *events.EventsService
+}
 
-	dnsServer := dns.New()
-	go func() {
-		log.Printf("Starting DNS server")
-
-		err := dnsServer.Start("127.0.0.4", 53)
-		if err != nil {
-			log.Fatalf("Failed running DNS server: %s\n", err.Error())
-		}
-	}()
-
-	templateCache, err := template.NewCache(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create template cache: %w", err)
+func New(cfg ServiceConfig) *Server {
+	server := &Server{
+		config:            cfg.Config,
+		sandboxFactory:    cfg.SandboxFactory,
+		info:              cfg.Info,
+		proxy:             cfg.Proxy,
+		sandboxes:         cfg.Sandboxes,
+		networkPool:       cfg.NetworkPool,
+		templateCache:     cfg.TemplateCache,
+		devicePool:        cfg.DevicePool,
+		persistence:       cfg.Persistence,
+		featureFlags:      cfg.FeatureFlags,
+		sbxEventsService:  cfg.SbxEventsService,
+		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
 	}
 
-	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create network pool: %w", err)
-	}
+	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
+	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64(server.sandboxes.Count()))
 
-	s := grpc.NewServer(
-		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
-		grpc.ChainUnaryInterceptor(
-			recovery.UnaryServerInterceptor(),
-		),
-	)
-
-	orchestrator.RegisterSandboxServiceServer(s, &server{
-		tracer:        otel.Tracer(ServiceName),
-		dns:           dnsServer,
-		sandboxes:     smap.New[*sandbox.Sandbox](),
-		networkPool:   networkPool,
-		templateCache: templateCache,
+		return nil
 	})
+	if err != nil {
+		zap.L().Error("Error registering sandbox count metric", zap.String("metric_name", string(telemetry.OrchestratorSandboxCountMeterName)), zap.Error(err))
+	}
 
-	grpc_health_v1.RegisterHealthServer(s, health.NewServer())
-
-	return s, nil
+	return server
 }

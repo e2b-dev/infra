@@ -1,0 +1,157 @@
+name: Periodic Tests
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      dev:
+        description: "Only testing the workflow"
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches:
+      - main
+    # only run on changes to periodic-test dir
+    paths:
+      - "tests/periodic-test/**"
+      - ".github/workflows/periodic-test.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Check
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # each domain is a different cluster
+        e2b-domain:
+          - "e2b-foxtrot.dev"
+          - "e2b-juliett.dev"
+          - "e2b-staging.dev"
+        include:
+          - e2b-domain: "e2b-foxtrot.dev"
+            api_key: E2B_API_KEY
+            access_token: E2B_ACCESS_TOKEN
+          - e2b-domain: "e2b-juliett.dev"
+            api_key: E2B_API_KEY_JULIETT
+            access_token: E2B_ACCESS_TOKEN_JULIETT
+          - e2b-domain: "e2b-staging.dev"
+            api_key: E2B_API_KEY
+            access_token: E2B_ACCESS_TOKEN
+        test-command:
+          - command: "tests/periodic-test/run-code.ts"
+            name: "run code in sandbox"
+          - command: "index.ts"
+            name: "template builds && time is synchronized"
+            dir: "tests/periodic-test/time-is-synchronized/"
+          - command: "tests/periodic-test/snapshot-and-resume.ts"
+            name: "pause and resume sandbox"
+          - command: "tests/periodic-test/internet-works.ts"
+            name: "internet connectivity inside of sandbox"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse .tool-versions
+        uses: wistia/parse-tool-versions@v2.1.1
+        with:
+          filename: ".tool-versions"
+          uppercase: "true"
+          prefix: "tool_version_"
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "${{ env.TOOL_VERSION_BUN }}"
+
+      - name: Cache Bun dependencies (periodic-test)
+        id: bun-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            tests/periodic-test/node_modules
+          key: ${{ runner.os }}-bun-periodic-${{ hashFiles('tests/periodic-test/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-periodic-
+
+      - name: Install dependencies (tests/periodic-test)
+        working-directory: tests/periodic-test
+        run: bun install --frozen-lockfile
+
+      - name: Set env variables from secrets
+        if: always()
+        run: |
+          echo "E2B_API_KEY=${{ secrets[format('{0}', matrix.api_key)] }}" >> $GITHUB_ENV
+          echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', matrix.access_token)] }}" >> $GITHUB_ENV
+
+      - name: ${{ matrix.test-command.name }}
+        run: bun run ${{ matrix.test-command.command }}
+        working-directory: ${{ matrix.test-command.dir }}
+        env:
+          E2B_API_KEY: ${{ env.E2B_API_KEY }}
+          E2B_ACCESS_TOKEN: ${{ env.E2B_ACCESS_TOKEN }}
+          E2B_DOMAIN: ${{ matrix.e2b-domain }}
+
+      - name: Send Grafana OnCall webhook
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          DOMAIN: ${{ matrix.e2b-domain }}
+          RUN_LINK: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WEBHOOK_URL: ${{ secrets.GRAFANA_ALERT_WEBHOOK }}
+          TEST_NAME: ${{ matrix.test-command.name }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq jq  # jq for JSON assembly
+
+          # Map GH status → Grafana state
+          STATE=$([ "$JOB_STATUS" = "success" ] && echo ok || echo alerting)
+          STATUS=$([ "$JOB_STATUS" = "success" ] && echo resolved || echo firing)
+
+          # slug-ify the test name (lowercase, a–z/0–9, hyphens)
+          TEST_SLUG=$(echo "$TEST_NAME" \
+                      | tr '[:upper:]' '[:lower:]' \
+                      | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+
+          # Unique per (domain + test) – same UID for state so OnCall auto-resolves
+          ALERT_UID="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
+
+          TITLE="Periodic tests | ${DOMAIN} | ${TEST_NAME}"
+          MESSAGE="${TEST_NAME} on ${DOMAIN} finished. Link: ${RUN_LINK}"
+
+          # Attach a branch-status badge.
+          BADGE_COLOR=$([ "$JOB_STATUS" = "success" ] && echo brightgreen || echo CB2431)
+          BADGE_LABEL_ESCAPED=$(echo "$ALERT_UID" | sed 's/-/--/g')
+          IMAGE_URL="https://img.shields.io/badge/${BADGE_LABEL_ESCAPED}-${JOB_STATUS}-${BADGE_COLOR}"
+
+          jq -n \
+            --arg alert_uid "$ALERT_UID" \
+            --arg title "$TITLE" \
+            --arg state "$STATE" \
+            --arg status "$STATUS" \
+            --arg link_to_upstream_details "$RUN_LINK" \
+            --arg message "$MESSAGE" \
+            --arg image_url "$IMAGE_URL" \
+            --arg domain "$DOMAIN" \
+            --arg dev "${{ inputs.dev }}" \
+            '{alert_uid: $alert_uid,
+              title: $title,
+              state: $state,
+              link_to_upstream_details: $link_to_upstream_details,
+              message: $message,
+              severity: "warning",
+              status: $status,
+              domain: $domain,
+              dev: ($dev == "true"),
+              annotations: {Project: $domain},
+              image_url: $image_url}' \
+          | curl -s -X POST -H 'Content-Type: application/json' -d @- "$WEBHOOK_URL"

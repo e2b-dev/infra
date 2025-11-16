@@ -9,8 +9,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (s *server) ListCachedBuilds(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListCachedBuildsResponse, error) {
-	_, childSpan := s.tracer.Start(ctx, "list-cached-templates")
+func (s *Server) ListCachedBuilds(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListCachedBuildsResponse, error) {
+	_, childSpan := tracer.Start(ctx, "list-cached-templates")
 	defer childSpan.End()
 
 	var builds []*orchestrator.CachedBuildInfo

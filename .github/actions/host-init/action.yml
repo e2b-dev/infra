@@ -1,0 +1,21 @@
+name: "Host Initialization"
+description: "Sets up the host environment, including authentication and dependencies."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Environment Variables
+      env:
+        POSTGRES_CONNECTION_STRING: "postgresql://postgres:local@localhost:5432/mydatabase?sslmode=disable"
+      run: |
+        echo "test" > .last_used_env
+        printenv > .env.test
+      shell: bash
+
+    - name: Initialize Host
+      env:
+        INIT_SCRIPT_PATH: "./.github/actions/host-init/init-client.sh"
+      run: |
+        chmod +x "${INIT_SCRIPT_PATH}"
+        sudo -E bash -c "${INIT_SCRIPT_PATH}"
+      shell: bash

@@ -125,6 +125,20 @@ func (ec *EnvCreate) SetNillableLastSpawnedAt(t *time.Time) *EnvCreate {
 	return ec
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (ec *EnvCreate) SetClusterID(u uuid.UUID) *EnvCreate {
+	ec.mutation.SetClusterID(u)
+	return ec
+}
+
+// SetNillableClusterID sets the "cluster_id" field if the given value is not nil.
+func (ec *EnvCreate) SetNillableClusterID(u *uuid.UUID) *EnvCreate {
+	if u != nil {
+		ec.SetClusterID(*u)
+	}
+	return ec
+}
+
 // SetID sets the "id" field.
 func (ec *EnvCreate) SetID(s string) *EnvCreate {
 	ec.mutation.SetID(s)
@@ -336,6 +350,10 @@ func (ec *EnvCreate) createSpec() (*Env, *sqlgraph.CreateSpec) {
 	if value, ok := ec.mutation.LastSpawnedAt(); ok {
 		_spec.SetField(env.FieldLastSpawnedAt, field.TypeTime, value)
 		_node.LastSpawnedAt = value
+	}
+	if value, ok := ec.mutation.ClusterID(); ok {
+		_spec.SetField(env.FieldClusterID, field.TypeUUID, value)
+		_node.ClusterID = &value
 	}
 	if nodes := ec.mutation.TeamIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -584,6 +602,24 @@ func (u *EnvUpsert) ClearLastSpawnedAt() *EnvUpsert {
 	return u
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (u *EnvUpsert) SetClusterID(v uuid.UUID) *EnvUpsert {
+	u.Set(env.FieldClusterID, v)
+	return u
+}
+
+// UpdateClusterID sets the "cluster_id" field to the value that was provided on create.
+func (u *EnvUpsert) UpdateClusterID() *EnvUpsert {
+	u.SetExcluded(env.FieldClusterID)
+	return u
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (u *EnvUpsert) ClearClusterID() *EnvUpsert {
+	u.SetNull(env.FieldClusterID)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -758,6 +794,27 @@ func (u *EnvUpsertOne) UpdateLastSpawnedAt() *EnvUpsertOne {
 func (u *EnvUpsertOne) ClearLastSpawnedAt() *EnvUpsertOne {
 	return u.Update(func(s *EnvUpsert) {
 		s.ClearLastSpawnedAt()
+	})
+}
+
+// SetClusterID sets the "cluster_id" field.
+func (u *EnvUpsertOne) SetClusterID(v uuid.UUID) *EnvUpsertOne {
+	return u.Update(func(s *EnvUpsert) {
+		s.SetClusterID(v)
+	})
+}
+
+// UpdateClusterID sets the "cluster_id" field to the value that was provided on create.
+func (u *EnvUpsertOne) UpdateClusterID() *EnvUpsertOne {
+	return u.Update(func(s *EnvUpsert) {
+		s.UpdateClusterID()
+	})
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (u *EnvUpsertOne) ClearClusterID() *EnvUpsertOne {
+	return u.Update(func(s *EnvUpsert) {
+		s.ClearClusterID()
 	})
 }
 
@@ -1102,6 +1159,27 @@ func (u *EnvUpsertBulk) UpdateLastSpawnedAt() *EnvUpsertBulk {
 func (u *EnvUpsertBulk) ClearLastSpawnedAt() *EnvUpsertBulk {
 	return u.Update(func(s *EnvUpsert) {
 		s.ClearLastSpawnedAt()
+	})
+}
+
+// SetClusterID sets the "cluster_id" field.
+func (u *EnvUpsertBulk) SetClusterID(v uuid.UUID) *EnvUpsertBulk {
+	return u.Update(func(s *EnvUpsert) {
+		s.SetClusterID(v)
+	})
+}
+
+// UpdateClusterID sets the "cluster_id" field to the value that was provided on create.
+func (u *EnvUpsertBulk) UpdateClusterID() *EnvUpsertBulk {
+	return u.Update(func(s *EnvUpsert) {
+		s.UpdateClusterID()
+	})
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (u *EnvUpsertBulk) ClearClusterID() *EnvUpsertBulk {
+	return u.Update(func(s *EnvUpsert) {
+		s.ClearClusterID()
 	})
 }
 

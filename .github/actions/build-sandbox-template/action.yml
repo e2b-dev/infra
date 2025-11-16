@@ -1,0 +1,28 @@
+name: "Build Sandbox Template"
+description: "Builds the Firecracker sandbox template."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build Sandbox Template
+      env:
+        TEMPLATE_ID: "2j6ly824owf4awgai1xo"
+        KERNEL_VERSION: "vmlinux-6.1.102"
+        FIRECRACKER_VERSION: "v1.12.1_d990331"
+      run: |
+        # Generate an unique build ID for the template for this run
+        export BUILD_ID=$(uuidgen)
+
+        echo "This build unique ID: ${BUILD_ID}"
+
+        echo "TESTS_SANDBOX_TEMPLATE_ID=${TEMPLATE_ID}" >> .env.test
+        echo "TESTS_SANDBOX_BUILD_ID=${BUILD_ID}" >> .env.test
+
+        make -C packages/orchestrator build-template \
+          ARTIFACTS_REGISTRY_PROVIDER=Local \
+          STORAGE_PROVIDER=Local \
+          TEMPLATE_ID=${TEMPLATE_ID} \
+          BUILD_ID=${BUILD_ID} \
+          KERNEL_VERSION=${KERNEL_VERSION} \
+          FC_VERSION=${FC_VERSION}
+      shell: bash

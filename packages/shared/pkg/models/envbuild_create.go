@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/google/uuid"
 )
 
@@ -73,14 +74,6 @@ func (ebc *EnvBuildCreate) SetEnvID(s string) *EnvBuildCreate {
 	return ebc
 }
 
-// SetNillableEnvID sets the "env_id" field if the given value is not nil.
-func (ebc *EnvBuildCreate) SetNillableEnvID(s *string) *EnvBuildCreate {
-	if s != nil {
-		ebc.SetEnvID(*s)
-	}
-	return ebc
-}
-
 // SetStatus sets the "status" field.
 func (ebc *EnvBuildCreate) SetStatus(e envbuild.Status) *EnvBuildCreate {
 	ebc.mutation.SetStatus(e)
@@ -119,6 +112,20 @@ func (ebc *EnvBuildCreate) SetStartCmd(s string) *EnvBuildCreate {
 func (ebc *EnvBuildCreate) SetNillableStartCmd(s *string) *EnvBuildCreate {
 	if s != nil {
 		ebc.SetStartCmd(*s)
+	}
+	return ebc
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (ebc *EnvBuildCreate) SetReadyCmd(s string) *EnvBuildCreate {
+	ebc.mutation.SetReadyCmd(s)
+	return ebc
+}
+
+// SetNillableReadyCmd sets the "ready_cmd" field if the given value is not nil.
+func (ebc *EnvBuildCreate) SetNillableReadyCmd(s *string) *EnvBuildCreate {
+	if s != nil {
+		ebc.SetReadyCmd(*s)
 	}
 	return ebc
 }
@@ -175,14 +182,6 @@ func (ebc *EnvBuildCreate) SetFirecrackerVersion(s string) *EnvBuildCreate {
 	return ebc
 }
 
-// SetNillableFirecrackerVersion sets the "firecracker_version" field if the given value is not nil.
-func (ebc *EnvBuildCreate) SetNillableFirecrackerVersion(s *string) *EnvBuildCreate {
-	if s != nil {
-		ebc.SetFirecrackerVersion(*s)
-	}
-	return ebc
-}
-
 // SetEnvdVersion sets the "envd_version" field.
 func (ebc *EnvBuildCreate) SetEnvdVersion(s string) *EnvBuildCreate {
 	ebc.mutation.SetEnvdVersion(s)
@@ -193,6 +192,40 @@ func (ebc *EnvBuildCreate) SetEnvdVersion(s string) *EnvBuildCreate {
 func (ebc *EnvBuildCreate) SetNillableEnvdVersion(s *string) *EnvBuildCreate {
 	if s != nil {
 		ebc.SetEnvdVersion(*s)
+	}
+	return ebc
+}
+
+// SetClusterNodeID sets the "cluster_node_id" field.
+func (ebc *EnvBuildCreate) SetClusterNodeID(s string) *EnvBuildCreate {
+	ebc.mutation.SetClusterNodeID(s)
+	return ebc
+}
+
+// SetReason sets the "reason" field.
+func (ebc *EnvBuildCreate) SetReason(sr schema.BuildReason) *EnvBuildCreate {
+	ebc.mutation.SetReason(sr)
+	return ebc
+}
+
+// SetNillableReason sets the "reason" field if the given value is not nil.
+func (ebc *EnvBuildCreate) SetNillableReason(sr *schema.BuildReason) *EnvBuildCreate {
+	if sr != nil {
+		ebc.SetReason(*sr)
+	}
+	return ebc
+}
+
+// SetVersion sets the "version" field.
+func (ebc *EnvBuildCreate) SetVersion(s string) *EnvBuildCreate {
+	ebc.mutation.SetVersion(s)
+	return ebc
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (ebc *EnvBuildCreate) SetNillableVersion(s *string) *EnvBuildCreate {
+	if s != nil {
+		ebc.SetVersion(*s)
 	}
 	return ebc
 }
@@ -259,9 +292,9 @@ func (ebc *EnvBuildCreate) defaults() {
 		v := envbuild.DefaultKernelVersion
 		ebc.mutation.SetKernelVersion(v)
 	}
-	if _, ok := ebc.mutation.FirecrackerVersion(); !ok {
-		v := envbuild.DefaultFirecrackerVersion
-		ebc.mutation.SetFirecrackerVersion(v)
+	if _, ok := ebc.mutation.Reason(); !ok {
+		v := envbuild.DefaultReason
+		ebc.mutation.SetReason(v)
 	}
 }
 
@@ -272,6 +305,9 @@ func (ebc *EnvBuildCreate) check() error {
 	}
 	if _, ok := ebc.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`models: missing required field "EnvBuild.updated_at"`)}
+	}
+	if _, ok := ebc.mutation.EnvID(); !ok {
+		return &ValidationError{Name: "env_id", err: errors.New(`models: missing required field "EnvBuild.env_id"`)}
 	}
 	if _, ok := ebc.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`models: missing required field "EnvBuild.status"`)}
@@ -295,6 +331,15 @@ func (ebc *EnvBuildCreate) check() error {
 	}
 	if _, ok := ebc.mutation.FirecrackerVersion(); !ok {
 		return &ValidationError{Name: "firecracker_version", err: errors.New(`models: missing required field "EnvBuild.firecracker_version"`)}
+	}
+	if _, ok := ebc.mutation.ClusterNodeID(); !ok {
+		return &ValidationError{Name: "cluster_node_id", err: errors.New(`models: missing required field "EnvBuild.cluster_node_id"`)}
+	}
+	if _, ok := ebc.mutation.Reason(); !ok {
+		return &ValidationError{Name: "reason", err: errors.New(`models: missing required field "EnvBuild.reason"`)}
+	}
+	if _, ok := ebc.mutation.EnvID(); !ok {
+		return &ValidationError{Name: "env", err: errors.New(`models: missing required edge "EnvBuild.env"`)}
 	}
 	return nil
 }
@@ -357,6 +402,10 @@ func (ebc *EnvBuildCreate) createSpec() (*EnvBuild, *sqlgraph.CreateSpec) {
 		_spec.SetField(envbuild.FieldStartCmd, field.TypeString, value)
 		_node.StartCmd = &value
 	}
+	if value, ok := ebc.mutation.ReadyCmd(); ok {
+		_spec.SetField(envbuild.FieldReadyCmd, field.TypeString, value)
+		_node.ReadyCmd = &value
+	}
 	if value, ok := ebc.mutation.Vcpu(); ok {
 		_spec.SetField(envbuild.FieldVcpu, field.TypeInt64, value)
 		_node.Vcpu = value
@@ -385,6 +434,18 @@ func (ebc *EnvBuildCreate) createSpec() (*EnvBuild, *sqlgraph.CreateSpec) {
 		_spec.SetField(envbuild.FieldEnvdVersion, field.TypeString, value)
 		_node.EnvdVersion = &value
 	}
+	if value, ok := ebc.mutation.ClusterNodeID(); ok {
+		_spec.SetField(envbuild.FieldClusterNodeID, field.TypeString, value)
+		_node.ClusterNodeID = value
+	}
+	if value, ok := ebc.mutation.Reason(); ok {
+		_spec.SetField(envbuild.FieldReason, field.TypeJSON, value)
+		_node.Reason = value
+	}
+	if value, ok := ebc.mutation.Version(); ok {
+		_spec.SetField(envbuild.FieldVersion, field.TypeString, value)
+		_node.Version = &value
+	}
 	if nodes := ebc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -400,7 +461,7 @@ func (ebc *EnvBuildCreate) createSpec() (*EnvBuild, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
-		_node.EnvID = &nodes[0]
+		_node.EnvID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -497,12 +558,6 @@ func (u *EnvBuildUpsert) UpdateEnvID() *EnvBuildUpsert {
 	return u
 }
 
-// ClearEnvID clears the value of the "env_id" field.
-func (u *EnvBuildUpsert) ClearEnvID() *EnvBuildUpsert {
-	u.SetNull(envbuild.FieldEnvID)
-	return u
-}
-
 // SetStatus sets the "status" field.
 func (u *EnvBuildUpsert) SetStatus(v envbuild.Status) *EnvBuildUpsert {
 	u.Set(envbuild.FieldStatus, v)
@@ -548,6 +603,24 @@ func (u *EnvBuildUpsert) UpdateStartCmd() *EnvBuildUpsert {
 // ClearStartCmd clears the value of the "start_cmd" field.
 func (u *EnvBuildUpsert) ClearStartCmd() *EnvBuildUpsert {
 	u.SetNull(envbuild.FieldStartCmd)
+	return u
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (u *EnvBuildUpsert) SetReadyCmd(v string) *EnvBuildUpsert {
+	u.Set(envbuild.FieldReadyCmd, v)
+	return u
+}
+
+// UpdateReadyCmd sets the "ready_cmd" field to the value that was provided on create.
+func (u *EnvBuildUpsert) UpdateReadyCmd() *EnvBuildUpsert {
+	u.SetExcluded(envbuild.FieldReadyCmd)
+	return u
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (u *EnvBuildUpsert) ClearReadyCmd() *EnvBuildUpsert {
+	u.SetNull(envbuild.FieldReadyCmd)
 	return u
 }
 
@@ -671,6 +744,48 @@ func (u *EnvBuildUpsert) ClearEnvdVersion() *EnvBuildUpsert {
 	return u
 }
 
+// SetClusterNodeID sets the "cluster_node_id" field.
+func (u *EnvBuildUpsert) SetClusterNodeID(v string) *EnvBuildUpsert {
+	u.Set(envbuild.FieldClusterNodeID, v)
+	return u
+}
+
+// UpdateClusterNodeID sets the "cluster_node_id" field to the value that was provided on create.
+func (u *EnvBuildUpsert) UpdateClusterNodeID() *EnvBuildUpsert {
+	u.SetExcluded(envbuild.FieldClusterNodeID)
+	return u
+}
+
+// SetReason sets the "reason" field.
+func (u *EnvBuildUpsert) SetReason(v schema.BuildReason) *EnvBuildUpsert {
+	u.Set(envbuild.FieldReason, v)
+	return u
+}
+
+// UpdateReason sets the "reason" field to the value that was provided on create.
+func (u *EnvBuildUpsert) UpdateReason() *EnvBuildUpsert {
+	u.SetExcluded(envbuild.FieldReason)
+	return u
+}
+
+// SetVersion sets the "version" field.
+func (u *EnvBuildUpsert) SetVersion(v string) *EnvBuildUpsert {
+	u.Set(envbuild.FieldVersion, v)
+	return u
+}
+
+// UpdateVersion sets the "version" field to the value that was provided on create.
+func (u *EnvBuildUpsert) UpdateVersion() *EnvBuildUpsert {
+	u.SetExcluded(envbuild.FieldVersion)
+	return u
+}
+
+// ClearVersion clears the value of the "version" field.
+func (u *EnvBuildUpsert) ClearVersion() *EnvBuildUpsert {
+	u.SetNull(envbuild.FieldVersion)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -771,13 +886,6 @@ func (u *EnvBuildUpsertOne) UpdateEnvID() *EnvBuildUpsertOne {
 	})
 }
 
-// ClearEnvID clears the value of the "env_id" field.
-func (u *EnvBuildUpsertOne) ClearEnvID() *EnvBuildUpsertOne {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.ClearEnvID()
-	})
-}
-
 // SetStatus sets the "status" field.
 func (u *EnvBuildUpsertOne) SetStatus(v envbuild.Status) *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
@@ -831,6 +939,27 @@ func (u *EnvBuildUpsertOne) UpdateStartCmd() *EnvBuildUpsertOne {
 func (u *EnvBuildUpsertOne) ClearStartCmd() *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearStartCmd()
+	})
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (u *EnvBuildUpsertOne) SetReadyCmd(v string) *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetReadyCmd(v)
+	})
+}
+
+// UpdateReadyCmd sets the "ready_cmd" field to the value that was provided on create.
+func (u *EnvBuildUpsertOne) UpdateReadyCmd() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateReadyCmd()
+	})
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (u *EnvBuildUpsertOne) ClearReadyCmd() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearReadyCmd()
 	})
 }
 
@@ -971,6 +1100,55 @@ func (u *EnvBuildUpsertOne) UpdateEnvdVersion() *EnvBuildUpsertOne {
 func (u *EnvBuildUpsertOne) ClearEnvdVersion() *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearEnvdVersion()
+	})
+}
+
+// SetClusterNodeID sets the "cluster_node_id" field.
+func (u *EnvBuildUpsertOne) SetClusterNodeID(v string) *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetClusterNodeID(v)
+	})
+}
+
+// UpdateClusterNodeID sets the "cluster_node_id" field to the value that was provided on create.
+func (u *EnvBuildUpsertOne) UpdateClusterNodeID() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateClusterNodeID()
+	})
+}
+
+// SetReason sets the "reason" field.
+func (u *EnvBuildUpsertOne) SetReason(v schema.BuildReason) *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetReason(v)
+	})
+}
+
+// UpdateReason sets the "reason" field to the value that was provided on create.
+func (u *EnvBuildUpsertOne) UpdateReason() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateReason()
+	})
+}
+
+// SetVersion sets the "version" field.
+func (u *EnvBuildUpsertOne) SetVersion(v string) *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetVersion(v)
+	})
+}
+
+// UpdateVersion sets the "version" field to the value that was provided on create.
+func (u *EnvBuildUpsertOne) UpdateVersion() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateVersion()
+	})
+}
+
+// ClearVersion clears the value of the "version" field.
+func (u *EnvBuildUpsertOne) ClearVersion() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearVersion()
 	})
 }
 
@@ -1241,13 +1419,6 @@ func (u *EnvBuildUpsertBulk) UpdateEnvID() *EnvBuildUpsertBulk {
 	})
 }
 
-// ClearEnvID clears the value of the "env_id" field.
-func (u *EnvBuildUpsertBulk) ClearEnvID() *EnvBuildUpsertBulk {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.ClearEnvID()
-	})
-}
-
 // SetStatus sets the "status" field.
 func (u *EnvBuildUpsertBulk) SetStatus(v envbuild.Status) *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
@@ -1301,6 +1472,27 @@ func (u *EnvBuildUpsertBulk) UpdateStartCmd() *EnvBuildUpsertBulk {
 func (u *EnvBuildUpsertBulk) ClearStartCmd() *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearStartCmd()
+	})
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (u *EnvBuildUpsertBulk) SetReadyCmd(v string) *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetReadyCmd(v)
+	})
+}
+
+// UpdateReadyCmd sets the "ready_cmd" field to the value that was provided on create.
+func (u *EnvBuildUpsertBulk) UpdateReadyCmd() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateReadyCmd()
+	})
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (u *EnvBuildUpsertBulk) ClearReadyCmd() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearReadyCmd()
 	})
 }
 
@@ -1441,6 +1633,55 @@ func (u *EnvBuildUpsertBulk) UpdateEnvdVersion() *EnvBuildUpsertBulk {
 func (u *EnvBuildUpsertBulk) ClearEnvdVersion() *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearEnvdVersion()
+	})
+}
+
+// SetClusterNodeID sets the "cluster_node_id" field.
+func (u *EnvBuildUpsertBulk) SetClusterNodeID(v string) *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetClusterNodeID(v)
+	})
+}
+
+// UpdateClusterNodeID sets the "cluster_node_id" field to the value that was provided on create.
+func (u *EnvBuildUpsertBulk) UpdateClusterNodeID() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateClusterNodeID()
+	})
+}
+
+// SetReason sets the "reason" field.
+func (u *EnvBuildUpsertBulk) SetReason(v schema.BuildReason) *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetReason(v)
+	})
+}
+
+// UpdateReason sets the "reason" field to the value that was provided on create.
+func (u *EnvBuildUpsertBulk) UpdateReason() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateReason()
+	})
+}
+
+// SetVersion sets the "version" field.
+func (u *EnvBuildUpsertBulk) SetVersion(v string) *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetVersion(v)
+	})
+}
+
+// UpdateVersion sets the "version" field to the value that was provided on create.
+func (u *EnvBuildUpsertBulk) UpdateVersion() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateVersion()
+	})
+}
+
+// ClearVersion clears the value of the "version" field.
+func (u *EnvBuildUpsertBulk) ClearVersion() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearVersion()
 	})
 }
 

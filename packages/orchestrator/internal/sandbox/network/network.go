@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"runtime"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"go.uber.org/zap"
 )
 
 func (s *Slot) CreateNetwork() error {
@@ -26,12 +26,12 @@ func (s *Slot) CreateNetwork() error {
 	defer func() {
 		err = netns.Set(hostNS)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error resetting network namespace back to the host namespace: %v", err)
+			zap.L().Error("error resetting network namespace back to the host namespace", zap.Error(err))
 		}
 
 		err = hostNS.Close()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error closing host network namespace: %v", err)
+			zap.L().Error("error closing host network namespace", zap.Error(err))
 		}
 	}()
 
@@ -66,15 +66,10 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error setting vpeer device up: %w", err)
 	}
 
-	ip, ipNet, err := net.ParseCIDR(s.VpeerCIDR())
-	if err != nil {
-		return fmt.Errorf("error parsing vpeer CIDR: %w", err)
-	}
-
 	err = netlink.AddrAdd(vpeer, &netlink.Addr{
 		IPNet: &net.IPNet{
-			IP:   ip,
-			Mask: ipNet.Mask,
+			IP:   s.VpeerIP(),
+			Mask: s.VrtMask(),
 		},
 	})
 	if err != nil {
@@ -102,15 +97,10 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error setting veth device up: %w", err)
 	}
 
-	ip, ipNet, err = net.ParseCIDR(s.VethCIDR())
-	if err != nil {
-		return fmt.Errorf("error parsing veth CIDR: %w", err)
-	}
-
 	err = netlink.AddrAdd(vethInHost, &netlink.Addr{
 		IPNet: &net.IPNet{
-			IP:   ip,
-			Mask: ipNet.Mask,
+			IP:   s.VethIP(),
+			Mask: s.VrtMask(),
 		},
 	})
 	if err != nil {
@@ -141,15 +131,10 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error setting tap device up: %w", err)
 	}
 
-	ip, ipNet, err = net.ParseCIDR(s.TapCIDR())
-	if err != nil {
-		return fmt.Errorf("error parsing tap CIDR: %w", err)
-	}
-
 	err = netlink.AddrAdd(tap, &netlink.Addr{
 		IPNet: &net.IPNet{
-			IP:   ip,
-			Mask: ipNet.Mask,
+			IP:   s.TapIP(),
+			Mask: s.TapCIDR(),
 		},
 	})
 	if err != nil {
@@ -170,7 +155,7 @@ func (s *Slot) CreateNetwork() error {
 	// Add NS default route
 	err = netlink.RouteAdd(&netlink.Route{
 		Scope: netlink.SCOPE_UNIVERSE,
-		Gw:    net.ParseIP(s.VethIP()),
+		Gw:    s.VethIP(),
 	})
 	if err != nil {
 		return fmt.Errorf("error adding default NS route: %w", err)
@@ -182,19 +167,19 @@ func (s *Slot) CreateNetwork() error {
 	}
 
 	// Add NAT routing rules to NS
-	err = tables.Append("nat", "POSTROUTING", "-o", s.VpeerName(), "-s", s.NamespaceIP(), "-j", "SNAT", "--to", s.HostIP())
+	err = tables.Append("nat", "POSTROUTING", "-o", s.VpeerName(), "-s", s.NamespaceIP(), "-j", "SNAT", "--to", s.HostIPString())
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule to vpeer: %w", err)
 	}
 
-	err = tables.Append("nat", "PREROUTING", "-i", s.VpeerName(), "-d", s.HostIP(), "-j", "DNAT", "--to", s.NamespaceIP())
+	err = tables.Append("nat", "PREROUTING", "-i", s.VpeerName(), "-d", s.HostIPString(), "-j", "DNAT", "--to", s.NamespaceIP())
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
 	}
 
-	err = s.addBlockingRules(tables)
+	err = s.InitializeFirewall()
 	if err != nil {
-		return fmt.Errorf("error adding blocking rules: %w", err)
+		return fmt.Errorf("error initializing slot firewall: %w", err)
 	}
 
 	// Go back to original namespace
@@ -204,14 +189,9 @@ func (s *Slot) CreateNetwork() error {
 	}
 
 	// Add routing from host to FC namespace
-	_, ipNet, err = net.ParseCIDR(s.HostCIDR())
-	if err != nil {
-		return fmt.Errorf("error parsing host snapshot CIDR: %w", err)
-	}
-
 	err = netlink.RouteAdd(&netlink.Route{
-		Gw:  net.ParseIP(s.VpeerIP()),
-		Dst: ipNet,
+		Gw:  s.VpeerIP(),
+		Dst: s.HostNet(),
 	})
 	if err != nil {
 		return fmt.Errorf("error adding route from host to FC: %w", err)
@@ -234,11 +214,26 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
 	}
 
+	// Redirect traffic destined for hyperloop proxy
+	err = tables.Append(
+		"nat", "PREROUTING", "-i", s.VethName(),
+		"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
+		"-j", "REDIRECT", "--to-port", s.hyperloopPort,
+	)
+	if err != nil {
+		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
+	}
+
 	return nil
 }
 
 func (s *Slot) RemoveNetwork() error {
 	var errs []error
+
+	err := s.CloseFirewall()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("error closing firewall: %w", err))
+	}
 
 	tables, err := iptables.New()
 	if err != nil {
@@ -260,20 +255,25 @@ func (s *Slot) RemoveNetwork() error {
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting host postrouting rule: %w", err))
 		}
+
+		// Delete hyperloop proxy redirect rule
+		err = tables.Delete(
+			"nat", "PREROUTING", "-i", s.VethName(),
+			"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
+			"-j", "REDIRECT", "--to-port", s.hyperloopPort,
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
+		}
 	}
 
 	// Delete routing from host to FC namespace
-	_, ipNet, err := net.ParseCIDR(s.HostCIDR())
+	err = netlink.RouteDel(&netlink.Route{
+		Gw:  s.VpeerIP(),
+		Dst: s.HostNet(),
+	})
 	if err != nil {
-		errs = append(errs, fmt.Errorf("error parsing host snapshot CIDR: %w", err))
-	} else {
-		err = netlink.RouteDel(&netlink.Route{
-			Gw:  net.ParseIP(s.VpeerIP()),
-			Dst: ipNet,
-		})
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting route from host to FC: %w", err))
-		}
+		errs = append(errs, fmt.Errorf("error deleting route from host to FC: %w", err))
 	}
 
 	// Delete veth device
