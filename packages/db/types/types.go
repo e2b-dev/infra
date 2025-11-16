@@ -17,8 +17,10 @@ type SandboxNetworkEgressConfig struct {
 	DeniedAddresses  []string `json:"deniedAddresses,omitempty"`
 }
 
+const AllowPublicAccessDefault = true
+
 type SandboxNetworkIngressConfig struct {
-	AllowPublicAccess bool    `json:"allowPublicAccess,omitempty"`
+	AllowPublicAccess *bool   `json:"allowPublicAccess,omitempty"`
 	MaskRequestHost   *string `json:"maskRequestHost,omitempty"`
 }
 
