@@ -3,12 +3,22 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened]
+  issue_comment:
+    types: [created]
 
 jobs:
   claude-review:
     name: Claude Code Review
 
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' && 
+       github.event.issue.pull_request != null && 
+       contains(github.event.comment.body, '@claude review') &&
+       (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'))
     permissions:
       contents: read
       pull-requests: read
@@ -23,6 +33,19 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
+      - name: Get PR head SHA
+        id: pr-sha
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+          else
+            PR_NUMBER=${{ github.event.issue.number }}
+            HEAD_SHA=$(gh pr view $PR_NUMBER --json headRefOid -q .headRefOid)
+            echo "sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
@@ -30,7 +53,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
 
             Please review this pull request and provide feedback on:
             - Potential bugs or issues
@@ -50,7 +73,7 @@ jobs:
             To comment inline, use this format exactly (MUST be a single line, no backslashes or line breaks):
 
             ```bash
-            gh api --method POST -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments -f body='${BODY}' -f commit_id="${{ github.event.pull_request.head.sha }}" -f path='${PATH}' -F line='${LINE}' -f side="RIGHT"
+            gh api --method POST -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number || github.event.issue.number }}/comments -f body='${BODY}' -f commit_id="${{ steps.pr-sha.outputs.sha }}" -f path='${PATH}' -F line='${LINE}' -f side="RIGHT"
             ```
 
             IMPORTANT: 
