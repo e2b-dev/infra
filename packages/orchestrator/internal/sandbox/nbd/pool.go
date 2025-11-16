@@ -126,6 +126,14 @@ func (d *DevicePool) Populate(ctx context.Context) {
 
 	failedCount := 0
 	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-d.done:
+			return
+		default:
+		}
+
 		device, err := d.getFreeDeviceSlot()
 		if err != nil {
 			if failedCount%100 == 0 {
