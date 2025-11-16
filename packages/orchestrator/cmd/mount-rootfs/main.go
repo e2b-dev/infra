@@ -89,6 +89,7 @@ func main() {
 }
 
 func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
+	// We use a separate ctx for majority of the operations as cancelling context for the NBD+storage and *then* doing cleanup for these often resulted in deadlocks.
 	ctx := context.Background()
 
 	files := storage.TemplateFiles{
