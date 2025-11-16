@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/metric/noop"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -56,7 +57,40 @@ func (m *mountReadonlyDevice) Size() (int64, error) {
 	return int64(m.header.Metadata.Size), nil
 }
 
-func mountRootfs(ctx context.Context, buildID string) error {
+func main() {
+	buildId := flag.String("build", "", "build id")
+	mountPath := flag.String("mount", "", "mount path")
+
+	flag.Parse()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
+
+	// Disabling the logger for normal use—is very spammy, because Populate on device pool periodically logs errors if the number of acquirable devices is less than the number of requested devices.
+	// logger, err := zap.NewDevelopment()
+	// if err != nil {
+	// 	log.Fatalf("failed to create logger: %s", err)
+	// }
+	// zap.ReplaceGlobals(logger)
+
+	go func() {
+		<-done
+
+		cancel()
+	}()
+
+	err := mountRootfs(ctx, *buildId, *mountPath)
+	if err != nil {
+		log.Fatalf("failed to mount rootfs: %s", err)
+	}
+}
+
+func mountRootfs(mainCtx context.Context, buildID, mountPath string) error {
+	ctx := context.Background()
+
 	files := storage.TemplateFiles{
 		BuildID: buildID,
 	}
@@ -78,8 +112,6 @@ func mountRootfs(ctx context.Context, buildID string) error {
 			return fmt.Errorf("failed to parse build id: %w", err)
 		}
 
-		files.StorageRootfsPath()
-
 		r, err := s.OpenSeekableObject(ctx, files.StorageRootfsPath(), storage.RootFSObjectType)
 		if err != nil {
 			return fmt.Errorf("failed to open object: %w", err)
@@ -99,29 +131,11 @@ func mountRootfs(ctx context.Context, buildID string) error {
 			Generation:  1,
 		}, nil)
 		if err != nil {
-			return fmt.Errorf("failed to create header: %w", err)
+			return fmt.Errorf("failed to create header for rootfs without header: %w", err)
 		}
 	}
 
-	random := uuid.New().String()
-	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.ext4.cow.cache-%s", buildID, random))
-
-	defer os.RemoveAll(cowCachePath)
-
-	cache, err := block.NewCache(
-		int64(h.Metadata.Size),
-		int64(h.Metadata.BlockSize),
-		cowCachePath,
-		false,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create cache: %w", err)
-	}
-
-	fmt.Printf("caching writes to: %+v\n", cowCachePath)
-
-	random = uuid.New().String()
-	diffCacheDir := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.diff.cache-%s", buildID, random))
+	diffCacheDir := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.diff.cache-%s", buildID, uuid.New().String()))
 
 	err = os.MkdirAll(diffCacheDir, 0o755)
 	if err != nil {
@@ -129,8 +143,6 @@ func mountRootfs(ctx context.Context, buildID string) error {
 	}
 
 	defer os.RemoveAll(diffCacheDir)
-
-	fmt.Printf("caching diffs to: %+v\n", diffCacheDir)
 
 	flags, err := featureflags.NewClient()
 	if err != nil {
@@ -151,9 +163,32 @@ func mountRootfs(ctx context.Context, buildID string) error {
 
 	defer store.Close()
 
-	rootfs := build.NewFile(h, store, build.Rootfs, s, metrics.Metrics{})
+	fmt.Printf("caching diffs to: %+v\n", diffCacheDir)
+
+	m, err := metrics.NewMetrics(noop.NewMeterProvider())
+	if err != nil {
+		return fmt.Errorf("failed to create metrics: %w", err)
+	}
+
+	rootfs := build.NewFile(h, store, build.Rootfs, s, m)
 
 	readonlyDevice := newReadonlyDevice(rootfs, h, int64(h.Metadata.BlockSize))
+
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.ext4.cow.cache-%s", buildID, uuid.New().String()))
+
+	defer os.RemoveAll(cowCachePath)
+
+	cache, err := block.NewCache(
+		int64(h.Metadata.Size),
+		int64(h.Metadata.BlockSize),
+		cowCachePath,
+		false,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create cache: %w", err)
+	}
+
+	fmt.Printf("caching writes to: %+v\n", cowCachePath)
 
 	overlay := block.NewOverlay(readonlyDevice, cache)
 	defer overlay.Close()
@@ -163,7 +198,11 @@ func mountRootfs(ctx context.Context, buildID string) error {
 		return fmt.Errorf("failed to create device pool: %w", err)
 	}
 
+	poolClosed := make(chan struct{})
+
 	defer func() {
+		<-poolClosed
+
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancelCleanup()
 
@@ -173,8 +212,12 @@ func mountRootfs(ctx context.Context, buildID string) error {
 		}
 	}()
 
+	poolCtx, poolCancel := context.WithCancel(ctx)
+	defer poolCancel()
+
 	go func() {
-		devicePool.Populate(ctx)
+		devicePool.Populate(poolCtx)
+		close(poolClosed)
 	}()
 
 	mnt := nbd.NewDirectPathMount(overlay, devicePool)
@@ -196,41 +239,48 @@ func mountRootfs(ctx context.Context, buildID string) error {
 
 	devicePath := nbd.GetDevicePath(mntIndex)
 
-	fmt.Printf("rootfs mounted at path:\n%s\n", devicePath)
+	fmt.Printf("rootfs exposed as device: %s\n", devicePath)
 
-	<-ctx.Done()
+	err = os.MkdirAll(mountPath, 0o755)
+	if err != nil {
+		return fmt.Errorf("failed to create mount path directory: %w", err)
+	}
+
+	fmt.Fprintf(os.Stdout, "creating mount path directory: %s\n", mountPath)
+
+	defer os.RemoveAll(mountPath)
+
+	err = unix.Mount(devicePath, mountPath, "ext4", 0, "")
+	if err != nil {
+		return fmt.Errorf("failed to mount device to mount path: %w", err)
+	}
+
+	defer func() {
+		ticker := time.NewTicker(600 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-time.After(30 * time.Second):
+				fmt.Fprintf(os.Stderr, "failed to unmount device from mount path: %v\n", err)
+
+				return
+			case <-ticker.C:
+				err = unix.Unmount(mountPath, 0)
+				if err == nil {
+					return
+				}
+
+				fmt.Fprintf(os.Stderr, "failed to unmount device from mount path: %v\n", err)
+			}
+		}
+	}()
+
+	fmt.Printf("rootfs mounted at path: %s\n", mountPath)
+
+	<-mainCtx.Done()
 
 	fmt.Println("closing rootfs mount")
 
 	return nil
-}
-
-func main() {
-	buildId := flag.String("build", "", "build id")
-
-	flag.Parse()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt)
-
-	// set global zap logger
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		log.Fatalf("failed to create logger: %s", err)
-	}
-	zap.ReplaceGlobals(logger)
-
-	go func() {
-		<-done
-
-		cancel()
-	}()
-
-	err = mountRootfs(ctx, *buildId)
-	if err != nil {
-		log.Fatalf("failed to mount rootfs: %s", err)
-	}
 }
