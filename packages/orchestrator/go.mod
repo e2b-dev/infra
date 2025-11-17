@@ -11,6 +11,7 @@ replace (
 replace github.com/garyburd/redigo => github.com/gomodule/redigo v1.9.2
 
 require (
+	cloud.google.com/go/storage v1.50.0
 	connectrpc.com/connect v1.18.1
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
@@ -76,7 +77,6 @@ require (
 	cloud.google.com/go/iam v1.2.2 // indirect
 	cloud.google.com/go/longrunning v0.6.3 // indirect
 	cloud.google.com/go/monitoring v1.21.2 // indirect
-	cloud.google.com/go/storage v1.50.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/ClickHouse/ch-go v0.66.1 // indirect
 	github.com/DataDog/datadog-go/v5 v5.2.0 // indirect

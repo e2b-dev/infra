@@ -1,7 +1,7 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { readFile, rm } from "fs/promises";
 
-import { log, runTestWithSandbox } from "../utils.ts";
+import { DEBUG_TIMEOUT_MS, log, runTestWithSandbox } from "../utils.ts";
 
 const uniqueID = crypto.randomUUID();
 const templateName = `test-template-${uniqueID}`;
@@ -41,13 +41,15 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 15000));
 
   log("ℹ️ creating sandbox");
-  const sandbox = await Sandbox.create(templateID, { timeoutMs: 10000 });
+  const sandbox = await Sandbox.create(templateID, { timeoutMs: DEBUG_TIMEOUT_MS });
 
   await runTestWithSandbox(sandbox, "time-is-synchronized", async () => {
     log("ℹ️ starting command");
     const localDateStart = new Date();
     const localDateStartUnix = localDateStart.getTime() / 1000;
-    const dateStdout = await sandbox.commands.run("date +%s%3N");
+    const dateStdout = await sandbox.commands.run("date +%s%3N", {
+      requestTimeoutMs: 10000,
+    });
     const dateUnix = parseFloat(dateStdout.stdout) / 1000;
     const sandboxDate = new Date(dateUnix * 1000);
 

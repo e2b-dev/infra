@@ -39,10 +39,6 @@ func main() {
 		log.Fatalf("invalid kind: %s", *kind)
 	}
 
-	if *end == 0 {
-		*end = blockSize
-	}
-
 	ctx := context.Background()
 
 	storage, err := storage.GetTemplateStorageProvider(ctx, nil)
@@ -62,6 +58,10 @@ func main() {
 
 	if *start > size/blockSize {
 		log.Fatalf("start block %d is out of bounds (maximum is %d)", *start, size/blockSize)
+	}
+
+	if *end == 0 {
+		*end = size / blockSize
 	}
 
 	if *end > size/blockSize {

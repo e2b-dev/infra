@@ -171,7 +171,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		network = &types.SandboxNetworkConfig{
 			Ingress: &types.SandboxNetworkIngressConfig{
-				AllowPublicAccess: sharedUtils.DerefOrDefault(n.AllowPublicTraffic, true),
+				AllowPublicAccess: n.AllowPublicTraffic,
 				MaskRequestHost:   n.MaskRequestHost,
 			},
 			Egress: &types.SandboxNetworkEgressConfig{
@@ -182,7 +182,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		// Make sure envd seucre access is enforced when public access is disabled,
 		// this is requirement forcing users using newer features to secure sandboxes properly.
-		if !network.Ingress.AllowPublicAccess && envdAccessToken == nil {
+		if !sharedUtils.DerefOrDefault(network.Ingress.AllowPublicAccess, types.AllowPublicAccessDefault) && envdAccessToken == nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, "You cannot create a sandbox without public access unless you enable secure envd access via 'secure' flag.")
 
 			return
