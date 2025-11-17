@@ -3,11 +3,12 @@ package ioc
 import (
 	"context"
 
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/fx"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	sharedevents "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
-	"github.com/redis/go-redis/v9"
-	"go.uber.org/fx"
 )
 
 func NewRedisModule() fx.Option {

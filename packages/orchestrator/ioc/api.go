@@ -4,6 +4,13 @@ import (
 	"context"
 	"net"
 
+	"github.com/soheilhy/cmux"
+	"go.uber.org/fx"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -14,12 +21,6 @@ import (
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/soheilhy/cmux"
-	"go.uber.org/fx"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func NewGRPCModule() fx.Option {
@@ -134,6 +135,7 @@ func newInfoService(
 ) *service.Server {
 	s := service.NewInfoService(serviceInfo, sandboxes)
 	globalLogger.Info("Registered gRPC service", zap.String("service", "orchestrator_info.InfoService"))
+
 	return s
 }
 
@@ -155,5 +157,6 @@ func newGRPCServer(
 	}
 
 	globalLogger.Info("Registered gRPC service", zap.String("service", "orchestrator.SandboxService"))
+
 	return s
 }

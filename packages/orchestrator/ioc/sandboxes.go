@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"go.uber.org/fx"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -18,8 +21,6 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 func NewSandboxesModule() fx.Option {
@@ -93,10 +94,12 @@ func newDevicePool(
 		OnStart: func(ctx context.Context) error {
 			globalLogger.Info("Starting NBD device pool")
 			go devicePool.Populate(ctx)
+
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
 			globalLogger.Info("Shutting down NBD device pool")
+
 			return devicePool.Close(ctx)
 		},
 	})
@@ -124,10 +127,12 @@ func newSandboxProxy(
 					globalLogger.Error("Sandbox proxy error", zap.Error(err))
 				}
 			}()
+
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
 			globalLogger.Info("Shutting down sandbox proxy")
+
 			return sandboxProxy.Close(ctx)
 		},
 	})

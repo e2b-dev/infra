@@ -6,6 +6,9 @@ import (
 	"log"
 	"slices"
 
+	"go.uber.org/fx"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -20,8 +23,6 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 func NewTemplateManagerModule(config cfg.Config) fx.Option {
@@ -59,12 +60,14 @@ func NewTemplateManager(
 		},
 	)
 	lc.Append(fx.Hook{
-		OnStop: func(ctx context.Context) error {
+		OnStop: func(context.Context) error {
 			err := tmplSbxLoggerExternal.Sync()
 			if logger.IsSyncError(err) {
 				log.Printf("error while shutting down template manager sandbox logger: %v", err)
+
 				return err
 			}
+
 			return nil
 		},
 	})
@@ -93,6 +96,7 @@ func NewTemplateManager(
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
 			globalLogger.Info("Shutting down template manager")
+
 			return tmpl.Close(ctx)
 		},
 	})

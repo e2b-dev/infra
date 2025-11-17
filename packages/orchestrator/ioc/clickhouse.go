@@ -4,11 +4,12 @@ import (
 	"context"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"go.uber.org/fx"
+
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"go.uber.org/fx"
 )
 
 func NewClickhouseModule(config cfg.Config) fx.Option {

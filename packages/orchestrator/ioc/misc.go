@@ -6,12 +6,13 @@ import (
 	"log"
 	"os"
 
+	"github.com/google/uuid"
+	"go.uber.org/fx"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/google/uuid"
-	"go.uber.org/fx"
 )
 
 type VersionInfo struct {

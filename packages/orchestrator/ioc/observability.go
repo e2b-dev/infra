@@ -4,14 +4,15 @@ import (
 	"context"
 	"log"
 
+	"go.uber.org/fx"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"go.uber.org/fx"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 func NewObservabilityModule() fx.Option {
@@ -35,8 +36,10 @@ func newTelemetry(lc fx.Lifecycle, state State, version VersionInfo) *telemetry.
 			err := tel.Shutdown(ctx)
 			if err != nil {
 				log.Printf("error while shutting down telemetry: %v", err)
+
 				return err
 			}
+
 			return nil
 		},
 	})
@@ -79,10 +82,11 @@ func newGlobalLogger(
 		EnableConsole: true,
 	}))
 	lc.Append(fx.Hook{
-		OnStop: func(ctx context.Context) error {
+		OnStop: func(context.Context) error {
 			err := globalLogger.Sync()
 			if logger.IsSyncError(err) {
 				log.Printf("error while shutting down logger: %v", err)
+
 				return err
 			}
 

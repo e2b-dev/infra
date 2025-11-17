@@ -12,13 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	e2bHealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	e2bHealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 )
 
 type shutdown struct {
@@ -27,8 +28,9 @@ type shutdown struct {
 
 var _ fx.Shutdowner = (*shutdown)(nil)
 
-func (s *shutdown) Shutdown(option ...fx.ShutdownOption) error {
+func (s *shutdown) Shutdown(...fx.ShutdownOption) error {
 	s.isShutdown.Store(true)
+
 	return nil
 }
 
@@ -48,7 +50,8 @@ func TestCanCloseGRPCGracefully(t *testing.T) {
 	require.NoError(t, err)
 
 	healthURL := fmt.Sprintf("http://localhost:%d/health", config.GRPCPort)
-	healthReq, err := http.NewRequest(
+	healthReq, err := http.NewRequestWithContext(
+		t.Context(),
 		http.MethodGet,
 		healthURL,
 		nil,
@@ -79,7 +82,7 @@ func TestCanCloseGRPCGracefully(t *testing.T) {
 
 	// stop the sandbox after ~1 second, to mimic a sandbox that needed time to shut down
 	// do this async so that we can test for connection failures that happen _before_ the
-	//sandbox was shutdown.
+	// sandbox was shutdown.
 	var stopped bool
 	go func() {
 		time.Sleep(time.Second)
@@ -112,16 +115,16 @@ func waitForConnectionFailure(t *testing.T, client *http.Client, req *http.Reque
 		case <-ctx.Done():
 			t.Fatalf("context done: %v", ctx.Err())
 		default:
-			break
 		}
 
 		resp, err := client.Do(req)
 		if err == nil {
 			err = resp.Body.Close()
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			t.Logf("http response status: %s, sleeping ... ", resp.Status)
 			time.Sleep(time.Millisecond * 100)
+
 			continue
 		}
 
@@ -141,7 +144,7 @@ func waitForHttpResponse(
 	maxDuration time.Duration,
 	expectedHTTPStatus int,
 	expectedE2BStatus e2bHealth.Status,
-) *http.Response {
+) {
 	t.Helper()
 
 	ctx := t.Context()
@@ -157,14 +160,14 @@ func waitForHttpResponse(
 		case <-ctx.Done():
 			t.Fatalf("context done: %v", ctx.Err())
 		default:
-			break
 		}
 		resp, err := httpClient.Do(request)
 		require.NoError(t, err)
 
 		if resp.StatusCode != expectedHTTPStatus {
 			err = resp.Body.Close()
-			assert.NoError(t, err)
+			require.NoError(t, err)
+
 			t.Logf("expected http %d, got %d, waiting", expectedHTTPStatus, resp.StatusCode)
 			time.Sleep(time.Millisecond * 100)
 
@@ -181,9 +184,8 @@ func waitForHttpResponse(
 		if model.Status != expectedE2BStatus {
 			t.Logf("expected health status %s, got %s, waiting", expectedE2BStatus, model.Status)
 			time.Sleep(time.Millisecond * 100)
+
 			continue
 		}
-
-		return resp
 	}
 }

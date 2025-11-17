@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
-	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/health"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
+	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 )
 
 func NewHealthModule() fx.Option {
@@ -29,6 +30,7 @@ func newGRPCHealthServer(
 ) *health.Server {
 	s := health.NewServer()
 	logger.Info("Registered gRPC service", zap.String("service", "grpc.health.v1.Health"))
+
 	return s
 }
 
@@ -49,4 +51,4 @@ func newHealthHTTPServer(serviceInfo *service.ServiceInfo) (HealthHTTPServer, er
 	return HealthHTTPServer{httpServer}, nil
 }
 
-func startHealthHTTPServer(server HealthHTTPServer) {}
+func startHealthHTTPServer(HealthHTTPServer) {}

@@ -6,6 +6,8 @@ import (
 	"os"
 	"slices"
 
+	"go.uber.org/fx"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -13,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"go.uber.org/fx"
 )
 
 func NewSandboxLoggerInternal(lc fx.Lifecycle, tel *telemetry.Client, state State) {
@@ -27,10 +28,11 @@ func NewSandboxLoggerInternal(lc fx.Lifecycle, tel *telemetry.Client, state Stat
 		},
 	)
 	lc.Append(fx.Hook{
-		OnStop: func(ctx context.Context) error {
+		OnStop: func(context.Context) error {
 			err := sbxLoggerInternal.Sync()
 			if logger.IsSyncError(err) {
 				log.Printf("error while shutting down sandbox internal logger: %v", err)
+
 				return err
 			}
 
@@ -51,10 +53,11 @@ func NewSandboxLoggerExternal(lc fx.Lifecycle, tel *telemetry.Client, state Stat
 		},
 	)
 	lc.Append(fx.Hook{
-		OnStop: func(ctx context.Context) error {
+		OnStop: func(context.Context) error {
 			err := sbxLoggerExternal.Sync()
 			if logger.IsSyncError(err) {
 				log.Printf("error while shutting down sandbox external logger: %v", err)
+
 				return err
 			}
 
@@ -69,12 +72,13 @@ func NewDrainingHandler(
 	serviceInfo *service.ServiceInfo,
 ) {
 	lc.Append(fx.Hook{
-		OnStop: func(ctx context.Context) error {
+		OnStop: func(context.Context) error {
 			// Mark service draining if not already.
 			// If service stats was previously changed via API, we don't want to override it.
 			if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
 				serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Draining)
 			}
+
 			return nil
 		},
 	})
@@ -100,7 +104,7 @@ func NewSingleOrchestratorCheck(
 			log.Fatalf("Failed to create lock file %s: %v", fileLockName, err)
 		}
 		lc.Append(fx.Hook{
-			OnStop: func(ctx context.Context) error {
+			OnStop: func(context.Context) error {
 				fileErr := f.Close()
 				if fileErr != nil {
 					log.Printf("Failed to close lock file %s: %v", fileLockName, fileErr)
@@ -111,6 +115,7 @@ func NewSingleOrchestratorCheck(
 				if fileErr = os.Remove(fileLockName); fileErr != nil {
 					log.Printf("Failed to remove lock file %s: %v", fileLockName, fileErr)
 				}
+
 				return nil
 			},
 		})

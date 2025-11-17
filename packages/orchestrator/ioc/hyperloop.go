@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"net/http"
 
+	"go.uber.org/fx"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 func NewHyperloopModule() fx.Option {
@@ -41,13 +42,14 @@ func newHyperloopServer(
 	}
 
 	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
+		OnStart: func(context.Context) error {
 			go func() {
 				err := hyperloopSrv.ListenAndServe()
 				if err != nil && !errors.Is(err, http.ErrServerClosed) {
 					logger.Error("Hyperloop server error", zap.Error(err))
 				}
 			}()
+
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
@@ -58,4 +60,4 @@ func newHyperloopServer(
 	return HyperloopHTTPServer{hyperloopSrv}, nil
 }
 
-func startHyperloopServer(s HyperloopHTTPServer) {}
+func startHyperloopServer(HyperloopHTTPServer) {}

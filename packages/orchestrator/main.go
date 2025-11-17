@@ -4,8 +4,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/ioc"
 	"go.uber.org/fx"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/ioc"
 )
 
 const version = "0.1.0"
