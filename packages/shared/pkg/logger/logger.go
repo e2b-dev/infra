@@ -40,9 +40,9 @@ func NewLogger(_ context.Context, loggerConfig LoggerConfig) (*zap.Logger, error
 
 	// Console logging configuration
 	config := zap.Config{
-		DisableStacktrace: true,
+		DisableStacktrace: loggerConfig.DisableStacktrace,
 		// Takes stacktraces more liberally
-		Development: false,
+		Development: true,
 		Sampling:    nil,
 
 		Encoding:         "console",
