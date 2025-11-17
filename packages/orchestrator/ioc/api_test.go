@@ -115,6 +115,7 @@ func waitForConnectionFailure(t *testing.T, client *http.Client, req *http.Reque
 		case <-ctx.Done():
 			t.Fatalf("context done: %v", ctx.Err())
 		default:
+			break //nolint:revive,staticcheck // this is critical
 		}
 
 		resp, err := client.Do(req)
@@ -122,7 +123,6 @@ func waitForConnectionFailure(t *testing.T, client *http.Client, req *http.Reque
 			err = resp.Body.Close()
 			require.NoError(t, err)
 
-			t.Logf("http response status: %s, sleeping ... ", resp.Status)
 			time.Sleep(time.Millisecond * 100)
 
 			continue
@@ -187,5 +187,7 @@ func waitForHttpResponse(
 
 			continue
 		}
+
+		break
 	}
 }
