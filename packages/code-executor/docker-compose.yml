@@ -1,0 +1,43 @@
+services:
+  piston:
+    image: ghcr.io/engineer-man/piston:latest
+    container_name: piston-ainosov
+    ports:
+      - "2000:2000"
+    volumes:
+      - piston-data:/piston
+    restart: unless-stopped
+    networks:
+      - code-executor-network
+
+  code-executor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: code-executor-ainosov
+    ports:
+      - "8080:8080"
+    environment:
+      - PISTON_URL=http://piston:2000
+    command:
+      [
+        "code-executor",
+        "--port",
+        "8080",
+        "--workers",
+        "10",
+        "--piston-url",
+        "http://piston:2000",
+      ]
+    depends_on:
+      - piston
+    restart: unless-stopped
+    networks:
+      - code-executor-network
+
+volumes:
+  piston-data:
+
+networks:
+  code-executor-network:
+    driver: bridge

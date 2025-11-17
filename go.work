@@ -4,6 +4,7 @@ use (
 	./packages/api
 	./packages/clickhouse
 	./packages/client-proxy
+	./packages/code-executor
 	./packages/db
 	./packages/docker-reverse-proxy
 	./packages/envd
