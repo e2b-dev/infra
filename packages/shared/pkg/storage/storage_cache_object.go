@@ -9,6 +9,8 @@ import (
 	"os"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
@@ -36,17 +38,36 @@ func (c CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int
 	defer span.End()
 
 	if bytesRead, ok := c.copyFullFileFromCache(ctx, dst); ok {
+		recordCacheOp(ctx, true, bytesRead, cacheOpWriteTo)
+
 		return bytesRead, nil
 	}
 
-	return c.readAndCacheFullRemoteFile(ctx, dst)
+	bytesRead, err := c.readAndCacheFullRemoteFile(ctx, dst, cacheOpWriteTo)
+	if ignoreEOF(err) != nil {
+		recordCacheError(ctx, cacheOpReadAt, err)
+		return 0, fmt.Errorf("failed to read and cache object: %w", err)
+	}
+
+	recordCacheOp(ctx, false, bytesRead, cacheOpWriteTo)
+
+	return bytesRead, err // in case  err == EOF
 }
 
 func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, err error) {
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.Write", trace.WithAttributes(attribute.Int("size", len(p))))
+	defer func() {
+		recordError(span, err)
+		span.End()
+	}()
+
+	go c.writeFullFileToCache(context.WithoutCancel(ctx), p, cacheOpWrite)
+
 	return c.inner.Write(ctx, p)
 }
 
 func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+
 	return c.inner.WriteFromFileSystem(ctx, path)
 }
 
@@ -93,7 +114,7 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 	return count, true
 }
 
-func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, dst io.Writer) (int64, error) {
+func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, dst io.Writer, op cacheOp) (int64, error) {
 	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
 	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
 	// file is larger than 2 MB, the buffer will grow, it just won't be as efficient WRT memory allocations.
@@ -105,21 +126,21 @@ func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, ds
 		return 0, err
 	}
 
-	go func() {
-		c.writeFullFileToCache(context.WithoutCancel(ctx), writer.Bytes())
-	}()
+	go c.writeFullFileToCache(context.WithoutCancel(ctx), writer.Bytes(), op)
 
 	written, err := dst.Write(writer.Bytes())
 
 	return int64(written), err
 }
 
-func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte) {
+func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte, op cacheOp) {
 	finalPath := c.fullFilename()
 
 	// Try to acquire lock for this chunk write to NFS cache
 	lockFile, err := lock.TryAcquireLock(finalPath)
 	if err != nil {
+		recordCacheError(ctx, op, err)
+
 		if errors.Is(err, lock.ErrLockAlreadyHeld) {
 			// Another process is already writing this chunk, so we can skip writing it ourselves
 			return
@@ -142,6 +163,8 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 	tempPath := c.tempFullFilename()
 
 	if err := os.WriteFile(tempPath, b, cacheFilePermissions); err != nil {
+		recordCacheError(ctx, op, fmt.Errorf("failed to write to temp file: %w", err))
+
 		zap.L().Error("failed to write temp cache file",
 			zap.String("path", tempPath),
 			zap.Int("length", len(b)),
@@ -152,6 +175,8 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 	}
 
 	if err := moveWithoutReplace(tempPath, finalPath); err != nil {
+		recordCacheError(ctx, op, fmt.Errorf("failed to move temp cache file: %w", err))
+
 		zap.L().Error("failed to rename temp file",
 			zap.String("tempPath", tempPath),
 			zap.String("filePath", finalPath),
@@ -162,5 +187,9 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 		return
 	}
 
-	timer.End(ctx, int64(len(b)))
+	num := int64(len(b))
+
+	recordCacheOp(ctx, false, num, op)
+
+	timer.End(ctx, num)
 }

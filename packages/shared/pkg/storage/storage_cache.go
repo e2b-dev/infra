@@ -9,7 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -34,10 +35,6 @@ var (
 		"Total bytes written to the cache",
 		"Total writes to the cache",
 	))
-	cacheHits = utils.Must(meter.Int64Counter("orchestrator.storage.cache.hits",
-		metric.WithDescription("total cache hits")))
-	cacheMisses = utils.Must(meter.Int64Counter("orchestrator.storage.cache.misses",
-		metric.WithDescription("total cache misses")))
 )
 
 type CachedProvider struct {
@@ -53,6 +50,8 @@ func NewCachedProvider(rootPath string, inner StorageProvider) *CachedProvider {
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+	go c.deleteObjectsWithPrefix(prefix)
+
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
 }
 
@@ -93,6 +92,16 @@ func (c CachedProvider) GetDetails() string {
 		c.rootPath, c.inner.GetDetails())
 }
 
+func (c CachedProvider) deleteObjectsWithPrefix(prefix string) {
+	fullPrefix := filepath.Join(c.rootPath, prefix)
+	if err := os.RemoveAll(fullPrefix); err != nil {
+		zap.L().Error("failed to remove object with prefix",
+			zap.String("prefix", prefix),
+			zap.String("path", fullPrefix),
+			zap.Error(err))
+	}
+}
+
 func cleanup(msg string, fn func() error) {
 	if err := fn(); err != nil {
 		zap.L().Warn(msg, zap.Error(err))
@@ -126,4 +135,13 @@ func moveWithoutReplace(oldPath, newPath string) error {
 	}
 
 	return nil
+}
+
+func recordError(span trace.Span, err error) {
+	if err == nil {
+		return
+	}
+
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }
