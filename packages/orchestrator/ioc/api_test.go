@@ -58,7 +58,7 @@ func TestCanCloseGRPCGracefully(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	output, err := newCMUXServer(config)
+	output, err := newCMUXServer(config, logger, nil, shutdowner, grpcServer, healthHttpServer, serviceInfo)
 	require.NoError(t, err)
 
 	startCMUXServer(logger, shutdowner, output, grpcServer, healthHttpServer)

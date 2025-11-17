@@ -48,7 +48,17 @@ type CMUXOut struct {
 	HTTPListener net.Listener
 }
 
-func newCMUXServer(config cfg.Config) (CMUXOut, error) {
+func newCMUXServer(
+	config cfg.Config,
+
+	// these are necessary for start/stop hooks
+	_ *zap.Logger,
+	_ *sandbox.Factory,
+	_ fx.Shutdowner,
+	_ *grpc.Server,
+	_ HealthHTTPServer,
+	_ *service.ServiceInfo,
+) (CMUXOut, error) {
 	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
 	cmuxServer, err := factories.NewCMUXServer(context.Background(), config.GRPCPort)
 	if err != nil {
