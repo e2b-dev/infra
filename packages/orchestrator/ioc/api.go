@@ -47,14 +47,7 @@ type CMUXOut struct {
 	HTTPListener net.Listener
 }
 
-func newCMUXServer(
-	config cfg.Config,
-	_ *zap.Logger,
-	_ *sandbox.Factory,
-	_ fx.Shutdowner,
-	_ *grpc.Server,
-	_ HealthHTTPServer,
-) (CMUXOut, error) {
+func newCMUXServer(config cfg.Config) (CMUXOut, error) {
 	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
 	cmuxServer, err := factories.NewCMUXServer(context.Background(), config.GRPCPort)
 	if err != nil {
@@ -85,21 +78,52 @@ func startCMUXServer(logger *zap.Logger, s fx.Shutdowner, input CMUXOut, grpcSer
 	})
 }
 
-func stopCMUXServer(logger *zap.Logger, sandboxFactory *sandbox.Factory, input CMUXOut, grpcServer *grpc.Server, httpServer HealthHTTPServer) {
+func stopCMUXServer(
+	logger *zap.Logger,
+	sandboxFactory *sandbox.Factory,
+	input CMUXOut,
+	grpcServer *grpc.Server,
+	httpServer HealthHTTPServer,
+	serviceInfo *service.ServiceInfo,
+) {
+	stopCMUXServerMockable(logger, sandboxFactory, input, grpcServer, httpServer, serviceInfo)
+}
+
+func stopCMUXServerMockable(
+	logger *zap.Logger,
+	sandboxFactory interface{ Wait() },
+	input CMUXOut,
+	grpcServer *grpc.Server,
+	httpServer HealthHTTPServer,
+	serviceInfo *service.ServiceInfo,
+) {
+	// prevent new sandboxes from being created
+	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
+		serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Draining)
+	}
+
+	// wait for existing sandboxes to quit
 	sandboxFactory.Wait()
 
+	// complete existing requests, prevent new ones from being processed
 	grpcServer.GracefulStop()
+
+	// close grpc listener
 	if err := input.GRPCListener.Close(); err != nil {
 		logger.Error("failed to close grpc listener", zap.Error(err))
 	}
 
+	// shutdown the http server
 	if err := httpServer.Shutdown(context.Background()); err != nil {
 		logger.Error("failed to shutdown cmux server", zap.Error(err))
 	}
+
+	// close the http listener
 	if err := input.HTTPListener.Close(); err != nil {
 		logger.Error("failed to close http listener", zap.Error(err))
 	}
 
+	// finally, close the mux
 	input.CMUX.Close()
 }
 
