@@ -35,8 +35,6 @@ import (
 
 const (
 	provisionTimeout = 5 * time.Minute
-
-	exitPrefix = "EXIT:"
 )
 
 //go:embed provision.sh
@@ -89,7 +87,6 @@ func (bb *BaseBuilder) provisionSandbox(
 	defer exitCodeWriter.Close()
 
 	// read all incoming logs and detect message "{exitPrefix}:X" where X is the exit code
-	scanner := bufio.NewScanner(exitCodeReader)
 	done := utils.NewErrorOnce()
 	go func() (e error) {
 		defer io.Copy(io.Discard, exitCodeReader)
@@ -97,10 +94,11 @@ func (bb *BaseBuilder) provisionSandbox(
 			done.SetError(e)
 		}()
 
+		scanner := bufio.NewScanner(exitCodeReader)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.HasPrefix(line, exitPrefix) {
-				exitStatus := strings.TrimPrefix(line, exitPrefix)
+			if strings.HasPrefix(line, rootfs.ProvisioningExitPrefix) {
+				exitStatus := strings.TrimPrefix(line, rootfs.ProvisioningExitPrefix)
 				if exitStatus == "0" {
 					// Success exit code
 					return nil
@@ -163,6 +161,11 @@ func (bb *BaseBuilder) provisionSandbox(
 		return fmt.Errorf("error pausing provisioned sandbox: %w", err)
 	}
 	defer snapshot.Close(context.WithoutCancel(ctx))
+
+	err = filesystem.RemoveFile(ctx, rootfsPath, provisionScriptResultPath)
+	if err != nil {
+		return fmt.Errorf("result file cleanup failed: %w", err)
+	}
 
 	userLogger.Info("Sandbox template provisioned")
 

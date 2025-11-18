@@ -33,6 +33,8 @@ const (
 
 	BusyBoxPath     = "usr/bin/busybox"
 	BusyBoxInitPath = "usr/bin/init"
+
+	ProvisioningExitPrefix = "E2B_PROVISIONING_EXIT:"
 )
 
 type Rootfs struct {
@@ -261,11 +263,11 @@ echo "System Init"`), Mode: 0o777},
 ::wait:/usr/bin/busybox sync
 
 # Report the exit code of the provisioning script
-::wait:/bin/sh -c 'echo "EXIT:$(cat %s || printf 1)"'
+::wait:/bin/sh -c 'echo "%s$(cat %s || printf 1)"'
 
 # Wait forever to prevent the VM from exiting until the sandbox is paused and snapshot is taken
 ::wait:/usr/bin/busybox sleep infinity
-`, provisionLogPrefix, provisionResultPath), Mode: 0o777},
+`, provisionLogPrefix, ProvisioningExitPrefix, provisionResultPath), Mode: 0o777},
 		},
 	)
 	if err != nil {
