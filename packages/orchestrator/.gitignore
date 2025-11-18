@@ -7,4 +7,4 @@ bin
 .clickhouse
 .shared
 /tmp
-/graph.dot
+graph.dot

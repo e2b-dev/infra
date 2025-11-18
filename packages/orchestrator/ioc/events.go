@@ -26,7 +26,7 @@ func withDeliveryTargets(f any) any {
 	)
 }
 
-func newSandboxEventsService(lc fx.Lifecycle, deliveryTargets []sharedevents.Delivery[sharedevents.SandboxEvent]) *events.EventsService {
+func newSandboxEventsService(deliveryTargets []sharedevents.Delivery[sharedevents.SandboxEvent], lc fx.Lifecycle) *events.EventsService {
 	svc := events.NewEventsService(deliveryTargets)
 
 	lc.Append(fx.Hook{
