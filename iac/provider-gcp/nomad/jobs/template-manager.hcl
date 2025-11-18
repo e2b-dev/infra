@@ -47,7 +47,7 @@ job "template-manager-system" {
 
 %{ if update_stanza }
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
-      kill_timeout      = "20m"
+      kill_timeout      = "70m"
 %{ else }
       kill_timeout      = "1m"
 %{ endif }
