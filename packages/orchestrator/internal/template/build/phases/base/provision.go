@@ -88,7 +88,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	exitCodeReader, exitCodeWriter := io.Pipe()
 	defer exitCodeWriter.Close()
 
-	// read all incoming logs and detect message "EXIT:X" or logExternalPrefix + "EXIT:X" where X is the exit code
+	// read all incoming logs and detect message "{exitPrefix}:X" where X is the exit code
 	scanner := bufio.NewScanner(exitCodeReader)
 	done := utils.NewErrorOnce()
 	go func() (e error) {
@@ -150,9 +150,9 @@ func (bb *BaseBuilder) provisionSandbox(
 		return fmt.Errorf("error waiting for provisioning sandbox: %w", err)
 	}
 
-	userLogger.Info("Sandbox template provisioned")
+	userLogger.Info("Provisioning was successful, cleaning up")
 
-	_, err = sbx.Pause(ctx, metadata.Template{
+	snapshot, err := sbx.Pause(ctx, metadata.Template{
 		Template: storage.TemplateFiles{
 			BuildID:            uuid.NewString(),
 			KernelVersion:      fcVersions.KernelVersion,
@@ -162,8 +162,9 @@ func (bb *BaseBuilder) provisionSandbox(
 	if err != nil {
 		return fmt.Errorf("error pausing provisioned sandbox: %w", err)
 	}
+	defer snapshot.Close(context.WithoutCancel(ctx))
 
-	userLogger.Info("Changes flushed")
+	userLogger.Info("Sandbox template provisioned")
 
 	return nil
 }
