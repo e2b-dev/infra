@@ -22,8 +22,8 @@ type Provider interface {
 }
 
 const (
-	// We increase the buffer size by 28 bytes to account for the usual max requests.
-	// TODO: Add after testing the max write buffer size as this would effectively always be handled by the normal buffer.
+	// TODO: Optionally add the following optimization after testing the max write buffer size—most traffic would effectively always be handled by the normal buffer if we add this optimization.
+	// TODO: We increase the buffer size by 28 bytes to account for the usual max requests.
 	dispatchBufferSize = 4 * 1024 * 1024
 	// https://sourceforge.net/p/nbd/mailman/message/35081223/
 	// 32MB is the maximum buffer size for a single request that should be universally supported.
@@ -187,7 +187,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					rp += dataCopied
 
 					// We need to wait for more data here, otherwise we will deadlock if the buffer is Xmb and the length is Xmb because of the headers's extra 28 bytes needed.
-					// At the same time we don't want to increase the buffer size as the max would be 32mb which is too large for hundreds sandbox connections.
+					// At the same time we don't want to increase the default buffer size as the max would be 32mb which is too large for hundreds of sandbox connections.
 
 					for dataCopied < int(request.Length) {
 						n, err := d.fp.Read(data[dataCopied:])
