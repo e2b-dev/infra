@@ -149,7 +149,7 @@ func run() int {
 	}
 
 	redisSecureClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
-		RedisURL:         config.RedisURL,
+		RedisURL:         "",
 		RedisClusterURL:  config.RedisSecureClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
 	})
