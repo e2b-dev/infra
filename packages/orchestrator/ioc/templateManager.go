@@ -34,7 +34,7 @@ func newTemplateManagerModule(config cfg.Config) fx.Option {
 		fx.Provide(
 			newTemplateManager,
 		),
-	)
+	).Build()
 }
 
 type templateManagerOutput struct {

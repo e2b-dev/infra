@@ -20,7 +20,7 @@ func newClickhouseModule(config cfg.Config) fx.Option {
 			newClickhouseDriver,
 			AsDeliveryTarget(NewClickhouseDeliveryTarget),
 		),
-	)
+	).Build()
 }
 
 func newClickhouseDriver(config cfg.Config) (driver.Conn, error) {

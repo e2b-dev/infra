@@ -13,7 +13,7 @@ func newDebugGraphModule() fx.Option {
 	return If("dot-graph",
 		fileName != "",
 		fx.Invoke(renderDotGraph(fileName)),
-	)
+	).Build()
 }
 
 func renderDotGraph(fileName string) func(graph fx.DotGraph) error {

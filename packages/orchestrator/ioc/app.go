@@ -13,12 +13,10 @@ type VersionInfo struct {
 	Commit  string
 }
 
-func New(config cfg.Config, version, commitSHA string) *fx.App {
-	vInfo := VersionInfo{Version: version, Commit: commitSHA}
-
-	return fx.New(
-		fx.StartTimeout(15*time.Second),
-		fx.StopTimeout(24*time.Hour),
+func build(config cfg.Config, vInfo VersionInfo) []fx.Option {
+	return []fx.Option{
+		fx.StartTimeout(15 * time.Second),
+		fx.StopTimeout(24 * time.Hour),
 
 		fx.Supply(vInfo),
 		fx.Supply(config),
@@ -49,5 +47,23 @@ func New(config cfg.Config, version, commitSHA string) *fx.App {
 			newSandboxLoggerInternal, // Initialize sandbox internal logger
 			newSandboxLoggerExternal, // Initialize sandbox external logger
 		),
-	)
+	}
+}
+
+func Validate(config cfg.Config, version, commitSHA string) error {
+	vInfo := VersionInfo{Version: version, Commit: commitSHA}
+
+	options := build(config, vInfo)
+
+	return fx.ValidateApp(options...)
+}
+
+func New(config cfg.Config, version, commitSHA string, opts ...fx.Option) *fx.App {
+	vInfo := VersionInfo{Version: version, Commit: commitSHA}
+
+	options := build(config, vInfo)
+
+	options = append(options, opts...)
+
+	return fx.New(options...)
 }

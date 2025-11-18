@@ -36,7 +36,6 @@ func newSandboxesModule() fx.Option {
 			newSandboxProxy,
 			newSandboxesMap,
 		),
-		fx.Invoke(),
 	)
 }
 
