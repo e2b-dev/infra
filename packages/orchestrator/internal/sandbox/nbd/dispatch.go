@@ -23,7 +23,8 @@ type Provider interface {
 
 const (
 	// We increase the buffer size by 28 bytes to account for the usual max requests.
-	dispatchBufferSize = 4 * 1024 * 1024
+	// TODO: Add after testing the max write buffer size as this would effectively always be handled by the normal buffer.
+	dispatchBufferSize = 4*1024*1024 + 28
 	// https://sourceforge.net/p/nbd/mailman/message/35081223/
 	// 32MB is the maximum buffer size for a single request that should be universally supported.
 	dispatchMaxWriteBufferSize = 32 * 1024 * 1024
