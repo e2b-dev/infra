@@ -128,7 +128,8 @@ resource "nomad_job" "api" {
     nomad_acl_token                = var.nomad_acl_token_secret
     admin_token                    = var.api_admin_token
     redis_url                      = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
-    redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+    redis_cluster_url              = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) != "" ? data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data : ""
+    redis_tls_ca_base64            = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
     dns_port_number                = var.api_dns_port_number
     clickhouse_connection_string   = local.clickhouse_connection_string
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
