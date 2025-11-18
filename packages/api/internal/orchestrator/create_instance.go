@@ -294,10 +294,12 @@ func (o *Orchestrator) CreateSandbox(
 		telemetry.ReportError(ctx, "failed to add sandbox to store", err)
 
 		// Clean up the sandbox from the node
+		// Copy to a new variable to avoid race conditions
+		sbxToRemove := sbx
 		go func() {
-			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbx, sandbox.StateActionKill)
+			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.StateActionKill)
 			if killErr != nil {
-				zap.L().Error("Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sandboxID))
+				zap.L().Error("Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
 			}
 		}()
 
