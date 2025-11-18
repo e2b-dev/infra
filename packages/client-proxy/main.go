@@ -162,6 +162,8 @@ func run() int {
 			catalog = e2bcatalog.NewMemorySandboxesCatalog()
 		}
 		logger.Error("Failed to create redis secure client", zap.Error(err))
+
+		return 1
 	}
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
