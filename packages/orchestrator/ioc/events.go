@@ -1,6 +1,8 @@
 package ioc
 
 import (
+	"context"
+
 	"go.uber.org/fx"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
@@ -24,6 +26,14 @@ func withDeliveryTargets(f any) any {
 	)
 }
 
-func newSandboxEventsService(deliveryTargets []sharedevents.Delivery[sharedevents.SandboxEvent]) *events.EventsService {
-	return events.NewEventsService(deliveryTargets)
+func newSandboxEventsService(lc fx.Lifecycle, deliveryTargets []sharedevents.Delivery[sharedevents.SandboxEvent]) *events.EventsService {
+	svc := events.NewEventsService(deliveryTargets)
+
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			return svc.Close(ctx)
+		},
+	})
+
+	return svc
 }

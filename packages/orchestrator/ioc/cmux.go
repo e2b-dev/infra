@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/soheilhy/cmux"
 	"go.uber.org/fx"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
@@ -32,14 +32,6 @@ func (c cmuxWaitBeforeShutdown) Wait(ctx context.Context) error {
 }
 
 var _ CMUXWaitBeforeShutdown = cmuxWaitBeforeShutdown{}
-
-func asCMUXWaitBeforeShutdown(f any) any {
-	return fx.Annotate(
-		f,
-		fx.As((*CMUXWaitBeforeShutdown)(nil)),
-		fx.ResultTags(cmuxWaitBeforeShutdownGroupTag),
-	)
-}
 
 func withCMUXWaitBeforeShutdown(f any) any {
 	return fx.Annotate(
@@ -90,7 +82,6 @@ func startCMUXServer(
 	grpcServer *grpc.Server,
 	httpServer HealthHTTPServer,
 	lc fx.Lifecycle,
-	sandboxFactory *sandbox.Factory,
 	serviceInfo *service.ServiceInfo,
 ) {
 	invokeAsync(s, func() error {
@@ -120,6 +111,7 @@ func startCMUXServer(
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
 			stopCMUXServerMockable(ctx, logger, input, grpcServer, httpServer, serviceInfo, waitBeforeShutdown)
+
 			return nil
 		},
 	})
@@ -138,6 +130,11 @@ func ignoreUseOfClosed(err error) error {
 	return err
 }
 
+const (
+	preShutdownTimeout  = 5 * time.Second
+	httpShutdownTimeout = 15 * time.Second
+)
+
 func stopCMUXServerMockable(
 	ctx context.Context,
 	logger *zap.Logger,
@@ -153,11 +150,13 @@ func stopCMUXServerMockable(
 	}
 
 	for _, preShutdown := range preCMUXShutdowns {
-		if err := preShutdown.Wait(ctx); err != nil {
+		preCtx, cancel := context.WithTimeout(ctx, preShutdownTimeout)
+		if err := preShutdown.Wait(preCtx); err != nil {
 			logger.Warn("failed to wait for pre-shutdown hook",
 				zap.Error(err),
 			)
 		}
+		cancel()
 	}
 
 	logger.Info("gracefully shutting down grpc server")
@@ -168,8 +167,11 @@ func stopCMUXServerMockable(
 		logger.Error("failed to close grpc listener", zap.Error(err))
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, httpShutdownTimeout)
+	defer cancel()
+
 	logger.Info("gracefully shutting down http server")
-	if err := httpServer.Shutdown(context.Background()); ignoreUseOfClosed(err) != nil {
+	if err := httpServer.Shutdown(ctx); ignoreUseOfClosed(err) != nil {
 		logger.Error("failed to shutdown cmux server", zap.Error(err))
 	}
 

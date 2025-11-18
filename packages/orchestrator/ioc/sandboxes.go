@@ -96,9 +96,10 @@ func newSandboxFactory(
 
 	return sandboxFactoryOut{
 		Factory: factory,
-		CMUXWaitBeforeShutdown: cmuxWaitBeforeShutdown{fn: func(ctx context.Context) error {
+		CMUXWaitBeforeShutdown: cmuxWaitBeforeShutdown{fn: func(context.Context) error {
 			logger.Info("waiting for sandboxes to exit ... ")
 			factory.Wait()
+
 			return nil
 		}},
 	}
