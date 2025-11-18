@@ -38,18 +38,17 @@ func (c CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int
 	defer span.End()
 
 	if bytesRead, ok := c.copyFullFileFromCache(ctx, dst); ok {
-		recordCacheOp(ctx, true, bytesRead, cacheOpWriteTo)
+		recordCacheRead(ctx, true, bytesRead, cacheOpWriteTo)
 
 		return bytesRead, nil
 	}
 
 	bytesRead, err := c.readAndCacheFullRemoteFile(ctx, dst, cacheOpWriteTo)
 	if ignoreEOF(err) != nil {
-		recordCacheError(ctx, cacheOpReadAt, err)
 		return 0, fmt.Errorf("failed to read and cache object: %w", err)
 	}
 
-	recordCacheOp(ctx, false, bytesRead, cacheOpWriteTo)
+	recordCacheRead(ctx, false, bytesRead, cacheOpWriteTo)
 
 	return bytesRead, err // in case  err == EOF
 }
@@ -139,7 +138,7 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 	// Try to acquire lock for this chunk write to NFS cache
 	lockFile, err := lock.TryAcquireLock(finalPath)
 	if err != nil {
-		recordCacheError(ctx, op, err)
+		recordCacheError(ctx, op, "failed to acquire lock", err)
 
 		if errors.Is(err, lock.ErrLockAlreadyHeld) {
 			// Another process is already writing this chunk, so we can skip writing it ourselves
@@ -163,7 +162,7 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 	tempPath := c.tempFullFilename()
 
 	if err := os.WriteFile(tempPath, b, cacheFilePermissions); err != nil {
-		recordCacheError(ctx, op, fmt.Errorf("failed to write to temp file: %w", err))
+		recordCacheError(ctx, op, "failed to write to temp file", err)
 
 		zap.L().Error("failed to write temp cache file",
 			zap.String("path", tempPath),
@@ -175,7 +174,7 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 	}
 
 	if err := moveWithoutReplace(tempPath, finalPath); err != nil {
-		recordCacheError(ctx, op, fmt.Errorf("failed to move temp cache file: %w", err))
+		recordCacheError(ctx, op, "failed to move temp cache file", err)
 
 		zap.L().Error("failed to rename temp file",
 			zap.String("tempPath", tempPath),
@@ -189,7 +188,7 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 
 	num := int64(len(b))
 
-	recordCacheOp(ctx, false, num, op)
+	recordCacheWrite(ctx, num, op)
 
 	timer.End(ctx, num)
 }

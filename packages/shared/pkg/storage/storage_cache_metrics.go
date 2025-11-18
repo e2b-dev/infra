@@ -8,8 +8,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-type cacheOp string
-
 var (
 	cacheErrorCounter = utils.Must(meter.Int64Counter("orchestrator.storage.cache.errors",
 		metric.WithDescription("total cache errors encountered")))
@@ -20,14 +18,18 @@ var (
 		metric.WithUnit("byte")))
 )
 
+type cacheOp string
+
 const (
-	cacheOpWrite   cacheOp = "write"
 	cacheOpWriteTo cacheOp = "write_to"
 	cacheOpReadAt  cacheOp = "read_at"
 	cacheOpSize    cacheOp = "size"
+
+	cacheOpWrite               cacheOp = "write"
+	cacheOpWriteFromFileSystem cacheOp = "write_from_filesystem"
 )
 
-func recordCacheOp(ctx context.Context, isHit bool, bytesRead int64, op cacheOp) {
+func recordCacheRead(ctx context.Context, isHit bool, bytesRead int64, op cacheOp) {
 	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.Bool("cache_hit", isHit),
 		attribute.String("operation", string(op)),
@@ -39,8 +41,19 @@ func recordCacheOp(ctx context.Context, isHit bool, bytesRead int64, op cacheOp)
 	))
 }
 
-func recordCacheError(ctx context.Context, op cacheOp, err error) {
+func recordCacheWrite(ctx context.Context, bytesWritten int64, op cacheOp) {
 	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("operation", string(op)),
+	))
+
+	cacheBytesCounter.Add(ctx, bytesWritten, metric.WithAttributes(
+		attribute.String("operation", string(op)),
+	))
+}
+
+func recordCacheError[T string | ~string](ctx context.Context, op T, action string, err error) {
+	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("action", action),
 		attribute.String("error", err.Error()),
 		attribute.String("operation", string(op)),
 	))

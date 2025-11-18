@@ -54,12 +54,11 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 	readTimer := cacheReadTimerFactory.Begin()
 	count, err := c.readAtFromCache(chunkPath, buff)
 	if ignoreEOF(err) == nil {
-		cacheHits.Add(ctx, 1)
+		recordCacheRead(ctx, true, int64(count), cacheOpReadAt)
 		readTimer.End(ctx, int64(count))
 
 		return count, err // return `err` in case it's io.EOF
 	}
-	cacheMisses.Add(ctx, 1)
 
 	zap.L().Debug("failed to read cached chunk, falling back to remote read",
 		zap.String("chunk_path", chunkPath),
@@ -76,16 +75,19 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 		c.writeChunkToCache(context.WithoutCancel(ctx), offset, chunkPath, buff[:readCount])
 	}()
 
+	recordCacheRead(ctx, false, int64(readCount), cacheOpReadAt)
+
 	return readCount, nil
 }
 
 func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
-	if size, ok := c.readLocalSize(); ok {
-		cacheHits.Add(ctx, 1)
+	if size, err := c.readLocalSize(); err == nil {
+		recordCacheRead(ctx, true, 1, cacheOpSize)
 
 		return size, nil
+	} else {
+		recordCacheError(ctx, cacheOpSize, "read local size", err)
 	}
-	cacheMisses.Add(ctx, 1)
 
 	size, err := c.inner.Size(ctx)
 	if err != nil {
@@ -93,6 +95,8 @@ func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 	}
 
 	go c.writeLocalSize(size)
+
+	recordCacheRead(ctx, false, 1, cacheOpSize)
 
 	return size, nil
 }
@@ -117,10 +121,21 @@ func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, p
 		}
 	}()
 
+	var size int64
+	if stat, err := os.Stat(path); err != nil {
+		zap.L().Error("failed to stat file",
+			zap.Error(err),
+			zap.String("path", path),
+		)
+	} else {
+		size = stat.Size()
+	}
+
 	if err := c.inner.WriteFromFileSystem(ctx, path); err != nil {
 		return fmt.Errorf("failed to write to remote storage: %w", err)
 	}
 
+	recordCacheWrite(ctx, size, cacheOpWriteFromFileSystem)
 	return nil
 }
 
@@ -155,28 +170,19 @@ func (c CachedSeekableObjectProvider) sizeFilename() string {
 	return filepath.Join(c.path, "size.txt")
 }
 
-func (c CachedSeekableObjectProvider) readLocalSize() (int64, bool) {
-	fname := c.sizeFilename()
-	content, err := os.ReadFile(fname)
+func (c CachedSeekableObjectProvider) readLocalSize() (int64, error) {
+	filename := c.sizeFilename()
+	content, err := os.ReadFile(filename)
 	if err != nil {
-		zap.L().Warn("failed to read cached size, falling back to remote read",
-			zap.String("path", fname),
-			zap.Error(err))
-
-		return 0, false
+		return 0, fmt.Errorf("failed to read cached size: %w", err)
 	}
 
 	size, err := strconv.ParseInt(string(content), 10, 64)
 	if err != nil {
-		zap.L().Error("failed to parse cached size, falling back to remote read",
-			zap.String("path", fname),
-			zap.String("content", string(content)),
-			zap.Error(err))
-
-		return 0, false
+		return 0, fmt.Errorf("failed to parse cached size: %w", err)
 	}
 
-	return size, true
+	return size, nil
 }
 
 func (c CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int64) error {
