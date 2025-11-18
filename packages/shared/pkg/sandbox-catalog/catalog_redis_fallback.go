@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -14,7 +13,6 @@ import (
 type RedisFallbackSandboxCatalog struct {
 	sandboxCatalog             SandboxesCatalog
 	redisFallbackCatalogClient *RedisSandboxCatalog
-	cache                      *ttlcache.Cache[string, *SandboxInfo]
 	featureFlags               *featureflags.Client
 }
 
@@ -58,19 +56,25 @@ func (r *RedisFallbackSandboxCatalog) DeleteSandbox(ctx context.Context, sandbox
 var _ SandboxesCatalog = (*RedisFallbackSandboxCatalog)(nil)
 
 func NewRedisFallbackSandboxesCatalog(sandboxCatalog SandboxesCatalog, redisFallbackSandboxCatalog *RedisSandboxCatalog, featureFlagsClient *featureflags.Client) *RedisFallbackSandboxCatalog {
-	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
-	go cache.Start()
 
 	return &RedisFallbackSandboxCatalog{
 		sandboxCatalog:             sandboxCatalog,
 		redisFallbackCatalogClient: redisFallbackSandboxCatalog,
 		featureFlags:               featureFlagsClient,
-		cache:                      cache,
 	}
 }
 
-func (r *RedisFallbackSandboxCatalog) Close(_ context.Context) error {
-	r.cache.Stop()
+func (r *RedisFallbackSandboxCatalog) Close(ctx context.Context) error {
+	var errs []error
+	err := r.sandboxCatalog.Close(ctx)
+	if err != nil {
+		errs = append(errs, err)
+	}
 
-	return nil
+	err = r.redisFallbackCatalogClient.Close(ctx)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
 }
