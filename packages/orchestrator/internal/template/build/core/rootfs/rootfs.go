@@ -261,7 +261,7 @@ echo "System Init"`), Mode: 0o777},
 ::wait:/usr/bin/busybox sync
 
 # Report the exit code of the provisioning script
-::wait:/usr/bin/busybox echo "EXIT:$(cat %s || printf 1)"
+::wait:/bin/sh -c 'echo "EXIT:$(cat %s || printf 1)"'
 
 # Wait forever to prevent the VM from exiting until the sandbox is paused and snapshot is taken
 ::wait:/usr/bin/busybox sleep infinity
