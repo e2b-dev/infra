@@ -655,6 +655,61 @@ func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
 	return s.process.Versions
 }
 
+func (s *Sandbox) Shutdown(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "shutdown sandbox")
+	defer span.End()
+
+	// Stop the health check before pausing the VM
+	s.Checks.Stop()
+
+	if err := s.process.Pause(ctx); err != nil {
+		return fmt.Errorf("failed to pause VM: %w", err)
+	}
+
+	if err := s.memory.Disable(); err != nil {
+		return fmt.Errorf("failed to disable uffd: %w", err)
+	}
+
+	// This is required because the FC API doesn't support passing /dev/null
+	tf, err := storage.TemplateFiles{
+		BuildID:            uuid.New().String(),
+		KernelVersion:      s.Template.Files().KernelVersion,
+		FirecrackerVersion: s.Template.Files().FirecrackerVersion,
+	}.CacheFiles(s.config)
+	if err != nil {
+		return fmt.Errorf("failed to create template files: %w", err)
+	}
+	defer tf.Close(s.config)
+
+	// The snapfile is required only because the FC API doesn't support passing /dev/null
+	snapfile := template.NewLocalFileLink(tf.CacheSnapfilePath(s.config))
+	defer snapfile.Close()
+
+	// The memfile is required only because the FC API doesn't support passing /dev/null
+	memfile, err := storage.AcquireTmpMemfile(ctx, s.config, tf.BuildID)
+	if err != nil {
+		return fmt.Errorf("failed to acquire memfile snapshot: %w", err)
+	}
+	defer memfile.Close()
+
+	err = s.process.CreateSnapshot(
+		ctx,
+		snapfile.Path(),
+		memfile.Path(),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating snapshot: %w", err)
+	}
+
+	// This should properly flush rootfs to the underlying device.
+	err = s.Close(ctx)
+	if err != nil {
+		return fmt.Errorf("error stopping sandbox: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	m metadata.Template,

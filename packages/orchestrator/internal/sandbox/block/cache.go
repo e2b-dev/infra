@@ -112,11 +112,15 @@ func (m *Cache) ExportToDiff(out io.Writer) (*header.DiffMetadata, error) {
 		}
 
 		dirty.Set(uint(blockIdx))
-		_, err = out.Write(block)
+		n, err := out.Write(block)
 		if err != nil {
 			zap.L().Error("error writing to out", zap.Error(err))
 
 			return nil, err
+		}
+
+		if int64(n) != m.blockSize {
+			return nil, fmt.Errorf("short write: %d != %d", int64(n), m.blockSize)
 		}
 	}
 
