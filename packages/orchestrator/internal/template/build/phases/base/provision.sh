@@ -1,10 +1,13 @@
 #!/bin/sh
 set -eu
 
+BUSYBOX="{{ .BusyBox }}"
+RESULT_PATH="{{ .ResultPath }}"
+
 echo "Starting provisioning script"
 
 echo "Making configuration immutable"
-{{ .BusyBox }} chattr +i /etc/resolv.conf
+$BUSYBOX chattr +i /etc/resolv.conf
 
 # Install required packages if not already installed
 PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp socat curl ca-certificates"
@@ -94,7 +97,7 @@ echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
 
 echo "Unlocking immutable configuration"
-{{ .BusyBox }} chattr -i /etc/resolv.conf
+$BUSYBOX chattr -i /etc/resolv.conf
 
 echo "Finished provisioning script"
 
@@ -103,4 +106,4 @@ rm -rf /etc/init.d/rcS
 rm -rf /usr/local/bin/provision.sh
 
 # Report successful provisioning
-printf "0" > "{{ .ResultPath }}"
+printf "0" > "$RESULT_PATH"
