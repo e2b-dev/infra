@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 )
 
-func NewHyperloopModule() fx.Option {
+func newHyperloopModule() fx.Option {
 	return fx.Module("hyperloop",
 		fx.Provide(
 			newHyperloopServer,

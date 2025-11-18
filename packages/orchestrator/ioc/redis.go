@@ -11,7 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 )
 
-func NewRedisModule() fx.Option {
+func newRedisModule() fx.Option {
 	return fx.Module(
 		"redis",
 		fx.Provide(

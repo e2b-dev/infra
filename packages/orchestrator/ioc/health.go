@@ -6,17 +6,19 @@ import (
 
 	"go.uber.org/fx"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 )
 
-func NewHealthModule() fx.Option {
+func newHealthModule() fx.Option {
 	return fx.Module("health",
 		fx.Provide(
-			newGRPCHealthServer,
+			asGRPCRegisterable(newGRPCHealthServer),
 			newHealthHTTPServer,
 		),
 		fx.Invoke(
@@ -25,13 +27,13 @@ func NewHealthModule() fx.Option {
 	)
 }
 
-func newGRPCHealthServer(
-	logger *zap.Logger,
-) *health.Server {
+func newGRPCHealthServer(logger *zap.Logger) grpcRegisterable {
 	s := health.NewServer()
 	logger.Info("Registered gRPC service", zap.String("service", "grpc.health.v1.Health"))
 
-	return s
+	return grpcRegisterable{func(server *grpc.Server) {
+		grpc_health_v1.RegisterHealthServer(server, s)
+	}}
 }
 
 // HealthHTTPServer wraps the health check HTTP server to distinguish it from HyperloopHTTPServer in DI

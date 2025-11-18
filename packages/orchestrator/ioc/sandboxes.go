@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/fx"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
@@ -19,17 +20,18 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func NewSandboxesModule() fx.Option {
+func newSandboxesModule() fx.Option {
 	return fx.Module("sandboxes",
 		fx.Provide(
 			newDevicePool,
 			newNetworkPool,
 			newNetworkStorage,
-			newOrchestratorService,
+			asGRPCRegisterable(newOrchestratorService),
 			newSandboxFactory,
 			newSandboxProxy,
 			newSandboxesMap,
@@ -56,8 +58,8 @@ func newOrchestratorService(
 	featureFlags *featureflags.Client,
 	sbxEventsService *events.EventsService,
 	serviceInfo *service.ServiceInfo,
-) *server.Server {
-	return server.New(server.ServiceConfig{
+) grpcRegisterable {
+	s := server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,
 		NetworkPool:      networkPool,
@@ -70,15 +72,36 @@ func newOrchestratorService(
 		FeatureFlags:     featureFlags,
 		SbxEventsService: sbxEventsService,
 	})
+
+	return grpcRegisterable{func(g *grpc.Server) {
+		orchestrator.RegisterSandboxServiceServer(g, s)
+	}}
+}
+
+type sandboxFactoryOut struct {
+	fx.Out
+
+	*sandbox.Factory
+	CMUXWaitBeforeShutdown `group:"cmux-waitable"`
 }
 
 func newSandboxFactory(
+	logger *zap.Logger,
 	config cfg.Config,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	featureFlags *featureflags.Client,
-) *sandbox.Factory {
-	return sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
+) sandboxFactoryOut {
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
+
+	return sandboxFactoryOut{
+		Factory: factory,
+		CMUXWaitBeforeShutdown: cmuxWaitBeforeShutdown{fn: func(ctx context.Context) error {
+			logger.Info("waiting for sandboxes to exit ... ")
+			factory.Wait()
+			return nil
+		}},
+	}
 }
 
 func newDevicePool(

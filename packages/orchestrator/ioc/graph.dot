@@ -1,0 +1,258 @@
+digraph {
+	rankdir=RL;
+	graph [compound=true];
+	"[type=events.Delivery[github.com/e2b-dev/infra/packages/shared/pkg/events.SandboxEvent] group=delivery-targets]" [shape=diamond label=<events.Delivery[github.com/e2b-dev/infra/packages/shared/pkg/events.SandboxEvent]<BR /><FONT POINT-SIZE="10">Group: delivery-targets</FONT>>];
+	"[type=events.Delivery[github.com/e2b-dev/infra/packages/shared/pkg/events.SandboxEvent] group=delivery-targets]" -> "events.Delivery[github.com/e2b-dev/infra/packages/shared/pkg/events.SandboxEvent][group=delivery-targets]0";
+	"[type=ioc.GRPCServerRegistrar group=grpc-registerables]" [shape=diamond label=<ioc.GRPCServerRegistrar<BR /><FONT POINT-SIZE="10">Group: grpc-registerables</FONT>>];
+	"[type=ioc.GRPCServerRegistrar group=grpc-registerables]" -> "ioc.GRPCServerRegistrar[group=grpc-registerables]0";
+	"[type=ioc.GRPCServerRegistrar group=grpc-registerables]" -> "ioc.GRPCServerRegistrar[group=grpc-registerables]1";
+	"[type=ioc.GRPCServerRegistrar group=grpc-registerables]" -> "ioc.GRPCServerRegistrar[group=grpc-registerables]2";
+	"[type=ioc.GRPCServerRegistrar group=grpc-registerables]" -> "ioc.GRPCServerRegistrar[group=grpc-registerables]3";
+	"[type=ioc.CMUXWaitBeforeShutdown group=cmux-waitable]" [shape=diamond label=<ioc.CMUXWaitBeforeShutdown<BR /><FONT POINT-SIZE="10">Group: cmux-waitable</FONT>>];
+	"[type=ioc.CMUXWaitBeforeShutdown group=cmux-waitable]" -> "ioc.CMUXWaitBeforeShutdown[group=cmux-waitable]0";
+	"[type=ioc.CMUXWaitBeforeShutdown group=cmux-waitable]" -> "ioc.CMUXWaitBeforeShutdown[group=cmux-waitable]1";
+	subgraph cluster_0 {
+		label = "go.uber.org/fx";
+		constructor_0 [shape=plaintext label="New.func1"];
+		"fx.Lifecycle" [label=<fx.Lifecycle>];
+	}
+	subgraph cluster_1 {
+		label = "go.uber.org/fx";
+		constructor_1 [shape=plaintext label="(*App).shutdowner-fm"];
+		"fx.Shutdowner" [label=<fx.Shutdowner>];
+	}
+	subgraph cluster_2 {
+		label = "go.uber.org/fx";
+		constructor_2 [shape=plaintext label="(*App).dotGraph-fm"];
+		"fx.DotGraph" [label=<fx.DotGraph>];
+	}
+	subgraph cluster_3 {
+		label = "reflect";
+		constructor_3 [shape=plaintext label="makeFuncStub"];
+		"ioc.VersionInfo" [label=<ioc.VersionInfo>];
+	}
+	subgraph cluster_4 {
+		label = "reflect";
+		constructor_4 [shape=plaintext label="makeFuncStub"];
+		"cfg.Config" [label=<cfg.Config>];
+	}
+	subgraph cluster_5 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_5 [shape=plaintext label="newState"];
+		"ioc.State" [label=<ioc.State>];
+	}
+	constructor_5 -> "cfg.Config" [ltail=cluster_5];
+	subgraph cluster_6 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_6 [shape=plaintext label="newFeatureFlagsClient"];
+		"*feature_flags.Client" [label=<*feature_flags.Client>];
+	}
+	constructor_6 -> "fx.Lifecycle" [ltail=cluster_6];
+	subgraph cluster_7 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_7 [shape=plaintext label="newLimiter"];
+		"*limit.Limiter" [label=<*limit.Limiter>];
+	}
+	constructor_7 -> "fx.Lifecycle" [ltail=cluster_7];
+	constructor_7 -> "*feature_flags.Client" [ltail=cluster_7];
+	subgraph cluster_8 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_8 [shape=plaintext label="newPersistence"];
+		"storage.StorageProvider" [label=<storage.StorageProvider>];
+	}
+	constructor_8 -> "*limit.Limiter" [ltail=cluster_8];
+	subgraph cluster_9 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_9 [shape=plaintext label="newBlockMetrics"];
+		"metrics.Metrics" [label=<metrics.Metrics>];
+	}
+	constructor_9 -> "*telemetry.Client" [ltail=cluster_9];
+	subgraph cluster_10 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_10 [shape=plaintext label="newTemplateCache"];
+		"*template.Cache" [label=<*template.Cache>];
+	}
+	constructor_10 -> "cfg.Config" [ltail=cluster_10];
+	constructor_10 -> "*feature_flags.Client" [ltail=cluster_10];
+	constructor_10 -> "storage.StorageProvider" [ltail=cluster_10];
+	constructor_10 -> "metrics.Metrics" [ltail=cluster_10];
+	subgraph cluster_11 {
+		label = "reflect";
+		constructor_11 [shape=plaintext label="makeFuncStub"];
+		"*events.EventsService" [label=<*events.EventsService>];
+	}
+	constructor_11 -> "[type=events.Delivery[github.com/e2b-dev/infra/packages/shared/pkg/events.SandboxEvent] group=delivery-targets]" [ltail=cluster_11];
+	subgraph cluster_12 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_12 [shape=plaintext label="newServiceInfo"];
+		"*service.ServiceInfo" [label=<*service.ServiceInfo>];
+	}
+	constructor_12 -> "ioc.State" [ltail=cluster_12];
+	constructor_12 -> "cfg.Config" [ltail=cluster_12];
+	constructor_12 -> "ioc.VersionInfo" [ltail=cluster_12];
+	subgraph cluster_13 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_13 [shape=plaintext label="newCMUXServer"];
+		"ioc.CMUXOut" [label=<ioc.CMUXOut>];
+	}
+	constructor_13 -> "cfg.Config" [ltail=cluster_13];
+	subgraph cluster_14 {
+		label = "reflect";
+		constructor_14 [shape=plaintext label="makeFuncStub"];
+		"ioc.GRPCServerRegistrar[group=grpc-registerables]0" [label=<ioc.GRPCServerRegistrar<BR /><FONT POINT-SIZE="10">Group: grpc-registerables</FONT>>];
+	}
+	constructor_14 -> "*sandbox.Map" [ltail=cluster_14];
+	constructor_14 -> "*service.ServiceInfo" [ltail=cluster_14];
+	constructor_14 -> "*zap.Logger" [ltail=cluster_14];
+	subgraph cluster_15 {
+		label = "reflect";
+		constructor_15 [shape=plaintext label="makeFuncStub"];
+		"*grpc.Server" [label=<*grpc.Server>];
+	}
+	constructor_15 -> "*telemetry.Client" [ltail=cluster_15];
+	constructor_15 -> "[type=ioc.GRPCServerRegistrar group=grpc-registerables]" [ltail=cluster_15];
+	subgraph cluster_16 {
+		label = "reflect";
+		constructor_16 [shape=plaintext label="makeFuncStub"];
+		"ioc.GRPCServerRegistrar[group=grpc-registerables]1" [label=<ioc.GRPCServerRegistrar<BR /><FONT POINT-SIZE="10">Group: grpc-registerables</FONT>>];
+	}
+	constructor_16 -> "*zap.Logger" [ltail=cluster_16];
+	subgraph cluster_17 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_17 [shape=plaintext label="newHealthHTTPServer"];
+		"ioc.HealthHTTPServer" [label=<ioc.HealthHTTPServer>];
+	}
+	constructor_17 -> "*service.ServiceInfo" [ltail=cluster_17];
+	subgraph cluster_18 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_18 [shape=plaintext label="newHyperloopServer"];
+		"ioc.HyperloopHTTPServer" [label=<ioc.HyperloopHTTPServer>];
+	}
+	constructor_18 -> "fx.Lifecycle" [ltail=cluster_18];
+	constructor_18 -> "cfg.Config" [ltail=cluster_18];
+	constructor_18 -> "*zap.Logger" [ltail=cluster_18];
+	constructor_18 -> "*sandbox.Map" [ltail=cluster_18];
+	subgraph cluster_19 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_19 [shape=plaintext label="newTelemetry"];
+		"*telemetry.Client" [label=<*telemetry.Client>];
+	}
+	constructor_19 -> "fx.Lifecycle" [ltail=cluster_19];
+	constructor_19 -> "ioc.State" [ltail=cluster_19];
+	constructor_19 -> "ioc.VersionInfo" [ltail=cluster_19];
+	subgraph cluster_20 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_20 [shape=plaintext label="newGlobalLogger"];
+		"*zap.Logger" [label=<*zap.Logger>];
+	}
+	constructor_20 -> "fx.Lifecycle" [ltail=cluster_20];
+	constructor_20 -> "*telemetry.Client" [ltail=cluster_20];
+	constructor_20 -> "ioc.State" [ltail=cluster_20];
+	constructor_20 -> "ioc.VersionInfo" [ltail=cluster_20];
+	subgraph cluster_21 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_21 [shape=plaintext label="newSandboxObserver"];
+		"*metrics.SandboxObserver" [label=<*metrics.SandboxObserver>];
+	}
+	constructor_21 -> "fx.Lifecycle" [ltail=cluster_21];
+	constructor_21 -> "ioc.State" [ltail=cluster_21];
+	constructor_21 -> "*sandbox.Map" [ltail=cluster_21];
+	constructor_21 -> "*zap.Logger" [ltail=cluster_21];
+	constructor_21 -> "ioc.VersionInfo" [ltail=cluster_21];
+	subgraph cluster_22 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_22 [shape=plaintext label="newRedisClient"];
+		"redis.UniversalClient" [label=<redis.UniversalClient>];
+	}
+	constructor_22 -> "cfg.Config" [ltail=cluster_22];
+	subgraph cluster_23 {
+		label = "reflect";
+		constructor_23 [shape=plaintext label="makeFuncStub"];
+		"events.Delivery[github.com/e2b-dev/infra/packages/shared/pkg/events.SandboxEvent][group=delivery-targets]0" [label=<events.Delivery[github.com/e2b-dev/infra/packages/shared/pkg/events.SandboxEvent]<BR /><FONT POINT-SIZE="10">Group: delivery-targets</FONT>>];
+	}
+	constructor_23 -> "redis.UniversalClient" [ltail=cluster_23];
+	subgraph cluster_24 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_24 [shape=plaintext label="newDevicePool"];
+		"*nbd.DevicePool" [label=<*nbd.DevicePool>];
+	}
+	constructor_24 -> "fx.Lifecycle" [ltail=cluster_24];
+	constructor_24 -> "*zap.Logger" [ltail=cluster_24];
+	subgraph cluster_25 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_25 [shape=plaintext label="newNetworkPool"];
+		"*network.Pool" [label=<*network.Pool>];
+	}
+	constructor_25 -> "fx.Lifecycle" [ltail=cluster_25];
+	constructor_25 -> "cfg.Config" [ltail=cluster_25];
+	constructor_25 -> "*zap.Logger" [ltail=cluster_25];
+	constructor_25 -> "network.Storage" [ltail=cluster_25];
+	subgraph cluster_26 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_26 [shape=plaintext label="newNetworkStorage"];
+		"network.Storage" [label=<network.Storage>];
+	}
+	constructor_26 -> "cfg.Config" [ltail=cluster_26];
+	constructor_26 -> "ioc.State" [ltail=cluster_26];
+	subgraph cluster_27 {
+		label = "reflect";
+		constructor_27 [shape=plaintext label="makeFuncStub"];
+		"ioc.GRPCServerRegistrar[group=grpc-registerables]2" [label=<ioc.GRPCServerRegistrar<BR /><FONT POINT-SIZE="10">Group: grpc-registerables</FONT>>];
+	}
+	constructor_27 -> "*sandbox.Factory" [ltail=cluster_27];
+	constructor_27 -> "*telemetry.Client" [ltail=cluster_27];
+	constructor_27 -> "*network.Pool" [ltail=cluster_27];
+	constructor_27 -> "*nbd.DevicePool" [ltail=cluster_27];
+	constructor_27 -> "*template.Cache" [ltail=cluster_27];
+	constructor_27 -> "*proxy.SandboxProxy" [ltail=cluster_27];
+	constructor_27 -> "*sandbox.Map" [ltail=cluster_27];
+	constructor_27 -> "storage.StorageProvider" [ltail=cluster_27];
+	constructor_27 -> "*feature_flags.Client" [ltail=cluster_27];
+	constructor_27 -> "*events.EventsService" [ltail=cluster_27];
+	constructor_27 -> "*service.ServiceInfo" [ltail=cluster_27];
+	subgraph cluster_28 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_28 [shape=plaintext label="newSandboxFactory"];
+		"*sandbox.Factory" [label=<*sandbox.Factory>];
+		"ioc.CMUXWaitBeforeShutdown[group=cmux-waitable]0" [label=<ioc.CMUXWaitBeforeShutdown<BR /><FONT POINT-SIZE="10">Group: cmux-waitable</FONT>>];
+	}
+	constructor_28 -> "*zap.Logger" [ltail=cluster_28];
+	constructor_28 -> "cfg.Config" [ltail=cluster_28];
+	constructor_28 -> "*network.Pool" [ltail=cluster_28];
+	constructor_28 -> "*nbd.DevicePool" [ltail=cluster_28];
+	constructor_28 -> "*feature_flags.Client" [ltail=cluster_28];
+	subgraph cluster_29 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_29 [shape=plaintext label="newSandboxProxy"];
+		"*proxy.SandboxProxy" [label=<*proxy.SandboxProxy>];
+	}
+	constructor_29 -> "fx.Lifecycle" [ltail=cluster_29];
+	constructor_29 -> "*telemetry.Client" [ltail=cluster_29];
+	constructor_29 -> "cfg.Config" [ltail=cluster_29];
+	constructor_29 -> "*sandbox.Map" [ltail=cluster_29];
+	constructor_29 -> "*zap.Logger" [ltail=cluster_29];
+	subgraph cluster_30 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_30 [shape=plaintext label="newSandboxesMap"];
+		"*sandbox.Map" [label=<*sandbox.Map>];
+	}
+	subgraph cluster_31 {
+		label = "github.com/e2b-dev/infra/packages/orchestrator/ioc";
+		constructor_31 [shape=plaintext label="newTemplateManager"];
+		"*server.ServerStore" [label=<*server.ServerStore>];
+		"ioc.GRPCServerRegistrar[group=grpc-registerables]3" [label=<ioc.GRPCServerRegistrar<BR /><FONT POINT-SIZE="10">Group: grpc-registerables</FONT>>];
+		"ioc.CMUXWaitBeforeShutdown[group=cmux-waitable]1" [label=<ioc.CMUXWaitBeforeShutdown<BR /><FONT POINT-SIZE="10">Group: cmux-waitable</FONT>>];
+	}
+	constructor_31 -> "fx.Lifecycle" [ltail=cluster_31];
+	constructor_31 -> "cfg.Config" [ltail=cluster_31];
+	constructor_31 -> "*sandbox.Factory" [ltail=cluster_31];
+	constructor_31 -> "*proxy.SandboxProxy" [ltail=cluster_31];
+	constructor_31 -> "*sandbox.Map" [ltail=cluster_31];
+	constructor_31 -> "*feature_flags.Client" [ltail=cluster_31];
+	constructor_31 -> "*template.Cache" [ltail=cluster_31];
+	constructor_31 -> "storage.StorageProvider" [ltail=cluster_31];
+	constructor_31 -> "*limit.Limiter" [ltail=cluster_31];
+	constructor_31 -> "*service.ServiceInfo" [ltail=cluster_31];
+	constructor_31 -> "*zap.Logger" [ltail=cluster_31];
+	constructor_31 -> "*telemetry.Client" [ltail=cluster_31];
+}

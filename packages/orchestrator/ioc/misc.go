@@ -15,23 +15,14 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
-type VersionInfo struct {
-	Version string
-	Commit  string
-}
-
-func NewVersionInfo(version, commitSHA string) func() VersionInfo {
-	return func() VersionInfo { return VersionInfo{Version: version, Commit: commitSHA} }
-}
-
-func NewServiceInfo(state State, config cfg.Config, version VersionInfo) *service.ServiceInfo {
+func newServiceInfo(state State, config cfg.Config, version VersionInfo) *service.ServiceInfo {
 	nodeID := state.NodeID
 	serviceInstanceID := state.ServiceInstanceID
 
 	return service.NewInfoContainer(nodeID, version.Version, version.Commit, serviceInstanceID, config)
 }
 
-func NewFeatureFlagsClient(lc fx.Lifecycle) (*featureflags.Client, error) {
+func newFeatureFlagsClient(lc fx.Lifecycle) (*featureflags.Client, error) {
 	ff, err := featureflags.NewClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create feature flags client: %w", err)
@@ -52,7 +43,7 @@ type State struct {
 	ServiceInstanceID string
 }
 
-func NewState(config cfg.Config) State {
+func newState(config cfg.Config) State {
 	services := cfg.GetServices(config)
 	nodeID := env.GetNodeID()
 	serviceName := cfg.GetServiceName(services)

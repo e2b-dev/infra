@@ -45,7 +45,7 @@ func TestCanCloseGRPCGracefully(t *testing.T) {
 	config := cfg.Config{GRPCPort: 49394}
 	version := VersionInfo{}
 	state := State{}
-	serviceInfo := NewServiceInfo(state, config, version)
+	serviceInfo := newServiceInfo(state, config, version)
 	healthHttpServer, err := newHealthHTTPServer(serviceInfo)
 	require.NoError(t, err)
 
@@ -58,10 +58,10 @@ func TestCanCloseGRPCGracefully(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	output, err := newCMUXServer(config, logger, nil, shutdowner, grpcServer, healthHttpServer, serviceInfo)
+	output, err := newCMUXServer(config)
 	require.NoError(t, err)
 
-	startCMUXServer(logger, shutdowner, output, grpcServer, healthHttpServer)
+	//startCMUXServer(logger, shutdowner, output, grpcServer, healthHttpServer, nil, sandboxFactory, serviceInfo, nil)
 
 	// verify that health starting worked
 	waitForHttpResponse(t, httpClient, healthReq, time.Second*3, http.StatusOK, e2bHealth.Healthy)
@@ -70,12 +70,13 @@ func TestCanCloseGRPCGracefully(t *testing.T) {
 	sandboxFactory.Add(1)
 
 	go stopCMUXServerMockable(
+		t.Context(),
 		logger,
-		&sandboxFactory,
 		output,
 		grpcServer,
 		healthHttpServer,
 		serviceInfo,
+		nil,
 	)
 
 	waitForHttpResponse(t, httpClient, healthReq, time.Second*3, http.StatusOK, e2bHealth.Draining)

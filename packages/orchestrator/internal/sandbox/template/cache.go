@@ -2,9 +2,11 @@ package template
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -74,7 +76,7 @@ func NewCache(
 
 	// Delete the old build cache directory content.
 	err := cleanDir(config.DefaultCacheDir)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && !os.IsNotExist(err) && !errors.Is(err, syscall.ENOENT) {
 		return nil, fmt.Errorf("failed to remove old build cache directory: %w", err)
 	}
 

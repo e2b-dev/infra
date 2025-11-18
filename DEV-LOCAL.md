@@ -35,3 +35,12 @@ E2B_ACCESS_TOKEN=sk_e2b_89215020937a4c989cde33d7bc647715
 E2B_API_URL=http://localhost:3000
 E2B_ENVD_API_URL=http://localhost:3002
 ```
+
+
+# FAQ
+
+## When building a template, I get the error "Unable to read kernel image"
+
+This likely means huge pages are not enabled. 
+
+    sudo sysctl -w vm.nr_hugepages=2048

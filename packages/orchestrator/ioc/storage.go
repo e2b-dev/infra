@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func NewLimiter(lc fx.Lifecycle, featureFlags *featureflags.Client) (*limit.Limiter, error) {
+func newLimiter(lc fx.Lifecycle, featureFlags *featureflags.Client) (*limit.Limiter, error) {
 	limiter, err := limit.New(context.Background(), featureFlags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create limiter: %w", err)
@@ -29,7 +29,7 @@ func NewLimiter(lc fx.Lifecycle, featureFlags *featureflags.Client) (*limit.Limi
 	return limiter, nil
 }
 
-func NewTemplateCache(
+func newTemplateCache(
 	config cfg.Config,
 	featureFlags *featureflags.Client,
 	persistence storage.StorageProvider,
@@ -38,10 +38,10 @@ func NewTemplateCache(
 	return template.NewCache(context.Background(), config, featureFlags, persistence, blockMetrics)
 }
 
-func NewBlockMetrics(tel *telemetry.Client) (blockmetrics.Metrics, error) {
+func newBlockMetrics(tel *telemetry.Client) (blockmetrics.Metrics, error) {
 	return blockmetrics.NewMetrics(tel.MeterProvider)
 }
 
-func NewPersistence(limiter *limit.Limiter) (storage.StorageProvider, error) {
+func newPersistence(limiter *limit.Limiter) (storage.StorageProvider, error) {
 	return storage.GetTemplateStorageProvider(context.Background(), limiter)
 }

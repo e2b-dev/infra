@@ -12,7 +12,7 @@ import (
 	flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
-func NewClickhouseModule(config cfg.Config) fx.Option {
+func newClickhouseModule(config cfg.Config) fx.Option {
 	return If(
 		"clickhouse",
 		config.ClickhouseConnectionString != "",

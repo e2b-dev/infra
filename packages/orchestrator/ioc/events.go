@@ -17,13 +17,13 @@ func AsDeliveryTarget(f any) any {
 	)
 }
 
-func WithDeliveryTargets(f any) any {
+func withDeliveryTargets(f any) any {
 	return fx.Annotate(
 		f,
 		fx.ParamTags(deliveryTargetGroupTag),
 	)
 }
 
-func NewSandboxEventsService(deliveryTargets []sharedevents.Delivery[sharedevents.SandboxEvent]) *events.EventsService {
+func newSandboxEventsService(deliveryTargets []sharedevents.Delivery[sharedevents.SandboxEvent]) *events.EventsService {
 	return events.NewEventsService(deliveryTargets)
 }

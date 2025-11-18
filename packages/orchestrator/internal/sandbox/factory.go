@@ -62,10 +62,10 @@ func (f *Factory) CreateSandbox(
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	f.wg.Add(1)
+	f.addSandbox()
 	defer func() {
 		if e != nil {
-			f.wg.Done()
+			f.subtractSandbox()
 		}
 	}()
 
@@ -219,7 +219,7 @@ func (f *Factory) CreateSandbox(
 	cleanup.AddPriority(sbx.Stop)
 
 	go func() {
-		defer f.wg.Done()
+		defer f.subtractSandbox()
 		defer execSpan.End()
 
 		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
@@ -246,10 +246,10 @@ func (f *Factory) ResumeSandbox(
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	f.wg.Add(1)
+	f.addSandbox()
 	defer func() {
 		if e != nil {
-			f.wg.Done()
+			f.subtractSandbox()
 		}
 	}()
 
@@ -475,7 +475,7 @@ func (f *Factory) ResumeSandbox(
 	go sbx.Checks.Start(execCtx)
 
 	go func() {
-		defer f.wg.Done()
+		defer f.subtractSandbox()
 		defer execSpan.End()
 
 		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
@@ -495,4 +495,12 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	return sbx, nil
+}
+
+func (f *Factory) addSandbox() {
+	f.wg.Add(1)
+}
+
+func (f *Factory) subtractSandbox() {
+	f.wg.Done()
 }

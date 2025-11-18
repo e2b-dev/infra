@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/fx"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -18,6 +19,7 @@ import (
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -25,17 +27,25 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func NewTemplateManagerModule(config cfg.Config) fx.Option {
+func newTemplateManagerModule(config cfg.Config) fx.Option {
 	return If(
 		"template-manager",
 		slices.Contains(config.Services, string(cfg.TemplateManager)),
 		fx.Provide(
-			NewTemplateManager,
+			newTemplateManager,
 		),
 	)
 }
 
-func NewTemplateManager(
+type templateManagerOutput struct {
+	fx.Out
+
+	*tmplserver.ServerStore
+	GRPCServerRegistrar    `group:"grpc-registerables"`
+	CMUXWaitBeforeShutdown `group:"cmux-waitable"`
+}
+
+func newTemplateManager(
 	lc fx.Lifecycle,
 	config cfg.Config,
 	sandboxFactory *sandbox.Factory,
@@ -48,7 +58,7 @@ func NewTemplateManager(
 	serviceInfo *service.ServiceInfo,
 	globalLogger *zap.Logger,
 	tel *telemetry.Client,
-) (*tmplserver.ServerStore, error) {
+) (templateManagerOutput, error) {
 	// template manager sandbox logger
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
 		context.Background(),
@@ -88,7 +98,7 @@ func NewTemplateManager(
 		serviceInfo,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create template manager: %w", err)
+		return templateManagerOutput{}, fmt.Errorf("failed to create template manager: %w", err)
 	}
 
 	globalLogger.Info("Registered gRPC service", zap.String("service", "template_manager.TemplateService"))
@@ -101,5 +111,15 @@ func NewTemplateManager(
 		},
 	})
 
-	return tmpl, nil
+	return templateManagerOutput{
+		ServerStore: tmpl,
+		GRPCServerRegistrar: grpcRegisterable{func(server *grpc.Server) {
+			templatemanager.RegisterTemplateServiceServer(server, tmpl)
+		}},
+		CMUXWaitBeforeShutdown: cmuxWaitBeforeShutdown{
+			fn: func(ctx context.Context) error {
+				return tmpl.Wait(ctx)
+			},
+		},
+	}, nil
 }

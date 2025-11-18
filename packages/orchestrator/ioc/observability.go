@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func NewObservabilityModule() fx.Option {
+func newObservabilityModule() fx.Option {
 	return fx.Module("observability",
 		fx.Provide(
 			newTelemetry,
