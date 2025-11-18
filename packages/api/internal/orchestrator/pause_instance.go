@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/gogo/status"
 	"github.com/jackc/pgx/v5/pgtype"
 	"google.golang.org/grpc/codes"
@@ -16,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -30,14 +30,13 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
-	result, err := o.sqlcDB.UpsertSnapshotEnvAndBuild(ctx, queries.UpsertSnapshotEnvAndBuildParams{
-		BaseTemplateID:      sbx.BaseTemplateID,
+	snapshotConfig := queries.UpsertSnapshotEnvAndBuildParams{
+		// Used if there's no snapshot for this sandbox yet
 		TemplateID:          id.Generate(),
 		TeamID:              sbx.TeamID,
+		BaseTemplateID:      sbx.BaseTemplateID,
 		SandboxID:           sbx.SandboxID,
 		StartedAt:           pgtype.Timestamptz{Time: sbx.StartTime, Valid: true},
-		Status:              string(envbuild.StatusSnapshotting),
-		OriginNodeID:        node.ID,
 		Vcpu:                sbx.VCpu,
 		RamMb:               sbx.RamMB,
 		TotalDiskSizeMb:     &sbx.TotalDiskSizeMB,
@@ -52,7 +51,11 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 			Version: types.PausedSandboxConfigVersion,
 			Network: sbx.Network,
 		},
-	})
+		OriginNodeID: node.ID,
+		Status:       string(envbuild.StatusSnapshotting),
+	}
+
+	result, err := o.sqlcDB.UpsertSnapshotEnvAndBuild(ctx, snapshotConfig)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error inserting snapshot for env", err)
 
