@@ -5,9 +5,10 @@ import (
 	"errors"
 	"time"
 
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
+
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 type RedisFallbackSandboxCatalog struct {

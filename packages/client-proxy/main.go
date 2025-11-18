@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
@@ -31,6 +30,7 @@ import (
 	servicediscovery "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
+	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	e2blogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
@@ -159,11 +159,11 @@ func run() int {
 	} else {
 		if errors.Is(err, factories.ErrRedisDisabled) {
 			logger.Warn("Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-			catalog = e2bcatalog.NewMemorySandboxesCatalog()
-		}
-		logger.Error("Failed to create redis secure client", zap.Error(err))
+		} else {
+			logger.Error("Failed to create redis secure client", zap.Error(err))
 
-		return 1
+			return 1
+		}
 	}
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
