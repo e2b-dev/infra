@@ -134,8 +134,13 @@ func run() int {
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: "",
 	})
-
 	if err == nil {
+		defer func() {
+			err := factories.CloseCleanly(redisClient)
+			if err != nil {
+				logger.Error("Failed to close redis client", zap.Error(err))
+			}
+		}()
 		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
 		if errors.Is(err, factories.ErrRedisDisabled) {
@@ -154,6 +159,12 @@ func run() int {
 		RedisTLSCABase64: config.RedisTLSCABase64,
 	})
 	if err == nil {
+		defer func() {
+			err := factories.CloseCleanly(redisSecureClient)
+			if err != nil {
+				logger.Error("Failed to close redis secure client", zap.Error(err))
+			}
+		}()
 		fallbackCatalog := e2bcatalog.NewRedisSandboxesCatalog(redisSecureClient)
 		catalog = e2bcatalog.NewRedisFallbackSandboxesCatalog(catalog, fallbackCatalog, featureFlagsClient)
 	} else {
