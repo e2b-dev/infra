@@ -37,3 +37,29 @@ func TestDeleteTemplate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, deleteRes.StatusCode())
 }
+
+func TestDeleteTemplateWithAccessToken(t *testing.T) {
+	alias := "test-to-delete"
+	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
+		Force:     utils.ToPtr(ForceBaseBuild),
+		FromImage: utils.ToPtr("ubuntu:22.04"),
+		Steps: utils.ToPtr([]api.TemplateStep{
+			{
+				Type:  "RUN",
+				Force: utils.ToPtr(true),
+				Args:  utils.ToPtr([]string{"echo 'Hello, World!'"}),
+			},
+		}),
+	}, defaultBuildLogHandler(t))
+
+	require.True(t, res)
+
+	c := setup.GetAPIClient()
+	deleteRes, err := c.DeleteTemplatesTemplateIDWithResponse(
+		t.Context(),
+		alias,
+		setup.WithAccessToken(),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, deleteRes.StatusCode())
+}
