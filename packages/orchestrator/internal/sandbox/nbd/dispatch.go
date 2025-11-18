@@ -186,7 +186,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 					rp += dataCopied
 
-					// We need to wait for more data here, otherwise we will deadlock if the buffer is Xmb and the length is Xmb because of the headers's extra 28 bytes needed.
+					// We need to wait for more data here, otherwise we will deadlock if the buffer is Xmb and the length is Xmb because of the header's extra 28 bytes needed.
 					// At the same time we don't want to increase the default buffer size as the max would be 32mb which is too large for hundreds of sandbox connections.
 
 					for dataCopied < int(request.Length) {
