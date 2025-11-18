@@ -83,7 +83,7 @@ func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
 
 // Items returns sandboxes matching the given filters
 func (s *Storage) Items(_ *uuid.UUID, _ []sandbox.State, _ ...sandbox.ItemsOption) []sandbox.Sandbox {
-	// TODO: Implement later
+	// TODO: Implement later (ENG-3312)
 	return nil
 }
 
@@ -144,12 +144,12 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 
 // StartRemoving initiates the removal process for a sandbox
 func (s *Storage) StartRemoving(_ context.Context, _ string, _ sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {
-	// TODO: Implement later
+	// TODO: Implement later (ENG-3285)
 	return false, nil, nil
 }
 
 // WaitForStateChange waits for a sandbox state to change
 func (s *Storage) WaitForStateChange(_ context.Context, _ string) error {
-	// TODO: Implement later
+	// TODO: Implement later (ENG-3285)
 	return nil
 }
