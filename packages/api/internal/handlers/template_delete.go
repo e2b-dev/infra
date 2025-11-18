@@ -9,8 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -22,7 +20,6 @@ import (
 // DeleteTemplatesTemplateID serves to delete a template (e.g. in CLI)
 func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	ctx := c.Request.Context()
-	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	cleanedAliasOrTemplateID, err := id.CleanTemplateID(aliasOrTemplateID)
 	if err != nil {
@@ -33,10 +30,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	builds, err := a.sqlcDB.GetTemplateBuildsByIdOrAlias(ctx, queries.GetTemplateBuildsByIdOrAliasParams{
-		TeamID:            team.ID,
-		TemplateIDOrAlias: cleanedAliasOrTemplateID,
-	})
+	builds, err := a.sqlcDB.GetTemplateBuildsByIdOrAlias(ctx, cleanedAliasOrTemplateID)
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to get template", fmt.Errorf("failed to get template: %w", err), telemetry.WithTemplateID(aliasOrTemplateID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
@@ -52,6 +46,14 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	templateID := builds[0].Env.ID
+	teamID := builds[0].Env.TeamID.String()
+	team, apiErr := a.GetTeam(ctx, c, &teamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
+
+		return
+	}
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
