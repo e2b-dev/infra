@@ -61,6 +61,13 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.WithTemplateID(templateID),
 	)
 
+	if team.ID != builds[0].Env.TeamID {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", aliasOrTemplateID))
+		telemetry.ReportError(ctx, "user has no access to the template", nil, telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
 	// check if base template has snapshots
 	hasSnapshots, err := a.sqlcDB.ExistsTemplateSnapshots(ctx, templateID)
 	if err != nil {
