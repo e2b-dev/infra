@@ -107,6 +107,10 @@ func newTemplateManager(
 		OnStop: func(ctx context.Context) error {
 			globalLogger.Info("Shutting down template manager")
 
+			if err := tmpl.Wait(ctx); err != nil {
+				globalLogger.Warn("Failed to wait for template manager builds", zap.Error(err))
+			}
+
 			return tmpl.Close(ctx)
 		},
 	})

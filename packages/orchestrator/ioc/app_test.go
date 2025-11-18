@@ -40,6 +40,7 @@ func TestStartupShutdown(t *testing.T) {
 	t.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
 	t.Setenv("ORCHESTRATOR_SERVICES", "orchestrator,template-manager")
 	t.Setenv("TEMPLATE_BUCKET_NAME", "bucket-name")
+	t.Setenv("STORAGE_PROVIDER", "Local")
 
 	redisContainer, err := redis.Run(t.Context(), "redis:6")
 	require.NoError(t, err)
