@@ -68,3 +68,9 @@ func NewRedisFallbackSandboxesCatalog(sandboxCatalog SandboxesCatalog, redisFall
 		cache:                      cache,
 	}
 }
+
+func (c *RedisFallbackSandboxCatalog) Close(_ context.Context) error {
+	c.cache.Stop()
+
+	return nil
+}

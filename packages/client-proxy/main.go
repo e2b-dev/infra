@@ -197,7 +197,7 @@ func run() int {
 	edges := e2borchestrators.NewEdgePool(logger, edgeSD, info.Host, authorizationManager)
 
 	var closers []Closeable
-	closers = append(closers, orchestrators, edges)
+	closers = append(closers, orchestrators, edges, featureFlagsClient, catalog)
 
 	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, info, edges, orchestrators, catalog, config)
 	if err != nil {

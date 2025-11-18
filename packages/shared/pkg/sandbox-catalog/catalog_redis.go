@@ -131,3 +131,9 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 func (c *RedisSandboxCatalog) getCatalogKey(sandboxID string) string {
 	return fmt.Sprintf("sandbox:catalog:%s", sandboxID)
 }
+
+func (c *RedisSandboxCatalog) Close(_ context.Context) error {
+	c.cache.Stop()
+
+	return nil
+}
