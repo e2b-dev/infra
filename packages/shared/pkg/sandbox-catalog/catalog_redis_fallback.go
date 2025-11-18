@@ -56,7 +56,6 @@ func (r *RedisFallbackSandboxCatalog) DeleteSandbox(ctx context.Context, sandbox
 var _ SandboxesCatalog = (*RedisFallbackSandboxCatalog)(nil)
 
 func NewRedisFallbackSandboxesCatalog(sandboxCatalog SandboxesCatalog, redisFallbackSandboxCatalog *RedisSandboxCatalog, featureFlagsClient *featureflags.Client) *RedisFallbackSandboxCatalog {
-
 	return &RedisFallbackSandboxCatalog{
 		sandboxCatalog:             sandboxCatalog,
 		redisFallbackCatalogClient: redisFallbackSandboxCatalog,
