@@ -31,6 +31,7 @@ func TestAppGraph(t *testing.T) {
 func TestStartupShutdown(t *testing.T) {
 	tempDir := t.TempDir()
 
+	t.Setenv("ARTIFACTS_REGISTRY_PROVIDER", "Local")
 	t.Setenv("BUILD_CACHE_BUCKET_NAME", "bucket-name")
 	t.Setenv("CONSUL_TOKEN", "consul-token")
 	t.Setenv("DUMP_GRAPH_DOT_FILE", "graph.dot")
@@ -41,6 +42,7 @@ func TestStartupShutdown(t *testing.T) {
 	t.Setenv("ORCHESTRATOR_SERVICES", "orchestrator,template-manager")
 	t.Setenv("TEMPLATE_BUCKET_NAME", "bucket-name")
 	t.Setenv("STORAGE_PROVIDER", "Local")
+	t.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
 
 	redisContainer, err := redis.Run(t.Context(), "redis:6")
 	require.NoError(t, err)
