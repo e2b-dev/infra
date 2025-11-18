@@ -292,10 +292,14 @@ func (o *Orchestrator) CreateSandbox(
 	err = o.sandboxStore.Add(ctx, sbx, true)
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to add sandbox to store", err)
-		killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbx, sandbox.StateActionKill)
-		if killErr != nil {
-			zap.L().Error("Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbx.SandboxID))
-		}
+
+		// Clean up the sandbox from the node
+		go func() {
+			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbx, sandbox.StateActionKill)
+			if killErr != nil {
+				zap.L().Error("Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbx.SandboxID))
+			}
+		}()
 
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,

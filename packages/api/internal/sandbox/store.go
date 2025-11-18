@@ -37,7 +37,7 @@ type Storage interface {
 
 	Items(teamID *uuid.UUID, states []State, options ...ItemsOption) []Sandbox
 
-	Update(sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
+	Update(ctx context.Context, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(error), err error)
 	WaitForStateChange(ctx context.Context, sandboxID string) error
 	Sync(sandboxes []Sandbox, nodeID string) []Sandbox
@@ -133,8 +133,8 @@ func (s *Store) Items(teamID *uuid.UUID, states []State, options ...ItemsOption)
 	return s.storage.Items(teamID, states, options...)
 }
 
-func (s *Store) Update(sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error) {
-	return s.storage.Update(sandboxID, updateFunc)
+func (s *Store) Update(ctx context.Context, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error) {
+	return s.storage.Update(ctx, sandboxID, updateFunc)
 }
 
 func (s *Store) StartRemoving(ctx context.Context, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(error), err error) {

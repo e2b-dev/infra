@@ -84,7 +84,7 @@ func (s *Storage) Items(teamID *uuid.UUID, states []sandbox.State, options ...sa
 	return items
 }
 
-func (s *Storage) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
+func (s *Storage) Update(_ context.Context, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
 		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}

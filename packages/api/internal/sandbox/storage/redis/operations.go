@@ -17,9 +17,6 @@ import (
 
 // Add stores a sandbox in Redis
 func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
-	redisCtx, cancel := context.WithTimeout(ctx, redisTimeout)
-	defer cancel()
-
 	// Serialize sandbox
 	data, err := json.Marshal(sbx)
 	if err != nil {
@@ -31,10 +28,8 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	key := getSandboxKey(sbx.SandboxID)
 
 	// Storage in Redis with max expiration little bit longer than max instance length to prevent leaking
-	err = s.redisClient.Set(redisCtx, key, data, sbx.MaxInstanceLength+time.Minute).Err()
+	err = s.redisClient.Set(ctx, key, data, sbx.MaxInstanceLength+time.Minute).Err()
 	if err != nil {
-		zap.L().Error("Failed to store sandbox in Redis", logger.WithSandboxID(sbx.SandboxID), zap.Error(err))
-
 		return fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
 
@@ -43,9 +38,6 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 
 // Get retrieves a sandbox from Redis
 func (s *Storage) Get(ctx context.Context, sandboxID string) (sandbox.Sandbox, error) {
-	ctx, cancel := context.WithTimeout(ctx, redisTimeout)
-	defer cancel()
-
 	key := getSandboxKey(sandboxID)
 	data, err := s.redisClient.Get(ctx, key).Bytes()
 	if errors.Is(err, redis.Nil) {
@@ -66,13 +58,10 @@ func (s *Storage) Get(ctx context.Context, sandboxID string) (sandbox.Sandbox, e
 
 // Remove deletes a sandbox from Redis
 func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
-	ctx, cancel := context.WithTimeout(ctx, redisTimeout)
-	defer cancel()
-
 	// Remove from Redis
 	key := getSandboxKey(sandboxID)
 
-	lock, err := s.lockService.Obtain(ctx, key, redisTimeout, nil)
+	lock, err := s.lockService.Obtain(ctx, key, lockTimeout, nil)
 	if err != nil {
 		return fmt.Errorf("failed to obtain lock: %w", err)
 	}
@@ -99,14 +88,11 @@ func (s *Storage) Items(_ *uuid.UUID, _ []sandbox.State, _ ...sandbox.ItemsOptio
 }
 
 // Update modifies a sandbox atomically using a Lua script
-func (s *Storage) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*redisTimeout)
-	defer cancel()
-
+func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	key := getSandboxKey(sandboxID)
 	var updatedSbx sandbox.Sandbox
 
-	lock, err := s.lockService.Obtain(ctx, key, redisTimeout, nil)
+	lock, err := s.lockService.Obtain(ctx, key, lockTimeout, nil)
 	if err != nil {
 		return sandbox.Sandbox{}, fmt.Errorf("failed to obtain lock: %w", err)
 	}

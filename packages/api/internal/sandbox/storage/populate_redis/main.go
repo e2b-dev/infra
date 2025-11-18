@@ -54,15 +54,13 @@ func (m *PopulateRedisStorage) Items(teamID *uuid.UUID, states []sandbox.State, 
 	return m.memoryBackend.Items(teamID, states, options...)
 }
 
-func (m *PopulateRedisStorage) Update(sandboxID string, updateFunc func(sandbox sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
-	sbx, err := m.memoryBackend.Update(sandboxID, updateFunc)
+func (m *PopulateRedisStorage) Update(ctx context.Context, sandboxID string, updateFunc func(sandbox sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
+	sbx, err := m.memoryBackend.Update(ctx, sandboxID, updateFunc)
 	if err != nil {
-		zap.L().Error("failed to update sandbox in memory", zap.Error(err))
-
 		return sandbox.Sandbox{}, err
 	}
 
-	_, err = m.redisBackend.Update(sandboxID, updateFunc)
+	_, err = m.redisBackend.Update(ctx, sandboxID, updateFunc)
 	if err != nil {
 		zap.L().Error("failed to update sandbox in redis", zap.Error(err))
 	}

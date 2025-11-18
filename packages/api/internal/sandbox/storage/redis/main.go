@@ -11,7 +11,7 @@ import (
 
 const (
 	sandboxKeyPrefix = "sandbox:"
-	redisTimeout     = time.Second * 5
+	lockTimeout      = time.Minute
 )
 
 var _ sandbox.Storage = (*Storage)(nil)
