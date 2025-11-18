@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
@@ -119,6 +120,13 @@ func run() int {
 		return 1
 	}
 
+	featureFlagsClient, err := feature_flags.NewClient()
+	if err != nil {
+		logger.Error("Failed to create feature flags client", zap.Error(err))
+
+		return 1
+	}
+
 	var catalog e2bcatalog.SandboxesCatalog
 
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
@@ -147,7 +155,7 @@ func run() int {
 	})
 	if err == nil {
 		fallbackCatalog := e2bcatalog.NewRedisSandboxesCatalog(redisSecureClient)
-		catalog = e2bcatalog.NewRedisFallbackSandboxesCatalog(catalog, fallbackCatalog)
+		catalog = e2bcatalog.NewRedisFallbackSandboxesCatalog(catalog, fallbackCatalog, featureFlagsClient)
 	} else {
 		if errors.Is(err, factories.ErrRedisDisabled) {
 			logger.Warn("Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
