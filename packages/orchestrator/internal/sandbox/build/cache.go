@@ -304,7 +304,7 @@ func diskUsage(path string) (uint64, uint64, error) {
 	return used, total, nil
 }
 
-func (s *DiffStore) Close() {
+func (s *DiffStore) Remove() {
 	s.cache.DeleteAll()
 	s.cache.Stop()
 }

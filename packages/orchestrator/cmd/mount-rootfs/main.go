@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"time"
@@ -56,9 +57,70 @@ func (m *mountReadonlyDevice) Size() (int64, error) {
 	return int64(m.header.Metadata.Size), nil
 }
 
+type loggedOverlay struct {
+	overlay *block.Overlay
+}
+
+func (l *loggedOverlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stdout, "[read panic recovered]: [%d, %d] -> %v\n", off, len(p), r)
+		}
+	}()
+
+	fmt.Fprintf(os.Stdout, "[read started]: [%d, %d]\n", off, len(p))
+
+	n, err := l.overlay.ReadAt(ctx, p, off)
+
+	fmt.Fprintf(os.Stdout, "[read completed]: [%d, %d] -> %d\n", off, len(p), n)
+
+	return n, err
+}
+
+func (l *loggedOverlay) WriteAt(p []byte, off int64) (int, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stdout, "[write panic recovered]: [%d, %d] -> %v\n", off, len(p), r)
+		}
+	}()
+
+	fmt.Fprintf(os.Stdout, "[write started]: [%d, %d]\n", off, len(p))
+
+	n, err := l.overlay.WriteAt(p, off)
+
+	fmt.Fprintf(os.Stdout, "[write completed]: [%d, %d] -> %d\n", off, len(p), n)
+
+	return n, err
+}
+
+func (l *loggedOverlay) Size() (int64, error) {
+	return l.overlay.Size()
+}
+
+func (l *loggedOverlay) BlockSize() int64 {
+	return l.overlay.BlockSize()
+}
+
+func (l *loggedOverlay) Header() *header.Header {
+	return l.overlay.Header()
+}
+
+func (l *loggedOverlay) Close() error {
+	return l.overlay.Close()
+}
+
+func (l *loggedOverlay) EjectCache() (*block.Cache, error) {
+	return l.overlay.EjectCache()
+}
+
+func (l *loggedOverlay) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	return l.overlay.Slice(ctx, off, length)
+}
+
 func main() {
 	buildId := flag.String("build", "", "build id")
 	mountPath := flag.String("mount", "", "mount path")
+	verify := flag.Bool("verify", false, "verify rootfs integrity")
 
 	flag.Parse()
 
@@ -84,13 +146,13 @@ func main() {
 	// We use a separate ctx for majority of the operations as cancelling context for the NBD+storage and *then* doing cleanup for these often resulted in deadlocks.
 	nbdContext := context.Background()
 
-	err := mountRootfs(ctx, nbdContext, *buildId, *mountPath)
+	err := mountRootfs(ctx, nbdContext, *buildId, *mountPath, *verify)
 	if err != nil {
 		panic(fmt.Errorf("failed to mount rootfs: %w", err))
 	}
 }
 
-func mountRootfs(ctx, nbdContext context.Context, buildID, mountPath string) error {
+func mountRootfs(ctx, nbdContext context.Context, buildID, mountPath string, verify bool) error {
 	files := storage.TemplateFiles{
 		BuildID: buildID,
 	}
@@ -220,7 +282,7 @@ func mountRootfs(ctx, nbdContext context.Context, buildID, mountPath string) err
 		close(poolClosed)
 	}()
 
-	mnt := nbd.NewDirectPathMount(overlay, devicePool)
+	mnt := nbd.NewDirectPathMount(&loggedOverlay{overlay}, devicePool)
 
 	mntIndex, err := mnt.Open(nbdContext)
 	if err != nil {
@@ -241,45 +303,112 @@ func mountRootfs(ctx, nbdContext context.Context, buildID, mountPath string) err
 
 	fmt.Printf("rootfs exposed as device: %s\n", devicePath)
 
-	err = os.MkdirAll(mountPath, 0o755)
-	if err != nil {
-		return fmt.Errorf("failed to create mount path directory: %w", err)
-	}
+	if mountPath != "" {
+		err = os.MkdirAll(mountPath, 0o755)
+		if err != nil {
+			return fmt.Errorf("failed to create mount path directory: %w", err)
+		}
 
-	fmt.Fprintf(os.Stdout, "creating mount path directory: %s\n", mountPath)
+		fmt.Fprintf(os.Stdout, "creating mount path directory: %s\n", mountPath)
 
-	// We don't remote the dir as it might have been user created.
+		// We don't remote the dir as it might have been user created.
 
-	err = unix.Mount(devicePath, mountPath, "ext4", unix.MS_RDONLY, "")
-	if err != nil {
-		return fmt.Errorf("failed to mount device to mount path: %w", err)
-	}
+		err = unix.Mount(devicePath, mountPath, "ext4", 0, "")
+		if err != nil {
+			return fmt.Errorf("failed to mount device to mount path: %w", err)
+		}
 
-	defer func() {
-		ticker := time.NewTicker(600 * time.Millisecond)
-		defer ticker.Stop()
+		defer func() {
+			ticker := time.NewTicker(600 * time.Millisecond)
+			defer ticker.Stop()
 
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cleanupCancel()
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cleanupCancel()
 
-		for {
-			select {
-			case <-cleanupCtx.Done():
-				fmt.Fprintf(os.Stderr, "failed to unmount device from mount path in time\n")
+			for {
+				select {
+				case <-cleanupCtx.Done():
+					fmt.Fprintf(os.Stderr, "failed to unmount device from mount path in time\n")
 
-				return
-			case <-ticker.C:
-				err = unix.Unmount(mountPath, 0)
-				if err == nil {
 					return
-				}
+				case <-ticker.C:
+					err = unix.Unmount(mountPath, 0)
+					if err == nil {
+						return
+					}
 
-				fmt.Fprintf(os.Stderr, "failed to unmount device from mount path: %v\n", err)
+					fmt.Fprintf(os.Stderr, "failed to unmount device from mount path: %v\n", err)
+				}
+			}
+		}()
+
+		fmt.Printf("rootfs mounted at path: %s\n", mountPath)
+	}
+
+	// cmd := exec.CommandContext(ctx, "dd", "if=/dev/zero", "of="+devicePath, "bs=4k", "count=1", "oflag=direct")
+
+	// cmd.Stdout = os.Stdout
+	// cmd.Stderr = os.Stderr
+
+	// err = cmd.Run()
+	// if err != nil {
+	// 	return fmt.Errorf("failed to write zero to device (with direct flag): %w", err)
+	// }
+
+	// fmt.Println("> zero written to device (with direct flag)")
+
+	// d, err := os.OpenFile(devicePath, unix.O_DIRECT|unix.O_RDWR, 0)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to open device: %w", err)
+	// }
+	// defer d.Close()
+
+	// buf := make([]byte, 4096)
+
+	// // fmt.Println("mmapped buffer start", unsafe.Pointer(&buf[0]))
+	// _, err = d.WriteAt(buf, 0)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to write zero to device: %w", err)
+	// }
+
+	// fmt.Println("zero written to device")
+
+	if verify {
+		fmt.Println("\nverifying rootfs integrity...")
+
+		cmd := exec.CommandContext(ctx, "e2fsck", "-nfv", devicePath)
+
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		err := cmd.Run()
+		if err != nil {
+			return fmt.Errorf("failed to verify rootfs integrity: %w", err)
+		}
+
+		fmt.Println("\nrootfs integrity verified")
+
+		journalDir := filepath.Join(mountPath, "var", "log", "journal")
+		journalFiles, err := os.ReadDir(journalDir)
+		if err != nil {
+			return fmt.Errorf("failed to read journal directory: %w", err)
+		}
+
+		for _, journalFile := range journalFiles {
+			cmd := exec.CommandContext(ctx, "journalctl", "--verify", "--directory", filepath.Join(journalDir, journalFile.Name()))
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+
+			err := cmd.Run()
+			if err != nil {
+				return fmt.Errorf("failed to verify journal file: %w", err)
 			}
 		}
-	}()
 
-	fmt.Printf("rootfs mounted at path: %s\n", mountPath)
+		fmt.Println("\njournal files verified")
+
+		return nil
+	}
 
 	<-ctx.Done()
 
