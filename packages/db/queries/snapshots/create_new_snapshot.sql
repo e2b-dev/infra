@@ -2,58 +2,58 @@
 -- Try to update an existing snapshot
 WITH updated_snapshot AS (
     UPDATE "public"."snapshots" s
-        SET
-            metadata           = @metadata,
-            sandbox_started_at = @started_at,
-            origin_node_id     = @origin_node_id,
-            auto_pause         = @auto_pause,
-            config             = @config
-        FROM "public"."envs" e
-        WHERE
-            s.sandbox_id = @sandbox_id
-                AND e.id      = s.env_id
-                AND e.team_id = @team_id
-        RETURNING s.env_id
+    SET
+        metadata           = @metadata,
+        sandbox_started_at = @started_at,
+        origin_node_id     = @origin_node_id,
+        auto_pause         = @auto_pause,
+        config             = @config
+    FROM "public"."envs" e
+    WHERE
+        s.sandbox_id = @sandbox_id
+            AND e.id      = s.env_id
+            AND e.team_id = @team_id
+    RETURNING s.env_id
 ),
 -- otherwise insert a new one with a new env
  inserted_env AS (
      INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
-         SELECT @template_id, FALSE, NULL, @team_id, now()
-         WHERE NOT EXISTS (SELECT 1 FROM updated_snapshot)
-         ON CONFLICT (id) DO NOTHING
-         RETURNING id AS env_id
- ),
+     SELECT @template_id, FALSE, NULL, @team_id, now()
+     WHERE NOT EXISTS (SELECT 1 FROM updated_snapshot)
+     ON CONFLICT (id) DO NOTHING
+     RETURNING id AS env_id
+),
  inserted_snapshot AS (
      INSERT INTO "public"."snapshots" (
-                                       sandbox_id,
-                                       base_env_id,
-                                       team_id,
-                                       env_id,
-                                       metadata,
-                                       sandbox_started_at,
-                                       env_secure,
-                                       allow_internet_access,
-                                       origin_node_id,
-                                       auto_pause,
-                                       config
-         )
-         SELECT
-             @sandbox_id,
-             @base_template_id,
-             @team_id,
-             COALESCE(
-                     (SELECT env_id FROM inserted_env LIMIT 1),
-                     @template_id      -- env already existed
-             ) AS env_id,
-             @metadata,
-             @started_at,
-             @secure,
-             @allow_internet_access,
-             @origin_node_id,
-             @auto_pause,
-             @config
-         WHERE NOT EXISTS (SELECT 1 FROM updated_snapshot)
-         RETURNING env_id
+       sandbox_id,
+       base_env_id,
+       team_id,
+       env_id,
+       metadata,
+       sandbox_started_at,
+       env_secure,
+       allow_internet_access,
+       origin_node_id,
+       auto_pause,
+       config
+     )
+     SELECT
+         @sandbox_id,
+         @base_template_id,
+         @team_id,
+         COALESCE(
+                 (SELECT env_id FROM inserted_env LIMIT 1),
+                 @template_id      -- env already existed
+         ) AS env_id,
+         @metadata,
+         @started_at,
+         @secure,
+         @allow_internet_access,
+         @origin_node_id,
+         @auto_pause,
+         @config
+     WHERE NOT EXISTS (SELECT 1 FROM updated_snapshot)
+     RETURNING env_id
  ),
  -- If we updated an existing snapshot, use that env_id.
  -- Otherwise use env_id from the newly inserted snapshot.

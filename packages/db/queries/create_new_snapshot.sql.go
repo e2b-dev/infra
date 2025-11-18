@@ -16,57 +16,57 @@ import (
 const upsertSnapshotEnvAndBuild = `-- name: UpsertSnapshotEnvAndBuild :one
 WITH updated_snapshot AS (
     UPDATE "public"."snapshots" s
-        SET
-            metadata           = $9,
-            sandbox_started_at = $10,
-            origin_node_id     = $7,
-            auto_pause         = $11,
-            config             = $12
-        FROM "public"."envs" e
-        WHERE
-            s.sandbox_id = $13
-                AND e.id      = s.env_id
-                AND e.team_id = $14
-        RETURNING s.env_id
+    SET
+        metadata           = $9,
+        sandbox_started_at = $10,
+        origin_node_id     = $7,
+        auto_pause         = $11,
+        config             = $12
+    FROM "public"."envs" e
+    WHERE
+        s.sandbox_id = $13
+            AND e.id      = s.env_id
+            AND e.team_id = $14
+    RETURNING s.env_id
 ),
  inserted_env AS (
      INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
-         SELECT $15, FALSE, NULL, $14, now()
-         WHERE NOT EXISTS (SELECT 1 FROM updated_snapshot)
-         ON CONFLICT (id) DO NOTHING
-         RETURNING id AS env_id
- ),
+     SELECT $15, FALSE, NULL, $14, now()
+     WHERE NOT EXISTS (SELECT 1 FROM updated_snapshot)
+     ON CONFLICT (id) DO NOTHING
+     RETURNING id AS env_id
+),
  inserted_snapshot AS (
      INSERT INTO "public"."snapshots" (
-                                       sandbox_id,
-                                       base_env_id,
-                                       team_id,
-                                       env_id,
-                                       metadata,
-                                       sandbox_started_at,
-                                       env_secure,
-                                       allow_internet_access,
-                                       origin_node_id,
-                                       auto_pause,
-                                       config
-         )
-         SELECT
-             $13,
-             $16,
-             $14,
-             COALESCE(
-                     (SELECT env_id FROM inserted_env LIMIT 1),
-                     $15      -- env already existed
-             ) AS env_id,
-             $9,
-             $10,
-             $17,
-             $18,
-             $7,
-             $11,
-             $12
-         WHERE NOT EXISTS (SELECT 1 FROM updated_snapshot)
-         RETURNING env_id
+       sandbox_id,
+       base_env_id,
+       team_id,
+       env_id,
+       metadata,
+       sandbox_started_at,
+       env_secure,
+       allow_internet_access,
+       origin_node_id,
+       auto_pause,
+       config
+     )
+     SELECT
+         $13,
+         $16,
+         $14,
+         COALESCE(
+                 (SELECT env_id FROM inserted_env LIMIT 1),
+                 $15      -- env already existed
+         ) AS env_id,
+         $9,
+         $10,
+         $17,
+         $18,
+         $7,
+         $11,
+         $12
+     WHERE NOT EXISTS (SELECT 1 FROM updated_snapshot)
+     RETURNING env_id
  ),
  -- If we updated an existing snapshot, use that env_id.
  -- Otherwise use env_id from the newly inserted snapshot.
