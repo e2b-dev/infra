@@ -177,7 +177,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					rp += 28
 
 					if request.Length > dispatchMaxWriteBufferSize {
-						return fmt.Errorf("nbd write request length is too large: %d", request.Length)
+						return fmt.Errorf("nbd write request length %d exceeds maximum %d", request.Length, dispatchMaxWriteBufferSize)
 					}
 
 					data := make([]byte, request.Length)
