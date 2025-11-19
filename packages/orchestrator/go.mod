@@ -42,7 +42,6 @@ require (
 	github.com/ngrok/firewall_toolkit v0.0.18
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/pkg/errors v0.9.1
-	github.com/pojntfx/go-nbd v0.3.2
 	github.com/redis/go-redis/v9 v9.12.1
 	github.com/shirou/gopsutil/v4 v4.25.6
 	github.com/soheilhy/cmux v0.1.5

@@ -50,9 +50,19 @@ jobs:
           sudo mount -t hugetlbfs none /mnt/hugepages
           echo 128 | sudo tee /proc/sys/vm/nr_hugepages
 
+      - name: Enable NBD
+        run: |
+          sudo modprobe nbd nbds_max=256
+
+      - name: Disable inotify watching of change events for NBD devices
+        run: |
+          echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger
+
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v ${{ matrix.test_path }}
+        run: sudo go test -v ${{ matrix.test_path }}
 
   validate-iac:
     name: Validate terraform

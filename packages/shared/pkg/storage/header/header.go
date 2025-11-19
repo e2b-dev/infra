@@ -85,6 +85,7 @@ func (t *Header) GetShiftedMapping(offset int64) (mappedOffset int64, mappedLeng
 	return mappedOffset, mappedLength, buildID, nil
 }
 
+// TODO: Maybe we can optimize mapping by automatically assuming the mapping is uuid.Nil if we don't find it + stopping storing the nil mapping.
 func (t *Header) getMapping(offset int64) (*BuildMap, int64, error) {
 	if offset < 0 || offset >= int64(t.Metadata.Size) {
 		if t.IsNormalizeFixApplied() {
