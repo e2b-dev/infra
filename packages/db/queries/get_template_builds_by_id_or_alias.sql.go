@@ -15,18 +15,13 @@ const getTemplateBuildsByIdOrAlias = `-- name: GetTemplateBuildsByIdOrAlias :man
 SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id as build_id, eb.cluster_node_id FROM "public"."envs" e
 LEFT JOIN "public"."env_builds" eb ON eb.env_id = e.id
 WHERE
-    e.team_id = $1 AND e.id in (
+    e.id in (
     SELECT e.id FROM "public"."envs" e
     LEFT JOIN "public"."env_aliases" ea ON ea.env_id = e.id
-    WHERE e.id = $2 OR
-    ea.alias = $2
+    WHERE e.id = $1 OR
+    ea.alias = $1
     )
 `
-
-type GetTemplateBuildsByIdOrAliasParams struct {
-	TeamID            uuid.UUID
-	TemplateIDOrAlias string
-}
 
 type GetTemplateBuildsByIdOrAliasRow struct {
 	Env           Env
@@ -34,8 +29,8 @@ type GetTemplateBuildsByIdOrAliasRow struct {
 	ClusterNodeID *string
 }
 
-func (q *Queries) GetTemplateBuildsByIdOrAlias(ctx context.Context, arg GetTemplateBuildsByIdOrAliasParams) ([]GetTemplateBuildsByIdOrAliasRow, error) {
-	rows, err := q.db.Query(ctx, getTemplateBuildsByIdOrAlias, arg.TeamID, arg.TemplateIDOrAlias)
+func (q *Queries) GetTemplateBuildsByIdOrAlias(ctx context.Context, templateIDOrAlias string) ([]GetTemplateBuildsByIdOrAliasRow, error) {
+	rows, err := q.db.Query(ctx, getTemplateBuildsByIdOrAlias, templateIDOrAlias)
 	if err != nil {
 		return nil, err
 	}

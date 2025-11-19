@@ -14,7 +14,6 @@ import (
 	tt "text/template"
 	"time"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapio"
 
@@ -27,8 +26,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -150,17 +147,10 @@ func (bb *BaseBuilder) provisionSandbox(
 
 	userLogger.Info("Provisioning was successful, cleaning up")
 
-	snapshot, err := sbx.Pause(ctx, metadata.Template{
-		Template: storage.TemplateFiles{
-			BuildID:            uuid.NewString(),
-			KernelVersion:      fcVersions.KernelVersion,
-			FirecrackerVersion: fcVersions.FirecrackerVersion,
-		},
-	})
+	err = sbx.Shutdown(ctx)
 	if err != nil {
-		return fmt.Errorf("error pausing provisioned sandbox: %w", err)
+		return fmt.Errorf("error shutting down provisioned sandbox: %w", err)
 	}
-	defer snapshot.Close(context.WithoutCancel(ctx))
 
 	err = filesystem.RemoveFile(ctx, rootfsPath, provisionScriptResultPath)
 	if err != nil {

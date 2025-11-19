@@ -47,3 +47,7 @@ func (c TemplateCacheFiles) CacheMetadataPath(config BuilderConfig) string {
 func (c TemplateCacheFiles) cacheDir(config BuilderConfig) string {
 	return filepath.Join(config.GetTemplateCacheDir(), c.BuildID, "cache", c.CacheIdentifier)
 }
+
+func (c TemplateCacheFiles) Close(config BuilderConfig) error {
+	return os.RemoveAll(c.cacheDir(config))
+}
