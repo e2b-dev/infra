@@ -33,6 +33,8 @@ const (
 
 	BusyBoxPath     = "usr/bin/busybox"
 	BusyBoxInitPath = "usr/bin/init"
+
+	ProvisioningExitPrefix = "E2B_PROVISIONING_EXIT:"
 )
 
 type Rootfs struct {
@@ -77,6 +79,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	rootfsPath string,
 	provisionScript string,
 	provisionLogPrefix string,
+	provisionResultPath string,
 ) (c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-ext4-file")
 	defer childSpan.End()
@@ -107,7 +110,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	logger.Info(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	logger.Debug("Setting up system files")
-	layers, err := additionalOCILayers(childCtx, r.template, provisionScript, provisionLogPrefix)
+	layers, err := additionalOCILayers(childCtx, r.template, provisionScript, provisionLogPrefix, provisionResultPath)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
 	}
@@ -175,6 +178,7 @@ func additionalOCILayers(
 	config config.TemplateConfig,
 	provisionScript string,
 	provisionLogPrefix string,
+	provisionResultPath string,
 ) ([]containerregistry.Layer, error) {
 	memoryLimit := int(math.Min(float64(config.MemoryMB)/2, 512))
 	envdService := fmt.Sprintf(`[Unit]
@@ -255,15 +259,15 @@ echo "System Init"`), Mode: 0o777},
 # Run the provision script, prefix the output with a log prefix
 ::wait:/bin/sh -c '/usr/local/bin/provision.sh 2>&1 | sed "s/^/%s/"'
 
-# Reboot the system after the script
-# Running the poweroff or halt commands inside a Linux guest will bring it down but Firecracker process remains unaware of the guest shutdown so it lives on.
-# Running the reboot command in a Linux guest will gracefully bring down the guest system and also bring a graceful end to the Firecracker process.
-::once:/usr/bin/busybox reboot
+# Flush filesystem changes to disk
+::wait:/usr/bin/busybox sync
 
-# Clean shutdown of filesystems and swap
-::shutdown:/usr/bin/busybox swapoff -a
-::shutdown:/usr/bin/busybox umount -a -r -v
-`, provisionLogPrefix), Mode: 0o777},
+# Report the exit code of the provisioning script
+::wait:/bin/sh -c 'echo "%s$(cat %s || printf 1)"'
+
+# Wait forever to prevent the VM from exiting until the sandbox is paused and snapshot is taken
+::wait:/usr/bin/busybox sleep infinity
+`, provisionLogPrefix, ProvisioningExitPrefix, provisionResultPath), Mode: 0o777},
 		},
 	)
 	if err != nil {
