@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -118,9 +118,9 @@ func convertDiskMetrics(disks []metrics.DiskInfo) []*orchestratorinfo.DiskMetric
 // convertDiskMetrics converts internal DiskInfo to protobuf DiskMetrics
 func convertMachineInfo(machineInfo machineinfo.MachineInfo) *orchestratorinfo.MachineInfo {
 	return &orchestratorinfo.MachineInfo{
-		Architecture: machineInfo.Arch,
-		CpuFamily:    machineInfo.Family,
-		CpuModel:     machineInfo.Model,
+		CpuArchitecture: machineInfo.Arch,
+		CpuFamily:       machineInfo.Family,
+		CpuModel:        machineInfo.Model,
 	}
 }
 

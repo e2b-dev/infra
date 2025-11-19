@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
@@ -38,6 +37,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
