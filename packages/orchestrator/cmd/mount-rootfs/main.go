@@ -163,34 +163,6 @@ func run(ctx, nbdContext context.Context, buildID, mountPath string, verify bool
 		fmt.Printf("rootfs mounted at path: %s\n", mountPath)
 	}
 
-	// cmd := exec.CommandContext(ctx, "dd", "if=/dev/zero", "of="+devicePath, "bs=4k", "count=1", "oflag=direct")
-
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
-
-	// err = cmd.Run()
-	// if err != nil {
-	// 	return fmt.Errorf("failed to write zero to device (with direct flag): %w", err)
-	// }
-
-	// fmt.Println("> zero written to device (with direct flag)")
-
-	// d, err := os.OpenFile(devicePath, unix.O_DIRECT|unix.O_RDWR, 0)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to open device: %w", err)
-	// }
-	// defer d.Close()
-
-	// buf := make([]byte, 4096)
-
-	// // fmt.Println("mmapped buffer start", unsafe.Pointer(&buf[0]))
-	// _, err = d.WriteAt(buf, 0)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to write zero to device: %w", err)
-	// }
-
-	// fmt.Println("zero written to device")
-
 	if verify {
 		fmt.Println("\nverifying rootfs integrity...")
 

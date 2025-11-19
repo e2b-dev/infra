@@ -58,7 +58,7 @@ jobs:
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v ${{ matrix.test_path }}
+        run: sudo go test -race -v ${{ matrix.test_path }}
 
   validate-iac:
     name: Validate terraform
