@@ -78,7 +78,7 @@ func TestPathDirect4MBWrite(t *testing.T) {
 	})
 
 	// Open device with direct I/O to trigger unbuffered write of 4MB.
-	deviceFile, err := os.OpenFile(string(devicePath), unix.O_DIRECT|unix.O_RDWR, 0)
+	deviceFile, err := os.OpenFile(devicePath, unix.O_DIRECT|unix.O_RDWR, 0)
 	if err != nil {
 		t.Fatalf("failed to open device: %v", err)
 	}
