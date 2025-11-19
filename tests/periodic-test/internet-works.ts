@@ -1,11 +1,11 @@
 import { Sandbox } from "@e2b/code-interpreter";
-import { log, runTestWithSandbox } from "./utils.ts";
+import { DEBUG_TIMEOUT_MS, log, runTestWithSandbox } from "./utils.ts";
 
 log("Starting sandbox logs test");
 
 // Create sandbox
 log("creating sandbox");
-const sandbox = await Sandbox.create();
+const sandbox = await Sandbox.create({ timeoutMs: DEBUG_TIMEOUT_MS });
 log("ℹ️ sandbox created", sandbox.sandboxId);
 
 await runTestWithSandbox(sandbox, "internet-works", async () => {
