@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 
 	"go.uber.org/fx"
@@ -45,10 +44,6 @@ func newHyperloopServer(
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			go func() {
-				hyperloopSrv.BaseContext = func(net.Listener) context.Context {
-					return ctx
-				}
-
 				err := hyperloopSrv.ListenAndServe()
 				if err != nil && !errors.Is(err, http.ErrServerClosed) {
 					logger.Error("Hyperloop server error", zap.Error(err))

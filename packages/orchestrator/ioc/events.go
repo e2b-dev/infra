@@ -30,7 +30,7 @@ func newSandboxEventsService(deliveryTargets []sharedevents.Delivery[sharedevent
 	svc := events.NewEventsService(deliveryTargets)
 
 	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
+		OnStop: func(ctx context.Context) error {
 			return svc.Close(ctx)
 		},
 	})
