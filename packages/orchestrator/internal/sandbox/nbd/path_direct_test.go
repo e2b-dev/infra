@@ -1,72 +1,29 @@
 package nbd_test
 
 import (
-	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd/testutils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-func TestPathDirect4MBWrite(t *testing.T) {
-	if os.Geteuid() != 0 {
-		t.Fatalf("the nbd requires root privileges to run")
-	}
-
-	// Create a device that's at least 4MB (use 10MB to be safe)
+func TestPathDirect_Direct4MBWrite(t *testing.T) {
 	size := int64(10 * 1024 * 1024)
-	blockSize := int64(4096)
 
-	// Create zero device
-	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
-	if err != nil {
-		t.Fatalf("failed to create zero device: %v", err)
-	}
+	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, unix.O_DIRECT|unix.O_RDWR)
 
-	// Create cache path
-	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-rootfs.ext4.cow.cache-%s", uuid.New().String()))
-	t.Cleanup(func() {
-		os.RemoveAll(cowCachePath)
-	})
-
-	// Create cache
-	cache, err := block.NewCache(
-		size,
-		blockSize,
-		cowCachePath,
-		false,
-	)
-	if err != nil {
-		t.Fatalf("failed to create cache: %v", err)
-	}
-
-	// Create overlay
-	overlay := block.NewOverlay(emptyDevice, cache)
-	t.Cleanup(func() {
-		overlay.Close()
-	})
-
-	// Get NBD device
-	nbdContext := context.Background()
-	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, overlay)
-	t.Cleanup(func() {
-		deviceCleanup.Run(t.Context(), 30*time.Second)
-	})
-	if err != nil {
-		t.Fatalf("failed to get nbd device: %v", err)
-	}
-
-	t.Logf("NBD device path: %s", devicePath)
-
-	// We need to ensure buffer is page aligned to be able to use O_DIRECT.
 	const bs = 4 * 1024 * 1024
 	buf, err := unix.Mmap(-1, 0, bs, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED|unix.MAP_ANON)
 	if err != nil {
@@ -77,37 +34,151 @@ func TestPathDirect4MBWrite(t *testing.T) {
 		unix.Munmap(buf)
 	})
 
-	// Open device with direct I/O to trigger unbuffered write of 4MB.
-	deviceFile, err := os.OpenFile(devicePath, unix.O_DIRECT|unix.O_RDWR, 0)
-	if err != nil {
-		t.Fatalf("failed to open device: %v", err)
-	}
+	n, err := deviceFile.WriteAt(buf, 0)
+	require.NoError(t, err, "failed to write to device")
+	require.Equal(t, len(buf), n, "partial write")
+
+	readData := make([]byte, bs)
+	n, err = deviceFile.ReadAt(readData, 0)
+	require.NoError(t, err, "failed to read from device")
+	require.Equal(t, len(readData), n, "partial read")
+	require.Equal(t, buf, readData, "data mismatch")
+}
+
+// We usually see the 32MB write be split into smaller writes, even on O_DIRECT.
+func TestPathDirect_Direct32MBWrite(t *testing.T) {
+	size := int64(256 * 1024 * 1024)
+
+	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, unix.O_DIRECT|unix.O_RDWR)
+
+	const bs = 32 * 1024 * 1024
+	buf, err := unix.Mmap(-1, 0, bs, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED|unix.MAP_ANON)
+	require.NoError(t, err, "failed to mmap")
+
+	t.Cleanup(func() {
+		unix.Munmap(buf)
+	})
+
+	n, err := deviceFile.WriteAt(buf, 0)
+	require.NoError(t, err, "failed to write to device")
+	require.Equal(t, len(buf), n, "partial write")
+
+	readData := make([]byte, bs)
+	n, err = deviceFile.ReadAt(readData, 0)
+	require.NoError(t, err, "failed to read from device")
+	require.Equal(t, len(readData), n, "partial read")
+	require.Equal(t, buf, readData, "data mismatch")
+}
+
+func TestPathDirect_Write(t *testing.T) {
+	size := int64(5 * 1024 * 1024)
+
+	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, os.O_RDWR)
+
+	const writeSize = 1024 * 1024
+	testData := make([]byte, writeSize)
+	_, err := rand.Read(testData)
+	require.NoError(t, err, "failed to generate random data")
+
+	n, err := deviceFile.WriteAt(testData, 0)
+	require.NoError(t, err, "failed to write data to device")
+	require.Equal(t, len(testData), n, "partial write")
+
+	readData := make([]byte, writeSize)
+	n, err = deviceFile.ReadAt(readData, 0)
+	require.NoError(t, err, "failed to read data from device")
+	require.Equal(t, len(readData), n, "partial read")
+	require.Equal(t, testData, readData, "data mismatch")
+}
+
+func TestPathDirect_WriteAtOffset(t *testing.T) {
+	size := int64(5 * 1024 * 1024)
+
+	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, os.O_RDWR)
+
+	const writeSize = 512 * 1024
+	const writeOffset = 512 * 1024
+	testData := make([]byte, writeSize)
+	_, err := rand.Read(testData)
+	require.NoError(t, err, "failed to generate random data")
+
+	n, err := deviceFile.WriteAt(testData, writeOffset)
+	require.NoError(t, err, "failed to write data to device")
+	require.Equal(t, len(testData), n, "partial write")
+
+	readData := make([]byte, writeSize)
+	n, err = deviceFile.ReadAt(readData, writeOffset)
+	require.NoError(t, err, "failed to read data from device")
+	require.Equal(t, len(readData), n, "partial read")
+	require.Equal(t, testData, readData, "data mismatch")
+}
+
+func TestPathDirect_LargeWrite(t *testing.T) {
+	size := int64(1200 * 1024 * 1024)
+
+	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, os.O_RDWR)
+
+	time.Sleep(1 * time.Second)
+	cmd := exec.Command("dd", "if=/dev/zero", "of="+deviceFile.Name(), "bs=1G", "count=1")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	require.NoError(t, err, "failed to execute dd command")
+}
+
+func TestPathLargeRead(t *testing.T) {
+	size := int64(1200 * 1024 * 1024)
+
+	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, os.O_RDONLY)
+	time.Sleep(1 * time.Second)
+
+	cmd := exec.Command("dd", "if="+deviceFile.Name(), "of=/dev/null", "bs=1G", "count=1")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	require.NoError(t, err, "failed to execute dd command")
+}
+
+func setupNBDDevice(t *testing.T, size, blockSize int64, flags int) *os.File {
+	require.Equal(t, 0, os.Geteuid(), "the nbd requires root privileges to run")
+
+	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
+	require.NoError(t, err, "failed to create zero device")
+
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-rootfs.ext4.cow.cache-%s", uuid.New().String()))
+	t.Cleanup(func() {
+		os.RemoveAll(cowCachePath)
+	})
+
+	cache, err := block.NewCache(
+		size,
+		blockSize,
+		cowCachePath,
+		false,
+	)
+	require.NoError(t, err, "failed to create cache")
+
+	overlay := block.NewOverlay(emptyDevice, cache)
+	t.Cleanup(func() {
+		overlay.Close()
+	})
+
+	nbdContext := context.Background()
+	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, overlay)
+	t.Cleanup(func() {
+		deviceCleanup.Run(t.Context(), 30*time.Second)
+	})
+	require.NoError(t, err, "failed to get nbd device")
+
+	t.Logf("NBD device path: %s", devicePath)
+
+	deviceFile, err := os.OpenFile(devicePath, flags, 0)
+	require.NoError(t, err, "failed to open device")
 	t.Cleanup(func() {
 		deviceFile.Close()
 	})
 
-	// Write 4MB at offset 0
-	n, err := deviceFile.WriteAt(buf, 0)
-	if err != nil {
-		t.Fatalf("failed to write to device: %v", err)
-	}
-	if n != len(buf) {
-		t.Fatalf("partial write: expected %d bytes, wrote %d bytes", len(buf), n)
-	}
-
-	// Verify the write by reading it back
-	readData := make([]byte, bs)
-	n, err = deviceFile.ReadAt(readData, 0)
-	if err != nil {
-		t.Fatalf("failed to read from device: %v", err)
-	}
-	if n != len(readData) {
-		t.Fatalf("partial read: expected %d bytes, read %d bytes", len(readData), n)
-	}
-
-	if !bytes.Equal(buf, readData) {
-		t.Fatalf("data mismatch: expected %v, got %v", buf, readData)
-	}
-
-	t.Logf("Successfully wrote and verified 4MB to NBD device")
+	return deviceFile
 }
