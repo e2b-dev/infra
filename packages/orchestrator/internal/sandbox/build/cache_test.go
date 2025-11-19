@@ -299,48 +299,39 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	// Delete oldest item
 	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
-	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	isDeleted := store.isBeingDeleted(diff1.CacheKey())
-	assert.True(t, isDeleted)
-	assert.False(t, true, dump(diff1, store)) // just to dump data
+	assert.True(t, isDeleted, dump(diff1, store))
 
 	// Wait for removal trigger of diff
 	time.Sleep(delay + time.Second)
 
 	// Verify oldest item is deleted
 	found = store.Has(diff1)
-	assert.False(t, found)
-	assert.False(t, true, dump(diff1, store)) // just to dump data
+	assert.False(t, found, dump(diff1, store))
 
 	found = store.Has(diff2)
 	assert.True(t, found, dump(diff2, store))
-	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	// Add another item to the cache
 	diff3 := newDiff(t, cachePath, buildID3, Rootfs, blockSize)
 	store.Add(diff3)
-	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	// Delete oldest item
 	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
-	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	isDeleted = store.isBeingDeleted(diff2.CacheKey())
 	assert.True(t, isDeleted, dump(diff2, store))
 	// Wait for removal trigger of diff
 	time.Sleep(delay + time.Second)
-	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	// Verify oldest item is deleted
 	found = store.Has(diff2)
-	assert.False(t, found)
-	assert.False(t, true, dump(diff1, store)) // just to dump data
+	assert.False(t, found, dump(diff2, store))
 
 	found = store.Has(diff3)
 	assert.True(t, found, dump(diff3, store))
-	assert.False(t, true, dump(diff1, store)) // just to dump data
 }
 
 func dump(diff2 Diff, store *DiffStore) string {
