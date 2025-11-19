@@ -67,5 +67,5 @@ func (z *ZeroDevice) Close() error {
 }
 
 func (z *ZeroDevice) Size() (int64, error) {
-	return 0, nil
+	return z.size, nil
 }
