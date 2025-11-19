@@ -71,7 +71,7 @@ func main() {
 }
 
 func runEmpty(ctx, nbdContext context.Context, size int64, blockSize int64) error {
-	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.ext4.cow.cache-%s", uuid.New().String()))
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("rootfs.ext4.cow.cache-%s", uuid.New().String()))
 
 	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
 	if err != nil {
