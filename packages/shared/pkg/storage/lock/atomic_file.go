@@ -54,13 +54,15 @@ func (f *AtomicFile) Close() error {
 			return ReleaseLock(f.lockFile)
 		})
 
-		if err := f.tempFile.Close(); err != nil {
+		if err = f.tempFile.Close(); err != nil {
 			err = fmt.Errorf("failed to close temp file: %w", err)
+
 			return
 		}
 
-		if err := moveWithoutReplace(f.tempFile.Name(), f.filename); err != nil {
+		if err = moveWithoutReplace(f.tempFile.Name(), f.filename); err != nil {
 			err = fmt.Errorf("failed to commit file: %w", err)
+
 			return
 		}
 	})

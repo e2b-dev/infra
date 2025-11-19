@@ -205,13 +205,32 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	return runBuild(ctx, logger, buildContext, b)
 }
 
+func (b *Builder) useNFSCache(ctx context.Context) (string, bool) {
+	if b.config.SharedChunkCacheDir == "" {
+		// can't enable cache if we don't have a cache path
+		return "", false
+	}
+
+	flag, err := b.featureFlags.BoolFlag(ctx, featureflags.BuildingFeatureFlagName)
+	if err != nil {
+		zap.L().Error("failed to get nfs cache feature flag", zap.Error(err))
+	}
+
+	return b.config.SharedChunkCacheDir, flag
+}
+
 func runBuild(
 	ctx context.Context,
 	userLogger *zap.Logger,
 	bc buildcontext.BuildContext,
 	builder *Builder,
 ) (*Result, error) {
-	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
+	templateStorage := builder.templateStorage
+	if path, ok := builder.useNFSCache(ctx); ok {
+		templateStorage = storage.NewCachedProvider(path, templateStorage)
+	}
+
+	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, templateStorage)
 
 	layerExecutor := layer.NewLayerExecutor(
 		bc,

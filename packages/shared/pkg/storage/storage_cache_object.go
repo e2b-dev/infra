@@ -139,6 +139,7 @@ func (c CachedObjectProvider) writeFileToCache(ctx context.Context, input io.Rea
 	output, err := lock.OpenFile(path)
 	if err != nil {
 		recordCacheError(ctx, op, err)
+
 		return
 	}
 	defer cleanup("failed to unlock file", output.Close)
@@ -146,6 +147,7 @@ func (c CachedObjectProvider) writeFileToCache(ctx context.Context, input io.Rea
 	count, err := io.Copy(output, input)
 	if ignoreEOF(err) != nil {
 		recordCacheError(ctx, op, err)
+
 		return
 	}
 
