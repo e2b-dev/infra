@@ -53,11 +53,11 @@ snapshot as (
             $19
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
-        metadata = $14,
-        sandbox_started_at = $15,
-        origin_node_id = $8,
-        auto_pause = $18,
-        config = $19
+        metadata = excluded.metadata,
+        sandbox_started_at = excluded.sandbox_started_at,
+        origin_node_id = excluded.origin_node_id,
+        auto_pause = excluded.auto_pause,
+        config = excluded.config
     RETURNING env_id as template_id
 )
 

@@ -39,11 +39,11 @@ snapshot as (
             @config
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
-        metadata = @metadata,
-        sandbox_started_at = @started_at,
-        origin_node_id = @origin_node_id,
-        auto_pause = @auto_pause,
-        config = @config
+        metadata = excluded.metadata,
+        sandbox_started_at = excluded.sandbox_started_at,
+        origin_node_id = excluded.origin_node_id,
+        auto_pause = excluded.auto_pause,
+        config = excluded.config
     RETURNING env_id as template_id
 )
 
