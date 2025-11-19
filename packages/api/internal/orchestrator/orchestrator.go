@@ -25,7 +25,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/populate_redis"
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
@@ -48,7 +47,6 @@ type Orchestrator struct {
 	analytics               *analyticscollector.Analytics
 	posthogClient           *analyticscollector.PosthogClient
 	routingCatalog          e2bcatalog.SandboxesCatalog
-	dbClient                *db.DB
 	sqlcDB                  *sqlcdb.Client
 	tel                     *telemetry.Client
 	clusters                *edge.Pool
@@ -67,7 +65,6 @@ func New(
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
-	dbClient *db.DB,
 	sqlcDB *sqlcdb.Client,
 	clusters *edge.Pool,
 	featureFlags *featureflags.Client,
@@ -126,7 +123,6 @@ func New(
 		featureFlagsClient:   featureFlags,
 		accessTokenGenerator: accessTokenGenerator,
 		routingCatalog:       routingCatalog,
-		dbClient:             dbClient,
 		sqlcDB:               sqlcDB,
 		tel:                  tel,
 		clusters:             clusters,

@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -150,7 +149,7 @@ func (c *TemplateCache) Invalidate(templateID string) {
 type TemplateBuildInfo struct {
 	TeamID      uuid.UUID
 	TemplateID  string
-	BuildStatus envbuild.Status
+	BuildStatus types.BuildStatus
 	Reason      types.BuildReason
 	Version     *string
 
@@ -180,7 +179,7 @@ func NewTemplateBuildCache(db *sqlcdb.Client) *TemplatesBuildCache {
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason types.BuildReason) {
+func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status types.BuildStatus, reason types.BuildReason) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -193,8 +192,8 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 
 	zap.L().Info("Setting template build status",
 		logger.WithBuildID(buildID.String()),
-		zap.String("to_status", status.String()),
-		zap.String("from_status", item.BuildStatus.String()),
+		zap.String("to_status", string(status)),
+		zap.String("from_status", string(item.BuildStatus)),
 		zap.String("reason", reason.Message),
 		zap.String("step", sharedUtils.Sprintp(reason.Step)),
 		zap.String("version", sharedUtils.Sprintp(item.Version)),
@@ -238,7 +237,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 			TemplateBuildInfo{
 				TeamID:      result.Env.TeamID,
 				TemplateID:  result.Env.ID,
-				BuildStatus: envbuild.Status(result.EnvBuild.Status),
+				BuildStatus: types.BuildStatus(result.EnvBuild.Status),
 				Reason:      result.EnvBuild.Reason,
 				Version:     result.EnvBuild.Version,
 
@@ -261,7 +260,7 @@ func (c *TemplatesBuildCache) GetRunningBuildsForTeam(teamID uuid.UUID) []Templa
 	var builds []TemplateBuildInfo
 	for _, item := range c.cache.Items() {
 		value := item.Value()
-		isRunning := value.BuildStatus == envbuild.StatusBuilding || value.BuildStatus == envbuild.StatusWaiting
+		isRunning := value.BuildStatus == types.BuildStatusBuilding || value.BuildStatus == types.BuildStatusWaiting
 		if value.TeamID == teamID && isRunning {
 			builds = append(builds, value)
 		}

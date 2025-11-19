@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
+	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
@@ -204,7 +204,7 @@ INSERT INTO env_builds (
 	total_disk_size_mb, kernel_version, firecracker_version, envd_version,
 	cluster_node_id, version, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
-`, build.id, data.EnvID, "FROM e2bdev/base:latest", envbuild.StatusUploaded,
+`, build.id, data.EnvID, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
 				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_d990331", "0.2.4",
 				"integration-test-node", templates.TemplateV1Version)
 		}

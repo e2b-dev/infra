@@ -155,18 +155,20 @@ func (a *APIStore) buildTemplate(
 ) (*template.RegisterBuildResponse, *api.APIError) {
 	// Create the build
 	data := template.RegisterBuildData{
-		ClusterID:  utils.WithClusterFallback(team.ClusterID),
-		TemplateID: templateID,
-		UserID:     &userID,
-		Team:       team,
-		Dockerfile: body.Dockerfile,
-		Alias:      body.Alias,
-		StartCmd:   body.StartCmd,
-		ReadyCmd:   body.ReadyCmd,
-		CpuCount:   body.CpuCount,
-		MemoryMB:   body.MemoryMB,
-		Version:    templates.TemplateV1Version,
+		ClusterID:          utils.WithClusterFallback(team.ClusterID),
+		TemplateID:         templateID,
+		UserID:             &userID,
+		Team:               team,
+		Dockerfile:         body.Dockerfile,
+		Alias:              body.Alias,
+		StartCmd:           body.StartCmd,
+		ReadyCmd:           body.ReadyCmd,
+		CpuCount:           body.CpuCount,
+		MemoryMB:           body.MemoryMB,
+		Version:            templates.TemplateV1Version,
+		KernelVersion:      a.config.DefaultKernelVersion,
+		FirecrackerVersion: a.config.DefaultFirecrackerVersion,
 	}
 
-	return template.RegisterBuild(ctx, a.templateBuildsCache, a.db, data)
+	return template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, data)
 }
