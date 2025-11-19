@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -280,16 +279,16 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 func TestDiffStoreOldestFromCache(t *testing.T) {
 	cachePath := t.TempDir()
 
-	buildID1 := "build-id-1-" + uuid.NewString()
-	buildID2 := "build-id-2-" + uuid.NewString()
-	buildID3 := "build-id-3-" + uuid.NewString()
+	buildID1 := "build-id-1"
+	buildID2 := "build-id-2"
+	buildID3 := "build-id-3"
 
 	c, err := cfg.Parse()
 	require.NoError(t, err)
 
 	flags := flagsWithMaxBuildCachePercentage(t, 100)
 
-	ttl := 60 * time.Second
+	ttl := time.Hour
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
 		t.Context(),
@@ -326,32 +325,42 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	// Verify oldest item is deleted
 	found = store.Has(diff1)
 	assert.False(t, found)
+	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	found = store.Has(diff2)
 	assert.True(t, found, dump(diff2, store))
+	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	// Add another item to the cache
 	diff3 := newDiff(t, cachePath, buildID3, Rootfs, blockSize)
 	store.Add(diff3)
+	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	// Delete oldest item
 	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
+	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	isDeleted = store.isBeingDeleted(diff2.CacheKey())
 	assert.True(t, isDeleted, dump(diff2, store))
 	// Wait for removal trigger of diff
 	time.Sleep(delay + time.Second)
+	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	// Verify oldest item is deleted
 	found = store.Has(diff2)
 	assert.False(t, found)
+	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	found = store.Has(diff3)
 	assert.True(t, found, dump(diff3, store))
+	assert.False(t, true, dump(diff1, store)) // just to dump data
 }
 
 func dump(diff2 Diff, store *DiffStore) string {
+	store.pdMu.Lock()
+	defer store.pdMu.Unlock()
+
 	var cachedParts []string
 	for _, item := range store.cache.Items() {
 		val := item.Value()
@@ -383,9 +392,9 @@ func dump(diff2 Diff, store *DiffStore) string {
 	return fmt.Sprintf("key: %s\nstore[%d]: %s\nexpiration[%d]: %s",
 		diff2.CacheKey(),
 		len(cachedParts),
-		strings.Join(cachedParts, ", "),
+		strings.Join(cachedParts, "\n\t\t\t"),
 		len(expiredParts),
-		strings.Join(expiredParts, ", "),
+		strings.Join(expiredParts, "\n\t\t\t"),
 	)
 }
 
