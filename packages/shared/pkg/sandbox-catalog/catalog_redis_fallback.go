@@ -10,6 +10,8 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
+// TODO: Remove once migrated (ENG-3320)
+
 type RedisFallbackSandboxCatalog struct {
 	sandboxCatalog             SandboxesCatalog
 	redisFallbackCatalogClient *RedisSandboxCatalog

@@ -153,6 +153,7 @@ func run() int {
 		}
 	}
 
+	// TODO: Remove once migrated (ENG-3320)
 	redisSecureClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
 		RedisURL:         "",
 		RedisClusterURL:  config.RedisSecureClusterURL,
