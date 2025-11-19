@@ -1,15 +1,20 @@
 package base
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"strings"
 	tt "text/template"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapio"
 
@@ -22,10 +27,15 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const provisionTimeout = 5 * time.Minute
+const (
+	provisionTimeout = 5 * time.Minute
+)
 
 //go:embed provision.sh
 var provisionScriptFile string
@@ -64,15 +74,48 @@ func (bb *BaseBuilder) provisionSandbox(
 	fcVersions fc.FirecrackerVersions,
 	localTemplate *sbxtemplate.LocalTemplate,
 	rootfsPath string,
-	provisionScriptResultPath string,
 	logExternalPrefix string,
 ) (e error) {
 	ctx, childSpan := tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
 	zapWriter := &zapio.Writer{Log: userLogger, Level: zap.DebugLevel}
-	logsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
-	defer logsWriter.Close()
+	prefixedLogsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
+	defer prefixedLogsWriter.Close()
+
+	exitCodeReader, exitCodeWriter := io.Pipe()
+	defer exitCodeWriter.Close()
+
+	// read all incoming logs and detect message "{exitPrefix}:X" where X is the exit code
+	done := utils.NewErrorOnce()
+	go func() (e error) {
+		defer io.Copy(io.Discard, exitCodeReader)
+		defer func() {
+			done.SetError(e)
+		}()
+
+		scanner := bufio.NewScanner(exitCodeReader)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, rootfs.ProvisioningExitPrefix) {
+				exitStatus := strings.TrimPrefix(line, rootfs.ProvisioningExitPrefix)
+				if exitStatus == "0" {
+					// Success exit code
+					return nil
+				}
+
+				return fmt.Errorf("exit status: %s", exitStatus)
+			}
+		}
+
+		if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+
+		return errors.New("exit code not detected")
+	}()
+
+	logsWriter := io.MultiWriter(prefixedLogsWriter, exitCodeWriter)
 
 	sbx, err := bb.sandboxFactory.CreateSandbox(
 		ctx,
@@ -101,26 +144,30 @@ func (bb *BaseBuilder) provisionSandbox(
 	}
 	defer sbx.Close(ctx)
 
-	err = sbx.WaitForExit(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to wait for sandbox start: %w", err)
+	if err := done.WaitWithContext(ctx); err != nil {
+		return fmt.Errorf("error waiting for provisioning sandbox: %w", err)
 	}
+
+	userLogger.Info("Provisioning was successful, cleaning up")
+
+	snapshot, err := sbx.Pause(ctx, metadata.Template{
+		Template: storage.TemplateFiles{
+			BuildID:            uuid.NewString(),
+			KernelVersion:      fcVersions.KernelVersion,
+			FirecrackerVersion: fcVersions.FirecrackerVersion,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error pausing provisioned sandbox: %w", err)
+	}
+	defer snapshot.Close(context.WithoutCancel(ctx))
+
+	err = filesystem.RemoveFile(ctx, rootfsPath, provisionScriptResultPath)
+	if err != nil {
+		return fmt.Errorf("result file cleanup failed: %w", err)
+	}
+
 	userLogger.Info("Sandbox template provisioned")
-
-	// Verify the provisioning script exit status
-	exitStatus, err := filesystem.ReadFile(ctx, rootfsPath, provisionScriptResultPath)
-	if err != nil {
-		return fmt.Errorf("error reading provision result: %w", err)
-	}
-	defer filesystem.RemoveFile(ctx, rootfsPath, provisionScriptResultPath)
-
-	// Fallback to "1" if the file is empty or not found
-	if exitStatus == "" {
-		exitStatus = "1"
-	}
-	if exitStatus != "0" {
-		return fmt.Errorf("provision script failed with exit status: %s", exitStatus)
-	}
 
 	return nil
 }
