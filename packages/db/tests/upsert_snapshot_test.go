@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,6 +47,26 @@ func createTestBaseEnv(t *testing.T, ctx context.Context, db *client.Client, tea
 	require.NoError(t, err, "Failed to create test base env")
 
 	return envID
+}
+
+// getSnapshotMetadata retrieves the metadata from a snapshot using raw SQL
+func getSnapshotMetadata(t *testing.T, ctx context.Context, db *client.Client, sandboxID string) types.JSONBStringMap {
+	t.Helper()
+	var metadata types.JSONBStringMap
+
+	err := db.TestsRawSQLQuery(ctx,
+		"SELECT metadata FROM public.snapshots WHERE sandbox_id = $1",
+		func(rows pgx.Rows) error {
+			if !rows.Next() {
+				return nil
+			}
+			return rows.Scan(&metadata)
+		},
+		sandboxID,
+	)
+	require.NoError(t, err, "Failed to query snapshot metadata")
+
+	return metadata
 }
 
 func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
@@ -109,6 +130,11 @@ func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 	// Instead, we verify the returned IDs are valid
 	assert.NotEmpty(t, result.TemplateID, "TemplateID should not be empty")
 	assert.NotEqual(t, uuid.Nil, result.BuildID, "BuildID should not be nil")
+
+	// Verify metadata was stored correctly
+	storedMetadata := getSnapshotMetadata(t, ctx, client, sandboxID)
+	assert.Equal(t, params.Metadata, storedMetadata, "Stored metadata should match the input metadata")
+	assert.Equal(t, "value", storedMetadata["key"], "Metadata key 'key' should have value 'value'")
 }
 
 func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
@@ -164,6 +190,11 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, initialBuildID, "Initial BuildID should not be nil")
 	assert.Equal(t, templateID, initialTemplateID, "Initial TemplateID should match input")
 
+	// Verify initial metadata was stored correctly
+	initialStoredMetadata := getSnapshotMetadata(t, ctx, client, sandboxID)
+	assert.Equal(t, initialParams.Metadata, initialStoredMetadata, "Initial metadata should match")
+	assert.Equal(t, "initial_value", initialStoredMetadata["key"], "Initial metadata key should have correct value")
+
 	// Prepare updated data for the existing snapshot (same sandbox_id)
 	updatedOriginNodeID := "node-2"
 	newStartTime := time.Now()
@@ -215,6 +246,13 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, updatedResult.BuildID,
 		"New BuildID should not be nil")
 
+	// 4. Verify metadata was updated correctly
+	updatedStoredMetadata := getSnapshotMetadata(t, ctx, client, sandboxID)
+	assert.Equal(t, updatedParams.Metadata, updatedStoredMetadata, "Updated metadata should match")
+	assert.Equal(t, "updated_value", updatedStoredMetadata["key"], "Updated metadata key should have new value")
+	assert.Equal(t, "new_value", updatedStoredMetadata["new_key"], "New metadata key should be present")
+	assert.NotEqual(t, initialStoredMetadata, updatedStoredMetadata, "Updated metadata should be different from initial")
+
 	// Test calling upsert a third time to ensure consistent behavior
 	thirdParams := queries.UpsertSnapshotParams{
 		TemplateID:          "yet-another-template-id",
@@ -247,4 +285,10 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 		"BuildID should be different from the second upsert")
 	assert.NotEqual(t, initialBuildID, thirdResult.BuildID,
 		"BuildID should be different from the first upsert")
+
+	// Verify metadata was updated again
+	thirdStoredMetadata := getSnapshotMetadata(t, ctx, client, sandboxID)
+	assert.Equal(t, thirdParams.Metadata, thirdStoredMetadata, "Third metadata should match")
+	assert.Equal(t, "third_value", thirdStoredMetadata["key"], "Third metadata key should have latest value")
+	assert.NotEqual(t, updatedStoredMetadata, thirdStoredMetadata, "Third metadata should be different from second")
 }
