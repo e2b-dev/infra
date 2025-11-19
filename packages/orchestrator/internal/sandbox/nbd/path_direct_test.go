@@ -119,7 +119,7 @@ func TestPathDirect_LargeWrite(t *testing.T) {
 	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, os.O_RDWR)
 
 	time.Sleep(1 * time.Second)
-	cmd := exec.Command("dd", "if=/dev/zero", "of="+deviceFile.Name(), "bs=1G", "count=1")
+	cmd := exec.CommandContext(t.Context(), "dd", "if=/dev/zero", "of="+deviceFile.Name(), "bs=1G", "count=1")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -133,7 +133,7 @@ func TestPathLargeRead(t *testing.T) {
 	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, os.O_RDONLY)
 	time.Sleep(1 * time.Second)
 
-	cmd := exec.Command("dd", "if="+deviceFile.Name(), "of=/dev/null", "bs=1G", "count=1")
+	cmd := exec.CommandContext(t.Context(), "dd", "if="+deviceFile.Name(), "of=/dev/null", "bs=1G", "count=1")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -142,6 +142,8 @@ func TestPathLargeRead(t *testing.T) {
 }
 
 func setupNBDDevice(t *testing.T, size, blockSize int64, flags int) *os.File {
+	t.Helper()
+
 	require.Equal(t, 0, os.Geteuid(), "the nbd requires root privileges to run")
 
 	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
