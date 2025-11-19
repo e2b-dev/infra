@@ -81,7 +81,6 @@ func NewCache(
 	}
 
 	buildStore, err := build.NewDiffStore(
-		ctx,
 		config,
 		flags,
 		config.DefaultCacheDir,
@@ -91,6 +90,8 @@ func NewCache(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
 	}
+
+	buildStore.Start(ctx)
 
 	go cache.Start()
 

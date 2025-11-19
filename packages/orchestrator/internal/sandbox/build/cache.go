@@ -30,6 +30,8 @@ type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
 	close     chan struct{}
+	config    cfg.Config
+	flags     *featureflags.Client
 
 	// pdSizes is used to keep track of the diff sizes
 	// that are scheduled for deletion, as this won't show up in the disk usage.
@@ -39,7 +41,6 @@ type DiffStore struct {
 }
 
 func NewDiffStore(
-	ctx context.Context,
 	config cfg.Config,
 	flags *featureflags.Client,
 	cachePath string,
@@ -58,6 +59,8 @@ func NewDiffStore(
 		cachePath: cachePath,
 		cache:     cache,
 		close:     make(chan struct{}),
+		config:    config,
+		flags:     flags,
 		pdSizes:   make(map[DiffStoreKey]*deleteDiff),
 		pdDelay:   delay,
 	}
@@ -72,9 +75,6 @@ func NewDiffStore(
 		}
 	})
 
-	go cache.Start()
-	go ds.startDiskSpaceEviction(ctx, config, flags)
-
 	return ds, nil
 }
 
@@ -82,6 +82,11 @@ type DiffStoreKey string
 
 func GetDiffStoreKey(buildID string, diffType DiffType) DiffStoreKey {
 	return DiffStoreKey(fmt.Sprintf("%s/%s", buildID, diffType))
+}
+
+func (s *DiffStore) Start(ctx context.Context) {
+	go s.cache.Start()
+	go s.startDiskSpaceEviction(ctx, s.config, s.flags)
 }
 
 func (s *DiffStore) Close() {
