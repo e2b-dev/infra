@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -39,7 +40,7 @@ func main() {
 	if *logging {
 		logger, err := zap.NewDevelopment()
 		if err != nil {
-			log.Fatalf("failed to create logger: %s", err)
+			panic(fmt.Errorf("failed to create logger: %w", err))
 		}
 		zap.ReplaceGlobals(logger)
 	}
@@ -60,10 +61,8 @@ func main() {
 }
 
 func run(ctx, nbdContext context.Context, buildID, mountPath string, verify bool) error {
-	cleanupCtx := context.Background() //nolint:contextcheck // we need to use separate context otherwise the cleanup can be problematic
-
 	rootfs, rootfsCleanup, err := testutils.TemplateRootfs(ctx, buildID)
-	defer rootfsCleanup.Run(cleanupCtx)
+	defer rootfsCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to get template rootfs: %w", err)
 	}
@@ -88,7 +87,7 @@ func run(ctx, nbdContext context.Context, buildID, mountPath string, verify bool
 	defer overlay.Close()
 
 	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, overlay)
-	defer deviceCleanup.Run(cleanupCtx)
+	defer deviceCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to get nbd device: %w", err)
 	}
@@ -104,7 +103,7 @@ func run(ctx, nbdContext context.Context, buildID, mountPath string, verify bool
 		fmt.Fprintf(os.Stdout, "creating mount path directory: %s\n", mountPath)
 
 		mountCleanup, err := testutils.MountNBDDevice(devicePath, mountPath)
-		defer mountCleanup.Run(cleanupCtx)
+		defer mountCleanup.Run(ctx, 30*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to mount device to mount path: %w", err)
 		}

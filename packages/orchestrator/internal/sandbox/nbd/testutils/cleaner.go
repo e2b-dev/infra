@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 )
 
 type Cleaner struct {
@@ -17,7 +18,10 @@ func (c *Cleaner) Add(f func(ctx context.Context) error) {
 	c.steps = append(c.steps, f)
 }
 
-func (c *Cleaner) Run(ctx context.Context) (err error) {
+func (c *Cleaner) Run(ctx context.Context, timeout time.Duration) (err error) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+	defer cancel()
+
 	c.once.Do(func() {
 		var errs []error
 

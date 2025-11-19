@@ -13,7 +13,7 @@ type ZeroDevice struct {
 	blockSize int64
 }
 
-func (z *ZeroDevice) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+func (z *ZeroDevice) ReadAt(_ context.Context, p []byte, _ int64) (n int, err error) {
 	clear(p)
 
 	return len(p), nil
@@ -23,7 +23,7 @@ func (z *ZeroDevice) BlockSize() int64 {
 	return z.blockSize
 }
 
-func (z *ZeroDevice) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+func (z *ZeroDevice) Slice(_ context.Context, _, length int64) ([]byte, error) {
 	return make([]byte, length), nil
 }
 

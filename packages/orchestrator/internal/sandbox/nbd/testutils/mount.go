@@ -38,8 +38,6 @@ func MountNBDDevice(device nbd.DevicePath, mountPath string) (*Cleaner, error) {
 				fmt.Fprintf(os.Stderr, "failed to unmount device from mount path: %v\n", err)
 			}
 		}
-
-		return nil
 	})
 
 	return &cleaner, nil
