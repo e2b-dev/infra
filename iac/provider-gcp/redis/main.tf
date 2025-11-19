@@ -188,5 +188,5 @@ resource "google_secret_manager_secret_version" "redis_secure_cluster_url_secret
 
 resource "google_secret_manager_secret_version" "redis_tls_ca_base64" {
   secret      = var.redis_tls_ca_base64_secret_version.secret
-  secret_data = base64encode(google_memorystore_instance.valkey_cluster.managed_server_ca[0].ca_certs[0].certificates[0])
+  secret_data = base64encode(join("\n", google_memorystore_instance.valkey_cluster.managed_server_ca[0].ca_certs[0].certificates))
 }

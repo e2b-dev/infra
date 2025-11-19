@@ -227,7 +227,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		},
 		localTemplate,
 		rootfsProvisionPath,
-		provisionScriptResultPath,
 		provisionLogPrefix,
 	)
 	if err != nil {
