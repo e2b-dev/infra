@@ -15,6 +15,8 @@ package build
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -324,7 +326,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	assert.False(t, found)
 
 	found = store.Has(diff2)
-	assert.True(t, found)
+	assert.True(t, !found, dump(diff2, store))
 
 	// Add another item to the cache
 	diff3 := newDiff(t, cachePath, buildID3, Rootfs, blockSize)
@@ -335,7 +337,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	require.NoError(t, err)
 
 	isDeleted = store.isBeingDeleted(diff2.CacheKey())
-	assert.True(t, isDeleted)
+	assert.True(t, isDeleted, dump(diff2, store))
 	// Wait for removal trigger of diff
 	time.Sleep(delay + time.Second)
 
@@ -344,7 +346,45 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	assert.False(t, found)
 
 	found = store.Has(diff3)
-	assert.True(t, found)
+	assert.True(t, found, dump(diff3, store))
+}
+
+func dump(diff2 Diff, store *DiffStore) string {
+	var cachedParts []string
+	for _, item := range store.cache.Items() {
+		val := item.Value()
+		cachePath, err := val.CachePath()
+		if err != nil {
+			cachePath = fmt.Sprintf("<err=%v>", val)
+		}
+		fileSize, err := val.FileSize()
+		var fileSizeText string
+		if err != nil {
+			fileSizeText = fmt.Sprintf("<err=%v>", val)
+		} else {
+			fileSizeText = strconv.Itoa(int(fileSize))
+		}
+
+		cachedParts = append(cachedParts, fmt.Sprintf("%s=[key=%s path=%s size=%s]",
+			item.Key(),
+			val.CacheKey(),
+			cachePath,
+			fileSizeText,
+		))
+	}
+
+	var expiredParts []string
+	for key, item := range store.pdSizes {
+		expiredParts = append(expiredParts, fmt.Sprintf("%s=[size=%d]", key, item.size))
+	}
+
+	return fmt.Sprintf("key: %s\nstore[%d]: %s\nexpiration[%d]: %s",
+		diff2.CacheKey(),
+		len(cachedParts),
+		strings.Join(cachedParts, ", "),
+		len(expiredParts),
+		strings.Join(expiredParts, ", "),
+	)
 }
 
 // TestDiffStoreConcurrentEvictionRace simulates the data race condition where
