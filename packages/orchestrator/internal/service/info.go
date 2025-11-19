@@ -4,10 +4,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 

@@ -26,9 +26,10 @@ type ClusterInstance struct {
 	ServiceVersion       string
 	ServiceVersionCommit string
 
-	roles  []infogrpc.ServiceInfoRole
-	status infogrpc.ServiceInfoStatus
-	mutex  sync.RWMutex
+	machineInfo *infogrpc.MachineInfo
+	roles       []infogrpc.ServiceInfoRole
+	status      infogrpc.ServiceInfoStatus
+	mutex       sync.RWMutex
 }
 
 const (
@@ -59,6 +60,7 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	instance.status = info.GetServiceStatus()
 	instance.roles = info.GetServiceRoles()
+	instance.machineInfo = info.GetMachineInfo()
 }
 
 func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
@@ -66,6 +68,13 @@ func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
 	defer n.mutex.RUnlock()
 
 	return n.status
+}
+
+func (n *ClusterInstance) GetMachineInfo() *infogrpc.MachineInfo {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+
+	return n.machineInfo
 }
 
 func (n *ClusterInstance) hasRole(r infogrpc.ServiceInfoRole) bool {
@@ -144,8 +153,9 @@ func (d clusterSynchronizationStore) PoolInsert(_ context.Context, item api.Clus
 		ServiceVersionCommit: item.ServiceVersionCommit,
 
 		// initial values before first sync
-		status: infogrpc.ServiceInfoStatus_Unhealthy,
-		roles:  make([]infogrpc.ServiceInfoRole, 0),
+		status:      infogrpc.ServiceInfoStatus_Unhealthy,
+		roles:       make([]infogrpc.ServiceInfoRole, 0),
+		machineInfo: nil,
 
 		mutex: sync.RWMutex{},
 	}

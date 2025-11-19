@@ -83,7 +83,6 @@ func New(
 	buildCache := ttlcache.New[string, any]()
 	go buildCache.Start()
 
-	machineInfo := nodeInfo.GetMachineInfo()
 	nodeMetadata := NodeMetadata{
 		ServiceInstanceID: nodeInfo.GetServiceId(),
 		Commit:            nodeInfo.GetServiceCommit(),
@@ -97,14 +96,10 @@ func New(
 		IPAddress:        discoveredNode.IPAddress,
 		SandboxDomain:    nil,
 
-		client: client,
-		status: nodeStatus,
-		machineInfo: MachineInfo{
-			CPUFamily:       machineInfo.GetCpuFamily(),
-			CPUModel:        machineInfo.GetCpuModel(),
-			CPUArchitecture: machineInfo.GetCpuArchitecture(),
-		},
-		meta: nodeMetadata,
+		client:      client,
+		status:      nodeStatus,
+		machineInfo: MachineInfoFromGRPC(nodeInfo.GetMachineInfo()),
+		meta:        nodeMetadata,
 
 		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
@@ -146,7 +141,8 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 		status: nodeStatus,
 		meta:   nodeMetadata,
 
-		buildCache: buildCache,
+		machineInfo: MachineInfoFromGRPC(i.GetMachineInfo()),
+		buildCache:  buildCache,
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
 			createSuccess:       atomic.Uint64{},
