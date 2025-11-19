@@ -12,7 +12,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/redis"
 	"go.uber.org/fx"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -43,15 +42,6 @@ func TestStartupShutdown(t *testing.T) {
 	t.Setenv("TEMPLATE_BUCKET_NAME", "bucket-name")
 	t.Setenv("STORAGE_PROVIDER", "Local")
 	t.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
-
-	redisContainer, err := redis.Run(t.Context(), "redis:6")
-	require.NoError(t, err)
-
-	redisHost, err := redisContainer.Host(t.Context())
-	require.NoError(t, err)
-	redisPort, err := redisContainer.MappedPort(t.Context(), "6379")
-	require.NoError(t, err)
-	t.Setenv("REDIS_URL", fmt.Sprintf("%s:%d", redisHost, redisPort.Int()))
 
 	config, err := cfg.Parse()
 	require.NoError(t, err)

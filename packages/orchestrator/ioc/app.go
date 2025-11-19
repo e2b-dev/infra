@@ -27,7 +27,7 @@ func build(config cfg.Config, vInfo VersionInfo) []fx.Option {
 		newHealthModule(),
 		newHyperloopModule(),
 		newObservabilityModule(),
-		newRedisModule(),
+		newRedisModule(config),
 		newSandboxesModule(),
 		newTemplateManagerModule(config),
 

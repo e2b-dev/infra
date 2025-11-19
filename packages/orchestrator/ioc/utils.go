@@ -4,29 +4,46 @@ import (
 	"go.uber.org/fx"
 )
 
+type caseBuilder struct {
+	condition bool
+	options   []fx.Option
+}
+
 type IfBuilder struct {
-	condition  bool
 	moduleName string
-	trueOpts   []fx.Option
-	falseOpts  []fx.Option
+	cases      []caseBuilder
+	fallback   []fx.Option
 }
 
 func If(moduleName string, cond bool, opts ...fx.Option) IfBuilder {
-	return IfBuilder{condition: cond, moduleName: moduleName, trueOpts: opts}
+	return IfBuilder{
+		moduleName: moduleName,
+		cases: []caseBuilder{
+			{condition: cond, options: opts},
+		},
+	}
+}
+
+func (i IfBuilder) ElseIf(cond bool, opts ...fx.Option) IfBuilder {
+	i.cases = append(i.cases, caseBuilder{condition: cond, options: opts})
+
+	return i
 }
 
 func (i IfBuilder) Else(opts ...fx.Option) IfBuilder {
-	i.falseOpts = append(i.falseOpts, opts...)
+	i.fallback = opts
 
 	return i
 }
 
 func (i IfBuilder) Build() fx.Option {
-	if i.condition {
-		return fx.Module(i.moduleName, i.trueOpts...)
+	for _, item := range i.cases {
+		if item.condition {
+			return fx.Module(i.moduleName, item.options...)
+		}
 	}
 
-	return fx.Module(i.moduleName, i.falseOpts...)
+	return fx.Module(i.moduleName, i.fallback...)
 }
 
 func invokeAsync(s fx.Shutdowner, fn func() error) {
