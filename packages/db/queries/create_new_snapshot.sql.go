@@ -13,31 +13,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const upsertSnapshotEnvAndBuild = `-- name: UpsertSnapshotEnvAndBuild :one
-WITH updated_snapshot AS (
-    UPDATE "public"."snapshots" s
-    SET
-        metadata           = $9,
-        sandbox_started_at = $10,
-        origin_node_id     = $7,
-        auto_pause         = $11,
-        config             = $12
-    FROM "public"."envs" e
-    WHERE
-        s.sandbox_id = $13
-            AND e.id      = s.env_id
-            AND e.team_id = $14
-    RETURNING s.env_id
+const upsertSnapshot = `-- name: UpsertSnapshot :one
+WITH new_template AS (
+    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
+    SELECT $9, FALSE, NULL, $10, now()
+    WHERE NOT EXISTS (
+        SELECT id
+        FROM "public"."snapshots" s
+        WHERE s.sandbox_id = $11
+    ) RETURNING id
 ),
- inserted_env AS (
-     INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
-     SELECT $15, FALSE, NULL, $14, now()
-     WHERE NOT EXISTS (SELECT 1 FROM updated_snapshot)
-     ON CONFLICT (id) DO NOTHING
-     RETURNING id AS env_id
-),
- inserted_snapshot AS (
-     INSERT INTO "public"."snapshots" (
+
+snapshot as (
+    INSERT INTO "public"."snapshots" (
        sandbox_id,
        base_env_id,
        team_id,
@@ -49,32 +37,28 @@ WITH updated_snapshot AS (
        origin_node_id,
        auto_pause,
        config
-     )
-     SELECT
-         $13,
-         $16,
-         $14,
-         COALESCE(
-                 (SELECT env_id FROM inserted_env LIMIT 1),
-                 $15      -- env already existed
-         ) AS env_id,
-         $9,
-         $10,
-         $17,
-         $18,
-         $7,
-         $11,
-         $12
-     WHERE NOT EXISTS (SELECT 1 FROM updated_snapshot)
-     RETURNING env_id
- ),
- -- If we updated an existing snapshot, use that env_id.
- -- Otherwise use env_id from the newly inserted snapshot.
- final_env AS (
-     SELECT env_id FROM updated_snapshot
-     UNION ALL
-     SELECT env_id FROM inserted_snapshot
- )
+    )
+    VALUES (
+            $11,
+            $12,
+            $10,
+            COALESCE((SELECT id FROM new_template), ''),
+            $13,
+            $14,
+            $15,
+            $16,
+            $7,
+            $17,
+            $18
+   )
+    ON CONFLICT (sandbox_id) DO UPDATE SET
+        metadata = $13,
+        sandbox_started_at = $14,
+        origin_node_id = $7,
+        auto_pause = $17,
+        config = $18
+    RETURNING env_id as template_id
+)
 
 INSERT INTO "public"."env_builds" (
     env_id,
@@ -88,9 +72,8 @@ INSERT INTO "public"."env_builds" (
     cluster_node_id,
     total_disk_size_mb,
     updated_at
-)
-SELECT
-    (SELECT env_id FROM final_env LIMIT 1),
+) VALUES (
+    (SELECT template_id FROM snapshot),
     $1,
     $2,
     0,
@@ -101,10 +84,10 @@ SELECT
     $7,
     $8,
     now()
-RETURNING id as build_id, env_id as template_id
+) RETURNING id as build_id, env_id as template_id
 `
 
-type UpsertSnapshotEnvAndBuildParams struct {
+type UpsertSnapshotParams struct {
 	Vcpu                int64
 	RamMb               int64
 	KernelVersion       string
@@ -113,28 +96,27 @@ type UpsertSnapshotEnvAndBuildParams struct {
 	Status              string
 	OriginNodeID        string
 	TotalDiskSizeMb     *int64
+	TemplateID          string
+	TeamID              uuid.UUID
+	SandboxID           string
+	BaseTemplateID      string
 	Metadata            types.JSONBStringMap
 	StartedAt           pgtype.Timestamptz
-	AutoPause           bool
-	Config              *types.PausedSandboxConfig
-	SandboxID           string
-	TeamID              uuid.UUID
-	TemplateID          string
-	BaseTemplateID      string
 	Secure              bool
 	AllowInternetAccess *bool
+	AutoPause           bool
+	Config              *types.PausedSandboxConfig
 }
 
-type UpsertSnapshotEnvAndBuildRow struct {
+type UpsertSnapshotRow struct {
 	BuildID    uuid.UUID
 	TemplateID string
 }
 
-// Try to update an existing snapshot
-// otherwise insert a new one with a new env
+// Create a new snapshot or update an existing one
 // Create a new build for the snapshot
-func (q *Queries) UpsertSnapshotEnvAndBuild(ctx context.Context, arg UpsertSnapshotEnvAndBuildParams) (UpsertSnapshotEnvAndBuildRow, error) {
-	row := q.db.QueryRow(ctx, upsertSnapshotEnvAndBuild,
+func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) (UpsertSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, upsertSnapshot,
 		arg.Vcpu,
 		arg.RamMb,
 		arg.KernelVersion,
@@ -143,18 +125,18 @@ func (q *Queries) UpsertSnapshotEnvAndBuild(ctx context.Context, arg UpsertSnaps
 		arg.Status,
 		arg.OriginNodeID,
 		arg.TotalDiskSizeMb,
+		arg.TemplateID,
+		arg.TeamID,
+		arg.SandboxID,
+		arg.BaseTemplateID,
 		arg.Metadata,
 		arg.StartedAt,
-		arg.AutoPause,
-		arg.Config,
-		arg.SandboxID,
-		arg.TeamID,
-		arg.TemplateID,
-		arg.BaseTemplateID,
 		arg.Secure,
 		arg.AllowInternetAccess,
+		arg.AutoPause,
+		arg.Config,
 	)
-	var i UpsertSnapshotEnvAndBuildRow
+	var i UpsertSnapshotRow
 	err := row.Scan(&i.BuildID, &i.TemplateID)
 	return i, err
 }

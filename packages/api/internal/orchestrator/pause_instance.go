@@ -30,7 +30,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
-	snapshotConfig := queries.UpsertSnapshotEnvAndBuildParams{
+	snapshotConfig := queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:          id.Generate(),
 		TeamID:              sbx.TeamID,
@@ -55,7 +55,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		Status:       string(envbuild.StatusSnapshotting),
 	}
 
-	result, err := o.sqlcDB.UpsertSnapshotEnvAndBuild(ctx, snapshotConfig)
+	result, err := o.sqlcDB.UpsertSnapshot(ctx, snapshotConfig)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error inserting snapshot for env", err)
 
