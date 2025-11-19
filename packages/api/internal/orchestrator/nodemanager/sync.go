@@ -33,6 +33,12 @@ func (n *Node) Sync(ctx context.Context, instanceCache *memory.Store) {
 		}
 
 		n.setStatus(nodeStatus)
+		machineInfo := nodeInfo.GetMachineInfo()
+		n.setMachineInfo(MachineInfo{
+			CPUFamily:       machineInfo.GetCpuFamily(),
+			CPUModel:        machineInfo.GetCpuModel(),
+			CPUArchitecture: machineInfo.GetCpuArchitecture(),
+		})
 		n.setMetadata(
 			NodeMetadata{
 				ServiceInstanceID: nodeInfo.GetServiceId(),

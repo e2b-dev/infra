@@ -285,6 +285,18 @@ type ListedSandbox struct {
 // LogLevel State of the sandbox
 type LogLevel string
 
+// MachineInfo defines model for MachineInfo.
+type MachineInfo struct {
+	// CpuArchitecture CPU architecture of the node
+	CpuArchitecture string `json:"cpuArchitecture"`
+
+	// CpuFamily CPU family of the node
+	CpuFamily string `json:"cpuFamily"`
+
+	// CpuModel CPU model of the node
+	CpuModel string `json:"cpuModel"`
+}
+
 // MaxTeamMetric Team metric with timestamp
 type MaxTeamMetric struct {
 	// Timestamp Timestamp of the metric entry
@@ -355,7 +367,8 @@ type Node struct {
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
 	// Id Identifier of the node
-	Id string `json:"id"`
+	Id          string      `json:"id"`
+	MachineInfo MachineInfo `json:"machineInfo"`
 
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
@@ -398,7 +411,8 @@ type NodeDetail struct {
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
 	// Id Identifier of the node
-	Id string `json:"id"`
+	Id          string      `json:"id"`
+	MachineInfo MachineInfo `json:"machineInfo"`
 
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`

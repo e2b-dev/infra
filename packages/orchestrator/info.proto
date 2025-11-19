@@ -25,6 +25,13 @@ message DiskMetrics {
   uint64 total_bytes = 5;
 }
 
+
+message MachineInfo {
+  string cpu_architecture = 1;
+  string cpu_family = 2;
+  string cpu_model = 3;
+}
+
 message ServiceInfoResponse {
   string node_id = 1;
   string service_id = 2;
@@ -34,6 +41,7 @@ message ServiceInfoResponse {
   ServiceInfoStatus service_status = 51;
   repeated ServiceInfoRole service_roles = 52;
   google.protobuf.Timestamp service_startup = 53;
+  MachineInfo machine_info = 54;
 
   int64 metric_vcpu_used = 101 [deprecated = true];
   int64 metric_memory_used_mb = 102 [deprecated = true];

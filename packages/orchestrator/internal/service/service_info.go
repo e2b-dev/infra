@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -71,6 +72,7 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 
 		ServiceStartup: timestamppb.New(info.Startup),
 		ServiceRoles:   info.Roles,
+		MachineInfo:    convertMachineInfo(info.MachineInfo),
 
 		// Allocated resources to sandboxes
 		MetricCpuAllocated:         sandboxVCpuAllocated,
@@ -110,6 +112,15 @@ func convertDiskMetrics(disks []metrics.DiskInfo) []*orchestratorinfo.DiskMetric
 	}
 
 	return result
+}
+
+// convertDiskMetrics converts internal DiskInfo to protobuf DiskMetrics
+func convertMachineInfo(machineInfo machineinfo.MachineInfo) *orchestratorinfo.MachineInfo {
+	return &orchestratorinfo.MachineInfo{
+		Architecture: machineInfo.Arch,
+		CpuFamily:    machineInfo.Family,
+		CpuModel:     machineInfo.Model,
+	}
 }
 
 func (s *Server) ServiceStatusOverride(_ context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {

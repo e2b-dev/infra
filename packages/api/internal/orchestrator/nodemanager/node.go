@@ -46,7 +46,8 @@ type Node struct {
 	metrics   Metrics
 	metricsMu sync.RWMutex
 
-	meta NodeMetadata
+	machineInfo MachineInfo
+	meta        NodeMetadata
 
 	buildCache *ttlcache.Cache[string, any]
 
@@ -82,6 +83,7 @@ func New(
 	buildCache := ttlcache.New[string, any]()
 	go buildCache.Start()
 
+	machineInfo := nodeInfo.GetMachineInfo()
 	nodeMetadata := NodeMetadata{
 		ServiceInstanceID: nodeInfo.GetServiceId(),
 		Commit:            nodeInfo.GetServiceCommit(),
@@ -97,7 +99,12 @@ func New(
 
 		client: client,
 		status: nodeStatus,
-		meta:   nodeMetadata,
+		machineInfo: MachineInfo{
+			CPUFamily:       machineInfo.GetCpuFamily(),
+			CPUModel:        machineInfo.GetCpuModel(),
+			CPUArchitecture: machineInfo.GetCpuArchitecture(),
+		},
+		meta: nodeMetadata,
 
 		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
