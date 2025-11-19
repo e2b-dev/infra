@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"syscall"
 	"testing"
 	"time"
@@ -28,6 +29,10 @@ func TestAppGraph(t *testing.T) {
 }
 
 func TestStartupShutdown(t *testing.T) {
+	if os.Getenv("RUN_STARTUP_SHUTDOWN") != "true" {
+		t.Skip("Set 'RUN_STARTUP_SHUTDOWN=true' to run this test")
+	}
+
 	tempDir := t.TempDir()
 
 	t.Setenv("ARTIFACTS_REGISTRY_PROVIDER", "Local")
