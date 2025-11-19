@@ -326,7 +326,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	assert.False(t, found)
 
 	found = store.Has(diff2)
-	assert.True(t, !found, dump(diff2, store))
+	assert.True(t, found, dump(diff2, store))
 
 	// Add another item to the cache
 	diff3 := newDiff(t, cachePath, buildID3, Rootfs, blockSize)
