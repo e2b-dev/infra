@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -277,6 +278,10 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 func TestDiffStoreOldestFromCache(t *testing.T) {
 	cachePath := t.TempDir()
 
+	buildID1 := "build-id-1-" + uuid.NewString()
+	buildID2 := "build-id-2-" + uuid.NewString()
+	buildID3 := "build-id-3-" + uuid.NewString()
+
 	c, err := cfg.Parse()
 	require.NoError(t, err)
 
@@ -296,9 +301,9 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add items to the cache
-	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	diff := newDiff(t, cachePath, buildID1, Rootfs, blockSize)
 	store.Add(diff)
-	diff2 := newDiff(t, cachePath, "build-test-id-2", Rootfs, blockSize)
+	diff2 := newDiff(t, cachePath, buildID2, Rootfs, blockSize)
 	store.Add(diff2)
 
 	found := store.Has(diff)
@@ -310,6 +315,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 
 	isDeleted := store.isBeingDeleted(diff.CacheKey())
 	assert.True(t, isDeleted)
+
 	// Wait for removal trigger of diff
 	time.Sleep(delay * 2)
 
@@ -321,7 +327,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	assert.True(t, found)
 
 	// Add another item to the cache
-	diff3 := newDiff(t, cachePath, "build-test-id-3", Rootfs, blockSize)
+	diff3 := newDiff(t, cachePath, buildID3, Rootfs, blockSize)
 	store.Add(diff3)
 
 	// Delete oldest item
