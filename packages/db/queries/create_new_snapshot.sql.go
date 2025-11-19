@@ -16,11 +16,11 @@ import (
 const upsertSnapshot = `-- name: UpsertSnapshot :one
 WITH new_template AS (
     INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
-    SELECT $9, FALSE, NULL, $10, now()
+    SELECT $10, FALSE, NULL, $11, now()
     WHERE NOT EXISTS (
         SELECT id
         FROM "public"."snapshots" s
-        WHERE s.sandbox_id = $11
+        WHERE s.sandbox_id = $12
     ) RETURNING id
 ),
 
@@ -39,24 +39,25 @@ snapshot as (
        config
     )
     VALUES (
-            $11,
             $12,
-            $10,
-            COALESCE((SELECT id FROM new_template), ''),
             $13,
+            $11,
+            -- If snapshot already exists, new_template id will be null, env_id can't be null, so use placeholder ''
+            COALESCE((SELECT id FROM new_template), ''),
             $14,
             $15,
             $16,
-            $7,
             $17,
-            $18
+            $8,
+            $18,
+            $19
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
-        metadata = $13,
-        sandbox_started_at = $14,
-        origin_node_id = $7,
-        auto_pause = $17,
-        config = $18
+        metadata = $14,
+        sandbox_started_at = $15,
+        origin_node_id = $8,
+        auto_pause = $18,
+        config = $19
     RETURNING env_id as template_id
 )
 
@@ -76,13 +77,13 @@ INSERT INTO "public"."env_builds" (
     (SELECT template_id FROM snapshot),
     $1,
     $2,
-    0,
     $3,
     $4,
     $5,
     $6,
     $7,
     $8,
+    $9,
     now()
 ) RETURNING id as build_id, env_id as template_id
 `
@@ -90,6 +91,7 @@ INSERT INTO "public"."env_builds" (
 type UpsertSnapshotParams struct {
 	Vcpu                int64
 	RamMb               int64
+	FreeDiskSizeMb      int64
 	KernelVersion       string
 	FirecrackerVersion  string
 	EnvdVersion         *string
@@ -119,6 +121,7 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 	row := q.db.QueryRow(ctx, upsertSnapshot,
 		arg.Vcpu,
 		arg.RamMb,
+		arg.FreeDiskSizeMb,
 		arg.KernelVersion,
 		arg.FirecrackerVersion,
 		arg.EnvdVersion,

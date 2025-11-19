@@ -32,13 +32,15 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 
 	snapshotConfig := queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
-		TemplateID:          id.Generate(),
-		TeamID:              sbx.TeamID,
-		BaseTemplateID:      sbx.BaseTemplateID,
-		SandboxID:           sbx.SandboxID,
-		StartedAt:           pgtype.Timestamptz{Time: sbx.StartTime, Valid: true},
-		Vcpu:                sbx.VCpu,
-		RamMb:               sbx.RamMB,
+		TemplateID:     id.Generate(),
+		TeamID:         sbx.TeamID,
+		BaseTemplateID: sbx.BaseTemplateID,
+		SandboxID:      sbx.SandboxID,
+		StartedAt:      pgtype.Timestamptz{Time: sbx.StartTime, Valid: true},
+		Vcpu:           sbx.VCpu,
+		RamMb:          sbx.RamMB,
+		// We don't know this information
+		FreeDiskSizeMb:      0,
 		TotalDiskSizeMb:     &sbx.TotalDiskSizeMB,
 		Metadata:            sbx.Metadata,
 		KernelVersion:       sbx.KernelVersion,

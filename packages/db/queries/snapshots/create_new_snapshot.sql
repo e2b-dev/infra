@@ -28,6 +28,7 @@ snapshot as (
             @sandbox_id,
             @base_template_id,
             @team_id,
+            -- If snapshot already exists, new_template id will be null, env_id can't be null, so use placeholder ''
             COALESCE((SELECT id FROM new_template), ''),
             @metadata,
             @started_at,
@@ -63,7 +64,7 @@ INSERT INTO "public"."env_builds" (
     (SELECT template_id FROM snapshot),
     @vcpu,
     @ram_mb,
-    0,
+    @free_disk_size_mb,
     @kernel_version,
     @firecracker_version,
     @envd_version,
