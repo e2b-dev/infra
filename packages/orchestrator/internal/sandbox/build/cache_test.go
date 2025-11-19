@@ -317,7 +317,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	assert.True(t, isDeleted)
 
 	// Wait for removal trigger of diff
-	time.Sleep(delay * 2)
+	time.Sleep(delay + time.Second)
 
 	// Verify oldest item is deleted
 	found = store.Has(diff)
@@ -337,7 +337,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	isDeleted = store.isBeingDeleted(diff2.CacheKey())
 	assert.True(t, isDeleted)
 	// Wait for removal trigger of diff
-	time.Sleep(delay * 2)
+	time.Sleep(delay + time.Second)
 
 	// Verify oldest item is deleted
 	found = store.Has(diff2)
