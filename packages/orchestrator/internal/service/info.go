@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -19,8 +20,9 @@ type ServiceInfo struct {
 	SourceVersion string
 	SourceCommit  string
 
-	Startup time.Time
-	Roles   []orchestratorinfo.ServiceInfoRole
+	Startup     time.Time
+	Roles       []orchestratorinfo.ServiceInfoRole
+	MachineInfo machineinfo.MachineInfo
 
 	status   orchestratorinfo.ServiceInfoStatus
 	statusMu sync.RWMutex
@@ -48,7 +50,7 @@ func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.Ser
 	}
 }
 
-func NewInfoContainer(ctx context.Context, clientId string, version string, commit string, instanceID string, config cfg.Config) *ServiceInfo {
+func NewInfoContainer(ctx context.Context, clientId string, version string, commit string, instanceID string, machineInfo machineinfo.MachineInfo, config cfg.Config) *ServiceInfo {
 	services := cfg.GetServices(config)
 	serviceRoles := make([]orchestratorinfo.ServiceInfoRole, 0)
 
@@ -59,10 +61,11 @@ func NewInfoContainer(ctx context.Context, clientId string, version string, comm
 	}
 
 	serviceInfo := &ServiceInfo{
-		ClientId:  clientId,
-		ServiceId: instanceID,
-		Startup:   time.Now(),
-		Roles:     serviceRoles,
+		ClientId:    clientId,
+		ServiceId:   instanceID,
+		Startup:     time.Now(),
+		Roles:       serviceRoles,
+		MachineInfo: machineInfo,
 
 		SourceVersion: version,
 		SourceCommit:  commit,

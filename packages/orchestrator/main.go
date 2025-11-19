@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
@@ -148,7 +149,14 @@ func run(config cfg.Config) (success bool) {
 	nodeID := env.GetNodeID()
 	serviceName := cfg.GetServiceName(services)
 	serviceInstanceID := uuid.NewString()
-	serviceInfo := service.NewInfoContainer(ctx, nodeID, version, commitSHA, serviceInstanceID, config)
+
+	// Detect CPU platform for orchestrator pool matching
+	machineInfo, err := machineinfo.Detect()
+	if err != nil {
+		log.Fatalf("failed to detect platform: %v", err)
+	}
+
+	serviceInfo := service.NewInfoContainer(ctx, nodeID, version, commitSHA, serviceInstanceID, machineInfo, config)
 
 	serviceError := make(chan error)
 	defer close(serviceError)

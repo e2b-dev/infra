@@ -1175,6 +1175,21 @@ components:
           description: Detailed metrics for each disk/mount point
           items:
             $ref: "#/components/schemas/DiskMetrics"
+    MachineInfo:
+      required:
+        - cpuFamily
+        - cpuModel
+        - cpuArchitecture
+      properties:
+        cpuFamily:
+          type: string
+          description: CPU family of the node
+        cpuModel:
+          type: string
+          description: CPU model of the node
+        cpuArchitecture:
+          type: string
+          description: CPU architecture of the node
 
     Node:
       required:
@@ -1190,6 +1205,7 @@ components:
         - sandboxStartingCount
         - version
         - commit
+        - machineInfo
       properties:
         version:
           type: string
@@ -1210,6 +1226,8 @@ components:
         clusterID:
           type: string
           description: Identifier of the cluster
+        machineInfo:
+          $ref: "#/components/schemas/MachineInfo"
         status:
           $ref: "#/components/schemas/NodeStatus"
         sandboxCount:
@@ -1245,6 +1263,7 @@ components:
         - version
         - commit
         - metrics
+        - machineInfo
       properties:
         clusterID:
           type: string
@@ -1265,6 +1284,8 @@ components:
           type: string
           deprecated: true
           description: Identifier of the nomad node
+        machineInfo:
+          $ref: "#/components/schemas/MachineInfo"
         status:
           $ref: "#/components/schemas/NodeStatus"
         sandboxes:
