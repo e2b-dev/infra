@@ -27,6 +27,8 @@ type RedisSandboxCatalog struct {
 	cache       *ttlcache.Cache[string, *SandboxInfo]
 }
 
+var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
+
 func NewRedisSandboxesCatalog(redisClient redis.UniversalClient) *RedisSandboxCatalog {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
@@ -128,4 +130,10 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 
 func (c *RedisSandboxCatalog) getCatalogKey(sandboxID string) string {
 	return fmt.Sprintf("sandbox:catalog:%s", sandboxID)
+}
+
+func (c *RedisSandboxCatalog) Close(_ context.Context) error {
+	c.cache.Stop()
+
+	return nil
 }

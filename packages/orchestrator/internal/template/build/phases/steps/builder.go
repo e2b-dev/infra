@@ -112,7 +112,7 @@ func (sb *StepBuilder) Layer(
 	if !forceBuild {
 		m, err := sb.index.LayerMetaFromHash(ctx, hash)
 		if err != nil {
-			sb.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+			sb.logger.Info("layer not found in cache, building new step layer", zap.Error(err), zap.String("hash", hash))
 		} else {
 			// Check if the layer is cached
 			meta, err := sb.index.Cached(ctx, m.Template.BuildID)

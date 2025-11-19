@@ -21,6 +21,7 @@ type SandboxesCatalog interface {
 	GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error)
 	StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error
 	DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error
+	Close(ctx context.Context) error
 }
 
 type CatalogProvider string

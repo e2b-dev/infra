@@ -33,7 +33,6 @@ require (
 	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c
 	github.com/miekg/dns v1.1.63
 	github.com/oapi-codegen/gin-middleware v1.0.2
-	github.com/redis/go-redis/v9 v9.12.1
 	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0
@@ -118,6 +117,7 @@ require (
 	github.com/grafana/gomemcache v0.0.0-20231023152154-6947259a0586 // indirect
 	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608 // indirect
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd // indirect
+	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
 	github.com/hashicorp/consul/api v1.30.0 // indirect
@@ -144,6 +144,14 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
+	github.com/launchdarkly/ccache v1.1.0 // indirect
+	github.com/launchdarkly/eventsource v1.10.0 // indirect
+	github.com/launchdarkly/go-jsonstream/v3 v3.1.0 // indirect
+	github.com/launchdarkly/go-sdk-common/v3 v3.3.0 // indirect
+	github.com/launchdarkly/go-sdk-events/v3 v3.5.0 // indirect
+	github.com/launchdarkly/go-semver v1.0.3 // indirect
+	github.com/launchdarkly/go-server-sdk-evaluation/v3 v3.0.1 // indirect
+	github.com/launchdarkly/go-server-sdk/v7 v7.13.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
@@ -166,6 +174,7 @@ require (
 	github.com/opentracing-contrib/go-stdlib v1.0.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
+	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
@@ -180,6 +189,7 @@ require (
 	github.com/prometheus/exporter-toolkit v0.10.1-0.20230714054209-2f4150c63f97 // indirect
 	github.com/prometheus/procfs v0.16.0 // indirect
 	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852 // indirect
+	github.com/redis/go-redis/v9 v9.12.1 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver/v5 v5.1.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
