@@ -60,6 +60,7 @@ func getSnapshotMetadata(t *testing.T, ctx context.Context, db *client.Client, s
 			if !rows.Next() {
 				return nil
 			}
+
 			return rows.Scan(&metadata)
 		},
 		sandboxID,
