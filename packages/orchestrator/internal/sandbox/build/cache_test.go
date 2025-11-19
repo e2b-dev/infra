@@ -303,26 +303,28 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add items to the cache
-	diff := newDiff(t, cachePath, buildID1, Rootfs, blockSize)
-	store.Add(diff)
+	diff1 := newDiff(t, cachePath, buildID1, Rootfs, blockSize)
+	store.Add(diff1)
 	diff2 := newDiff(t, cachePath, buildID2, Rootfs, blockSize)
 	store.Add(diff2)
 
-	found := store.Has(diff)
+	found := store.Has(diff1)
 	assert.True(t, found)
 
 	// Delete oldest item
 	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
+	assert.False(t, true, dump(diff1, store)) // just to dump data
 
-	isDeleted := store.isBeingDeleted(diff.CacheKey())
+	isDeleted := store.isBeingDeleted(diff1.CacheKey())
 	assert.True(t, isDeleted)
+	assert.False(t, true, dump(diff1, store)) // just to dump data
 
 	// Wait for removal trigger of diff
 	time.Sleep(delay + time.Second)
 
 	// Verify oldest item is deleted
-	found = store.Has(diff)
+	found = store.Has(diff1)
 	assert.False(t, found)
 
 	found = store.Has(diff2)
