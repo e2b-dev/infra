@@ -22,8 +22,8 @@ type Provider interface {
 }
 
 const (
-	// TODO: Optionally add the following optimization after testing the max write buffer size—most traffic would effectively always be handled by the normal buffer if we add this optimization.
-	// TODO: We increase the buffer size by 28 bytes to account for the usual max requests.
+	// TODO: Look into optimizing the buffer reads by increasing the buffer size by 28 bytes,
+	// to account for a request that is 28 bytes of header + 4MB of data (this seems to be preferred kernel buffer size).
 	dispatchBufferSize = 4 * 1024 * 1024
 	// https://sourceforge.net/p/nbd/mailman/message/35081223/
 	// 32MB is the maximum buffer size for a single request that should be universally supported.
