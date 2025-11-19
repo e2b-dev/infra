@@ -2,6 +2,9 @@ package testutils
 
 import (
 	"context"
+	"fmt"
+
+	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -11,6 +14,34 @@ var _ block.ReadonlyDevice = (*ZeroDevice)(nil)
 
 type ZeroDevice struct {
 	blockSize int64
+	size      int64
+	header    *header.Header
+}
+
+func NewZeroDevice(size int64, blockSize int64) (*ZeroDevice, error) {
+	h, err := header.NewHeader(header.NewTemplateMetadata(
+		uuid.Nil,
+		uint64(blockSize),
+		uint64(size),
+	),
+		[]*header.BuildMap{
+			{
+				Offset:             0,
+				Length:             uint64(size),
+				BuildId:            uuid.Nil,
+				BuildStorageOffset: 0,
+			},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create header: %w", err)
+	}
+
+	return &ZeroDevice{
+		size:      size,
+		blockSize: blockSize,
+		header:    h,
+	}, nil
 }
 
 func (z *ZeroDevice) ReadAt(_ context.Context, p []byte, _ int64) (n int, err error) {
@@ -28,7 +59,7 @@ func (z *ZeroDevice) Slice(_ context.Context, _, length int64) ([]byte, error) {
 }
 
 func (z *ZeroDevice) Header() *header.Header {
-	return nil
+	return z.header
 }
 
 func (z *ZeroDevice) Close() error {

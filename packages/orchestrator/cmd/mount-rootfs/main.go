@@ -19,10 +19,13 @@ import (
 )
 
 func main() {
-	buildId := flag.String("build", "", "build id")
-	mountPath := flag.String("mount", "", "mount path")
-	verify := flag.Bool("verify", false, "verify rootfs integrity")
+	buildId := flag.String("build", "", "build id (only used when empty flag is false)")
+	mountPath := flag.String("mount", "", "mount path (only used when empty flag is false)")
+	verify := flag.Bool("verify", false, "verify rootfs integrity (only used when empty flag is false)")
 	logging := flag.Bool("log", false, "enable logging (it is pretty spammy)")
+	empty := flag.Bool("empty", false, "create an empty rootfs")
+	size := flag.Int64("size", 1024*1024*1024, "size of the rootfs (only used when empty flag is true)")
+	blockSize := flag.Int64("block-size", 4096, "block size of the rootfs (only used when empty flag is true)")
 
 	flag.Parse()
 
@@ -54,10 +57,57 @@ func main() {
 	// We use a separate ctx for majority of the operations as cancelling context for the NBD+storage and *then* doing cleanup for these often resulted in deadlocks.
 	nbdContext := context.Background()
 
-	err := run(ctx, nbdContext, *buildId, *mountPath, *verify)
-	if err != nil {
-		panic(fmt.Errorf("failed to mount rootfs: %w", err))
+	if *empty {
+		err := runEmpty(ctx, nbdContext, *size, *blockSize)
+		if err != nil {
+			panic(fmt.Errorf("failed to create empty rootfs: %w", err))
+		}
+	} else {
+		err := run(ctx, nbdContext, *buildId, *mountPath, *verify)
+		if err != nil {
+			panic(fmt.Errorf("failed to mount rootfs: %w", err))
+		}
 	}
+}
+
+func runEmpty(ctx, nbdContext context.Context, size int64, blockSize int64) error {
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.ext4.cow.cache-%s", uuid.New().String()))
+
+	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
+	if err != nil {
+		return fmt.Errorf("failed to create zero device: %w", err)
+	}
+
+	defer os.RemoveAll(cowCachePath)
+
+	cache, err := block.NewCache(
+		size,
+		blockSize,
+		cowCachePath,
+		false,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create cache: %w", err)
+	}
+
+	fmt.Printf("caching writes to: %+v\n", cowCachePath)
+
+	overlay := block.NewOverlay(emptyDevice, cache)
+	defer overlay.Close()
+
+	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, testutils.NewLoggerOverlay(overlay))
+	defer deviceCleanup.Run(ctx, 30*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to get nbd device: %w", err)
+	}
+
+	fmt.Printf("rootfs exposed as device: %s\n", devicePath)
+
+	<-ctx.Done()
+
+	fmt.Println("closing rootfs mount")
+
+	return nil
 }
 
 func run(ctx, nbdContext context.Context, buildID, mountPath string, verify bool) error {
