@@ -3,14 +3,13 @@ package storage
 import (
 	"context"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var (
-	cacheErrorCounter = utils.Must(meter.Int64Counter("orchestrator.storage.cache.errors",
-		metric.WithDescription("total cache errors encountered")))
 	cacheOpCounter = utils.Must(meter.Int64Counter("orchestrator.storage.cache.ops",
 		metric.WithDescription("total cache operations")))
 	cacheBytesCounter = utils.Must(meter.Int64Counter("orchestrator.storage.cache.bytes",
@@ -51,9 +50,8 @@ func recordCacheWrite(ctx context.Context, bytesWritten int64, op cacheOp) {
 	))
 }
 
-func recordCacheError[T string | ~string](ctx context.Context, op T, action string, err error) {
+func recordCacheError[T ~string](ctx context.Context, op T, err error) {
 	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("action", action),
 		attribute.String("error", err.Error()),
 		attribute.String("operation", string(op)),
 	))
