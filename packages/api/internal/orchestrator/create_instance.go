@@ -84,7 +84,7 @@ func (o *Orchestrator) CreateSandbox(
 	totalConcurrentInstances := team.Limits.SandboxConcurrency
 
 	// Check if team has reached max instances
-	finishStart, waitForStart, err := o.sandboxStore.Reserve(team.Team.ID.String(), sandboxID, totalConcurrentInstances)
+	finishStart, waitForStart, err := o.sandboxStore.Reserve(ctx, team.Team.ID.String(), sandboxID, int(totalConcurrentInstances))
 	if err != nil {
 		var limitErr *sandbox.LimitExceededError
 
@@ -289,7 +289,26 @@ func (o *Orchestrator) CreateSandbox(
 		trafficAccessToken,
 	)
 
-	o.sandboxStore.Add(ctx, sbx, true)
+	err = o.sandboxStore.Add(ctx, sbx, true)
+	if err != nil {
+		telemetry.ReportError(ctx, "failed to add sandbox to store", err)
+
+		// Clean up the sandbox from the node
+		// Copy to a new variable to avoid race conditions
+		sbxToRemove := sbx
+		go func() {
+			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.StateActionKill)
+			if killErr != nil {
+				zap.L().Error("Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
+			}
+		}()
+
+		return sandbox.Sandbox{}, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Failed to create sandbox",
+			Err:       fmt.Errorf("failed to add sandbox to store: %w", err),
+		}
+	}
 
 	return sbx, nil
 }
