@@ -123,3 +123,8 @@ variable "additional_ports" {
   description = "Additional ports to expose on the load balancer."
   type        = list(number)
 }
+
+variable "internal_domain_name" {
+  description = "The internal domain name for the private load balancer (e.g., e2b.internal)"
+  type        = string
+}

@@ -169,6 +169,12 @@ variable "additional_domains" {
   description = "Additional domains which can be used to access the e2b cluster"
 }
 
+variable "internal_domain_name" {
+  type        = string
+  description = "The internal domain name for the private load balancer (e.g., e2b.internal)"
+  default     = "e2b.internal"
+}
+
 variable "cluster_setup_bucket_name" {
   type        = string
   description = "The name of the bucket to store the setup files"

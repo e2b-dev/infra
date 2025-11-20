@@ -38,9 +38,11 @@ data "google_secret_manager_secret_version" "launch_darkly_api_key" {
 }
 
 provider "nomad" {
-  address      = "https://nomad.${var.domain_name}"
+  //address = "https://nomad.${var.domain_name}"
+  address      = "https://${var.regional_lb_ip_address}"
   secret_id    = var.nomad_acl_token_secret
   consul_token = var.consul_acl_token_secret
+  ca_pem       = var.regional_lb_certificate_pem
 }
 
 data "google_secret_manager_secret_version" "redis_url" {

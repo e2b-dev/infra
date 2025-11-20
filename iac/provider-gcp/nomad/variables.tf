@@ -397,3 +397,14 @@ variable "filestore_cache_cleanup_files_per_loop" {
 variable "dockerhub_remote_repository_url" {
   type = string
 }
+
+variable "regional_lb_ip_address" {
+  description = "IP address of the regional external load balancer for Nomad"
+  type        = string
+}
+
+variable "regional_lb_certificate_pem" {
+  description = "PEM-encoded self-signed certificate for the regional load balancer"
+  type        = string
+  sensitive   = true
+}
