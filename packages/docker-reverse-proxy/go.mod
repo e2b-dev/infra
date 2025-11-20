@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/docker-reverse-proxy
 
-go 1.24.7
+go 1.25.4
 
 replace github.com/e2b-dev/infra/packages/db v0.0.0 => ../db
 
