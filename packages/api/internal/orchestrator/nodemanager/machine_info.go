@@ -28,8 +28,8 @@ func MachineInfoFromGRPC(info *infogrpc.MachineInfo) MachineInfo {
 	}
 
 	return MachineInfo{
-		CPUFamily:       info.CpuFamily,
-		CPUModel:        info.CpuModel,
-		CPUArchitecture: info.CpuArchitecture,
+		CPUFamily:       info.GetCpuFamily(),
+		CPUModel:        info.GetCpuModel(),
+		CPUArchitecture: info.GetCpuArchitecture(),
 	}
 }
