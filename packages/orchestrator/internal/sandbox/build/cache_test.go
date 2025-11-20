@@ -106,7 +106,6 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
 	// Add an item to the cache
@@ -139,7 +138,6 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
 	// Add an item to the cache
@@ -179,6 +177,7 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 		delay,
 	)
 	require.NoError(t, err)
+
 	store.Start(t.Context())
 	t.Cleanup(store.Close)
 
@@ -224,8 +223,9 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 		delay,
 	)
 	require.NoError(t, err)
-	t.Cleanup(store.Close)
+
 	store.Start(t.Context())
+	t.Cleanup(store.Close)
 
 	// Add an item to the cache
 	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
@@ -275,7 +275,6 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
 	// Add items to the cache
@@ -345,7 +344,6 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
 	// Number of concurrent operations to create race conditions
@@ -432,7 +430,6 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
 	// Create a base build ID for generating test diffs
