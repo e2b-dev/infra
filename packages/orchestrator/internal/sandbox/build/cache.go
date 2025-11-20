@@ -29,7 +29,7 @@ type deleteDiff struct {
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
-	close     chan struct{}
+	cancel    func()
 	config    cfg.Config
 	flags     *featureflags.Client
 
@@ -58,7 +58,6 @@ func NewDiffStore(
 	ds := &DiffStore{
 		cachePath: cachePath,
 		cache:     cache,
-		close:     make(chan struct{}),
 		config:    config,
 		flags:     flags,
 		pdSizes:   make(map[DiffStoreKey]*deleteDiff),
@@ -85,12 +84,15 @@ func GetDiffStoreKey(buildID string, diffType DiffType) DiffStoreKey {
 }
 
 func (s *DiffStore) Start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	s.cancel = cancel
+
 	go s.cache.Start()
 	go s.startDiskSpaceEviction(ctx, s.config, s.flags)
 }
 
 func (s *DiffStore) Close() {
-	close(s.close)
+	s.cancel()
 	s.cache.Stop()
 }
 
@@ -147,8 +149,6 @@ func (s *DiffStore) startDiskSpaceEviction(
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case <-s.close:
 			return
 		case <-timer.C:
 			dUsed, dTotal, err := diskUsage(s.cachePath)

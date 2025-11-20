@@ -55,7 +55,6 @@ type Cache struct {
 // It also deletes the old build cache directory content
 // as it may contain stale data that are not managed by anyone.
 func NewCache(
-	ctx context.Context,
 	config cfg.Config,
 	flags *featureflags.Client,
 	persistence storage.StorageProvider,
@@ -65,7 +64,7 @@ func NewCache(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
 
-	cache.OnEviction(func(_ context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
+	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		template := item.Value()
 
 		err := template.Close(ctx)
@@ -91,10 +90,6 @@ func NewCache(
 		return nil, fmt.Errorf("failed to create build store: %w", err)
 	}
 
-	buildStore.Start(ctx)
-
-	go cache.Start()
-
 	return &Cache{
 		blockMetrics:  metrics,
 		config:        config.BuilderConfig,
@@ -104,6 +99,17 @@ func NewCache(
 		flags:         flags,
 		rootCachePath: config.BuilderConfig.SharedChunkCacheDir,
 	}, nil
+}
+
+func (c *Cache) Start(ctx context.Context) {
+	c.buildStore.Start(ctx)
+
+	go c.cache.Start()
+}
+
+func (c *Cache) Shutdown() {
+	c.buildStore.Close()
+	c.cache.Stop()
 }
 
 func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {

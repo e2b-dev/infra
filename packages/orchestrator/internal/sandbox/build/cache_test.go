@@ -183,8 +183,8 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 		delay,
 	)
 	require.NoError(t, err)
-	t.Cleanup(store.Close)
 	store.Start(t.Context())
+	t.Cleanup(store.Close)
 
 	// Add an item to the cache
 	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
@@ -229,8 +229,8 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	t.Cleanup(store.Close)
 	store.Start(t.Context())
+	t.Cleanup(store.Close)
 
 	// Add an item to the cache
 	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)

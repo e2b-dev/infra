@@ -31,11 +31,34 @@ func newLimiter(lc fx.Lifecycle, featureFlags *featureflags.Client) (*limit.Limi
 
 func newTemplateCache(
 	config cfg.Config,
+	lc fx.Lifecycle,
 	featureFlags *featureflags.Client,
 	persistence storage.StorageProvider,
 	blockMetrics blockmetrics.Metrics,
 ) (*template.Cache, error) {
-	return template.NewCache(context.Background(), config, featureFlags, persistence, blockMetrics)
+	cache, err := template.NewCache(config, featureFlags, persistence, blockMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create template cache: %w", err)
+	}
+
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			// the context passed in gets cancelled as soon as the
+			// startup phase is done. we don't want that to propagate to
+			// the background processes.
+			ctx = context.WithoutCancel(ctx)
+			cache.Start(ctx)
+
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			cache.Shutdown()
+
+			return nil
+		},
+	})
+
+	return cache, nil
 }
 
 func newBlockMetrics(tel *telemetry.Client) (blockmetrics.Metrics, error) {
