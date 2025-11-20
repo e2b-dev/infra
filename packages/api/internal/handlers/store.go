@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
@@ -50,6 +51,7 @@ type APIStore struct {
 	templateManager      *template_manager.TemplateManager
 	db                   *db.DB
 	sqlcDB               *sqlcdb.Client
+	redisClient          redis.UniversalClient
 	templateCache        *templatecache.TemplateCache
 	templateBuildsCache  *templatecache.TemplatesBuildCache
 	authCache            *authcache.TeamAuthCache
@@ -164,6 +166,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		accessTokenGenerator: accessTokenGenerator,
 		clustersPool:         clustersPool,
 		featureFlags:         featureFlags,
+		redisClient:          redisClient,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
@@ -209,6 +212,14 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.db.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing database client: %w", err))
+	}
+
+	// a.RedisClient is a redis.UniversalClient, so simple nil check is not enough
+	redisClient, ok := a.redisClient.(*redis.Client)
+	if ok && redisClient != nil {
+		if err := redisClient.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing redis client: %w", err))
+		}
 	}
 
 	return errors.Join(errs...)
