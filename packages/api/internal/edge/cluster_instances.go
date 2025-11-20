@@ -69,16 +69,10 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 }
 
 func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
-	n.mutex.RLock()
-	defer n.mutex.RUnlock()
-
 	return n.status
 }
 
 func (n *ClusterInstance) GetMachineInfo() *infogrpc.MachineInfo {
-	n.mutex.RLock()
-	defer n.mutex.RUnlock()
-
 	return n.machineInfo
 }
 
