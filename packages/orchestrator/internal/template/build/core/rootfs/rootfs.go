@@ -9,12 +9,12 @@ import (
 	"os"
 
 	"github.com/dustin/go-humanize"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/systeminit"
@@ -42,8 +42,7 @@ WatchdogSec=0
 )
 
 type Rootfs struct {
-	metadata            storage.TemplateFiles
-	template            config.TemplateConfig
+	buildContext        buildcontext.BuildContext
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 }
@@ -66,12 +65,10 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 func New(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
-	metadata storage.TemplateFiles,
-	template config.TemplateConfig,
+	buildContext buildcontext.BuildContext,
 ) *Rootfs {
 	return &Rootfs{
-		metadata:            metadata,
-		template:            template,
+		buildContext:        buildContext,
 		artifactRegistry:    artifactRegistry,
 		dockerhubRepository: dockerhubRepository,
 	}
@@ -85,6 +82,8 @@ func (r *Rootfs) CreateExt4Filesystem(
 	provisionLogPrefix string,
 	provisionResultPath string,
 ) (c containerregistry.Config, e error) {
+	template := r.buildContext.Config
+
 	childCtx, childSpan := tracer.Start(ctx, "create-ext4-file")
 	defer childSpan.End()
 
@@ -98,10 +97,10 @@ func (r *Rootfs) CreateExt4Filesystem(
 
 	var img containerregistry.Image
 	var err error
-	if r.template.FromImage != "" {
-		img, err = oci.GetPublicImage(childCtx, r.dockerhubRepository, r.template.FromImage, r.template.RegistryAuthProvider)
+	if template.FromImage != "" {
+		img, err = oci.GetPublicImage(childCtx, r.dockerhubRepository, template.FromImage, template.RegistryAuthProvider)
 	} else {
-		img, err = oci.GetImage(childCtx, r.artifactRegistry, r.template.TemplateID, r.metadata.BuildID)
+		img, err = oci.GetImage(childCtx, r.artifactRegistry, template.TemplateID, r.buildContext.Template.BuildID)
 	}
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
@@ -114,7 +113,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	logger.Info(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	logger.Debug("Setting up system files")
-	layers, err := additionalOCILayers(childCtx, r.template, provisionScript, provisionLogPrefix, provisionResultPath)
+	layers, err := additionalOCILayers(r.buildContext, provisionScript, provisionLogPrefix, provisionResultPath)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
 	}
@@ -125,7 +124,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
 	logger.Info("Creating file system and pulling Docker image")
-	ext4Size, err := oci.ToExt4(ctx, logger, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
+	ext4Size, err := oci.ToExt4(ctx, logger, img, rootfsPath, maxRootfsSize, template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error converting oci to ext4: %w", err)
 	}
@@ -139,14 +138,14 @@ func (r *Rootfs) CreateExt4Filesystem(
 	}
 
 	// Resize rootfs
-	rootfsFreeSpace, err := filesystem.GetFreeSpace(ctx, rootfsPath, r.template.RootfsBlockSize())
+	rootfsFreeSpace, err := filesystem.GetFreeSpace(ctx, rootfsPath, template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error getting free space: %w", err)
 	}
 	// We need to remove the remaining free space from the ext4 file size
 	// This is a residual space that could not be shrunk when creating the filesystem,
 	// but is still available for use
-	diskAdd := r.template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
+	diskAdd := template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
 	zap.L().Debug("adding disk size diff to rootfs",
 		zap.Int64("size_current", ext4Size),
 		zap.Int64("size_add", diskAdd),
@@ -178,13 +177,12 @@ func (r *Rootfs) CreateExt4Filesystem(
 }
 
 func additionalOCILayers(
-	_ context.Context,
-	config config.TemplateConfig,
+	buildContext buildcontext.BuildContext,
 	provisionScript string,
 	provisionLogPrefix string,
 	provisionResultPath string,
 ) ([]containerregistry.Layer, error) {
-	memoryLimit := int(math.Min(float64(config.MemoryMB)/2, 512))
+	memoryLimit := int(math.Min(float64(buildContext.Config.MemoryMB)/2, 512))
 	envdService := fmt.Sprintf(`[Unit]
 Description=Env Daemon Service
 After=multi-user.target
@@ -221,7 +219,7 @@ ff02::2	ip6-allrouters
 127.0.1.1	%s
 `, hostname)
 
-	envdFileData, err := os.ReadFile(storage.HostEnvdPath())
+	envdFileData, err := os.ReadFile(buildContext.BuilderConfig.HostEnvdPath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}
