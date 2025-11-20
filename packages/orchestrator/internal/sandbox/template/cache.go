@@ -105,7 +105,7 @@ func (c *Cache) Start(ctx context.Context) {
 	go c.cache.Start()
 }
 
-func (c *Cache) Shutdown() {
+func (c *Cache) Stop() {
 	c.buildStore.Close()
 	c.cache.Stop()
 }

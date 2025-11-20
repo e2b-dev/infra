@@ -188,7 +188,7 @@ func buildTemplate(
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
 	templateCache.Start(ctx)
-	defer templateCache.Shutdown()
+	defer templateCache.Stop()
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
 	if err != nil {

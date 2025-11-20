@@ -173,7 +173,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	templateCache, err := template.NewCache(c, featureFlags, persistence, blockMetrics)
 	require.NoError(b, err)
 	templateCache.Start(b.Context())
-	b.Cleanup(templateCache.Shutdown)
+	b.Cleanup(templateCache.Stop)
 
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 
