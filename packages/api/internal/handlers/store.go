@@ -203,10 +203,8 @@ func (a *APIStore) Close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
 	}
 
-	// a.RedisClient is a redis.UniversalClient, so simple nil check is not enough
-	redisClient, ok := a.redisClient.(*redis.Client)
-	if ok && redisClient != nil {
-		if err := redisClient.Close(); err != nil {
+	if a.redisClient != nil {
+		if err := a.redisClient.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("closing redis client: %w", err))
 		}
 	}
