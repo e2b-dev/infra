@@ -97,6 +97,14 @@ type EnvBuild struct {
 	Version            *string
 }
 
+type EnvBuildAssignment struct {
+	ID        int32
+	EnvID     string
+	BuildID   uuid.UUID
+	Tag       *string
+	CreatedAt pgtype.Timestamptz
+}
+
 type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string
