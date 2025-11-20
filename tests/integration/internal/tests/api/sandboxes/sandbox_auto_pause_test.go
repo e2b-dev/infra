@@ -1,7 +1,6 @@
 package sandboxes
 
 import (
-	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -73,7 +72,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 
-	ctx := context.Background()
+	ctx := t.Context()
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
 		res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbxId, setup.WithAPIKey())
 		require.NoError(t, err)
