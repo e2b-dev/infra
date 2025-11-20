@@ -7,13 +7,13 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/memory"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const syncMaxRetries = 4
 
-func (n *Node) Sync(ctx context.Context, instanceCache *memory.Store) {
+func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
@@ -50,7 +50,7 @@ func (n *Node) Sync(ctx context.Context, instanceCache *memory.Store) {
 			continue
 		}
 
-		instanceCache.Sync(ctx, activeInstances, n.ID)
+		store.Sync(ctx, activeInstances, n.ID)
 
 		syncRetrySuccess = true
 

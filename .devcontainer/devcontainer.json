@@ -3,7 +3,7 @@
 {
   "name": "Go",
   // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-  "image": "mcr.microsoft.com/devcontainers/go:1.25-bookworm",
+  "image": "mcr.microsoft.com/devcontainers/go:2.0.3-1.25-bookworm",
   "features": {
     "ghcr.io/devcontainers/features/terraform:1": {
       "version": "1.5.7"
@@ -13,7 +13,26 @@
     },
     "ghcr.io/wxw-matt/devcontainer-features/command_runner:0": {},
     "ghcr.io/wxw-matt/devcontainer-features/script_runner:0": {},
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers-extra/features/mise:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "hashicorp.hcl",
+        "42Crunch.vscode-openapi",
+        "hashicorp.terraform",
+        "foxundermoon.shell-format",
+        "ms-vscode.makefile-tools",
+        "redhat.vscode-yaml",
+        "christian-kohler.path-intellisense",
+        "googlecloudtools.cloudcode",
+        "ms-azuretools.vscode-docker",
+        "timonwong.shellcheck",
+        "hverlin.mise-vscode"
+      ]
+    }
   }
   // Features to add to the dev container. More info: https://containers.dev/features.
   // "features": {},

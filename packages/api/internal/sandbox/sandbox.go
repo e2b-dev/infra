@@ -71,35 +71,35 @@ func NewSandbox(
 }
 
 type Sandbox struct {
-	SandboxID  string
-	TemplateID string
-	ClientID   string
-	Alias      *string
-	Domain     *string
+	SandboxID  string  `json:"sandboxID"`
+	TemplateID string  `json:"templateID"`
+	ClientID   string  `json:"clientID"`
+	Alias      *string `json:"alias,omitempty"`
+	Domain     *string `json:"domain,omitempty"`
 
-	ExecutionID         string
-	TeamID              uuid.UUID
-	BuildID             uuid.UUID
-	BaseTemplateID      string
-	Metadata            map[string]string
-	MaxInstanceLength   time.Duration
-	StartTime           time.Time
-	EndTime             time.Time
-	VCpu                int64
-	TotalDiskSizeMB     int64
-	RamMB               int64
-	KernelVersion       string
-	FirecrackerVersion  string
-	EnvdVersion         string
-	EnvdAccessToken     *string
-	TrafficAccessToken  *string
-	AllowInternetAccess *bool
-	NodeID              string
-	ClusterID           uuid.UUID
-	AutoPause           bool
-	Network             *types.SandboxNetworkConfig
+	ExecutionID         string                      `json:"executionID"`
+	TeamID              uuid.UUID                   `json:"teamID"`
+	BuildID             uuid.UUID                   `json:"buildID"`
+	BaseTemplateID      string                      `json:"baseTemplateID"`
+	Metadata            map[string]string           `json:"metadata"`
+	MaxInstanceLength   time.Duration               `json:"maxInstanceLength"`
+	StartTime           time.Time                   `json:"startTime"`
+	EndTime             time.Time                   `json:"endTime"`
+	VCpu                int64                       `json:"vCpu"`
+	TotalDiskSizeMB     int64                       `json:"totalDiskSizeMB"`
+	RamMB               int64                       `json:"ramMB"`
+	KernelVersion       string                      `json:"kernelVersion"`
+	FirecrackerVersion  string                      `json:"firecrackerVersion"`
+	EnvdVersion         string                      `json:"envdVersion"`
+	EnvdAccessToken     *string                     `json:"envdAccessToken,omitempty"`
+	TrafficAccessToken  *string                     `json:"trafficAccessToken"`
+	AllowInternetAccess *bool                       `json:"allowInternetAccess,omitempty"`
+	NodeID              string                      `json:"nodeID"`
+	ClusterID           uuid.UUID                   `json:"clusterID"`
+	AutoPause           bool                        `json:"autoPause"`
+	Network             *types.SandboxNetworkConfig `json:"network"`
 
-	State State
+	State State `json:"state"`
 }
 
 func (s Sandbox) ToAPISandbox() *api.Sandbox {

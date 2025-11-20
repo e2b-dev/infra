@@ -129,7 +129,7 @@ linters:
         - -QF1008 # Omit embedded fields from selector expression
 
 run:
-  go: 1.24.7
+  go: 1.25.4
   allow-parallel-runners: true
 
 issues:
