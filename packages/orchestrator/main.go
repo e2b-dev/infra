@@ -286,7 +286,10 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
 	templateCache.Start(ctx)
-	defer templateCache.Stop()
+	closers = append(closers, closer{"template cache", func(context.Context) error {
+		templateCache.Stop()
+		return nil
+	}})
 
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
