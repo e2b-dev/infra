@@ -10,57 +10,28 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Add the sandbox to the cache
-func (s *Store) Add(ctx context.Context, sandbox sandbox.Sandbox, newlyCreated bool) {
-	sbxlogger.I(sandbox).Debug("Adding sandbox to cache",
-		zap.Bool("newly_created", newlyCreated),
-		zap.Time("start_time", sandbox.StartTime),
-		zap.Time("end_time", sandbox.EndTime),
-	)
-
-	endTime := sandbox.EndTime
-
-	if endTime.Sub(sandbox.StartTime) > sandbox.MaxInstanceLength {
-		sandbox.EndTime = sandbox.StartTime.Add(sandbox.MaxInstanceLength)
-	}
-
+func (s *Storage) Add(_ context.Context, sandbox sandbox.Sandbox) error {
 	added := s.items.SetIfAbsent(sandbox.SandboxID, newMemorySandbox(sandbox))
 	if !added {
 		zap.L().Warn("Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
 
-		return
+		return fmt.Errorf("sandbox \"%s\" already exists", sandbox.SandboxID)
 	}
 
-	// Ensure the team reservation is set - no limit
-	finishStart, _, err := s.reservations.Reserve(sandbox.TeamID.String(), sandbox.SandboxID, -1)
-	if err != nil {
-		zap.L().Error("Failed to reserve sandbox", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
-	}
-
-	if finishStart != nil {
-		finishStart(sandbox, nil)
-	}
-
-	for _, callback := range s.insertCallbacks {
-		callback(ctx, sandbox, newlyCreated)
-	}
-
-	for _, callback := range s.insertAsyncCallbacks {
-		go callback(context.WithoutCancel(ctx), sandbox, newlyCreated)
-	}
+	return nil
 }
 
 // exists check if the sandbox exists in the cache or is being evicted.
-func (s *Store) exists(sandboxID string) bool {
+func (s *Storage) exists(sandboxID string) bool {
 	return s.items.Has(sandboxID)
 }
 
 // Get the item from the cache.
-func (s *Store) get(sandboxID string) (*memorySandbox, error) {
+func (s *Storage) get(sandboxID string) (*memorySandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
 		return nil, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
@@ -70,7 +41,7 @@ func (s *Store) get(sandboxID string) (*memorySandbox, error) {
 }
 
 // Get the item from the cache.
-func (s *Store) Get(sandboxID string) (sandbox.Sandbox, error) {
+func (s *Storage) Get(_ context.Context, sandboxID string) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
 		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
@@ -79,12 +50,13 @@ func (s *Store) Get(sandboxID string) (sandbox.Sandbox, error) {
 	return item.Data(), nil
 }
 
-func (s *Store) Remove(teamID, sandboxID string) {
-	s.reservations.Remove(teamID, sandboxID)
+func (s *Storage) Remove(_ context.Context, sandboxID string) error {
 	s.items.Remove(sandboxID)
+
+	return nil
 }
 
-func (s *Store) Items(teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) []sandbox.Sandbox {
+func (s *Storage) Items(teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) []sandbox.Sandbox {
 	filter := sandbox.NewItemsFilter()
 	for _, opt := range options {
 		opt(filter)
@@ -112,7 +84,7 @@ func (s *Store) Items(teamID *uuid.UUID, states []sandbox.State, options ...sand
 	return items
 }
 
-func (s *Store) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
+func (s *Storage) Update(_ context.Context, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
 		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
@@ -131,7 +103,7 @@ func (s *Store) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (sandb
 	return sbx, nil
 }
 
-func (s *Store) StartRemoving(ctx context.Context, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {
+func (s *Storage) StartRemoving(ctx context.Context, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {
 	sbx, err := s.get(sandboxID)
 	if err != nil {
 		return false, nil, err
@@ -208,7 +180,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 	return false, callback, nil
 }
 
-func (s *Store) WaitForStateChange(ctx context.Context, sandboxID string) error {
+func (s *Storage) WaitForStateChange(ctx context.Context, sandboxID string) error {
 	sbx, err := s.get(sandboxID)
 	if err != nil {
 		return fmt.Errorf("failed to get sandbox: %w", err)
@@ -226,8 +198,4 @@ func waitForStateChange(ctx context.Context, sbx *memorySandbox) error {
 	}
 
 	return transition.WaitWithContext(ctx)
-}
-
-func (s *Store) Reserve(teamID, sandboxID string, limit int64) (finishStart func(sandbox.Sandbox, error), waitForStart func(ctx context.Context) (sandbox.Sandbox, error), err error) {
-	return s.reservations.Reserve(teamID, sandboxID, limit)
 }

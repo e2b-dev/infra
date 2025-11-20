@@ -52,7 +52,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	}
 
 	sandboxID = utils.ShortID(sandboxID)
-	sandboxData, err := a.orchestrator.GetSandbox(sandboxID)
+	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 	if err == nil {
 		switch sandboxData.State {
 		case sandbox.StatePausing:

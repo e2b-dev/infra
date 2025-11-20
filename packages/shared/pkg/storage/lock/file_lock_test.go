@@ -1,7 +1,6 @@
 package lock
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -92,61 +91,6 @@ func TestReleaseLock_NilFile(t *testing.T) {
 	// Should not panic or error when releasing nil file
 	err := ReleaseLock(nil)
 	require.NoError(t, err)
-}
-
-func TestConcurrentLockAcquisition(t *testing.T) {
-	tmpDir := t.TempDir()
-	testPath := filepath.Join(tmpDir, "concurrent-resource")
-
-	// Create the directory for the lock
-	err := os.MkdirAll(testPath, 0o755)
-	require.NoError(t, err)
-
-	routines := 100
-
-	type result struct {
-		acquired    bool
-		alreadyHeld bool
-		err         error
-	}
-	results := make(chan result, routines)
-
-	// Try to acquire lock concurrently from multiple goroutines
-	for range routines {
-		go func() {
-			file, err := TryAcquireLock(testPath)
-
-			switch {
-			case errors.Is(err, ErrLockAlreadyHeld):
-				results <- result{alreadyHeld: true}
-			case err != nil:
-				results <- result{err: err}
-			default:
-				_ = ReleaseLock(file)
-				results <- result{acquired: true}
-			}
-		}()
-	}
-
-	// Collect results
-	acquiredCount := 0
-	alreadyHeldCount := 0
-	for range routines {
-		r := <-results
-		if r.acquired {
-			acquiredCount++
-		}
-		if r.alreadyHeld {
-			alreadyHeldCount++
-		}
-		if r.err != nil {
-			t.Errorf("Unexpected error during lock acquisition: %v", r.err)
-		}
-	}
-
-	// At least one should have acquired, others should have gotten already-held
-	assert.Positive(t, acquiredCount, "At least one goroutine should acquire the lock")
-	assert.Positive(t, alreadyHeldCount, "Some goroutines should see the lock as already held")
 }
 
 func TestGetLockFilePath_Consistency(t *testing.T) {

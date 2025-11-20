@@ -20,7 +20,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/memory"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/populate_redis"
+	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -37,7 +40,7 @@ var ErrNodeNotFound = errors.New("node not found")
 type Orchestrator struct {
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
-	sandboxStore            sandbox.Store
+	sandboxStore            *sandbox.Store
 	nodes                   *smap.Map[*nodemanager.Node]
 	leastBusyAlgorithm      placement.Algorithm
 	bestOfKAlgorithm        *placement.BestOfK
@@ -132,7 +135,21 @@ func New(
 		createdCounter: createdCounter,
 	}
 
-	sandboxStore := memory.NewStore(
+	var sandboxStorage sandbox.Storage
+	memoryStorage := memory.NewStorage()
+
+	if redisClient != nil {
+		redisStorage := redisbackend.NewStorage(redisClient)
+		sandboxStorage = populate_redis.NewStorage(memoryStorage, redisStorage)
+	} else {
+		sandboxStorage = memoryStorage
+	}
+
+	reservationStorage := reservations.NewReservationStorage()
+
+	o.sandboxStore = sandbox.NewStore(
+		sandboxStorage,
+		reservationStorage,
 		[]sandbox.InsertCallback{
 			o.addToNode,
 		},
@@ -143,13 +160,11 @@ func New(
 		},
 	)
 
-	o.sandboxStore = sandboxStore
-
 	// Evict old sandboxes
-	sandboxEvictor := evictor.New(sandboxStore, o.RemoveSandbox)
+	sandboxEvictor := evictor.New(o.sandboxStore, o.RemoveSandbox)
 	go sandboxEvictor.Start(ctx)
 
-	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, sandboxStore)
+	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, o.sandboxStore)
 	if err != nil {
 		zap.L().Error("Failed to create team metrics observer", zap.Error(err))
 
@@ -161,7 +176,7 @@ func New(
 	// For local development and testing, we skip the Nomad sync
 	// Local cluster is used for single-node setups instead
 	skipNomadSync := env.IsLocal()
-	go o.keepInSync(ctx, sandboxStore, skipNomadSync)
+	go o.keepInSync(ctx, o.sandboxStore, skipNomadSync)
 
 	if err := o.setupMetrics(tel.MeterProvider); err != nil {
 		zap.L().Error("Failed to setup metrics", zap.Error(err))

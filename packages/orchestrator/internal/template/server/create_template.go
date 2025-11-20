@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -110,15 +111,19 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
+		ctx, buildSpan := tracer.Start(ctx, "template-background-build", trace.WithAttributes(
+			telemetry.WithTemplateID(template.TemplateID),
+			telemetry.WithBuildID(metadata.BuildID),
+			telemetry.WithTeamID(template.TeamID),
+		))
+		defer buildSpan.End()
+
 		defer func() {
 			if r := recover(); r != nil {
 				telemetry.ReportCriticalError(ctx, "recovered from panic in template build handler", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
 				buildInfo.SetFail(builderrors.UnwrapUserError(errors.New("fatal error occurred, please contact us")))
 			}
 		}()
-
-		ctx, buildSpan := tracer.Start(ctx, "template-background-build")
-		defer buildSpan.End()
 
 		// Watch for build cancellation requests
 		go func() {
