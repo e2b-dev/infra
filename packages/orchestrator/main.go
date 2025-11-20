@@ -153,7 +153,9 @@ func run(config cfg.Config) (success bool) {
 	// Detect CPU platform for orchestrator pool matching
 	machineInfo, err := machineinfo.Detect()
 	if err != nil {
-		log.Fatalf("failed to detect platform: %v", err)
+		log.Printf("failed to detect machine info: %v", err)
+
+		return false
 	}
 
 	serviceInfo := service.NewInfoContainer(ctx, nodeID, version, commitSHA, serviceInstanceID, machineInfo, config)
