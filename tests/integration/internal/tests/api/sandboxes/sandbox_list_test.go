@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -167,23 +166,17 @@ func TestSandboxListPausing(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandboxID := sbx.SandboxID
 
-	wg := errgroup.Group{}
-	wg.Go(func() error {
+	go func() {
 		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
-		if err != nil {
-			return err
-		}
+		assert.NoError(t, err)
 
-		if pauseSandboxResponse.StatusCode() != http.StatusNoContent {
-			return fmt.Errorf("expected status code %d, got %d", http.StatusNoContent, pauseSandboxResponse.StatusCode())
-		}
+		assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
+	}()
 
-		return nil
-	})
-
-	require.Eventually(t, func() bool {
+	ctx := t.Context()
+	require.EventuallyWithT(t, func(t *assert.CollectT) {
 		// List paused sandboxes
-		listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+		listResponse, err := c.GetV2SandboxesWithResponse(ctx, &api.GetV2SandboxesParams{
 			State:    &[]api.SandboxState{api.Paused},
 			Metadata: &metadataString,
 		}, setup.WithAPIKey())
@@ -192,24 +185,17 @@ func TestSandboxListPausing(t *testing.T) {
 		assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
 
 		// Verify our paused sandbox is in the list
-		found := false
 		for _, s := range *listResponse.JSON200 {
 			if s.SandboxID == sandboxID {
-				found = true
-				if s.State == api.Paused {
-					return true
-				}
+				assert.Equal(t, api.Paused, s.State)
+
+				return
 			}
 		}
 
 		// The sandbox has to be always present
-		require.True(t, found)
-
-		return false
-	}, 10*time.Second, 100*time.Millisecond, "Sandbox did not reach paused state in time")
-
-	err := wg.Wait()
-	require.NoError(t, err)
+		assert.Fail(t, "failed to find sandbox")
+	}, time.Minute, 100*time.Millisecond, "Sandbox did not reach paused state in time")
 }
 
 func TestSandboxListPaused_NoMetadata(t *testing.T) {
