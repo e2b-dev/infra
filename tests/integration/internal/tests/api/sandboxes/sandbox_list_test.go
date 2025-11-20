@@ -166,12 +166,10 @@ func TestSandboxListPausing(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandboxID := sbx.SandboxID
 
-	go func() {
-		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
-		assert.NoError(t, err)
+	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
 
-		assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
-	}()
+	require.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
 
 	ctx := t.Context()
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
