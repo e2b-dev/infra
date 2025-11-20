@@ -125,6 +125,10 @@ func (c *Cache[K, V]) GetOrSet(ctx context.Context, key K, dataCallback DataCall
 	return cacheItem.value, nil
 }
 
+func (c *Cache[K, V]) Keys() []K {
+	return c.cache.Keys()
+}
+
 // refresh refreshes the cache for the given key in the background
 func (c *Cache[K, V]) refresh(ctx context.Context, key K, dataCallback DataCallback[K, V]) {
 	ctx, cancel := context.WithTimeout(ctx, c.config.RefreshTimeout)
