@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -54,20 +55,37 @@ func (c CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int
 	return bytesRead, err // in case  err == EOF
 }
 
-func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, err error) {
+func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e error) {
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.Write", trace.WithAttributes(attribute.Int("size", len(p))))
 	defer func() {
-		recordError(span, err)
+		recordError(span, e)
 		span.End()
 	}()
 
-	go c.writeFileToCache(
-		context.WithoutCancel(ctx),
-		bytes.NewReader(p),
-		cacheOpWrite,
-	)
+	var wg sync.WaitGroup
 
-	return c.inner.Write(ctx, p)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.writeFileToCache(
+			context.WithoutCancel(ctx),
+			bytes.NewReader(p),
+			cacheOpWrite,
+		)
+	}()
+
+	var count int
+	var err error
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		count, err = c.inner.Write(ctx, p)
+	}()
+
+	wg.Wait()
+
+	return count, err
 }
 
 func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
