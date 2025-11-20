@@ -113,6 +113,7 @@ module "network" {
   network_name              = var.network_name
   domain_name               = var.domain_name
   additional_domains        = var.additional_domains
+  internal_domain_name      = var.internal_domain_name
 
   client_instance_group    = google_compute_region_instance_group_manager.client_pool.instance_group
   client_proxy_port        = var.edge_proxy_port

@@ -262,6 +262,10 @@ module "nomad" {
   filestore_cache_cleanup_dry_run            = var.filestore_cache_cleanup_dry_run
   filestore_cache_cleanup_deletions_per_loop = var.filestore_cache_cleanup_deletions_per_loop
   filestore_cache_cleanup_files_per_loop     = var.filestore_cache_cleanup_files_per_loop
+
+  # Regional load balancer
+  regional_lb_ip_address      = module.cluster.regional_lb_ip_address
+  regional_lb_certificate_pem = module.cluster.regional_lb_certificate_pem
 }
 
 module "redis" {
