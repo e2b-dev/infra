@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -28,7 +27,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	key := getSandboxKey(sbx.SandboxID)
 
 	// Storage in Redis with max expiration little bit longer than max instance length to prevent leaking
-	err = s.redisClient.Set(ctx, key, data, sbx.MaxInstanceLength+time.Minute).Err()
+	err = s.redisClient.Set(ctx, key, data, 0).Err()
 	if err != nil {
 		return fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
