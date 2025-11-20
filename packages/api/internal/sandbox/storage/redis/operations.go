@@ -19,8 +19,6 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	// Serialize sandbox
 	data, err := json.Marshal(sbx)
 	if err != nil {
-		zap.L().Error("Failed to marshal sandbox", logger.WithSandboxID(sbx.SandboxID), zap.Error(err))
-
 		return fmt.Errorf("failed to marshal sandbox: %w", err)
 	}
 
