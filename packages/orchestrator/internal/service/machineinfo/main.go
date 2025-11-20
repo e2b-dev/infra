@@ -2,6 +2,7 @@ package machineinfo
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/shirou/gopsutil/v4/cpu"
 )
@@ -21,8 +22,8 @@ func Detect() (MachineInfo, error) {
 	if len(info) > 0 {
 		return MachineInfo{
 			Family: info[0].Family,
-			Model:  info[0].ModelName,
-			Arch:   info[0].VendorID,
+			Model:  info[0].Model,
+			Arch:   runtime.GOARCH,
 		}, nil
 	}
 
