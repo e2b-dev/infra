@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/api
 
-go 1.24.7
+go 1.25.4
 
 // Internal packages
 replace (
