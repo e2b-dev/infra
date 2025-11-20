@@ -1,18 +1,30 @@
 package nodemanager
 
-import infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+import (
+	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+)
 
 type MachineInfo struct {
 	CPUFamily       string
 	CPUModel        string
+	CPUModelName    string
 	CPUArchitecture string
 }
 
-func (n *Node) setMachineInfo(mi MachineInfo) {
+func (n *Node) setMachineInfo(info *infogrpc.MachineInfo) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 
-	n.machineInfo = mi
+	if info == nil {
+		n.machineInfo = MachineInfo{}
+	}
+
+	n.machineInfo = MachineInfo{
+		CPUFamily:       info.GetCpuFamily(),
+		CPUModel:        info.GetCpuModel(),
+		CPUModelName:    info.GetCpuModelName(),
+		CPUArchitecture: info.GetCpuArchitecture(),
+	}
 }
 
 func (n *Node) MachineInfo() MachineInfo {
@@ -20,16 +32,4 @@ func (n *Node) MachineInfo() MachineInfo {
 	defer n.mutex.RUnlock()
 
 	return n.machineInfo
-}
-
-func MachineInfoFromGRPC(info *infogrpc.MachineInfo) MachineInfo {
-	if info == nil {
-		return MachineInfo{}
-	}
-
-	return MachineInfo{
-		CPUFamily:       info.GetCpuFamily(),
-		CPUModel:        info.GetCpuModel(),
-		CPUArchitecture: info.GetCpuArchitecture(),
-	}
 }

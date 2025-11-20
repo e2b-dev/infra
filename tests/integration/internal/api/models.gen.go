@@ -295,6 +295,9 @@ type MachineInfo struct {
 
 	// CpuModel CPU model of the node
 	CpuModel string `json:"cpuModel"`
+
+	// CpuModelName CPU model name of the node
+	CpuModelName string `json:"cpuModelName"`
 }
 
 // MaxTeamMetric Team metric with timestamp
