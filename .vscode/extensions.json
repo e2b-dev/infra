@@ -6,7 +6,6 @@
     "hashicorp.terraform",
     "foxundermoon.shell-format",
     "ms-vscode.makefile-tools",
-    "hashicorp.terraform",
     "redhat.vscode-yaml",
     "christian-kohler.path-intellisense",
     "googlecloudtools.cloudcode",
