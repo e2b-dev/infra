@@ -8,7 +8,7 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/XSAM/otelsql"
-	_ "github.com/lib/pq"
+	_ "github.com/lib/pq" //nolint:blank-imports
 	semconv "go.opentelemetry.io/otel/semconv/v1.28.0"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
