@@ -52,7 +52,7 @@ func newTemplateCache(
 			return nil
 		},
 		OnStop: func(context.Context) error {
-			cache.Shutdown()
+			cache.Stop()
 
 			return nil
 		},

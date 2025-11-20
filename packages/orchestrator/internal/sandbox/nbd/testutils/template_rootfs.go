@@ -93,6 +93,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 	}
 
 	store.Start(ctx)
+
 	cleaner.Add(func(context.Context) error {
 		store.RemoveCache()
 		store.Close()

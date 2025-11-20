@@ -1,4 +1,4 @@
-package memory
+package reservations
 
 import (
 	"context"
@@ -27,13 +27,15 @@ type ReservationStorage struct {
 	reservations *smap.Map[TeamSandboxes]
 }
 
+var _ sandbox.ReservationStorage = &ReservationStorage{}
+
 func NewReservationStorage() *ReservationStorage {
 	return &ReservationStorage{
 		reservations: smap.New[TeamSandboxes](),
 	}
 }
 
-func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (finishStart func(sandbox.Sandbox, error), waitForStart func(ctx context.Context) (sandbox.Sandbox, error), err error) {
+func (s *ReservationStorage) Reserve(ctx context.Context, teamID, sandboxID string, limit int) (finishStart func(sandbox.Sandbox, error), waitForStart func(ctx context.Context) (sandbox.Sandbox, error), err error) {
 	alreadyPresent := false
 	limitExceeded := false
 	var startResult *utils.SetOnce[sandbox.Sandbox]
@@ -50,7 +52,7 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 			return teamSandboxes
 		}
 
-		if limit >= 0 && len(teamSandboxes) >= int(limit) {
+		if limit >= 0 && len(teamSandboxes) >= limit {
 			limitExceeded = true
 
 			return teamSandboxes
@@ -78,12 +80,12 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 
 		// Remove the reservation if the sandbox creation failed
 		if err != nil {
-			s.Remove(teamID, sandboxID)
+			_ = s.Release(ctx, teamID, sandboxID)
 		}
 	}, nil, nil
 }
 
-func (s *ReservationStorage) Remove(teamID, sandboxID string) {
+func (s *ReservationStorage) Release(_ context.Context, teamID, sandboxID string) error {
 	s.reservations.RemoveCb(teamID, func(_ string, ts TeamSandboxes, exists bool) bool {
 		if !exists {
 			return true
@@ -93,4 +95,6 @@ func (s *ReservationStorage) Remove(teamID, sandboxID string) {
 
 		return len(ts) == 0
 	})
+
+	return nil
 }

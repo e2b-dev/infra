@@ -2,7 +2,6 @@ package rootfs
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"io"
 	"math"
@@ -35,6 +34,10 @@ const (
 	BusyBoxInitPath = "usr/bin/init"
 
 	ProvisioningExitPrefix = "E2B_PROVISIONING_EXIT:"
+
+	serviceWatchDogDisabledConfig = `[Service]
+WatchdogSec=0
+`
 )
 
 type Rootfs struct {
@@ -232,6 +235,8 @@ ff02::2	ip6-allrouters
 			storage.GuestEnvdPath:                                            {Bytes: envdFileData, Mode: 0o777},
 			"etc/systemd/system/envd.service":                                {Bytes: []byte(envdService), Mode: 0o644},
 			"etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf": {Bytes: []byte(autologinService), Mode: 0o644},
+			"etc/systemd/system/systemd-journald.service.d/override.conf":    {Bytes: []byte(serviceWatchDogDisabledConfig), Mode: 0o644},
+			"etc/systemd/system/systemd-networkd.service.d/override.conf":    {Bytes: []byte(serviceWatchDogDisabledConfig), Mode: 0o644},
 
 			// Provision script
 			"usr/local/bin/provision.sh": {Bytes: []byte(provisionScript), Mode: 0o777},

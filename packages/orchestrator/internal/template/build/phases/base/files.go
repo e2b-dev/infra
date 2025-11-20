@@ -2,7 +2,6 @@ package base
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"

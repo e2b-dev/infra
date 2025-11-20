@@ -45,7 +45,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 	}
 
 	var sbxNotFoundErr *sandbox.NotFoundError
-	sbx, err := o.sandboxStore.Update(sandboxID, updateFunc)
+	sbx, err := o.sandboxStore.Update(ctx, sandboxID, updateFunc)
 	if err != nil {
 		switch {
 		case errors.As(err, &sbxNotFoundErr):
