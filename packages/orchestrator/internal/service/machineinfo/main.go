@@ -8,9 +8,10 @@ import (
 )
 
 type MachineInfo struct {
-	Family string
-	Model  string
-	Arch   string
+	Family    string
+	Model     string
+	ModelName string
+	Arch      string
 }
 
 func Detect() (MachineInfo, error) {
@@ -21,9 +22,10 @@ func Detect() (MachineInfo, error) {
 
 	if len(info) > 0 {
 		return MachineInfo{
-			Family: info[0].Family,
-			Model:  info[0].Model,
-			Arch:   runtime.GOARCH,
+			Family:    info[0].Family,
+			Model:     info[0].Model,
+			ModelName: info[0].ModelName,
+			Arch:      runtime.GOARCH,
 		}, nil
 	}
 

@@ -96,10 +96,9 @@ func New(
 		IPAddress:        discoveredNode.IPAddress,
 		SandboxDomain:    nil,
 
-		client:      client,
-		status:      nodeStatus,
-		machineInfo: MachineInfoFromGRPC(nodeInfo.GetMachineInfo()),
-		meta:        nodeMetadata,
+		client: client,
+		status: nodeStatus,
+		meta:   nodeMetadata,
 
 		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
@@ -109,6 +108,7 @@ func New(
 		},
 	}
 	n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
+	n.setMachineInfo(nodeInfo.GetMachineInfo())
 
 	return n, nil
 }
@@ -141,8 +141,7 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 		status: nodeStatus,
 		meta:   nodeMetadata,
 
-		machineInfo: MachineInfoFromGRPC(i.GetMachineInfo()),
-		buildCache:  buildCache,
+		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
 			createSuccess:       atomic.Uint64{},
@@ -159,6 +158,7 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 	}
 
 	n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
+	n.setMachineInfo(nodeInfo.GetMachineInfo())
 
 	return n, nil
 }

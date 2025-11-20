@@ -1179,6 +1179,7 @@ components:
       required:
         - cpuFamily
         - cpuModel
+        - cpuModelName
         - cpuArchitecture
       properties:
         cpuFamily:
@@ -1187,6 +1188,9 @@ components:
         cpuModel:
           type: string
           description: CPU model of the node
+        cpuModelName:
+          type: string
+          description: CPU model name of the node
         cpuArchitecture:
           type: string
           description: CPU architecture of the node

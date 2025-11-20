@@ -121,6 +121,7 @@ func convertMachineInfo(machineInfo machineinfo.MachineInfo) *orchestratorinfo.M
 		CpuArchitecture: machineInfo.Arch,
 		CpuFamily:       machineInfo.Family,
 		CpuModel:        machineInfo.Model,
+		CpuModelName:    machineInfo.ModelName,
 	}
 }
 

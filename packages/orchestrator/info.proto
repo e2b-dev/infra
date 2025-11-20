@@ -30,6 +30,7 @@ message MachineInfo {
   string cpu_architecture = 1;
   string cpu_family = 2;
   string cpu_model = 3;
+  string cpu_model_name = 4;
 }
 
 message ServiceInfoResponse {

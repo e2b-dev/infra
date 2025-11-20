@@ -26,10 +26,9 @@ type ClusterInstance struct {
 	ServiceVersion       string
 	ServiceVersionCommit string
 
-	machineInfo *infogrpc.MachineInfo
-	roles       []infogrpc.ServiceInfoRole
-	status      infogrpc.ServiceInfoStatus
-	mutex       sync.RWMutex
+	roles  []infogrpc.ServiceInfoRole
+	status infogrpc.ServiceInfoStatus
+	mutex  sync.RWMutex
 }
 
 const (
@@ -65,15 +64,10 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	instance.status = info.GetServiceStatus()
 	instance.roles = info.GetServiceRoles()
-	instance.machineInfo = info.GetMachineInfo()
 }
 
 func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
 	return n.status
-}
-
-func (n *ClusterInstance) GetMachineInfo() *infogrpc.MachineInfo {
-	return n.machineInfo
 }
 
 func (n *ClusterInstance) hasRole(r infogrpc.ServiceInfoRole) bool {
