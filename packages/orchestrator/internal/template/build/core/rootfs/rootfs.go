@@ -2,7 +2,6 @@ package rootfs
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"io"
 	"math"
