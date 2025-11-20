@@ -58,6 +58,7 @@ func NewDiffStore(
 	ds := &DiffStore{
 		cachePath: cachePath,
 		cache:     cache,
+		cancel:    func() {},
 		config:    config,
 		flags:     flags,
 		pdSizes:   make(map[DiffStoreKey]*deleteDiff),

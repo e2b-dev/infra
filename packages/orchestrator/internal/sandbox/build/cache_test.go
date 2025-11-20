@@ -87,8 +87,6 @@ func TestNewDiffStore(t *testing.T) {
 		25*time.Hour,
 		60*time.Second,
 	)
-	t.Cleanup(store.Close)
-
 	require.NoError(t, err)
 	assert.NotNil(t, store)
 }
