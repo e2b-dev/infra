@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -57,7 +58,7 @@ func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
 	// Remove from Redis
 	key := getSandboxKey(sandboxID)
 
-	lock, err := s.lockService.Obtain(ctx, getSandboxLockKey(key), lockTimeout, s.lockOption)
+	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
 	if err != nil {
 		return fmt.Errorf("failed to obtain lock: %w", err)
 	}
@@ -88,7 +89,7 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 	key := getSandboxKey(sandboxID)
 	var updatedSbx sandbox.Sandbox
 
-	lock, err := s.lockService.Obtain(ctx, getSandboxLockKey(key), lockTimeout, s.lockOption)
+	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
 	if err != nil {
 		return sandbox.Sandbox{}, fmt.Errorf("failed to obtain lock: %w", err)
 	}

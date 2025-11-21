@@ -10,9 +10,8 @@ import (
 )
 
 const (
-	sandboxKeyPrefix     = "sandbox:"
-	sandboxLockKeyPrefix = "lock:" + sandboxKeyPrefix
-	lockTimeout          = time.Minute
+	sandboxKeyPrefix = "sandbox:"
+	lockTimeout      = time.Minute
 )
 
 var _ sandbox.Storage = (*Storage)(nil)
