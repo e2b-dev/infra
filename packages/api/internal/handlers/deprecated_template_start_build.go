@@ -40,19 +40,20 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 		concurrentRunningBuilds := utils.Filter(concurrentBuilds, func(b queries.EnvBuild) bool {
 			return b.Status == envbuild.StatusBuilding.String()
 		})
-		buildIDs := utils.Map(concurrentRunningBuilds, func(b queries.EnvBuild) templatemanager.DeleteBuild {
-			clusterNodeID := "non-existent"
-			if b.ClusterNodeID != nil {
-				clusterNodeID = *b.ClusterNodeID
+		buildIDs := make([]templatemanager.DeleteBuild, 0, len(concurrentRunningBuilds))
+		for _, b := range concurrentRunningBuilds {
+			clusterNodeID := b.ClusterNodeID
+			if clusterNodeID == nil {
+				continue
 			}
 
-			return templatemanager.DeleteBuild{
+			buildIDs = append(buildIDs, templatemanager.DeleteBuild{
 				TemplateID: templateID,
 				BuildID:    b.ID,
 				ClusterID:  teamClusterID,
-				NodeID:     clusterNodeID,
-			}
-		})
+				NodeID:     *clusterNodeID,
+			})
+		}
 		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b templatemanager.DeleteBuild) string {
 			return fmt.Sprintf("%s/%s", b.TemplateID, b.BuildID)
 		})))
@@ -152,7 +153,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when getting available build client: %s", err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
 
 		return
