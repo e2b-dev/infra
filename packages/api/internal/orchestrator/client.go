@@ -38,7 +38,7 @@ func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *edge.C
 	clusterGRPC := cluster.GetGRPC(i.ServiceInstanceID)
 
 	orchestratorNode, err := nodemanager.NewClusterNode(ctx, clusterGRPC.Client, cluster.ID, cluster.SandboxDomain, i)
-	if err != nil {	
+	if err != nil {
 		logger.L().Error(ctx, "Failed to create node", zap.Error(err))
 
 		return
