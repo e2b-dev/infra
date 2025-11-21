@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -183,7 +184,7 @@ func GetFreeSpace(ctx context.Context, rootfsPath string, blockSize int64) (int6
 	err := cmd.Run()
 	output := out.String()
 	if err != nil {
-		zap.L().Error("Error getting free space", zap.Error(err), zap.String("output", output))
+		logger.L().Error(ctx, "Error getting free space", zap.Error(err), zap.String("output", output))
 
 		return 0, fmt.Errorf("error statting ext4: %w", err)
 	}
@@ -254,7 +255,7 @@ func RemoveFile(ctx context.Context, rootfsPath string, filePath string) error {
 	cmd := exec.CommandContext(ctx, "debugfs", "-w", "-R", fmt.Sprintf("rm \"%s\"", filePath), rootfsPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		zap.L().Error("error removing file", zap.Error(err), zap.String("output", string(out)))
+		logger.L().Error(ctx, "error removing file", zap.Error(err), zap.String("output", string(out)))
 
 		return fmt.Errorf("error removing file: %w", err)
 	}
@@ -311,7 +312,7 @@ func LogMetadata(ctx context.Context, rootfsPath string, extraFields ...zap.Fiel
 	cmd := exec.CommandContext(ctx, "tune2fs", "-l", rootfsPath)
 	output, err := cmd.CombinedOutput()
 
-	zap.L().With(extraFields...).Debug("tune2fs -l output", zap.String("path", rootfsPath), zap.String("output", string(output)), zap.Error(err))
+	logger.L().With(extraFields...).Debug(ctx, "tune2fs -l output", zap.String("path", rootfsPath), zap.String("output", string(output)), zap.Error(err))
 }
 
 // parseFreeBlocks extracts the "Free blocks:" value from debugfs output

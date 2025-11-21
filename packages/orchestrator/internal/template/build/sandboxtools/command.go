@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -181,7 +180,7 @@ func runCommandWithAllOptions(
 			}
 			e := msg.GetEvent()
 			if e == nil {
-				zap.L().Error("received nil command event")
+				logger.L().Error(ctx, "received nil command event")
 
 				return nil
 			}

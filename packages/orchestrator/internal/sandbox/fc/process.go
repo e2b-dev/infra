@@ -187,7 +187,7 @@ func (p *Process) configure(
 				}
 			}
 
-			zap.L().Error("error waiting for fc process", zap.Error(waitErr))
+			logger.L().Error(ctx, "error waiting for fc process", zap.Error(waitErr))
 
 			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
 			p.Exit.SetError(errMsg)
@@ -439,14 +439,14 @@ func (p *Process) Stop(ctx context.Context) error {
 
 	state, err := getProcessState(ctx, p.cmd.Process.Pid)
 	if err != nil {
-		zap.L().Warn("failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+		logger.L().Warn(ctx, "failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	} else if state == "D" {
-		zap.L().Info("fc process is in the D state before we call SIGTERM", logger.WithSandboxID(p.files.SandboxID))
+		logger.L().Info(ctx, "fc process is in the D state before we call SIGTERM", logger.WithSandboxID(p.files.SandboxID))
 	}
 
 	err = p.cmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {
-		zap.L().Warn("failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+		logger.L().Warn(ctx, "failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
 
 	go func() {
@@ -455,16 +455,16 @@ func (p *Process) Stop(ctx context.Context) error {
 		case <-time.After(10 * time.Second):
 			err := p.cmd.Process.Kill()
 			if err != nil {
-				zap.L().Warn("failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+				logger.L().Warn(ctx, "failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 			} else {
-				zap.L().Info("sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
+				logger.L().Info(ctx, "sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
 			}
 
 			state, err := getProcessState(ctx, p.cmd.Process.Pid)
 			if err != nil {
-				zap.L().Warn("failed to get fc process state after sending SIGKILL", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+				logger.L().Warn(ctx, "failed to get fc process state after sending SIGKILL", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 			} else if state == "D" {
-				zap.L().Info("fc process is in the D state after we call SIGKILL", logger.WithSandboxID(p.files.SandboxID))
+				logger.L().Info(ctx, "fc process is in the D state after we call SIGKILL", logger.WithSandboxID(p.files.SandboxID))
 			}
 
 		// If the FC process exited, we can return.

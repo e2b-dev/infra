@@ -32,7 +32,7 @@ const (
 func main() {
 	ctx := context.Background()
 	if err := cleanNFSCache(ctx); err != nil {
-		zap.L().Error("clean NFS cache failed", zap.Error(err))
+		logger.L().Error(ctx, "clean NFS cache failed", zap.Error(err))
 		os.Exit(1)
 	}
 }
@@ -68,13 +68,13 @@ func cleanNFSCache(ctx context.Context) error {
 	logger.ReplaceGlobals(ctx, globalLogger)
 
 	// get free space information for path
-	zap.L().Info("starting",
+	logger.L().Info(ctx, "starting",
 		zap.Bool("dry_run", opts.dryRun),
 		zap.Float64("target_percent", opts.targetDiskUsagePercent),
 		zap.String("path", path))
 
 	var diskInfo pkg.DiskInfo
-	timeit(fmt.Sprintf("getting disk info for %q", path), func() {
+	timeit(ctx, fmt.Sprintf("getting disk info for %q", path), func() {
 		diskInfo, err = pkg.GetDiskInfo(ctx, path)
 	})
 	if err != nil {
@@ -89,30 +89,30 @@ func cleanNFSCache(ctx context.Context) error {
 
 	var allResults results
 	defer func() {
-		printSummary(allResults, opts)
+		printSummary(ctx, allResults, opts)
 	}()
 
 	// if conditions are met, we're done
 	for !areWeDone() {
 		// get File metadata, including path, size, and last access timestamp
 		var files []pkg.File
-		timeit(fmt.Sprintf("gathering metadata on %d files", opts.filesPerLoop), func() {
-			files, err = getFiles(cache, opts.filesPerLoop)
-			zap.L().Info("got files", zap.Int("count", len(files)))
+		timeit(ctx, fmt.Sprintf("gathering metadata on %d files", opts.filesPerLoop), func() {
+			files, err = getFiles(ctx, cache, opts.filesPerLoop)
+			logger.L().Info(ctx, "got files", zap.Int("count", len(files)))
 		})
 		if err != nil {
 			return fmt.Errorf("could not get File metadata: %w", err)
 		}
 
 		// sort files by access timestamp
-		timeit(fmt.Sprintf("sorting %d files by access time", len(files)), func() {
+		timeit(ctx, fmt.Sprintf("sorting %d files by access time", len(files)), func() {
 			sortFilesByATime(files)
 		})
 
 		var results results
-		timeit(fmt.Sprintf("deleting bottom %d files", opts.filesToDeletePerLoop), func() {
-			results, err = deleteOldestFiles(cache, files, opts, &diskInfo, areWeDone, opts.filesToDeletePerLoop)
-			zap.L().Info("deleted files",
+		timeit(ctx, fmt.Sprintf("deleting bottom %d files", opts.filesToDeletePerLoop), func() {
+			results, err = deleteOldestFiles(ctx, cache, files, opts, &diskInfo, areWeDone, opts.filesToDeletePerLoop)
+			logger.L().Info(ctx, "deleted files",
 				zap.Int64("count", results.deletedFiles),
 				zap.Int64("bytes", results.deletedBytes))
 		})
@@ -147,14 +147,14 @@ func newOtelCore(ctx context.Context, opts opts) (zapcore.Core, error) {
 	return otelCore, nil
 }
 
-func printSummary(r results, opts opts) {
+func printSummary(ctx context.Context, r results, opts opts) {
 	if r.deletedFiles == 0 {
-		zap.L().Info("no files deleted")
+		logger.L().Info(ctx, "no files deleted")
 
 		return
 	}
 
-	zap.L().Info("summary",
+	logger.L().Info(ctx, "summary",
 		zap.Bool("dry_run", opts.dryRun),
 		zap.Int64("files", r.deletedFiles),
 		zap.Int64("bytes", r.deletedBytes),
@@ -233,13 +233,13 @@ func (r results) sum(other results) results {
 	}
 }
 
-func deleteOldestFiles(cache *pkg.ListingCache, files []pkg.File, opts opts, diskInfo *pkg.DiskInfo, areWeDone func() bool, deleteCount int64) (results, error) {
+func deleteOldestFiles(ctx context.Context, cache *pkg.ListingCache, files []pkg.File, opts opts, diskInfo *pkg.DiskInfo, areWeDone func() bool, deleteCount int64) (results, error) {
 	now := time.Now()
 	var results results
 	for _, file := range files {
 		if !opts.dryRun {
 			if err := os.Remove(file.Path); err != nil {
-				zap.L().Error("failed to delete",
+				logger.L().Error(ctx, "failed to delete",
 					zap.String("path", file.Path),
 					zap.Error(err))
 
@@ -272,23 +272,23 @@ func sortFilesByATime(files []pkg.File) {
 	})
 }
 
-func reportGetFilesProgress(usedFiles, dupeHits int) {
+func reportGetFilesProgress(ctx context.Context, usedFiles, dupeHits int) {
 	total := usedFiles + dupeHits
 	if total > 0 && total%100 == 0 {
-		zap.L().Debug("gathering files progress",
+		logger.L().Debug(ctx, "gathering files progress",
 			zap.Int("files", usedFiles),
 			zap.Int("dupe_hits", dupeHits))
 	}
 }
 
-func getFiles(cache *pkg.ListingCache, maxFiles int) ([]pkg.File, error) {
+func getFiles(ctx context.Context, cache *pkg.ListingCache, maxFiles int) ([]pkg.File, error) {
 	var items []pkg.File
 
 	usedFiles := make(map[string]struct{})
 	var dupeHits int
 
 	for len(items) != maxFiles {
-		reportGetFilesProgress(len(usedFiles), dupeHits)
+		reportGetFilesProgress(ctx, len(usedFiles), dupeHits)
 
 		path, err := cache.GetRandomFile()
 		if err != nil {
@@ -313,7 +313,7 @@ func getFiles(cache *pkg.ListingCache, maxFiles int) ([]pkg.File, error) {
 		usedFiles[path] = struct{}{}
 	}
 
-	reportGetFilesProgress(len(usedFiles), dupeHits)
+	reportGetFilesProgress(ctx, len(usedFiles), dupeHits)
 
 	return items, nil
 }
@@ -354,10 +354,10 @@ func parseArgs() (string, opts, error) {
 	return args[0], opts, nil
 }
 
-func timeit(message string, fn func()) {
+func timeit(ctx context.Context, message string, fn func()) {
 	start := time.Now()
 	fn()
 	done := time.Since(start).Round(time.Millisecond)
 
-	zap.L().Debug(message, zap.Duration("duration", done))
+	logger.L().Debug(ctx, message, zap.Duration("duration", done))
 }

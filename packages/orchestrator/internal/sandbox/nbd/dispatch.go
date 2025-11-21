@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -272,7 +273,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			select {
 			case d.fatal <- err:
 			default:
-				zap.L().Error("nbd error cmd read", zap.Error(err))
+				logger.L().Error(ctx, "nbd error cmd read", zap.Error(err))
 			}
 		}
 		d.pendingResponses.Done()
@@ -320,7 +321,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			select {
 			case d.fatal <- err:
 			default:
-				zap.L().Error("nbd error cmd write", zap.Error(err))
+				logger.L().Error(ctx, "nbd error cmd write", zap.Error(err))
 			}
 		}
 		d.pendingResponses.Done()

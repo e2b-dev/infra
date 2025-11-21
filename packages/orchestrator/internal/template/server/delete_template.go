@@ -6,7 +6,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
@@ -35,7 +34,7 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 	buildInfo, err := s.buildCache.Get(in.GetBuildID())
 	if err == nil && buildInfo.IsRunning() {
 		// Cancel the build if it is running
-		zap.L().Info("Canceling running template build", logger.WithTemplateID(in.GetTemplateID()), logger.WithBuildID(in.GetBuildID()))
+		logger.L().Info(ctx, "Canceling running template build", logger.WithTemplateID(in.GetTemplateID()), logger.WithBuildID(in.GetBuildID()))
 		telemetry.ReportEvent(ctx, "cancel in progress template build")
 		buildInfo.SetFail(&templatemanager.TemplateBuildStatusReason{
 			Message: cache.CanceledBuildReason,

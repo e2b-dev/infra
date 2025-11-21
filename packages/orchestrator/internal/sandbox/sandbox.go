@@ -224,7 +224,7 @@ func (f *Factory) CreateSandbox(
 	go func() {
 		runErr := rootfsProvider.Start(execCtx)
 		if runErr != nil {
-			zap.L().Error("rootfs overlay error", zap.Error(runErr))
+			logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
 		}
 	}()
 
@@ -407,7 +407,7 @@ func (f *Factory) ResumeSandbox(
 	go func() {
 		runErr := rootfsOverlay.Start(execCtx)
 		if runErr != nil {
-			zap.L().Error("rootfs overlay error", zap.Error(runErr))
+			logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
 		}
 	}()
 
@@ -550,7 +550,7 @@ func (f *Factory) ResumeSandbox(
 
 	useClickhouseMetrics, flagErr := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
 	if flagErr != nil {
-		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+		logger.L().Error(ctx, "soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
@@ -892,7 +892,7 @@ func pauseProcessMemory(
 			return nil, nil, fmt.Errorf("invalid memfile header mappings: %w", err)
 		}
 
-		zap.L().Warn("memfile header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(memfileHeader.Metadata.BuildId.String()))
+		logger.L().Warn(ctx, "memfile header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(memfileHeader.Metadata.BuildId.String()))
 	}
 
 	return memfileDiff, memfileHeader, nil
@@ -958,7 +958,7 @@ func pauseProcessRootfs(
 			return nil, nil, fmt.Errorf("invalid rootfs header mappings: %w", err)
 		}
 
-		zap.L().Warn("rootfs header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(rootfsHeader.Metadata.BuildId.String()))
+		logger.L().Warn(ctx, "rootfs header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(rootfsHeader.Metadata.BuildId.String()))
 	}
 
 	return rootfsDiff, rootfsHeader, nil
@@ -993,7 +993,7 @@ func getNetworkSlotAsync(
 			go func(ctx context.Context) {
 				returnErr := networkPool.Return(ctx, ips)
 				if returnErr != nil {
-					zap.L().Error("failed to return network slot", zap.Error(returnErr))
+					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
 				}
 			}(context.WithoutCancel(ctx))
 
@@ -1112,7 +1112,7 @@ func (s *Sandbox) WaitForEnvd(
 func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
 	if err != nil {
-		zap.L().Warn("failed to get envd timeout from feature flag, using default", zap.Error(err))
+		logger.L().Warn(ctx, "failed to get envd timeout from feature flag, using default", zap.Error(err))
 	}
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond

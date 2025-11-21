@@ -136,7 +136,7 @@ func buildTemplate(
 		}
 	}()
 
-	slotStorage, err := network.NewStorageLocal(networkConfig)
+	slotStorage, err := network.NewStorageLocal(ctx, networkConfig)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
@@ -185,14 +185,14 @@ func buildTemplate(
 
 	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics)
 	if err != nil {
-		zap.L().Fatal("failed to create template cache", zap.Error(err))
+		return fmt.Errorf("failed to create template cache: %w", err)
 	}
 	templateCache.Start(ctx)
 	defer templateCache.Stop()
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
 	if err != nil {
-		zap.L().Fatal("failed to create build metrics", zap.Error(err))
+		return fmt.Errorf("failed to create build metrics: %w", err)
 	}
 
 	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags)

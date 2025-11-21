@@ -158,7 +158,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	defer func() {
 		closeErr := uffd.Close()
 		if closeErr != nil {
-			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
+			logger.L().Error(ctx, "failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
 

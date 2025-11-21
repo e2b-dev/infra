@@ -237,14 +237,14 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Check the rootfs filesystem corruption
 	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
 	if err != nil {
-		zap.L().Error("provisioned filesystem ext4 integrity",
+		logger.L().Error(ctx, "provisioned filesystem ext4 integrity",
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
 
 		return metadata.Template{}, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
 	}
-	zap.L().Debug("provisioned filesystem ext4 integrity",
+	logger.L().Debug(ctx, "provisioned filesystem ext4 integrity",
 		zap.String("result", ext4Check),
 	)
 
@@ -375,7 +375,7 @@ func (bb *BaseBuilder) Layer(
 
 		meta, err = bb.index.Cached(ctx, bm.Template.BuildID)
 		if err != nil {
-			zap.L().Info("base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+			logger.L().Info(ctx, "base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 
 			return notCachedResult, nil
 		}

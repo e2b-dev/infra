@@ -8,9 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go.uber.org/zap"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -30,7 +29,7 @@ func NewCleanup() *Cleanup {
 
 func (c *Cleanup) Add(f func(ctx context.Context) error) {
 	if c.hasRun.Load() == true {
-		zap.L().Error("Add called after cleanup has run, ignoring function")
+		logger.L().Error(context.TODO(), "Add called after cleanup has run, ignoring function")
 
 		return
 	}
@@ -43,7 +42,7 @@ func (c *Cleanup) Add(f func(ctx context.Context) error) {
 
 func (c *Cleanup) AddPriority(f func(ctx context.Context) error) {
 	if c.hasRun.Load() == true {
-		zap.L().Error("AddPriority called after cleanup has run, ignoring function")
+		logger.L().Error(context.TODO(), "AddPriority called after cleanup has run, ignoring function")
 
 		return
 	}

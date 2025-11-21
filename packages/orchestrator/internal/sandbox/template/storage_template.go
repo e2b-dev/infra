@@ -138,7 +138,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		if err != nil {
 			// If we can't find the metadata, we still want to return the metafile.
 			// This is used for templates that don't have metadata, like v1 templates.
-			zap.L().Info("failed to fetch metafile, falling back to v1 template metadata",
+			logger.L().Info(ctx, "failed to fetch metafile, falling back to v1 template metadata",
 				logger.WithBuildID(t.files.BuildID),
 				zap.Error(err),
 			)
@@ -226,7 +226,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 	err := wg.Wait()
 	if err != nil {
-		zap.L().Error("failed to fetch template files",
+		logger.L().Error(ctx, "failed to fetch template files",
 			logger.WithBuildID(t.files.BuildID),
 			zap.Error(err),
 		)

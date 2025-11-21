@@ -95,7 +95,7 @@ func New(
 		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}
 
-	buildCache := cache.NewBuildCache(meterProvider)
+	buildCache := cache.NewBuildCache(ctx, meterProvider)
 	buildMetrics, err := metrics.NewBuildMetrics(meterProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build metrics: %w", err)

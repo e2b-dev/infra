@@ -128,7 +128,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	sbxlogger.SetSandboxLoggerInternal(l)
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
-	slotStorage, err := network.NewStorageLocal(config.NetworkConfig)
+	slotStorage, err := network.NewStorageLocal(b.Context(), config.NetworkConfig)
 	require.NoError(b, err)
 	networkPool := network.NewPool(8, 8, slotStorage, config.NetworkConfig)
 	go func() {
