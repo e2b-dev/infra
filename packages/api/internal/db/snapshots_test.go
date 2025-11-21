@@ -233,7 +233,5 @@ func TestGetSnapshotWithBuilds_NoBuilds(t *testing.T) {
 	// Execute GetSnapshotBuilds
 	result, err := apidb.GetSnapshotBuilds(t.Context(), db, teamID, sandboxID)
 	require.NoError(t, err, "GetSnapshotBuilds should succeed")
-
-	// Verify we got all 4 builds (1 from UpsertSnapshot + 3 additional)
 	assert.Empty(t, result.Builds, "Should have 0 builds after deletion")
 }
