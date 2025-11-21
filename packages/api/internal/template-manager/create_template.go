@@ -13,8 +13,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/types"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -71,7 +71,7 @@ func (tm *TemplateManager) CreateTemplate(
 			ctx,
 			templateID,
 			buildID,
-			envbuild.StatusFailed,
+			types.BuildStatusFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: fmt.Sprintf("error when building env: %s", e),
 			},
@@ -135,7 +135,7 @@ func (tm *TemplateManager) CreateTemplate(
 			ctx,
 			templateID,
 			buildID,
-			envbuild.StatusFailed,
+			types.BuildStatusFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: err.Error(),
 				Step:    ut.ToPtr("base"),
@@ -169,7 +169,7 @@ func (tm *TemplateManager) CreateTemplate(
 		ctx,
 		templateID,
 		buildID,
-		envbuild.StatusBuilding,
+		types.BuildStatusBuilding,
 		nil,
 	)
 	if err != nil {

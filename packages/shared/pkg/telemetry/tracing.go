@@ -9,6 +9,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var OTELTracingPrint = os.Getenv("OTEL_TRACING_PRINT") != "false"
@@ -77,7 +79,7 @@ func ReportCriticalError(ctx context.Context, message string, err error, attrs .
 	span := trace.SpanFromContext(ctx)
 
 	debugID := getDebugID(ctx)
-	zap.L().With(attributesToZapFields(attrs...)...).Error(message, zap.Stringp("debug_id", debugID), zap.Error(err))
+	logger.L().With(attributesToZapFields(attrs...)...).Error(ctx, message, zap.Stringp("debug_id", debugID), zap.Error(err))
 
 	errorAttrs := append(attrs, attribute.String("error.message", message))
 
@@ -95,7 +97,7 @@ func ReportError(ctx context.Context, message string, err error, attrs ...attrib
 	span := trace.SpanFromContext(ctx)
 
 	debugID := getDebugID(ctx)
-	zap.L().With(attributesToZapFields(attrs...)...).Warn(message, zap.Stringp("debug_id", debugID), zap.Error(err))
+	logger.L().With(attributesToZapFields(attrs...)...).Warn(ctx, message, zap.Stringp("debug_id", debugID), zap.Error(err))
 
 	span.RecordError(fmt.Errorf("%s: %w", message, err),
 		trace.WithStackTrace(true),

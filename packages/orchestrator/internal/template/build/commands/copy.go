@@ -13,7 +13,6 @@ import (
 	txtTemplate "text/template"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -21,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -61,7 +61,7 @@ var copyScriptTemplate = txtTemplate.Must(txtTemplate.New("copy-script-template"
 // because the /tmp is mounted as a tmpfs and deleted on restart.
 func (c *Copy) Execute(
 	ctx context.Context,
-	logger *zap.Logger,
+	logger logger.Logger,
 	_ zapcore.Level,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,

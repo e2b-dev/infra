@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
@@ -59,14 +59,15 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 		reverseproxy.ClientProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
+			ctx := r.Context()
 			sandboxId, port, err := getTargetFromRequest(r)
 			if err != nil {
 				return nil, err
 			}
 
-			logger := zap.L().With(
+			l := logger.L().With(
 				zap.String("origin_host", r.Host),
-				l.WithSandboxID(sandboxId),
+				logger.WithSandboxID(sandboxId),
 				zap.Uint64("sandbox_req_port", port),
 				zap.String("sandbox_req_path", r.URL.Path),
 				zap.String("sandbox_req_method", r.Method),
@@ -78,7 +79,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
-					logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err))
+					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
 				}
 
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
@@ -89,14 +90,14 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				Host:   fmt.Sprintf("%s:%d", nodeIP, orchestratorProxyPort),
 			}
 
-			logger = logger.With(
+			l = l.With(
 				zap.String("target_hostname", url.Hostname()),
 				zap.String("target_port", url.Port()),
 			)
 
 			return &pool.Destination{
 				SandboxId:     sandboxId,
-				RequestLogger: logger,
+				RequestLogger: l,
 				SandboxPort:   port,
 				ConnectionKey: clientProxyConnectionKey,
 				Url:           url,

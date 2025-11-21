@@ -28,7 +28,6 @@ require (
 )
 
 require (
-	entgo.io/ent v0.12.5 // indirect
 	github.com/ClickHouse/ch-go v0.66.1 // indirect
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect

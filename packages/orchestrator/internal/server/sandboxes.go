@@ -70,7 +70,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	maxRunningSandboxesPerNode, err := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
 	if err != nil {
-		zap.L().Error("Failed to get MaxSandboxesPerNode flag", zap.Error(err))
+		logger.L().Error(ctx, "Failed to get MaxSandboxesPerNode flag", zap.Error(err))
 	}
 
 	runningSandboxes := s.sandboxes.Count()
@@ -164,12 +164,12 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 		waitErr := sbx.Wait(ctx)
 		if waitErr != nil {
-			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
+			sbxlogger.I(sbx).Error(ctx, "failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
 
 		cleanupErr := sbx.Close(ctx)
 		if cleanupErr != nil {
-			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
+			sbxlogger.I(sbx).Error(ctx, "failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
 
 		// Remove the sandbox from cache only if the cleanup IDs match.
@@ -181,10 +181,10 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		closeErr := s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
 		if closeErr != nil {
 			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
-			sbxlogger.I(sbx).Warn("errors when manually closing connections to sandbox", zap.Error(closeErr))
+			sbxlogger.I(sbx).Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
 		}
 
-		sbxlogger.E(sbx).Info("Sandbox killed")
+		sbxlogger.E(sbx).Info(ctx, "Sandbox killed")
 	}()
 
 	eventType := events.SandboxCreatedEventPair
@@ -192,7 +192,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		eventType = events.SandboxResumedEventPair
 	}
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	go s.sbxEventsService.Publish(
 		context.WithoutCancel(ctx),
 		teamID,
@@ -234,7 +234,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	sbx.EndAt = req.GetEndTime().AsTime()
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
 	eventType := events.SandboxUpdatedEventPair
 
@@ -323,11 +323,11 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	go func() {
 		err := sbx.Stop(context.WithoutCancel(ctx))
 		if err != nil {
-			sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.GetSandboxId()), zap.Error(err))
+			sbxlogger.I(sbx).Error(ctx, "error stopping sandbox", logger.WithSandboxID(in.GetSandboxId()), zap.Error(err))
 		}
 	}()
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 
 	eventType := events.SandboxKilledEventPair
 	go s.sbxEventsService.Publish(
@@ -388,7 +388,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 			err := sbx.Stop(ctx)
 			if err != nil {
-				sbxlogger.I(sbx).Error("error stopping sandbox after snapshot", logger.WithSandboxID(in.GetSandboxId()), zap.Error(err))
+				sbxlogger.I(sbx).Error(ctx, "error stopping sandbox after snapshot", logger.WithSandboxID(in.GetSandboxId()), zap.Error(err))
 			}
 		}()
 	}(context.WithoutCancel(ctx))
@@ -434,13 +434,13 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	go func(ctx context.Context) {
 		err := snapshot.Upload(ctx, s.persistence, meta.Template)
 		if err != nil {
-			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
+			sbxlogger.I(sbx).Error(ctx, "error uploading sandbox snapshot", zap.Error(err))
 
 			return
 		}
 	}(context.WithoutCancel(ctx))
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 
 	eventType := events.SandboxPausedEventPair
 	go s.sbxEventsService.Publish(
@@ -465,10 +465,10 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 }
 
 // Extracts common data needed for sandbox events
-func (s *Server) prepareSandboxEventData(sbx *sandbox.Sandbox) (uuid.UUID, string, map[string]any) {
+func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandbox) (uuid.UUID, string, map[string]any) {
 	teamID, err := uuid.Parse(sbx.Runtime.TeamID)
 	if err != nil {
-		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
+		sbxlogger.I(sbx).Error(ctx, "error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 	}
 
 	buildId := ""

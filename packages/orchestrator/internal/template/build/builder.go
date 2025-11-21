@@ -34,6 +34,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -46,7 +47,7 @@ const progressDelay = 5 * time.Second
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build")
 
 type Builder struct {
-	logger *zap.Logger
+	logger logger.Logger
 
 	config              cfg.BuilderConfig
 	sandboxFactory      *sandbox.Factory
@@ -63,7 +64,7 @@ type Builder struct {
 
 func NewBuilder(
 	config cfg.BuilderConfig,
-	logger *zap.Logger,
+	logger logger.Logger,
 	featureFlags *featureflags.Client,
 	sandboxFactory *sandbox.Factory,
 	templateStorage storage.StorageProvider,
@@ -137,15 +138,15 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 
 	isV1Build := utils.IsVersion(cfg.Version, templates.TemplateV1Version) || (cfg.FromImage == "" && cfg.FromTemplate == nil)
 
-	logger := zap.New(logsCore)
+	l := logger.NewTracedLoggerFromCore(logsCore)
 	defer func() {
 		switch {
 		case errors.Is(ctx.Err(), context.Canceled):
-			logger.Error(fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
+			l.Error(ctx, fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
 		case e != nil:
-			logger.Error(fmt.Sprintf("Build failed: %v", e))
+			l.Error(ctx, fmt.Sprintf("Build failed: %v", e))
 		default:
-			logger.Info(fmt.Sprintf("Build finished, took %s",
+			l.Info(ctx, fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
 		}
 	}()
@@ -158,12 +159,12 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	}()
 
 	if isV1Build {
-		hookedCore, done := writer.NewPostProcessor(progressDelay, logsCore)
+		hookedCore, done := writer.NewPostProcessor(ctx, progressDelay, logsCore)
 		defer done()
-		logger = zap.New(hookedCore)
+		l = logger.NewTracedLoggerFromCore(hookedCore)
 	}
 
-	logger.Info(fmt.Sprintf("Building template %s/%s", cfg.TemplateID, template.BuildID))
+	l.Info(ctx, fmt.Sprintf("Building template %s/%s", cfg.TemplateID, template.BuildID))
 
 	defer func(ctx context.Context) {
 		if e == nil {
@@ -202,12 +203,12 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		Version:        cfg.Version,
 	}
 
-	return runBuild(ctx, logger, buildContext, b)
+	return runBuild(ctx, l, buildContext, b)
 }
 
 func runBuild(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	bc buildcontext.BuildContext,
 	builder *Builder,
 ) (*Result, error) {
@@ -309,7 +310,7 @@ func runBuild(
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}
-	zap.L().Info("rootfs size", zap.Uint64("size", rootfsSize))
+	logger.L().Info(ctx, "rootfs size", zap.Uint64("size", rootfsSize))
 
 	return &Result{
 		EnvdVersion:  bc.EnvdVersion,

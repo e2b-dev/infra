@@ -1,11 +1,13 @@
 package network
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/vishvananda/netlink"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -13,7 +15,7 @@ import (
 const loopbackInterface = "lo"
 
 // Host default gateway name
-var defaultGateway = utils.Must(getDefaultGateway())
+var defaultGateway = utils.Must(getDefaultGateway(context.Background()))
 
 //	func getDefaultGateway() (string, error) {
 //		route, err := exec.Command(
@@ -27,7 +29,7 @@ var defaultGateway = utils.Must(getDefaultGateway())
 //
 //		return string(route), nil
 //	}
-func getDefaultGateway() (string, error) {
+func getDefaultGateway(ctx context.Context) (string, error) {
 	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
 	if err != nil {
 		return "", fmt.Errorf("error fetching routes: %w", err)
@@ -36,7 +38,7 @@ func getDefaultGateway() (string, error) {
 	for _, route := range routes {
 		// 0.0.0.0/0
 		if route.Dst.String() == "0.0.0.0/0" && route.Gw != nil {
-			zap.L().Info("default gateway", zap.String("gateway", route.Gw.String()))
+			logger.L().Info(ctx, "default gateway", zap.String("gateway", route.Gw.String()))
 
 			link, linkErr := netlink.LinkByIndex(route.LinkIndex)
 

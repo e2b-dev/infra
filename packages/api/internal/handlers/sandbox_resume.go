@@ -123,7 +123,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		SandboxID:  sandboxID,
 		TemplateID: build.EnvID,
 		TeamID:     teamInfo.Team.ID.String(),
-	}).Debug("Started resuming sandbox")
+	}).Debug(ctx, "Started resuming sandbox")
 
 	var envdAccessToken *string = nil
 	if snap.EnvSecure {

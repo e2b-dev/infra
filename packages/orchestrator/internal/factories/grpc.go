@@ -7,7 +7,6 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
@@ -46,13 +45,13 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 		grpc.ChainUnaryInterceptor(
 			recovery.UnaryServerInterceptor(),
 			selector.UnaryServerInterceptor(
-				logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
+				logging.UnaryServerInterceptor(logger.GRPCLogger(logger.L()), opts...),
 				ignoredLoggingRoutes,
 			),
 		),
 		grpc.ChainStreamInterceptor(
 			selector.StreamServerInterceptor(
-				logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
+				logging.StreamServerInterceptor(logger.GRPCLogger(logger.L()), opts...),
 				ignoredLoggingRoutes,
 			),
 		),

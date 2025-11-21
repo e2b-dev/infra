@@ -22,7 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -38,7 +37,6 @@ type processingBuilds struct {
 type TemplateManager struct {
 	grpc     *grpclient.GRPCClient
 	edgePool *edge.Pool
-	db       *db.DB
 
 	lock          sync.Mutex
 	processing    map[uuid.UUID]processingBuilds
@@ -63,7 +61,6 @@ func New(
 	config cfg.Config,
 	tracerProvider trace.TracerProvider,
 	meterProvider metric.MeterProvider,
-	db *db.DB,
 	sqlcDB *sqlcdb.Client,
 	edgePool *edge.Pool,
 	buildCache *templatecache.TemplatesBuildCache,
@@ -76,7 +73,6 @@ func New(
 
 	tm := &TemplateManager{
 		grpc:          client,
-		db:            db,
 		sqlcDB:        sqlcDB,
 		buildCache:    buildCache,
 		templateCache: templateCache,

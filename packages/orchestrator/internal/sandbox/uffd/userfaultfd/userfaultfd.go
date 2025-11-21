@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
@@ -29,11 +30,11 @@ type Userfaultfd struct {
 
 	wg errgroup.Group
 
-	logger *zap.Logger
+	logger logger.Logger
 }
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
+func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
 	return &Userfaultfd{
 		fd:              uffdFd(fd),
 		src:             src,
@@ -57,7 +58,7 @@ func (u *Userfaultfd) Serve(
 	}
 
 	eagainCounter := newEagainCounter(u.logger, "uffd: eagain during fd read (accumulated)")
-	defer eagainCounter.Close()
+	defer eagainCounter.Close(ctx)
 
 outerLoop:
 	for {
@@ -66,18 +67,18 @@ outerLoop:
 			-1,
 		); err != nil {
 			if err == unix.EINTR {
-				u.logger.Debug("uffd: interrupted polling, going back to polling")
+				u.logger.Debug(ctx, "uffd: interrupted polling, going back to polling")
 
 				continue
 			}
 
 			if err == unix.EAGAIN {
-				u.logger.Debug("uffd: eagain during polling, going back to polling")
+				u.logger.Debug(ctx, "uffd: eagain during polling, going back to polling")
 
 				continue
 			}
 
-			u.logger.Error("UFFD serve polling error", zap.Error(err))
+			u.logger.Error(ctx, "UFFD serve polling error", zap.Error(err))
 
 			return fmt.Errorf("failed polling: %w", err)
 		}
@@ -86,7 +87,7 @@ outerLoop:
 		if exitFd.Revents&unix.POLLIN != 0 {
 			errMsg := u.wg.Wait()
 			if errMsg != nil {
-				u.logger.Warn("UFFD fd exit error while waiting for goroutines to finish", zap.Error(errMsg))
+				u.logger.Warn(ctx, "UFFD fd exit error while waiting for goroutines to finish", zap.Error(errMsg))
 
 				return fmt.Errorf("failed to handle uffd: %w", errMsg)
 			}
@@ -105,7 +106,7 @@ outerLoop:
 			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
 			// It might be possible to just check for data != 0 in the syscall.Read loop
 			// but I don't feel confident about doing that.
-			u.logger.Debug("uffd: no data in fd, going back to polling")
+			u.logger.Debug(ctx, "uffd: no data in fd, going back to polling")
 
 			continue
 		}
@@ -115,7 +116,7 @@ outerLoop:
 		for {
 			_, err := syscall.Read(int(u.fd), buf)
 			if err == syscall.EINTR {
-				u.logger.Debug("uffd: interrupted read, reading again")
+				u.logger.Debug(ctx, "uffd: interrupted read, reading again")
 
 				continue
 			}
@@ -123,7 +124,7 @@ outerLoop:
 			if err == nil {
 				// There is no error so we can proceed.
 
-				eagainCounter.Log()
+				eagainCounter.Log(ctx)
 
 				break
 			}
@@ -135,7 +136,7 @@ outerLoop:
 				continue outerLoop
 			}
 
-			u.logger.Error("uffd: read error", zap.Error(err))
+			u.logger.Error(ctx, "uffd: read error", zap.Error(err))
 
 			return fmt.Errorf("failed to read: %w", err)
 		}
@@ -143,7 +144,7 @@ outerLoop:
 		msg := *(*UffdMsg)(unsafe.Pointer(&buf[0]))
 
 		if msgEvent := getMsgEvent(&msg); msgEvent != UFFD_EVENT_PAGEFAULT {
-			u.logger.Error("UFFD serve unexpected event type", zap.Any("event_type", msgEvent))
+			u.logger.Error(ctx, "UFFD serve unexpected event type", zap.Any("event_type", msgEvent))
 
 			return ErrUnexpectedEventType
 		}
@@ -156,7 +157,7 @@ outerLoop:
 
 		offset, pagesize, err := u.ma.GetOffset(addr)
 		if err != nil {
-			u.logger.Error("UFFD serve get mapping error", zap.Error(err))
+			u.logger.Error(ctx, "UFFD serve get mapping error", zap.Error(err))
 
 			return fmt.Errorf("failed to map: %w", err)
 		}
@@ -205,7 +206,7 @@ func (u *Userfaultfd) handleMissing(
 	u.wg.Go(func() error {
 		defer func() {
 			if r := recover(); r != nil {
-				u.logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
+				u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
 			}
 		}()
 
@@ -215,7 +216,7 @@ func (u *Userfaultfd) handleMissing(
 
 			joinedErr := errors.Join(sliceErr, signalErr)
 
-			u.logger.Error("UFFD serve slice error", zap.Error(joinedErr))
+			u.logger.Error(ctx, "UFFD serve slice error", zap.Error(joinedErr))
 
 			return fmt.Errorf("failed to read from source: %w", joinedErr)
 		}
@@ -234,7 +235,7 @@ func (u *Userfaultfd) handleMissing(
 
 			joinedErr := errors.Join(copyErr, signalErr)
 
-			u.logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
+			u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
 
 			return fmt.Errorf("failed uffdio copy %w", joinedErr)
 		}

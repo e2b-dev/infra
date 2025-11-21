@@ -33,3 +33,16 @@ type PausedSandboxConfig struct {
 	Version string                `json:"version"`
 	Network *SandboxNetworkConfig `json:"network,omitempty"`
 }
+
+// Status defines the type for the "status" enum field.
+type BuildStatus string
+
+// Status values.
+const (
+	BuildStatusWaiting      BuildStatus = "waiting"
+	BuildStatusBuilding     BuildStatus = "building"
+	BuildStatusSnapshotting BuildStatus = "snapshotting"
+	BuildStatusFailed       BuildStatus = "failed"
+	BuildStatusSuccess      BuildStatus = "success"
+	BuildStatusUploaded     BuildStatus = "uploaded"
+)

@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type Server struct {
@@ -28,25 +29,25 @@ func NewInfoService(info *ServiceInfo, sandboxes *sandbox.Map) *Server {
 	return s
 }
 
-func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestratorinfo.ServiceInfoResponse, error) {
+func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestratorinfo.ServiceInfoResponse, error) {
 	info := s.info
 
 	// Get host metrics for the orchestrator
 	cpuMetrics, err := metrics.GetCPUMetrics()
 	if err != nil {
-		zap.L().Warn("Failed to get host metrics", zap.Error(err))
+		logger.L().Warn(ctx, "Failed to get host metrics", zap.Error(err))
 		cpuMetrics = &metrics.CPUMetrics{}
 	}
 
 	memoryMetrics, err := metrics.GetMemoryMetrics()
 	if err != nil {
-		zap.L().Warn("Failed to get host metrics", zap.Error(err))
+		logger.L().Warn(ctx, "Failed to get host metrics", zap.Error(err))
 		memoryMetrics = &metrics.MemoryMetrics{}
 	}
 
 	diskMetrics, err := metrics.GetDiskMetrics()
 	if err != nil {
-		zap.L().Warn("Failed to get host metrics", zap.Error(err))
+		logger.L().Warn(ctx, "Failed to get host metrics", zap.Error(err))
 		diskMetrics = []metrics.DiskInfo{}
 	}
 
@@ -112,9 +113,9 @@ func convertDiskMetrics(disks []metrics.DiskInfo) []*orchestratorinfo.DiskMetric
 	return result
 }
 
-func (s *Server) ServiceStatusOverride(_ context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
-	zap.L().Info("service status override request received", zap.String("status", req.GetServiceStatus().String()))
-	s.info.SetStatus(req.GetServiceStatus())
+func (s *Server) ServiceStatusOverride(ctx context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
+	logger.L().Info(ctx, "service status override request received", zap.String("status", req.GetServiceStatus().String()))
+	s.info.SetStatus(ctx, req.GetServiceStatus())
 
 	return &emptypb.Empty{}, nil
 }

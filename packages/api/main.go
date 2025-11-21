@@ -39,6 +39,7 @@ import (
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -231,13 +232,13 @@ func run() int {
 		}
 	}()
 
-	logger := zap.Must(l.NewLogger(ctx, l.LoggerConfig{
+	logger := sharedutils.Must(l.NewLogger(ctx, l.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
 		Cores:         []zapcore.Core{l.GetOTELCore(tel.LogsProvider, serviceName)},
 		EnableConsole: true,
-	}))
+	})).Detach(ctx)
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
 

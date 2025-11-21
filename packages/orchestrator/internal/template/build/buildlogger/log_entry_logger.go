@@ -2,6 +2,7 @@ package buildlogger
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
@@ -38,7 +40,7 @@ func (b *LogEntryLogger) Write(p []byte) (n int, err error) {
 		if len(line) > 0 {
 			fields, err := logs.FlatJsonLogLineParser(string(line))
 			if err != nil {
-				zap.L().Error("error parsing log line", zap.Error(err), zap.ByteString("line", line))
+				logger.L().Error(context.TODO(), "error parsing log line", zap.Error(err), zap.ByteString("line", line))
 
 				continue
 			}
@@ -46,7 +48,7 @@ func (b *LogEntryLogger) Write(p []byte) (n int, err error) {
 			var entry ZapEntry
 			err = json.Unmarshal(line, &entry)
 			if err != nil {
-				zap.L().Error("failed to unmarshal log entry", zap.Error(err), zap.ByteString("line", line))
+				logger.L().Error(context.TODO(), "failed to unmarshal log entry", zap.Error(err), zap.ByteString("line", line))
 
 				continue
 			}

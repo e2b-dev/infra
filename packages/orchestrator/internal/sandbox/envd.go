@@ -79,7 +79,7 @@ func doRequestWithInfiniteRetries(
 			return response, requestCount, nil
 		}
 
-		zap.L().Warn("failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
+		logger.L().Warn(ctx, "failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
 
 		select {
 		case <-ctx.Done():
@@ -143,7 +143,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 	}
 
 	if response.StatusCode != http.StatusNoContent {
-		zap.L().Error("envd init request failed",
+		logger.L().Error(ctx, "envd init request failed",
 			logger.WithSandboxID(s.Runtime.SandboxID),
 			logger.WithEnvdVersion(s.Config.Envd.Version),
 			zap.Int("status_code", response.StatusCode),

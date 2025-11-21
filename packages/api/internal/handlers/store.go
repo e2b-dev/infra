@@ -29,7 +29,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -48,7 +47,6 @@ type APIStore struct {
 	Telemetry            *telemetry.Client
 	orchestrator         *orchestrator.Orchestrator
 	templateManager      *template_manager.TemplateManager
-	db                   *db.DB
 	sqlcDB               *sqlcdb.Client
 	templateCache        *templatecache.TemplateCache
 	templateBuildsCache  *templatecache.TemplatesBuildCache
@@ -62,11 +60,6 @@ type APIStore struct {
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
 	zap.L().Info("Initializing API store and services")
-
-	dbClient, err := db.NewClient(40, 20)
-	if err != nil {
-		zap.L().Fatal("Initializing Supabase client", zap.Error(err))
-	}
 
 	sqlcDB, err := sqlcdb.NewClient(ctx, sqlcdb.WithMaxConnections(40), sqlcdb.WithMinIdle(5))
 	if err != nil {
@@ -144,7 +137,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		zap.L().Fatal("Initializing access token generator failed", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, dbClient, sqlcDB, clustersPool, featureFlags, accessTokenGenerator)
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clustersPool, featureFlags, accessTokenGenerator)
 	if err != nil {
 		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
@@ -154,7 +147,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
-	templateManager, err := template_manager.New(config, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
+	templateManager, err := template_manager.New(config, tel.TracerProvider, tel.MeterProvider, sqlcDB, clustersPool, templateBuildsCache, templateCache)
 	if err != nil {
 		zap.L().Fatal("Initializing Template manager client", zap.Error(err))
 	}
@@ -167,7 +160,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		Healthy:              false,
 		orchestrator:         orch,
 		templateManager:      templateManager,
-		db:                   dbClient,
 		sqlcDB:               sqlcDB,
 		Telemetry:            tel,
 		posthog:              posthogClient,
@@ -220,10 +212,6 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.sqlcDB.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
-	}
-
-	if err := a.db.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("closing database client: %w", err))
 	}
 
 	return errors.Join(errs...)

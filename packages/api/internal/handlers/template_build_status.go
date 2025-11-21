@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -64,7 +63,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	// early return if still waiting for build start
-	if buildInfo.BuildStatus == envbuild.StatusWaiting {
+	if buildInfo.BuildStatus == types.BuildStatusWaiting {
 		result := api.TemplateBuildInfo{
 			LogEntries: make([]api.BuildLogEntry, 0),
 			Logs:       make([]string, 0),
@@ -133,13 +132,13 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	c.JSON(http.StatusOK, result)
 }
 
-func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildStatus {
+func getCorrespondingTemplateBuildStatus(s types.BuildStatus) api.TemplateBuildStatus {
 	switch s {
-	case envbuild.StatusWaiting:
+	case types.BuildStatusWaiting:
 		return api.TemplateBuildStatusWaiting
-	case envbuild.StatusFailed:
+	case types.BuildStatusFailed:
 		return api.TemplateBuildStatusError
-	case envbuild.StatusUploaded:
+	case types.BuildStatusUploaded:
 		return api.TemplateBuildStatusReady
 	default:
 		return api.TemplateBuildStatusBuilding

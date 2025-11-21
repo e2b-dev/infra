@@ -19,6 +19,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -345,7 +346,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
-	zap.L().Debug("Uploaded file in parallel",
+	logger.L().Debug(ctx, "Uploaded file in parallel",
 		zap.String("bucket", bucketName),
 		zap.String("object", objectName),
 		zap.String("path", filePath),

@@ -6,9 +6,9 @@ import (
 	"io"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -49,7 +49,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		readLength := min(mappedLength, remainingReadLength)
 
 		if readLength <= 0 {
-			zap.L().Error(fmt.Sprintf(
+			logger.L().Error(ctx, fmt.Sprintf(
 				"(%d bytes left to read, off %d) reading %d bytes from %+v/%+v: [%d:] -> [%d:%d] <> %d (mapped length: %d, remaining read length: %d)\n>>> EOF\n",
 				len(p)-n,
 				off,

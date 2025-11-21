@@ -155,7 +155,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 			for _, sbx := range so.sandboxes.Items() {
 				ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMetrics)
 				if err != nil {
-					zap.L().Error("Failed to check envd version", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
+					logger.L().Error(ctx, "Failed to check envd version", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 
 					continue
 				}
@@ -183,7 +183,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 					ok, err = utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvVersionForMetricsTimestamp)
 					if err != nil {
-						zap.L().Error("Failed to check envd version for timestamp in metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
+						logger.L().Error(ctx, "Failed to check envd version for timestamp in metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 					}
 
 					// Check if sandbox clock are in acceptable drift from orchestrator host clock
@@ -194,7 +194,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 						sbxDrift := math.Abs(float64(hostTm - sbxTm))
 
 						if sbxDrift > maxAcceptableSandboxClockDriftSec {
-							zap.L().Warn("Significant clock drift detected between sandbox and host",
+							logger.L().Warn(ctx, "Significant clock drift detected between sandbox and host",
 								logger.WithSandboxID(sbx.Runtime.SandboxID),
 								logger.WithTeamID(sbx.Runtime.TeamID),
 								logger.WithTemplateID(sbx.Runtime.TemplateID),
@@ -215,7 +215,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 					ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMemoryPrecise)
 					if err != nil {
-						zap.L().Error("Failed to check envd version for memory metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
+						logger.L().Error(ctx, "Failed to check envd version for memory metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 					}
 
 					if ok {
@@ -231,7 +231,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 					ok, err = utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForDiskMetrics)
 					if err != nil {
-						zap.L().Error("Failed to check envd version for disk metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
+						logger.L().Error(ctx, "Failed to check envd version for disk metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 					}
 					if ok {
 						o.ObserveInt64(so.diskTotal, sbxMetrics.DiskTotal, attributes)
@@ -242,14 +242,14 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					// Round percentage to 2 decimal places
 					memUsedPct := float32(math.Floor(float64(memoryUsed)/float64(memoryTotal)*10000) / 100)
 					if memUsedPct >= sbxMemThresholdPct {
-						sbxlogger.E(sbx).Warn("Memory usage threshold exceeded",
+						sbxlogger.E(sbx).Warn(ctx, "Memory usage threshold exceeded",
 							zap.Float32("mem_used_percent", memUsedPct),
 							zap.Float32("mem_threshold_percent", sbxMemThresholdPct),
 						)
 					}
 
 					if sbxMetrics.CPUUsedPercent >= sbxCpuThresholdPct {
-						sbxlogger.E(sbx).Warn("CPU usage threshold exceeded",
+						sbxlogger.E(sbx).Warn(ctx, "CPU usage threshold exceeded",
 							zap.Float32("cpu_used_percent", float32(sbxMetrics.CPUUsedPercent)),
 							zap.Float32("cpu_threshold_percent", sbxCpuThresholdPct),
 						)
@@ -262,7 +262,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 			err := wg.Wait()
 			if err != nil {
 				// Log the error but observe other sandboxes
-				zap.L().Warn("error during observing sandbox metrics", zap.Error(err))
+				logger.L().Warn(ctx, "error during observing sandbox metrics", zap.Error(err))
 			}
 
 			return nil

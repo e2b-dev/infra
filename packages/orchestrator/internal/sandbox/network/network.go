@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -10,9 +11,11 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (s *Slot) CreateNetwork() error {
+func (s *Slot) CreateNetwork(ctx context.Context) error {
 	// Prevent thread changes so we can safely manipulate with namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -26,12 +29,12 @@ func (s *Slot) CreateNetwork() error {
 	defer func() {
 		err = netns.Set(hostNS)
 		if err != nil {
-			zap.L().Error("error resetting network namespace back to the host namespace", zap.Error(err))
+			logger.L().Error(ctx, "error resetting network namespace back to the host namespace", zap.Error(err))
 		}
 
 		err = hostNS.Close()
 		if err != nil {
-			zap.L().Error("error closing host network namespace", zap.Error(err))
+			logger.L().Error(ctx, "error closing host network namespace", zap.Error(err))
 		}
 	}()
 

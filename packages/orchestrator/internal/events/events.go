@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type EventsService struct {
@@ -35,7 +36,7 @@ func (e *EventsService) Publish(ctx context.Context, teamID uuid.UUID, event eve
 
 	err := validateEvent(event)
 	if err != nil {
-		zap.L().Error("Failed to publish sandbox event due to validation error", zap.Error(err), zap.Any("event", event))
+		logger.L().Error(ctx, "Failed to publish sandbox event due to validation error", zap.Error(err), zap.Any("event", event))
 
 		return
 	}
@@ -46,7 +47,7 @@ func (e *EventsService) Publish(ctx context.Context, teamID uuid.UUID, event eve
 		go func() {
 			defer wg.Done()
 			if err := target.Publish(ctx, deliveryKey, event); err != nil {
-				zap.L().Error("Failed to publish sandbox event", zap.Error(err), zap.Any("event", event))
+				logger.L().Error(ctx, "Failed to publish sandbox event", zap.Error(err), zap.Any("event", event))
 			}
 		}()
 	}

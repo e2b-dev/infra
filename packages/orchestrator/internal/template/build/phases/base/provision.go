@@ -26,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -65,7 +66,7 @@ func getProvisionScript(
 
 func (bb *BaseBuilder) provisionSandbox(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	sandboxConfig sandbox.Config,
 	sandboxRuntime sandbox.RuntimeMetadata,
 	fcVersions fc.FirecrackerVersions,
@@ -76,7 +77,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	ctx, childSpan := tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
-	zapWriter := &zapio.Writer{Log: userLogger, Level: zap.DebugLevel}
+	zapWriter := &zapio.Writer{Log: userLogger.Detach(ctx), Level: zap.DebugLevel}
 	prefixedLogsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer prefixedLogsWriter.Close()
 
@@ -145,7 +146,7 @@ func (bb *BaseBuilder) provisionSandbox(
 		return fmt.Errorf("error waiting for provisioning sandbox: %w", err)
 	}
 
-	userLogger.Info("Provisioning was successful, cleaning up")
+	userLogger.Info(ctx, "Provisioning was successful, cleaning up")
 
 	err = sbx.Shutdown(ctx)
 	if err != nil {
@@ -157,7 +158,7 @@ func (bb *BaseBuilder) provisionSandbox(
 		return fmt.Errorf("result file cleanup failed: %w", err)
 	}
 
-	userLogger.Info("Sandbox template provisioned")
+	userLogger.Info(ctx, "Sandbox template provisioned")
 
 	return nil
 }
@@ -175,13 +176,13 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 		return fmt.Errorf("error getting free space: %w", err)
 	}
 	sizeDiff := template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
-	zap.L().Debug("adding provision size diff to rootfs",
+	logger.L().Debug(ctx, "adding provision size diff to rootfs",
 		zap.Int64("size_add", sizeDiff),
 		zap.Int64("size_free", rootfsFreeSpace),
 		zap.Int64("size_target", template.DiskSizeMB<<constants.ToMBShift),
 	)
 	if sizeDiff <= 0 {
-		zap.L().Debug("no need to enlarge rootfs, skipping")
+		logger.L().Debug(ctx, "no need to enlarge rootfs, skipping")
 
 		return nil
 	}
@@ -190,7 +191,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 		// Debug filesystem stats on error
 		cmd := exec.CommandContext(ctx, "tune2fs", "-l", rootfsPath)
 		output, dErr := cmd.Output()
-		zap.L().Error(string(output), zap.Error(dErr))
+		logger.L().Error(ctx, string(output), zap.Error(dErr))
 
 		return fmt.Errorf("error enlarging rootfs: %w", err)
 	}
@@ -198,14 +199,14 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 	// Check the rootfs filesystem corruption
 	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, false)
 	if err != nil {
-		zap.L().Error("final enlarge filesystem ext4 integrity",
+		logger.L().Error(ctx, "final enlarge filesystem ext4 integrity",
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
 
 		// Occasionally there are Block bitmap differences. For this reason, we retry with fix.
 		ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
-		zap.L().Error("final enlarge filesystem ext4 integrity - retry with fix",
+		logger.L().Error(ctx, "final enlarge filesystem ext4 integrity - retry with fix",
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
@@ -213,7 +214,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 			return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
 		}
 	} else {
-		zap.L().Debug("final enlarge filesystem ext4 integrity",
+		logger.L().Debug(ctx, "final enlarge filesystem ext4 integrity",
 			zap.String("result", ext4Check),
 		)
 	}

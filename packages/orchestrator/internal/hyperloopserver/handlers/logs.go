@@ -12,10 +12,11 @@ import (
 )
 
 func (h *APIStore) Logs(c *gin.Context) {
+	ctx := c.Request.Context()
 	sbx, err := h.findSandbox(c)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Error when finding source sandbox")
-		h.logger.Error("error finding sandbox for source addr", zap.String("addr", c.Request.RemoteAddr), zap.Error(err))
+		h.logger.Error(ctx, "error finding sandbox for source addr", zap.String("addr", c.Request.RemoteAddr), zap.Error(err))
 
 		return
 	}
@@ -25,7 +26,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 	payload := make(map[string]any)
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Invalid body for logs")
-		h.logger.Error("error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID))
+		h.logger.Error(ctx, "error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID))
 
 		return
 	}
@@ -37,7 +38,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 	logs, err := json.Marshal(payload)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusInternalServerError, "Error when parsing logs payload")
-		h.logger.Error("error when parsing logs payload", zap.Error(err), logger.WithSandboxID(sbxID))
+		h.logger.Error(ctx, "error when parsing logs payload", zap.Error(err), logger.WithSandboxID(sbxID))
 
 		return
 	}
@@ -45,7 +46,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 	request, err := http.NewRequestWithContext(c, http.MethodPost, h.collectorAddr, bytes.NewBuffer(logs))
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating request to forwarding sandbox logs")
-		h.logger.Error("error when creating request to forwarding sandbox logs", zap.Error(err), logger.WithSandboxID(sbxID))
+		h.logger.Error(ctx, "error when creating request to forwarding sandbox logs", zap.Error(err), logger.WithSandboxID(sbxID))
 
 		return
 	}
@@ -54,7 +55,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 	response, err := h.collectorClient.Do(request)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusInternalServerError, "Error when forwarding sandbox logs")
-		h.logger.Error("error when forwarding sandbox logs", zap.Error(err), logger.WithSandboxID(sbxID))
+		h.logger.Error(ctx, "error when forwarding sandbox logs", zap.Error(err), logger.WithSandboxID(sbxID))
 
 		return
 	}

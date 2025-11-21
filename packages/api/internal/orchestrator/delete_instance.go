@@ -90,7 +90,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 		zap.L().Error("error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 	}
 
-	sbxlogger.I(sbx).Debug("Removing sandbox",
+	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",
 		zap.Bool("auto_pause", sbx.AutoPause),
 		zap.String("state_action", string(stateAction)),
 	)

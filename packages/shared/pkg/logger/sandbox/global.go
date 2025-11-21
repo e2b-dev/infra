@@ -1,17 +1,19 @@
 package sbxlogger
 
-import "go.uber.org/zap"
-
-var (
-	sandboxLoggerInternal *zap.Logger = zap.NewNop()
-	sandboxLoggerExternal *zap.Logger = zap.NewNop()
+import (
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func SetSandboxLoggerInternal(logger *zap.Logger) {
+var (
+	sandboxLoggerInternal logger.Logger = logger.NewNopLogger()
+	sandboxLoggerExternal logger.Logger = logger.NewNopLogger()
+)
+
+func SetSandboxLoggerInternal(logger logger.Logger) {
 	sandboxLoggerInternal = logger
 }
 
-func SetSandboxLoggerExternal(logger *zap.Logger) {
+func SetSandboxLoggerExternal(logger logger.Logger) {
 	sandboxLoggerExternal = logger
 }
 

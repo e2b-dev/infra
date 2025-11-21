@@ -9,7 +9,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
@@ -23,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -109,7 +109,7 @@ func (ppb *PostProcessingBuilder) Layer(
 // Build runs post-processing actions in the sandbox
 func (ppb *PostProcessingBuilder) Build(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	_ string,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
@@ -184,7 +184,7 @@ func (ppb *PostProcessingBuilder) Build(
 	}, nil
 }
 
-func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer.FunctionActionFn {
+func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) layer.FunctionActionFn {
 	return func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (cm metadata.Template, e error) {
 		ctx, span := tracer.Start(ctx, "run postprocessing")
 		defer span.End()
@@ -232,7 +232,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 		var startCmdRun errgroup.Group
 		startCmdConfirm := make(chan struct{})
 		if meta.Start.StartCmd != "" {
-			userLogger.Info(fmt.Sprintf("Running start command: %s", meta.Start.StartCmd))
+			userLogger.Info(ctx, fmt.Sprintf("Running start command: %s", meta.Start.StartCmd))
 			startCmdRun.Go(func() error {
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,

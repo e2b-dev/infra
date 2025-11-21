@@ -8,8 +8,8 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/db/types"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
 var _ templateManagerClient = (*fakeTemplateManagerClient)(nil)
@@ -22,7 +22,7 @@ type fakeTemplateManagerClient struct {
 	getStatusErr      error
 }
 
-func (f fakeTemplateManagerClient) SetStatus(context.Context, string, uuid.UUID, envbuild.Status, *templatemanagergrpc.TemplateBuildStatusReason) error {
+func (f fakeTemplateManagerClient) SetStatus(context.Context, string, uuid.UUID, types.BuildStatus, *templatemanagergrpc.TemplateBuildStatusReason) error {
 	return f.setStatusError
 }
 

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 
 func (ppb *PostProcessingBuilder) runReadyCommand(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	sandboxID string,
 	readyCmd string,
 	cmdMetadata metadata.Context,
@@ -30,7 +30,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 	ctx, span := tracer.Start(ctx, "run-ready-command")
 	defer span.End()
 
-	userLogger.Info(fmt.Sprintf("Waiting for template to be ready: %s", readyCmd))
+	userLogger.Info(ctx, fmt.Sprintf("Waiting for template to be ready: %s", readyCmd))
 
 	startTime := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, readyCommandTimeout)
@@ -50,12 +50,12 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 		)
 
 		if err == nil {
-			userLogger.Info("Template is ready")
+			userLogger.Info(ctx, "Template is ready")
 
 			return nil
 		}
 
-		userLogger.Debug(fmt.Sprintf("Template is not ready: %v", err))
+		userLogger.Debug(ctx, fmt.Sprintf("Template is not ready: %v", err))
 
 		select {
 		case <-ctx.Done():
@@ -63,7 +63,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 				return fmt.Errorf("ready command timed out after %s", time.Since(startTime))
 			}
 			// Template is ready, the start command finished before the ready command
-			userLogger.Info("Template is ready")
+			userLogger.Info(ctx, "Template is ready")
 
 			return nil
 		case <-time.After(readyCommandRetryInterval):

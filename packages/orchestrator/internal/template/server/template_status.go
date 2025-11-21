@@ -11,8 +11,8 @@ import (
 const maxLogEntriesPerRequest = uint32(100)
 
 func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest) (*template_manager.TemplateBuildStatusResponse, error) {
-	_, ctxSpan := tracer.Start(ctx, "template-build-status-request")
-	defer ctxSpan.End()
+	_, span := tracer.Start(ctx, "template-build-status-request")
+	defer span.End()
 
 	buildInfo, err := s.buildCache.Get(in.GetBuildID())
 	if err != nil {

@@ -84,24 +84,24 @@ func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
 	}
 
 	if !ok && c.healthy.CompareAndSwap(true, false) {
-		sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.Fail)
-		sbxlogger.I(c.sandbox).Error("healthcheck failed", zap.Error(err))
+		sbxlogger.E(c.sandbox).Healthcheck(ctx, sbxlogger.Fail)
+		sbxlogger.I(c.sandbox).Error(ctx, "healthcheck failed", zap.Error(err))
 
 		return
 	}
 
 	if ok && c.healthy.CompareAndSwap(false, true) {
-		sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.Success)
+		sbxlogger.E(c.sandbox).Healthcheck(ctx, sbxlogger.Success)
 
 		return
 	}
 
 	if alwaysReport {
 		if ok {
-			sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.ReportSuccess)
+			sbxlogger.E(c.sandbox).Healthcheck(ctx, sbxlogger.ReportSuccess)
 		} else {
-			sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.ReportFail)
-			sbxlogger.I(c.sandbox).Error("control healthcheck failed", zap.Error(err))
+			sbxlogger.E(c.sandbox).Healthcheck(ctx, sbxlogger.ReportFail)
+			sbxlogger.I(c.sandbox).Error(ctx, "control healthcheck failed", zap.Error(err))
 		}
 	}
 }

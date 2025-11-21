@@ -2,6 +2,13 @@ package cfg
 
 import "github.com/caarlos0/env/v11"
 
+const (
+	DefaultKernelVersion = "vmlinux-6.1.102"
+	// The Firecracker version the last tag + the short SHA (so we can build our dev previews)
+	// TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
+	DefaultFirecrackerVersion = "v1.12.1_d990331"
+)
+
 type Config struct {
 	AdminToken string `env:"ADMIN_TOKEN"`
 
@@ -31,11 +38,22 @@ type Config struct {
 	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
 
 	TemplateManagerHost string `env:"TEMPLATE_MANAGER_HOST"`
+
+	DefaultKernelVersion      string `env:"DEFAULT_KERNEL_VERSION"`
+	DefaultFirecrackerVersion string `env:"DEFAULT_FIRECRACKER_VERSION"`
 }
 
 func Parse() (Config, error) {
 	var config Config
 	err := env.Parse(&config)
+
+	if config.DefaultKernelVersion == "" {
+		config.DefaultKernelVersion = DefaultKernelVersion
+	}
+
+	if config.DefaultFirecrackerVersion == "" {
+		config.DefaultFirecrackerVersion = DefaultFirecrackerVersion
+	}
 
 	return config, err
 }

@@ -6,7 +6,6 @@ import (
 
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
@@ -15,11 +14,12 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func constructLayerFilesFromOCI(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	buildContext buildcontext.BuildContext,
 	// The base build ID can be different from the final requested template build ID.
 	baseBuildID string,
