@@ -3090,7 +3090,7 @@ func (m *EnvBuildMutation) ClusterNodeID() (r string, exists bool) {
 // OldClusterNodeID returns the old "cluster_node_id" field's value of the EnvBuild entity.
 // If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EnvBuildMutation) OldClusterNodeID(ctx context.Context) (v string, err error) {
+func (m *EnvBuildMutation) OldClusterNodeID(ctx context.Context) (v *string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldClusterNodeID is only allowed on UpdateOne operations")
 	}
@@ -3104,9 +3104,22 @@ func (m *EnvBuildMutation) OldClusterNodeID(ctx context.Context) (v string, err 
 	return oldValue.ClusterNodeID, nil
 }
 
+// ClearClusterNodeID clears the value of the "cluster_node_id" field.
+func (m *EnvBuildMutation) ClearClusterNodeID() {
+	m.cluster_node_id = nil
+	m.clearedFields[envbuild.FieldClusterNodeID] = struct{}{}
+}
+
+// ClusterNodeIDCleared returns if the "cluster_node_id" field was cleared in this mutation.
+func (m *EnvBuildMutation) ClusterNodeIDCleared() bool {
+	_, ok := m.clearedFields[envbuild.FieldClusterNodeID]
+	return ok
+}
+
 // ResetClusterNodeID resets all changes to the "cluster_node_id" field.
 func (m *EnvBuildMutation) ResetClusterNodeID() {
 	m.cluster_node_id = nil
+	delete(m.clearedFields, envbuild.FieldClusterNodeID)
 }
 
 // SetReason sets the "reason" field.
@@ -3633,6 +3646,9 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldEnvdVersion) {
 		fields = append(fields, envbuild.FieldEnvdVersion)
 	}
+	if m.FieldCleared(envbuild.FieldClusterNodeID) {
+		fields = append(fields, envbuild.FieldClusterNodeID)
+	}
 	if m.FieldCleared(envbuild.FieldVersion) {
 		fields = append(fields, envbuild.FieldVersion)
 	}
@@ -3667,6 +3683,9 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldEnvdVersion:
 		m.ClearEnvdVersion()
+		return nil
+	case envbuild.FieldClusterNodeID:
+		m.ClearClusterNodeID()
 		return nil
 	case envbuild.FieldVersion:
 		m.ClearVersion()

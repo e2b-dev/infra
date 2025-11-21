@@ -182,7 +182,7 @@ func (tm *TemplateManager) CreateTemplate(
 		buildContext, buildSpan := tracer.Start(ctx, "template-background-build-env")
 		defer buildSpan.End()
 
-		err := tm.BuildStatusSync(buildContext, buildID, templateID, clusterID, nodeID)
+		err := tm.BuildStatusSync(buildContext, buildID, templateID, clusterID, &nodeID)
 		if err != nil {
 			zap.L().Error("error syncing build status", zap.Error(err))
 		}

@@ -46,13 +46,16 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 
 		envBuildIDs := make([]template_manager.DeleteBuild, 0)
 		for _, build := range builds {
+			if build.ClusterNodeID == nil {
+				continue
+			}
 			envBuildIDs = append(
 				envBuildIDs,
 				template_manager.DeleteBuild{
 					BuildID:    build.ID,
 					TemplateID: build.EnvID,
 					ClusterID:  utils.WithClusterFallback(teamClusterID),
-					NodeID:     build.ClusterNodeID,
+					NodeID:     *build.ClusterNodeID,
 				},
 			)
 		}
