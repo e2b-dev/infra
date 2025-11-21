@@ -12,8 +12,8 @@ import (
 )
 
 const createOrUpdateTemplate = `-- name: CreateOrUpdateTemplate :exec
-INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id)
-VALUES ($1, $2, $3, NOW(),FALSE, $4)
+INSERT INTO "public"."envs"(id, team_id, created_by, public, cluster_id)
+VALUES ($1, $2, $3,FALSE, $4)
 ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1
@@ -102,6 +102,7 @@ func (q *Queries) CreateTemplateBuild(ctx context.Context, arg CreateTemplateBui
 const invalidateUnstartedTemplateBuilds = `-- name: InvalidateUnstartedTemplateBuilds :exec
 UPDATE "public"."env_builds"
 SET status  = 'failed',
+    updated_at = NOW(),
     finished_at = NOW()
 WHERE env_id = $1 AND status = 'waiting'
 `

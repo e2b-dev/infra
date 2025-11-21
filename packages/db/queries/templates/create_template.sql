@@ -1,6 +1,6 @@
 -- name: CreateOrUpdateTemplate :exec
-INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id)
-VALUES (@template_id, @team_id, @created_by, NOW(),FALSE, @cluster_id)
+INSERT INTO "public"."envs"(id, team_id, created_by, public, cluster_id)
+VALUES (@template_id, @team_id, @created_by,FALSE, @cluster_id)
 ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1;
@@ -8,6 +8,7 @@ SET updated_at  = NOW(),
 -- name: InvalidateUnstartedTemplateBuilds :exec
 UPDATE "public"."env_builds"
 SET status  = 'failed',
+    updated_at = NOW(),
     finished_at = NOW()
 WHERE env_id = @template_id AND status = 'waiting';
 
