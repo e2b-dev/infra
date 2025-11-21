@@ -57,7 +57,7 @@ func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
 	// Remove from Redis
 	key := getSandboxKey(sandboxID)
 
-	lock, err := s.lockService.Obtain(ctx, key, lockTimeout, nil)
+	lock, err := s.lockService.Obtain(ctx, getSandboxLockKey(key), lockTimeout, s.lockOption)
 	if err != nil {
 		return fmt.Errorf("failed to obtain lock: %w", err)
 	}
@@ -88,16 +88,18 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 	key := getSandboxKey(sandboxID)
 	var updatedSbx sandbox.Sandbox
 
-	lock, err := s.lockService.Obtain(ctx, key, lockTimeout, nil)
+	lock, err := s.lockService.Obtain(ctx, getSandboxLockKey(key), lockTimeout, s.lockOption)
 	if err != nil {
 		return sandbox.Sandbox{}, fmt.Errorf("failed to obtain lock: %w", err)
 	}
 
 	defer func() {
-		err := lock.Release(ctx)
-		if err != nil {
-			zap.L().Error("Failed to release lock", zap.Error(err))
-		}
+		go func() {
+			err := lock.Release(context.WithoutCancel(ctx))
+			if err != nil {
+				zap.L().Error("Failed to release lock", zap.Error(err))
+			}
+		}()
 	}()
 
 	// Get current value
