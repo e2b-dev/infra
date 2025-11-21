@@ -5,7 +5,7 @@ ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1;
 
--- name: InvalidateOldBuilds :exec
+-- name: InvalidateUnfinishedTemplateBuilds :exec
 UPDATE "public"."env_builds"
 SET status  = 'failed',
     finished_at = NOW()
