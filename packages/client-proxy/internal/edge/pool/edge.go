@@ -12,7 +12,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -60,13 +61,13 @@ func (o *EdgeInstance) sync(ctx context.Context) error {
 		info := o.GetInfo()
 		res, err := o.client.V1InfoWithResponse(ctx)
 		if err != nil {
-			zap.L().Error("failed to check edge instance status", l.WithNodeID(info.NodeID), zap.Error(err))
+			logger.L().Error(ctx, "failed to check edge instance status", l.WithNodeID(info.NodeID), zap.Error(err))
 
 			continue
 		}
 
 		if res.JSON200 == nil {
-			zap.L().Error("failed to check edge instance status", l.WithNodeID(info.NodeID), zap.Int("status", res.StatusCode()))
+			logger.L().Error(ctx, "failed to check edge instance status", l.WithNodeID(info.NodeID), zap.Int("status", res.StatusCode()))
 
 			continue
 		}

@@ -14,7 +14,8 @@ import (
 )
 
 func (a *APIStore) GetNodes(c *gin.Context) {
-	result := a.orchestrator.AdminNodes()
+	ctx := c.Request.Context()
+	result := a.orchestrator.AdminNodes(ctx)
 	c.JSON(http.StatusOK, result)
 }
 

@@ -34,7 +34,7 @@ func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string
 	)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for template build", err)
-		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
+		logger.L().Error(ctx, "error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
 
 		return nil, err
 	}

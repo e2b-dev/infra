@@ -8,7 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -48,13 +49,13 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 
 	err = a.sandboxes.StoreSandbox(ctx, body.SandboxID, sbxInfo, sbxMaxLifetime)
 	if err != nil {
-		zap.L().Error("Error when storing sandbox in catalog", zap.Error(err))
+		logger.L().Error(ctx, "Error when storing sandbox in catalog", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when storing sandbox in catalog")
 		telemetry.ReportCriticalError(ctx, "error when storing sandbox in catalog", err)
 
 		return
 	}
 
-	zap.L().Info("Sandbox successfully stored in catalog", l.WithSandboxID(body.SandboxID))
+	logger.L().Info(ctx, "Sandbox successfully stored in catalog", l.WithSandboxID(body.SandboxID))
 	c.Status(http.StatusOK)
 }

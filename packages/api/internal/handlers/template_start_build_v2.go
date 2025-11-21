@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -120,7 +121,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	version, err := userAgentToTemplateVersion(zap.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID)), c.Request.UserAgent())
+	version, err := userAgentToTemplateVersion(ctx, logger.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID)), c.Request.UserAgent())
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
@@ -173,7 +174,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		version,
 	)
 
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "built environment", posthog.NewProperties().
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "built environment", posthog.NewProperties().
 		Set("environment", templateID).
 		Set("build_id", buildID).
 		Set("duration", time.Since(startTime).String()).
@@ -192,7 +193,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 
 // userAgentToTemplateVersion returns the template semver version based on the user agent string.
 // If the user agent is not recognized, it defaults to the latest stable version.
-func userAgentToTemplateVersion(logger *zap.Logger, userAgent string) (string, error) {
+func userAgentToTemplateVersion(ctx context.Context, logger logger.Logger, userAgent string) (string, error) {
 	version := templates.TemplateV2LatestVersion
 
 	switch {
@@ -219,7 +220,7 @@ func userAgentToTemplateVersion(logger *zap.Logger, userAgent string) (string, e
 			version = templates.TemplateV2BetaVersion
 		}
 	default:
-		logger.Debug("Unrecognized user agent, defaulting to the latest template version", zap.String("user_agent", userAgent), zap.String("version", version))
+		logger.Debug(ctx, "Unrecognized user agent, defaulting to the latest template version", zap.String("user_agent", userAgent), zap.String("version", version))
 	}
 
 	return version, nil

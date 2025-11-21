@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -90,7 +91,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	// If the API key is valid, we will get a result back
 	result, validationError := a.validationFunction(ctx, headerKey)
 	if validationError != nil {
-		zap.L().Info("validation error", zap.Error(validationError.Err))
+		logger.L().Info(ctx, "validation error", zap.Error(validationError.Err))
 		telemetry.ReportError(ctx, a.errorMessage, validationError.Err)
 
 		var forbiddenError *db.TeamForbiddenError

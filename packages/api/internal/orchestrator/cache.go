@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -26,7 +27,7 @@ func (o *Orchestrator) GetSandbox(ctx context.Context, sandboxID string) (sandbo
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
 func (o *Orchestrator) keepInSync(ctx context.Context, store *sandbox.Store, skipSyncingWithNomad bool) {
 	// Run the first sync immediately
-	zap.L().Info("Running the initial node sync")
+	logger.L().Info(ctx, "Running the initial node sync")
 	o.syncNodes(ctx, store, skipSyncingWithNomad)
 
 	// Sync the nodes every cacheSyncTime
@@ -36,7 +37,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, store *sandbox.Store, ski
 	for {
 		select {
 		case <-ctx.Done():
-			zap.L().Info("Stopping keepInSync")
+			logger.L().Info(ctx, "Stopping keepInSync")
 
 			return
 		case <-ticker.C:
@@ -60,7 +61,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 	if !skipSyncingWithNomad {
 		nomadSD, err := o.listNomadNodes(spanCtx)
 		if err != nil {
-			zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
+			logger.L().Error(ctx, "Error listing orchestrator nodes", zap.Error(err))
 
 			return
 		}
@@ -102,10 +103,10 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 				err = o.syncClusterNode(syncNodesSpanCtx, n, store)
 			}
 			if err != nil {
-				zap.L().Error("Error syncing node", zap.Error(err))
-				err = n.Close()
+				logger.L().Error(ctx, "Error syncing node", zap.Error(err))
+				err = n.Close(ctx)
 				if err != nil {
-					zap.L().Error("Error closing grpc connection", zap.Error(err))
+					logger.L().Error(ctx, "Error closing grpc connection", zap.Error(err))
 				}
 
 				o.deregisterNode(n)
@@ -130,7 +131,7 @@ func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered 
 				defer wg.Done()
 				err := o.connectToNode(connectLocalSpanCtx, n)
 				if err != nil {
-					zap.L().Error("Error connecting to node", zap.Error(err))
+					logger.L().Error(ctx, "Error connecting to node", zap.Error(err))
 				}
 			}()
 		}

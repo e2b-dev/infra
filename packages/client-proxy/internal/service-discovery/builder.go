@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"go.uber.org/zap"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 	K8sPodsProvider   = "K8S-PODS"
 )
 
-func BuildServiceDiscoveryProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, port uint16, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
+func BuildServiceDiscoveryProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, port uint16, logger logger.Logger) (ServiceDiscoveryAdapter, error) {
 	switch strings.ToUpper(config.Provider) {
 	case DnsProviderKey:
 		return createDnsProvider(ctx, config, port, logger)
@@ -40,7 +40,7 @@ var (
 	ErrMissingDNSQuery    = errors.New("missing DNS query")
 )
 
-func createDnsProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, port uint16, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
+func createDnsProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, port uint16, logger logger.Logger) (ServiceDiscoveryAdapter, error) {
 	dnsResolverAddress := config.DNSResolverAddress
 	if dnsResolverAddress == "" {
 		return nil, ErrMissingDNSResolver
@@ -59,7 +59,7 @@ var (
 	ErrMissingPodLabels    = errors.New("missing pod labels")
 )
 
-func createK8sProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, port uint16, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
+func createK8sProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, port uint16, logger logger.Logger) (ServiceDiscoveryAdapter, error) {
 	podNamespace := config.PodNamespace
 	if podNamespace == "" {
 		return nil, ErrMissingPodNamespace
@@ -92,7 +92,7 @@ var (
 	ErrMissingNomadJobPrefix = errors.New("missing nomad job prefix")
 )
 
-func createNomadProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, port uint16, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
+func createNomadProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, port uint16, logger logger.Logger) (ServiceDiscoveryAdapter, error) {
 	nomadEndpoint := config.NomadEndpoint
 	if nomadEndpoint == "" {
 		return nil, ErrMissingNomadEndpoint

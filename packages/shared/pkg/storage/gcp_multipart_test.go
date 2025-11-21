@@ -43,7 +43,7 @@ func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryCo
 	}
 
 	// Create retryable client using the test server's client
-	retryableClient := createRetryableClient(config)
+	retryableClient := createRetryableClient(t.Context(), config)
 	retryableClient.HTTPClient = server.Client()
 
 	uploader := &MultipartUploader{
@@ -735,7 +735,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 		BackoffMultiplier: 2.0,
 	}
 
-	client := createRetryableClient(config)
+	client := createRetryableClient(t.Context(), config)
 	require.NotNil(t, client)
 	require.NotNil(t, client.Backoff)
 
@@ -817,7 +817,7 @@ func TestCreateRetryableClient_Configuration(t *testing.T) {
 		BackoffMultiplier: 3.0,
 	}
 
-	client := createRetryableClient(config)
+	client := createRetryableClient(t.Context(), config)
 
 	// Verify retry configuration
 	require.Equal(t, config.MaxAttempts-1, client.RetryMax) // go-retryablehttp counts retries, not total attempts
@@ -836,7 +836,7 @@ func TestCreateRetryableClient_ZeroBackoff(t *testing.T) {
 		BackoffMultiplier: 2.0,
 	}
 
-	client := createRetryableClient(config)
+	client := createRetryableClient(t.Context(), config)
 
 	// With zero initial backoff, jitter should also return zero
 	backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 0, nil)
@@ -870,7 +870,7 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 		BackoffMultiplier: 2.0,
 	}
 
-	client := createRetryableClient(config)
+	client := createRetryableClient(t.Context(), config)
 	client.HTTPClient = server.Client()
 
 	startTime := time.Now()

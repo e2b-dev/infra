@@ -8,6 +8,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/synchronization")
@@ -46,13 +48,13 @@ func NewSynchronize[SourceItem any, PoolItem any](spanPrefix string, logsPrefix 
 	return s
 }
 
-func (s *Synchronize[SourceItem, PoolItem]) Start(syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
+func (s *Synchronize[SourceItem, PoolItem]) Start(ctx context.Context, syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
 	if runInitialSync {
 		initialSyncTimeout, initialSyncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
 		err := s.sync(initialSyncTimeout)
 		initialSyncCancel()
 		if err != nil {
-			zap.L().Error(s.getLog("Initial sync failed"), zap.Error(err))
+			logger.L().Error(ctx, s.getLog("Initial sync failed"), zap.Error(err))
 		}
 	}
 
@@ -62,7 +64,7 @@ func (s *Synchronize[SourceItem, PoolItem]) Start(syncInterval time.Duration, sy
 	for {
 		select {
 		case <-s.cancel:
-			zap.L().Info(s.getLog("Background synchronization ended"))
+			logger.L().Info(ctx, s.getLog("Background synchronization ended"))
 
 			return
 		case <-timer.C:
@@ -70,7 +72,7 @@ func (s *Synchronize[SourceItem, PoolItem]) Start(syncInterval time.Duration, sy
 			err := s.sync(syncTimeout)
 			syncCancel()
 			if err != nil {
-				zap.L().Error(s.getLog("Failed to synchronize"), zap.Error(err))
+				logger.L().Error(ctx, s.getLog("Failed to synchronize"), zap.Error(err))
 			}
 		}
 	}
@@ -83,7 +85,7 @@ func (s *Synchronize[SourceItem, PoolItem]) Close() {
 }
 
 func (s *Synchronize[SourceItem, PoolItem]) sync(ctx context.Context) error {
-	spanCtx, span := tracer.Start(ctx, s.getSpanName("sync-items"))
+	ctx, span := tracer.Start(ctx, s.getSpanName("sync-items"))
 	defer span.End()
 
 	sourceItems, err := s.store.SourceList(ctx)
@@ -91,14 +93,14 @@ func (s *Synchronize[SourceItem, PoolItem]) sync(ctx context.Context) error {
 		return err
 	}
 
-	s.syncDiscovered(spanCtx, sourceItems)
-	s.syncOutdated(spanCtx, sourceItems)
+	s.syncDiscovered(ctx, sourceItems)
+	s.syncOutdated(ctx, sourceItems)
 
 	return nil
 }
 
 func (s *Synchronize[SourceItem, PoolItem]) syncDiscovered(ctx context.Context, sourceItems []SourceItem) {
-	spanCtx, span := tracer.Start(ctx, s.getSpanName("sync-discovered-items"))
+	ctx, span := tracer.Start(ctx, s.getSpanName("sync-discovered-items"))
 	defer span.End()
 
 	var wg sync.WaitGroup
@@ -115,7 +117,7 @@ func (s *Synchronize[SourceItem, PoolItem]) syncDiscovered(ctx context.Context, 
 				return
 			}
 
-			s.store.PoolInsert(spanCtx, item)
+			s.store.PoolInsert(ctx, item)
 		}(item)
 	}
 }

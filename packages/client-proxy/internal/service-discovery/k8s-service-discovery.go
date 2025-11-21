@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -17,7 +18,7 @@ const (
 )
 
 type K8sServiceDiscovery struct {
-	logger  *zap.Logger
+	logger  logger.Logger
 	entries *smap.Map[ServiceDiscoveryItem]
 	client  *kubernetes.Clientset
 
@@ -28,7 +29,7 @@ type K8sServiceDiscovery struct {
 	port   uint16
 }
 
-func NewK8sServiceDiscovery(ctx context.Context, logger *zap.Logger, client *kubernetes.Clientset, port uint16, podLabels string, podNamespace string, hostIP bool) *K8sServiceDiscovery {
+func NewK8sServiceDiscovery(ctx context.Context, logger logger.Logger, client *kubernetes.Clientset, port uint16, podLabels string, podNamespace string, hostIP bool) *K8sServiceDiscovery {
 	sd := &K8sServiceDiscovery{
 		logger: logger,
 		client: client,
@@ -68,7 +69,7 @@ func (sd *K8sServiceDiscovery) keepInSync(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			sd.logger.Info("Stopping service discovery keep-in-sync")
+			sd.logger.Info(ctx, "Stopping service discovery keep-in-sync")
 
 			return
 		case <-ticker.C:
@@ -83,7 +84,7 @@ func (sd *K8sServiceDiscovery) sync(ctx context.Context) {
 
 	list, err := sd.client.CoreV1().Pods(sd.filterNamespace).List(reqCtx, metav1.ListOptions{LabelSelector: sd.filterLabels})
 	if err != nil {
-		sd.logger.Error("Failed to describe pods", zap.Error(err))
+		sd.logger.Error(ctx, "Failed to describe pods", zap.Error(err))
 
 		return
 	}
