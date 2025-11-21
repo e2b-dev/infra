@@ -24,7 +24,7 @@ func (a *APIStore) V1SandboxCatalogDelete(c *gin.Context) {
 		return
 	}
 
-	_, span := tracer.Start(ctx, "delete-sandbox-catalog-entry-handler")
+	ctx, span := tracer.Start(ctx, "delete-sandbox-catalog-entry-handler")
 	defer span.End()
 
 	err = a.sandboxes.DeleteSandbox(ctx, body.SandboxID, body.ExecutionID)

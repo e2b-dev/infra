@@ -26,7 +26,7 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 		return
 	}
 
-	_, span := tracer.Start(ctx, "create-sandbox-catalog-entry-handler")
+	ctx, span := tracer.Start(ctx, "create-sandbox-catalog-entry-handler")
 	defer span.End()
 
 	o, ok := a.orchestratorPool.GetOrchestrator(body.OrchestratorID)

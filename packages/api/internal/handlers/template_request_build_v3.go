@@ -48,16 +48,16 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	}
 
 	// Create the build, find the template ID by alias or generate a new one
-	_, span := tracer.Start(ctx, "find-template-alias")
+	findTemplateCtx, span := tracer.Start(ctx, "find-template-alias")
 	defer span.End()
 	templateID := id.Generate()
 	public := false
-	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(ctx, body.Alias)
+	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(findTemplateCtx, body.Alias)
 	switch {
 	case err == nil:
 		if templateAlias.TeamID != team.ID {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", body.Alias))
-			telemetry.ReportError(ctx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", body.Alias))
+			telemetry.ReportError(findTemplateCtx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", body.Alias))
 
 			return nil
 		}
@@ -68,7 +68,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		// Alias is available and not used
 	default:
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
+		telemetry.ReportCriticalError(findTemplateCtx, "error when getting template alias", err)
 
 		return nil
 	}
@@ -95,11 +95,11 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	_, span = tracer.Start(c, "posthog-analytics")
+	posthogCtx, span := tracer.Start(c, "posthog-analytics")
 	defer span.End()
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "submitted environment build request", properties.
+	a.posthog.IdentifyAnalyticsTeam(posthogCtx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsTeamEvent(posthogCtx, team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", body.Alias),
