@@ -13,31 +13,36 @@ import (
 
 var ErrSnapshotNotFound = errors.New("no snapshot found")
 
-type SnapshotWithBuilds struct {
-	queries.Snapshot
-	Builds []queries.EnvBuild
+type SnapshotBuild struct {
+	BuildID       uuid.UUID
+	ClusterNodeID string
+}
+type SnapshotBuilds struct {
+	TemplateID string
+	Builds     []SnapshotBuild
 }
 
-func GetSnapshotWithBuilds(ctx context.Context, db *sqlcdb.Client, teamID uuid.UUID, sandboxID string) (SnapshotWithBuilds, error) {
+func GetSnapshotBuilds(ctx context.Context, db *sqlcdb.Client, teamID uuid.UUID, sandboxID string) (SnapshotBuilds, error) {
 	snapshotWithBuilds, err := db.GetSnapshotBuilds(ctx, queries.GetSnapshotBuildsParams{
 		SandboxID: sandboxID,
 		TeamID:    teamID,
 	})
 	if err != nil {
-		return SnapshotWithBuilds{}, fmt.Errorf("error getting snapshot with builds: %w", err)
+		return SnapshotBuilds{}, fmt.Errorf("error getting snapshot with builds: %w", err)
 	}
 
 	if len(snapshotWithBuilds) == 0 {
-		return SnapshotWithBuilds{}, ErrSnapshotNotFound
+		return SnapshotBuilds{}, ErrSnapshotNotFound
 	}
 
-	snapshot := SnapshotWithBuilds{Snapshot: snapshotWithBuilds[0].Snapshot, Builds: []queries.EnvBuild{}}
-	for _, entry := range snapshotWithBuilds {
-		if entry.EnvBuild.ID == uuid.Nil {
+	snapshot := SnapshotBuilds{TemplateID: snapshotWithBuilds[0].TemplateID, Builds: []SnapshotBuild{}}
+	for _, build := range snapshotWithBuilds {
+		// Due to left join we have to check if the build is present
+		if build.BuildID == nil || build.BuildClusterNodeID == nil {
 			continue
 		}
 
-		snapshot.Builds = append(snapshot.Builds, entry.EnvBuild)
+		snapshot.Builds = append(snapshot.Builds, SnapshotBuild{BuildID: *build.BuildID, ClusterNodeID: *build.BuildClusterNodeID})
 	}
 
 	return snapshot, nil

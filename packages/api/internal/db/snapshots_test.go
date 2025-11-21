@@ -1,12 +1,10 @@
 package db_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,13 +17,13 @@ import (
 )
 
 // createTestTeam creates a test team in the database using raw SQL
-func createTestTeam(t *testing.T, ctx context.Context, db *client.Client) uuid.UUID {
+func createTestTeam(t *testing.T, db *client.Client) uuid.UUID {
 	t.Helper()
 	teamID := uuid.New()
 
 	// Insert a team directly into the database using raw SQL
 	// Using the default tier 'base_v1' that is created in migrations
-	err := db.TestsRawSQL(ctx,
+	err := db.TestsRawSQL(t.Context(),
 		"INSERT INTO public.teams (id, name, tier, email) VALUES ($1, $2, $3, $4)",
 		teamID, "Test Team "+teamID.String(), "base_v1", "test-"+teamID.String()+"@example.com",
 	)
@@ -35,12 +33,12 @@ func createTestTeam(t *testing.T, ctx context.Context, db *client.Client) uuid.U
 }
 
 // createTestBaseEnv creates a base env in the database (required by foreign key constraint)
-func createTestBaseEnv(t *testing.T, ctx context.Context, db *client.Client, teamID uuid.UUID) string {
+func createTestBaseEnv(t *testing.T, db *client.Client, teamID uuid.UUID) string {
 	t.Helper()
 	envID := "base-env-" + uuid.New().String()
 
 	// Insert a base env directly into the database
-	err := db.TestsRawSQL(ctx,
+	err := db.TestsRawSQL(t.Context(),
 		"INSERT INTO public.envs (id, team_id, public, updated_at) VALUES ($1, $2, $3, NOW())",
 		envID, teamID, true,
 	)
@@ -50,7 +48,7 @@ func createTestBaseEnv(t *testing.T, ctx context.Context, db *client.Client, tea
 }
 
 // createTestSnapshot creates a snapshot using UpsertSnapshot and returns the sandbox_id and env_id
-func createTestSnapshot(t *testing.T, ctx context.Context, db *client.Client, teamID uuid.UUID, baseEnvID string) (string, string) {
+func createTestSnapshot(t *testing.T, db *client.Client, teamID uuid.UUID, baseEnvID string) (string, string) {
 	t.Helper()
 
 	sandboxID := "sandbox-" + uuid.New().String()
@@ -90,7 +88,7 @@ func createTestSnapshot(t *testing.T, ctx context.Context, db *client.Client, te
 		Status:       "success",
 	}
 
-	result, err := db.UpsertSnapshot(ctx, params)
+	result, err := db.UpsertSnapshot(t.Context(), params)
 	require.NoError(t, err, "Failed to create test snapshot")
 	require.NotEqual(t, uuid.Nil, result.BuildID, "BuildID should not be nil")
 
@@ -99,7 +97,7 @@ func createTestSnapshot(t *testing.T, ctx context.Context, db *client.Client, te
 }
 
 // createTestEnvBuild creates an env build for testing
-func createTestEnvBuild(t *testing.T, ctx context.Context, db *client.Client, envID string) uuid.UUID {
+func createTestEnvBuild(t *testing.T, db *client.Client, envID string) uuid.UUID {
 	t.Helper()
 
 	buildID := uuid.New()
@@ -108,7 +106,7 @@ func createTestEnvBuild(t *testing.T, ctx context.Context, db *client.Client, en
 	freeDisk := int64(512)
 	totalDisk := int64(1024)
 
-	err := db.TestsRawSQL(ctx,
+	err := db.TestsRawSQL(t.Context(),
 		`INSERT INTO public.env_builds
 		(id, env_id, status, vcpu, ram_mb, free_disk_size_mb, total_disk_size_mb, kernel_version, firecracker_version, envd_version, cluster_node_id, created_at, updated_at, version)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW(), 1)`,
@@ -119,31 +117,36 @@ func createTestEnvBuild(t *testing.T, ctx context.Context, db *client.Client, en
 	return buildID
 }
 
+func deleteBuild(t *testing.T, db *client.Client, envID string) {
+	t.Helper()
+
+	err := db.TestsRawSQL(t.Context(),
+		`DELETE FROM public.env_builds
+		WHERE env_id = $1`,
+		envID,
+	)
+	require.NoError(t, err, "Failed to delete test env builds")
+}
+
 func TestGetSnapshotWithBuilds_Success(t *testing.T) {
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
-	ctx := context.Background()
 
 	// Create test data: team -> base env -> snapshot with env -> env builds
-	teamID := createTestTeam(t, ctx, db)
-	baseEnvID := createTestBaseEnv(t, ctx, db, teamID)
-	sandboxID, envID := createTestSnapshot(t, ctx, db, teamID, baseEnvID)
+	teamID := createTestTeam(t, db)
+	baseEnvID := createTestBaseEnv(t, db, teamID)
+	sandboxID, templateID := createTestSnapshot(t, db, teamID, baseEnvID)
 
 	// Create additional builds for the env (UpsertSnapshot already created one)
-	buildID1 := createTestEnvBuild(t, ctx, db, envID)
-	buildID2 := createTestEnvBuild(t, ctx, db, envID)
+	buildID1 := createTestEnvBuild(t, db, templateID)
+	buildID2 := createTestEnvBuild(t, db, templateID)
 
-	// Execute GetSnapshotWithBuilds
-	result, err := apidb.GetSnapshotWithBuilds(ctx, db, teamID, sandboxID)
-	require.NoError(t, err, "GetSnapshotWithBuilds should succeed")
+	// Execute GetSnapshotBuilds
+	result, err := apidb.GetSnapshotBuilds(t.Context(), db, teamID, sandboxID)
+	require.NoError(t, err, "GetSnapshotBuilds should succeed")
 
 	// Verify snapshot data
-	assert.Equal(t, sandboxID, result.SandboxID, "SandboxID should match")
-	assert.Equal(t, teamID, result.TeamID, "TeamID should match")
-	assert.Equal(t, envID, result.EnvID, "EnvID should match")
-	assert.Equal(t, baseEnvID, result.BaseEnvID, "BaseEnvID should match")
-	assert.NotNil(t, result.Metadata, "Metadata should not be nil")
-	assert.Equal(t, "value", result.Metadata["key"], "Metadata should contain expected values")
+	assert.Equal(t, templateID, result.TemplateID, "EnvID should match")
 
 	// Verify builds are returned (1 from UpsertSnapshot + 2 additional = 3 total)
 	assert.Len(t, result.Builds, 3, "Should have 3 builds total")
@@ -151,131 +154,85 @@ func TestGetSnapshotWithBuilds_Success(t *testing.T) {
 	// Verify the additional build IDs are present
 	buildIDs := make(map[uuid.UUID]bool)
 	for _, build := range result.Builds {
-		buildIDs[build.ID] = true
+		buildIDs[build.BuildID] = true
 	}
 	assert.True(t, buildIDs[buildID1], "Should contain first additional build ID")
 	assert.True(t, buildIDs[buildID2], "Should contain second additional build ID")
-
-	// Verify build data is populated (checking one of our created builds)
-	var testBuild *queries.EnvBuild
-	for i := range result.Builds {
-		if result.Builds[i].ID == buildID1 {
-			testBuild = &result.Builds[i]
-			break
-		}
-	}
-	require.NotNil(t, testBuild, "Should find our test build")
-	assert.Equal(t, envID, testBuild.EnvID, "Build EnvID should match snapshot EnvID")
-	assert.Equal(t, "ready", testBuild.Status, "Build status should match")
-	assert.Equal(t, int64(2), testBuild.Vcpu, "Build vCPU should match")
-	assert.Equal(t, int64(2048), testBuild.RamMb, "Build RAM should match")
 }
 
 func TestGetSnapshotWithBuilds_NoAdditionalBuilds(t *testing.T) {
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
-	ctx := context.Background()
 
 	// Create test data: team -> base env -> snapshot
 	// Note: UpsertSnapshot creates one build automatically
-	teamID := createTestTeam(t, ctx, db)
-	baseEnvID := createTestBaseEnv(t, ctx, db, teamID)
-	sandboxID, envID := createTestSnapshot(t, ctx, db, teamID, baseEnvID)
+	teamID := createTestTeam(t, db)
+	baseEnvID := createTestBaseEnv(t, db, teamID)
+	sandboxID, templateID := createTestSnapshot(t, db, teamID, baseEnvID)
 
-	// Execute GetSnapshotWithBuilds (only the build created by UpsertSnapshot)
-	result, err := apidb.GetSnapshotWithBuilds(ctx, db, teamID, sandboxID)
-	require.NoError(t, err, "GetSnapshotWithBuilds should succeed")
+	// Execute GetSnapshotBuilds (only the build created by UpsertSnapshot)
+	result, err := apidb.GetSnapshotBuilds(t.Context(), db, teamID, sandboxID)
+	require.NoError(t, err, "GetSnapshotBuilds should succeed")
 
 	// Verify snapshot data
-	assert.Equal(t, sandboxID, result.SandboxID, "SandboxID should match")
-	assert.Equal(t, teamID, result.TeamID, "TeamID should match")
-	assert.Equal(t, envID, result.EnvID, "EnvID should match")
+	assert.Equal(t, templateID, result.TemplateID, "EnvID should match")
 
 	// Verify the build created by UpsertSnapshot is returned
 	assert.Len(t, result.Builds, 1, "Should have exactly 1 build (created by UpsertSnapshot)")
-	assert.NotEqual(t, uuid.Nil, result.Builds[0].ID, "Build ID should not be nil")
-	assert.Equal(t, envID, result.Builds[0].EnvID, "Build EnvID should match snapshot EnvID")
-	assert.Equal(t, "success", result.Builds[0].Status, "Build status should match")
+	assert.NotEqual(t, uuid.Nil, result.Builds[0].BuildID, "Build ID should not be nil")
+	assert.Equal(t, templateID, result.TemplateID, "Build EnvID should match snapshot EnvID")
 }
 
 func TestGetSnapshotWithBuilds_NotFound(t *testing.T) {
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
-	ctx := context.Background()
 
 	// Create a team but no snapshot
-	teamID := createTestTeam(t, ctx, db)
+	teamID := createTestTeam(t, db)
 	nonExistentSandboxID := "sandbox-does-not-exist"
 
-	// Execute GetSnapshotWithBuilds with non-existent sandbox ID
-	result, err := apidb.GetSnapshotWithBuilds(ctx, db, teamID, nonExistentSandboxID)
+	// Execute GetSnapshotBuilds with non-existent sandbox ID
+	_, err := apidb.GetSnapshotBuilds(t.Context(), db, teamID, nonExistentSandboxID)
 
 	// Verify error is returned
-	require.Error(t, err, "GetSnapshotWithBuilds should return an error")
+	require.Error(t, err, "GetSnapshotBuilds should return an error")
 	assert.ErrorIs(t, err, apidb.ErrSnapshotNotFound, "Error should be ErrSnapshotNotFound")
-
-	// Verify result is empty
-	assert.Equal(t, "", result.SandboxID, "Result should be empty on error")
-	assert.Nil(t, result.Builds, "Builds should be nil on error")
 }
 
 func TestGetSnapshotWithBuilds_WrongTeamID(t *testing.T) {
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
-	ctx := context.Background()
 
 	// Create test data with one team
-	teamID := createTestTeam(t, ctx, db)
-	baseEnvID := createTestBaseEnv(t, ctx, db, teamID)
-	sandboxID, _ := createTestSnapshot(t, ctx, db, teamID, baseEnvID)
+	teamID := createTestTeam(t, db)
+	baseEnvID := createTestBaseEnv(t, db, teamID)
+	sandboxID, _ := createTestSnapshot(t, db, teamID, baseEnvID)
 
 	// Create a different team
-	differentTeamID := createTestTeam(t, ctx, db)
+	differentTeamID := createTestTeam(t, db)
 
-	// Execute GetSnapshotWithBuilds with wrong team ID
-	result, err := apidb.GetSnapshotWithBuilds(ctx, db, differentTeamID, sandboxID)
+	// Execute GetSnapshotBuilds with wrong team ID
+	_, err := apidb.GetSnapshotBuilds(t.Context(), db, differentTeamID, sandboxID)
 
 	// Verify error is returned (snapshot exists but doesn't belong to this team)
-	require.Error(t, err, "GetSnapshotWithBuilds should return an error for wrong team")
+	require.Error(t, err, "GetSnapshotBuilds should return an error for wrong team")
 	assert.ErrorIs(t, err, apidb.ErrSnapshotNotFound, "Error should be ErrSnapshotNotFound")
-
-	// Verify result is empty
-	assert.Equal(t, "", result.SandboxID, "Result should be empty on error")
-	assert.Nil(t, result.Builds, "Builds should be nil on error")
 }
 
-func TestGetSnapshotWithBuilds_MultipleBuildsVerification(t *testing.T) {
+func TestGetSnapshotWithBuilds_NoBuilds(t *testing.T) {
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
-	ctx := context.Background()
 
 	// Create test data
-	teamID := createTestTeam(t, ctx, db)
-	baseEnvID := createTestBaseEnv(t, ctx, db, teamID)
-	sandboxID, envID := createTestSnapshot(t, ctx, db, teamID, baseEnvID)
+	teamID := createTestTeam(t, db)
+	baseEnvID := createTestBaseEnv(t, db, teamID)
+	sandboxID, envID := createTestSnapshot(t, db, teamID, baseEnvID)
+	deleteBuild(t, db, envID)
 
-	// Create 3 additional builds (UpsertSnapshot already created 1, so 4 total)
-	buildID1 := createTestEnvBuild(t, ctx, db, envID)
-	buildID2 := createTestEnvBuild(t, ctx, db, envID)
-	buildID3 := createTestEnvBuild(t, ctx, db, envID)
-
-	// Execute GetSnapshotWithBuilds
-	result, err := apidb.GetSnapshotWithBuilds(ctx, db, teamID, sandboxID)
-	require.NoError(t, err, "GetSnapshotWithBuilds should succeed")
+	// Execute GetSnapshotBuilds
+	result, err := apidb.GetSnapshotBuilds(t.Context(), db, teamID, sandboxID)
+	require.NoError(t, err, "GetSnapshotBuilds should succeed")
 
 	// Verify we got all 4 builds (1 from UpsertSnapshot + 3 additional)
-	assert.Len(t, result.Builds, 4, "Should have 4 builds total")
-
-	// Verify all build IDs are present and unique
-	buildIDs := make(map[uuid.UUID]bool)
-	for _, build := range result.Builds {
-		assert.NotEqual(t, uuid.Nil, build.ID, "Build ID should not be nil")
-		assert.Equal(t, envID, build.EnvID, "All builds should have the same EnvID")
-		buildIDs[build.ID] = true
-	}
-
-	assert.Len(t, buildIDs, 4, "All build IDs should be unique")
-	assert.True(t, buildIDs[buildID1], "Should contain first additional build ID")
-	assert.True(t, buildIDs[buildID2], "Should contain second additional build ID")
-	assert.True(t, buildIDs[buildID3], "Should contain third additional build ID")
+	assert.Empty(t, result.Builds, "Should have 0 builds after deletion")
 }

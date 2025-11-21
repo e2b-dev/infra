@@ -12,7 +12,7 @@ import (
 )
 
 const getSnapshotBuilds = `-- name: GetSnapshotBuilds :many
-SELECT s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, s.origin_node_id, s.allow_internet_access, s.auto_pause, s.team_id, s.config, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version FROM  "public"."snapshots" s
+SELECT s.env_id as template_id, eb.id as build_id, eb.cluster_node_id as build_cluster_node_id FROM  "public"."snapshots" s
 LEFT JOIN "public"."env_builds" eb ON s."env_id" = eb."env_id"
 WHERE s.sandbox_id = $1
 AND s.team_id = $2
@@ -24,8 +24,9 @@ type GetSnapshotBuildsParams struct {
 }
 
 type GetSnapshotBuildsRow struct {
-	Snapshot Snapshot
-	EnvBuild EnvBuild
+	TemplateID         string
+	BuildID            *uuid.UUID
+	BuildClusterNodeID *string
 }
 
 func (q *Queries) GetSnapshotBuilds(ctx context.Context, arg GetSnapshotBuildsParams) ([]GetSnapshotBuildsRow, error) {
@@ -37,40 +38,7 @@ func (q *Queries) GetSnapshotBuilds(ctx context.Context, arg GetSnapshotBuildsPa
 	var items []GetSnapshotBuildsRow
 	for rows.Next() {
 		var i GetSnapshotBuildsRow
-		if err := rows.Scan(
-			&i.Snapshot.CreatedAt,
-			&i.Snapshot.EnvID,
-			&i.Snapshot.SandboxID,
-			&i.Snapshot.ID,
-			&i.Snapshot.Metadata,
-			&i.Snapshot.BaseEnvID,
-			&i.Snapshot.SandboxStartedAt,
-			&i.Snapshot.EnvSecure,
-			&i.Snapshot.OriginNodeID,
-			&i.Snapshot.AllowInternetAccess,
-			&i.Snapshot.AutoPause,
-			&i.Snapshot.TeamID,
-			&i.Snapshot.Config,
-			&i.EnvBuild.ID,
-			&i.EnvBuild.CreatedAt,
-			&i.EnvBuild.UpdatedAt,
-			&i.EnvBuild.FinishedAt,
-			&i.EnvBuild.Status,
-			&i.EnvBuild.Dockerfile,
-			&i.EnvBuild.StartCmd,
-			&i.EnvBuild.Vcpu,
-			&i.EnvBuild.RamMb,
-			&i.EnvBuild.FreeDiskSizeMb,
-			&i.EnvBuild.TotalDiskSizeMb,
-			&i.EnvBuild.KernelVersion,
-			&i.EnvBuild.FirecrackerVersion,
-			&i.EnvBuild.EnvID,
-			&i.EnvBuild.EnvdVersion,
-			&i.EnvBuild.ReadyCmd,
-			&i.EnvBuild.ClusterNodeID,
-			&i.EnvBuild.Reason,
-			&i.EnvBuild.Version,
-		); err != nil {
+		if err := rows.Scan(&i.TemplateID, &i.BuildID, &i.BuildClusterNodeID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

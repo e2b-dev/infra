@@ -24,15 +24,14 @@ import (
 )
 
 func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID, teamClusterID *uuid.UUID) error {
-	snapshot, err := db.GetSnapshotWithBuilds(ctx, a.sqlcDB, teamID, sandboxID)
+	snapshot, err := db.GetSnapshotBuilds(ctx, a.sqlcDB, teamID, sandboxID)
 	if err != nil {
 		return err
 	}
 
-	templateID := snapshot.EnvID
 	dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TeamID:     teamID,
-		TemplateID: templateID,
+		TemplateID: snapshot.TemplateID,
 	})
 	if dbErr != nil {
 		return fmt.Errorf("error deleting template from db: %w", dbErr)
@@ -43,15 +42,15 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		ctx, span := tracer.Start(ctx, "delete-snapshot")
 		defer span.End()
 		span.SetAttributes(telemetry.WithSandboxID(sandboxID))
-		span.SetAttributes(telemetry.WithTemplateID(templateID))
+		span.SetAttributes(telemetry.WithTemplateID(snapshot.TemplateID))
 
 		envBuildIDs := make([]template_manager.DeleteBuild, 0)
 		for _, build := range snapshot.Builds {
 			envBuildIDs = append(
 				envBuildIDs,
 				template_manager.DeleteBuild{
-					BuildID:    build.ID,
-					TemplateID: templateID,
+					BuildID:    build.BuildID,
+					TemplateID: snapshot.TemplateID,
 					ClusterID:  utils.WithClusterFallback(teamClusterID),
 					NodeID:     build.ClusterNodeID,
 				},
@@ -68,7 +67,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		}
 	}(context.WithoutCancel(ctx))
 
-	a.templateCache.Invalidate(templateID)
+	a.templateCache.Invalidate(snapshot.TemplateID)
 
 	return nil
 }
