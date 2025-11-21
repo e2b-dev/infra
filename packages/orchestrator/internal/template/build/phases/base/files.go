@@ -34,8 +34,7 @@ func constructLayerFilesFromOCI(
 	rtfs := rootfs.New(
 		artifactRegistry,
 		dockerhubRepository,
-		buildContext.Template,
-		buildContext.Config,
+		buildContext,
 	)
 	provisionScript, err := getProvisionScript(ctx, ProvisionScriptParams{
 		BusyBox:    "/" + rootfs.BusyBoxPath,
