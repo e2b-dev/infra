@@ -18,7 +18,6 @@ import (
 
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type OrchestratorStatus string
@@ -86,7 +85,7 @@ func (o *OrchestratorInstance) sync(ctx context.Context) error {
 
 		status, err := o.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			logger.L().Error(ctx, "failed to check orchestrator health", l.WithNodeID(freshInfo.NodeID), zap.Error(err))
+			logger.L().Error(ctx, "failed to check orchestrator health", logger.WithNodeID(freshInfo.NodeID), zap.Error(err))
 
 			continue
 		}

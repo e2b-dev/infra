@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -93,10 +92,10 @@ func (p *Pool) Close(ctx context.Context) {
 		wg.Add(1)
 		go func(c *Cluster) {
 			defer wg.Done()
-			logger.L().Info(ctx, "Closing cluster", l.WithClusterID(c.ID))
+			logger.L().Info(ctx, "Closing cluster", logger.WithClusterID(c.ID))
 			err := c.Close()
 			if err != nil {
-				logger.L().Error(ctx, "Error closing cluster", zap.Error(err), l.WithClusterID(c.ID))
+				logger.L().Error(ctx, "Error closing cluster", zap.Error(err), logger.WithClusterID(c.ID))
 			}
 		}(cluster)
 	}
@@ -156,7 +155,7 @@ func (d poolSynchronizationStore) PoolExists(_ context.Context, cluster queries.
 func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster queries.Cluster) {
 	clusterID := cluster.ID.String()
 
-	logger.L().Info(ctx, "Initializing newly discovered cluster", l.WithClusterID(cluster.ID))
+	logger.L().Info(ctx, "Initializing newly discovered cluster", logger.WithClusterID(cluster.ID))
 
 	c, err := NewCluster(context.Background(),
 		d.pool.tel,
@@ -167,12 +166,12 @@ func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster querie
 		cluster.SandboxProxyDomain,
 	)
 	if err != nil {
-		logger.L().Error(ctx, "Initializing cluster failed", zap.Error(err), l.WithClusterID(c.ID))
+		logger.L().Error(ctx, "Initializing cluster failed", zap.Error(err), logger.WithClusterID(c.ID))
 
 		return
 	}
 
-	logger.L().Info(ctx, "Cluster initialized successfully", l.WithClusterID(c.ID))
+	logger.L().Info(ctx, "Cluster initialized successfully", logger.WithClusterID(c.ID))
 	d.pool.clusters.Insert(clusterID, c)
 }
 
@@ -181,11 +180,11 @@ func (d poolSynchronizationStore) PoolUpdate(_ context.Context, _ *Cluster) {
 }
 
 func (d poolSynchronizationStore) PoolRemove(ctx context.Context, cluster *Cluster) {
-	logger.L().Info(ctx, "Removing cluster from pool", l.WithClusterID(cluster.ID))
+	logger.L().Info(ctx, "Removing cluster from pool", logger.WithClusterID(cluster.ID))
 
 	err := cluster.Close()
 	if err != nil {
-		logger.L().Error(ctx, "Error during removing cluster from pool", zap.Error(err), l.WithClusterID(cluster.ID))
+		logger.L().Error(ctx, "Error during removing cluster from pool", zap.Error(err), logger.WithClusterID(cluster.ID))
 	}
 
 	d.pool.clusters.Remove(cluster.ID.String())

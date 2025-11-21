@@ -10,7 +10,6 @@ import (
 
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -56,6 +55,6 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 		return
 	}
 
-	logger.L().Info(ctx, "Sandbox successfully stored in catalog", l.WithSandboxID(body.SandboxID))
+	logger.L().Info(ctx, "Sandbox successfully stored in catalog", logger.WithSandboxID(body.SandboxID))
 	c.Status(http.StatusOK)
 }
