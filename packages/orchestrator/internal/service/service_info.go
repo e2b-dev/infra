@@ -9,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
@@ -71,6 +72,7 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 
 		ServiceStartup: timestamppb.New(info.Startup),
 		ServiceRoles:   info.Roles,
+		MachineInfo:    convertMachineInfo(info.MachineInfo),
 
 		// Allocated resources to sandboxes
 		MetricCpuAllocated:         sandboxVCpuAllocated,
@@ -110,6 +112,16 @@ func convertDiskMetrics(disks []metrics.DiskInfo) []*orchestratorinfo.DiskMetric
 	}
 
 	return result
+}
+
+// convertDiskMetrics converts internal DiskInfo to protobuf DiskMetrics
+func convertMachineInfo(machineInfo machineinfo.MachineInfo) *orchestratorinfo.MachineInfo {
+	return &orchestratorinfo.MachineInfo{
+		CpuArchitecture: machineInfo.Arch,
+		CpuFamily:       machineInfo.Family,
+		CpuModel:        machineInfo.Model,
+		CpuModelName:    machineInfo.ModelName,
+	}
 }
 
 func (s *Server) ServiceStatusOverride(_ context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
