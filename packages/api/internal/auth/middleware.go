@@ -200,9 +200,6 @@ func CreateAuthenticationFunc(
 	}
 
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
-		c := middleware.GetGinContext(ctx)
-		ctx = c.Request.Context()
-
 		ctx, span := tracer.Start(ctx, "authenticate")
 		defer span.End()
 
