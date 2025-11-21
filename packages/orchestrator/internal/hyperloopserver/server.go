@@ -1,9 +1,7 @@
 package hyperloopserver
 
 import (
-	"context"
 	"fmt"
-	"net"
 	"net/http"
 
 	limits "github.com/gin-contrib/size"
@@ -19,7 +17,7 @@ import (
 
 const maxUploadLimit = 1 << 28 // 256 MiB
 
-func NewHyperloopServer(ctx context.Context, port uint16, logger *zap.Logger, sandboxes *sandbox.Map) (*http.Server, error) {
+func NewHyperloopServer(port uint16, logger *zap.Logger, sandboxes *sandbox.Map) (*http.Server, error) {
 	sandboxCollectorAddr := env.LogsCollectorAddress()
 	store := handlers.NewHyperloopStore(logger, sandboxes, sandboxCollectorAddr)
 	swagger, err := api.GetSwagger()
@@ -37,8 +35,6 @@ func NewHyperloopServer(ctx context.Context, port uint16, logger *zap.Logger, sa
 	server := &http.Server{
 		Handler: engine,
 		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
-
-		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 
 	api.RegisterHandlersWithOptions(engine, store, api.GinServerOptions{})

@@ -14,6 +14,8 @@ package build
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -180,6 +182,8 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 		delay,
 	)
 	require.NoError(t, err)
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
 
 	store.Start(t.Context())
 	t.Cleanup(store.Close)
@@ -264,12 +268,16 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 func TestDiffStoreOldestFromCache(t *testing.T) {
 	cachePath := t.TempDir()
 
+	buildID1 := "build-id-1"
+	buildID2 := "build-id-2"
+	buildID3 := "build-id-3"
+
 	c, err := cfg.Parse()
 	require.NoError(t, err)
 
 	flags := flagsWithMaxBuildCachePercentage(t, 100)
 
-	ttl := 60 * time.Second
+	ttl := time.Hour
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
 		c,
@@ -281,47 +289,91 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add items to the cache
-	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
-	store.Add(diff)
-	diff2 := newDiff(t, cachePath, "build-test-id-2", Rootfs, blockSize)
+	diff1 := newDiff(t, cachePath, buildID1, Rootfs, blockSize)
+	store.Add(diff1)
+	diff2 := newDiff(t, cachePath, buildID2, Rootfs, blockSize)
 	store.Add(diff2)
 
-	found := store.Has(diff)
+	found := store.Has(diff1)
 	assert.True(t, found)
 
 	// Delete oldest item
 	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
 
-	assert.True(t, store.isBeingDeleted(diff.CacheKey()))
+	isDeleted := store.isBeingDeleted(diff1.CacheKey())
+	assert.True(t, isDeleted, dump(diff1, store))
+
 	// Wait for removal trigger of diff
 	time.Sleep(delay + time.Second)
 
 	// Verify oldest item is deleted
-	found = store.Has(diff)
-	assert.False(t, found)
+	found = store.Has(diff1)
+	assert.False(t, found, dump(diff1, store))
 
 	found = store.Has(diff2)
-	assert.True(t, found)
+	assert.True(t, found, dump(diff2, store))
 
 	// Add another item to the cache
-	diff3 := newDiff(t, cachePath, "build-test-id-3", Rootfs, blockSize)
+	diff3 := newDiff(t, cachePath, buildID3, Rootfs, blockSize)
 	store.Add(diff3)
 
 	// Delete oldest item
 	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
 
-	assert.True(t, store.isBeingDeleted(diff2.CacheKey()))
+	isDeleted = store.isBeingDeleted(diff2.CacheKey())
+	assert.True(t, isDeleted, dump(diff2, store))
 	// Wait for removal trigger of diff
 	time.Sleep(delay + time.Second)
 
 	// Verify oldest item is deleted
 	found = store.Has(diff2)
-	assert.False(t, found)
+	assert.False(t, found, dump(diff2, store))
 
 	found = store.Has(diff3)
-	assert.True(t, found)
+	assert.True(t, found, dump(diff3, store))
+}
+
+func dump(diff2 Diff, store *DiffStore) string {
+	store.pdMu.Lock()
+	defer store.pdMu.Unlock()
+
+	var cachedParts []string
+	for _, item := range store.cache.Items() {
+		val := item.Value()
+		cachePath, err := val.CachePath()
+		if err != nil {
+			cachePath = fmt.Sprintf("<err=%v>", val)
+		}
+		fileSize, err := val.FileSize()
+		var fileSizeText string
+		if err != nil {
+			fileSizeText = fmt.Sprintf("<err=%v>", val)
+		} else {
+			fileSizeText = strconv.Itoa(int(fileSize))
+		}
+
+		cachedParts = append(cachedParts, fmt.Sprintf("%s=[key=%s path=%s size=%s]",
+			item.Key(),
+			val.CacheKey(),
+			cachePath,
+			fileSizeText,
+		))
+	}
+
+	var expiredParts []string
+	for key, item := range store.pdSizes {
+		expiredParts = append(expiredParts, fmt.Sprintf("%s=[size=%d]", key, item.size))
+	}
+
+	return fmt.Sprintf("key: %s\nstore[%d]: %s\nexpiration[%d]: %s",
+		diff2.CacheKey(),
+		len(cachedParts),
+		strings.Join(cachedParts, "\n\t\t\t"),
+		len(expiredParts),
+		strings.Join(expiredParts, "\n\t\t\t"),
+	)
 }
 
 // TestDiffStoreConcurrentEvictionRace simulates the data race condition where

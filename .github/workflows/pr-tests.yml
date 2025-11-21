@@ -36,6 +36,10 @@ jobs:
         with:
           job_key: unit-tests-${{ matrix.package }}
 
+      - name: Enable nbd
+        run: |
+          sudo modprobe nbd
+
       - name: Enable unprivileged uffd mode
         run: |
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
