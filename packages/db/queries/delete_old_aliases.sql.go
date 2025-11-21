@@ -9,16 +9,29 @@ import (
 	"context"
 )
 
-const deleteOtherTemplateAliases = `-- name: DeleteOtherTemplateAliases :one
+const deleteOtherTemplateAliases = `-- name: DeleteOtherTemplateAliases :many
 DELETE FROM "public"."env_aliases"
 WHERE env_id = $1
   AND is_renamable = TRUE
 RETURNING alias
 `
 
-func (q *Queries) DeleteOtherTemplateAliases(ctx context.Context, envID string) (string, error) {
-	row := q.db.QueryRow(ctx, deleteOtherTemplateAliases, envID)
-	var alias string
-	err := row.Scan(&alias)
-	return alias, err
+func (q *Queries) DeleteOtherTemplateAliases(ctx context.Context, envID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, deleteOtherTemplateAliases, envID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var alias string
+		if err := rows.Scan(&alias); err != nil {
+			return nil, err
+		}
+		items = append(items, alias)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
