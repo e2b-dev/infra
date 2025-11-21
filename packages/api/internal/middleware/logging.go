@@ -8,6 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // Based on https://github.com/gin-contrib/zap
@@ -30,13 +32,14 @@ type Config struct {
 	Skipper Skipper
 }
 
-func LoggingMiddleware(logger *zap.Logger, conf Config) gin.HandlerFunc {
+func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 	skipPaths := make(map[string]bool, len(conf.SkipPaths))
 	for _, path := range conf.SkipPaths {
 		skipPaths[path] = true
 	}
 
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		start := time.Now()
 
 		// Preserve this if any middleware modifies these values
@@ -91,9 +94,9 @@ func LoggingMiddleware(logger *zap.Logger, conf Config) gin.HandlerFunc {
 			if len(c.Errors) > 0 {
 				for _, e := range c.Errors.Errors() {
 					if status >= http.StatusInternalServerError {
-						logger.Error(e, fields...)
+						logger.Error(ctx, e, fields...)
 					} else {
-						logger.Warn(e, fields...)
+						logger.Warn(ctx, e, fields...)
 					}
 				}
 			} else {
@@ -105,7 +108,7 @@ func LoggingMiddleware(logger *zap.Logger, conf Config) gin.HandlerFunc {
 					level = zapcore.WarnLevel
 				}
 
-				logger.Log(level, path, fields...)
+				logger.Log(ctx, level, path, fields...)
 			}
 		}
 	}

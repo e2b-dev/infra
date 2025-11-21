@@ -20,6 +20,8 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -44,7 +46,7 @@ func DefaultRetryConfig() RetryConfig {
 	}
 }
 
-func createRetryableClient(config RetryConfig) *retryablehttp.Client {
+func createRetryableClient(ctx context.Context, config RetryConfig) *retryablehttp.Client {
 	client := retryablehttp.NewClient()
 
 	client.RetryMax = config.MaxAttempts - 1 // go-retryablehttp counts retries, not total attempts
@@ -79,28 +81,34 @@ func createRetryableClient(config RetryConfig) *retryablehttp.Client {
 	}
 
 	// Use zap logger
-	client.Logger = &zapLogger{}
+	client.Logger = &leveledLogger{
+		logger: logger.L().Detach(ctx),
+	}
 
 	return client
 }
 
 // zapLogger adapts zap.Logger to retryablehttp.LeveledLogger interface
-type zapLogger struct{}
+var _ retryablehttp.LeveledLogger = &leveledLogger{}
 
-func (z *zapLogger) Error(msg string, keysAndValues ...any) {
-	zap.L().Error(msg, zap.Any("details", keysAndValues))
+type leveledLogger struct {
+	logger *zap.Logger
 }
 
-func (z *zapLogger) Info(msg string, keysAndValues ...any) {
-	zap.L().Info(msg, zap.Any("details", keysAndValues))
+func (z *leveledLogger) Error(msg string, keysAndValues ...any) {
+	z.logger.Error(msg, zap.Any("details", keysAndValues))
 }
 
-func (z *zapLogger) Debug(string, ...any) {
+func (z *leveledLogger) Info(msg string, keysAndValues ...any) {
+	z.logger.Info(msg, zap.Any("details", keysAndValues))
+}
+
+func (z *leveledLogger) Debug(string, ...any) {
 	// Ignore debug logs
 }
 
-func (z *zapLogger) Warn(msg string, keysAndValues ...any) {
-	zap.L().Warn(msg, zap.Any("details", keysAndValues))
+func (z *leveledLogger) Warn(msg string, keysAndValues ...any) {
+	z.logger.Warn(msg, zap.Any("details", keysAndValues))
 }
 
 type InitiateMultipartUploadResult struct {
@@ -143,7 +151,7 @@ func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, object
 		bucketName:  bucketName,
 		objectName:  objectName,
 		token:       token.AccessToken,
-		client:      createRetryableClient(retryConfig),
+		client:      createRetryableClient(ctx, retryConfig),
 		retryConfig: retryConfig,
 		baseURL:     fmt.Sprintf("https://%s.storage.googleapis.com", bucketName),
 	}, nil

@@ -2,10 +2,10 @@ package orchestrator
 
 import (
 	"cmp"
+	"context"
 	"slices"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (o *Orchestrator) AdminNodes() []*api.Node {
+func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
 	apiNodes := make(map[string]*api.Node)
 
 	for _, n := range o.nodes.Items() {
@@ -42,7 +42,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 	for _, sbx := range o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning}) {
 		n, ok := apiNodes[sbx.NodeID]
 		if !ok {
-			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.NodeID), logger.WithSandboxID(sbx.SandboxID))
+			logger.L().Error(ctx, "node for sandbox wasn't found", logger.WithNodeID(sbx.NodeID), logger.WithSandboxID(sbx.SandboxID))
 
 			continue
 		}

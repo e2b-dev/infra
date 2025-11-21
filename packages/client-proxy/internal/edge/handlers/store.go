@@ -8,14 +8,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	loggerprovider "github.com/e2b-dev/infra/packages/proxy/internal/edge/logger-provider"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -23,7 +23,7 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/client-proxy/internal/edge/handlers")
 
 type APIStore struct {
-	logger            *zap.Logger
+	logger            logger.Logger
 	info              *info.ServiceInfo
 	orchestratorPool  *e2borchestrators.OrchestratorsPool
 	edgePool          *e2borchestrators.EdgePool
@@ -37,7 +37,7 @@ const (
 
 func NewStore(
 	ctx context.Context,
-	logger *zap.Logger,
+	l logger.Logger,
 	info *info.ServiceInfo,
 	orchestratorsPool *e2borchestrators.OrchestratorsPool,
 	edgePool *e2borchestrators.EdgePool,
@@ -55,7 +55,7 @@ func NewStore(
 		queryLogsProvider: queryLogsProvider,
 
 		info:      info,
-		logger:    logger,
+		logger:    l,
 		sandboxes: catalog,
 	}
 
@@ -63,8 +63,8 @@ func NewStore(
 	// we don't want to source API until we are sure service discovery and pool is ready to use
 	go func() {
 		if env.IsDebug() {
-			zap.L().Info("Skipping orchestrator readiness check in debug mode")
-			store.info.SetStatus(api.Healthy)
+			logger.L().Info(ctx, "Skipping orchestrator readiness check in debug mode")
+			store.info.SetStatus(ctx, api.Healthy)
 
 			return
 		}
@@ -73,12 +73,12 @@ func NewStore(
 		// so we are not propagating API without not yet registered orchestrators
 		if config.SkipInitialOrchestratorReadinessCheck {
 			time.Sleep(10 * time.Second)
-			store.info.SetStatus(api.Healthy)
+			store.info.SetStatus(ctx, api.Healthy)
 
 			return
 		}
 
-		zap.L().Info("Waiting for at least one orchestrator to be available before marking API as healthy")
+		logger.L().Info(ctx, "Waiting for at least one orchestrator to be available before marking API as healthy")
 		ticker := time.NewTicker(orchestratorsReadinessCheckInterval)
 		for {
 			select {
@@ -87,8 +87,8 @@ func NewStore(
 			case <-ticker.C:
 				list := orchestratorsPool.GetOrchestrators()
 				if len(list) > 0 {
-					zap.L().Info("Marking API as healthy, at least one orchestrator is available")
-					store.info.SetStatus(api.Healthy)
+					logger.L().Info(ctx, "Marking API as healthy, at least one orchestrator is available")
+					store.info.SetStatus(ctx, api.Healthy)
 
 					return
 				}
@@ -99,17 +99,17 @@ func NewStore(
 	return store, nil
 }
 
-func (a *APIStore) SetDraining() {
-	a.info.SetStatus(api.Draining)
+func (a *APIStore) SetDraining(ctx context.Context) {
+	a.info.SetStatus(ctx, api.Draining)
 }
 
-func (a *APIStore) SetUnhealthy() {
-	a.info.SetStatus(api.Unhealthy)
+func (a *APIStore) SetUnhealthy(ctx context.Context) {
+	a.info.SetStatus(ctx, api.Unhealthy)
 }
 
-func (a *APIStore) SetTerminating() {
+func (a *APIStore) SetTerminating(ctx context.Context) {
 	a.info.SetTerminating()
-	a.info.SetStatus(api.Unhealthy)
+	a.info.SetStatus(ctx, api.Unhealthy)
 }
 
 func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {

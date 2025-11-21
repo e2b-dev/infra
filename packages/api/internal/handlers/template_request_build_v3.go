@@ -98,8 +98,8 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	_, span = tracer.Start(c, "posthog-analytics")
 	defer span.End()
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "submitted environment build request", properties.
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", body.Alias),

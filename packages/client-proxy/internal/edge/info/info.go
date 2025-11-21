@@ -1,12 +1,14 @@
 package info
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type ServiceInfo struct {
@@ -31,12 +33,12 @@ func (s *ServiceInfo) GetStatus() api.ClusterNodeStatus {
 	return s.status
 }
 
-func (s *ServiceInfo) SetStatus(status api.ClusterNodeStatus) {
+func (s *ServiceInfo) SetStatus(ctx context.Context, status api.ClusterNodeStatus) {
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 
 	if s.status != status {
-		zap.L().Info("Service status changed", zap.String("status", string(status)))
+		logger.L().Info(ctx, "Service status changed", zap.String("status", string(status)))
 		s.status = status
 	}
 }

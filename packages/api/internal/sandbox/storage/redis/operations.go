@@ -11,7 +11,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 // Add stores a sandbox in Redis
@@ -66,7 +67,7 @@ func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
 	defer func() {
 		err := lock.Release(context.WithoutCancel(ctx))
 		if err != nil {
-			zap.L().Error("Failed to release lock", zap.Error(err))
+			logger.L().Error(ctx, "Failed to release lock", zap.Error(err))
 		}
 	}()
 
@@ -97,7 +98,7 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 	defer func() {
 		err := lock.Release(context.WithoutCancel(ctx))
 		if err != nil {
-			zap.L().Error("Failed to release lock", zap.Error(err))
+			logger.L().Error(ctx, "Failed to release lock", zap.Error(err))
 		}
 	}()
 
@@ -140,7 +141,7 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 }
 
 // StartRemoving initiates the removal process for a sandbox
-func (s *Storage) StartRemoving(_ context.Context, _ string, _ sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {
+func (s *Storage) StartRemoving(_ context.Context, _ string, _ sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
 	// TODO: Implement later (ENG-3285)
 	return false, nil, nil
 }

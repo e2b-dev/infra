@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -28,13 +29,13 @@ func (a *APIStore) V1SandboxCatalogDelete(c *gin.Context) {
 
 	err = a.sandboxes.DeleteSandbox(ctx, body.SandboxID, body.ExecutionID)
 	if err != nil {
-		zap.L().Error("Error when deleting sandbox from catalog", zap.Error(err))
+		logger.L().Error(ctx, "Error when deleting sandbox from catalog", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting sandbox from catalog")
 		telemetry.ReportCriticalError(ctx, "error when deleting sandbox from catalog", err)
 
 		return
 	}
 
-	zap.L().Info("Sandbox successfully removed from catalog", l.WithSandboxID(body.SandboxID))
+	logger.L().Info(ctx, "Sandbox successfully removed from catalog", l.WithSandboxID(body.SandboxID))
 	c.Status(http.StatusOK)
 }

@@ -15,6 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -74,7 +76,7 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 
 	// AWS S3 delete operation requires at least one object to delete.
 	if len(objects) == 0 {
-		zap.L().Warn("No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", a.bucketName))
+		logger.L().Warn(ctx, "No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", a.bucketName))
 
 		return nil
 	}
