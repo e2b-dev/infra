@@ -202,7 +202,7 @@ func CreateAuthenticationFunc(
 		ginContext := ctx.Value(middleware.GinContextKey).(*gin.Context)
 		requestContext := ginContext.Request.Context()
 
-		_, span := tracer.Start(requestContext, "authenticate")
+		ctx, span := tracer.Start(requestContext, "authenticate")
 		defer span.End()
 
 		for _, validator := range authenticators {
