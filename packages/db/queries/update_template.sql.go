@@ -41,16 +41,18 @@ UPDATE "public"."env_builds"
 SET
     start_cmd = $1,
     ready_cmd = $2,
-    dockerfile = $3
+    dockerfile = $3,
+    cluster_node_id = $4
 WHERE
-    id = $4
+    id = $5
 `
 
 type UpdateTemplateBuildParams struct {
-	StartCmd   *string
-	ReadyCmd   *string
-	Dockerfile *string
-	BuildUuid  uuid.UUID
+	StartCmd      *string
+	ReadyCmd      *string
+	Dockerfile    *string
+	ClusterNodeID *string
+	BuildUuid     uuid.UUID
 }
 
 func (q *Queries) UpdateTemplateBuild(ctx context.Context, arg UpdateTemplateBuildParams) error {
@@ -58,6 +60,7 @@ func (q *Queries) UpdateTemplateBuild(ctx context.Context, arg UpdateTemplateBui
 		arg.StartCmd,
 		arg.ReadyCmd,
 		arg.Dockerfile,
+		arg.ClusterNodeID,
 		arg.BuildUuid,
 	)
 	return err

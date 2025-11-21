@@ -25,7 +25,7 @@ import (
 
 // CheckAndCancelConcurrentBuilds checks for concurrent builds and cancels them if found
 func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID, teamClusterID uuid.UUID) error {
-	concurrentlyRunningBuilds, err := a.sqlcDB.GetConcurrentTemplateBuilds(ctx, queries.GetConcurrentTemplateBuildsParams{
+	concurrentBuilds, err := a.sqlcDB.GetConcurrentTemplateBuilds(ctx, queries.GetConcurrentTemplateBuildsParams{
 		TemplateID:     templateID,
 		CurrentBuildID: buildID,
 	})
@@ -36,18 +36,27 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 	}
 
 	// make sure there is no other build in progress for the same template
-	if len(concurrentlyRunningBuilds) > 0 {
-		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b queries.EnvBuild) templatemanager.DeleteBuild {
+	if len(concurrentBuilds) > 0 {
+		concurrentRunningBuilds := utils.Filter(concurrentBuilds, func(b queries.EnvBuild) bool {
+			return b.Status == envbuild.StatusBuilding.String()
+		})
+		buildIDs := utils.Map(concurrentRunningBuilds, func(b queries.EnvBuild) templatemanager.DeleteBuild {
+			clusterNodeID := "non-existent"
+			if b.ClusterNodeID != nil {
+				clusterNodeID = *b.ClusterNodeID
+			}
+
 			return templatemanager.DeleteBuild{
 				TemplateID: templateID,
 				BuildID:    b.ID,
 				ClusterID:  teamClusterID,
-				NodeID:     b.ClusterNodeID,
+				NodeID:     clusterNodeID,
 			}
 		})
 		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b templatemanager.DeleteBuild) string {
 			return fmt.Sprintf("%s/%s", b.TemplateID, b.BuildID)
 		})))
+
 		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
 		if deleteJobErr != nil {
 			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
@@ -141,6 +150,28 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
+	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when getting available build client: %s", err))
+		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
+	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
+		StartCmd:      build.StartCmd,
+		ReadyCmd:      build.ReadyCmd,
+		Dockerfile:    build.Dockerfile,
+		ClusterNodeID: utils.ToPtr(builderNodeID),
+		BuildUuid:     buildUUID,
+	})
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when updating build", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err))
+
+		return
+	}
+
 	// Call the Template Manager to build the environment
 	forceRebuild := true
 	fromImage := ""
@@ -162,7 +193,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		&forceRebuild,
 		nil,
 		apiutils.WithClusterFallback(team.ClusterID),
-		build.ClusterNodeID,
+		builderNodeID,
 		templates.TemplateV1Version,
 	)
 
