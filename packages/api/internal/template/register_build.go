@@ -216,7 +216,7 @@ func RegisterBuild(
 
 	// Check if the alias is available and claim it
 	if alias != "" {
-		exists, err := client.CheckAliasConflictsWithTemplate(ctx, alias)
+		exists, err := client.CheckAliasConflictsWithTemplateID(ctx, alias)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
 

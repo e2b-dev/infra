@@ -9,7 +9,7 @@ import (
 	"context"
 )
 
-const checkAliasConflictsWithTemplate = `-- name: CheckAliasConflictsWithTemplate :one
+const checkAliasConflictsWithTemplateID = `-- name: CheckAliasConflictsWithTemplateID :one
 SELECT EXISTS(
     SELECT 1
     FROM "public"."envs"
@@ -17,8 +17,8 @@ SELECT EXISTS(
 )
 `
 
-func (q *Queries) CheckAliasConflictsWithTemplate(ctx context.Context, alias string) (bool, error) {
-	row := q.db.QueryRow(ctx, checkAliasConflictsWithTemplate, alias)
+func (q *Queries) CheckAliasConflictsWithTemplateID(ctx context.Context, alias string) (bool, error) {
+	row := q.db.QueryRow(ctx, checkAliasConflictsWithTemplateID, alias)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

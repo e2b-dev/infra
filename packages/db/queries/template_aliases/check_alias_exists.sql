@@ -1,4 +1,4 @@
--- name: CheckAliasConflictsWithTemplate :one
+-- name: CheckAliasConflictsWithTemplateID :one
 SELECT EXISTS(
     SELECT 1
     FROM "public"."envs"
