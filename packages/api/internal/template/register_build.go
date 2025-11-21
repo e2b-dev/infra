@@ -251,7 +251,7 @@ func RegisterBuild(
 				}
 			}
 
-			count, err := client.DeleteOtherTemplateAliases(ctx, data.TemplateID)
+			aliases, err := client.DeleteOtherTemplateAliases(ctx, data.TemplateID)
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when deleting template alias", err, attribute.String("alias", alias))
 
@@ -262,8 +262,9 @@ func RegisterBuild(
 				}
 			}
 
+			count := len(aliases)
 			if count > 0 {
-				telemetry.ReportEvent(ctx, "deleted old aliases", attribute.Int64("env.alias.count", count))
+				telemetry.ReportEvent(ctx, "deleted old aliases", attribute.Int("env.alias.count", count))
 			}
 
 			err = client.

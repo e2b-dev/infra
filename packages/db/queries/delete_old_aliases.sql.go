@@ -13,12 +13,12 @@ const deleteOtherTemplateAliases = `-- name: DeleteOtherTemplateAliases :one
 DELETE FROM "public"."env_aliases"
 WHERE env_id = $1
   AND is_renamable = TRUE
-RETURNING COUNT(*)
+RETURNING alias
 `
 
-func (q *Queries) DeleteOtherTemplateAliases(ctx context.Context, envID string) (int64, error) {
+func (q *Queries) DeleteOtherTemplateAliases(ctx context.Context, envID string) (string, error) {
 	row := q.db.QueryRow(ctx, deleteOtherTemplateAliases, envID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+	var alias string
+	err := row.Scan(&alias)
+	return alias, err
 }
