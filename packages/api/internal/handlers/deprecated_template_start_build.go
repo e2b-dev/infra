@@ -38,7 +38,7 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 	// make sure there is no other build in progress for the same template
 	if len(concurrentBuilds) > 0 {
 		concurrentRunningBuilds := utils.Filter(concurrentBuilds, func(b queries.EnvBuild) bool {
-			return b.Status == envbuild.StatusBuilding.String()
+			return b.Status == string(dbtypes.BuildStatusBuilding)
 		})
 		buildIDs := make([]templatemanager.DeleteBuild, 0, len(concurrentRunningBuilds))
 		for _, b := range concurrentRunningBuilds {
