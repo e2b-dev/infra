@@ -52,7 +52,7 @@ type EnvBuild struct {
 	// EnvdVersion holds the value of the "envd_version" field.
 	EnvdVersion *string `json:"envd_version,omitempty"`
 	// ClusterNodeID holds the value of the "cluster_node_id" field.
-	ClusterNodeID string `json:"cluster_node_id,omitempty"`
+	ClusterNodeID *string `json:"cluster_node_id,omitempty"`
 	// Reason holds the value of the "reason" field.
 	Reason schema.BuildReason `json:"reason,omitempty"`
 	// Version holds the value of the "version" field.
@@ -221,7 +221,8 @@ func (eb *EnvBuild) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field cluster_node_id", values[i])
 			} else if value.Valid {
-				eb.ClusterNodeID = value.String
+				eb.ClusterNodeID = new(string)
+				*eb.ClusterNodeID = value.String
 			}
 		case envbuild.FieldReason:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -336,8 +337,10 @@ func (eb *EnvBuild) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
-	builder.WriteString("cluster_node_id=")
-	builder.WriteString(eb.ClusterNodeID)
+	if v := eb.ClusterNodeID; v != nil {
+		builder.WriteString("cluster_node_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("reason=")
 	builder.WriteString(fmt.Sprintf("%v", eb.Reason))

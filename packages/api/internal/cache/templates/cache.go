@@ -155,7 +155,7 @@ type TemplateBuildInfo struct {
 	Version     *string
 
 	ClusterID uuid.UUID
-	NodeID    string
+	NodeID    *string
 }
 
 type TemplateBuildInfoNotFoundError struct{}

@@ -22,7 +22,7 @@ var (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) error {
+func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID *string) error {
 	if tm.createInProcessingQueue(buildID, templateID) {
 		// already processing, skip
 		return nil
@@ -56,6 +56,10 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		return nil
 	}
 
+	if nodeID == nil {
+		return errors.New("build is not assigned to a node, but it should be")
+	}
+
 	checker := &PollBuildStatus{
 		client: tm,
 		logger: zap.L().With(logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID)),
@@ -64,7 +68,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		buildID:    buildID,
 
 		clusterID: clusterID,
-		nodeID:    nodeID,
+		nodeID:    *nodeID,
 	}
 
 	// context for the building phase

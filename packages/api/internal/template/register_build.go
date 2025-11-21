@@ -31,18 +31,17 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/template")
 
 type RegisterBuildData struct {
-	ClusterID     uuid.UUID
-	BuilderNodeID string
-	TemplateID    api.TemplateID
-	UserID        *uuid.UUID
-	Team          *types.Team
-	Dockerfile    string
-	Alias         *string
-	StartCmd      *string
-	ReadyCmd      *string
-	CpuCount      *int32
-	MemoryMB      *int32
-	Version       string
+	ClusterID  uuid.UUID
+	TemplateID api.TemplateID
+	UserID     *uuid.UUID
+	Team       *types.Team
+	Dockerfile string
+	Alias      *string
+	StartCmd   *string
+	ReadyCmd   *string
+	CpuCount   *int32
+	MemoryMB   *int32
+	Version    string
 }
 
 type RegisterBuildResponse struct {
@@ -215,7 +214,6 @@ func RegisterBuild(
 		SetFreeDiskSizeMB(data.Team.Limits.DiskMb).
 		SetNillableStartCmd(data.StartCmd).
 		SetNillableReadyCmd(data.ReadyCmd).
-		SetClusterNodeID(data.BuilderNodeID).
 		SetDockerfile(data.Dockerfile).
 		SetVersion(data.Version).
 		Save(ctx)

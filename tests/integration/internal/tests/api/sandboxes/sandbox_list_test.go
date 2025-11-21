@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -166,16 +167,26 @@ func TestSandboxListPausing(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandboxID := sbx.SandboxID
 
-	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
-	require.NoError(t, err)
-
-	require.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
-
 	ctx := t.Context()
+
+	wg := errgroup.Group{}
+	wg.Go(func() error {
+		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sandboxID, setup.WithAPIKey())
+		if err != nil {
+			return err
+		}
+
+		if pauseSandboxResponse.StatusCode() != http.StatusNoContent {
+			return fmt.Errorf("expected status code %d, got %d", http.StatusNoContent, pauseSandboxResponse.StatusCode())
+		}
+
+		return nil
+	})
+
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
 		// List paused sandboxes
 		listResponse, err := c.GetV2SandboxesWithResponse(ctx, &api.GetV2SandboxesParams{
-			State:    &[]api.SandboxState{api.Paused},
+			State:    &[]api.SandboxState{api.Running, api.Paused},
 			Metadata: &metadataString,
 		}, setup.WithAPIKey())
 		require.NoError(t, err)

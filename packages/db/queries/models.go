@@ -92,7 +92,7 @@ type EnvBuild struct {
 	EnvID              string
 	EnvdVersion        *string
 	ReadyCmd           *string
-	ClusterNodeID      string
+	ClusterNodeID      *string
 	Reason             types.BuildReason
 	Version            *string
 }
