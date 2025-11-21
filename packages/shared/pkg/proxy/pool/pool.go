@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 
@@ -34,7 +35,7 @@ func New(maxClientConns int, maxConnectionAttempts int, idleTimeout time.Duratio
 	}
 }
 
-func (p *ProxyPool) Get(d *Destination) *ProxyClient {
+func (p *ProxyPool) Get(ctx context.Context, d *Destination) *ProxyClient {
 	return p.pool.Upsert(d.ConnectionKey, nil, func(exist bool, inMapValue *ProxyClient, _ *ProxyClient) *ProxyClient {
 		if exist && inMapValue != nil {
 			return inMapValue
@@ -49,9 +50,9 @@ func (p *ProxyPool) Get(d *Destination) *ProxyClient {
 			withFields = append(withFields, zap.Stringp("mask_request_host", d.MaskRequestHost))
 		}
 
-		logger, err := zap.NewStdLogAt(zap.L().With(withFields...), zap.ErrorLevel)
+		l, err := zap.NewStdLogAt(logger.L().Detach(ctx).With(withFields...), zap.ErrorLevel)
 		if err != nil {
-			zap.L().Warn("failed to create logger", zap.Error(err))
+			logger.L().Warn(ctx, "failed to create logger", zap.Error(err))
 		}
 
 		return newProxyClient(
@@ -68,7 +69,7 @@ func (p *ProxyPool) Get(d *Destination) *ProxyClient {
 			p.idleTimeout,
 			&p.totalConnsCounter,
 			&p.currentConnsCounter,
-			logger,
+			l,
 		)
 	})
 }

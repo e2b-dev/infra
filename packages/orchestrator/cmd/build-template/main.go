@@ -97,7 +97,7 @@ func buildTemplate(
 
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
 	if err != nil {
-		log.Fatal(ctx, "failed to create sandbox proxy", zap.Error(err))
+		return fmt.Errorf("failed to create sandbox proxy: %w", err)
 	}
 	go func() {
 		err := sandboxProxy.Start(parentCtx)
