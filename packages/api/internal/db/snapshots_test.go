@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/testutils"
 	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // createTestTeam creates a test team in the database using raw SQL
@@ -84,7 +85,7 @@ func createTestSnapshot(t *testing.T, db *client.Client, teamID uuid.UUID, baseE
 				},
 			},
 		},
-		OriginNodeID: "node-1",
+		OriginNodeID: utils.ToPtr("node-1"),
 		Status:       "success",
 	}
 
