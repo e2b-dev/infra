@@ -7,9 +7,7 @@ package queries
 
 import (
 	"context"
-	"time"
 
-	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/google/uuid"
 )
 
@@ -26,26 +24,8 @@ type GetSnapshotBuildsParams struct {
 }
 
 type GetSnapshotBuildsRow struct {
-	Snapshot           Snapshot
-	ID                 *uuid.UUID
-	CreatedAt          *time.Time
-	UpdatedAt          *time.Time
-	FinishedAt         *time.Time
-	Status             *string
-	Dockerfile         *string
-	StartCmd           *string
-	Vcpu               *int64
-	RamMb              *int64
-	FreeDiskSizeMb     *int64
-	TotalDiskSizeMb    *int64
-	KernelVersion      *string
-	FirecrackerVersion *string
-	EnvID              *string
-	EnvdVersion        *string
-	ReadyCmd           *string
-	ClusterNodeID      *string
-	Reason             types.BuildReason
-	Version            *string
+	Snapshot Snapshot
+	EnvBuild EnvBuild
 }
 
 func (q *Queries) GetSnapshotBuilds(ctx context.Context, arg GetSnapshotBuildsParams) ([]GetSnapshotBuildsRow, error) {
@@ -71,25 +51,25 @@ func (q *Queries) GetSnapshotBuilds(ctx context.Context, arg GetSnapshotBuildsPa
 			&i.Snapshot.AutoPause,
 			&i.Snapshot.TeamID,
 			&i.Snapshot.Config,
-			&i.ID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.FinishedAt,
-			&i.Status,
-			&i.Dockerfile,
-			&i.StartCmd,
-			&i.Vcpu,
-			&i.RamMb,
-			&i.FreeDiskSizeMb,
-			&i.TotalDiskSizeMb,
-			&i.KernelVersion,
-			&i.FirecrackerVersion,
-			&i.EnvID,
-			&i.EnvdVersion,
-			&i.ReadyCmd,
-			&i.ClusterNodeID,
-			&i.Reason,
-			&i.Version,
+			&i.EnvBuild.ID,
+			&i.EnvBuild.CreatedAt,
+			&i.EnvBuild.UpdatedAt,
+			&i.EnvBuild.FinishedAt,
+			&i.EnvBuild.Status,
+			&i.EnvBuild.Dockerfile,
+			&i.EnvBuild.StartCmd,
+			&i.EnvBuild.Vcpu,
+			&i.EnvBuild.RamMb,
+			&i.EnvBuild.FreeDiskSizeMb,
+			&i.EnvBuild.TotalDiskSizeMb,
+			&i.EnvBuild.KernelVersion,
+			&i.EnvBuild.FirecrackerVersion,
+			&i.EnvBuild.EnvID,
+			&i.EnvBuild.EnvdVersion,
+			&i.EnvBuild.ReadyCmd,
+			&i.EnvBuild.ClusterNodeID,
+			&i.EnvBuild.Reason,
+			&i.EnvBuild.Version,
 		); err != nil {
 			return nil, err
 		}

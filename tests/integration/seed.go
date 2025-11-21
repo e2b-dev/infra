@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )

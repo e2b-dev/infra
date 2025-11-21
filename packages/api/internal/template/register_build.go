@@ -177,7 +177,7 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "created or update template")
 
 	// Mark the previous not started builds as failed
-	err = client.InvalidateOldBuilds(ctx, data.TemplateID)
+	err = client.InvalidateUnfinishedTemplateBuilds(ctx, data.TemplateID)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when updating env", err)
 

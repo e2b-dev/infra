@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -22,22 +23,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var errSnapshotNotFound = errors.New("no snapshot found")
-
 func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID, teamClusterID *uuid.UUID) error {
-	snapshotWithBuilds, err := a.sqlcDB.GetSnapshotBuilds(ctx, queries.GetSnapshotBuildsParams{
-		SandboxID: sandboxID,
-		TeamID:    teamID,
-	})
+	snapshot, err := db.GetSnapshotWithBuilds(ctx, a.sqlcDB, teamID, sandboxID)
 	if err != nil {
 		return err
 	}
 
-	if len(snapshotWithBuilds) == 0 {
-		return errSnapshotNotFound
-	}
-
-	templateID := snapshotWithBuilds[0].Snapshot.EnvID
+	templateID := snapshot.EnvID
 	dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TeamID:     teamID,
 		TemplateID: templateID,
@@ -54,18 +46,14 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		span.SetAttributes(telemetry.WithTemplateID(templateID))
 
 		envBuildIDs := make([]template_manager.DeleteBuild, 0)
-		for _, build := range snapshotWithBuilds {
-			if build.ID == nil || build.ClusterNodeID == nil {
-				continue
-			}
-
+		for _, build := range snapshot.Builds {
 			envBuildIDs = append(
 				envBuildIDs,
 				template_manager.DeleteBuild{
-					BuildID:    *build.ID,
+					BuildID:    build.ID,
 					TemplateID: templateID,
 					ClusterID:  utils.WithClusterFallback(teamClusterID),
-					NodeID:     *build.ClusterNodeID,
+					NodeID:     build.ClusterNodeID,
 				},
 			)
 		}
@@ -135,7 +123,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	// remove any snapshots when the sandbox is not running
 	deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)
 	switch {
-	case errors.Is(deleteSnapshotErr, errSnapshotNotFound):
+	case errors.Is(deleteSnapshotErr, db.ErrSnapshotNotFound):
 		// no snapshot found, nothing to do
 	case deleteSnapshotErr != nil:
 		telemetry.ReportError(ctx, "error deleting sandbox", deleteSnapshotErr)
