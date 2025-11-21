@@ -12,7 +12,6 @@ import (
 
 	sd "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 )
@@ -113,7 +112,7 @@ func (p *OrchestratorsPool) Close(ctx context.Context) error {
 	for _, instance := range p.instances.Items() {
 		err := instance.Close()
 		if err != nil {
-			p.logger.Error(ctx, "Error closing orchestrator instance", zap.Error(err), l.WithNodeID(instance.GetInfo().NodeID))
+			p.logger.Error(ctx, "Error closing orchestrator instance", zap.Error(err), logger.WithNodeID(instance.GetInfo().NodeID))
 		}
 	}
 
@@ -182,7 +181,7 @@ func (e *orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source 
 	// We want to do it separately here so failed init will cause not adding the instance to the pool
 	err = o.sync(ctx)
 	if err != nil {
-		logger.L().Error(ctx, "Failed to finish initial orchestrator instance sync", zap.Error(err), l.WithNodeID(o.GetInfo().NodeID))
+		logger.L().Error(ctx, "Failed to finish initial orchestrator instance sync", zap.Error(err), logger.WithNodeID(o.GetInfo().NodeID))
 
 		return
 	}
@@ -196,19 +195,19 @@ func (e *orchestratorInstancesSyncStore) PoolUpdate(ctx context.Context, item *O
 
 	err := item.sync(ctx)
 	if err != nil {
-		logger.L().Error(ctx, "Failed to sync orchestrator instance", zap.Error(err), l.WithNodeID(item.GetInfo().NodeID))
+		logger.L().Error(ctx, "Failed to sync orchestrator instance", zap.Error(err), logger.WithNodeID(item.GetInfo().NodeID))
 	}
 }
 
 func (e *orchestratorInstancesSyncStore) PoolRemove(ctx context.Context, item *OrchestratorInstance) {
 	info := item.GetInfo()
-	logger.L().Info(ctx, "Orchestrator instance connection is not active anymore, closing.", l.WithNodeID(info.NodeID))
+	logger.L().Info(ctx, "Orchestrator instance connection is not active anymore, closing.", logger.WithNodeID(info.NodeID))
 
 	err := item.Close()
 	if err != nil {
-		logger.L().Error(ctx, "Error closing connection to orchestrator instance", zap.Error(err), l.WithNodeID(info.NodeID))
+		logger.L().Error(ctx, "Error closing connection to orchestrator instance", zap.Error(err), logger.WithNodeID(info.NodeID))
 	}
 
 	e.pool.instances.Remove(info.Host)
-	logger.L().Info(ctx, "Orchestrator instance connection has been deregistered.", l.WithNodeID(info.NodeID))
+	logger.L().Info(ctx, "Orchestrator instance connection has been deregistered.", logger.WithNodeID(info.NodeID))
 }

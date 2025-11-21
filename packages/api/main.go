@@ -37,7 +37,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -63,7 +62,7 @@ var (
 	expectedMigrationTimestamp string
 )
 
-func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, logger logger.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
+func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -159,9 +158,9 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 					teamID = teamInfo.(*types.Team).ID.String()
 				}
 
-				reqLogger := logger
+				reqLogger := l
 				if teamID != "" {
-					reqLogger = logger.With(l.WithTeamID(teamID))
+					reqLogger = l.With(logger.WithTeamID(teamID))
 				}
 
 				customMiddleware.LoggingMiddleware(reqLogger, customMiddleware.Config{
@@ -233,11 +232,11 @@ func run() int {
 		}
 	}()
 
-	l := sharedutils.Must(l.NewLogger(ctx, l.LoggerConfig{
+	l := sharedutils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
-		Cores:         []zapcore.Core{l.GetOTELCore(tel.LogsProvider, serviceName)},
+		Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
 		EnableConsole: true,
 	}))
 	defer l.Sync()

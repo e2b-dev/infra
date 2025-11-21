@@ -11,7 +11,6 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	sd "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 )
@@ -139,7 +138,7 @@ func (e *edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.Servi
 	// We want to do it separately here so failed init will cause not adding the instance to the pool
 	err = o.sync(ctx)
 	if err != nil {
-		logger.L().Error(ctx, "Failed to finish initial edge instance sync", zap.Error(err), l.WithNodeID(o.GetInfo().NodeID))
+		logger.L().Error(ctx, "Failed to finish initial edge instance sync", zap.Error(err), logger.WithNodeID(o.GetInfo().NodeID))
 
 		return
 	}
@@ -153,14 +152,14 @@ func (e *edgeInstancesSyncStore) PoolUpdate(ctx context.Context, item *EdgeInsta
 
 	err := item.sync(ctx)
 	if err != nil {
-		logger.L().Error(ctx, "Failed to sync edge instance", zap.Error(err), l.WithNodeID(item.GetInfo().NodeID))
+		logger.L().Error(ctx, "Failed to sync edge instance", zap.Error(err), logger.WithNodeID(item.GetInfo().NodeID))
 	}
 }
 
 func (e *edgeInstancesSyncStore) PoolRemove(ctx context.Context, item *EdgeInstance) {
 	info := item.GetInfo()
-	logger.L().Info(ctx, "Edge instance connection is not active anymore, closing.", l.WithNodeID(info.NodeID))
+	logger.L().Info(ctx, "Edge instance connection is not active anymore, closing.", logger.WithNodeID(info.NodeID))
 
 	e.pool.instances.Remove(item.info.Host)
-	logger.L().Info(ctx, "Edge instance connection has been deregistered.", l.WithNodeID(info.NodeID))
+	logger.L().Info(ctx, "Edge instance connection has been deregistered.", logger.WithNodeID(info.NodeID))
 }

@@ -17,7 +17,6 @@ import (
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type ClusterInstance struct {
@@ -50,7 +49,12 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
-		logger.L().Error(ctx, "Failed to get instance info", zap.Error(err), l.WithClusterID(c.ID), l.WithNodeID(instance.NodeID), l.WithServiceInstanceID(instance.ServiceInstanceID))
+		logger.L().Error(ctx, "Failed to get instance info",
+			zap.Error(err),
+			logger.WithClusterID(c.ID),
+			logger.WithNodeID(instance.NodeID),
+			logger.WithServiceInstanceID(instance.ServiceInstanceID),
+		)
 
 		return
 	}
@@ -135,7 +139,11 @@ func (d clusterSynchronizationStore) PoolExists(_ context.Context, s api.Cluster
 }
 
 func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.ClusterOrchestratorNode) {
-	logger.L().Info(ctx, "Adding instance into cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(item.NodeID), l.WithServiceInstanceID(item.ServiceInstanceID))
+	logger.L().Info(ctx, "Adding instance into cluster pool",
+		logger.WithClusterID(d.cluster.ID),
+		logger.WithNodeID(item.NodeID),
+		logger.WithServiceInstanceID(item.ServiceInstanceID),
+	)
 
 	instance := &ClusterInstance{
 		NodeID: item.NodeID,
@@ -159,6 +167,10 @@ func (d clusterSynchronizationStore) PoolUpdate(ctx context.Context, instance *C
 }
 
 func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, instance *ClusterInstance) {
-	logger.L().Info(ctx, "Removing instance from cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(instance.NodeID), l.WithServiceInstanceID(instance.ServiceInstanceID))
+	logger.L().Info(ctx, "Removing instance from cluster pool",
+		logger.WithClusterID(d.cluster.ID),
+		logger.WithNodeID(instance.NodeID),
+		logger.WithServiceInstanceID(instance.ServiceInstanceID),
+	)
 	d.cluster.instances.Remove(instance.NodeID)
 }
