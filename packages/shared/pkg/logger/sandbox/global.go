@@ -14,7 +14,7 @@ func SetSandboxLoggerInternal(logger logger.Logger) {
 }
 
 func SetSandboxLoggerExternal(logger logger.Logger) {
-	sandboxLoggerExternal = logger.DisableContextual()
+	sandboxLoggerExternal = logger
 }
 
 func I(m LoggerMetadata) *SandboxLogger {

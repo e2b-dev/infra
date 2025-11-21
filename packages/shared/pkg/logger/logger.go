@@ -94,16 +94,15 @@ func GetOTELCore(provider log.LoggerProvider, serviceName string) zapcore.Core {
 }
 
 type TracedLogger struct {
-	innerLogger  *zap.Logger
-	isContextual bool
+	innerLogger *zap.Logger
 }
 
 func NewTracedLoggerFromCore(core zapcore.Core) Logger {
-	return &TracedLogger{innerLogger: zap.New(core), isContextual: true}
+	return &TracedLogger{innerLogger: zap.New(core)}
 }
 
 func NewTracedLogger(innerLogger *zap.Logger) Logger {
-	return &TracedLogger{innerLogger: innerLogger, isContextual: true}
+	return &TracedLogger{innerLogger: innerLogger}
 }
 
 func L() *TracedLogger {
@@ -114,12 +113,8 @@ func NewNopLogger() *TracedLogger {
 	return &TracedLogger{innerLogger: zap.NewNop()}
 }
 
-func (t *TracedLogger) DisableContextual() Logger {
-	return &TracedLogger{innerLogger: t.innerLogger, isContextual: false}
-}
-
 func (t *TracedLogger) With(fields ...zap.Field) Logger {
-	return &TracedLogger{innerLogger: t.innerLogger.With(fields...), isContextual: t.isContextual}
+	return &TracedLogger{innerLogger: t.innerLogger.With(fields...)}
 }
 
 func (t *TracedLogger) Info(ctx context.Context, msg string, fields ...zap.Field) {
@@ -170,11 +165,6 @@ func (t *TracedLogger) generateFields(ctx context.Context, fields ...zap.Field) 
 		spanContext := span.SpanContext()
 		if spanContext.HasTraceID() {
 			contextFields = append(contextFields, zap.String("trace_id", spanContext.TraceID().String()))
-		}
-		if t.isContextual {
-			if spanContext.HasSpanID() {
-				contextFields = append(contextFields, zap.String("span_id", spanContext.SpanID().String()))
-			}
 		}
 
 		return append(contextFields, fields...)
