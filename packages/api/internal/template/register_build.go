@@ -180,7 +180,7 @@ func RegisterBuild(
 	// Mark the previous not started builds as failed
 	err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		Reason: dbtypes.BuildReason{
-			Message: "The build was canceled because a newer build superseded it.",
+			Message: "The build was canceled because it was superseded by a newer one.",
 		},
 		TemplateID: data.TemplateID,
 	})
