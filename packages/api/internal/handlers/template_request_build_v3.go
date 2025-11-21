@@ -75,17 +75,19 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	span.End()
 
 	buildReq := template.RegisterBuildData{
-		ClusterID:  apiutils.WithClusterFallback(team.ClusterID),
-		TemplateID: templateID,
-		UserID:     nil,
-		Team:       team,
-		Alias:      &body.Alias,
-		CpuCount:   body.CpuCount,
-		MemoryMB:   body.MemoryMB,
-		Version:    templates.TemplateV2LatestVersion,
+		ClusterID:          apiutils.WithClusterFallback(team.ClusterID),
+		TemplateID:         templateID,
+		UserID:             nil,
+		Team:               team,
+		Alias:              &body.Alias,
+		CpuCount:           body.CpuCount,
+		MemoryMB:           body.MemoryMB,
+		Version:            templates.TemplateV2LatestVersion,
+		KernelVersion:      a.config.DefaultKernelVersion,
+		FirecrackerVersion: a.config.DefaultFirecrackerVersion,
 	}
 
-	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, buildReq)
+	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)

@@ -16,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -55,7 +54,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 			Network: sbx.Network,
 		},
 		OriginNodeID: utils.ToPtr(node.ID),
-		Status:       string(envbuild.StatusSnapshotting),
+		Status:       string(types.BuildStatusSnapshotting),
 	}
 
 	result, err := o.sqlcDB.UpsertSnapshot(ctx, snapshotConfig)
@@ -80,7 +79,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 
 	now := time.Now()
 	err = o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     string(envbuild.StatusSuccess),
+		Status:     string(types.BuildStatusSuccess),
 		FinishedAt: &now,
 		Reason:     types.BuildReason{},
 		BuildID:    result.BuildID,
