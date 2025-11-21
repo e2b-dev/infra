@@ -7,6 +7,7 @@ import (
 
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -30,7 +31,7 @@ type LoggerConfig struct {
 	EnableConsole bool
 }
 
-func NewLogger(_ context.Context, loggerConfig LoggerConfig) (*zap.Logger, error) {
+func NewLogger(_ context.Context, loggerConfig LoggerConfig) (Logger, error) {
 	var level zap.AtomicLevel
 	if loggerConfig.IsDebug {
 		level = zap.NewAtomicLevelAt(zap.DebugLevel)
@@ -76,7 +77,7 @@ func NewLogger(_ context.Context, loggerConfig LoggerConfig) (*zap.Logger, error
 		return nil, fmt.Errorf("error building logger: %w", err)
 	}
 
-	return logger, nil
+	return NewTracedLogger(logger), nil
 }
 
 func GetConsoleEncoderConfig() zapcore.EncoderConfig {
@@ -91,3 +92,97 @@ func GetConsoleEncoderConfig() zapcore.EncoderConfig {
 func GetOTELCore(provider log.LoggerProvider, serviceName string) zapcore.Core {
 	return otelzap.NewCore(serviceName, otelzap.WithLoggerProvider(provider))
 }
+
+type TracedLogger struct {
+	innerLogger  *zap.Logger
+	isContextual bool
+}
+
+func NewTracedLoggerFromCore(core zapcore.Core) Logger {
+	return &TracedLogger{innerLogger: zap.New(core), isContextual: true}
+}
+
+func NewTracedLogger(innerLogger *zap.Logger) Logger {
+	return &TracedLogger{innerLogger: innerLogger, isContextual: true}
+}
+
+func L() *TracedLogger {
+	return &TracedLogger{innerLogger: zap.L()}
+}
+
+func NewNopLogger() *TracedLogger {
+	return &TracedLogger{innerLogger: zap.NewNop()}
+}
+
+func (t *TracedLogger) DisableContextual() Logger {
+	return &TracedLogger{innerLogger: t.innerLogger, isContextual: false}
+}
+
+func (t *TracedLogger) With(fields ...zap.Field) Logger {
+	return &TracedLogger{innerLogger: t.innerLogger.With(fields...)}
+}
+
+func (t *TracedLogger) Info(ctx context.Context, msg string, fields ...zap.Field) {
+	t.innerLogger.Info(msg, t.generateFields(ctx, fields...)...)
+}
+
+func (t *TracedLogger) Warn(ctx context.Context, msg string, fields ...zap.Field) {
+	t.innerLogger.Warn(msg, t.generateFields(ctx, fields...)...)
+}
+
+func (t *TracedLogger) Error(ctx context.Context, msg string, fields ...zap.Field) {
+	t.innerLogger.Error(msg, t.generateFields(ctx, fields...)...)
+}
+
+func (t *TracedLogger) Fatal(ctx context.Context, msg string, fields ...zap.Field) {
+	t.innerLogger.Fatal(msg, t.generateFields(ctx, fields...)...)
+}
+
+func (t *TracedLogger) Panic(ctx context.Context, msg string, fields ...zap.Field) {
+	t.innerLogger.Panic(msg, t.generateFields(ctx, fields...)...)
+}
+
+func (t *TracedLogger) Debug(ctx context.Context, msg string, fields ...zap.Field) {
+	t.innerLogger.Debug(msg, t.generateFields(ctx, fields...)...)
+}
+
+func (t *TracedLogger) Log(ctx context.Context, lvl zapcore.Level, msg string, fields ...zap.Field) {
+	t.innerLogger.Log(lvl, msg, t.generateFields(ctx, fields...)...)
+}
+
+func (t *TracedLogger) WithOptions(opts ...zap.Option) Logger {
+	return &TracedLogger{innerLogger: t.innerLogger.WithOptions(opts...)}
+}
+
+func (t *TracedLogger) Sync() error {
+	return t.innerLogger.Sync()
+}
+
+func (t *TracedLogger) Detach(ctx context.Context) *zap.Logger {
+	return t.innerLogger.With(t.generateFields(ctx)...)
+}
+
+func (t *TracedLogger) generateFields(ctx context.Context, fields ...zap.Field) []zap.Field {
+	if ctx != nil {
+		contextFields := make([]zap.Field, 0)
+
+		span := trace.SpanFromContext(ctx)
+		spanContext := span.SpanContext()
+		if spanContext.HasTraceID() {
+			contextFields = append(contextFields, zap.String("trace_id", spanContext.TraceID().String()))
+		}
+		if spanContext.HasSpanID() {
+			contextFields = append(contextFields, zap.String("span_id", spanContext.SpanID().String()))
+		}
+
+		return append(contextFields, fields...)
+	}
+
+	return fields
+}
+
+func ReplaceGlobals(ctx context.Context, logger Logger) func() {
+	return zap.ReplaceGlobals(logger.Detach(ctx))
+}
+
+type Logger = *TracedLogger

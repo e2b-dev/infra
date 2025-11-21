@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -78,7 +79,7 @@ func New(
 
 func (r *Rootfs) CreateExt4Filesystem(
 	ctx context.Context,
-	logger *zap.Logger,
+	logger logger.Logger,
 	rootfsPath string,
 	provisionScript string,
 	provisionLogPrefix string,
@@ -93,7 +94,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 		}
 	}()
 
-	logger.Debug("Requesting Docker Image")
+	logger.Debug(ctx, "Requesting Docker Image")
 
 	var img containerregistry.Image
 	var err error
@@ -110,9 +111,9 @@ func (r *Rootfs) CreateExt4Filesystem(
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error getting image size: %w", err)
 	}
-	logger.Info(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
+	logger.Info(ctx, fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
-	logger.Debug("Setting up system files")
+	logger.Debug(ctx, "Setting up system files")
 	layers, err := additionalOCILayers(childCtx, r.template, provisionScript, provisionLogPrefix, provisionResultPath)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
@@ -123,14 +124,14 @@ func (r *Rootfs) CreateExt4Filesystem(
 	}
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
-	logger.Info("Creating file system and pulling Docker image")
+	logger.Info(ctx, "Creating file system and pulling Docker image")
 	ext4Size, err := oci.ToExt4(ctx, logger, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error converting oci to ext4: %w", err)
 	}
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
-	logger.Debug("Filesystem cleanup")
+	logger.Debug(ctx, "Filesystem cleanup")
 	// Make rootfs writable, be default it's readonly
 	err = filesystem.MakeWritable(ctx, rootfsPath)
 	if err != nil {

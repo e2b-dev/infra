@@ -26,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -65,7 +66,7 @@ func getProvisionScript(
 
 func (bb *BaseBuilder) provisionSandbox(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	sandboxConfig sandbox.Config,
 	sandboxRuntime sandbox.RuntimeMetadata,
 	fcVersions fc.FirecrackerVersions,
@@ -76,7 +77,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	ctx, childSpan := tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
-	zapWriter := &zapio.Writer{Log: userLogger, Level: zap.DebugLevel}
+	zapWriter := &zapio.Writer{Log: userLogger.Detach(ctx), Level: zap.DebugLevel}
 	prefixedLogsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer prefixedLogsWriter.Close()
 
@@ -145,7 +146,7 @@ func (bb *BaseBuilder) provisionSandbox(
 		return fmt.Errorf("error waiting for provisioning sandbox: %w", err)
 	}
 
-	userLogger.Info("Provisioning was successful, cleaning up")
+	userLogger.Info(ctx, "Provisioning was successful, cleaning up")
 
 	err = sbx.Shutdown(ctx)
 	if err != nil {
@@ -157,7 +158,7 @@ func (bb *BaseBuilder) provisionSandbox(
 		return fmt.Errorf("result file cleanup failed: %w", err)
 	}
 
-	userLogger.Info("Sandbox template provisioned")
+	userLogger.Info(ctx, "Sandbox template provisioned")
 
 	return nil
 }

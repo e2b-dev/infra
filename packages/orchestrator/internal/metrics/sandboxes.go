@@ -242,14 +242,14 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					// Round percentage to 2 decimal places
 					memUsedPct := float32(math.Floor(float64(memoryUsed)/float64(memoryTotal)*10000) / 100)
 					if memUsedPct >= sbxMemThresholdPct {
-						sbxlogger.E(sbx).Warn("Memory usage threshold exceeded",
+						sbxlogger.E(sbx).Warn(ctx, "Memory usage threshold exceeded",
 							zap.Float32("mem_used_percent", memUsedPct),
 							zap.Float32("mem_threshold_percent", sbxMemThresholdPct),
 						)
 					}
 
 					if sbxMetrics.CPUUsedPercent >= sbxCpuThresholdPct {
-						sbxlogger.E(sbx).Warn("CPU usage threshold exceeded",
+						sbxlogger.E(sbx).Warn(ctx, "CPU usage threshold exceeded",
 							zap.Float32("cpu_used_percent", float32(sbxMetrics.CPUUsedPercent)),
 							zap.Float32("cpu_threshold_percent", sbxCpuThresholdPct),
 						)

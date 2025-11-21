@@ -1,20 +1,23 @@
 package userfaultfd
 
 import (
+	"context"
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type eagainCounter struct {
 	count     uint64
 	startTime time.Time
 	endTime   time.Time
-	logger    *zap.Logger
+	logger    logger.Logger
 	msg       string
 }
 
-func newEagainCounter(logger *zap.Logger, msg string) *eagainCounter {
+func newEagainCounter(logger logger.Logger, msg string) *eagainCounter {
 	return &eagainCounter{
 		count:     0,
 		startTime: time.Time{},
@@ -36,7 +39,7 @@ func (c *eagainCounter) Increase() {
 
 func (c *eagainCounter) log(closing bool) {
 	if c.count > 0 {
-		c.logger.Debug(
+		c.logger.Debug(context.TODO(),
 			c.msg,
 			zap.Uint64("count", c.count),
 			zap.Time("start", c.startTime),

@@ -103,7 +103,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		SandboxID:  sandboxID,
 		TemplateID: env.TemplateID,
 		TeamID:     teamInfo.Team.ID.String(),
-	}).Debug("Started creating sandbox")
+	}).Debug(ctx, "Started creating sandbox")
 
 	alias := firstAlias(env.Aliases)
 	telemetry.SetAttributes(ctx,

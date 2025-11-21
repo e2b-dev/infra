@@ -51,6 +51,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type closer struct {
@@ -176,21 +177,21 @@ func run(config cfg.Config) (success bool) {
 		}
 	}()
 
-	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	globalLogger := utils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
 		Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
 		EnableConsole: true,
 	}))
-	defer func(l *zap.Logger) {
+	defer func(l logger.Logger) {
 		err := l.Sync()
 		if err != nil {
 			log.Printf("error while shutting down logger: %v", err)
 			success = false
 		}
 	}(globalLogger)
-	zap.ReplaceGlobals(globalLogger)
+	logger.ReplaceGlobals(ctx, globalLogger)
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
@@ -201,7 +202,7 @@ func run(config cfg.Config) (success bool) {
 			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
-	defer func(l *zap.Logger) {
+	defer func(l logger.Logger) {
 		err := l.Sync()
 		if err != nil {
 			log.Printf("error while shutting down sandbox logger: %v", err)
@@ -219,7 +220,7 @@ func run(config cfg.Config) (success bool) {
 			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
-	defer func(l *zap.Logger) {
+	defer func(l logger.Logger) {
 		err := l.Sync()
 		if err != nil {
 			log.Printf("error while shutting down sandbox logger: %v", err)
@@ -228,16 +229,16 @@ func run(config cfg.Config) (success bool) {
 	}(sbxLoggerInternal)
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
-	globalLogger.Info("Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
+	globalLogger.Info(ctx, "Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
 
 	startService := func(name string, f func() error) {
 		g.Go(func() error {
 			l := globalLogger.With(zap.String("service", name))
-			l.Info("starting service")
+			l.Info(ctx, "starting service")
 
 			err := f()
 			if err != nil {
-				l.Error("service returned an error", zap.Error(err))
+				l.Error(ctx, "service returned an error", zap.Error(err))
 			}
 
 			select {
@@ -562,9 +563,9 @@ func run(config cfg.Config) (success bool) {
 	slices.Reverse(closers)
 	for _, closer := range closers {
 		clog := globalLogger.With(zap.String("service", closer.name), zap.Bool("forced", config.ForceStop))
-		clog.Info("closing")
+		clog.Info(ctx, "closing")
 		if err := closer.close(closeCtx); err != nil {
-			clog.Error("error during shutdown", zap.Error(err))
+			clog.Error(ctx, "error during shutdown", zap.Error(err))
 			success = false
 		}
 	}

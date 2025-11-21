@@ -40,7 +40,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	)
 
 	if s.info.GetStatus() != orchestrator.ServiceInfoStatus_Healthy {
-		s.logger.Error("Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.GetTemplateID()))
+		s.logger.Error(ctx, "Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.GetTemplateID()))
 
 		return nil, fmt.Errorf("server is draining")
 	}
@@ -97,7 +97,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	// Add new core that will log all messages using logger (zap.Logger) to the logs buffer too
 	encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
 	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
-	core := zapcore.NewTee(bufferCore, s.buildLogger.Core().
+	core := zapcore.NewTee(bufferCore, s.buildLogger.Detach(ctx).Core().
 		With([]zap.Field{
 			{Type: zapcore.StringType, Key: "envID", String: cfg.GetTemplateID()},
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},

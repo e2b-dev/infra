@@ -1,17 +1,19 @@
 package writer
 
 import (
+	"context"
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // postProcessor prints out "..." 5 seconds after every log
 // message, if no other logs have been printed
 type postProcessor struct {
-	logger   *zap.Logger
+	logger   logger.Logger
 	done     chan struct{}
 	doneOnce sync.Once
 	ticker   *time.Ticker
@@ -33,14 +35,14 @@ func (p *postProcessor) run() {
 
 			return
 		case <-p.ticker.C:
-			p.logger.Info("...")
+			p.logger.Info(context.TODO(), "...")
 		}
 	}
 }
 
 func NewPostProcessor(interval time.Duration, core zapcore.Core) (zapcore.Core, func()) {
 	pp := &postProcessor{
-		logger:   zap.New(core),
+		logger:   logger.NewTracedLoggerFromCore(core),
 		done:     make(chan struct{}),
 		interval: interval,
 		ticker:   time.NewTicker(interval),

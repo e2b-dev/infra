@@ -144,14 +144,14 @@ func (p *Process) configure(
 	ctx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
 
-	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.InfoLevel}
+	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger.Detach(ctx), Level: zap.InfoLevel}
 	stdoutWriters := []io.Writer{stdoutWriter}
 	if stdoutExternal != nil {
 		stdoutWriters = append(stdoutWriters, stdoutExternal)
 	}
 	p.cmd.Stdout = io.MultiWriter(stdoutWriters...)
 
-	stderrWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.ErrorLevel}
+	stderrWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger.Detach(ctx), Level: zap.ErrorLevel}
 	stderrWriters := []io.Writer{stderrWriter}
 	if stderrExternal != nil {
 		stderrWriters = append(stderrWriters, stderrExternal)

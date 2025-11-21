@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -67,7 +68,7 @@ func RunCommand(
 func RunCommandWithLogger(
 	ctx context.Context,
 	proxy *proxy.SandboxProxy,
-	logger *zap.Logger,
+	logger logger.Logger,
 	lvl zapcore.Level,
 	id string,
 	sandboxID string,
@@ -91,7 +92,7 @@ func RunCommandWithLogger(
 func RunCommandWithConfirmation(
 	ctx context.Context,
 	proxy *proxy.SandboxProxy,
-	logger *zap.Logger,
+	logger logger.Logger,
 	lvl zapcore.Level,
 	id string,
 	sandboxID string,
@@ -107,8 +108,8 @@ func RunCommandWithConfirmation(
 		metadata,
 		confirmCh,
 		func(stdout, stderr string) {
-			logStream(logger, lvl, id, "stdout", stdout)
-			logStream(logger, lvl, id, "stderr", stderr)
+			logStream(ctx, logger, lvl, id, "stdout", stdout)
+			logStream(ctx, logger, lvl, id, "stderr", stderr)
 		},
 	)
 }
@@ -202,7 +203,7 @@ func runCommandWithAllOptions(
 	}
 }
 
-func logStream(logger *zap.Logger, lvl zapcore.Level, id string, name string, content string) {
+func logStream(ctx context.Context, logger logger.Logger, lvl zapcore.Level, id string, name string, content string) {
 	if logger == nil {
 		return
 	}
@@ -216,7 +217,7 @@ func logStream(logger *zap.Logger, lvl zapcore.Level, id string, name string, co
 			continue
 		}
 		msg := fmt.Sprintf("[%s] [%s]: %s", id, name, line)
-		logger.Log(lvl, msg)
+		logger.Log(ctx, lvl, msg)
 	}
 }
 

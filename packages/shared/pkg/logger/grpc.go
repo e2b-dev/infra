@@ -12,8 +12,8 @@ import (
 
 const HealthCheckRoute = "/grpc.health.v1.Health/Check"
 
-func GRPCLogger(l *zap.Logger) logging.Logger {
-	return logging.LoggerFunc(func(_ context.Context, lvl logging.Level, msg string, fields ...any) {
+func GRPCLogger(l Logger) logging.Logger {
+	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
 		ignoredFields := map[string]struct{}{
 			"grpc.request.content":  {},
 			"grpc.response.content": {},
@@ -75,13 +75,13 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 
 		switch lvl {
 		case logging.LevelDebug:
-			logger.Debug(message)
+			logger.Debug(ctx, message)
 		case logging.LevelInfo:
-			logger.Info(message)
+			logger.Info(ctx, message)
 		case logging.LevelWarn:
-			logger.Warn(message)
+			logger.Warn(ctx, message)
 		case logging.LevelError:
-			logger.Error(message)
+			logger.Error(ctx, message)
 		default:
 			panic(fmt.Sprintf("unknown level %v", lvl))
 		}

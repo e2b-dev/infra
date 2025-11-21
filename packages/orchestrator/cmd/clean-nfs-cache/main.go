@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -51,20 +52,20 @@ func cleanNFSCache(ctx context.Context) error {
 		cores = append(cores, otelCore)
 	}
 
-	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	globalLogger := utils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
 		Cores:         cores,
 		EnableConsole: true,
 	}))
-	defer func(l *zap.Logger) {
+	defer func(l logger.Logger) {
 		err := l.Sync()
 		if err != nil {
 			log.Printf("error while shutting down logger: %v", err)
 		}
 	}(globalLogger)
-	zap.ReplaceGlobals(globalLogger)
+	logger.ReplaceGlobals(ctx, globalLogger)
 
 	// get free space information for path
 	zap.L().Info("starting",
