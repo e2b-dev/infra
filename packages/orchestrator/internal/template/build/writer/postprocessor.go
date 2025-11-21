@@ -27,7 +27,7 @@ func (p *postProcessor) hook(_ zapcore.Entry) error {
 }
 
 // Start the post-processing.
-func (p *postProcessor) run() {
+func (p *postProcessor) run(ctx context.Context) {
 	for {
 		select {
 		case <-p.done:
@@ -35,12 +35,12 @@ func (p *postProcessor) run() {
 
 			return
 		case <-p.ticker.C:
-			p.logger.Info(context.TODO(), "...")
+			p.logger.Info(ctx, "...")
 		}
 	}
 }
 
-func NewPostProcessor(interval time.Duration, core zapcore.Core) (zapcore.Core, func()) {
+func NewPostProcessor(ctx context.Context, interval time.Duration, core zapcore.Core) (zapcore.Core, func()) {
 	pp := &postProcessor{
 		logger:   logger.NewTracedLoggerFromCore(core),
 		done:     make(chan struct{}),
@@ -48,7 +48,7 @@ func NewPostProcessor(interval time.Duration, core zapcore.Core) (zapcore.Core, 
 		ticker:   time.NewTicker(interval),
 	}
 
-	go pp.run()
+	go pp.run(ctx)
 
 	return zapcore.RegisterHooks(core, pp.hook), func() {
 		pp.doneOnce.Do(func() {

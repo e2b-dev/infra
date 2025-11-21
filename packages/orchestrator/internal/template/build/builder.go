@@ -159,7 +159,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	}()
 
 	if isV1Build {
-		hookedCore, done := writer.NewPostProcessor(progressDelay, logsCore)
+		hookedCore, done := writer.NewPostProcessor(ctx, progressDelay, logsCore)
 		defer done()
 		l = logger.NewTracedLoggerFromCore(hookedCore)
 	}

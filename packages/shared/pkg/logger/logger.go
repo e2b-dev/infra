@@ -119,7 +119,7 @@ func (t *TracedLogger) DisableContextual() Logger {
 }
 
 func (t *TracedLogger) With(fields ...zap.Field) Logger {
-	return &TracedLogger{innerLogger: t.innerLogger.With(fields...)}
+	return &TracedLogger{innerLogger: t.innerLogger.With(fields...), isContextual: t.isContextual}
 }
 
 func (t *TracedLogger) Info(ctx context.Context, msg string, fields ...zap.Field) {

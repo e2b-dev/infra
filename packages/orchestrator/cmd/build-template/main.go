@@ -27,7 +27,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -77,7 +76,7 @@ func buildTemplate(
 	defer cancel()
 
 	clientID := "build-template-cmd"
-	log, err := l.NewLogger(ctx, l.LoggerConfig{
+	log, err := logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   clientID,
 		IsInternal:    true,
 		IsDebug:       true,
@@ -90,7 +89,7 @@ func buildTemplate(
 	sbxlogger.SetSandboxLoggerExternal(log)
 	sbxlogger.SetSandboxLoggerInternal(log)
 
-	log.Info(ctx, "building template", l.WithTemplateID(templateID), l.WithBuildID(buildID))
+	log.Info(ctx, "building template", logger.WithTemplateID(templateID), logger.WithBuildID(buildID))
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
