@@ -68,10 +68,10 @@ func TestDeleteTemplateAliases_Success(t *testing.T) {
 	teamID := createTestTeam(t, client)
 	// Create a base env (required by foreign key constraint on snapshots table)
 	templateID := createTestBaseEnv(t, client, teamID)
-	alias := createTestTemplateAlias(t, client, templateID)
+	_ = createTestTemplateAlias(t, client, templateID)
 
 	// Execute UpsertSnapshot for a new snapshot
-	result, err := client.DeleteOtherTemplateAliases(ctx, alias)
+	result, err := client.DeleteOtherTemplateAliases(ctx, templateID)
 	require.NoError(t, err, "Failed to create new snapshot")
 	require.Len(t, result, 1, "Expected 1 deleted alias")
 }
