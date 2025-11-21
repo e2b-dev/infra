@@ -205,6 +205,9 @@ func TestSandboxListPausing(t *testing.T) {
 		// The sandbox has to be always present
 		assert.Fail(t, "failed to find sandbox")
 	}, time.Minute, 100*time.Millisecond, "Sandbox did not reach paused state in time")
+
+	err := wg.Wait()
+	require.NoError(t, err)
 }
 
 func TestSandboxListPaused_NoMetadata(t *testing.T) {
