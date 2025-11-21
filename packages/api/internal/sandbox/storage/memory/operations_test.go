@@ -70,7 +70,7 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 				assert.False(t, alreadyDone)
 				assert.NotNil(t, finish)
 				assert.Equal(t, tt.expState, sbx.State()) // State changed immediately
-				finish(ctx, nil)                               // Complete the transition
+				finish(ctx, nil)                          // Complete the transition
 			}
 		})
 	}

@@ -95,7 +95,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	posthogCtx, span := tracer.Start(c, "posthog-analytics")
+	posthogCtx, span := tracer.Start(ctx, "posthog-analytics")
 	defer span.End()
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(posthogCtx, team.ID.String(), team.Name)

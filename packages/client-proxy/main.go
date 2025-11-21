@@ -33,7 +33,6 @@ import (
 	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	e2blogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -79,12 +78,12 @@ func run() int {
 	}()
 
 	l := utils.Must(
-		e2blogger.NewLogger(
-			ctx, e2blogger.LoggerConfig{
+		logger.NewLogger(
+			ctx, logger.LoggerConfig{
 				ServiceName:   serviceName,
 				IsInternal:    true,
 				IsDebug:       env.IsDebug(),
-				Cores:         []zapcore.Core{e2blogger.GetOTELCore(tel.LogsProvider, serviceName)},
+				Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
 				EnableConsole: true,
 			},
 		),
@@ -96,7 +95,7 @@ func run() int {
 			log.Printf("logger sync error: %v\n", err)
 		}
 	}()
-	e2blogger.ReplaceGlobals(ctx, l)
+	logger.ReplaceGlobals(ctx, l)
 
 	exitCode := atomic.Int32{}
 

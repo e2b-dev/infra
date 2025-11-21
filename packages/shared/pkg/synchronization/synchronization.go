@@ -50,7 +50,7 @@ func NewSynchronize[SourceItem any, PoolItem any](spanPrefix string, logsPrefix 
 
 func (s *Synchronize[SourceItem, PoolItem]) Start(ctx context.Context, syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
 	if runInitialSync {
-		initialSyncTimeout, initialSyncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
+		initialSyncTimeout, initialSyncCancel := context.WithTimeout(context.WithoutCancel(ctx), syncRoundTimeout)
 		err := s.sync(initialSyncTimeout)
 		initialSyncCancel()
 		if err != nil {
@@ -68,7 +68,7 @@ func (s *Synchronize[SourceItem, PoolItem]) Start(ctx context.Context, syncInter
 
 			return
 		case <-timer.C:
-			syncTimeout, syncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
+			syncTimeout, syncCancel := context.WithTimeout(context.WithoutCancel(ctx), syncRoundTimeout)
 			err := s.sync(syncTimeout)
 			syncCancel()
 			if err != nil {
