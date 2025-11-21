@@ -84,7 +84,6 @@ linters:
         - { disabled: true, name: add-constant } # todo: enable this
         - { disabled: true, name: argument-limit }
         - { disabled: true, name: bare-return }
-        - { disabled: true, name: blank-imports }
         - { disabled: true, name: bool-literal-in-expr }
         - { disabled: true, name: cognitive-complexity }
         - { disabled: true, name: comment-spacings }
@@ -129,7 +128,7 @@ linters:
         - -QF1008 # Omit embedded fields from selector expression
 
 run:
-  go: 1.24.7
+  go: 1.25.4
   allow-parallel-runners: true
 
 issues:

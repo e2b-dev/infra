@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -17,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const commandHardTimeout = 1 * time.Hour
@@ -117,9 +121,15 @@ func runCommandWithAllOptions(
 	metadata metadata.Context,
 	confirmCh chan<- struct{},
 	processOutput func(stdout, stderr string),
-) error {
-	ctx, span := tracer.Start(ctx, "run command")
+) (e error) {
+	ctx, span := tracer.Start(ctx, "run command", trace.WithAttributes(attribute.String("command", command), telemetry.WithSandboxID(sandboxID)))
 	defer span.End()
+	defer func() {
+		if e != nil {
+			span.RecordError(e)
+			span.SetStatus(codes.Error, e.Error())
+		}
+	}()
 
 	runCmdReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{

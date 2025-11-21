@@ -170,8 +170,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		b.Fatalf("error parsing config: %v", err)
 	}
 
-	templateCache, err := template.NewCache(b.Context(), c, featureFlags, persistence, blockMetrics)
+	templateCache, err := template.NewCache(c, featureFlags, persistence, blockMetrics)
 	require.NoError(b, err)
+	templateCache.Start(b.Context())
+	b.Cleanup(templateCache.Stop)
 
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 

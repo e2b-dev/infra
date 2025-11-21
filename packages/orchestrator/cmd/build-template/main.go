@@ -183,10 +183,12 @@ func buildTemplate(
 		return fmt.Errorf("error parsing config: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(ctx, c, featureFlags, persistenceTemplate, blockMetrics)
+	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
+	templateCache.Start(ctx)
+	defer templateCache.Stop()
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
 	if err != nil {

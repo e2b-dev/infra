@@ -2,7 +2,6 @@ package template_manager
 
 import (
 	"context"
-	_ "embed"
 	"errors"
 	"fmt"
 
