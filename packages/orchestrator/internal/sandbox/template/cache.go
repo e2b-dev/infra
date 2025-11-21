@@ -219,7 +219,7 @@ func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot boo
 
 	flag, err := c.flags.BoolFlag(ctx, flagName)
 	if err != nil {
-		logger.L().Error(ctx,"failed to get nfs cache feature flag", zap.Error(err))
+		logger.L().Error(ctx, "failed to get nfs cache feature flag", zap.Error(err))
 	}
 
 	return flag

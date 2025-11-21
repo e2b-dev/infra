@@ -50,11 +50,14 @@ func (p *ProxyPool) Get(ctx context.Context, d *Destination) *ProxyClient {
 			withFields = append(withFields, zap.Stringp("mask_request_host", d.MaskRequestHost))
 		}
 
-		l, err := zap.NewStdLogAt(logger.L().Detach(ctx).With(withFields...), zap.ErrorLevel)
+		l := logger.L().With(withFields...)
+
+		stdLogger, err := zap.NewStdLogAt(l.Detach(ctx), zap.ErrorLevel)
 		if err != nil {
-			logger.L().Warn(ctx, "failed to create logger", zap.Error(err))
+			l.Warn(ctx, "failed to create logger", zap.Error(err))
 		}
 
+		//nolint:contextcheck // Function `newProxyClient->newProxyClient$4` should pass the context parameter, but there is no reason to
 		return newProxyClient(
 			p.maxClientConns,
 			// We limit the max number of connections per host to avoid exhausting the number of available via one host.
@@ -69,7 +72,7 @@ func (p *ProxyPool) Get(ctx context.Context, d *Destination) *ProxyClient {
 			p.idleTimeout,
 			&p.totalConnsCounter,
 			&p.currentConnsCounter,
-			l,
+			stdLogger,
 		)
 	})
 }
