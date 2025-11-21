@@ -64,7 +64,7 @@ func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
 	}
 
 	defer func() {
-		err := lock.Release(ctx)
+		err := lock.Release(context.WithoutCancel(ctx))
 		if err != nil {
 			zap.L().Error("Failed to release lock", zap.Error(err))
 		}
