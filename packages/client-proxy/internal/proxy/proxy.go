@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -59,12 +60,13 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 		reverseproxy.ClientProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
+			ctx := r.Context()
 			sandboxId, port, err := getTargetFromRequest(r)
 			if err != nil {
 				return nil, err
 			}
 
-			logger := zap.L().With(
+			logger := logger.L().With(
 				zap.String("origin_host", r.Host),
 				l.WithSandboxID(sandboxId),
 				zap.Uint64("sandbox_req_port", port),
@@ -78,7 +80,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
-					logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err))
+					logger.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
 				}
 
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)

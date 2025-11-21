@@ -192,7 +192,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		eventType = events.SandboxResumedEventPair
 	}
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	go s.sbxEventsService.Publish(
 		context.WithoutCancel(ctx),
 		teamID,
@@ -234,7 +234,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	sbx.EndAt = req.GetEndTime().AsTime()
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
 	eventType := events.SandboxUpdatedEventPair
 
@@ -327,7 +327,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		}
 	}()
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 
 	eventType := events.SandboxKilledEventPair
 	go s.sbxEventsService.Publish(
@@ -440,7 +440,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		}
 	}(context.WithoutCancel(ctx))
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 
 	eventType := events.SandboxPausedEventPair
 	go s.sbxEventsService.Publish(
@@ -465,10 +465,10 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 }
 
 // Extracts common data needed for sandbox events
-func (s *Server) prepareSandboxEventData(sbx *sandbox.Sandbox) (uuid.UUID, string, map[string]any) {
+func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandbox) (uuid.UUID, string, map[string]any) {
 	teamID, err := uuid.Parse(sbx.Runtime.TeamID)
 	if err != nil {
-		sbxlogger.I(sbx).Error(context.TODO(), "error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
+		sbxlogger.I(sbx).Error(ctx, "error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 	}
 
 	buildId := ""

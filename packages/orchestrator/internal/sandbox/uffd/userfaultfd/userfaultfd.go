@@ -58,7 +58,7 @@ func (u *Userfaultfd) Serve(
 	}
 
 	eagainCounter := newEagainCounter(u.logger, "uffd: eagain during fd read (accumulated)")
-	defer eagainCounter.Close()
+	defer eagainCounter.Close(ctx)
 
 outerLoop:
 	for {
@@ -124,7 +124,7 @@ outerLoop:
 			if err == nil {
 				// There is no error so we can proceed.
 
-				eagainCounter.Log()
+				eagainCounter.Log(ctx)
 
 				break
 			}

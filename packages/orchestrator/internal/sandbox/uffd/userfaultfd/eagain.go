@@ -37,9 +37,9 @@ func (c *eagainCounter) Increase() {
 	c.endTime = time.Now()
 }
 
-func (c *eagainCounter) log(closing bool) {
+func (c *eagainCounter) log(ctx context.Context, closing bool) {
 	if c.count > 0 {
-		c.logger.Debug(context.TODO(),
+		c.logger.Debug(ctx,
 			c.msg,
 			zap.Uint64("count", c.count),
 			zap.Time("start", c.startTime),
@@ -51,10 +51,10 @@ func (c *eagainCounter) log(closing bool) {
 	}
 }
 
-func (c *eagainCounter) Close() {
-	c.log(true)
+func (c *eagainCounter) Close(ctx context.Context) {
+	c.log(ctx, true)
 }
 
-func (c *eagainCounter) Log() {
-	c.log(false)
+func (c *eagainCounter) Log(ctx context.Context) {
+	c.log(ctx, false)
 }
