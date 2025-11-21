@@ -31,7 +31,7 @@ func TestPostProcessor_Start(t *testing.T) {
 	interval := time.Millisecond * 100
 	halfInterval := time.Duration(float64(interval) * 0.5)
 
-	core, done := NewPostProcessor(interval, core)
+	core, done := NewPostProcessor(t.Context(), interval, core)
 	logger := zap.New(core)
 
 	// log some info

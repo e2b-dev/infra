@@ -114,6 +114,7 @@ func newProxyClient(
 			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			ctx := r.Context()
 			t, ok := pc.getDestination(r)
 			if !ok {
 				zap.L().Error("proxy request without sandbox received error", zap.Error(err))
@@ -123,14 +124,14 @@ func newProxyClient(
 			}
 
 			if r.Host == "" { // kept around for historical reasons, unsure of usefulness. todo: find out if this is useful.
-				t.RequestLogger.Error("error handler called from rewrite because of missing DestinationContext", zap.Error(err))
+				t.RequestLogger.Error(ctx, "error handler called from rewrite because of missing DestinationContext", zap.Error(err))
 				http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
 
 				return
 			}
 
 			if err != nil {
-				t.RequestLogger.Error("sandbox error handler called", zap.Error(err))
+				t.RequestLogger.Error(ctx, "sandbox error handler called", zap.Error(err))
 			}
 
 			if t.DefaultToPortError {
@@ -151,6 +152,7 @@ func newProxyClient(
 			http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
 		},
 		ModifyResponse: func(r *http.Response) error {
+			ctx := r.Request.Context()
 			t, ok := pc.getDestination(r.Request)
 			if !ok {
 				return nil
@@ -158,11 +160,12 @@ func newProxyClient(
 
 			if r.StatusCode >= 500 {
 				t.RequestLogger.Error(
+					ctx,
 					"Reverse proxy error",
 					zap.Int("status_code", r.StatusCode),
 				)
 			} else {
-				t.RequestLogger.Debug("Reverse proxy response",
+				t.RequestLogger.Debug(ctx, "Reverse proxy response",
 					zap.Int("status_code", r.StatusCode),
 				)
 			}

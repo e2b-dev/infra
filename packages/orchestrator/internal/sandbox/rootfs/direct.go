@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -65,7 +66,7 @@ func (o *DirectProvider) ExportDiff(
 	go func() {
 		err := stopSandbox(ctx)
 		if err != nil {
-			zap.L().Error("error stopping sandbox on cow export", zap.Error(err))
+			logger.L().Error(ctx, "error stopping sandbox on cow export", zap.Error(err))
 		}
 	}()
 
@@ -77,7 +78,7 @@ func (o *DirectProvider) ExportDiff(
 	telemetry.ReportEvent(ctx, "sandbox stopped")
 
 	o.cache.MarkAllAsDirty()
-	m, err := o.cache.ExportToDiff(out)
+	m, err := o.cache.ExportToDiff(ctx, out)
 	if err != nil {
 		return nil, fmt.Errorf("error exporting cache: %w", err)
 	}
