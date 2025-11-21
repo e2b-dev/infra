@@ -1,4 +1,4 @@
-package snapshots_test
+package snapshots
 
 import (
 	"context"

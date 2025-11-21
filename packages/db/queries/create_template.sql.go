@@ -97,14 +97,14 @@ func (q *Queries) CreateTemplateBuild(ctx context.Context, arg CreateTemplateBui
 	return err
 }
 
-const invalidateUnfinishedTemplateBuilds = `-- name: InvalidateUnfinishedTemplateBuilds :exec
+const invalidateUnstartedTemplateBuilds = `-- name: InvalidateUnstartedTemplateBuilds :exec
 UPDATE "public"."env_builds"
 SET status  = 'failed',
     finished_at = NOW()
 WHERE env_id = $1 AND status = 'waiting'
 `
 
-func (q *Queries) InvalidateUnfinishedTemplateBuilds(ctx context.Context, templateID string) error {
-	_, err := q.db.Exec(ctx, invalidateUnfinishedTemplateBuilds, templateID)
+func (q *Queries) InvalidateUnstartedTemplateBuilds(ctx context.Context, templateID string) error {
+	_, err := q.db.Exec(ctx, invalidateUnstartedTemplateBuilds, templateID)
 	return err
 }
