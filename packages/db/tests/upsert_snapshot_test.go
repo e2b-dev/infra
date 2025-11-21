@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/testutils"
 	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // createTestTeam creates a test team in the database using raw SQL
@@ -114,7 +115,7 @@ func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 				},
 			},
 		},
-		OriginNodeID: originNodeID,
+		OriginNodeID: &originNodeID,
 		Status:       "snapshotting",
 	}
 
@@ -177,7 +178,7 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 		Config: &types.PausedSandboxConfig{
 			Version: types.PausedSandboxConfigVersion,
 		},
-		OriginNodeID: originNodeID,
+		OriginNodeID: &originNodeID,
 		Status:       "snapshotting",
 	}
 
@@ -224,9 +225,9 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 		EnvdVersion:         &envdVersion,
 		Secure:              true,
 		AllowInternetAccess: &allowInternet,
-		AutoPause:           true,                // Updated from false
-		Config:              updatedConfig,       // Updated config
-		OriginNodeID:        updatedOriginNodeID, // Updated from node-1
+		AutoPause:           true,                 // Updated from false
+		Config:              updatedConfig,        // Updated config
+		OriginNodeID:        &updatedOriginNodeID, // Updated from node-1
 		Status:              "snapshotting",
 	}
 
@@ -272,7 +273,7 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 		AllowInternetAccess: &allowInternet,
 		AutoPause:           true,
 		Config:              updatedConfig,
-		OriginNodeID:        "node-3",
+		OriginNodeID:        utils.ToPtr("node-3"),
 		Status:              "snapshotting",
 	}
 
