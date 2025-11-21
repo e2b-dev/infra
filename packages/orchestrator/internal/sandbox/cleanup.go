@@ -27,9 +27,9 @@ func NewCleanup() *Cleanup {
 	return &Cleanup{}
 }
 
-func (c *Cleanup) Add(f func(ctx context.Context) error) {
+func (c *Cleanup) Add(ctx context.Context, f func(ctx context.Context) error) {
 	if c.hasRun.Load() == true {
-		logger.L().Error(context.TODO(), "Add called after cleanup has run, ignoring function") //nolint:contextcheck // TODO: fix this later
+		logger.L().Error(ctx, "Add called after cleanup has run, ignoring function")
 
 		return
 	}
@@ -40,9 +40,9 @@ func (c *Cleanup) Add(f func(ctx context.Context) error) {
 	c.cleanup = append(c.cleanup, f)
 }
 
-func (c *Cleanup) AddPriority(f func(ctx context.Context) error) {
+func (c *Cleanup) AddPriority(ctx context.Context, f func(ctx context.Context) error) {
 	if c.hasRun.Load() == true {
-		logger.L().Error(context.TODO(), "AddPriority called after cleanup has run, ignoring function") //nolint:contextcheck // TODO: fix this later
+		logger.L().Error(ctx, "AddPriority called after cleanup has run, ignoring function")
 
 		return
 	}

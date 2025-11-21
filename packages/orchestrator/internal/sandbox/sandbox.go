@@ -195,7 +195,7 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(cleanupFiles(f.config, sandboxFiles))
+	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
@@ -220,7 +220,7 @@ func (f *Factory) CreateSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
-	cleanup.Add(rootfsProvider.Close)
+	cleanup.Add(ctx, rootfsProvider.Close)
 	go func() {
 		runErr := rootfsProvider.Start(execCtx)
 		if runErr != nil {
@@ -317,7 +317,7 @@ func (f *Factory) CreateSandbox(
 	sbx.Checks = NewChecks(sbx, false)
 
 	// Stop the sandbox first if it is still running, otherwise do nothing
-	cleanup.AddPriority(sbx.Stop)
+	cleanup.AddPriority(ctx, sbx.Stop)
 
 	go func() {
 		defer execSpan.End()
@@ -380,7 +380,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(cleanupFiles(f.config, sandboxFiles))
+	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
@@ -400,7 +400,7 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
 
-	cleanup.Add(rootfsOverlay.Close)
+	cleanup.Add(ctx, rootfsOverlay.Close)
 
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
@@ -557,7 +557,7 @@ func (f *Factory) ResumeSandbox(
 	// This is to prevent race condition of reporting unhealthy sandbox
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
 
-	cleanup.AddPriority(func(ctx context.Context) error {
+	cleanup.AddPriority(ctx, func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
 		return sbx.Stop(ctx)
 	})
@@ -985,7 +985,7 @@ func getNetworkSlotAsync(
 			return
 		}
 
-		cleanup.Add(func(ctx context.Context) error {
+		cleanup.Add(ctx, func(ctx context.Context) error {
 			_, span := tracer.Start(ctx, "network-slot-clean")
 			defer span.End()
 
@@ -1028,7 +1028,7 @@ func serveMemory(
 
 	telemetry.ReportEvent(ctx, "started uffd")
 
-	cleanup.Add(func(ctx context.Context) error {
+	cleanup.Add(ctx, func(ctx context.Context) error {
 		_, span := tracer.Start(ctx, "uffd-stop")
 		defer span.End()
 
