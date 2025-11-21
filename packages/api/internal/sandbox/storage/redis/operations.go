@@ -94,12 +94,10 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 	}
 
 	defer func() {
-		go func() {
-			err := lock.Release(context.WithoutCancel(ctx))
-			if err != nil {
-				zap.L().Error("Failed to release lock", zap.Error(err))
-			}
-		}()
+		err := lock.Release(context.WithoutCancel(ctx))
+		if err != nil {
+			zap.L().Error("Failed to release lock", zap.Error(err))
+		}
 	}()
 
 	// Get current value
