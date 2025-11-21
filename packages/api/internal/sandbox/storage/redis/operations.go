@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 // Add stores a sandbox in Redis
