@@ -18,7 +18,7 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/server")
 
 func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanager.TemplateBuildDeleteRequest) (*emptypb.Empty, error) {
-	childCtx, childSpan := tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
+	ctx, childSpan := tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
 		telemetry.WithTemplateID(in.GetTemplateID()),
 		telemetry.WithBuildID(in.GetBuildID()),
 	))
@@ -41,7 +41,7 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		})
 	}
 
-	err = template.Delete(childCtx, s.artifactsregistry, s.templateStorage, in.GetTemplateID(), in.GetBuildID())
+	err = template.Delete(ctx, s.artifactsregistry, s.templateStorage, in.GetTemplateID(), in.GetBuildID())
 	if err != nil {
 		return nil, err
 	}

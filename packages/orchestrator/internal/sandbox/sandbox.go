@@ -986,7 +986,7 @@ func getNetworkSlotAsync(
 		}
 
 		cleanup.Add(ctx, func(ctx context.Context) error {
-			_, span := tracer.Start(ctx, "network-slot-clean")
+			ctx, span := tracer.Start(ctx, "network-slot-clean")
 			defer span.End()
 
 			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle

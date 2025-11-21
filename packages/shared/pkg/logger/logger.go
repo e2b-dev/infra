@@ -166,6 +166,9 @@ func (t *TracedLogger) generateFields(ctx context.Context, fields ...zap.Field) 
 		if spanContext.HasTraceID() {
 			contextFields = append(contextFields, zap.String("trace_id", spanContext.TraceID().String()))
 		}
+		if spanContext.HasSpanID() {
+			contextFields = append(contextFields, zap.String("span_id", spanContext.SpanID().String()))
+		}
 
 		return append(contextFields, fields...)
 	}

@@ -24,7 +24,7 @@ import (
 )
 
 func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templatemanager.TemplateCreateRequest) (*emptypb.Empty, error) {
-	_, childSpan := tracer.Start(ctx, "template-create")
+	ctx, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
 	cfg := templateRequest.GetTemplate()
