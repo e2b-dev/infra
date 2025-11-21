@@ -8,6 +8,7 @@ package queries
 import (
 	"context"
 
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/google/uuid"
 )
 
@@ -102,12 +103,18 @@ func (q *Queries) CreateTemplateBuild(ctx context.Context, arg CreateTemplateBui
 const invalidateUnstartedTemplateBuilds = `-- name: InvalidateUnstartedTemplateBuilds :exec
 UPDATE "public"."env_builds"
 SET status  = 'failed',
+    reason = $1,
     updated_at = NOW(),
     finished_at = NOW()
-WHERE env_id = $1 AND status = 'waiting'
+WHERE env_id = $2 AND status = 'waiting'
 `
 
-func (q *Queries) InvalidateUnstartedTemplateBuilds(ctx context.Context, templateID string) error {
-	_, err := q.db.Exec(ctx, invalidateUnstartedTemplateBuilds, templateID)
+type InvalidateUnstartedTemplateBuildsParams struct {
+	Reason     types.BuildReason
+	TemplateID string
+}
+
+func (q *Queries) InvalidateUnstartedTemplateBuilds(ctx context.Context, arg InvalidateUnstartedTemplateBuildsParams) error {
+	_, err := q.db.Exec(ctx, invalidateUnstartedTemplateBuilds, arg.Reason, arg.TemplateID)
 	return err
 }

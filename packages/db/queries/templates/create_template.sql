@@ -8,6 +8,7 @@ SET updated_at  = NOW(),
 -- name: InvalidateUnstartedTemplateBuilds :exec
 UPDATE "public"."env_builds"
 SET status  = 'failed',
+    reason = @reason,
     updated_at = NOW(),
     finished_at = NOW()
 WHERE env_id = @template_id AND status = 'waiting';

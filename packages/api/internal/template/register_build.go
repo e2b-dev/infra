@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -177,7 +178,12 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "created or update template")
 
 	// Mark the previous not started builds as failed
-	err = client.InvalidateUnstartedTemplateBuilds(ctx, data.TemplateID)
+	err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+		Reason: dbtypes.BuildReason{
+			Message: "The build was canceled because a newer build superseded it.",
+		},
+		TemplateID: data.TemplateID,
+	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when updating env", err)
 
