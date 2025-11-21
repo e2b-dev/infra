@@ -123,3 +123,7 @@ func (b *localDiff) CacheKey() DiffStoreKey {
 func (b *localDiff) Init(context.Context) error {
 	return nil
 }
+
+func (b *localDiff) BlockSize() int64 {
+	return b.blockSize
+}

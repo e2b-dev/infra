@@ -16,6 +16,7 @@ func (BytesNotAvailableError) Error() string {
 
 type Slicer interface {
 	Slice(ctx context.Context, off, length int64) ([]byte, error)
+	BlockSize() int64
 }
 
 type ReadonlyDevice interface {
