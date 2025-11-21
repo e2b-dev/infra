@@ -48,7 +48,6 @@ INSERT INTO "public"."env_builds" (
     free_disk_size_mb,
     start_cmd,
     ready_cmd,
-    cluster_node_id,
     dockerfile,
     version
 ) VALUES (
@@ -63,8 +62,7 @@ INSERT INTO "public"."env_builds" (
     $8,
     $9,
     $10,
-    $11,
-    $12
+    $11
 )
 `
 
@@ -78,7 +76,6 @@ type CreateTemplateBuildParams struct {
 	FreeDiskSizeMb     int64
 	StartCmd           *string
 	ReadyCmd           *string
-	ClusterNodeID      string
 	Dockerfile         *string
 	Version            *string
 }
@@ -94,7 +91,6 @@ func (q *Queries) CreateTemplateBuild(ctx context.Context, arg CreateTemplateBui
 		arg.FreeDiskSizeMb,
 		arg.StartCmd,
 		arg.ReadyCmd,
-		arg.ClusterNodeID,
 		arg.Dockerfile,
 		arg.Version,
 	)

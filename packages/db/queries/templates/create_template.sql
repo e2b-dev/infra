@@ -23,7 +23,6 @@ INSERT INTO "public"."env_builds" (
     free_disk_size_mb,
     start_cmd,
     ready_cmd,
-    cluster_node_id,
     dockerfile,
     version
 ) VALUES (
@@ -37,7 +36,6 @@ INSERT INTO "public"."env_builds" (
     @free_disk_size_mb,
     @start_cmd,
     @ready_cmd,
-    @cluster_node_id,
     @dockerfile,
     @version
 );
