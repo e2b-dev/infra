@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"go.uber.org/zap"
 
@@ -66,8 +67,7 @@ type Dispatch struct {
 	writeLock        sync.Mutex
 	prov             Provider
 	pendingResponses sync.WaitGroup
-	shuttingDown     bool
-	shuttingDownLock sync.Mutex
+	shuttingDown     atomic.Bool
 	fatal            chan error
 }
 
@@ -85,9 +85,9 @@ func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
 }
 
 func (d *Dispatch) Drain() {
-	d.shuttingDownLock.Lock()
-	d.shuttingDown = true
-	d.shuttingDownLock.Unlock()
+	if !d.shuttingDown.CompareAndSwap(false, true) {
+		return
+	}
 
 	// Wait for any pending responses
 	d.pendingResponses.Wait()
@@ -232,15 +232,11 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 }
 
 func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
-	d.shuttingDownLock.Lock()
-	if !d.shuttingDown {
-		d.pendingResponses.Add(1)
-	} else {
-		d.shuttingDownLock.Unlock()
-
+	if d.shuttingDown.Load() {
 		return ErrShuttingDown
 	}
-	d.shuttingDownLock.Unlock()
+
+	d.pendingResponses.Add(1)
 
 	performRead := func(handle uint64, from uint64, length uint32) error {
 		// buffered to avoid goroutine leak
@@ -282,15 +278,11 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 }
 
 func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
-	d.shuttingDownLock.Lock()
-	if !d.shuttingDown {
-		d.pendingResponses.Add(1)
-	} else {
-		d.shuttingDownLock.Unlock()
-
+	if d.shuttingDown.Load() {
 		return ErrShuttingDown
 	}
-	d.shuttingDownLock.Unlock()
+
+	d.pendingResponses.Add(1)
 
 	performWrite := func(handle uint64, from uint64, data []byte) error {
 		// buffered to avoid goroutine leak
