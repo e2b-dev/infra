@@ -28,8 +28,8 @@ func createTestTeam(t *testing.T, db *client.Client) uuid.UUID {
 	return teamID
 }
 
-// createTestBaseEnv creates a base env in the database (required by foreign key constraint)
-func createTestBaseEnv(t *testing.T, db *client.Client, teamID uuid.UUID) string {
+// createTestTemplate creates a base env in the database (required by foreign key constraint)
+func createTestTemplate(t *testing.T, db *client.Client, teamID uuid.UUID) string {
 	t.Helper()
 	envID := "base-env-" + uuid.New().String()
 
@@ -67,7 +67,7 @@ func TestDeleteTemplateAliases_Success(t *testing.T) {
 	// Create a test team first (required by foreign key constraint)
 	teamID := createTestTeam(t, client)
 	// Create a base env (required by foreign key constraint on snapshots table)
-	templateID := createTestBaseEnv(t, client, teamID)
+	templateID := createTestTemplate(t, client, teamID)
 	_ = createTestTemplateAlias(t, client, templateID)
 
 	// Execute UpsertSnapshot for a new snapshot
@@ -84,9 +84,9 @@ func TestDeleteTemplateAliases_NoAlias(t *testing.T) {
 	// Create a test team first (required by foreign key constraint)
 	teamID := createTestTeam(t, client)
 	// Create a base env (required by foreign key constraint on snapshots table)
-	templateID := createTestBaseEnv(t, client, teamID)
+	templateID := createTestTemplate(t, client, teamID)
 	_ = createTestTemplateAlias(t, client, templateID)
-	anotherTemplateID := createTestBaseEnv(t, client, teamID)
+	anotherTemplateID := createTestTemplate(t, client, teamID)
 
 	// Execute UpsertSnapshot for a new snapshot
 	result, err := client.DeleteOtherTemplateAliases(ctx, anotherTemplateID)
