@@ -3,12 +3,13 @@ package storage
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
-	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
@@ -35,18 +36,72 @@ func (c CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteTo")
 	defer span.End()
 
-	if bytesRead, ok := c.copyFullFileFromCache(ctx, dst); ok {
+	bytesRead, err := c.copyFullFileFromCache(ctx, dst)
+	if err == nil {
+		recordCacheRead(ctx, true, bytesRead, cacheOpWriteTo)
+
 		return bytesRead, nil
 	}
 
-	return c.readAndCacheFullRemoteFile(ctx, dst)
+	recordCacheError(ctx, cacheOpWriteTo, err)
+
+	bytesRead, err = c.readAndCacheFullRemoteFile(ctx, dst, cacheOpWriteTo)
+	if ignoreEOF(err) != nil {
+		return 0, fmt.Errorf("failed to read and cache object: %w", err)
+	}
+
+	recordCacheRead(ctx, false, bytesRead, cacheOpWriteTo)
+
+	return bytesRead, err // in case  err == EOF
 }
 
-func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, err error) {
-	return c.inner.Write(ctx, p)
+func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e error) {
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.Write", trace.WithAttributes(attribute.Int("size", len(p))))
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.writeFileToCache(
+			context.WithoutCancel(ctx),
+			bytes.NewReader(p),
+			cacheOpWrite,
+		)
+	}()
+
+	var count int
+	var err error
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		count, err = c.inner.Write(ctx, p)
+	}()
+
+	wg.Wait()
+
+	return count, err
 }
 
 func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+	go func(ctx context.Context) {
+		input, err := os.Open(path)
+		if err != nil {
+			zap.L().Error("failed to open file",
+				zap.String("path", path),
+				zap.Error(err))
+
+			return
+		}
+
+		c.writeFileToCache(ctx, input, cacheOpWriteFromFileSystem)
+	}(context.WithoutCancel(ctx))
+
 	return c.inner.WriteFromFileSystem(ctx, path)
 }
 
@@ -54,13 +109,7 @@ func (c CachedObjectProvider) fullFilename() string {
 	return fmt.Sprintf("%s/content.bin", c.path)
 }
 
-func (c CachedObjectProvider) tempFullFilename() string {
-	tempFilename := uuid.NewString()
-
-	return fmt.Sprintf("%s/.temp.content.bin.%s", c.path, tempFilename)
-}
-
-func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.Writer) (int64, bool) {
+func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.Writer) (int64, error) {
 	cachedRead := cacheReadTimerFactory.Begin()
 
 	path := c.fullFilename()
@@ -68,99 +117,57 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 	var fp *os.File
 	fp, err := os.Open(path)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			zap.L().Error("failed to open full cached file",
-				zap.String("path", path),
-				zap.Error(err))
-		}
-
-		return 0, false
+		return 0, fmt.Errorf("failed to open cached file %s: %w", path, err)
 	}
 
 	defer cleanup("failed to close full cached file", fp.Close)
 
 	count, err := io.Copy(dst, fp)
 	if ignoreEOF(err) != nil {
-		zap.L().Error("failed to read full cached file",
-			zap.String("path", path),
-			zap.Error(err))
-
-		return 0, false
+		return 0, fmt.Errorf("failed to copy cached file %s: %w", path, err)
 	}
 
 	cachedRead.End(ctx, count)
 
-	return count, true
+	return count, nil
 }
 
-func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, dst io.Writer) (int64, error) {
+func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, dst io.Writer, op cacheOp) (int64, error) {
 	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
 	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
 	// file is larger than 2 MB, the buffer will grow, it just won't be as efficient WRT memory allocations.
 	const writeToInitialBufferSize = 2 * megabyte
 
-	writer := bytes.NewBuffer(make([]byte, 0, writeToInitialBufferSize))
+	buffer := bytes.NewBuffer(make([]byte, 0, writeToInitialBufferSize))
 
-	if _, err := c.inner.WriteTo(ctx, writer); ignoreEOF(err) != nil {
+	if _, err := c.inner.WriteTo(ctx, buffer); ignoreEOF(err) != nil {
 		return 0, err
 	}
 
-	go func() {
-		c.writeFullFileToCache(context.WithoutCancel(ctx), writer.Bytes())
-	}()
+	go c.writeFileToCache(context.WithoutCancel(ctx), buffer, op)
 
-	written, err := dst.Write(writer.Bytes())
+	written, err := dst.Write(buffer.Bytes())
 
 	return int64(written), err
 }
 
-func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte) {
-	finalPath := c.fullFilename()
+func (c CachedObjectProvider) writeFileToCache(ctx context.Context, input io.Reader, op cacheOp) {
+	path := c.fullFilename()
 
-	// Try to acquire lock for this chunk write to NFS cache
-	lockFile, err := lock.TryAcquireLock(finalPath)
+	output, err := lock.OpenFile(path)
 	if err != nil {
-		if errors.Is(err, lock.ErrLockAlreadyHeld) {
-			// Another process is already writing this chunk, so we can skip writing it ourselves
-			return
-		}
-		zap.L().Warn("failed to acquire lock", zap.String("path", finalPath), zap.Error(err))
+		recordCacheError(ctx, op, err)
+
+		return
+	}
+	defer cleanup("failed to unlock file", output.Close)
+
+	count, err := io.Copy(output, input)
+	if ignoreEOF(err) != nil {
+		recordCacheError(ctx, op, err)
 
 		return
 	}
 
-	// Release lock after write completes
-	defer func() {
-		err := lock.ReleaseLock(lockFile)
-		if err != nil {
-			zap.L().Warn("failed to release lock after writing chunk to cache", zap.Error(err), zap.String("path", finalPath))
-		}
-	}()
-
-	timer := cacheWriteTimerFactory.Begin()
-
-	tempPath := c.tempFullFilename()
-
-	if err := os.WriteFile(tempPath, b, cacheFilePermissions); err != nil {
-		zap.L().Error("failed to write temp cache file",
-			zap.String("path", tempPath),
-			zap.Int("length", len(b)),
-			zap.Error(err),
-		)
-
-		return
-	}
-
-	if err := moveWithoutReplace(tempPath, finalPath); err != nil {
-		zap.L().Error("failed to rename temp file",
-			zap.String("tempPath", tempPath),
-			zap.String("filePath", finalPath),
-			zap.Int("length", len(b)),
-			zap.Error(err),
-		)
-
-		return
-	}
-
-	timer.End(ctx, int64(len(b)))
+	recordCacheWrite(ctx, count, op)
 }
