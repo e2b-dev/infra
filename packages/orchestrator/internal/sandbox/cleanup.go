@@ -27,6 +27,10 @@ func NewCleanup() *Cleanup {
 	return &Cleanup{}
 }
 
+func (c *Cleanup) AddNoContext(ctx context.Context, f func() error) {
+	c.Add(ctx, func(ctx context.Context) error { return f() })
+}
+
 func (c *Cleanup) Add(ctx context.Context, f func(ctx context.Context) error) {
 	if c.hasRun.Load() == true {
 		logger.L().Error(ctx, "Add called after cleanup has run, ignoring function")

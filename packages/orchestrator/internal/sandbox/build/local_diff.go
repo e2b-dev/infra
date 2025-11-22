@@ -39,17 +39,31 @@ func NewLocalDiffFile(
 	}, nil
 }
 
+func (f *LocalDiffFile) Close() error {
+	err := f.File.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close file: %w", err)
+	}
+
+	err = os.Remove(f.cachePath)
+	if err != nil {
+		return fmt.Errorf("failed to remove file: %w", err)
+	}
+
+	return nil
+}
+
 func (f *LocalDiffFile) CloseToDiff(
 	blockSize int64,
 ) (Diff, error) {
-	defer f.Close()
+	defer f.File.Close()
 
-	err := f.Sync()
+	err := f.File.Sync()
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync file: %w", err)
 	}
 
-	size, err := f.Stat()
+	size, err := f.File.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file size: %w", err)
 	}
