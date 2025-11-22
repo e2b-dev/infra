@@ -33,6 +33,7 @@ func NewClient() (*Client, error) {
 			"",
 			ldclient.Config{
 				DataSource: LaunchDarklyOfflineStore,
+				Offline:    true,
 			},
 			0)
 		if err != nil {
