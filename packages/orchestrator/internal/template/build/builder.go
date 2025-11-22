@@ -183,7 +183,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}
 
-	var uploadErrGroup errgroup.Group
+	uploadErrGroup, ctx := errgroup.WithContext(ctx)
 	defer func() {
 		// Wait for all template layers to be uploaded even if the build fails
 		err := uploadErrGroup.Wait()
@@ -196,7 +196,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		BuilderConfig:  b.config,
 		Config:         cfg,
 		Template:       template,
-		UploadErrGroup: &uploadErrGroup,
+		UploadErrGroup: uploadErrGroup,
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
 		IsV1Build:      isV1Build,

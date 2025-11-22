@@ -2,6 +2,7 @@ package layer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel"
@@ -241,7 +242,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	sbx *sandbox.Sandbox,
 	hash string,
 	meta metadata.Template,
-) error {
+) (e error) {
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
@@ -258,7 +259,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Add snapshot to template cache so it can be used immediately
 	err = lb.templateCache.AddSnapshot(
-		ctx,
+		context.WithoutCancel(ctx),
 		meta.Template.BuildID,
 		meta.Template.KernelVersion,
 		meta.Template.FirecrackerVersion,
@@ -270,8 +271,12 @@ func (lb *LayerExecutor) PauseAndUpload(
 		snapshot.RootfsDiff,
 	)
 	if err != nil {
+		err = errors.Join(err, snapshot.Close(context.WithoutCancel(ctx)))
+
 		return fmt.Errorf("error adding snapshot to template cache: %w", err)
 	}
+
+	userLogger.Debug(ctx, fmt.Sprintf("Uploading to storage: %s", meta.Template.BuildID))
 
 	// Upload snapshot async, it's added to the template cache immediately
 	lb.UploadErrGroup.Go(func() error {

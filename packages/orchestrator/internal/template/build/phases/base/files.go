@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
@@ -27,8 +28,8 @@ func constructLayerFilesFromOCI(
 	dockerhubRepository dockerhub.RemoteRepository,
 	rootfsPath string,
 ) (r *block.Local, m block.ReadonlyDevice, c containerregistry.Config, e error) {
-	childCtx, childSpan := tracer.Start(ctx, "template-build")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "template-build")
+	defer span.End()
 
 	// Create a rootfs file
 	rtfs := rootfs.New(
@@ -44,7 +45,7 @@ func constructLayerFilesFromOCI(
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)
 	}
-	imgConfig, err := rtfs.CreateExt4Filesystem(childCtx, userLogger, rootfsPath, provisionScript, provisionLogPrefix, provisionScriptResultPath)
+	imgConfig, err := rtfs.CreateExt4Filesystem(ctx, userLogger, rootfsPath, provisionScript, provisionLogPrefix, provisionScriptResultPath)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
@@ -58,6 +59,12 @@ func constructLayerFilesFromOCI(
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error reading rootfs blocks: %w", err)
 	}
+	defer func() {
+		if e != nil {
+			err := rootfs.Close()
+			e = errors.Join(e, err)
+		}
+	}()
 
 	// Create empty memfile
 	memfile, err := block.NewEmpty(
