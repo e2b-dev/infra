@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
@@ -104,7 +103,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		case err == nil:
 			killedOrRemoved = true
 		case errors.Is(err, orchestrator.ErrSandboxNotFound):
-			zap.L().Debug("Sandbox not found", logger.WithSandboxID(sandboxID))
+			logger.L().Debug(ctx, "Sandbox not found", logger.WithSandboxID(sandboxID))
 		case errors.Is(err, orchestrator.ErrSandboxOperationFailed):
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
 
@@ -116,7 +115,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 			return
 		}
 	} else {
-		zap.L().Debug("Sandbox not found", logger.WithSandboxID(sandboxID))
+		logger.L().Debug(ctx, "Sandbox not found", logger.WithSandboxID(sandboxID))
 	}
 
 	// remove any snapshots when the sandbox is not running

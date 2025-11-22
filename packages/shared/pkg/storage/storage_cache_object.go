@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 )
 
@@ -69,7 +70,7 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 	fp, err := os.Open(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			zap.L().Error("failed to open full cached file",
+			logger.L().Error(ctx, "failed to open full cached file",
 				zap.String("path", path),
 				zap.Error(err))
 		}
@@ -77,11 +78,11 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 		return 0, false
 	}
 
-	defer cleanup("failed to close full cached file", fp.Close)
+	defer cleanup(ctx, "failed to close full cached file", fp.Close)
 
 	count, err := io.Copy(dst, fp)
 	if ignoreEOF(err) != nil {
-		zap.L().Error("failed to read full cached file",
+		logger.L().Error(ctx, "failed to read full cached file",
 			zap.String("path", path),
 			zap.Error(err))
 
@@ -118,22 +119,22 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 	finalPath := c.fullFilename()
 
 	// Try to acquire lock for this chunk write to NFS cache
-	lockFile, err := lock.TryAcquireLock(finalPath)
+	lockFile, err := lock.TryAcquireLock(ctx, finalPath)
 	if err != nil {
 		if errors.Is(err, lock.ErrLockAlreadyHeld) {
 			// Another process is already writing this chunk, so we can skip writing it ourselves
 			return
 		}
-		zap.L().Warn("failed to acquire lock", zap.String("path", finalPath), zap.Error(err))
+		logger.L().Warn(ctx, "failed to acquire lock", zap.String("path", finalPath), zap.Error(err))
 
 		return
 	}
 
 	// Release lock after write completes
 	defer func() {
-		err := lock.ReleaseLock(lockFile)
+		err := lock.ReleaseLock(ctx, lockFile)
 		if err != nil {
-			zap.L().Warn("failed to release lock after writing chunk to cache", zap.Error(err), zap.String("path", finalPath))
+			logger.L().Warn(ctx, "failed to release lock after writing chunk to cache", zap.Error(err), zap.String("path", finalPath))
 		}
 	}()
 
@@ -142,7 +143,7 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 	tempPath := c.tempFullFilename()
 
 	if err := os.WriteFile(tempPath, b, cacheFilePermissions); err != nil {
-		zap.L().Error("failed to write temp cache file",
+		logger.L().Error(ctx, "failed to write temp cache file",
 			zap.String("path", tempPath),
 			zap.Int("length", len(b)),
 			zap.Error(err),
@@ -151,8 +152,8 @@ func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte
 		return
 	}
 
-	if err := moveWithoutReplace(tempPath, finalPath); err != nil {
-		zap.L().Error("failed to rename temp file",
+	if err := moveWithoutReplace(ctx, tempPath, finalPath); err != nil {
+		logger.L().Error(ctx, "failed to rename temp file",
 			zap.String("tempPath", tempPath),
 			zap.String("filePath", finalPath),
 			zap.Int("length", len(b)),

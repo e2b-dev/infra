@@ -12,6 +12,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -32,7 +33,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			zap.L().Info("Stopping node analytics reporting due to context cancellation")
+			logger.L().Info(ctx, "Stopping node analytics reporting due to context cancellation")
 
 			return
 		case <-ticker.C:
@@ -52,7 +53,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 // sendAnalyticsForLongRunningSandboxes sends long-running instances event to analytics
 func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyticscollector.Analytics, instances []sandbox.Sandbox) {
 	if len(instances) == 0 {
-		zap.L().Debug("No long-running instances to report to analytics")
+		logger.L().Debug(ctx, "No long-running instances to report to analytics")
 
 		return
 	}
@@ -75,7 +76,7 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 		},
 	)
 	if err != nil {
-		zap.L().Error("error sending running instances event to analytics", zap.Error(err))
+		logger.L().Error(ctx, "error sending running instances event to analytics", zap.Error(err))
 	}
 }
 
@@ -87,6 +88,7 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox sandbox.Sand
 	stopTime := time.Now()
 
 	o.posthogClient.CreateAnalyticsTeamEvent(
+		ctx,
 		sandbox.TeamID.String(),
 		"closed_instance", posthog.NewProperties().
 			Set("instance_id", sandbox.SandboxID).
@@ -107,7 +109,7 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox sandbox.Sand
 		DiskSizeMb:    sandbox.TotalDiskSizeMB,
 	})
 	if err != nil {
-		zap.L().Error("error sending Analytics event", zap.Error(err))
+		logger.L().Error(ctx, "error sending Analytics event", zap.Error(err))
 	}
 }
 
@@ -129,7 +131,7 @@ func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox sandbox.Sand
 			Timestamp:     timestamppb.Now(),
 		})
 		if err != nil {
-			zap.L().Error("Error sending Analytics event", zap.Error(err))
+			logger.L().Error(ctx, "Error sending Analytics event", zap.Error(err))
 		}
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.opentelemetry.io/otel"
@@ -19,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -90,7 +90,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	// If the API key is valid, we will get a result back
 	result, validationError := a.validationFunction(ctx, headerKey)
 	if validationError != nil {
-		zap.L().Info("validation error", zap.Error(validationError.Err))
+		logger.L().Info(ctx, "validation error", zap.Error(validationError.Err))
 		telemetry.ReportError(ctx, a.errorMessage, validationError.Err)
 
 		var forbiddenError *db.TeamForbiddenError
@@ -200,10 +200,7 @@ func CreateAuthenticationFunc(
 	}
 
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
-		ginContext := ctx.Value(middleware.GinContextKey).(*gin.Context)
-		requestContext := ginContext.Request.Context()
-
-		_, span := tracer.Start(requestContext, "authenticate")
+		ctx, span := tracer.Start(ctx, "authenticate")
 		defer span.End()
 
 		for _, validator := range authenticators {

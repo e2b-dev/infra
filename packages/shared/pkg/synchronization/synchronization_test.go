@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"go.uber.org/zap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type testStore struct {
@@ -85,8 +85,8 @@ func (s *testStore) PoolRemove(_ context.Context, item string) {
 	s.removes++
 }
 
-func newSynchronizer(store Store[string, string]) *Synchronize[string, string] {
-	zap.ReplaceGlobals(zap.NewNop())
+func newSynchronizer(ctx context.Context, store Store[string, string]) *Synchronize[string, string] {
+	logger.ReplaceGlobals(ctx, logger.NewNopLogger())
 
 	return &Synchronize[string, string]{
 		store:            store,
@@ -100,7 +100,7 @@ func TestSynchronize_InsertAndRemove(t *testing.T) {
 
 	// Start with empty pool; source has a & b.
 	s := newTestStore([]string{"a", "b"}, nil)
-	syncer := newSynchronizer(s)
+	syncer := newSynchronizer(ctx, s)
 
 	if err := syncer.sync(ctx); err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -198,7 +198,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		templates.TemplateV1Version,
 	)
 
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
+	a.posthog.CreateAnalyticsUserEvent(ctx, userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
 		Set("user_id", userID).
 		Set("environment", templateID).
 		Set("build_id", buildID).

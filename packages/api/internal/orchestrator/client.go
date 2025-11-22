@@ -13,6 +13,7 @@ import (
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const nodeHealthCheckTimeout = time.Second * 2
@@ -38,7 +39,7 @@ func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *edge.C
 
 	orchestratorNode, err := nodemanager.NewClusterNode(ctx, clusterGRPC.Client, cluster.ID, cluster.SandboxDomain, i)
 	if err != nil {
-		zap.L().Error("Failed to create node", zap.Error(err))
+		logger.L().Error(ctx, "Failed to create node", zap.Error(err))
 
 		return
 	}
