@@ -32,20 +32,20 @@ func TryAcquireLock(path string) (*os.File, error) {
 	// Check if lock file exists and is stale
 	if info, err := os.Stat(lockPath); err == nil {
 		age := time.Since(info.ModTime())
-		if age > defaultLockTTL {
-			// Lock is stale, try to remove it
-			zap.L().Debug("Found stale lock file, attempting cleanup",
-				zap.String("path", lockPath),
-				zap.Duration("age", age))
-
-			// There's a possibility for a race condition,
-			// but it would mean write didn't finish in 10 seconds
-			// The worst that can happen is more than one node will acquire the lock
-			if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
-				return nil, fmt.Errorf("failed to remove lock file %s: %w", lockPath, err)
-			}
-		} else {
+		if age <= defaultLockTTL {
 			return nil, ErrLockAlreadyHeld
+		}
+
+		// Lock is stale, try to remove it
+		zap.L().Debug("Found stale lock file, attempting cleanup",
+			zap.String("path", lockPath),
+			zap.Duration("age", age))
+
+		// There's a possibility for a race condition,
+		// but it would mean write didn't finish in 10 seconds
+		// The worst that can happen is more than one node will acquire the lock
+		if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to remove lock file %s: %w", lockPath, err)
 		}
 	}
 

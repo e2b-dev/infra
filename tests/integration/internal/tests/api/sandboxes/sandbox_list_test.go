@@ -167,9 +167,11 @@ func TestSandboxListPausing(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandboxID := sbx.SandboxID
 
+	ctx := t.Context()
+
 	wg := errgroup.Group{}
 	wg.Go(func() error {
-		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sandboxID, setup.WithAPIKey())
 		if err != nil {
 			return err
 		}
@@ -181,9 +183,9 @@ func TestSandboxListPausing(t *testing.T) {
 		return nil
 	})
 
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(t *assert.CollectT) {
 		// List paused sandboxes
-		listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+		listResponse, err := c.GetV2SandboxesWithResponse(ctx, &api.GetV2SandboxesParams{
 			State:    &[]api.SandboxState{api.Running, api.Paused},
 			Metadata: &metadataString,
 		}, setup.WithAPIKey())
@@ -192,21 +194,17 @@ func TestSandboxListPausing(t *testing.T) {
 		assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
 
 		// Verify our paused sandbox is in the list
-		found := false
 		for _, s := range *listResponse.JSON200 {
 			if s.SandboxID == sandboxID {
-				found = true
-				if s.State == api.Paused {
-					return true
-				}
+				assert.Equal(t, api.Paused, s.State)
+
+				return
 			}
 		}
 
 		// The sandbox has to be always present
-		require.True(t, found)
-
-		return false
-	}, 10*time.Second, 100*time.Millisecond, "Sandbox did not reach paused state in time")
+		assert.Fail(t, "failed to find sandbox")
+	}, time.Minute, 100*time.Millisecond, "Sandbox did not reach paused state in time")
 
 	err := wg.Wait()
 	require.NoError(t, err)

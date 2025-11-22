@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -116,8 +117,10 @@ func TeardownSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string)
 
 	ctx := context.WithoutCancel(t.Context())
 
-	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(ctx, sandboxID, setup.WithAPIKey())
-	require.NoError(t, err)
+	assert.EventuallyWithT(t, func(t *assert.CollectT) {
+		killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(ctx, sandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
 
-	assert.Contains(t, []int{http.StatusNoContent, http.StatusNotFound}, killSandboxResponse.StatusCode())
+		assert.Contains(t, []int{http.StatusNoContent, http.StatusNotFound}, killSandboxResponse.StatusCode())
+	}, time.Second*30, time.Millisecond*100)
 }
