@@ -104,7 +104,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 			}
 			if err != nil {
 				logger.L().Error(syncNodesSpanCtx, "Error syncing node", zap.Error(err))
-				err = n.Close(syncNodesSpanCtx)
+				err = n.Close(context.WithoutCancel(syncNodesSpanCtx))
 				if err != nil {
 					logger.L().Error(syncNodesSpanCtx, "Error closing grpc connection", zap.Error(err))
 				}
