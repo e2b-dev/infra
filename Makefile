@@ -3,19 +3,27 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 -include ${ENV_FILE}
 
+# Select provider (defaults to gcp when not specified)
+PROVIDER ?= gcp
+PROVIDER_DIR := iac/provider-$(PROVIDER)
+
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
-.PHONY: login-gcloud
-login-gcloud:
-	gcloud --quiet auth login
-	gcloud config set project "$(GCP_PROJECT_ID)"
-	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
-	gcloud --quiet auth application-default login
+.PHONY: login
+login:
+	@if [ "$(PROVIDER)" = "gcp" ]; then \
+	  gcloud --quiet auth login; \
+	  gcloud config set project "$(GCP_PROJECT_ID)"; \
+	  gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"; \
+	  gcloud --quiet auth application-default login; \
+	else \
+	  echo "No login required for provider '$(PROVIDER)'"; \
+	fi
 
 .PHONY: init
 init:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp init
+	$(MAKE) -C $(PROVIDER_DIR) init
 
 # Setup production environment variables, this is used only for E2B.dev production
 # Uses Infisical CLI to read secrets from Infisical Vault
@@ -27,33 +35,33 @@ download-prod-env:
 
 .PHONY: plan
 plan:
-	$(MAKE) -C iac/provider-gcp plan
+	$(MAKE) -C $(PROVIDER_DIR) plan
 
 # Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
 plan-only-jobs:
-	$(MAKE) -C iac/provider-gcp plan-only-jobs
+	$(MAKE) -C $(PROVIDER_DIR) plan-only-jobs
 
 # Deploy a specific job name in Nomad
 # When job name is specified, all '-' are replaced with '_' in the job name
 .PHONY: plan-only-jobs/%
 plan-only-jobs/%:
-	$(MAKE) -C iac/provider-gcp plan-only-jobs/$(subst -,_,$(notdir $@))
+	$(MAKE) -C $(PROVIDER_DIR) plan-only-jobs/$(subst -,_,$(notdir $@))
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
-	$(MAKE) -C iac/provider-gcp plan-without-jobs
+	$(MAKE) -C $(PROVIDER_DIR) plan-without-jobs
 
 .PHONY: apply
 apply:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp apply
+	$(MAKE) -C $(PROVIDER_DIR) apply
 
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import
 import:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp import
+	$(MAKE) -C $(PROVIDER_DIR) import
 
 .PHONY: version
 version:
@@ -92,8 +100,19 @@ build-and-upload/%:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
 
+.PHONY: build-and-upload-linux
+build-and-upload-linux:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C packages/api build-and-upload-linux
+	$(MAKE) -C packages/client-proxy build-and-upload-linux
+	$(MAKE) -C packages/docker-reverse-proxy build-and-upload-linux
+	$(MAKE) -C packages/db build-and-upload-linux
+	$(MAKE) -C packages/orchestrator build-and-upload/orchestrator
+	$(MAKE) -C packages/orchestrator build-and-upload/template-manager
+
 .PHONY: copy-public-builds
 copy-public-builds:
+	@if [ "$(PROVIDER)" != "gcp" ]; then echo "copy-public-builds is only applicable for provider=gcp"; exit 0; fi
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
@@ -125,8 +144,11 @@ switch-env:
 	@ touch .last_used_env
 	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ echo $(ENV) > .last_used_env
-	@ . ${ENV_FILE}
-	make -C iac/provider-gcp switch
+	@if [ "$(PROVIDER)" = "gcp" ]; then \
+	  $(MAKE) -C iac/provider-gcp switch; \
+	else \
+	  echo "No backend switch required for provider '$(PROVIDER)'"; \
+	fi
 
 .PHONY: setup-ssh
 setup-ssh:

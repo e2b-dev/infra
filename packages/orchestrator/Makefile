@@ -66,11 +66,11 @@ upload/clean-nfs-cache:
 
 .PHONY: upload/orchestrator
 upload/orchestrator:
-	./upload-orchestrator.sh $(GCP_PROJECT_ID)
+	PROVIDER=$(PROVIDER) ./upload-orchestrator.sh $(GCP_PROJECT_ID)
 
 .PHONY: upload/template-manager
 upload/template-manager:
-	./upload-template-manager.sh $(GCP_PROJECT_ID)
+	PROVIDER=$(PROVIDER) ./upload-template-manager.sh $(GCP_PROJECT_ID)
 
 .PHONY: build-and-upload/clean-nfs-cache
 build-and-upload/clean-nfs-cache: build upload/clean-nfs-cache

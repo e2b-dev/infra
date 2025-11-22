@@ -1,0 +1,104 @@
+terraform {
+  required_version = ">= 1.3.0"
+}
+
+variable "environment" { type = string }
+variable "datacenter" { type = string }
+
+variable "servers_json" { type = string }
+variable "clients_json" { type = string }
+
+variable "nomad_address" { type = string }
+variable "nomad_acl_token" {
+  type    = string
+  default = ""
+}
+variable "consul_acl_token" {
+  type    = string
+  default = ""
+}
+
+locals {
+  servers = jsondecode(var.servers_json)
+  clients = jsondecode(var.clients_json)
+}
+
+module "machines" {
+  source           = "./machines"
+  datacenter       = var.datacenter
+  servers          = local.servers
+  clients          = local.clients
+  consul_acl_token = var.consul_acl_token
+}
+
+module "nomad" {
+  source           = "./nomad"
+  datacenter       = var.datacenter
+  nomad_address    = var.nomad_address
+  nomad_acl_token  = var.nomad_acl_token
+  consul_acl_token = var.consul_acl_token
+
+  api_node_pool           = var.api_node_pool
+  ingress_count           = var.ingress_count
+  api_machine_count       = var.api_machine_count
+  api_resources_cpu_count = var.api_resources_cpu_count
+  api_resources_memory_mb = var.api_resources_memory_mb
+
+  api_port          = var.api_port
+  ingress_port      = var.ingress_port
+  edge_api_port     = var.edge_api_port
+  edge_proxy_port   = var.edge_proxy_port
+  logs_proxy_port   = var.logs_proxy_port
+  loki_service_port = var.loki_service_port
+
+  api_admin_token = var.api_admin_token
+  environment     = var.environment
+  edge_api_secret = var.edge_api_secret
+
+  postgres_connection_string    = var.postgres_connection_string
+  supabase_jwt_secrets          = var.supabase_jwt_secrets
+  posthog_api_key               = var.posthog_api_key
+  analytics_collector_host      = var.analytics_collector_host
+  analytics_collector_api_token = var.analytics_collector_api_token
+  redis_url                     = var.redis_url
+  launch_darkly_api_key         = var.launch_darkly_api_key
+
+  orchestrator_port        = var.orchestrator_port
+  template_manager_port    = var.template_manager_port
+  otel_collector_grpc_port = var.otel_collector_grpc_port
+
+  api_image                      = var.api_image
+  db_migrator_image              = var.db_migrator_image
+  client_proxy_image             = var.client_proxy_image
+  docker_reverse_proxy_image     = var.docker_reverse_proxy_image
+  sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
+
+  clickhouse_username                = "e2b"
+  clickhouse_database                = var.clickhouse_database
+  clickhouse_server_count            = 0
+  clickhouse_server_port             = var.clickhouse_server_port
+  clickhouse_resources_memory_mb     = var.clickhouse_resources_memory_mb
+  clickhouse_resources_cpu_count     = var.clickhouse_resources_cpu_count
+  clickhouse_metrics_port            = var.clickhouse_metrics_port
+  clickhouse_version                 = "24.3.3"
+  api_secret                         = var.api_secret
+  otel_collector_resources_memory_mb = var.otel_collector_resources_memory_mb
+  otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
+  orchestrator_artifact_url          = var.orchestrator_artifact_url
+  template_manager_artifact_url      = var.template_manager_artifact_url
+  template_manager_machine_count     = var.template_manager_machine_count
+  logs_health_proxy_port             = var.logs_health_proxy_port
+  template_bucket_name               = var.template_bucket_name
+  build_cache_bucket_name            = var.build_cache_bucket_name
+  loki_resources_memory_mb           = var.loki_resources_memory_mb
+  loki_resources_cpu_count           = var.loki_resources_cpu_count
+  redis_tls_ca_base64                = var.redis_tls_ca_base64
+  shared_chunk_cache_path            = var.shared_chunk_cache_path
+  dockerhub_remote_repository_url    = var.dockerhub_remote_repository_url
+  orchestrator_proxy_port            = var.orchestrator_proxy_port
+  orchestrator_node_pool             = var.orchestrator_node_pool
+  redis_secure_cluster_url           = var.redis_secure_cluster_url
+  allow_sandbox_internet             = var.allow_sandbox_internet
+  builder_node_pool                  = var.builder_node_pool
+  envd_timeout                       = var.envd_timeout
+}

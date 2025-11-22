@@ -55,7 +55,7 @@ Check if you can use config for terraform state management
     
     > Your Postgres database needs to have enabled IPv4 access. You can do that in Connect screen
 3. Run `make switch-env ENV={prod,staging,dev}` to start using your env
-4. Run `make login-gcloud` to login to `gcloud`
+4. Run `make login` (for provider=gcp)
 5. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
    - [Certificate Manager API](https://console.cloud.google.com/apis/library/certificatemanager.googleapis.com)
@@ -138,7 +138,7 @@ You can build your own kernel and Firecracker version from source by running `ma
 - `make build-and-upload` - builds and uploads the docker images, binaries, and cluster disk image
 - `make copy-public-builds` - copies the old envd binary, kernels, and firecracker versions from the public bucket to your bucket
 - `make migrate` - runs the migrations for your database
-- `make login-gcloud` - logs in to gcloud
+- `make login` - logs in to the selected provider (gcp will invoke gcloud; linux has no login)
 - `make switch-env ENV={prod,staging,dev}` - switches the environment
 - `make import TARGET={resource} ID={resource_id}` - imports the already created resources into the terraform state
 - `make setup-ssh` - sets up the ssh key for the environment (useful for remote-debugging)
@@ -158,3 +158,102 @@ Wait a minute and destroy the VM:
 gcloud compute instances delete dummy-init --zone=YOUR-ZONE --quiet
 ```
 Now, you should see the right quota options in `All Quotas` and be able to request the correct size. 
+
+---
+
+## Self-hosting E2B on Linux (Bare Metal)
+
+### Prerequisites
+
+- Terraform (v1.5.x)
+  - v1.5.7 recommended (license compatibility)
+- SSH access to all machines
+  - Each node must be reachable via SSH with a user and private key
+- Supported OS
+  - Ubuntu/Debian-based distributions with `systemd`
+- Docker
+  - Terraform will install Docker if missing
+
+### Accounts and Secrets
+
+- PostgreSQL database connection string
+- Optional: Posthog API key, LaunchDarkly API key
+- Optional: Redis secure cluster URL and TLS CA
+
+### Steps
+
+1. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template)
+   - Set `PROVIDER=linux`
+   - Set `DATACENTER`, e.g. `dc1`
+   - Set `NOMAD_ADDRESS`, e.g. `http://localhost:4646` (per node)
+   - Optionally set `NOMAD_ACL_TOKEN` and `CONSUL_ACL_TOKEN`
+   - Define bare-metal nodes as JSON strings:
+     - `SERVERS_JSON='[{"host":"10.0.0.10","ssh_user":"ubuntu","ssh_private_key_path":"/home/me/.ssh/id_rsa","node_pool":"servers"}]'`
+     - `CLIENTS_JSON='[{"host":"10.0.0.20","ssh_user":"ubuntu","ssh_private_key_path":"/home/me/.ssh/id_rsa","node_pool":"api"}]'`
+   - Fill port objects (JSON), images, artifacts and application secrets per the template comments
+2. Run `make switch-env ENV={prod,staging,dev}`
+3. Run `make init`
+4. Build and upload images and artifacts
+   - Set a Docker registry prefix (optional, enables auto image names)
+     ```sh
+     # Example: local registry on 192.168.3.4
+     echo dev > .last_used_env
+     # in .env.dev
+     DOCKER_IMAGE_PREFIX=192.168.3.4:5000/e2b-orchestration
+     ```
+   - 使用全局 Makefile 构建并推送镜像与二进制
+     ```sh
+     make build-and-upload-linux
+     ```
+   - Upload orchestrator/template-manager binaries for HTTP artifact URLs
+     ```sh
+     # Ensure in .env.dev you set:
+     # ARTIFACT_HTTP_HOST, ARTIFACT_HTTP_USER, ARTIFACT_HTTP_DIR, ARTIFACT_HTTP_SSH_KEY, ARTIFACT_HTTP_PORT
+     # And artifact URLs consumed by Nomad jobs:
+     # ORCHESTRATOR_ARTIFACT_URL=http://<host>:<port>/orchestrator
+     # TEMPLATE_MANAGER_ARTIFACT_URL=http://<host>:<port>/template-manager
+
+     # 已包含于 make build-and-upload-linux
+     ```
+   - Notes
+     - The upload scripts auto-select backend:
+       - `PROVIDER=gcp` → uploads to GCS via `gsutil`
+       - `PROVIDER=linux` → uploads via `scp` to `ARTIFACT_HTTP_*` location
+     - Serve artifacts over HTTP (e.g., nginx/caddy) to match the URLs used by Nomad jobs
+4. Plan/apply base resources (without Nomad jobs)
+   - `make plan-without-jobs`
+   - `make apply`
+5. Plan/apply Nomad jobs
+   - `make plan-only-jobs`
+   - `make apply`
+6. Verify services
+   - Nomad UI: `http://<server_ip>:4646` (Nomad bound to `0.0.0.0`)
+   - Consul UI: `http://<server_ip>:8500` (if UI enabled)
+   - Consul DNS: system resolver is configured to use `127.0.0.1:8600`
+
+### What Terraform does on bare metal
+
+- Configures Consul (`/etc/consul.d/consul.json`) and Nomad (`/etc/nomad.d/nomad.json`) via SSH
+- Starts and enables `consul` and `nomad` services via `systemd`
+- Optionally enables Consul ACL if `CONSUL_ACL_TOKEN` is set
+- Configures `systemd-resolved` to resolve via Consul DNS (`127.0.0.1:8600`)
+- Provisions Nomad jobs for API, ingress, orchestrator, template-manager, Loki, and Otel Collector
+
+### Variables to pay attention to
+
+- Node pools: `API_NODE_POOL`, `ORCHESTRATOR_NODE_POOL`, `BUILDER_NODE_POOL`
+- Ports (JSON strings): `API_PORT`, `INGRESS_PORT`, `EDGE_API_PORT`, `EDGE_PROXY_PORT`, `LOGS_PROXY_PORT`, `LOKI_SERVICE_PORT`, `LOGS_HEALTH_PROXY_PORT`
+- Artifacts: `ORCHESTRATOR_ARTIFACT_URL`, `TEMPLATE_MANAGER_ARTIFACT_URL`
+- Observability: `OTEL_COLLECTOR_GRPC_PORT`, `OTEL_COLLECTOR_RESOURCES_*`, `LOKI_RESOURCES_*`
+- Secrets/config: `API_SECRET`, `EDGE_API_SECRET`, `API_ADMIN_TOKEN`, `SUPABASE_JWT_SECRETS`, `POSTHOG_API_KEY`, `LAUNCH_DARKLY_API_KEY`
+- Redis: `REDIS_URL`, `REDIS_SECURE_CLUSTER_URL`, `REDIS_TLS_CA_BASE64`
+- Buckets/cache: `TEMPLATE_BUCKET_NAME`, `BUILD_CACHE_BUCKET_NAME`, `SHARED_CHUNK_CACHE_PATH`
+- Sandbox/networking: `ENVD_TIMEOUT`, `ALLOW_SANDBOX_INTERNET`
+- ClickHouse (optional): set `CLICKHOUSE_*` variables; enable via Terraform by setting `clickhouse_server_count > 0`
+
+### Troubleshooting (Linux)
+
+- SSH errors: verify `ssh_user`, `ssh_private_key_path`, and host connectivity
+- Consul/Nomad not starting: check `/var/log/syslog` and `systemctl status {consul,nomad}`
+- DNS resolution: ensure `/etc/systemd/resolved.conf.d/consul.conf` exists and `systemd-resolved` is running
+- Jobs not visible: check Nomad ACL token (`NOMAD_ACL_TOKEN`) and Nomad address in `.env`

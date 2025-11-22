@@ -19,6 +19,12 @@ build-and-upload:
 	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
 	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
+.PHONY: build-and-upload-linux
+build-and-upload-linux:
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
+	@if [ -z "$(DOCKER_IMAGE_PREFIX)" ]; then echo "DOCKER_IMAGE_PREFIX is required"; exit 1; fi
+	@docker build --platform linux/amd64 --tag "$(DOCKER_IMAGE_PREFIX)/docker-reverse-proxy:latest" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+
 .PHONY: test
 test:
 	go test -race -v ./...
