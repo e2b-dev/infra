@@ -18,7 +18,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/metric/noop"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -121,9 +120,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		require.NoError(b, err)
 	}
 
-	zapl, err := zap.NewDevelopment()
+	l, err := logger.NewDevelopmentLogger()
 	require.NoError(b, err)
-	l := logger.NewTracedLogger(zapl)
 
 	sbxlogger.SetSandboxLoggerInternal(l)
 	// sbxlogger.SetSandboxLoggerExternal(logger)

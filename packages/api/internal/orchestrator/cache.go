@@ -61,7 +61,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 	if !skipSyncingWithNomad {
 		nomadSD, err := o.listNomadNodes(spanCtx)
 		if err != nil {
-			logger.L().Error(ctx, "Error listing orchestrator nodes", zap.Error(err))
+			logger.L().Error(spanCtx, "Error listing orchestrator nodes", zap.Error(err))
 
 			return
 		}
@@ -103,10 +103,10 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 				err = o.syncClusterNode(syncNodesSpanCtx, n, store)
 			}
 			if err != nil {
-				logger.L().Error(ctx, "Error syncing node", zap.Error(err))
-				err = n.Close(ctx)
+				logger.L().Error(syncNodesSpanCtx, "Error syncing node", zap.Error(err))
+				err = n.Close(syncNodesSpanCtx)
 				if err != nil {
-					logger.L().Error(ctx, "Error closing grpc connection", zap.Error(err))
+					logger.L().Error(syncNodesSpanCtx, "Error closing grpc connection", zap.Error(err))
 				}
 
 				o.deregisterNode(n)

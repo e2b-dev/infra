@@ -113,6 +113,15 @@ func NewNopLogger() *TracedLogger {
 	return &TracedLogger{innerLogger: zap.NewNop()} //nolint:forbidigo // zap.NewNop is used to create a new nop logger
 }
 
+func NewDevelopmentLogger() (Logger, error) {
+	zl, err := zap.NewDevelopment() //nolint:forbidigo // zap.NewDevelopment is used to create a new development logger
+	if err != nil {
+		return nil, err
+	}
+
+	return NewTracedLogger(zl), nil
+}
+
 func (t *TracedLogger) With(fields ...zap.Field) Logger {
 	return &TracedLogger{innerLogger: t.innerLogger.With(fields...)}
 }
