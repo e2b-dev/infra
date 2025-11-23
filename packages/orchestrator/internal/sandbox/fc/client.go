@@ -139,7 +139,7 @@ func (c *apiClient) createSnapshot(
 
 	_, err := c.client.Operations.CreateSnapshot(&snapshotConfig)
 	if err != nil {
-		return fmt.Errorf("error loading snapshot: %w", err)
+		return fmt.Errorf("error creating snapshot: %w", err)
 	}
 
 	return nil
