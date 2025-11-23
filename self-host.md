@@ -208,7 +208,7 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
    - Upload orchestrator/template-manager binaries for HTTP artifact URLs
      ```sh
      # Ensure in .env.dev you set:
-     # ARTIFACT_HTTP_HOST, ARTIFACT_HTTP_USER, ARTIFACT_HTTP_DIR, ARTIFACT_HTTP_SSH_KEY, ARTIFACT_HTTP_PORT
+     # ARTIFACT_SCP_HOST, ARTIFACT_SCP_USER, ARTIFACT_SCP_DIR, ARTIFACT_SCP_SSH_KEY, ARTIFACT_SCP_PORT
      # And artifact URLs consumed by Nomad jobs:
      # ORCHESTRATOR_ARTIFACT_URL=http://<host>:<port>/orchestrator
      # TEMPLATE_MANAGER_ARTIFACT_URL=http://<host>:<port>/template-manager
@@ -218,7 +218,7 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
    - Notes
      - The upload scripts auto-select backend:
        - `PROVIDER=gcp` → uploads to GCS via `gsutil`
-       - `PROVIDER=linux` → uploads via `scp` to `ARTIFACT_HTTP_*` location
+      - `PROVIDER=linux` → uploads via `scp` to `ARTIFACT_SCP_*` location
      - Serve artifacts over HTTP (e.g., nginx/caddy) to match the URLs used by Nomad jobs
 4. Plan/apply base resources (without Nomad jobs)
    - `make plan-without-jobs`
