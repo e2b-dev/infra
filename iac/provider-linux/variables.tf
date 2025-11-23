@@ -70,10 +70,27 @@ variable "otel_collector_grpc_port" {
   default = 4317
 }
 
-variable "api_image" { type = string }
-variable "db_migrator_image" { type = string }
-variable "client_proxy_image" { type = string }
-variable "docker_reverse_proxy_image" { type = string }
+variable "api_image" {
+  type    = string
+  default = ""
+}
+variable "db_migrator_image" {
+  type    = string
+  default = ""
+}
+variable "client_proxy_image" {
+  type    = string
+  default = ""
+}
+variable "docker_reverse_proxy_image" {
+  type    = string
+  default = ""
+}
+
+variable "docker_image_prefix" {
+  type    = string
+  default = ""
+}
 
 variable "clickhouse_database" {
   type    = string
@@ -99,20 +116,41 @@ variable "orchestrator_artifact_url" { type = string }
 variable "template_manager_artifact_url" { type = string }
 variable "orchestrator_node_pool" { type = string }
 variable "builder_node_pool" { type = string }
-variable "template_bucket_name" { type = string }
-variable "build_cache_bucket_name" { type = string }
+variable "template_bucket_name" {
+  type    = string
+  default = ""
+}
+variable "build_cache_bucket_name" {
+  type    = string
+  default = ""
+}
 variable "envd_timeout" { type = string }
 variable "allow_sandbox_internet" { type = bool }
-variable "shared_chunk_cache_path" { type = string }
-variable "dockerhub_remote_repository_url" { type = string }
+variable "shared_chunk_cache_path" {
+  type    = string
+  default = ""
+}
+variable "dockerhub_remote_repository_url" {
+  type    = string
+  default = ""
+}
 variable "api_secret" { type = string }
-variable "redis_tls_ca_base64" { type = string }
-variable "redis_secure_cluster_url" { type = string }
+variable "redis_tls_ca_base64" {
+  type    = string
+  default = ""
+}
+variable "redis_secure_cluster_url" {
+  type    = string
+  default = ""
+}
 variable "otel_collector_resources_memory_mb" { type = number }
 variable "otel_collector_resources_cpu_count" { type = number }
 variable "loki_resources_memory_mb" { type = number }
 variable "loki_resources_cpu_count" { type = number }
-variable "template_manager_machine_count" { type = number }
+variable "template_manager_machine_count" {
+  type    = number
+  default = 1
+}
 variable "logs_health_proxy_port" {
   type = object({
     name        = string
@@ -124,3 +162,28 @@ variable "logs_health_proxy_port" {
 variable "clickhouse_resources_memory_mb" { type = number }
 variable "clickhouse_resources_cpu_count" { type = number }
 variable "clickhouse_metrics_port" { type = number }
+
+variable "artifact_scp_host" {
+  type    = string
+  default = ""
+}
+
+variable "artifact_scp_user" {
+  type    = string
+  default = ""
+}
+
+variable "artifact_scp_ssh_key" {
+  type    = string
+  default = ""
+}
+
+variable "artifact_scp_dir" {
+  type    = string
+  default = "/var/www/artifacts"
+}
+
+variable "artifact_scp_port" {
+  type    = number
+  default = 0
+}

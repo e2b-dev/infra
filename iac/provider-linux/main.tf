@@ -24,11 +24,12 @@ locals {
 }
 
 module "machines" {
-  source           = "./machines"
-  datacenter       = var.datacenter
-  servers          = local.servers
-  clients          = local.clients
-  consul_acl_token = var.consul_acl_token
+  source              = "./machines"
+  datacenter          = var.datacenter
+  servers             = local.servers
+  clients             = local.clients
+  consul_acl_token    = var.consul_acl_token
+  docker_image_prefix = var.docker_image_prefix
 }
 
 module "nomad" {
@@ -101,4 +102,32 @@ module "nomad" {
   allow_sandbox_internet             = var.allow_sandbox_internet
   builder_node_pool                  = var.builder_node_pool
   envd_timeout                       = var.envd_timeout
+}
+
+resource "null_resource" "artifact_scp_server" {
+  count = var.artifact_scp_host != "" ? 1 : 0
+
+  connection {
+    type        = "ssh"
+    host        = var.artifact_scp_host
+    user        = var.artifact_scp_user
+    private_key = file(var.artifact_scp_ssh_key)
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "sudo apt-get update -y",
+      "sudo apt-get install -y nginx",
+      "sudo mkdir -p ${var.artifact_scp_dir}",
+      "sudo chown -R www-data:www-data ${var.artifact_scp_dir}",
+      "URL=\"${var.orchestrator_artifact_url}\"",
+      "PORT=$(echo \"$URL\" | sed -E 's|.*://[^:/]+:([0-9]+).*|\\1|')",
+      "[ -z \"$PORT\" ] && PORT=80",
+      "printf 'server {\\n    listen %s;\\n    server_name _;\\n    location / {\\n        autoindex on;\\n        root %s;\\n    }\\n}\\n' \"$PORT\" \"${var.artifact_scp_dir}\" | sudo tee /etc/nginx/sites-available/artifacts >/dev/null",
+      "sudo ln -sf /etc/nginx/sites-available/artifacts /etc/nginx/sites-enabled/artifacts",
+      "sudo rm -f /etc/nginx/sites-enabled/default || true",
+      "sudo systemctl restart nginx"
+    ]
+  }
 }

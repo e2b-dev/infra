@@ -77,6 +77,15 @@ tf_vars := \
 	$(call tfvar, CLICKHOUSE_RESOURCES_CPU_COUNT) \
 	$(call tfvar, CLICKHOUSE_METRICS_PORT)
 
+# Pass-through for Docker image prefix and artifact HTTP server
+tf_vars += \
+	$(call tfvar, DOCKER_IMAGE_PREFIX) \
+	$(call tfvar, ARTIFACT_SCP_HOST) \
+	$(call tfvar, ARTIFACT_SCP_USER) \
+	$(call tfvar, ARTIFACT_SCP_DIR) \
+	$(call tfvar, ARTIFACT_SCP_SSH_KEY) \
+	$(call tfvar, ARTIFACT_SCP_PORT)
+
 .PHONY: init
 init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"

@@ -21,3 +21,8 @@ variable "consul_acl_token" {
   type    = string
   default = ""
 }
+
+variable "docker_image_prefix" {
+  type    = string
+  default = ""
+}

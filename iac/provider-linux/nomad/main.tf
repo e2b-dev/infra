@@ -120,9 +120,9 @@ resource "nomad_job" "redis" {
   )
 }
 
-  resource "nomad_job" "docker_reverse_proxy" {
-    jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
-      {
+resource "nomad_job" "docker_reverse_proxy" {
+  jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
+    {
       datacenter                    = var.datacenter
       node_pool                     = var.api_node_pool
       image_name                    = var.docker_reverse_proxy_image
