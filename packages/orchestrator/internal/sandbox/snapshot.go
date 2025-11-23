@@ -2,7 +2,6 @@ package sandbox
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -18,6 +17,8 @@ type Snapshot struct {
 	RootfsDiffHeader  *header.Header
 	Snapfile          template.File
 	Metafile          template.File
+
+	cleanup *Cleanup
 }
 
 func (s *Snapshot) Upload(
@@ -73,20 +74,11 @@ func (s *Snapshot) Upload(
 	return nil
 }
 
-func (s *Snapshot) Close(_ context.Context) error {
-	var errs []error
-
-	if err := s.MemfileDiff.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close memfile diff: %w", err))
+func (s *Snapshot) Close(ctx context.Context) error {
+	err := s.cleanup.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("error cleaning up snapshot: %w", err)
 	}
 
-	if err := s.RootfsDiff.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close rootfs diff: %w", err))
-	}
-
-	if err := s.Snapfile.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close snapfile: %w", err))
-	}
-
-	return errors.Join(errs...)
+	return nil
 }

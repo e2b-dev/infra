@@ -43,5 +43,7 @@ func (e *FdExit) Reader() int32 {
 }
 
 func (e *FdExit) Close() error {
-	return errors.Join(e.r.Close(), e.w.Close())
+	err := e.SignalExit()
+
+	return errors.Join(err, e.r.Close(), e.w.Close())
 }

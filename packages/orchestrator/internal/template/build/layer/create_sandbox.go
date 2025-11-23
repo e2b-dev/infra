@@ -2,6 +2,7 @@ package layer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -104,7 +105,7 @@ func (cs *CreateSandbox) Sandbox(
 	defer func() {
 		if err != nil {
 			// Close the sandbox in case of error to avoid leaking resources
-			_ = sbx.Close(ctx)
+			err = errors.Join(err, sbx.Close(ctx))
 		}
 	}()
 
