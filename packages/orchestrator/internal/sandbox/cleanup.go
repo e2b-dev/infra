@@ -28,7 +28,7 @@ func NewCleanup() *Cleanup {
 }
 
 func (c *Cleanup) AddNoContext(ctx context.Context, f func() error) {
-	c.Add(ctx, func(ctx context.Context) error { return f() })
+	c.Add(ctx, func(_ context.Context) error { return f() })
 }
 
 func (c *Cleanup) Add(ctx context.Context, f func(ctx context.Context) error) {
