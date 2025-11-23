@@ -1,11 +1,12 @@
 job "template-manager-system" {
   datacenters = ["${datacenter}"]
   type        = "system"
-  node_pool   = "${node_pool}"
   priority    = 70
 
 %{ if update_stanza }
-  update { max_parallel = 1 }
+  update {
+    max_parallel = 1
+  }
 %{ endif }
 
   group "template-manager" {
@@ -16,7 +17,11 @@ job "template-manager-system" {
       mode     = "delay"
     }
 
-    network { port "template-manager" { static = "${port}" } }
+    network {
+      port "template-manager" {
+        static = "${port}"
+      }
+    }
 
     service {
       name     = "template-manager"
@@ -41,7 +46,10 @@ job "template-manager-system" {
 %{ endif }
       kill_signal  = "SIGTERM"
 
-      resources { memory = 1024 cpu = 256 }
+      resources {
+        memory = 1024
+        cpu    = 256
+      }
 
       env {
         NODE_ID                       = "$${node.unique.name}"

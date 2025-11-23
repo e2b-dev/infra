@@ -1,6 +1,5 @@
 job "orchestrator" {
   type      = "system"
-  node_pool = "${node_pool}"
   priority  = 90
 
   group "client-orchestrator" {
@@ -31,7 +30,9 @@ job "orchestrator" {
 
     task "start" {
       driver = "raw_exec"
-      restart { attempts = 0 }
+      restart {
+        attempts = 0
+      }
 
       env {
         NODE_ID                      = "$${node.unique.name}"
@@ -56,9 +57,14 @@ job "orchestrator" {
 %{ endif }
       }
 
-      config { command = "/bin/bash" args = ["-c", " chmod +x local/orchestrator && local/orchestrator"] }
+      config {
+        command = "/bin/bash"
+        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator"]
+      }
 
-      artifact { source = "${artifact_url}" }
+      artifact {
+        source = "${artifact_url}"
+      }
     }
   }
 }

@@ -1,6 +1,5 @@
 job "client-proxy" {
   datacenters = ["${datacenter}"]
-  node_pool = "${node_pool}"
 
   priority = 80
 

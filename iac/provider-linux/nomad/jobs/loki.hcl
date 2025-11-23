@@ -1,7 +1,6 @@
 job "loki" {
   datacenters = ["${datacenter}"]
   type        = "service"
-  node_pool   = "${node_pool}"
 
   priority = 75
 

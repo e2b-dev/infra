@@ -1,6 +1,5 @@
 job "redis" {
   datacenters = ["${datacenter}"]
-  node_pool = "${node_pool}"
   type = "service"
   priority = 95
 
