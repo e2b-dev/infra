@@ -22,6 +22,10 @@ func Detect() (MachineInfo, error) {
 	}
 
 	if len(info) > 0 {
+		if info[0].Family == "" || info[0].Model == "" {
+			return MachineInfo{}, fmt.Errorf("unable to detect CPU platform from CPU info: %+v", info[0])
+		}
+
 		return MachineInfo{
 			Family:    info[0].Family,
 			Model:     info[0].Model,
