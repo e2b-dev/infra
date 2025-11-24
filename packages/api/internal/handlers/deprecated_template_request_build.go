@@ -55,8 +55,8 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 	}
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "submitted environment build request", properties.
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsUserEvent(ctx, userID.String(), team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", body.Alias),
@@ -131,8 +131,8 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 	}
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "submitted environment build request", properties.
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsUserEvent(ctx, userID.String(), team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", body.Alias),

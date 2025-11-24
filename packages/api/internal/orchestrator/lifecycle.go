@@ -18,7 +18,7 @@ func (o *Orchestrator) observeTeamSandbox(ctx context.Context, sandbox sandbox.S
 func (o *Orchestrator) addToNode(ctx context.Context, sandbox sandbox.Sandbox, _ bool) {
 	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
 	if node == nil {
-		zap.L().Error("failed to get node", logger.WithNodeID(sandbox.NodeID))
+		logger.L().Error(ctx, "failed to get node", logger.WithNodeID(sandbox.NodeID))
 	} else {
 		node.AddSandbox(sandbox)
 
@@ -34,7 +34,7 @@ func (o *Orchestrator) addToNode(ctx context.Context, sandbox sandbox.Sandbox, _
 		lifetime := time.Duration(info.SandboxMaxLengthInHours) * time.Hour
 		err := o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, &info, lifetime)
 		if err != nil {
-			zap.L().Error("error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
+			logger.L().Error(ctx, "error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
 		}
 	}
 }

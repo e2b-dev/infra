@@ -17,7 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type OrchestratorStatus string
@@ -85,7 +85,7 @@ func (o *OrchestratorInstance) sync(ctx context.Context) error {
 
 		status, err := o.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("failed to check orchestrator health", l.WithNodeID(freshInfo.NodeID), zap.Error(err))
+			logger.L().Error(ctx, "failed to check orchestrator health", logger.WithNodeID(freshInfo.NodeID), zap.Error(err))
 
 			continue
 		}
@@ -93,7 +93,7 @@ func (o *OrchestratorInstance) sync(ctx context.Context) error {
 		freshInfo.NodeID = status.GetNodeId()
 		freshInfo.ServiceInstanceID = status.GetServiceId()
 		freshInfo.ServiceStartup = status.GetServiceStartup().AsTime()
-		freshInfo.ServiceStatus = getMappedStatus(status.GetServiceStatus())
+		freshInfo.ServiceStatus = getMappedStatus(ctx, status.GetServiceStatus())
 		freshInfo.ServiceVersion = status.GetServiceVersion()
 		freshInfo.ServiceVersionCommit = status.GetServiceCommit()
 		freshInfo.Roles = status.GetServiceRoles()
@@ -148,7 +148,7 @@ func (o *OrchestratorInstance) Close() error {
 	return nil
 }
 
-func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorStatus {
+func getMappedStatus(ctx context.Context, s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorStatus {
 	switch s {
 	case e2bgrpcorchestratorinfo.ServiceInfoStatus_Healthy:
 		return OrchestratorStatusHealthy
@@ -158,7 +158,7 @@ func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorSt
 		return OrchestratorStatusUnhealthy
 	}
 
-	zap.L().Error("Unknown service info status", zap.String("status", s.String()))
+	logger.L().Error(ctx, "Unknown service info status", zap.String("status", s.String()))
 
 	return OrchestratorStatusUnhealthy
 }

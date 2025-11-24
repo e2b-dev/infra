@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd/testutils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func main() {
@@ -41,11 +41,11 @@ func main() {
 
 	// Logger is very spammy, because Populate on device pool periodically logs errors if the number of acquirable devices is less than the number of requested devices.
 	if *logging {
-		logger, err := zap.NewDevelopment()
+		l, err := logger.NewDevelopmentLogger()
 		if err != nil {
 			panic(fmt.Errorf("failed to create logger: %w", err))
 		}
-		zap.ReplaceGlobals(logger)
+		logger.ReplaceGlobals(ctx, l)
 	}
 
 	go func() {
