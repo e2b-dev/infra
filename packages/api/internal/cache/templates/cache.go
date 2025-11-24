@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
@@ -88,9 +88,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 	}
 
 	// Fetch or get from cache with automatic refresh
-	templateInfo, err := c.cache.GetOrSet(ctx, templateID, func(ctx context.Context, key string) (*TemplateInfo, error) {
-		return c.fetchTemplateInfo(ctx, templateID)
-	})
+	templateInfo, err := c.cache.GetOrSet(ctx, templateID, c.fetchTemplateInfo)
 	if err != nil {
 		var apiErr *api.APIError
 		if errors.As(err, &apiErr) {

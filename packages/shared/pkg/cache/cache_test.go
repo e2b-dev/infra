@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestNewCache(t *testing.T) {
@@ -118,7 +118,7 @@ func TestCache_GetOrSet_CacheMiss(t *testing.T) {
 	cache := NewCache[string, string](config)
 
 	callCount := 0
-	callback := func(ctx context.Context, key string) (string, error) {
+	callback := func(_ context.Context, key string) (string, error) {
 		callCount++
 
 		return fmt.Sprintf("value-%s", key), nil
@@ -144,7 +144,7 @@ func TestCache_GetOrSet_CacheHit(t *testing.T) {
 	cache := NewCache[string, string](config)
 
 	callCount := 0
-	callback := func(ctx context.Context, key string) (string, error) {
+	callback := func(_ context.Context, key string) (string, error) {
 		callCount++
 
 		return fmt.Sprintf("value-%s", key), nil
@@ -171,7 +171,7 @@ func TestCache_GetOrSet_CallbackError(t *testing.T) {
 	cache := NewCache[string, string](config)
 
 	expectedErr := errors.New("callback error")
-	callback := func(ctx context.Context, key string) (string, error) {
+	callback := func(_ context.Context, _ string) (string, error) {
 		return "", expectedErr
 	}
 
@@ -194,7 +194,7 @@ func TestCache_GetOrSet_WithRefreshInterval(t *testing.T) {
 	cache := NewCache[string, int](config)
 
 	var callCount atomic.Int32
-	callback := func(ctx context.Context, key string) (int, error) {
+	callback := func(_ context.Context, _ string) (int, error) {
 		count := int(callCount.Add(1))
 
 		return count, nil
@@ -239,7 +239,7 @@ func TestCache_GetOrSet_RefreshOnlyOnce(t *testing.T) {
 	cache := NewCache[string, int](config)
 
 	var callCount atomic.Int32
-	callback := func(ctx context.Context, key string) (int, error) {
+	callback := func(_ context.Context, _ string) (int, error) {
 		time.Sleep(100 * time.Millisecond) // Simulate slow callback
 		count := int(callCount.Add(1))
 
@@ -255,18 +255,22 @@ func TestCache_GetOrSet_RefreshOnlyOnce(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Multiple concurrent calls should only trigger one refresh
-	var wg sync.WaitGroup
+	var wg errgroup.Group
 	results := make([]int, 10)
 	for i := range 10 {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
+		wg.Go(func() error {
 			value, err := cache.GetOrSet(context.Background(), "key1", callback)
-			require.NoError(t, err)
-			results[idx] = value
-		}(i)
+			if err != nil {
+				return err
+			}
+			results[i] = value
+
+			return nil
+		})
 	}
-	wg.Wait()
+
+	err = wg.Wait()
+	require.NoError(t, err)
 
 	// All should return the stale value (1) immediately
 	for i, result := range results {
@@ -291,7 +295,7 @@ func TestCache_Refresh_DeletesOnError(t *testing.T) {
 	var shouldFail atomic.Bool
 	shouldFail.Store(false)
 
-	callback := func(ctx context.Context, key string) (string, error) {
+	callback := func(_ context.Context, _ string) (string, error) {
 		if shouldFail.Load() {
 			return "", errors.New("refresh error")
 		}
@@ -336,7 +340,7 @@ func TestCache_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	callback := func(ctx context.Context, key string) (string, error) {
+	callback := func(ctx context.Context, _ string) (string, error) {
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
