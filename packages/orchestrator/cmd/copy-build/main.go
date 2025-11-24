@@ -291,7 +291,6 @@ func main() {
 			var fromDestination *Destination
 			if strings.HasPrefix(*from, "gs://") {
 				bucketName, _ := strings.CutPrefix(*from, "gs://")
-				fmt.Printf("bucketName: %s\n", bucketName)
 				fromObject := googleStorageClient.Bucket(bucketName).Object(file)
 				fromDestination, err = NewDestinationFromObject(ctx, fromObject)
 				if err != nil {
@@ -329,7 +328,7 @@ func main() {
 				}
 			}
 
-			fmt.Printf("+ copying '%s' from '%s' to '%s'\n", file, fromDestination.Path, toDestination.Path)
+			fmt.Printf("+ copying '%s' to '%s'\n", file, fromDestination.Path, toDestination.Path)
 
 			copied, err := gcloudCopy(ctx, fromDestination, toDestination)
 			if err != nil {
