@@ -48,16 +48,16 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	}
 
 	// Create the build, find the template ID by alias or generate a new one
-	_, span := tracer.Start(ctx, "find-template-alias")
+	findTemplateCtx, span := tracer.Start(ctx, "find-template-alias")
 	defer span.End()
 	templateID := id.Generate()
 	public := false
-	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(ctx, body.Alias)
+	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(findTemplateCtx, body.Alias)
 	switch {
 	case err == nil:
 		if templateAlias.TeamID != team.ID {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", body.Alias))
-			telemetry.ReportError(ctx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", body.Alias))
+			telemetry.ReportError(findTemplateCtx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", body.Alias))
 
 			return nil
 		}
@@ -68,33 +68,26 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		// Alias is available and not used
 	default:
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
+		telemetry.ReportCriticalError(findTemplateCtx, "error when getting template alias", err)
 
 		return nil
 	}
 	span.End()
 
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
-		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
-
-		return nil
-	}
-
 	buildReq := template.RegisterBuildData{
-		ClusterID:     apiutils.WithClusterFallback(team.ClusterID),
-		BuilderNodeID: builderNodeID,
-		TemplateID:    templateID,
-		UserID:        nil,
-		Team:          team,
-		Alias:         &body.Alias,
-		CpuCount:      body.CpuCount,
-		MemoryMB:      body.MemoryMB,
-		Version:       templates.TemplateV2LatestVersion,
+		ClusterID:          apiutils.WithClusterFallback(team.ClusterID),
+		TemplateID:         templateID,
+		UserID:             nil,
+		Team:               team,
+		Alias:              &body.Alias,
+		CpuCount:           body.CpuCount,
+		MemoryMB:           body.MemoryMB,
+		Version:            templates.TemplateV2LatestVersion,
+		KernelVersion:      a.config.DefaultKernelVersion,
+		FirecrackerVersion: a.config.DefaultFirecrackerVersion,
 	}
 
-	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, buildReq)
+	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
@@ -102,11 +95,11 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	_, span = tracer.Start(c, "posthog-analytics")
+	posthogCtx, span := tracer.Start(ctx, "posthog-analytics")
 	defer span.End()
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "submitted environment build request", properties.
+	a.posthog.IdentifyAnalyticsTeam(posthogCtx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsTeamEvent(posthogCtx, team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", body.Alias),

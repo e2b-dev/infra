@@ -16,8 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type PauseQueueExhaustedError struct{}
@@ -53,8 +53,8 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 			Version: types.PausedSandboxConfigVersion,
 			Network: sbx.Network,
 		},
-		OriginNodeID: node.ID,
-		Status:       string(envbuild.StatusSnapshotting),
+		OriginNodeID: utils.ToPtr(node.ID),
+		Status:       string(types.BuildStatusSnapshotting),
 	}
 
 	result, err := o.sqlcDB.UpsertSnapshot(ctx, snapshotConfig)
@@ -79,7 +79,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 
 	now := time.Now()
 	err = o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     string(envbuild.StatusSuccess),
+		Status:     string(types.BuildStatusSuccess),
 		FinishedAt: &now,
 		Reason:     types.BuildReason{},
 		BuildID:    result.BuildID,

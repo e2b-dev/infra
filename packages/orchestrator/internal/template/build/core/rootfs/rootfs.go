@@ -2,7 +2,6 @@ package rootfs
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"io"
 	"math"
@@ -21,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -76,7 +76,7 @@ func New(
 
 func (r *Rootfs) CreateExt4Filesystem(
 	ctx context.Context,
-	logger *zap.Logger,
+	l logger.Logger,
 	rootfsPath string,
 	provisionScript string,
 	provisionLogPrefix string,
@@ -93,7 +93,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 		}
 	}()
 
-	logger.Debug("Requesting Docker Image")
+	l.Debug(ctx, "Requesting Docker Image")
 
 	var img containerregistry.Image
 	var err error
@@ -110,9 +110,9 @@ func (r *Rootfs) CreateExt4Filesystem(
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error getting image size: %w", err)
 	}
-	logger.Info(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
+	l.Info(ctx, fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
-	logger.Debug("Setting up system files")
+	l.Debug(ctx, "Setting up system files")
 	layers, err := additionalOCILayers(r.buildContext, provisionScript, provisionLogPrefix, provisionResultPath)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
@@ -123,14 +123,14 @@ func (r *Rootfs) CreateExt4Filesystem(
 	}
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
-	logger.Info("Creating file system and pulling Docker image")
-	ext4Size, err := oci.ToExt4(ctx, logger, img, rootfsPath, maxRootfsSize, template.RootfsBlockSize())
+	l.Info(ctx, "Creating file system and pulling Docker image")
+	ext4Size, err := oci.ToExt4(ctx, l, img, rootfsPath, maxRootfsSize, template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error converting oci to ext4: %w", err)
 	}
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
-	logger.Debug("Filesystem cleanup")
+	l.Debug(ctx, "Filesystem cleanup")
 	// Make rootfs writable, be default it's readonly
 	err = filesystem.MakeWritable(ctx, rootfsPath)
 	if err != nil {
@@ -146,7 +146,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	// This is a residual space that could not be shrunk when creating the filesystem,
 	// but is still available for use
 	diskAdd := template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
-	zap.L().Debug("adding disk size diff to rootfs",
+	logger.L().Debug(ctx, "adding disk size diff to rootfs",
 		zap.Int64("size_current", ext4Size),
 		zap.Int64("size_add", diskAdd),
 		zap.Int64("size_free", rootfsFreeSpace),
@@ -160,7 +160,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
-	zap.L().Debug("filesystem ext4 integrity",
+	logger.L().Debug(ctx, "filesystem ext4 integrity",
 		zap.String("result", ext4Check),
 		zap.Error(err),
 	)
@@ -265,6 +265,7 @@ echo "System Init"`), Mode: 0o777},
 
 # Flush filesystem changes to disk
 ::wait:/usr/bin/busybox sync
+::wait:fsfreeze --freeze /
 
 # Report the exit code of the provisioning script
 ::wait:/bin/sh -c 'echo "%s$(cat %s || printf 1)"'

@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -103,7 +104,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		SandboxID:  sandboxID,
 		TemplateID: env.TemplateID,
 		TeamID:     teamInfo.Team.ID.String(),
-	}).Debug("Started creating sandbox")
+	}).Debug(ctx, "Started creating sandbox")
 
 	alias := firstAlias(env.Aliases)
 	telemetry.SetAttributes(ctx,
@@ -209,7 +210,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		mcp,
 	)
 	if createErr != nil {
-		zap.L().Error("Failed to create sandbox", zap.Error(createErr.Err))
+		logger.L().Error(ctx, "Failed to create sandbox", zap.Error(createErr.Err))
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
 
 		return

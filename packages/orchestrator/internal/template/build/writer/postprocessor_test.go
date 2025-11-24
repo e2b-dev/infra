@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func newTestCore(buf *bytes.Buffer) zapcore.Core {
@@ -25,27 +27,28 @@ func newTestCore(buf *bytes.Buffer) zapcore.Core {
 }
 
 func TestPostProcessor_Start(t *testing.T) {
+	ctx := t.Context()
 	var buf bytes.Buffer
 	core := newTestCore(&buf)
 
 	interval := time.Millisecond * 100
 	halfInterval := time.Duration(float64(interval) * 0.5)
 
-	core, done := NewPostProcessor(interval, core)
-	logger := zap.New(core)
+	core, done := NewPostProcessor(ctx, interval, core)
+	l := logger.NewTracedLoggerFromCore(core)
 
 	// log some info
-	logger.Info("info message")
+	l.Info(ctx, "info message")
 	time.Sleep(halfInterval)
-	logger.Error("error message")
+	l.Error(ctx, "error message")
 	time.Sleep(interval + halfInterval)
-	logger.Warn("warn message")
+	l.Warn(ctx, "warn message")
 	time.Sleep(interval + interval + halfInterval)
 
 	// stop the post processor
 	done()
 
-	logger.Info("test is complete")
+	l.Info(ctx, "test is complete")
 
 	logs := buf.String()
 	assert.Equal(t, `INFO	info message
