@@ -24,8 +24,9 @@ import (
 )
 
 type Destination struct {
-	Path string
-	CRC  uint32
+	Path    string
+	CRC     uint32
+	isLocal bool
 }
 
 func NewDestinationFromObject(ctx context.Context, o *googleStorage.ObjectHandle) (*Destination, error) {
@@ -37,8 +38,9 @@ func NewDestinationFromObject(ctx context.Context, o *googleStorage.ObjectHandle
 	}
 
 	return &Destination{
-		Path: fmt.Sprintf("gs://%s/%s", o.BucketName(), o.ObjectName()),
-		CRC:  crc,
+		Path:    fmt.Sprintf("gs://%s/%s", o.BucketName(), o.ObjectName()),
+		CRC:     crc,
+		isLocal: false,
 	}, nil
 }
 
@@ -60,13 +62,15 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 		crc := h.Sum32()
 
 		return &Destination{
-			Path: p,
-			CRC:  crc,
+			Path:    p,
+			CRC:     crc,
+			isLocal: true,
 		}, nil
 	}
 
 	return &Destination{
-		Path: p,
+		Path:    p,
+		isLocal: true,
 	}, nil
 }
 
@@ -141,11 +145,28 @@ func getReferencedData(h *header.Header, objectType storage.ObjectType) ([]strin
 	return dataReferences, nil
 }
 
-func gcloudCopy(ctx context.Context, from, to *Destination) (bool, error) {
-	if from.CRC == to.CRC && from.CRC != 0 {
-		return false, nil
+func localCopy(ctx context.Context, from, to *Destination) error {
+	command := []string{
+		"rsync",
+		"-aH",
+		"--whole-file",
+		"--mkpath",
+		"--inplace",
+		from.Path,
+		to.Path,
 	}
 
+	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to copy local file (%v): %w\n%s", command, err, string(output))
+	}
+
+	return nil
+}
+
+func gcloudCopy(ctx context.Context, from, to *Destination) error {
 	command := []string{
 		"gcloud",
 		"storage",
@@ -160,10 +181,10 @@ func gcloudCopy(ctx context.Context, from, to *Destination) (bool, error) {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, fmt.Errorf("failed to copy GCS object (%v): %w\n%s", command, err, string(output))
+		return fmt.Errorf("failed to copy GCS object (%v): %w\n%s", command, err, string(output))
 	}
 
-	return true, nil
+	return nil
 }
 
 func main() {
@@ -314,20 +335,29 @@ func main() {
 
 			fmt.Printf("+ copying '%s' to '%s'\n", fromDestination.Path, toDestination.Path)
 
-			copied, err := gcloudCopy(ctx, fromDestination, toDestination)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "- failed to copy '%s': %s\n", file, err)
+			if fromDestination.CRC == toDestination.CRC && fromDestination.CRC != 0 {
+				fmt.Printf("-> [%d/%d] '%s' already exists, skipping\n", done.Load(), len(filesToCopy), toDestination.Path)
 
-				return err
+				done.Add(1)
+
+				return nil
+			}
+
+			if fromDestination.isLocal {
+				err := localCopy(ctx, fromDestination, toDestination)
+				if err != nil {
+					return fmt.Errorf("failed to copy local file: %w", err)
+				}
+			} else {
+				err := gcloudCopy(ctx, fromDestination, toDestination)
+				if err != nil {
+					return fmt.Errorf("failed to copy GCS object: %w", err)
+				}
 			}
 
 			done.Add(1)
 
-			if copied {
-				fmt.Printf("-> [%d/%d] '%s' copied\n", done.Load(), len(filesToCopy), toDestination.Path)
-			} else {
-				fmt.Printf("-> [%d/%d] '%s' already exists, skipping\n", done.Load(), len(filesToCopy), toDestination.Path)
-			}
+			fmt.Printf("-> [%d/%d] '%s' copied\n", done.Load(), len(filesToCopy), toDestination.Path)
 
 			return nil
 		})
