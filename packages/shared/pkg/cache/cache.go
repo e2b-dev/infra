@@ -132,3 +132,9 @@ func (c *Cache[K, V]) refresh(ctx context.Context, key K, dataCallback DataCallb
 		lastRefresh: time.Now(),
 	}, c.config.TTL)
 }
+
+func (c *Cache[K, V]) Close(_ context.Context) error {
+	c.cache.Stop()
+
+	return nil
+}

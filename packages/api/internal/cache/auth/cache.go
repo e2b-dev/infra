@@ -42,3 +42,7 @@ func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback D
 
 	return team, nil
 }
+
+func (c *TeamAuthCache) Close(ctx context.Context) error {
+	return c.cache.Close(ctx)
+}

@@ -150,3 +150,9 @@ func (c *TemplateCache) fetchTemplateInfo(ctx context.Context, aliasOrEnvID stri
 func (c *TemplateCache) Invalidate(templateID string) {
 	c.cache.Delete(templateID)
 }
+
+func (c *TemplateCache) Close(ctx context.Context) error {
+	c.aliasCache.cache.Stop()
+
+	return c.cache.Close(ctx)
+}
