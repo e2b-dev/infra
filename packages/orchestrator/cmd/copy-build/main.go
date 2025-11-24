@@ -328,7 +328,7 @@ func main() {
 				}
 			}
 
-			fmt.Printf("+ copying '%s' to '%s'\n", file, fromDestination.Path, toDestination.Path)
+			fmt.Printf("+ copying '%s' to '%s'\n", fromDestination.Path, toDestination.Path)
 
 			copied, err := gcloudCopy(ctx, fromDestination, toDestination)
 			if err != nil {
