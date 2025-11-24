@@ -59,12 +59,6 @@ func constructLayerFilesFromOCI(
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error reading rootfs blocks: %w", err)
 	}
-	defer func() {
-		if e != nil {
-			err := rootfs.Close()
-			e = errors.Join(e, err)
-		}
-	}()
 
 	// Create empty memfile
 	memfile, err := block.NewEmpty(
@@ -73,6 +67,8 @@ func constructLayerFilesFromOCI(
 		buildIDParsed,
 	)
 	if err != nil {
+		err := errors.Join(err, rootfs.Close())
+
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile: %w", err)
 	}
 
