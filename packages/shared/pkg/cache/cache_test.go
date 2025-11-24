@@ -177,7 +177,7 @@ func TestCache_GetOrSet_CallbackError(t *testing.T) {
 
 	value, err := cache.GetOrSet(context.Background(), "key1", callback)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "error while fetching data")
+	assert.Contains(t, err.Error(), "callback error")
 	assert.Empty(t, value)
 
 	// Verify nothing was cached
