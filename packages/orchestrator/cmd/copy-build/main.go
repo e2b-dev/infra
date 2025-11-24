@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"hash"
 	"hash/crc32"
 	"io"
 	"log"
@@ -23,24 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
-
-func NewCRCwriter(poly uint32, w io.Writer) *CRCwriter {
-	return &CRCwriter{
-		h: crc32.New(crc32.MakeTable(poly)),
-	}
-}
-
-type CRCwriter struct {
-	h hash.Hash32
-}
-
-func (c *CRCwriter) Write(p []byte) (n int, err error) {
-	c.h.Write(p)
-
-	return
-}
-
-func (c *CRCwriter) Sum() uint32 { return c.h.Sum32() }
 
 type Destination struct {
 	Path string
@@ -112,11 +93,11 @@ type osFileWriterToCtx struct {
 	f *os.File
 }
 
-func (o *osFileWriterToCtx) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
+func (o *osFileWriterToCtx) WriteTo(_ context.Context, w io.Writer) (int64, error) {
 	return io.Copy(w, o.f)
 }
 
-func NewHeaderFromPath(ctx context.Context, headerPath string, objectType storage.ObjectType) (*header.Header, error) {
+func NewHeaderFromPath(ctx context.Context, headerPath string) (*header.Header, error) {
 	f, err := os.Open(headerPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -218,7 +199,7 @@ func main() {
 
 		memfileHeader = h
 	} else {
-		h, err := NewHeaderFromPath(ctx, buildMemfileHeaderPath, storage.MemfileHeaderObjectType)
+		h, err := NewHeaderFromPath(ctx, buildMemfileHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from path: %s", err)
 		}
@@ -247,7 +228,7 @@ func main() {
 
 		rootfsHeader = h
 	} else {
-		h, err := NewHeaderFromPath(ctx, buildRootfsHeaderPath, storage.RootFSHeaderObjectType)
+		h, err := NewHeaderFromPath(ctx, buildRootfsHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from path: %s", err)
 		}
