@@ -267,6 +267,7 @@ echo "System Init"`), Mode: 0o777},
 
 # Flush filesystem changes to disk
 ::wait:/usr/bin/busybox sync
+::wait:fsfreeze --freeze /
 
 # Report the exit code of the provisioning script
 ::wait:/bin/sh -c 'echo "%s$(cat %s || printf 1)"'
