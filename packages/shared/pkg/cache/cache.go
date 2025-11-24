@@ -138,6 +138,10 @@ func (c *Cache[K, V]) refresh(ctx context.Context, key K, dataCallback DataCallb
 		return
 	}
 
+	if c.config.ExtractKeyFunc != nil {
+		key = c.config.ExtractKeyFunc(value)
+	}
+
 	c.cache.Set(key, &Item[V]{
 		value:       value,
 		lastRefresh: time.Now(),
