@@ -66,10 +66,14 @@ type TemplateCache struct {
 }
 
 func NewTemplateCache(db *sqlcdb.Client) *TemplateCache {
-	config := cache.Config{
+	config := cache.Config[string, *TemplateInfo]{
 		TTL:             templateInfoExpiration,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  refreshTimeout,
+		// With this we can use alias for getting template info without having it as a key in the cache
+		ExtractKeyFunc: func(value *TemplateInfo) string {
+			return value.template.TemplateID
+		},
 	}
 	aliasCache := NewAliasCache()
 

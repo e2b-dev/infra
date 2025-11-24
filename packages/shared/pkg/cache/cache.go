@@ -9,11 +9,16 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// DataCallback is a function that fetches data for a given key
-type DataCallback[K comparable, V any] func(ctx context.Context, key K) (V, error)
+type (
+	// DataCallback is a function that fetches data for a given key
+	DataCallback[K comparable, V any] func(ctx context.Context, key K) (V, error)
+
+	// ExtractKeyFunc is a function that extracts a key from a value
+	ExtractKeyFunc[K comparable, V any] func(value V) K
+)
 
 // Config holds the configuration for a Cache
-type Config struct {
+type Config[K comparable, V any] struct {
 	// TTL is the time-to-live for cache entries
 	TTL time.Duration
 	// RefreshInterval is the interval at which cache entries are refreshed in the background
@@ -22,6 +27,8 @@ type Config struct {
 	// RefreshTimeout is the timeout for refresh operations
 	// Defaults to 30 seconds if not specified
 	RefreshTimeout time.Duration
+	// ExtractKeyFunc is an optional function to extract a key from the value
+	ExtractKeyFunc ExtractKeyFunc[K, V]
 }
 
 // Item wraps a cached value with metadata for refresh tracking
@@ -34,11 +41,11 @@ type Item[V any] struct {
 // Cache is a generic cache with optional background refresh support
 type Cache[K comparable, V any] struct {
 	cache  *ttlcache.Cache[K, *Item[V]]
-	config Config
+	config Config[K, V]
 }
 
 // NewCache creates a new Cache with the given configuration
-func NewCache[K comparable, V any](config Config) *Cache[K, V] {
+func NewCache[K comparable, V any](config Config[K, V]) *Cache[K, V] {
 	cache := ttlcache.New(ttlcache.WithTTL[K, *Item[V]](config.TTL))
 	go cache.Start()
 
@@ -90,6 +97,10 @@ func (c *Cache[K, V]) GetOrSet(ctx context.Context, key K, dataCallback DataCall
 			var zero V
 
 			return zero, fmt.Errorf("error while fetching data: %w", err)
+		}
+
+		if c.config.ExtractKeyFunc != nil {
+			key = c.config.ExtractKeyFunc(value)
 		}
 
 		c.cache.Set(key, &Item[V]{

@@ -22,7 +22,7 @@ type TeamAuthCache struct {
 }
 
 func NewTeamAuthCache() *TeamAuthCache {
-	config := cache.Config{
+	config := cache.Config[string, *types.Team]{
 		TTL:             authInfoExpiration,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  refreshTimeout,
