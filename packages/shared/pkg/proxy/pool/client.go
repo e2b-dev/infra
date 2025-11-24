@@ -33,6 +33,7 @@ func newProxyClient(
 	totalConnsCounter *atomic.Uint64,
 	currentConnsCounter *atomic.Int64,
 	logger *log.Logger,
+	disableKeepAlives bool,
 ) *ProxyClient {
 	activeConnections := smap.New[*tracking.Connection]()
 
@@ -44,6 +45,8 @@ func newProxyClient(
 		IdleConnTimeout:       idleTimeout,
 		TLSHandshakeTimeout:   0,
 		ResponseHeaderTimeout: 0,
+		DisableKeepAlives:     disableKeepAlives,
+		ForceAttemptHTTP2:     false,
 		// TCP configuration
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			var conn net.Conn

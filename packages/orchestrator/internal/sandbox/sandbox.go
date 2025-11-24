@@ -42,11 +42,17 @@ var (
 	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
 )
 
-var httpClient = http.Client{
-	Timeout: 10 * time.Second,
-	Transport: otelhttp.NewTransport(
-		http.DefaultTransport,
-	),
+var SandboxHttpTransport = otelhttp.NewTransport(
+	&http.Transport{
+		DisableKeepAlives: true,
+		ForceAttemptHTTP2: false,
+	},
+)
+
+// Http client that should be used for requests to sandboxes.
+var sandboxHttpClient = http.Client{
+	Timeout:   10 * time.Second,
+	Transport: SandboxHttpTransport,
 }
 
 type Config struct {
