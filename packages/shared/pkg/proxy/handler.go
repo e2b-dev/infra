@@ -99,13 +99,13 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		d.RequestLogger.Debug("proxying request")
-
 		ctx := r.Context()
+		d.RequestLogger.Debug(ctx, "proxying request")
+
 		ctx = pool.WithDestination(ctx, d)
 		r = r.WithContext(ctx)
 
-		proxy := p.Get(d)
+		proxy := p.Get(ctx, d)
 		proxy.ServeHTTP(w, r)
 	}
 }

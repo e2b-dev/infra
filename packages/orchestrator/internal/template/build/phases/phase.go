@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -33,7 +34,7 @@ type BuilderPhase interface {
 
 	Hash(ctx context.Context, sourceLayer LayerResult) (string, error)
 	Layer(ctx context.Context, sourceLayer LayerResult, hash string) (LayerResult, error)
-	Build(ctx context.Context, userLogger *zap.Logger, prefix string, sourceLayer LayerResult, currentLayer LayerResult) (LayerResult, error)
+	Build(ctx context.Context, userLogger logger.Logger, prefix string, sourceLayer LayerResult, currentLayer LayerResult) (LayerResult, error)
 }
 
 type LayerResult struct {
@@ -58,7 +59,7 @@ func layerInfo(
 
 func Run(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	bc buildcontext.BuildContext,
 	metrics *metrics.BuildMetrics,
 	builders []BuilderPhase,
@@ -99,7 +100,7 @@ func Run(
 		if err != nil {
 			return LayerResult{}, fmt.Errorf("getting source: %w", err)
 		}
-		stepUserLogger.Info(layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
+		stepUserLogger.Info(ctx, layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
 
 		if currentLayer.Cached {
 			phaseDuration := time.Since(phaseStartTime)

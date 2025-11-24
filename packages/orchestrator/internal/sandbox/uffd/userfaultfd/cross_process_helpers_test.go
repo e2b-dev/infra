@@ -29,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // Main process, FC in our case
@@ -236,12 +237,13 @@ func crossProcessServe() error {
 	exitUffd := make(chan struct{}, 1)
 	defer close(exitUffd)
 
-	logger, err := zap.NewDevelopment()
+	zapl, err := zap.NewDevelopment()
 	if err != nil {
 		return fmt.Errorf("exit creating logger: %w", err)
 	}
+	l := logger.NewTracedLogger(zapl)
 
-	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, logger)
+	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, l)
 	if err != nil {
 		return fmt.Errorf("exit creating uffd: %w", err)
 	}

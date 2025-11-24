@@ -17,8 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -180,7 +180,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backend.id,
 		}, nil
 	}
@@ -296,7 +296,7 @@ func TestProxyReusesConnections(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backend.id,
 		}, nil
 	}
@@ -340,7 +340,7 @@ func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backend.id,
 		}, nil
 	}
@@ -385,7 +385,7 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backend.id,
 		}, nil
 	}
@@ -474,7 +474,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend1.url,
 			SandboxId:     "backend1",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backendKey,
 		}, nil
 	}
@@ -546,7 +546,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend1.url,
 			SandboxId:     "backend1",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backendKey,
 		}, nil
 	}
@@ -611,7 +611,7 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 		return &pool.Destination{
 			Url:           backendURL,
 			SandboxId:     "test-sandbox",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: "delayed-backend",
 		}, nil
 	}
@@ -708,7 +708,7 @@ func TestChangeResponseHeader(t *testing.T) {
 			SandboxId:                          "12345",
 			SandboxPort:                        internalPort,
 			DefaultToPortError:                 false,
-			RequestLogger:                      zap.L(),
+			RequestLogger:                      logger.L(),
 			ConnectionKey:                      "connection-key",
 			IncludeSandboxIdInProxyErrorLogger: true,
 			MaskRequestHost:                    utils.ToPtr(maskedHost),

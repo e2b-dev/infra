@@ -6,13 +6,13 @@ import (
 	"maps"
 	"strings"
 
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type Env struct{}
@@ -21,7 +21,7 @@ var _ Command = (*Env)(nil)
 
 func (e *Env) Execute(
 	ctx context.Context,
-	_ *zap.Logger,
+	_ logger.Logger,
 	_ zapcore.Level,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,

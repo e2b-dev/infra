@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -140,7 +141,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 		eg.Go(func() (err error) {
 			defer func() {
 				if r := recover(); r != nil {
-					zap.L().Error("recovered from panic in the fetch handler", zap.Any("error", r))
+					logger.L().Error(ctx, "recovered from panic in the fetch handler", zap.Any("error", r))
 					err = fmt.Errorf("recovered from panic in the fetch handler: %v", r)
 				}
 			}()

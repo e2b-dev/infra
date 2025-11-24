@@ -153,30 +153,22 @@ func (a *APIStore) buildTemplate(
 	templateID api.TemplateID,
 	body api.TemplateBuildRequest,
 ) (*template.RegisterBuildResponse, *api.APIError) {
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithClusterFallback(team.ClusterID))
-	if err != nil {
-		return nil, &api.APIError{
-			Code:      http.StatusBadRequest,
-			ClientMsg: "Error when getting available build client",
-			Err:       fmt.Errorf("error when getting available build client: %w", err),
-		}
-	}
-
 	// Create the build
 	data := template.RegisterBuildData{
-		ClusterID:     utils.WithClusterFallback(team.ClusterID),
-		BuilderNodeID: builderNodeID,
-		TemplateID:    templateID,
-		UserID:        &userID,
-		Team:          team,
-		Dockerfile:    body.Dockerfile,
-		Alias:         body.Alias,
-		StartCmd:      body.StartCmd,
-		ReadyCmd:      body.ReadyCmd,
-		CpuCount:      body.CpuCount,
-		MemoryMB:      body.MemoryMB,
-		Version:       templates.TemplateV1Version,
+		ClusterID:          utils.WithClusterFallback(team.ClusterID),
+		TemplateID:         templateID,
+		UserID:             &userID,
+		Team:               team,
+		Dockerfile:         body.Dockerfile,
+		Alias:              body.Alias,
+		StartCmd:           body.StartCmd,
+		ReadyCmd:           body.ReadyCmd,
+		CpuCount:           body.CpuCount,
+		MemoryMB:           body.MemoryMB,
+		Version:            templates.TemplateV1Version,
+		KernelVersion:      a.config.DefaultKernelVersion,
+		FirecrackerVersion: a.config.DefaultFirecrackerVersion,
 	}
 
-	return template.RegisterBuild(ctx, a.templateBuildsCache, a.db, data)
+	return template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, data)
 }

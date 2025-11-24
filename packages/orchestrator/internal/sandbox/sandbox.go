@@ -198,7 +198,7 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(cleanupFiles(f.config, sandboxFiles))
+	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
@@ -223,11 +223,11 @@ func (f *Factory) CreateSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
-	cleanup.Add(rootfsProvider.Close)
+	cleanup.Add(ctx, rootfsProvider.Close)
 	go func() {
 		runErr := rootfsProvider.Start(execCtx)
 		if runErr != nil {
-			zap.L().Error("rootfs overlay error", zap.Error(runErr))
+			logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
 		}
 	}()
 
@@ -320,7 +320,7 @@ func (f *Factory) CreateSandbox(
 	sbx.Checks = NewChecks(sbx, false)
 
 	// Stop the sandbox first if it is still running, otherwise do nothing
-	cleanup.AddPriority(sbx.Stop)
+	cleanup.AddPriority(ctx, sbx.Stop)
 
 	go func() {
 		defer execSpan.End()
@@ -383,7 +383,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(cleanupFiles(f.config, sandboxFiles))
+	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
@@ -403,14 +403,14 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
 
-	cleanup.Add(rootfsOverlay.Close)
+	cleanup.Add(ctx, rootfsOverlay.Close)
 
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
 	go func() {
 		runErr := rootfsOverlay.Start(execCtx)
 		if runErr != nil {
-			zap.L().Error("rootfs overlay error", zap.Error(runErr))
+			logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
 		}
 	}()
 
@@ -553,14 +553,14 @@ func (f *Factory) ResumeSandbox(
 
 	useClickhouseMetrics, flagErr := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
 	if flagErr != nil {
-		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+		logger.L().Error(ctx, "soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
 
-	cleanup.AddPriority(func(ctx context.Context) error {
+	cleanup.AddPriority(ctx, func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
 		return sbx.Stop(ctx)
 	})
@@ -895,7 +895,7 @@ func pauseProcessMemory(
 			return nil, nil, fmt.Errorf("invalid memfile header mappings: %w", err)
 		}
 
-		zap.L().Warn("memfile header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(memfileHeader.Metadata.BuildId.String()))
+		logger.L().Warn(ctx, "memfile header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(memfileHeader.Metadata.BuildId.String()))
 	}
 
 	return memfileDiff, memfileHeader, nil
@@ -961,7 +961,7 @@ func pauseProcessRootfs(
 			return nil, nil, fmt.Errorf("invalid rootfs header mappings: %w", err)
 		}
 
-		zap.L().Warn("rootfs header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(rootfsHeader.Metadata.BuildId.String()))
+		logger.L().Warn(ctx, "rootfs header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(rootfsHeader.Metadata.BuildId.String()))
 	}
 
 	return rootfsDiff, rootfsHeader, nil
@@ -988,15 +988,15 @@ func getNetworkSlotAsync(
 			return
 		}
 
-		cleanup.Add(func(ctx context.Context) error {
-			_, span := tracer.Start(ctx, "network-slot-clean")
+		cleanup.Add(ctx, func(ctx context.Context) error {
+			ctx, span := tracer.Start(ctx, "network-slot-clean")
 			defer span.End()
 
 			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
 			go func(ctx context.Context) {
 				returnErr := networkPool.Return(ctx, ips)
 				if returnErr != nil {
-					zap.L().Error("failed to return network slot", zap.Error(returnErr))
+					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
 				}
 			}(context.WithoutCancel(ctx))
 
@@ -1031,7 +1031,7 @@ func serveMemory(
 
 	telemetry.ReportEvent(ctx, "started uffd")
 
-	cleanup.Add(func(ctx context.Context) error {
+	cleanup.Add(ctx, func(ctx context.Context) error {
 		_, span := tracer.Start(ctx, "uffd-stop")
 		defer span.End()
 
@@ -1115,7 +1115,7 @@ func (s *Sandbox) WaitForEnvd(
 func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
 	if err != nil {
-		zap.L().Warn("failed to get envd timeout from feature flag, using default", zap.Error(err))
+		logger.L().Warn(ctx, "failed to get envd timeout from feature flag, using default", zap.Error(err))
 	}
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond

@@ -35,6 +35,7 @@ import (
 	e2blogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Closeable interface {
@@ -76,7 +77,7 @@ func run() int {
 		}
 	}()
 
-	logger := zap.Must(
+	logger := utils.Must(
 		e2blogger.NewLogger(
 			ctx, e2blogger.LoggerConfig{
 				ServiceName:   serviceName,
@@ -86,7 +87,7 @@ func run() int {
 				EnableConsole: true,
 			},
 		),
-	)
+	).Detach(ctx)
 
 	defer func() {
 		err := logger.Sync()

@@ -15,8 +15,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -101,7 +101,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	build := templateBuildDB.EnvBuild
 
 	// only waiting builds can be triggered
-	if build.Status != envbuild.StatusWaiting.String() {
+	if build.Status != string(types.BuildStatusWaiting) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
 		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
 
@@ -120,23 +120,32 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
-		StartCmd:   body.StartCmd,
-		ReadyCmd:   body.ReadyCmd,
-		Dockerfile: utils.ToPtr(string(stepsMarshalled)),
-		BuildUuid:  buildUUID,
-	})
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when updating build", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err))
-
-		return
-	}
-
 	version, err := userAgentToTemplateVersion(zap.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID)), c.Request.UserAgent())
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
+	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
+		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
+	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
+		StartCmd:      body.StartCmd,
+		ReadyCmd:      body.ReadyCmd,
+		Dockerfile:    utils.ToPtr(string(stepsMarshalled)),
+		ClusterNodeID: utils.ToPtr(builderNodeID),
+		BuildUuid:     buildUUID,
+	})
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when updating build", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err))
 
 		return
 	}
@@ -160,7 +169,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.Force,
 		body.Steps,
 		apiutils.WithClusterFallback(team.ClusterID),
-		build.ClusterNodeID,
+		builderNodeID,
 		version,
 	)
 

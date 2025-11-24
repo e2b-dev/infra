@@ -9,6 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var _ sandbox.Storage = (*PopulateRedisStorage)(nil)
@@ -44,7 +45,7 @@ func (m *PopulateRedisStorage) Remove(ctx context.Context, sandboxID string) err
 
 	err = m.redisBackend.Remove(ctx, sandboxID)
 	if err != nil {
-		zap.L().Error("failed to remove sandbox from redis", zap.Error(err))
+		zap.L().Error("failed to remove sandbox from redis", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 
 	return nil

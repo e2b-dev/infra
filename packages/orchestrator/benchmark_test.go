@@ -35,6 +35,7 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -120,18 +121,19 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		require.NoError(b, err)
 	}
 
-	logger, err := zap.NewDevelopment()
+	zapl, err := zap.NewDevelopment()
 	require.NoError(b, err)
+	l := logger.NewTracedLogger(zapl)
 
-	sbxlogger.SetSandboxLoggerInternal(logger)
+	sbxlogger.SetSandboxLoggerInternal(l)
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
-	slotStorage, err := network.NewStorageLocal(config.NetworkConfig)
+	slotStorage, err := network.NewStorageLocal(b.Context(), config.NetworkConfig)
 	require.NoError(b, err)
 	networkPool := network.NewPool(8, 8, slotStorage, config.NetworkConfig)
 	go func() {
 		networkPool.Populate(b.Context())
-		logger.Info("network pool populated")
+		l.Info(b.Context(), "network pool populated")
 	}()
 	defer func() {
 		err := networkPool.Close(b.Context())
@@ -142,7 +144,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err, "do you have the nbd kernel module installed?")
 	go func() {
 		devicePool.Populate(b.Context())
-		logger.Info("device pool populated")
+		l.Info(b.Context(), "device pool populated")
 	}()
 	defer func() {
 		err := devicePool.Close(b.Context())
@@ -235,7 +237,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	builder := build.NewBuilder(
 		config.BuilderConfig,
-		logger,
+		l,
 		featureFlags,
 		sandboxFactory,
 		persistenceTemplate,
@@ -269,7 +271,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: fcVersion,
 		}
-		_, err = builder.Build(b.Context(), metadata, templateConfig, logger.Core())
+		_, err = builder.Build(b.Context(), metadata, templateConfig, l.Detach(b.Context()).Core())
 		require.NoError(b, err)
 	}
 

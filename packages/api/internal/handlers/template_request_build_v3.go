@@ -74,27 +74,20 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	}
 	span.End()
 
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
-		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
-
-		return nil
-	}
-
 	buildReq := template.RegisterBuildData{
-		ClusterID:     apiutils.WithClusterFallback(team.ClusterID),
-		BuilderNodeID: builderNodeID,
-		TemplateID:    templateID,
-		UserID:        nil,
-		Team:          team,
-		Alias:         &body.Alias,
-		CpuCount:      body.CpuCount,
-		MemoryMB:      body.MemoryMB,
-		Version:       templates.TemplateV2LatestVersion,
+		ClusterID:          apiutils.WithClusterFallback(team.ClusterID),
+		TemplateID:         templateID,
+		UserID:             nil,
+		Team:               team,
+		Alias:              &body.Alias,
+		CpuCount:           body.CpuCount,
+		MemoryMB:           body.MemoryMB,
+		Version:            templates.TemplateV2LatestVersion,
+		KernelVersion:      a.config.DefaultKernelVersion,
+		FirecrackerVersion: a.config.DefaultFirecrackerVersion,
 	}
 
-	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, buildReq)
+	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)

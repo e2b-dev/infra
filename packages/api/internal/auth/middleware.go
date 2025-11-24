@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -78,9 +79,10 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	// Now, we need to get the API key from the request
 	headerKey, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		telemetry.ReportError(ctx, a.errorMessage, err)
+		err = fmt.Errorf("%s: %w", a.errorMessage, err)
+		trace.SpanFromContext(ctx).RecordError(err, trace.WithStackTrace(true))
 
-		return fmt.Errorf("%s %w", a.errorMessage, err)
+		return err
 	}
 
 	telemetry.ReportEvent(ctx, "api key extracted")
