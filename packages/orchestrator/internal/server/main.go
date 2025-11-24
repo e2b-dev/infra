@@ -2,10 +2,10 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"go.opentelemetry.io/otel/metric"
-	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -55,7 +55,7 @@ type ServiceConfig struct {
 	SbxEventsService *events.EventsService
 }
 
-func New(cfg ServiceConfig) *Server {
+func New(cfg ServiceConfig) (*Server, error) {
 	server := &Server{
 		config:            cfg.Config,
 		sandboxFactory:    cfg.SandboxFactory,
@@ -78,8 +78,8 @@ func New(cfg ServiceConfig) *Server {
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("Error registering sandbox count metric", zap.String("metric_name", string(telemetry.OrchestratorSandboxCountMeterName)), zap.Error(err))
+		return nil, fmt.Errorf("failed to register sandbox count metric: %w", err)
 	}
 
-	return server
+	return server, nil
 }

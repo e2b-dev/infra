@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type ServiceInfo struct {
@@ -36,12 +38,12 @@ func (s *ServiceInfo) GetStatus() orchestratorinfo.ServiceInfoStatus {
 	return s.status
 }
 
-func (s *ServiceInfo) SetStatus(status orchestratorinfo.ServiceInfoStatus) {
+func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) {
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 
 	if s.status != status {
-		zap.L().Info("Service status changed", zap.String("status", status.String()))
+		logger.L().Info(ctx, "Service status changed", zap.String("status", status.String()))
 		s.status = status
 	}
 }
@@ -64,9 +66,9 @@ func NewInfoContainer(clientId string, version string, commit string, instanceID
 
 		SourceVersion: version,
 		SourceCommit:  commit,
-	}
 
-	serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Healthy)
+		status: orchestratorinfo.ServiceInfoStatus_Healthy,
+	}
 
 	return serviceInfo
 }

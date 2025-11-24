@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func newHyperloopModule() fx.Option {
@@ -33,7 +34,7 @@ type HyperloopHTTPServer struct {
 func newHyperloopServer(
 	lc fx.Lifecycle,
 	config cfg.Config,
-	logger *zap.Logger,
+	logger logger.Logger,
 	sandboxes *sandbox.Map,
 ) (HyperloopHTTPServer, error) {
 	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(config.NetworkConfig.HyperloopProxyPort, logger, sandboxes)
@@ -42,11 +43,11 @@ func newHyperloopServer(
 	}
 
 	lc.Append(fx.Hook{
-		OnStart: func(context.Context) error {
+		OnStart: func(ctx context.Context) error {
 			go func() {
 				err := hyperloopSrv.ListenAndServe()
 				if err != nil && !errors.Is(err, http.ErrServerClosed) {
-					logger.Error("Hyperloop server error", zap.Error(err))
+					logger.Error(ctx, "Hyperloop server error", zap.Error(err))
 				}
 			}()
 

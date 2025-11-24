@@ -22,8 +22,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -38,7 +38,6 @@ type processingBuilds struct {
 type TemplateManager struct {
 	grpc     *grpclient.GRPCClient
 	edgePool *edge.Pool
-	db       *db.DB
 
 	lock          sync.Mutex
 	processing    map[uuid.UUID]processingBuilds
@@ -63,7 +62,6 @@ func New(
 	config cfg.Config,
 	tracerProvider trace.TracerProvider,
 	meterProvider metric.MeterProvider,
-	db *db.DB,
 	sqlcDB *sqlcdb.Client,
 	edgePool *edge.Pool,
 	buildCache *templatecache.TemplatesBuildCache,
@@ -76,7 +74,6 @@ func New(
 
 	tm := &TemplateManager{
 		grpc:          client,
-		db:            db,
 		sqlcDB:        sqlcDB,
 		buildCache:    buildCache,
 		templateCache: templateCache,
@@ -103,18 +100,18 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 			dbCtx, dbxCtxCancel := context.WithTimeout(ctx, 5*time.Second)
 			buildsRunning, err := tm.sqlcDB.GetInProgressTemplateBuilds(dbCtx)
 			if err != nil {
-				zap.L().Error("Error getting running builds for periodical sync", zap.Error(err))
+				logger.L().Error(ctx, "Error getting running builds for periodical sync", zap.Error(err))
 				dbxCtxCancel()
 
 				continue
 			}
 
-			zap.L().Info("Running periodical sync of builds statuses", zap.Int("count", len(buildsRunning)))
+			logger.L().Info(ctx, "Running periodical sync of builds statuses", zap.Int("count", len(buildsRunning)))
 			for _, b := range buildsRunning {
 				go func(b queries.GetInProgressTemplateBuildsRow) {
 					err := tm.BuildStatusSync(ctx, b.EnvBuild.ID, b.Env.ID, utils.WithClusterFallback(b.Team.ClusterID), b.EnvBuild.ClusterNodeID)
 					if err != nil {
-						zap.L().Error("Error syncing build status", zap.Error(err), zap.String("buildID", b.EnvBuild.ID.String()))
+						logger.L().Error(ctx, "Error syncing build status", zap.Error(err), zap.String("buildID", b.EnvBuild.ID.String()))
 					}
 				}(b)
 			}
@@ -181,7 +178,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, t
 			return fmt.Errorf("failed to get any available node in the cluster: %w", err)
 		}
 
-		zap.L().Info("Fallback to available node", zap.String("nodeID", nodeID), zap.String("clusterID", clusterID.String()))
+		logger.L().Info(ctx, "Fallback to available node", zap.String("nodeID", nodeID), zap.String("clusterID", clusterID.String()))
 		client, err = tm.GetClusterBuildClient(clusterID, nodeID)
 		if err != nil {
 			return fmt.Errorf("failed to get builder client: %w", err)

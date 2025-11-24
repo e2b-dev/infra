@@ -56,7 +56,7 @@ func newTemplateManager(
 	persistence storage.StorageProvider,
 	limiter *limit.Limiter,
 	serviceInfo *service.ServiceInfo,
-	globalLogger *zap.Logger,
+	globalLogger logger.Logger,
 	tel *telemetry.Client,
 ) (templateManagerOutput, error) {
 	// template manager sandbox logger
@@ -101,14 +101,17 @@ func newTemplateManager(
 		return templateManagerOutput{}, fmt.Errorf("failed to create template manager: %w", err)
 	}
 
-	globalLogger.Info("Registered gRPC service", zap.String("service", "template_manager.TemplateService"))
-
 	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			globalLogger.Info(ctx, "Registered gRPC service", zap.String("service", "template_manager.TemplateService"))
+
+			return nil
+		},
 		OnStop: func(ctx context.Context) error {
-			globalLogger.Info("Shutting down template manager")
+			globalLogger.Info(ctx, "Shutting down template manager")
 
 			if err := tmpl.Wait(ctx); err != nil {
-				globalLogger.Warn("Failed to wait for template manager builds", zap.Error(err))
+				globalLogger.Warn(ctx, "Failed to wait for template manager builds", zap.Error(err))
 			}
 
 			return tmpl.Close(ctx)

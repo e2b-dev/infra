@@ -6,7 +6,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
@@ -19,7 +18,7 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/server")
 
 func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanager.TemplateBuildDeleteRequest) (*emptypb.Empty, error) {
-	childCtx, childSpan := tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
+	ctx, childSpan := tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
 		telemetry.WithTemplateID(in.GetTemplateID()),
 		telemetry.WithBuildID(in.GetBuildID()),
 	))
@@ -35,14 +34,14 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 	buildInfo, err := s.buildCache.Get(in.GetBuildID())
 	if err == nil && buildInfo.IsRunning() {
 		// Cancel the build if it is running
-		zap.L().Info("Canceling running template build", logger.WithTemplateID(in.GetTemplateID()), logger.WithBuildID(in.GetBuildID()))
+		logger.L().Info(ctx, "Canceling running template build", logger.WithTemplateID(in.GetTemplateID()), logger.WithBuildID(in.GetBuildID()))
 		telemetry.ReportEvent(ctx, "cancel in progress template build")
 		buildInfo.SetFail(&templatemanager.TemplateBuildStatusReason{
 			Message: cache.CanceledBuildReason,
 		})
 	}
 
-	err = template.Delete(childCtx, s.artifactsregistry, s.templateStorage, in.GetTemplateID(), in.GetBuildID())
+	err = template.Delete(ctx, s.artifactsregistry, s.templateStorage, in.GetTemplateID(), in.GetBuildID())
 	if err != nil {
 		return nil, err
 	}

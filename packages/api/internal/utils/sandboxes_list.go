@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -38,13 +40,13 @@ func ParseNextToken(token *string) (time.Time, string, error) {
 	return time.Now(), MaxSandboxID, nil
 }
 
-func ParseMetadata(metadata *string) (*map[string]string, error) {
+func ParseMetadata(ctx context.Context, metadata *string) (*map[string]string, error) {
 	// Parse metadata filter (query) if provided
 	var metadataFilter *map[string]string
 	if metadata != nil {
 		parsedMetadataFilter, err := parseFilters(*metadata)
 		if err != nil {
-			zap.L().Error("Error parsing metadata", zap.Error(err))
+			logger.L().Error(ctx, "Error parsing metadata", zap.Error(err))
 
 			return nil, fmt.Errorf("error parsing metadata: %w", err)
 		}

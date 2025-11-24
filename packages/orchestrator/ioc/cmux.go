@@ -146,7 +146,7 @@ func stopCMUXServerMockable(
 ) {
 	logger.Info("marking service as 'draining'")
 	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
-		serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Draining)
+		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
 	}
 
 	for _, preShutdown := range preCMUXShutdowns {

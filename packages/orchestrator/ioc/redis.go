@@ -9,7 +9,6 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	sharedevents "github.com/e2b-dev/infra/packages/shared/pkg/events"
@@ -51,15 +50,11 @@ func newRedisClusterClient(config cfg.Config) (redis.UniversalClient, error) {
 	if config.RedisTLSCABase64 != "" {
 		cert, err := base64.StdEncoding.DecodeString(config.RedisTLSCABase64)
 		if err != nil {
-			zap.L().Error("Failed to decode Redis cluster TLS CA certificate from base64", zap.Error(err))
-
 			return nil, err
 		}
 
 		certPool := x509.NewCertPool()
 		if !certPool.AppendCertsFromPEM(cert) {
-			zap.L().Error("Failed to parse Redis cluster TLS CA certificate")
-
 			return nil, fmt.Errorf("failed to parse Redis cluster TLS CA certificate")
 		}
 
@@ -70,8 +65,6 @@ func newRedisClusterClient(config cfg.Config) (redis.UniversalClient, error) {
 			MinVersion: tls.VersionTLS12,
 			ServerName: serverName,
 		}
-
-		zap.L().Info("Redis cluster will be started with TLS enabled")
 	}
 
 	return redis.NewClusterClient(clusterOpts), nil

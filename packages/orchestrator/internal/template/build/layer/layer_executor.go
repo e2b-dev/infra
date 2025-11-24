@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -23,7 +24,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type LayerExecutor struct {
 	buildcontext.BuildContext
 
-	logger *zap.Logger
+	logger logger.Logger
 
 	templateCache   *sbxtemplate.Cache
 	proxy           *proxy.SandboxProxy
@@ -35,7 +36,7 @@ type LayerExecutor struct {
 
 func NewLayerExecutor(
 	buildContext buildcontext.BuildContext,
-	logger *zap.Logger,
+	logger logger.Logger,
 	templateCache *sbxtemplate.Cache,
 	proxy *proxy.SandboxProxy,
 	sandboxes *sandbox.Map,
@@ -60,7 +61,7 @@ func NewLayerExecutor(
 // BuildLayer orchestrates the layer building process
 func (lb *LayerExecutor) BuildLayer(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	cmd LayerBuildCommand,
 ) (metadata.Template, error) {
 	ctx, childSpan := tracer.Start(ctx, "run-in-sandbox")
@@ -86,7 +87,14 @@ func (lb *LayerExecutor) BuildLayer(
 		closeErr := lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
 		if closeErr != nil {
 			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
-			lb.logger.Warn("errors when manually closing connections to sandbox", zap.Error(closeErr))
+			lb.logger.Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
+		} else {
+			lb.logger.Debug(
+				ctx,
+				"removed proxy from pool",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithExecutionID(sbx.Runtime.ExecutionID),
+			)
 		}
 	}()
 
@@ -94,6 +102,14 @@ func (lb *LayerExecutor) BuildLayer(
 	if cmd.UpdateEnvd {
 		err = lb.updateEnvdInSandbox(ctx, userLogger, sbx)
 		if err != nil {
+			lb.logger.Error(
+				ctx,
+				"error updating envd",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithExecutionID(sbx.Runtime.ExecutionID),
+				zap.Error(err),
+			)
+
 			return metadata.Template{}, fmt.Errorf("update envd: %w", err)
 		}
 	}
@@ -101,6 +117,14 @@ func (lb *LayerExecutor) BuildLayer(
 	// Execute the action using the executor
 	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.CurrentLayer)
 	if err != nil {
+		lb.logger.Error(
+			ctx,
+			"error executing action",
+			logger.WithSandboxID(sbx.Runtime.SandboxID),
+			logger.WithExecutionID(sbx.Runtime.ExecutionID),
+			zap.Error(err),
+		)
+
 		return metadata.Template{}, err
 	}
 
@@ -128,7 +152,7 @@ func (lb *LayerExecutor) BuildLayer(
 // updateEnvdInSandbox updates the envd binary in the sandbox to the latest version.
 func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	sbx *sandbox.Sandbox,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "update-envd")
@@ -138,7 +162,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	if err != nil {
 		return fmt.Errorf("error getting envd version: %w", err)
 	}
-	userLogger.Debug(fmt.Sprintf("Updating envd to version v%s", envdVersion))
+	userLogger.Debug(ctx, fmt.Sprintf("Updating envd to version v%s", envdVersion))
 
 	// Step 1: Copy the updated envd binary from host to /tmp in sandbox
 	tmpEnvdPath := "/tmp/envd_updated"
@@ -185,6 +209,20 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		metadata.Context{User: "root"},
 	)
 
+	// Remove the proxy client to prevent reuse of broken connection, because we restarted envd server inside of the sandbox.
+	// This might not be necessary if we don't use keepalives for the proxy.
+	err = lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+	if err != nil {
+		return fmt.Errorf("failed to remove proxy from pool: %w", err)
+	}
+
+	lb.logger.Debug(
+		ctx,
+		"removed proxy from pool after restarting envd",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithExecutionID(sbx.Runtime.ExecutionID),
+	)
+
 	// Step 4: Wait for envd to initialize
 	err = sbx.WaitForEnvd(
 		ctx,
@@ -199,7 +237,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 
 func (lb *LayerExecutor) PauseAndUpload(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	sbx *sandbox.Sandbox,
 	hash string,
 	meta metadata.Template,
@@ -207,7 +245,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	userLogger.Debug(fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
+	userLogger.Debug(ctx, fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
 
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
@@ -255,7 +293,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		userLogger.Debug(fmt.Sprintf("Saved: %s", meta.Template.BuildID))
+		userLogger.Debug(ctx, fmt.Sprintf("Saved: %s", meta.Template.BuildID))
 
 		return nil
 	})

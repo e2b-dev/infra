@@ -26,15 +26,16 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
-	"github.com/e2b-dev/infra/packages/proxy/internal/factories"
 	e2bproxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
 	servicediscovery "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
-	e2blogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Closeable interface {
@@ -67,7 +68,7 @@ func run() int {
 	// Setup telemetry
 	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, version, instanceID)
 	if err != nil {
-		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
+		logger.L().Fatal(ctx, "failed to create metrics exporter", zap.Error(err))
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)
@@ -76,26 +77,25 @@ func run() int {
 		}
 	}()
 
-	logger := zap.Must(
-		e2blogger.NewLogger(
-			ctx, e2blogger.LoggerConfig{
+	l := utils.Must(
+		logger.NewLogger(
+			ctx, logger.LoggerConfig{
 				ServiceName:   serviceName,
 				IsInternal:    true,
 				IsDebug:       env.IsDebug(),
-				Cores:         []zapcore.Core{e2blogger.GetOTELCore(tel.LogsProvider, serviceName)},
+				Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
 				EnableConsole: true,
 			},
 		),
 	)
 
 	defer func() {
-		err := logger.Sync()
+		err := l.Sync()
 		if err != nil {
 			log.Printf("logger sync error: %v\n", err)
 		}
 	}()
-
-	zap.ReplaceGlobals(logger)
+	logger.ReplaceGlobals(ctx, l)
 
 	exitCode := atomic.Int32{}
 
@@ -104,25 +104,25 @@ func run() int {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
+	l.Info(ctx, "Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
-	edgeSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.EdgeServiceDiscovery, config.EdgePort, logger)
+	edgeSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.EdgeServiceDiscovery, config.EdgePort, l)
 	if err != nil {
-		logger.Error("Failed to build edge discovery config", zap.Error(err))
+		l.Error(ctx, "Failed to build edge discovery config", zap.Error(err))
 
 		return 1
 	}
 
-	orchestratorsSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.OrchestratorServiceDiscovery, config.OrchestratorPort, logger)
+	orchestratorsSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.OrchestratorServiceDiscovery, config.OrchestratorPort, l)
 	if err != nil {
-		logger.Error("Failed to build orchestrator discovery config", zap.Error(err))
+		l.Error(ctx, "Failed to build orchestrator discovery config", zap.Error(err))
 
 		return 1
 	}
 
 	featureFlagsClient, err := feature_flags.NewClient()
 	if err != nil {
-		logger.Error("Failed to create feature flags client", zap.Error(err))
+		l.Error(ctx, "Failed to create feature flags client", zap.Error(err))
 
 		return 1
 	}
@@ -138,16 +138,16 @@ func run() int {
 		defer func() {
 			err := factories.CloseCleanly(redisClient)
 			if err != nil {
-				logger.Error("Failed to close redis client", zap.Error(err))
+				l.Error(ctx, "Failed to close redis client", zap.Error(err))
 			}
 		}()
 		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
 		if errors.Is(err, factories.ErrRedisDisabled) {
-			logger.Warn("Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
+			l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
 			catalog = e2bcatalog.NewMemorySandboxesCatalog()
 		} else {
-			logger.Error("Failed to create redis client", zap.Error(err))
+			l.Error(ctx, "Failed to create redis client", zap.Error(err))
 
 			return 1
 		}
@@ -163,22 +163,22 @@ func run() int {
 		defer func() {
 			err := factories.CloseCleanly(redisSecureClient)
 			if err != nil {
-				logger.Error("Failed to close redis secure client", zap.Error(err))
+				l.Error(ctx, "Failed to close redis secure client", zap.Error(err))
 			}
 		}()
 		fallbackCatalog := e2bcatalog.NewRedisSandboxesCatalog(redisSecureClient)
 		catalog = e2bcatalog.NewRedisFallbackSandboxesCatalog(catalog, fallbackCatalog, featureFlagsClient)
 	} else {
 		if errors.Is(err, factories.ErrRedisDisabled) {
-			logger.Warn("Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
+			l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
 		} else {
-			logger.Error("Failed to create redis secure client", zap.Error(err))
+			l.Error(ctx, "Failed to create redis secure client", zap.Error(err))
 
 			return 1
 		}
 	}
 
-	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
+	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, l, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
 
 	info := &e2binfo.ServiceInfo{
 		NodeID:               nodeID,
@@ -190,7 +190,7 @@ func run() int {
 	}
 
 	// service starts in unhealthy state, and we are waiting for initial health check to pass
-	info.SetStatus(api.Unhealthy)
+	info.SetStatus(ctx, api.Unhealthy)
 
 	// Proxy sandbox http traffic to orchestrator nodes
 	trafficProxy, err := e2bproxy.NewClientProxy(
@@ -200,27 +200,27 @@ func run() int {
 		catalog,
 	)
 	if err != nil {
-		logger.Error("Failed to create client proxy", zap.Error(err))
+		l.Error(ctx, "Failed to create client proxy", zap.Error(err))
 
 		return 1
 	}
 
 	authorizationManager := authorization.NewStaticTokenAuthorizationService(config.EdgeSecret)
-	edges := e2borchestrators.NewEdgePool(logger, edgeSD, info.Host, authorizationManager)
+	edges := e2borchestrators.NewEdgePool(ctx, l, edgeSD, info.Host, authorizationManager)
 
 	var closers []Closeable
 	closers = append(closers, orchestrators, edges, featureFlagsClient, catalog)
 
-	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, info, edges, orchestrators, catalog, config)
+	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, l, info, edges, orchestrators, catalog, config)
 	if err != nil {
-		logger.Error("failed to create edge api store", zap.Error(err))
+		l.Error(ctx, "failed to create edge api store", zap.Error(err))
 
 		return 1
 	}
 
 	edgeApiSwagger, err := api.GetSwagger()
 	if err != nil {
-		logger.Error("Failed to get swagger", zap.Error(err))
+		l.Error(ctx, "Failed to get swagger", zap.Error(err))
 
 		return 1
 	}
@@ -229,7 +229,7 @@ func run() int {
 	var lisCfg net.ListenConfig
 	lis, err := lisCfg.Listen(ctx, "tcp", lisAddr)
 	if err != nil {
-		logger.Error("Failed to listen on edge port", zap.Uint16("port", config.EdgePort), zap.Error(err))
+		l.Error(ctx, "Failed to listen on edge port", zap.Uint16("port", config.EdgePort), zap.Error(err))
 
 		return 1
 	}
@@ -241,7 +241,7 @@ func run() int {
 	grpcSrv := edgepassthrough.NewNodePassThroughServer(orchestrators, info, authorizationManager, catalog)
 
 	// Edge REST API
-	restHttpHandler := edge.NewGinServer(logger, edgeApiStore, edgeApiSwagger, authorizationManager)
+	restHttpHandler := edge.NewGinServer(l, edgeApiStore, edgeApiSwagger, authorizationManager)
 	restListener := muxServer.Match(cmux.Any())
 	restSrv := &http.Server{Handler: restHttpHandler} // handler requests for REST API
 
@@ -252,13 +252,13 @@ func run() int {
 		err := grpcSrv.Serve(grpcListener)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			zap.L().Info("Edge grpc service shutdown successfully")
+			logger.L().Info(ctx, "Edge grpc service shutdown successfully")
 		case err != nil:
 			exitCode.Add(1)
-			zap.L().Error("Edge grpc service encountered error", zap.Error(err))
+			logger.L().Error(ctx, "Edge grpc service encountered error", zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			zap.L().Error("Edge grpc service exited without error")
+			logger.L().Error(ctx, "Edge grpc service exited without error")
 		}
 	}()
 
@@ -269,13 +269,13 @@ func run() int {
 		err := restSrv.Serve(restListener)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			zap.L().Info("Edge api service shutdown successfully")
+			logger.L().Info(ctx, "Edge api service shutdown successfully")
 		case err != nil:
 			exitCode.Add(1)
-			zap.L().Error("Edge api service encountered error", zap.Error(err))
+			logger.L().Error(ctx, "Edge api service encountered error", zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			zap.L().Error("Edge api service exited without error")
+			logger.L().Error(ctx, "Edge api service exited without error")
 		}
 	}()
 
@@ -289,19 +289,19 @@ func run() int {
 		// signaled.
 		defer sigCancel()
 
-		edgeRunLogger := logger.With(zap.Uint16("edge_port", config.EdgePort))
-		edgeRunLogger.Info("Edge api starting")
+		edgeRunLogger := l.With(zap.Uint16("edge_port", config.EdgePort))
+		edgeRunLogger.Info(ctx, "Edge api starting")
 
 		err := muxServer.Serve()
 		if err != nil {
 			switch {
 			case errors.Is(err, http.ErrServerClosed):
-				edgeRunLogger.Info("Edge api shutdown successfully")
+				edgeRunLogger.Info(ctx, "Edge api shutdown successfully")
 			case err != nil:
 				exitCode.Add(1)
-				edgeRunLogger.Error("Edge api encountered error", zap.Error(err))
+				edgeRunLogger.Error(ctx, "Edge api encountered error", zap.Error(err))
 			default:
-				edgeRunLogger.Info("Edge api exited without error")
+				edgeRunLogger.Info(ctx, "Edge api exited without error")
 			}
 		}
 	}()
@@ -316,20 +316,20 @@ func run() int {
 		// signaled.
 		defer sigCancel()
 
-		proxyRunLogger := logger.With(zap.Uint16("proxy_port", config.ProxyPort))
-		proxyRunLogger.Info("Http proxy starting")
+		proxyRunLogger := l.With(zap.Uint16("proxy_port", config.ProxyPort))
+		proxyRunLogger.Info(ctx, "Http proxy starting")
 
 		err := trafficProxy.ListenAndServe(ctx)
 		// Add different handling for the error
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			proxyRunLogger.Info("Http proxy shutdown successfully")
+			proxyRunLogger.Info(ctx, "Http proxy shutdown successfully")
 		case err != nil:
 			exitCode.Add(1)
-			proxyRunLogger.Error("Http proxy encountered error", zap.Error(err))
+			proxyRunLogger.Error(ctx, "Http proxy encountered error", zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			proxyRunLogger.Error("Http proxy exited without error")
+			proxyRunLogger.Error(ctx, "Http proxy exited without error")
 		}
 	}()
 
@@ -354,13 +354,13 @@ func run() int {
 		defer wg.Done()
 		<-signalCtx.Done()
 
-		shutdownLogger := logger.With(zap.Uint16("proxy_port", config.ProxyPort), zap.Uint16("edge_port", config.EdgePort))
-		shutdownLogger.Info("Shutting down services")
+		shutdownLogger := l.With(zap.Uint16("proxy_port", config.ProxyPort), zap.Uint16("edge_port", config.EdgePort))
+		shutdownLogger.Info(ctx, "Shutting down services")
 
-		edgeApiStore.SetDraining()
+		edgeApiStore.SetDraining(ctx)
 
 		// we should wait for health check manager to notice that we are not ready for new traffic
-		shutdownLogger.Info("Waiting for draining state propagation", zap.Float64("wait_in_seconds", shutdownDrainingWait.Seconds()))
+		shutdownLogger.Info(ctx, "Waiting for draining state propagation", zap.Float64("wait_in_seconds", shutdownDrainingWait.Seconds()))
 		time.Sleep(shutdownDrainingWait)
 
 		proxyShutdownCtx, proxyShutdownCtxCancel := context.WithTimeout(ctx, 24*time.Hour)
@@ -370,15 +370,15 @@ func run() int {
 		err := trafficProxy.Shutdown(proxyShutdownCtx)
 		if err != nil {
 			exitCode.Add(1)
-			shutdownLogger.Error("Http proxy shutdown error", zap.Error(err))
+			shutdownLogger.Error(ctx, "Http proxy shutdown error", zap.Error(err))
 		} else {
-			shutdownLogger.Info("Http proxy shutdown successfully")
+			shutdownLogger.Info(ctx, "Http proxy shutdown successfully")
 		}
 
-		edgeApiStore.SetUnhealthy()
+		edgeApiStore.SetUnhealthy(ctx)
 
 		// wait for the health check manager to notice that we are not healthy at all
-		shutdownLogger.Info("Waiting for unhealthy state propagation", zap.Float64("wait_in_seconds", shutdownUnhealthyWait.Seconds()))
+		shutdownLogger.Info(ctx, "Waiting for unhealthy state propagation", zap.Float64("wait_in_seconds", shutdownUnhealthyWait.Seconds()))
 		time.Sleep(shutdownUnhealthyWait)
 
 		// wait for graceful shutdown of the gRPC server with  pass through proxy
@@ -391,11 +391,11 @@ func run() int {
 
 		err = restSrv.Shutdown(restShutdownCtx)
 		if err != nil {
-			shutdownLogger.Error("Edge rest api shutdown error", zap.Error(err))
+			shutdownLogger.Error(ctx, "Edge rest api shutdown error", zap.Error(err))
 		}
 
 		// used by instances management for notify that instance is ready for termination
-		edgeApiStore.SetTerminating()
+		edgeApiStore.SetTerminating(ctx)
 
 		// close the mux server
 		muxServer.Close()
@@ -405,9 +405,9 @@ func run() int {
 
 		// close all resources that needs to be closed gracefully
 		for _, c := range closers {
-			zap.L().Info(fmt.Sprintf("Closing %T", c))
+			logger.L().Info(ctx, fmt.Sprintf("Closing %T", c))
 			if err := c.Close(closeCtx); err != nil { //nolint:contextcheck // TODO: fix this later
-				zap.L().Error("error during shutdown", zap.Error(err))
+				logger.L().Error(ctx, "error during shutdown", zap.Error(err))
 			}
 		}
 	}()

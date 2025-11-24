@@ -2,6 +2,7 @@ package ioc
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"go.uber.org/fx"
@@ -25,11 +26,11 @@ func newObservabilityModule() fx.Option {
 	)
 }
 
-func newTelemetry(lc fx.Lifecycle, state State, version VersionInfo) *telemetry.Client {
+func newTelemetry(lc fx.Lifecycle, state State, version VersionInfo) (*telemetry.Client, error) {
 	// Setup telemetry
 	tel, err := telemetry.New(context.Background(), state.NodeID, state.ServiceName, version.Commit, version.Version, state.ServiceInstanceID)
 	if err != nil {
-		zap.L().Fatal("failed to init telemetry", zap.Error(err))
+		return nil, err
 	}
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
@@ -44,7 +45,7 @@ func newTelemetry(lc fx.Lifecycle, state State, version VersionInfo) *telemetry.
 		},
 	})
 
-	return tel
+	return tel, nil
 }
 
 func newSandboxObserver(
@@ -73,14 +74,20 @@ func newGlobalLogger(
 	tel *telemetry.Client,
 	state State,
 	version VersionInfo,
-) *zap.Logger {
-	globalLogger := zap.Must(logger.NewLogger(context.Background(), logger.LoggerConfig{
+) (logger.Logger, error) {
+	ctx := context.Background()
+
+	globalLogger, err := logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   state.ServiceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
 		Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, state.ServiceName)},
 		EnableConsole: true,
-	}))
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logger: %w", err)
+	}
+
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {
 			err := globalLogger.Sync()
@@ -93,12 +100,12 @@ func newGlobalLogger(
 			return nil
 		},
 	})
-	zap.ReplaceGlobals(globalLogger)
+	logger.ReplaceGlobals(ctx, globalLogger)
 
-	globalLogger.Info("Starting orchestrator",
+	globalLogger.Info(ctx, "Starting orchestrator",
 		zap.String("version", version.Version),
 		zap.String("commit", version.Commit),
 		logger.WithServiceInstanceID(state.ServiceInstanceID))
 
-	return globalLogger
+	return globalLogger, nil
 }

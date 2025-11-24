@@ -40,12 +40,12 @@ func (a *APIStore) getSandboxesMetrics(
 
 	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
 	if err != nil {
-		zap.L().Error("error getting metrics read feature flag, soft failing", zap.Error(err))
+		logger.L().Error(ctx, "error getting metrics read feature flag, soft failing", zap.Error(err))
 	}
 
 	// Get metrics for all sandboxes
 	if !metricsReadFlag {
-		zap.L().Debug("sandbox metrics read feature flag is disabled")
+		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
 		// If we are not reading from ClickHouse, we can return an empty map
 		// This is here just to have the possibility to turn off ClickHouse metrics reading
 		return make(map[string]api.SandboxMetric), nil
@@ -53,7 +53,7 @@ func (a *APIStore) getSandboxesMetrics(
 
 	metrics, err := a.clickhouseStore.QueryLatestMetrics(ctx, sandboxIDs, teamID.String())
 	if err != nil {
-		zap.L().Error("Error fetching sandbox metrics from ClickHouse",
+		logger.L().Error(ctx, "Error fetching sandbox metrics from ClickHouse",
 			logger.WithTeamID(teamID.String()),
 			zap.Error(err),
 		)
@@ -85,16 +85,16 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	if len(params.SandboxIds) > maxSandboxMetricsCount {
-		zap.L().Error("Too many sandboxes requested", zap.Int("requested_count", len(params.SandboxIds)), zap.Int("max_count", maxSandboxMetricsCount), logger.WithTeamID(team.ID.String()))
+		logger.L().Error(ctx, "Too many sandboxes requested", zap.Int("requested_count", len(params.SandboxIds)), zap.Int("max_count", maxSandboxMetricsCount), logger.WithTeamID(team.ID.String()))
 		telemetry.ReportError(ctx, "too many sandboxes requested", fmt.Errorf("requested %d, max %d", len(params.SandboxIds), maxSandboxMetricsCount), telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Too many sandboxes requested, maximum is %d", maxSandboxMetricsCount))
 
 		return
 	}
 
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "listed running instances with metrics", properties)
 
 	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, params.SandboxIds)
 	if err != nil {

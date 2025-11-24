@@ -29,8 +29,6 @@ func newSandboxesModule() fx.Option {
 	return fx.Module("sandboxes",
 		fx.Provide(
 			newDevicePool,
-			newNetworkPool,
-			newNetworkStorage,
 			asGRPCRegisterable(newOrchestratorService),
 			newSandboxFactory,
 			newSandboxProxy,
@@ -57,8 +55,8 @@ func newOrchestratorService(
 	featureFlags *featureflags.Client,
 	sbxEventsService *events.EventsService,
 	serviceInfo *service.ServiceInfo,
-) grpcRegisterable {
-	s := server.New(server.ServiceConfig{
+) (grpcRegisterable, error) {
+	s, err := server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,
 		NetworkPool:      networkPool,
@@ -71,10 +69,13 @@ func newOrchestratorService(
 		FeatureFlags:     featureFlags,
 		SbxEventsService: sbxEventsService,
 	})
+	if err != nil {
+		return grpcRegisterable{}, fmt.Errorf("failed to create server: %w", err)
+	}
 
 	return grpcRegisterable{func(g *grpc.Server) {
 		orchestrator.RegisterSandboxServiceServer(g, s)
-	}}
+	}}, nil
 }
 
 type sandboxFactoryOut struct {

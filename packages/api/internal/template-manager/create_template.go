@@ -13,8 +13,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/types"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -71,7 +72,7 @@ func (tm *TemplateManager) CreateTemplate(
 			ctx,
 			templateID,
 			buildID,
-			envbuild.StatusFailed,
+			types.BuildStatusFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: fmt.Sprintf("error when building env: %s", e),
 			},
@@ -135,7 +136,7 @@ func (tm *TemplateManager) CreateTemplate(
 			ctx,
 			templateID,
 			buildID,
-			envbuild.StatusFailed,
+			types.BuildStatusFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: err.Error(),
 				Step:    ut.ToPtr("base"),
@@ -169,7 +170,7 @@ func (tm *TemplateManager) CreateTemplate(
 		ctx,
 		templateID,
 		buildID,
-		envbuild.StatusBuilding,
+		types.BuildStatusBuilding,
 		nil,
 	)
 	if err != nil {
@@ -179,12 +180,12 @@ func (tm *TemplateManager) CreateTemplate(
 
 	// Do not wait for global build sync trigger it immediately
 	go func(ctx context.Context) {
-		buildContext, buildSpan := tracer.Start(ctx, "template-background-build-env")
-		defer buildSpan.End()
+		ctx, span := tracer.Start(ctx, "template-background-build-env")
+		defer span.End()
 
-		err := tm.BuildStatusSync(buildContext, buildID, templateID, clusterID, nodeID)
+		err := tm.BuildStatusSync(ctx, buildID, templateID, clusterID, &nodeID)
 		if err != nil {
-			zap.L().Error("error syncing build status", zap.Error(err))
+			logger.L().Error(ctx, "error syncing build status", zap.Error(err))
 		}
 
 		// Invalidate the cache

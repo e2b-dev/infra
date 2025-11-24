@@ -17,6 +17,10 @@ func WithBuildID(buildID string) zap.Field {
 	return zap.String("build.id", buildID)
 }
 
+func WithExecutionID(executionID string) zap.Field {
+	return zap.String("execution.id", executionID)
+}
+
 func WithTeamID(teamID string) zap.Field {
 	return zap.String("team.id", teamID)
 }

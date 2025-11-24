@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type StorageLocal struct {
@@ -20,28 +22,33 @@ type StorageLocal struct {
 	acquiredNsMu sync.Mutex
 }
 
+var _ Storage = &StorageLocal{}
+
 const netNamespacesDir = "/var/run/netns"
 
 func NewStorageLocal(config Config) (*StorageLocal, error) {
-	// get namespaces that we want to always skip
-	foreignNs, err := getForeignNamespaces()
-	if err != nil {
-		return nil, fmt.Errorf("error getting already used namespaces: %w", err)
-	}
-
-	foreignNsMap := make(map[string]struct{})
-	for _, ns := range foreignNs {
-		foreignNsMap[ns] = struct{}{}
-		zap.L().Info(fmt.Sprintf("Found foreign namespace: %s", ns))
-	}
-
 	return &StorageLocal{
 		config:       config,
-		foreignNs:    foreignNsMap,
+		foreignNs:    make(map[string]struct{}),
 		slotsSize:    vrtSlotsSize,
 		acquiredNs:   make(map[string]struct{}, vrtSlotsSize),
 		acquiredNsMu: sync.Mutex{},
 	}, nil
+}
+
+func (s *StorageLocal) Setup(ctx context.Context) error {
+	// get namespaces that we want to always skip
+	foreignNs, err := getForeignNamespaces()
+	if err != nil {
+		return fmt.Errorf("error getting already used namespaces: %w", err)
+	}
+
+	for _, ns := range foreignNs {
+		s.foreignNs[ns] = struct{}{}
+		logger.L().Info(ctx, fmt.Sprintf("Found foreign namespace: %s", ns))
+	}
+
+	return nil
 }
 
 func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
@@ -87,7 +94,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 
 			if !available {
 				s.foreignNs[slotName] = struct{}{}
-				zap.L().Debug("Skipping slot because not available", zap.String("slot", slotName))
+				logger.L().Debug(ctx, "Skipping slot because not available", zap.String("slot", slotName))
 
 				continue
 			}

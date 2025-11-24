@@ -23,37 +23,37 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 		case sandbox.StateActionKill:
 			switch sbx.State {
 			case sandbox.StateKilling:
-				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
+				logger.L().Info(ctx, "Sandbox is already killed", logger.WithSandboxID(sandboxID))
 
 				return nil
 			default: // It shouldn't happen the sandbox ended in paused state
-				zap.L().Error("Error killing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+				logger.L().Error(ctx, "Error killing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 				return ErrSandboxOperationFailed
 			}
 		case sandbox.StateActionPause:
 			switch sbx.State {
 			case sandbox.StateKilling:
-				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
+				logger.L().Info(ctx, "Sandbox is already killed", logger.WithSandboxID(sandboxID))
 
 				return ErrSandboxNotFound
 			default:
-				zap.L().Error("Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+				logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 				return ErrSandboxOperationFailed
 			}
 		default:
-			zap.L().Error("Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", string(stateAction)))
+			logger.L().Error(ctx, "Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", string(stateAction)))
 
 			return ErrSandboxOperationFailed
 		}
 	}
 	defer func() {
-		finish(err)
+		finish(ctx, err)
 	}()
 
 	if alreadyDone {
-		zap.L().Info("Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
+		logger.L().Info(ctx, "Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 
 		return nil
 	}
@@ -63,7 +63,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 	defer o.sandboxStore.Remove(ctx, sbx.TeamID.String(), sbx.SandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, stateAction)
 	if err != nil {
-		zap.L().Error("Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 
 		return ErrSandboxOperationFailed
 	}
@@ -77,7 +77,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 
 	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
 	if node == nil {
-		zap.L().Error("failed to get node", logger.WithNodeID(sbx.NodeID))
+		logger.L().Error(ctx, "failed to get node", logger.WithNodeID(sbx.NodeID))
 
 		return fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
@@ -87,10 +87,10 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 
 	err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
 	if err != nil {
-		zap.L().Error("error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+		logger.L().Error(ctx, "error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 	}
 
-	sbxlogger.I(sbx).Debug("Removing sandbox",
+	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",
 		zap.Bool("auto_pause", sbx.AutoPause),
 		zap.String("state_action", string(stateAction)),
 	)
@@ -100,7 +100,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 		var err error
 		err = o.pauseSandbox(ctx, node, sbx)
 		if err != nil {
-			zap.L().Debug("failed to create snapshot", logger.WithSandboxID(sbx.SandboxID), zap.String("base_template_id", sbx.BaseTemplateID))
+			logger.L().Debug(ctx, "failed to create snapshot", logger.WithSandboxID(sbx.SandboxID), zap.String("base_template_id", sbx.BaseTemplateID))
 
 			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sbx.SandboxID, err)
 		}

@@ -96,7 +96,7 @@ type UpsertSnapshotParams struct {
 	FirecrackerVersion  string
 	EnvdVersion         *string
 	Status              string
-	OriginNodeID        string
+	OriginNodeID        *string
 	TotalDiskSizeMb     *int64
 	TemplateID          string
 	TeamID              uuid.UUID

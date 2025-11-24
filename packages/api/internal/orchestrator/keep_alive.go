@@ -38,7 +38,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 			return sbx, errCannotSetTTL
 		}
 
-		zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
+		logger.L().Debug(ctx, "sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
 		sbx.EndTime = newEndTime
 
 		return sbx, nil

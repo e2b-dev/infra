@@ -18,6 +18,7 @@ import (
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -69,7 +70,7 @@ func NewCache(
 
 		err := template.Close(ctx)
 		if err != nil {
-			zap.L().Warn("failed to cleanup template data", zap.String("item_key", item.Key()), zap.Error(err))
+			logger.L().Warn(ctx, "failed to cleanup template data", zap.String("item_key", item.Key()), zap.Error(err))
 		}
 	})
 
@@ -131,7 +132,7 @@ func (c *Cache) GetTemplate(
 	// Because of the template caching, if we enable the shared cache feature flag,
 	// it will start working only for new orchestrators or new builds.
 	if c.useNFSCache(ctx, isBuilding, isSnapshot) {
-		zap.L().Info("using local template cache", zap.String("path", c.rootCachePath))
+		logger.L().Info(ctx, "using local template cache", zap.String("path", c.rootCachePath))
 		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
 	}
 
@@ -220,7 +221,7 @@ func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot boo
 
 	flag, err := c.flags.BoolFlag(ctx, flagName)
 	if err != nil {
-		zap.L().Error("failed to get nfs cache feature flag", zap.Error(err))
+		logger.L().Error(ctx, "failed to get nfs cache feature flag", zap.Error(err))
 	}
 
 	return flag

@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 )
 
@@ -46,7 +47,7 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 	chunkPath := c.makeChunkFilename(offset)
 
 	readTimer := cacheReadTimerFactory.Begin()
-	count, err := c.readAtFromCache(chunkPath, buff)
+	count, err := c.readAtFromCache(ctx, chunkPath, buff)
 	if ignoreEOF(err) == nil {
 		cacheHits.Add(ctx, 1)
 		readTimer.End(ctx, int64(count))
@@ -55,7 +56,7 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 	}
 	cacheMisses.Add(ctx, 1)
 
-	zap.L().Debug("failed to read cached chunk, falling back to remote read",
+	logger.L().Debug(ctx, "failed to read cached chunk, falling back to remote read",
 		zap.String("chunk_path", chunkPath),
 		zap.Int64("offset", offset),
 		zap.Error(err))
@@ -74,7 +75,7 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 }
 
 func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
-	if size, ok := c.readLocalSize(); ok {
+	if size, ok := c.readLocalSize(ctx); ok {
 		cacheHits.Add(ctx, 1)
 
 		return size, nil
@@ -86,7 +87,7 @@ func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 
-	go c.writeLocalSize(size)
+	go c.writeLocalSize(ctx, size)
 
 	return size, nil
 }
@@ -105,14 +106,14 @@ func (c CachedSeekableObjectProvider) makeTempChunkFilename(offset int64) string
 	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
 }
 
-func (c CachedSeekableObjectProvider) readAtFromCache(chunkPath string, buff []byte) (int, error) {
+func (c CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (int, error) {
 	var fp *os.File
 	fp, err := os.Open(chunkPath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
 
-	defer cleanup("failed to close chunk", fp.Close)
+	defer cleanup(ctx, "failed to close chunk", fp.Close)
 
 	count, err := fp.ReadAt(buff, 0) // offset is in the filename
 	if ignoreEOF(err) != nil {
@@ -126,11 +127,11 @@ func (c CachedSeekableObjectProvider) sizeFilename() string {
 	return filepath.Join(c.path, "size.txt")
 }
 
-func (c CachedSeekableObjectProvider) readLocalSize() (int64, bool) {
+func (c CachedSeekableObjectProvider) readLocalSize(ctx context.Context) (int64, bool) {
 	fname := c.sizeFilename()
 	content, err := os.ReadFile(fname)
 	if err != nil {
-		zap.L().Warn("failed to read cached size, falling back to remote read",
+		logger.L().Warn(ctx, "failed to read cached size, falling back to remote read",
 			zap.String("path", fname),
 			zap.Error(err))
 
@@ -139,7 +140,7 @@ func (c CachedSeekableObjectProvider) readLocalSize() (int64, bool) {
 
 	size, err := strconv.ParseInt(string(content), 10, 64)
 	if err != nil {
-		zap.L().Error("failed to parse cached size, falling back to remote read",
+		logger.L().Error(ctx, "failed to parse cached size, falling back to remote read",
 			zap.String("path", fname),
 			zap.String("content", string(content)),
 			zap.Error(err))
@@ -169,23 +170,23 @@ func (c CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int6
 
 func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) {
 	// Try to acquire lock for this chunk write to NFS cache
-	lockFile, err := lock.TryAcquireLock(chunkPath)
+	lockFile, err := lock.TryAcquireLock(ctx, chunkPath)
 	if err != nil {
 		if errors.Is(err, lock.ErrLockAlreadyHeld) {
 			// Another process is already writing this chunk, so we can skip writing it ourselves
 			return
 		}
 
-		zap.L().Warn("failed to acquire lock", zap.String("path", chunkPath), zap.Error(err))
+		logger.L().Warn(ctx, "failed to acquire lock", zap.String("path", chunkPath), zap.Error(err))
 
 		return
 	}
 
 	// Release lock after write completes
 	defer func() {
-		err := lock.ReleaseLock(lockFile)
+		err := lock.ReleaseLock(ctx, lockFile)
 		if err != nil {
-			zap.L().Warn("failed to release lock after writing chunk to cache",
+			logger.L().Warn(ctx, "failed to release lock after writing chunk to cache",
 				zap.Int64("offset", offset),
 				zap.String("path", chunkPath),
 				zap.Error(err))
@@ -197,7 +198,7 @@ func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, off
 	tempPath := c.makeTempChunkFilename(offset)
 
 	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
-		zap.L().Error("failed to write temp cache file",
+		logger.L().Error(ctx, "failed to write temp cache file",
 			zap.String("tempPath", tempPath),
 			zap.String("chunkPath", chunkPath),
 			zap.Int64("offset", offset),
@@ -208,8 +209,8 @@ func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, off
 		return
 	}
 
-	if err := moveWithoutReplace(tempPath, chunkPath); err != nil {
-		zap.L().Error("failed to rename temp file",
+	if err := moveWithoutReplace(ctx, tempPath, chunkPath); err != nil {
+		logger.L().Error(ctx, "failed to rename temp file",
 			zap.String("tempPath", tempPath),
 			zap.String("chunkPath", chunkPath),
 			zap.Int64("offset", offset),
@@ -223,27 +224,27 @@ func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, off
 	writeTimer.End(ctx, int64(len(bytes)))
 }
 
-func (c CachedSeekableObjectProvider) writeLocalSize(size int64) {
+func (c CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size int64) {
 	finalFilename := c.sizeFilename()
 
 	// Try to acquire lock for this chunk write to NFS cache
-	lockFile, err := lock.TryAcquireLock(finalFilename)
+	lockFile, err := lock.TryAcquireLock(ctx, finalFilename)
 	if err != nil {
 		if errors.Is(err, lock.ErrLockAlreadyHeld) {
 			// Another process is already writing this chunk, so we can skip writing it ourselves
 			return
 		}
 
-		zap.L().Warn("failed to acquire lock", zap.String("path", finalFilename), zap.Error(err))
+		logger.L().Warn(ctx, "failed to acquire lock", zap.String("path", finalFilename), zap.Error(err))
 
 		return
 	}
 
 	// Release lock after write completes
 	defer func() {
-		err := lock.ReleaseLock(lockFile)
+		err := lock.ReleaseLock(ctx, lockFile)
 		if err != nil {
-			zap.L().Warn("failed to release lock after writing chunk to cache",
+			logger.L().Warn(ctx, "failed to release lock after writing chunk to cache",
 				zap.Int64("size", size),
 				zap.String("path", finalFilename),
 				zap.Error(err))
@@ -253,15 +254,15 @@ func (c CachedSeekableObjectProvider) writeLocalSize(size int64) {
 	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
 
 	if err := os.WriteFile(tempFilename, []byte(fmt.Sprintf("%d", size)), cacheFilePermissions); err != nil {
-		zap.L().Warn("failed to write to temp file",
+		logger.L().Warn(ctx, "failed to write to temp file",
 			zap.String("path", tempFilename),
 			zap.Error(err))
 
 		return
 	}
 
-	if err := moveWithoutReplace(tempFilename, finalFilename); err != nil {
-		zap.L().Warn("failed to move temp file",
+	if err := moveWithoutReplace(ctx, tempFilename, finalFilename); err != nil {
+		logger.L().Warn(ctx, "failed to move temp file",
 			zap.String("temp_path", tempFilename),
 			zap.String("final_path", finalFilename),
 			zap.Error(err))

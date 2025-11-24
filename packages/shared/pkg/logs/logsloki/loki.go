@@ -1,16 +1,18 @@
 package logsloki
 
 import (
+	"context"
 	"fmt"
 	"slices"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
-func ResponseMapper(res *loghttp.QueryResponse, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
+func ResponseMapper(ctx context.Context, res *loghttp.QueryResponse, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
 	logsCrawled := int32(0)
 	logEntries := make([]logs.LogEntry, 0)
 
@@ -22,7 +24,7 @@ func ResponseMapper(res *loghttp.QueryResponse, offset int32, level *logs.LogLev
 		for _, entry := range stream.Entries {
 			fields, err := logs.FlatJsonLogLineParser(entry.Line)
 			if err != nil {
-				zap.L().Error("error parsing log line", zap.Error(err), zap.String("line", entry.Line))
+				logger.L().Error(ctx, "error parsing log line", zap.Error(err), zap.String("line", entry.Line))
 			}
 
 			levelName := "info"
