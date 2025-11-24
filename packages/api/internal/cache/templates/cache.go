@@ -89,7 +89,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 
 	// Fetch or get from cache with automatic refresh
 	templateInfo, err := c.cache.GetOrSet(ctx, templateID, func(ctx context.Context, key string) (*TemplateInfo, error) {
-		return c.fetchTemplateInfo(ctx, aliasOrEnvID)
+		return c.fetchTemplateInfo(ctx, templateID)
 	})
 	if err != nil {
 		var apiErr *api.APIError
