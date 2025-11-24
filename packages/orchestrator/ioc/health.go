@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -27,9 +26,8 @@ func newHealthModule() fx.Option {
 	)
 }
 
-func newGRPCHealthServer(logger *zap.Logger) grpcRegisterable {
+func newGRPCHealthServer() grpcRegisterable {
 	s := health.NewServer()
-	logger.Info("Registered gRPC service", zap.String("service", "grpc.health.v1.Health"))
 
 	return grpcRegisterable{func(server *grpc.Server) {
 		grpc_health_v1.RegisterHealthServer(server, s)

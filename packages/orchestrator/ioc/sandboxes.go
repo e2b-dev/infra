@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -86,7 +87,7 @@ type sandboxFactoryOut struct {
 }
 
 func newSandboxFactory(
-	logger *zap.Logger,
+	logger logger.Logger,
 	config cfg.Config,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
@@ -96,8 +97,8 @@ func newSandboxFactory(
 
 	return sandboxFactoryOut{
 		Factory: factory,
-		CMUXWaitBeforeShutdown: cmuxWaitBeforeShutdown{fn: func(context.Context) error {
-			logger.Info("waiting for sandboxes to exit ... ")
+		CMUXWaitBeforeShutdown: cmuxWaitBeforeShutdown{fn: func(ctx context.Context) error {
+			logger.Info(ctx, "waiting for sandboxes to exit ... ")
 			factory.Wait()
 
 			return nil
@@ -107,7 +108,7 @@ func newSandboxFactory(
 
 func newDevicePool(
 	lc fx.Lifecycle,
-	globalLogger *zap.Logger,
+	globalLogger logger.Logger,
 ) (*nbd.DevicePool, error) {
 	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
@@ -116,13 +117,13 @@ func newDevicePool(
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			globalLogger.Info("Starting NBD device pool")
+			globalLogger.Info(ctx, "Starting NBD device pool")
 			go devicePool.Populate(ctx)
 
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
-			globalLogger.Info("Shutting down NBD device pool")
+			globalLogger.Info(ctx, "Shutting down NBD device pool")
 
 			return devicePool.Close(ctx)
 		},
@@ -136,7 +137,7 @@ func newSandboxProxy(
 	tel *telemetry.Client,
 	config cfg.Config,
 	sandboxes *sandbox.Map,
-	globalLogger *zap.Logger,
+	globalLogger logger.Logger,
 ) (*proxy.SandboxProxy, error) {
 	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes)
 	if err != nil {
@@ -148,14 +149,14 @@ func newSandboxProxy(
 			go func() {
 				err := sandboxProxy.Start(ctx)
 				if err != nil && !errors.Is(err, http.ErrServerClosed) {
-					globalLogger.Error("Sandbox proxy error", zap.Error(err))
+					globalLogger.Error(ctx, "Sandbox proxy error", zap.Error(err))
 				}
 			}()
 
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
-			globalLogger.Info("Shutting down sandbox proxy")
+			globalLogger.Info(ctx, "Shutting down sandbox proxy")
 
 			return sandboxProxy.Close(ctx)
 		},

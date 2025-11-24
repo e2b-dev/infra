@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const cmuxWaitBeforeShutdownGroupTag = `group:"cmux-waitable"`
@@ -76,7 +77,7 @@ func newCMUXServer(config cfg.Config) (CMUXOut, error) {
 
 func startCMUXServer(
 	waitBeforeShutdown []CMUXWaitBeforeShutdown,
-	logger *zap.Logger,
+	logger logger.Logger,
 	s fx.Shutdowner,
 	input CMUXOut,
 	grpcServer *grpc.Server,
@@ -137,14 +138,14 @@ const (
 
 func stopCMUXServerMockable(
 	ctx context.Context,
-	logger *zap.Logger,
+	logger logger.Logger,
 	input CMUXOut,
 	grpcServer *grpc.Server,
 	httpServer HealthHTTPServer,
 	serviceInfo *service.ServiceInfo,
 	preCMUXShutdowns []CMUXWaitBeforeShutdown,
 ) {
-	logger.Info("marking service as 'draining'")
+	logger.Info(ctx, "marking service as 'draining'")
 	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
 		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
 	}
@@ -152,34 +153,34 @@ func stopCMUXServerMockable(
 	for _, preShutdown := range preCMUXShutdowns {
 		preCtx, cancel := context.WithTimeout(ctx, preShutdownTimeout)
 		if err := preShutdown.Wait(preCtx); err != nil {
-			logger.Warn("failed to wait for pre-shutdown hook",
+			logger.Warn(ctx, "failed to wait for pre-shutdown hook",
 				zap.Error(err),
 			)
 		}
 		cancel()
 	}
 
-	logger.Info("gracefully shutting down grpc server")
+	logger.Info(ctx, "gracefully shutting down grpc server")
 	grpcServer.GracefulStop()
 
-	logger.Info("closing grpc listener")
+	logger.Info(ctx, "closing grpc listener")
 	if err := input.GRPCListener.Close(); ignoreUseOfClosed(err) != nil {
-		logger.Error("failed to close grpc listener", zap.Error(err))
+		logger.Error(ctx, "failed to close grpc listener", zap.Error(err))
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, httpShutdownTimeout)
 	defer cancel()
 
-	logger.Info("gracefully shutting down http server")
+	logger.Info(ctx, "gracefully shutting down http server")
 	if err := httpServer.Shutdown(ctx); ignoreUseOfClosed(err) != nil {
-		logger.Error("failed to shutdown cmux server", zap.Error(err))
+		logger.Error(ctx, "failed to shutdown cmux server", zap.Error(err))
 	}
 
-	logger.Info("closing http listener")
+	logger.Info(ctx, "closing http listener")
 	if err := input.HTTPListener.Close(); ignoreUseOfClosed(err) != nil {
-		logger.Error("failed to close http listener", zap.Error(err))
+		logger.Error(ctx, "failed to close http listener", zap.Error(err))
 	}
 
-	logger.Info("closing the cmux server")
+	logger.Info(ctx, "closing the cmux server")
 	input.CMUX.Close()
 }

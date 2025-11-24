@@ -2,7 +2,6 @@ package ioc
 
 import (
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
@@ -53,10 +52,8 @@ func newGRPCModule() fx.Option {
 func newInfoService(
 	sandboxes *sandbox.Map,
 	serviceInfo *service.ServiceInfo,
-	globalLogger *zap.Logger,
 ) grpcRegisterable {
 	s := service.NewInfoService(serviceInfo, sandboxes)
-	globalLogger.Info("Registered gRPC service", zap.String("service", "orchestrator_info.InfoService"))
 
 	return grpcRegisterable{func(g *grpc.Server) { orchestratorinfo.RegisterInfoServiceServer(g, s) }}
 }

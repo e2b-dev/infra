@@ -52,12 +52,11 @@ func newSandboxObserver(
 	lc fx.Lifecycle,
 	state State,
 	sandboxes *sandbox.Map,
-	globalLogger *zap.Logger,
 	versionInfo VersionInfo,
 ) (*metrics.SandboxObserver, error) {
 	sandboxObserver, err := metrics.NewSandboxObserver(context.Background(), state.NodeID, state.ServiceName, versionInfo.Commit, versionInfo.Version, state.ServiceInstanceID, sandboxes)
 	if err != nil {
-		globalLogger.Fatal("failed to create sandbox observer", zap.Error(err))
+		return nil, fmt.Errorf("error creating sandbox observer: %w", err)
 	}
 
 	lc.Append(fx.Hook{
