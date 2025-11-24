@@ -97,8 +97,8 @@ func (o *osFileWriterToCtx) WriteTo(_ context.Context, w io.Writer) (int64, erro
 	return io.Copy(w, o.f)
 }
 
-func NewHeaderFromPath(ctx context.Context, headerPath string) (*header.Header, error) {
-	f, err := os.Open(headerPath)
+func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.Header, error) {
+	f, err := os.Open(path.Join(from, headerPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
@@ -199,7 +199,7 @@ func main() {
 
 		memfileHeader = h
 	} else {
-		h, err := NewHeaderFromPath(ctx, buildMemfileHeaderPath)
+		h, err := NewHeaderFromPath(ctx, *from, buildMemfileHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from path: %s", err)
 		}
@@ -228,7 +228,7 @@ func main() {
 
 		rootfsHeader = h
 	} else {
-		h, err := NewHeaderFromPath(ctx, buildRootfsHeaderPath)
+		h, err := NewHeaderFromPath(ctx, *from, buildRootfsHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from path: %s", err)
 		}
