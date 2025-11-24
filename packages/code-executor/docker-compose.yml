@@ -6,6 +6,39 @@ services:
       - "2000:2000"
     volumes:
       - piston-data:/piston
+      - /sys/fs/cgroup/unified:/sys/fs/cgroup:rw
+    tmpfs:
+      - /tmp
+      - /run
+      - /var/run
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        # Создаём все необходимые директории заранее
+        mkdir -p /piston/isolate /piston/tmp /piston/logs || true
+        chmod -R 777 /piston/isolate /piston/tmp /piston/logs || true
+        # Инициализируем cgroup вручную перед запуском entrypoint
+        cd /sys/fs/cgroup || exit 1
+        mkdir -p isolate || true
+        if [ -f isolate/cgroup.procs ] && [ -w isolate/cgroup.procs ]; then
+          echo 1 > isolate/cgroup.procs 2>/dev/null || true
+        fi
+        echo '+cpuset +cpu +io +memory +pids' > cgroup.subtree_control 2>/dev/null || true
+        cd isolate || exit 1
+        mkdir -p init || true
+        if [ -f init/cgroup.procs ] && [ -w init/cgroup.procs ]; then
+          echo 1 > init/cgroup.procs 2>/dev/null || true
+        fi
+        echo '+cpuset +memory' > cgroup.subtree_control 2>/dev/null || true
+        echo "Initialized cgroup"
+        chown -R piston:piston /piston || true
+        # Запускаем приложение напрямую, пропуская entrypoint скрипт
+        exec su -- piston -c 'ulimit -n 65536 && node /piston_api/src'
+    init: true
+    environment:
+      - PISTON_SKIP_CGROUP_CHECK=true
+    privileged: true
+    user: root
     restart: unless-stopped
     networks:
       - code-executor-network
@@ -16,7 +49,7 @@ services:
       dockerfile: Dockerfile
     container_name: code-executor-ainosov
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
       - PISTON_URL=http://piston:2000
     command:

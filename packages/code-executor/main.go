@@ -33,9 +33,15 @@ func main() {
 		debug          bool
 	)
 
+	// Get default piston URL from environment or use default
+	defaultPistonURL := os.Getenv("PISTON_URL")
+	if defaultPistonURL == "" {
+		defaultPistonURL = "http://localhost:2000"
+	}
+
 	flag.IntVar(&port, "port", defaultPort, "Port for HTTP server")
 	flag.IntVar(&workers, "workers", 10, "Number of workers for parallel execution")
-	flag.StringVar(&pistonURL, "piston-url", "http://localhost:2000", "Piston API URL")
+	flag.StringVar(&pistonURL, "piston-url", defaultPistonURL, "Piston API URL")
 	flag.BoolVar(&debug, "debug", false, "Enable debug mode")
 	flag.Parse()
 
@@ -51,6 +57,9 @@ func main() {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
 	defer logger.Sync()
+
+	// Log configuration
+	logger.Info("Configuration", zap.String("pistonURL", pistonURL), zap.Int("port", port), zap.Int("workers", workers))
 
 	// Initialize Piston client
 	pistonClient := piston.NewClient(pistonURL, logger)

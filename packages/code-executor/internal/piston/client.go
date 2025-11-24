@@ -72,10 +72,16 @@ type Compile struct {
 
 // Execute executes code using Piston API
 func (c *Client) Execute(ctx context.Context, req ExecuteRequest) (*ExecuteResponse, error) {
-	// Default version for common languages
+	// Map language names to Piston API language names
+	language := c.mapLanguageToPiston(req.Language)
+	
+	// Default version: use getDefaultVersion to get a specific version
 	if req.Version == "" {
-		req.Version = c.getDefaultVersion(req.Language)
+		req.Version = c.getDefaultVersion(language)
 	}
+	
+	// Update language to mapped name
+	req.Language = language
 
 	// Default timeout if not specified
 	if req.Timeout == 0 {
@@ -122,26 +128,41 @@ func (c *Client) Execute(ctx context.Context, req ExecuteRequest) (*ExecuteRespo
 	return &executeResp, nil
 }
 
+// mapLanguageToPiston maps user-friendly language names to Piston API language names
+func (c *Client) mapLanguageToPiston(language string) string {
+	languageMap := map[string]string{
+		"javascript": "node", // Piston uses "node" for JavaScript
+		"cpp":        "gcc",   // Piston uses "gcc" for C++
+		"c":          "gcc",  // Piston uses "gcc" for C
+	}
+	
+	if mapped, ok := languageMap[language]; ok {
+		return mapped
+	}
+	
+	return language
+}
+
 // getDefaultVersion returns default version for a language
+// Uses versions that are available in Piston (from /api/v2/packages)
 func (c *Client) getDefaultVersion(language string) string {
 	versions := map[string]string{
-		"python": "3.10.0",
-		"javascript": "18.15.0",
-		"typescript": "5.0.3",
-		"java": "15.0.2",
-		"cpp": "10.2.0",
-		"c": "10.2.0",
-		"go": "1.21.0",
-		"rust": "1.70.0",
-		"ruby": "3.2.0",
-		"php": "8.2.0",
+		"python":     "3.10.0", // Available: 2.7.18, 3.5.10, 3.9.1, 3.9.4, 3.10.0, 3.11.0, 3.12.0
+		"node":       "18.15.0", // Available: 15.10.0, 16.3.0, 18.15.0, 20.11.1
+		"typescript": "5.0.3",   // Available: 4.2.3, 5.0.3
+		"java":       "15.0.2",  // Available: 15.0.2
+		"gcc":        "10.2.0",  // Available: 10.2.0 (for c and cpp)
+		"go":         "1.16.2",  // Available: 1.16.2
+		"rust":       "1.68.2",  // Available: 1.50.0, 1.56.1, 1.62.0, 1.63.0, 1.65.0, 1.68.2
+		"ruby":       "3.0.1",   // Available: 2.5.1, 3.0.1
+		"php":        "8.2.3",   // Available: 8.0.2, 8.2.3
 	}
 
 	if version, ok := versions[language]; ok {
 		return version
 	}
 
-	// Default to latest if not found
+	// Default to "*" if not found - let Piston choose
 	return "*"
 }
 
