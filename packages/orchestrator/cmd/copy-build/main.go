@@ -282,11 +282,6 @@ func main() {
 				if err != nil {
 					return fmt.Errorf("failed to create destination from path: %w", err)
 				}
-
-				err = os.MkdirAll(path.Dir(fromDestination.Path), 0o755)
-				if err != nil {
-					return fmt.Errorf("failed to create directory: %w", err)
-				}
 			}
 
 			var toDestination *Destination
