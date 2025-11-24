@@ -96,7 +96,7 @@ func (c *Cache[K, V]) GetOrSet(ctx context.Context, key K, dataCallback DataCall
 		if err != nil {
 			var zero V
 
-			return zero, fmt.Errorf("error while fetching data: %w", err)
+			return zero, err
 		}
 
 		if c.config.ExtractKeyFunc != nil {

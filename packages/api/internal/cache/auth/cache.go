@@ -2,7 +2,6 @@ package autchcache
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
@@ -37,7 +36,7 @@ func NewTeamAuthCache() *TeamAuthCache {
 func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback DataCallback) (team *types.Team, err error) {
 	team, err = c.cache.GetOrSet(ctx, key, dataCallback)
 	if err != nil {
-		return nil, fmt.Errorf("error while getting the team: %w", err)
+		return nil, err
 	}
 
 	return team, nil
