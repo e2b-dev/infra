@@ -67,6 +67,9 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 }
 
 func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+
 	return n.status
 }
 
@@ -150,9 +153,8 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 		ServiceVersionCommit: item.ServiceVersionCommit,
 
 		// initial values before first sync
-		status:      infogrpc.ServiceInfoStatus_Unhealthy,
-		roles:       make([]infogrpc.ServiceInfoRole, 0),
-		machineInfo: nil,
+		status: infogrpc.ServiceInfoStatus_Unhealthy,
+		roles:  make([]infogrpc.ServiceInfoRole, 0),
 
 		mutex: sync.RWMutex{},
 	}
