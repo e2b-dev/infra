@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -98,11 +99,8 @@ func CopyFile(
 	req.Host = req.Header.Get("Host")
 
 	client := http.Client{
-		Timeout: fileCopyTimeout,
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			ForceAttemptHTTP2: false,
-		},
+		Timeout:   fileCopyTimeout,
+		Transport: sandbox.SandboxHttpTransport,
 	}
 
 	// Send request

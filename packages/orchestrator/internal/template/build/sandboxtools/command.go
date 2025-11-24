@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
@@ -143,12 +144,10 @@ func runCommandWithAllOptions(
 	})
 
 	hc := http.Client{
-		Timeout: commandHardTimeout,
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			ForceAttemptHTTP2: false,
-		},
+		Timeout:   commandHardTimeout,
+		Transport: sandbox.SandboxHttpTransport,
 	}
+
 	proxyHost := fmt.Sprintf("http://localhost%s", proxy.GetAddr())
 	processC := processconnect.NewProcessClient(&hc, proxyHost)
 	err := grpc.SetSandboxHeader(runCmdReq.Header(), proxyHost, sandboxID)
