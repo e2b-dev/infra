@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 
@@ -88,7 +89,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 
 	// Fetch or get from cache with automatic refresh
 	templateInfo, err := c.cache.GetOrSet(ctx, templateID, func(ctx context.Context, key string) (*TemplateInfo, error) {
-		return c.fetchTemplateInfo(ctx, aliasOrEnvID, teamID, clusterID)
+		return c.fetchTemplateInfo(ctx, aliasOrEnvID)
 	})
 	if err != nil {
 		var apiErr *api.APIError
@@ -112,7 +113,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 }
 
 // fetchTemplateInfo fetches template info from the database
-func (c *TemplateCache) fetchTemplateInfo(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID, clusterID uuid.UUID) (*TemplateInfo, error) {
+func (c *TemplateCache) fetchTemplateInfo(ctx context.Context, aliasOrEnvID string) (*TemplateInfo, error) {
 	result, err := c.db.GetTemplateWithBuild(ctx, aliasOrEnvID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -124,6 +125,7 @@ func (c *TemplateCache) fetchTemplateInfo(ctx context.Context, aliasOrEnvID stri
 
 	build := &result.EnvBuild
 	template := result.Env
+	clusterID := utils.WithClusterFallback(template.ClusterID)
 
 	// Update alias cache
 	c.aliasCache.Set(template.ID, template.ID)
@@ -138,7 +140,7 @@ func (c *TemplateCache) fetchTemplateInfo(ctx context.Context, aliasOrEnvID stri
 			Public:     template.Public,
 			Aliases:    result.Aliases,
 		},
-		teamID:    teamID,
+		teamID:    template.TeamID,
 		clusterID: clusterID,
 		build:     build,
 	}, nil

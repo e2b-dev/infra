@@ -105,7 +105,7 @@ func (c *Cache[K, V]) GetOrSet(ctx context.Context, key K, dataCallback DataCall
 	// If refresh interval is configured and data is stale, trigger background refresh
 	if c.config.RefreshInterval > 0 && time.Since(cacheItem.lastRefresh) > c.config.RefreshInterval {
 		go cacheItem.once.Do(fmt.Sprint(key), func() (any, error) {
-			c.refresh(ctx, key, dataCallback)
+			c.refresh(context.WithoutCancel(ctx), key, dataCallback)
 
 			return nil, nil
 		})
@@ -116,8 +116,7 @@ func (c *Cache[K, V]) GetOrSet(ctx context.Context, key K, dataCallback DataCall
 
 // refresh refreshes the cache for the given key in the background
 func (c *Cache[K, V]) refresh(ctx context.Context, key K, dataCallback DataCallback[K, V]) {
-	// without cancel is required to avoid cancelling the context sooner as the parent request finishes
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.config.RefreshTimeout)
+	ctx, cancel := context.WithTimeout(ctx, c.config.RefreshTimeout)
 	defer cancel()
 
 	value, err := dataCallback(ctx, key)
