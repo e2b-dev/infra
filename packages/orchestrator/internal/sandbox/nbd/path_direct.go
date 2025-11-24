@@ -15,6 +15,8 @@ import (
 
 	"github.com/Merovius/nbd/nbdnl"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -110,6 +112,9 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			d.handlersWg.Add(1)
 			go func() {
 				defer d.handlersWg.Done()
+
+				ctx, span := tracer.Start(ctx, "handle nbd", trace.WithAttributes(attribute.Int("socket.index", i)))
+				defer span.End()
 
 				handleErr := dispatch.Handle(ctx)
 				logger.L().Info(ctx, "closing handler for NBD commands",
