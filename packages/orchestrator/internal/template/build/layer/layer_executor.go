@@ -279,7 +279,8 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 	lb.UploadErrGroup.Go(func() error {
-		ctx, span := tracer.Start(context.WithoutCancel(ctx), "upload snapshot")
+		ctx := context.WithoutCancel(ctx)
+		ctx, span := tracer.Start(ctx, "upload snapshot")
 		defer span.End()
 
 		err := snapshot.Upload(

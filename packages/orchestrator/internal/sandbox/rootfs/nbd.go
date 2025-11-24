@@ -154,7 +154,12 @@ func (o *NBDProvider) sync(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to open path: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		err := file.Close()
+		if err != nil {
+			logger.L().Error(ctx, "failed to close nbd file", zap.Error(err))
+		}
+	}()
 
 	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
 		return fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)

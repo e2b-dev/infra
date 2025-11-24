@@ -7,6 +7,7 @@ import (
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -51,9 +52,15 @@ func (d *DiffMetadata) ToDiffHeader(
 	ctx context.Context,
 	originalHeader *Header,
 	buildID uuid.UUID,
-) (*Header, error) {
+) (h *Header, e error) {
 	ctx, span := tracer.Start(ctx, "to diff-header")
 	defer span.End()
+	defer func() {
+		if e != nil {
+			span.RecordError(e)
+			span.SetStatus(codes.Error, e.Error())
+		}
+	}()
 
 	diffMapping, err := d.toDiffMapping(ctx, buildID)
 	if err != nil {
