@@ -6,10 +6,18 @@ ENV_FILE := ../../.env.$(ENV)
 TF := $(shell which terraform)
 
 ifdef DOCKER_IMAGE_PREFIX
-API_IMAGE ?= $(DOCKER_IMAGE_PREFIX)/api:latest
-DB_MIGRATOR_IMAGE ?= $(DOCKER_IMAGE_PREFIX)/db-migrator:latest
-CLIENT_PROXY_IMAGE ?= $(DOCKER_IMAGE_PREFIX)/client-proxy:latest
-DOCKER_REVERSE_PROXY_IMAGE ?= $(DOCKER_IMAGE_PREFIX)/docker-reverse-proxy:latest
+ifeq ($(strip $(API_IMAGE)),)
+API_IMAGE := $(DOCKER_IMAGE_PREFIX)/api:latest
+endif
+ifeq ($(strip $(DB_MIGRATOR_IMAGE)),)
+DB_MIGRATOR_IMAGE := $(DOCKER_IMAGE_PREFIX)/db-migrator:latest
+endif
+ifeq ($(strip $(CLIENT_PROXY_IMAGE)),)
+CLIENT_PROXY_IMAGE := $(DOCKER_IMAGE_PREFIX)/client-proxy:latest
+endif
+ifeq ($(strip $(DOCKER_REVERSE_PROXY_IMAGE)),)
+DOCKER_REVERSE_PROXY_IMAGE := $(DOCKER_IMAGE_PREFIX)/docker-reverse-proxy:latest
+endif
 endif
 
 define tfvar
