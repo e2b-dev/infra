@@ -5,10 +5,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash"
+	"hash/crc32"
+	"io"
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"sort"
+	"strings"
 	"sync/atomic"
 
 	googleStorage "cloud.google.com/go/storage"
@@ -19,8 +24,78 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-func getReferencedData(ctx context.Context, bucket *storage.GCPBucketStorageProvider, headerPath string, objectType storage.ObjectType) ([]string, error) {
-	obj, err := bucket.OpenObject(ctx, headerPath, objectType)
+func NewCRCwriter(poly uint32, w io.Writer) *CRCwriter {
+	return &CRCwriter{
+		h: crc32.New(crc32.MakeTable(poly)),
+	}
+}
+
+type CRCwriter struct {
+	h hash.Hash32
+}
+
+func (c *CRCwriter) Write(p []byte) (n int, err error) {
+	c.h.Write(p)
+
+	return
+}
+
+func (c *CRCwriter) Sum() uint32 { return c.h.Sum32() }
+
+type Destination struct {
+	Path string
+	CRC  uint32
+}
+
+func NewDestinationFromObject(ctx context.Context, o *googleStorage.ObjectHandle) (*Destination, error) {
+	var crc uint32
+	if attrs, err := o.Attrs(ctx); err == nil {
+		crc = attrs.CRC32C
+	} else if !errors.Is(err, googleStorage.ErrObjectNotExist) {
+		return nil, fmt.Errorf("failed to get object attributes: %w", err)
+	}
+
+	return &Destination{
+		Path: fmt.Sprintf("gs://%s/%s", o.BucketName(), o.ObjectName()),
+		CRC:  crc,
+	}, nil
+}
+
+func NewDestinationFromPath(prefix, file string) (*Destination, error) {
+	p := path.Join(prefix, file)
+
+	if _, err := os.Stat(p); err == nil {
+		f, err := os.Open(p)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open file: %w", err)
+		}
+		defer f.Close()
+
+		h := crc32.New(crc32.MakeTable(crc32.Castagnoli))
+		_, err = io.Copy(h, f)
+		if err != nil {
+			return nil, fmt.Errorf("failed to copy file: %w", err)
+		}
+		crc := h.Sum32()
+
+		return &Destination{
+			Path: p,
+			CRC:  crc,
+		}, nil
+	}
+
+	return &Destination{
+		Path: p,
+	}, nil
+}
+
+func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string, objectType storage.ObjectType) (*header.Header, error) {
+	b, err := storage.NewGCPBucketStorageProvider(ctx, bucketName, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
+	}
+
+	obj, err := b.OpenObject(ctx, headerPath, objectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -30,6 +105,33 @@ func getReferencedData(ctx context.Context, bucket *storage.GCPBucketStorageProv
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}
 
+	return h, nil
+}
+
+type osFileWriterToCtx struct {
+	f *os.File
+}
+
+func (o *osFileWriterToCtx) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
+	return io.Copy(w, o.f)
+}
+
+func NewHeaderFromPath(ctx context.Context, headerPath string, objectType storage.ObjectType) (*header.Header, error) {
+	f, err := os.Open(headerPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+
+	h, err := header.Deserialize(ctx, &osFileWriterToCtx{f: f})
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize header: %w", err)
+	}
+
+	return h, nil
+}
+
+func getReferencedData(h *header.Header, objectType storage.ObjectType) ([]string, error) {
 	builds := make(map[string]struct{})
 
 	for _, mapping := range h.Mapping {
@@ -58,62 +160,39 @@ func getReferencedData(ctx context.Context, bucket *storage.GCPBucketStorageProv
 	return dataReferences, nil
 }
 
-func copyFromBucket(ctx context.Context, from *googleStorage.ObjectHandle, to *googleStorage.ObjectHandle) (bool, error) {
-	fromAttrs, err := from.Attrs(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to check if the object exists: %w", err)
-	}
-
-	var toCrc uint32
-	if attrs, err := to.Attrs(ctx); err == nil {
-		toCrc = attrs.CRC32C
-	} else if !errors.Is(err, googleStorage.ErrObjectNotExist) {
-		return false, fmt.Errorf("failed to get object attributes: %w", err)
-	}
-
-	if fromAttrs.CRC32C == toCrc && fromAttrs.CRC32C != 0 {
+func gcloudCopy(ctx context.Context, from, to *Destination) (bool, error) {
+	if from.CRC == to.CRC && from.CRC != 0 {
 		return false, nil
 	}
 
-	err = gcloudCopy(ctx, from, to)
-	if err != nil {
-		return false, fmt.Errorf("failed to copy object: %w", err)
-	}
-
-	return true, nil
-}
-
-func gcloudCopy(ctx context.Context, from, to *googleStorage.ObjectHandle) error {
-	fromPath := fmt.Sprintf("gs://%s/%s", from.BucketName(), from.ObjectName())
-	toPath := fmt.Sprintf("gs://%s/%s", to.BucketName(), to.ObjectName())
-
-	cmd := exec.CommandContext(
-		ctx,
+	command := []string{
 		"gcloud",
 		"storage",
 		"cp",
 		"--verbosity",
 		"error",
-		fromPath,
-		toPath,
-	)
+		from.Path,
+		to.Path,
+	}
+
+	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to copy GCS object: %w\n%s", err, string(output))
+		return false, fmt.Errorf("failed to copy GCS object (%v): %w\n%s", command, err, string(output))
 	}
 
-	return nil
+	return true, nil
 }
 
 func main() {
 	buildId := flag.String("build", "", "build id")
 	from := flag.String("from", "", "from bucket")
-	to := flag.String("to", "", "to bucket")
+	to := flag.String("to", "", "to destination")
 
 	flag.Parse()
 
-	fmt.Printf("Copying build '%s' from bucket '%s' to bucket '%s'\n", *buildId, *from, *to)
+	fmt.Printf("Copying build '%s' from '%s' to '%s'\n", *buildId, *from, *to)
 
 	template := storage.TemplateFiles{
 		BuildID:            *buildId,
@@ -123,16 +202,31 @@ func main() {
 
 	ctx := context.Background()
 
-	fromBucket, err := storage.NewGCPBucketStorageProvider(ctx, *from, nil)
-	if err != nil {
-		log.Fatalf("failed to create GCS bucket storage provider: %s", err)
-	}
-
 	var filesToCopy []string
 
 	// Extract all files referenced by the build memfile header
 	buildMemfileHeaderPath := template.StorageMemfileHeaderPath()
-	dataReferences, err := getReferencedData(ctx, fromBucket, buildMemfileHeaderPath, storage.MemfileHeaderObjectType)
+
+	var memfileHeader *header.Header
+	if strings.HasPrefix(*from, "gs://") {
+		bucketName, _ := strings.CutPrefix(*from, "gs://")
+
+		h, err := NewHeaderFromObject(ctx, bucketName, buildMemfileHeaderPath, storage.MemfileHeaderObjectType)
+		if err != nil {
+			log.Fatalf("failed to create header from object: %s", err)
+		}
+
+		memfileHeader = h
+	} else {
+		h, err := NewHeaderFromPath(ctx, buildMemfileHeaderPath, storage.MemfileHeaderObjectType)
+		if err != nil {
+			log.Fatalf("failed to create header from path: %s", err)
+		}
+
+		memfileHeader = h
+	}
+
+	dataReferences, err := getReferencedData(memfileHeader, storage.MemfileHeaderObjectType)
 	if err != nil {
 		log.Fatalf("failed to get referenced data: %s", err)
 	}
@@ -142,7 +236,26 @@ func main() {
 
 	// Extract all files referenced by the build rootfs header
 	buildRootfsHeaderPath := template.StorageRootfsHeaderPath()
-	dataReferences, err = getReferencedData(ctx, fromBucket, buildRootfsHeaderPath, storage.RootFSHeaderObjectType)
+
+	var rootfsHeader *header.Header
+	if strings.HasPrefix(*from, "gs://") {
+		bucketName, _ := strings.CutPrefix(*from, "gs://")
+		h, err := NewHeaderFromObject(ctx, bucketName, buildRootfsHeaderPath, storage.RootFSHeaderObjectType)
+		if err != nil {
+			log.Fatalf("failed to create header from object: %s", err)
+		}
+
+		rootfsHeader = h
+	} else {
+		h, err := NewHeaderFromPath(ctx, buildRootfsHeaderPath, storage.RootFSHeaderObjectType)
+		if err != nil {
+			log.Fatalf("failed to create header from path: %s", err)
+		}
+
+		rootfsHeader = h
+	}
+
+	dataReferences, err = getReferencedData(rootfsHeader, storage.RootFSHeaderObjectType)
 	if err != nil {
 		log.Fatalf("failed to get referenced data: %s", err)
 	}
@@ -175,12 +288,50 @@ func main() {
 
 	for _, file := range filesToCopy {
 		errgroup.Go(func() error {
-			fmt.Printf("+ copying '%s'\n", file)
+			var fromDestination *Destination
+			if strings.HasPrefix(*from, "gs://") {
+				bucketName, _ := strings.CutPrefix(*from, "gs://")
+				fmt.Printf("bucketName: %s\n", bucketName)
+				fromObject := googleStorageClient.Bucket(bucketName).Object(file)
+				fromDestination, err = NewDestinationFromObject(ctx, fromObject)
+				if err != nil {
+					return fmt.Errorf("failed to create destination from object: %w", err)
+				}
+			} else {
+				fromDestination, err = NewDestinationFromPath(*from, file)
+				if err != nil {
+					return fmt.Errorf("failed to create destination from path: %w", err)
+				}
 
-			fromObject := googleStorageClient.Bucket(*from).Object(file)
-			toObject := googleStorageClient.Bucket(*to).Object(file)
+				err = os.MkdirAll(path.Dir(fromDestination.Path), 0o755)
+				if err != nil {
+					return fmt.Errorf("failed to create directory: %w", err)
+				}
+			}
 
-			copied, err := copyFromBucket(ctx, fromObject, toObject)
+			var toDestination *Destination
+			if strings.HasPrefix(*to, "gs://") {
+				bucketName, _ := strings.CutPrefix(*to, "gs://")
+				toObject := googleStorageClient.Bucket(bucketName).Object(file)
+				toDestination, err = NewDestinationFromObject(ctx, toObject)
+				if err != nil {
+					return fmt.Errorf("failed to create destination from object: %w", err)
+				}
+			} else {
+				toDestination, err = NewDestinationFromPath(*to, file)
+				if err != nil {
+					return fmt.Errorf("failed to create destination from path: %w", err)
+				}
+
+				err = os.MkdirAll(path.Dir(toDestination.Path), 0o755)
+				if err != nil {
+					return fmt.Errorf("failed to create directory: %w", err)
+				}
+			}
+
+			fmt.Printf("+ copying '%s' from '%s' to '%s'\n", file, fromDestination.Path, toDestination.Path)
+
+			copied, err := gcloudCopy(ctx, fromDestination, toDestination)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "- failed to copy '%s': %s\n", file, err)
 
@@ -190,9 +341,9 @@ func main() {
 			done.Add(1)
 
 			if copied {
-				fmt.Printf("-> [%d/%d] '%s' copied\n", done.Load(), len(filesToCopy), file)
+				fmt.Printf("-> [%d/%d] '%s' copied\n", done.Load(), len(filesToCopy), toDestination.Path)
 			} else {
-				fmt.Printf("-> [%d/%d] '%s' already exists, skipping\n", done.Load(), len(filesToCopy), file)
+				fmt.Printf("-> [%d/%d] '%s' already exists, skipping\n", done.Load(), len(filesToCopy), toDestination.Path)
 			}
 
 			return nil
