@@ -17,7 +17,7 @@ import (
 // If the total connections is lower than hostConnectionSplit, the total connections will be used for each host.
 const hostConnectionSplit = 4
 
-// We use a constant connection key for client proxy, because we don't have to separate connection pools
+// ClientProxyConnectionKey is a constant connection key for client proxy, because we don't have to separate connection pools
 // as we need to do when connecting to sandboxes (from orchestrator proxy) to prevent reuse of pool connections
 // by different sandboxes cause failed connections.
 const ClientProxyConnectionKey = "client-proxy"
