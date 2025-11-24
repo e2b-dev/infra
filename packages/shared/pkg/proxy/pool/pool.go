@@ -23,14 +23,16 @@ type ProxyPool struct {
 	idleTimeout           time.Duration
 	totalConnsCounter     atomic.Uint64
 	currentConnsCounter   atomic.Int64
+	disableKeepAlives     bool
 }
 
-func New(maxClientConns int, maxConnectionAttempts int, idleTimeout time.Duration) *ProxyPool {
+func New(maxClientConns int, maxConnectionAttempts int, idleTimeout time.Duration, disableKeepAlives bool) *ProxyPool {
 	return &ProxyPool{
 		pool:                  smap.New[*ProxyClient](),
 		maxClientConns:        maxClientConns,
 		maxConnectionAttempts: maxConnectionAttempts,
 		idleTimeout:           idleTimeout,
+		disableKeepAlives:     disableKeepAlives,
 	}
 }
 
@@ -69,6 +71,7 @@ func (p *ProxyPool) Get(d *Destination) *ProxyClient {
 			&p.totalConnsCounter,
 			&p.currentConnsCounter,
 			logger,
+			p.disableKeepAlives,
 		)
 	})
 }

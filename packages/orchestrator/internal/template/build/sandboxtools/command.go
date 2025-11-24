@@ -144,6 +144,10 @@ func runCommandWithAllOptions(
 
 	hc := http.Client{
 		Timeout: commandHardTimeout,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			ForceAttemptHTTP2: false,
+		},
 	}
 	proxyHost := fmt.Sprintf("http://localhost%s", proxy.GetAddr())
 	processC := processconnect.NewProcessClient(&hc, proxyHost)

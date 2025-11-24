@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -87,6 +88,12 @@ func (lb *LayerExecutor) BuildLayer(
 		if closeErr != nil {
 			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
 			lb.logger.Warn("errors when manually closing connections to sandbox", zap.Error(closeErr))
+		} else {
+			lb.logger.Debug(
+				"removed proxy from pool",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithExecutionID(sbx.Runtime.ExecutionID),
+			)
 		}
 	}()
 
@@ -94,6 +101,13 @@ func (lb *LayerExecutor) BuildLayer(
 	if cmd.UpdateEnvd {
 		err = lb.updateEnvdInSandbox(ctx, userLogger, sbx)
 		if err != nil {
+			lb.logger.Error(
+				"error updating envd",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithExecutionID(sbx.Runtime.ExecutionID),
+				zap.Error(err),
+			)
+
 			return metadata.Template{}, fmt.Errorf("update envd: %w", err)
 		}
 	}
@@ -101,6 +115,13 @@ func (lb *LayerExecutor) BuildLayer(
 	// Execute the action using the executor
 	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.CurrentLayer)
 	if err != nil {
+		lb.logger.Error(
+			"error executing action",
+			logger.WithSandboxID(sbx.Runtime.SandboxID),
+			logger.WithExecutionID(sbx.Runtime.ExecutionID),
+			zap.Error(err),
+		)
+
 		return metadata.Template{}, err
 	}
 
@@ -184,6 +205,19 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		"systemctl restart envd",
 		metadata.Context{User: "root"},
 	)
+
+	// Remove the proxy client to prevent reuse of broken connection, because we restarted envd server inside of the sandbox.
+	// This might not be necessary if we don't use keepalives for the proxy.
+	err = lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+	if err != nil {
+		return fmt.Errorf("failed to remove proxy from pool: %w", err)
+	} else {
+		lb.logger.Debug(
+			"removed proxy from pool after restarting envd",
+			logger.WithSandboxID(sbx.Runtime.SandboxID),
+			logger.WithExecutionID(sbx.Runtime.ExecutionID),
+		)
+	}
 
 	// Step 4: Wait for envd to initialize
 	err = sbx.WaitForEnvd(

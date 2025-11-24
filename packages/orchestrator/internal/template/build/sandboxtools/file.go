@@ -21,10 +21,6 @@ import (
 
 const fileCopyTimeout = 10 * time.Minute
 
-var client = http.Client{
-	Timeout: fileCopyTimeout,
-}
-
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools")
 
 func CopyFile(
@@ -101,6 +97,14 @@ func CopyFile(
 	}
 	req.Host = req.Header.Get("Host")
 
+	client := http.Client{
+		Timeout: fileCopyTimeout,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			ForceAttemptHTTP2: false,
+		},
+	}
+
 	// Send request
 	resp, err := client.Do(req)
 	if err != nil {
@@ -109,6 +113,8 @@ func CopyFile(
 	defer resp.Body.Close()
 
 	if uploadErr := <-errChan; uploadErr != nil {
+		io.Copy(io.Discard, resp.Body)
+
 		return fmt.Errorf("file upload failed: %w", uploadErr)
 	}
 

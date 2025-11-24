@@ -102,6 +102,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				Url:           url,
 			}, nil
 		},
+		false,
 	)
 
 	meter := meterProvider.Meter(serviceName)

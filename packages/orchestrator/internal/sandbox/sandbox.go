@@ -45,7 +45,10 @@ var (
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
 	Transport: otelhttp.NewTransport(
-		http.DefaultTransport,
+		&http.Transport{
+			DisableKeepAlives: true,
+			ForceAttemptHTTP2: false,
+		},
 	),
 }
 
