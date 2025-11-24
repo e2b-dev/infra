@@ -1,22 +1,10 @@
 terraform {
   required_providers {
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "4.19.0"
-    }
     tls = {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
   }
-}
-
-data "google_secret_manager_secret_version" "cloudflare_api_token" {
-  secret = var.cloudflare_api_token_secret_name
-}
-
-provider "cloudflare" {
-  api_token = data.google_secret_manager_secret_version.cloudflare_api_token.secret_data
 }
 
 locals {
