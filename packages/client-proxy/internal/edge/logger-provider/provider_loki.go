@@ -42,15 +42,15 @@ func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID strin
 	res, err := l.client.QueryRange(query, limit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for template build", err)
-		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
+		logger.L().Error(ctx, "error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
 
 		return make([]logs.LogEntry, 0), nil
 	}
 
-	lm, err := logsloki.ResponseMapper(res, offset, level)
+	lm, err := logsloki.ResponseMapper(ctx, res, offset, level)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping build logs", err)
-		zap.L().Error("error when mapping logs for template build", zap.Error(err), logger.WithBuildID(buildID))
+		logger.L().Error(ctx, "error when mapping logs for template build", zap.Error(err), logger.WithBuildID(buildID))
 
 		return make([]logs.LogEntry, 0), nil
 	}
@@ -68,15 +68,15 @@ func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string,
 	res, err := l.client.QueryRange(query, limit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for sandbox", err)
-		zap.L().Error("error when returning logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+		logger.L().Error(ctx, "error when returning logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 		return make([]logs.LogEntry, 0), nil
 	}
 
-	lm, err := logsloki.ResponseMapper(res, 0, nil)
+	lm, err := logsloki.ResponseMapper(ctx, res, 0, nil)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
-		zap.L().Error("error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+		logger.L().Error(ctx, "error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 		return make([]logs.LogEntry, 0), nil
 	}

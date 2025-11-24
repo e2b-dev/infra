@@ -23,7 +23,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
@@ -237,11 +236,10 @@ func crossProcessServe() error {
 	exitUffd := make(chan struct{}, 1)
 	defer close(exitUffd)
 
-	zapl, err := zap.NewDevelopment()
+	l, err := logger.NewDevelopmentLogger()
 	if err != nil {
 		return fmt.Errorf("exit creating logger: %w", err)
 	}
-	l := logger.NewTracedLogger(zapl)
 
 	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, l)
 	if err != nil {

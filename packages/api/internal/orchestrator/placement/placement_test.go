@@ -3,6 +3,7 @@ package placement
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -128,7 +129,7 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, resultNode)
 	// The error could be either "timeout" from the algorithm or "request timed out" from ctx.Done()
-	assert.True(t, err.Error() == "timeout" || errors.Is(err, context.DeadlineExceeded))
+	assert.True(t, err.Error() == "timeout" || strings.Contains(err.Error(), "request timed out"))
 }
 
 func TestPlaceSandbox_NoNodes(t *testing.T) {

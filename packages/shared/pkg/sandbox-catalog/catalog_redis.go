@@ -88,7 +88,7 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 
 	status := c.redisClient.Set(ctx, c.getCatalogKey(sandboxID), string(bytes), expiration)
 	if status.Err() != nil {
-		zap.L().Error("Error while storing sandbox in redis", logger.WithSandboxID(sandboxID), zap.Error(status.Err()))
+		logger.L().Error(ctx, "Error while storing sandbox in redis", logger.WithSandboxID(sandboxID), zap.Error(status.Err()))
 
 		return fmt.Errorf("failed to store sandbox info in redis: %w", status.Err())
 	}

@@ -179,7 +179,7 @@ func NewTemplateBuildCache(db *sqlcdb.Client) *TemplatesBuildCache {
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status types.BuildStatus, reason types.BuildReason) {
+func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, status types.BuildStatus, reason types.BuildReason) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -190,7 +190,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status types.BuildSta
 
 	item := cacheItem.Value()
 
-	zap.L().Info("Setting template build status",
+	logger.L().Info(ctx, "Setting template build status",
 		logger.WithBuildID(buildID.String()),
 		zap.String("to_status", string(status)),
 		zap.String("from_status", string(item.BuildStatus)),
@@ -218,7 +218,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status types.BuildSta
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (TemplateBuildInfo, error) {
 	item := c.cache.Get(buildID)
 	if item == nil {
-		zap.L().Debug("Template build info not found in cache, fetching from DB", logger.WithBuildID(buildID.String()))
+		logger.L().Debug(ctx, "Template build info not found in cache, fetching from DB", logger.WithBuildID(buildID.String()))
 
 		result, err := c.db.GetTemplateBuildWithTemplate(ctx, queries.GetTemplateBuildWithTemplateParams{
 			TemplateID: templateID,

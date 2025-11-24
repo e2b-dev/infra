@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"sort"
 
@@ -9,12 +10,15 @@ import (
 
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 	_, templateSpan := tracer.Start(c, "service-discovery-list-orchestrators-handler")
 	defer templateSpan.End()
+
+	ctx := c.Request.Context()
 
 	response := make([]api.ClusterOrchestratorNode, 0)
 
@@ -30,9 +34,9 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 				ServiceVersionCommit: info.ServiceVersionCommit,
 				ServiceHost:          info.Host,
 				ServiceStartedAt:     info.ServiceStartup,
-				ServiceStatus:        getOrchestratorStatusResolved(info.ServiceStatus),
+				ServiceStatus:        getOrchestratorStatusResolved(ctx, info.ServiceStatus),
 
-				Roles: getOrchestratorRolesResolved(info.Roles),
+				Roles: getOrchestratorRolesResolved(ctx, info.Roles),
 			},
 		)
 	}
@@ -48,7 +52,7 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func getOrchestratorStatusResolved(s e2borchestrators.OrchestratorStatus) api.ClusterNodeStatus {
+func getOrchestratorStatusResolved(ctx context.Context, s e2borchestrators.OrchestratorStatus) api.ClusterNodeStatus {
 	switch s {
 	case e2borchestrators.OrchestratorStatusHealthy:
 		return api.Healthy
@@ -57,13 +61,13 @@ func getOrchestratorStatusResolved(s e2borchestrators.OrchestratorStatus) api.Cl
 	case e2borchestrators.OrchestratorStatusUnhealthy:
 		return api.Unhealthy
 	default:
-		zap.L().Error("Unknown orchestrator status", zap.String("status", string(s)))
+		logger.L().Error(ctx, "Unknown orchestrator status", zap.String("status", string(s)))
 
 		return api.Unhealthy
 	}
 }
 
-func getOrchestratorRolesResolved(r []e2bgrpcorchestratorinfo.ServiceInfoRole) []api.ClusterOrchestratorRole {
+func getOrchestratorRolesResolved(ctx context.Context, r []e2bgrpcorchestratorinfo.ServiceInfoRole) []api.ClusterOrchestratorRole {
 	roles := make([]api.ClusterOrchestratorRole, 0)
 
 	for _, role := range r {
@@ -73,7 +77,7 @@ func getOrchestratorRolesResolved(r []e2bgrpcorchestratorinfo.ServiceInfoRole) [
 		case e2bgrpcorchestratorinfo.ServiceInfoRole_TemplateBuilder:
 			roles = append(roles, api.ClusterOrchestratorRoleTemplateBuilder)
 		default:
-			zap.L().Error("Unknown orchestrator role", zap.String("role", string(role)))
+			logger.L().Error(ctx, "Unknown orchestrator role", zap.String("role", string(role)))
 		}
 	}
 

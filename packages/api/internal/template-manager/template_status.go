@@ -61,7 +61,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 
 	checker := &PollBuildStatus{
 		client: tm,
-		logger: zap.L().With(logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID)),
+		logger: logger.L().With(logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID)),
 
 		templateID: templateID,
 		buildID:    buildID,
@@ -86,7 +86,7 @@ type templateManagerClient interface {
 }
 
 type PollBuildStatus struct {
-	logger *zap.Logger
+	logger logger.Logger
 	client templateManagerClient
 
 	templateID string
@@ -105,26 +105,26 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Debug("Build status polling timed out, stopping polling")
+			c.logger.Debug(ctx, "Build status polling timed out, stopping polling")
 
 			statusErr := c.client.SetStatus(ctx, c.templateID, c.buildID, types.BuildStatusFailed, &templatemanagergrpc.TemplateBuildStatusReason{
 				Message: fmt.Sprintf("build status polling timed out. Maximum build time is %s.", buildTimeout),
 			})
 			if statusErr != nil {
-				c.logger.Error("error when setting build status", zap.Error(statusErr))
+				c.logger.Error(ctx, "error when setting build status", zap.Error(statusErr))
 			}
 
 			return
 		case <-ticker.C:
 			buildCompleted, err := c.checkBuildStatus(ctx)
 			if err != nil {
-				c.logger.Error("Build status polling received unrecoverable error", zap.Error(err))
+				c.logger.Error(ctx, "Build status polling received unrecoverable error", zap.Error(err))
 
 				statusErr := c.client.SetStatus(ctx, c.templateID, c.buildID, types.BuildStatusFailed, &templatemanagergrpc.TemplateBuildStatusReason{
 					Message: fmt.Sprintf("polling received unrecoverable error: %s", err),
 				})
 				if statusErr != nil {
-					c.logger.Error("error when setting build status", zap.Error(statusErr))
+					c.logger.Error(ctx, "error when setting build status", zap.Error(statusErr))
 				}
 
 				return
@@ -160,7 +160,7 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 	if err != nil && errors.Is(err, context.DeadlineExceeded) {
 		return errors.Wrap(err, "context deadline exceeded")
 	} else if err != nil { // retry only on context deadline exceeded
-		c.logger.Error("terminal error when polling build status", zap.Error(err))
+		c.logger.Error(ctx, "terminal error when polling build status", zap.Error(err))
 
 		return newTerminalError(err)
 	}
@@ -170,7 +170,7 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 	}
 
 	// debug log the status
-	c.logger.Debug("setting status pointer", zap.String("status", status.GetStatus().String()))
+	c.logger.Debug(ctx, "setting status pointer", zap.String("status", status.GetStatus().String()))
 
 	c.status = status
 
@@ -204,14 +204,14 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 
 		return true, nil
 	default:
-		c.logger.Debug("skipping status", zap.String("status", status.GetStatus().String()))
+		c.logger.Debug(ctx, "skipping status", zap.String("status", status.GetStatus().String()))
 
 		return false, nil
 	}
 }
 
 func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (bool, error) {
-	c.logger.Debug("Checking template build status")
+	c.logger.Debug(ctx, "Checking template build status")
 
 	retrier := retry.NewRetrier(
 		10,
@@ -221,12 +221,12 @@ func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (bool, error) {
 
 	err := retrier.RunContext(ctx, c.setStatus)
 	if err != nil {
-		c.logger.Error("error when calling setStatus", zap.Error(err))
+		c.logger.Error(ctx, "error when calling setStatus", zap.Error(err))
 
 		return false, err
 	}
 
-	c.logger.Debug("dispatching based on status", zap.String("status", c.status.GetStatus().String()))
+	c.logger.Debug(ctx, "dispatching based on status", zap.String("status", c.status.GetStatus().String()))
 
 	buildCompleted, err := c.dispatchBasedOnStatus(ctx, c.status)
 	if err != nil {
@@ -278,7 +278,7 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 		TemplateID: templateID,
 	})
 
-	tm.buildCache.SetStatus(buildID, status, buildReason)
+	tm.buildCache.SetStatus(ctx, buildID, status, buildReason)
 
 	return err
 }
@@ -292,14 +292,14 @@ func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, b
 		EnvID:           templateID,
 	})
 	if err != nil {
-		tm.buildCache.SetStatus(buildID, types.BuildStatusFailed, types.BuildReason{
+		tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusFailed, types.BuildReason{
 			Message: fmt.Sprintf("error when finishing build: %s", err.Error()),
 		})
 
 		return err
 	}
 
-	tm.buildCache.SetStatus(buildID, types.BuildStatusUploaded, types.BuildReason{})
+	tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusUploaded, types.BuildReason{})
 
 	return nil
 }

@@ -2,6 +2,7 @@ package layer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel"
@@ -88,6 +89,13 @@ func (lb *LayerExecutor) BuildLayer(
 		if closeErr != nil {
 			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
 			lb.logger.Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
+		} else {
+			lb.logger.Debug(
+				ctx,
+				"removed proxy from pool",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithExecutionID(sbx.Runtime.ExecutionID),
+			)
 		}
 	}()
 
@@ -95,6 +103,14 @@ func (lb *LayerExecutor) BuildLayer(
 	if cmd.UpdateEnvd {
 		err = lb.updateEnvdInSandbox(ctx, userLogger, sbx)
 		if err != nil {
+			lb.logger.Error(
+				ctx,
+				"error updating envd",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithExecutionID(sbx.Runtime.ExecutionID),
+				zap.Error(err),
+			)
+
 			return metadata.Template{}, fmt.Errorf("update envd: %w", err)
 		}
 	}
@@ -102,6 +118,14 @@ func (lb *LayerExecutor) BuildLayer(
 	// Execute the action using the executor
 	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.CurrentLayer)
 	if err != nil {
+		lb.logger.Error(
+			ctx,
+			"error executing action",
+			logger.WithSandboxID(sbx.Runtime.SandboxID),
+			logger.WithExecutionID(sbx.Runtime.ExecutionID),
+			zap.Error(err),
+		)
+
 		return metadata.Template{}, err
 	}
 
@@ -186,6 +210,20 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		metadata.Context{User: "root"},
 	)
 
+	// Remove the proxy client to prevent reuse of broken connection, because we restarted envd server inside of the sandbox.
+	// This might not be necessary if we don't use keepalives for the proxy.
+	err = lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+	if err != nil {
+		return fmt.Errorf("failed to remove proxy from pool: %w", err)
+	}
+
+	lb.logger.Debug(
+		ctx,
+		"removed proxy from pool after restarting envd",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithExecutionID(sbx.Runtime.ExecutionID),
+	)
+
 	// Step 4: Wait for envd to initialize
 	err = sbx.WaitForEnvd(
 		ctx,
@@ -204,11 +242,11 @@ func (lb *LayerExecutor) PauseAndUpload(
 	sbx *sandbox.Sandbox,
 	hash string,
 	meta metadata.Template,
-) error {
+) (e error) {
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	userLogger.Debug(ctx, fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
+	userLogger.Debug(ctx, fmt.Sprintf("Processing layer: %s", meta.Template.BuildID))
 
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
@@ -221,7 +259,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Add snapshot to template cache so it can be used immediately
 	err = lb.templateCache.AddSnapshot(
-		ctx,
+		context.WithoutCancel(ctx),
 		meta.Template.BuildID,
 		meta.Template.KernelVersion,
 		meta.Template.FirecrackerVersion,
@@ -233,11 +271,18 @@ func (lb *LayerExecutor) PauseAndUpload(
 		snapshot.RootfsDiff,
 	)
 	if err != nil {
+		err = errors.Join(err, snapshot.Close(context.WithoutCancel(ctx)))
+
 		return fmt.Errorf("error adding snapshot to template cache: %w", err)
 	}
 
 	// Upload snapshot async, it's added to the template cache immediately
+	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 	lb.UploadErrGroup.Go(func() error {
+		ctx := context.WithoutCancel(ctx)
+		ctx, span := tracer.Start(ctx, "upload snapshot")
+		defer span.End()
+
 		err := snapshot.Upload(
 			ctx,
 			lb.templateStorage,

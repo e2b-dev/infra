@@ -8,6 +8,7 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -16,7 +17,7 @@ const (
 )
 
 type NomadServiceDiscovery struct {
-	logger  *zap.Logger
+	logger  logger.Logger
 	entries *smap.Map[ServiceDiscoveryItem]
 	client  *nomadapi.Client
 
@@ -24,7 +25,7 @@ type NomadServiceDiscovery struct {
 	filter string
 }
 
-func NewNomadServiceDiscovery(ctx context.Context, logger *zap.Logger, port uint16, nomadEndpoint string, nomadToken string, job string) (*NomadServiceDiscovery, error) {
+func NewNomadServiceDiscovery(ctx context.Context, logger logger.Logger, port uint16, nomadEndpoint string, nomadToken string, job string) (*NomadServiceDiscovery, error) {
 	config := &nomadapi.Config{Address: nomadEndpoint, SecretID: nomadToken}
 	client, err := nomadapi.NewClient(config)
 	if err != nil {
@@ -68,7 +69,7 @@ func (sd *NomadServiceDiscovery) keepInSync(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			sd.logger.Info("Stopping service discovery keep-in-sync")
+			sd.logger.Info(ctx, "Stopping service discovery keep-in-sync")
 
 			return
 		case <-ticker.C:
@@ -91,7 +92,7 @@ func (sd *NomadServiceDiscovery) sync(ctx context.Context) {
 
 	results, _, err := sd.client.Allocations().List(options.WithContext(ctx))
 	if err != nil {
-		sd.logger.Error("Failed to list Nomad allocations in service discovery", zap.Error(err))
+		sd.logger.Error(ctx, "Failed to list Nomad allocations in service discovery", zap.Error(err))
 
 		return
 	}
@@ -99,14 +100,14 @@ func (sd *NomadServiceDiscovery) sync(ctx context.Context) {
 	found := make(map[string]string)
 	for _, v := range results {
 		if v.AllocatedResources == nil {
-			sd.logger.Warn("No allocated resources found", zap.String("job", v.JobID), zap.String("alloc", v.ID))
+			sd.logger.Warn(ctx, "No allocated resources found", zap.String("job", v.JobID), zap.String("alloc", v.ID))
 
 			continue
 		}
 
 		nets := v.AllocatedResources.Shared.Networks
 		if len(nets) == 0 {
-			sd.logger.Warn("No allocation networks found", zap.String("job", v.JobID), zap.String("alloc", v.ID))
+			sd.logger.Warn(ctx, "No allocation networks found", zap.String("job", v.JobID), zap.String("alloc", v.ID))
 
 			continue
 		}

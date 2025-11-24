@@ -36,7 +36,7 @@ import (
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -62,7 +62,7 @@ var (
 	expectedMigrationTimestamp string
 )
 
-func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, logger *zap.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
+func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -158,9 +158,9 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 					teamID = teamInfo.(*types.Team).ID.String()
 				}
 
-				reqLogger := logger
+				reqLogger := l
 				if teamID != "" {
-					reqLogger = logger.With(l.WithTeamID(teamID))
+					reqLogger = l.With(logger.WithTeamID(teamID))
 				}
 
 				customMiddleware.LoggingMiddleware(reqLogger, customMiddleware.Config{
@@ -223,7 +223,7 @@ func run() int {
 
 	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
 	if err != nil {
-		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
+		logger.L().Fatal(ctx, "failed to create metrics exporter", zap.Error(err))
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)
@@ -232,15 +232,15 @@ func run() int {
 		}
 	}()
 
-	logger := sharedutils.Must(l.NewLogger(ctx, l.LoggerConfig{
+	l := sharedutils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
-		Cores:         []zapcore.Core{l.GetOTELCore(tel.LogsProvider, serviceName)},
+		Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
 		EnableConsole: true,
-	})).Detach(ctx)
-	defer logger.Sync()
-	zap.ReplaceGlobals(logger)
+	}))
+	defer l.Sync()
+	logger.ReplaceGlobals(ctx, l)
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
@@ -270,21 +270,21 @@ func run() int {
 	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
 	if err != nil {
 		// If expectedMigrationTimestamp is not set, we set it to 0
-		logger.Warn("Failed to parse expected migration timestamp", zap.Error(err))
+		l.Warn(ctx, "Failed to parse expected migration timestamp", zap.Error(err))
 		expectedMigration = 0
 	}
 
 	config, err := cfg.Parse()
 	if err != nil {
-		zap.L().Fatal("Error parsing config", zap.Error(err))
+		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
 	}
 
-	err = utils.CheckMigrationVersion(config.PostgresConnectionString, expectedMigration)
+	err = utils.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
 	if err != nil {
-		logger.Fatal("failed to check migration version", zap.Error(err))
+		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
 	}
 
-	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA), l.WithServiceInstanceID(serviceInstanceID))
+	l.Info(ctx, "Starting API service...", zap.String("commit_sha", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
 	if debug != "true" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -293,7 +293,7 @@ func run() int {
 	if err != nil {
 		// this will call os.Exit: defers won't run, but none
 		// need to yet. Change this if this is called later.
-		logger.Error("Error loading swagger spec", zap.Error(err))
+		l.Error(ctx, "Error loading swagger spec", zap.Error(err))
 
 		return 1
 	}
@@ -323,7 +323,7 @@ func run() int {
 					defer cwg.Done()
 					if err := op(ctx); err != nil {
 						exitCode.Add(1)
-						logger.Error("Cleanup operation error", zap.Int("index", idx), zap.Error(err))
+						l.Error(ctx, "Cleanup operation error", zap.Int("index", idx), zap.Error(err))
 					}
 				}(cleanup, idx)
 
@@ -331,13 +331,13 @@ func run() int {
 			}
 		}
 		if count == 0 {
-			logger.Info("no cleanup operations")
+			l.Info(ctx, "no cleanup operations")
 
 			return
 		}
-		logger.Info("Running cleanup operations", zap.Int("count", count))
+		l.Info(ctx, "Running cleanup operations", zap.Int("count", count))
 		cwg.Wait() // this doesn't have a timeout
-		logger.Info("Cleanup operations completed", zap.Int("count", count), zap.Duration("duration", time.Since(start)))
+		l.Info(ctx, "Cleanup operations completed", zap.Int("count", count), zap.Duration("duration", time.Since(start)))
 	}
 	cleanupOnce := &sync.Once{}
 	cleanup := func() { cleanupOnce.Do(cleanupOp) }
@@ -350,7 +350,7 @@ func run() int {
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	// pass the signal context so that handlers know when shutdown is happening.
-	s := NewGinServer(ctx, config, tel, logger, apiStore, swagger, port)
+	s := NewGinServer(ctx, config, tel, l, apiStore, swagger, port)
 
 	// ////////////////////////
 	//
@@ -381,20 +381,20 @@ func run() int {
 		// signaled.
 		defer cancel()
 
-		logger.Info("Http service starting", zap.Int("port", port))
+		l.Info(ctx, "Http service starting", zap.Int("port", port))
 
 		// Serve HTTP until shutdown.
 		err := s.ListenAndServe()
 
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			logger.Info("Http service shutdown successfully", zap.Int("port", port))
+			l.Info(ctx, "Http service shutdown successfully", zap.Int("port", port))
 		case err != nil:
 			exitCode.Add(1)
-			logger.Error("Http service encountered error", zap.Int("port", port), zap.Error(err))
+			l.Error(ctx, "Http service encountered error", zap.Int("port", port), zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			logger.Info("Http service exited without error", zap.Int("port", port))
+			l.Info(ctx, "Http service exited without error", zap.Int("port", port))
 		}
 	}()
 
@@ -424,7 +424,7 @@ func run() int {
 
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
-			logger.Error("Http service shutdown error", zap.Int("port", port), zap.Error(err))
+			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
 	}()
 
