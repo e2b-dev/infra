@@ -351,7 +351,8 @@ variable "otel_tracing_print" {
 
 variable "domain_name" {
   type        = string
-  description = "The domain name where e2b will run"
+  description = "The internal domain name for the private load balancer (e.g., e2b.internal)"
+  default     = "e2b.internal"
 }
 
 variable "additional_api_services_json" {

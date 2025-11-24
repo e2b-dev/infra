@@ -152,6 +152,11 @@ resource "google_compute_firewall" "default-hc" {
 
   allow {
     protocol = "tcp"
+    ports    = [var.nomad_port]
+  }
+
+  allow {
+    protocol = "tcp"
     ports    = [var.ingress_port.port]
   }
 
