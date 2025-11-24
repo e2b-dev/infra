@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -38,7 +38,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 
 	// requests was for this service instance
 	if body.ServiceInstanceID == a.info.ServiceInstanceID && body.ServiceType == api.ClusterNodeTypeEdge {
-		a.info.SetStatus(api.Draining)
+		a.info.SetStatus(ctx, api.Draining)
 		c.Status(http.StatusOK)
 
 		return
@@ -78,7 +78,7 @@ func (a *APIStore) sendOrchestratorRequest(ctx context.Context, serviceInstanceI
 		return errors.New("orchestrator instance doesn't found")
 	}
 
-	logger.Info("orchestrator instance found, calling status change request")
+	logger.Info(ctx, "orchestrator instance found, calling status change request")
 
 	findCtx, findCtxCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer findCtxCancel()
@@ -88,7 +88,7 @@ func (a *APIStore) sendOrchestratorRequest(ctx context.Context, serviceInstanceI
 		findCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: orchestratorStatus},
 	)
 	if err != nil {
-		logger.Error("failed to request orchestrator status change", zap.Error(err))
+		logger.Error(ctx, "failed to request orchestrator status change", zap.Error(err))
 
 		return errors.New("failed to request orchestrator status change")
 	}
@@ -102,7 +102,7 @@ func (a *APIStore) sendEdgeRequest(ctx context.Context, serviceInstanceID string
 	// try to find edge node
 	e, err := a.edgePool.GetInstanceByID(serviceInstanceID)
 	if err != nil {
-		logger.Error("failed to get service instance from edge pool", zap.Error(err))
+		logger.Error(ctx, "failed to get service instance from edge pool", zap.Error(err))
 
 		return errors.New("failed to get edge service instance")
 	}
@@ -120,13 +120,13 @@ func (a *APIStore) sendEdgeRequest(ctx context.Context, serviceInstanceID string
 	}
 
 	if err != nil {
-		logger.Error("failed to request edge service instance status change", zap.Error(err))
+		logger.Error(ctx, "failed to request edge service instance status change", zap.Error(err))
 
 		return errors.New("failed to request edge service instance status change")
 	}
 
 	if err = rsp.Body.Close(); err != nil {
-		logger.Error("failed to close response body", zap.Error(err))
+		logger.Error(ctx, "failed to close response body", zap.Error(err))
 	}
 
 	return nil

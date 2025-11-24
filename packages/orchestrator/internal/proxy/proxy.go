@@ -109,6 +109,10 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				MaskRequestHost: maskRequestHost,
 			}, nil
 		},
+		// We are not using keepalives for orchestrator proxy,
+		// because the servers inside of the sandbox can be unstable (restarts),
+		// and we are also on the same host, so the overhead is minimal.
+		true,
 	)
 
 	meter := meterProvider.Meter("orchestrator.proxy.sandbox")

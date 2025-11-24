@@ -9,6 +9,7 @@ import (
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type TemplateCounter struct {
@@ -84,7 +85,7 @@ func (t *TemplateSpawnCounter) flushCounters(ctx context.Context) {
 			TemplateID:    templateID,
 		})
 		if err != nil {
-			zap.L().Error("error updating template spawn count", zap.Error(err))
+			logger.L().Error(ctx, "error updating template spawn count", zap.Error(err))
 		}
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
 	flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const InsertSandboxEventQuery = `INSERT INTO sandbox_events
@@ -68,7 +69,7 @@ func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.
 			MaxDelay:     maxDelay,
 			QueueSize:    batcherQueueSize,
 			ErrorHandler: func(err error) {
-				zap.L().Error("error batching sandbox events", zap.Error(err))
+				logger.L().Error(ctx, "error batching sandbox events", zap.Error(err))
 			},
 		},
 	)

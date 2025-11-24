@@ -44,9 +44,9 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 
 	telemetry.ReportEvent(ctx, "listed environments")
 
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed environments", properties)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "listed environments", properties)
 
 	templates := make([]*api.Template, 0, len(envs))
 	for _, item := range envs {

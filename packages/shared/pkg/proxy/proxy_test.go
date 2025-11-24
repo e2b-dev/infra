@@ -155,6 +155,7 @@ func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Dest
 		SandboxProxyRetries,
 		20*time.Second, // Short idle timeout
 		getDestination,
+		false,
 	)
 
 	// Start the proxy server
@@ -712,7 +713,7 @@ func TestChangeResponseHeader(t *testing.T) {
 			IncludeSandboxIdInProxyErrorLogger: true,
 			MaskRequestHost:                    utils.ToPtr(maskedHost),
 		}, nil
-	})
+	}, false)
 
 	go func() {
 		err = proxy.ListenAndServe(t.Context())

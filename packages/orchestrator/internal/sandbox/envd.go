@@ -72,7 +72,7 @@ func doRequestWithInfiniteRetries(
 			request.Header.Set("X-Access-Token", *accessToken)
 		}
 
-		response, err := httpClient.Do(request)
+		response, err := sandboxHttpClient.Do(request)
 		cancel()
 
 		if err == nil {

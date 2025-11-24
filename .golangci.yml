@@ -74,6 +74,27 @@ linters:
           msg: "Use &Type{} instead."
     #        - pattern: os\.Getenv
     #          msg: "Add your field to the configuration model instead."
+        - pattern: 'zap\.New$'
+          pkg: '^go\.uber\.org/zap$'
+          msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger instead of zap.New()"
+        - pattern: 'zap\.NewProduction$'
+          pkg: '^go\.uber\.org/zap$'
+          msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger instead of zap.NewProduction()"
+        - pattern: 'zap\.NewDevelopment$'
+          pkg: '^go\.uber\.org/zap$'
+          msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger instead of zap.NewDevelopment()"
+        - pattern: 'zap\.NewExample$'
+          pkg: '^go\.uber\.org/zap$'
+          msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger instead of zap.NewExample()"
+        - pattern: 'zap\.L$'
+          msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger.L() instead of zap.L()"
+        - pattern: 'zap\.S$'
+          pkg: '^go\.uber\.org/zap$'
+          msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger instead of zap.S()"
+        - pattern: 'zap\.NewNop$'
+          pkg: '^go\.uber\.org/zap$'
+          msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger.NewNopLogger() instead of zap.NewNop()"
+      analyze-types: true
 
     gocritic:
       disabled-checks:

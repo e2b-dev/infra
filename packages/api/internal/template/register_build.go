@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
@@ -327,7 +326,7 @@ func RegisterBuild(
 		aliases = append(aliases, alias)
 	}
 
-	zap.L().Info("template build requested", logger.WithTemplateID(data.TemplateID), logger.WithBuildID(buildID.String()))
+	logger.L().Info(ctx, "template build requested", logger.WithTemplateID(data.TemplateID), logger.WithBuildID(buildID.String()))
 
 	return &RegisterBuildResponse{
 		TemplateID: data.TemplateID,

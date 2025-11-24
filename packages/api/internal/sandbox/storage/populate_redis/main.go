@@ -9,6 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var _ sandbox.Storage = (*PopulateRedisStorage)(nil)
@@ -26,7 +27,7 @@ func (m *PopulateRedisStorage) Add(ctx context.Context, sandbox sandbox.Sandbox)
 
 	err = m.redisBackend.Add(ctx, sandbox)
 	if err != nil {
-		zap.L().Error("failed to add sandbox to redis", zap.Error(err))
+		logger.L().Error(ctx, "failed to add sandbox to redis", zap.Error(err))
 	}
 
 	return nil
@@ -44,7 +45,7 @@ func (m *PopulateRedisStorage) Remove(ctx context.Context, sandboxID string) err
 
 	err = m.redisBackend.Remove(ctx, sandboxID)
 	if err != nil {
-		zap.L().Error("failed to remove sandbox from redis", zap.Error(err))
+		logger.L().Error(ctx, "failed to remove sandbox from redis", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 
 	return nil
@@ -62,13 +63,13 @@ func (m *PopulateRedisStorage) Update(ctx context.Context, sandboxID string, upd
 
 	_, err = m.redisBackend.Update(ctx, sandboxID, updateFunc)
 	if err != nil {
-		zap.L().Error("failed to update sandbox in redis", zap.Error(err))
+		logger.L().Error(ctx, "failed to update sandbox in redis", zap.Error(err))
 	}
 
 	return sbx, nil
 }
 
-func (m *PopulateRedisStorage) StartRemoving(ctx context.Context, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {
+func (m *PopulateRedisStorage) StartRemoving(ctx context.Context, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
 	return m.memoryBackend.StartRemoving(ctx, sandboxID, stateAction)
 }
 

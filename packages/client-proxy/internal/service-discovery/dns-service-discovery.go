@@ -8,11 +8,12 @@ import (
 	"github.com/miekg/dns"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type DnsServiceDiscovery struct {
-	logger   *zap.Logger
+	logger   logger.Logger
 	entries  *smap.Map[ServiceDiscoveryItem]
 	resolver string
 
@@ -32,7 +33,7 @@ var dnsClient = dns.Client{
 	Timeout: time.Second * 2,
 }
 
-func NewDnsServiceDiscovery(ctx context.Context, logger *zap.Logger, hosts []string, resolver string, servicePort uint16) *DnsServiceDiscovery {
+func NewDnsServiceDiscovery(ctx context.Context, logger logger.Logger, hosts []string, resolver string, servicePort uint16) *DnsServiceDiscovery {
 	sd := &DnsServiceDiscovery{
 		hosts:       hosts,
 		logger:      logger,
@@ -68,7 +69,7 @@ func (sd *DnsServiceDiscovery) keepInSync(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			sd.logger.Info("Stopping service discovery keep-in-sync")
+			sd.logger.Info(ctx, "Stopping service discovery keep-in-sync")
 
 			return
 		case <-ticker.C:
@@ -85,7 +86,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 
 	select {
 	case <-ctxTimeout.Done():
-		sd.logger.Error("Service discovery sync timed out")
+		sd.logger.Error(ctx, "Service discovery sync timed out")
 
 		return
 	default:
@@ -96,7 +97,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 			for range dnsMaxRetries {
 				response, _, err := dnsClient.Exchange(&msg, sd.resolver)
 				if err != nil {
-					sd.logger.Error("DNS service discovery failed", zap.Error(err))
+					sd.logger.Error(ctx, "DNS service discovery failed", zap.Error(err))
 					time.Sleep(dnsRetryWait)
 
 					continue

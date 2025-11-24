@@ -51,7 +51,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 		return nil, fmt.Errorf("error getting team snapshots: %w", err)
 	}
 
-	sandboxes := snapshotsToPaginatedSandboxes(snapshots)
+	sandboxes := snapshotsToPaginatedSandboxes(ctx, snapshots)
 
 	return sandboxes, nil
 }
@@ -73,13 +73,13 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
 	team := teamInfo.Team
 
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed sandboxes", properties)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "listed sandboxes", properties)
 
-	metadataFilter, err := utils.ParseMetadata(params.Metadata)
+	metadataFilter, err := utils.ParseMetadata(ctx, params.Metadata)
 	if err != nil {
-		zap.L().Error("Error parsing metadata", zap.Error(err))
+		logger.L().Error(ctx, "Error parsing metadata", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err))
 
 		return
@@ -101,9 +101,9 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
 	team := teamInfo.Team
 
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed sandboxes", properties)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "listed sandboxes", properties)
 
 	// If no state is provided we want to return both running and paused sandboxes
 	states := make([]api.SandboxState, 0)
@@ -132,9 +132,9 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		return
 	}
 
-	metadataFilter, err := utils.ParseMetadata(params.Metadata)
+	metadataFilter, err := utils.ParseMetadata(ctx, params.Metadata)
 	if err != nil {
-		zap.L().Error("Error parsing metadata", zap.Error(err))
+		logger.L().Error(ctx, "Error parsing metadata", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Error parsing metadata")
 
 		return
@@ -178,7 +178,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())
 		if err != nil {
-			zap.L().Error("Error getting paused sandboxes", zap.Error(err))
+			logger.L().Error(ctx, "Error getting paused sandboxes", zap.Error(err))
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting paused sandboxes")
 
 			return
@@ -202,7 +202,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	c.JSON(http.StatusOK, sandboxes)
 }
 
-func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow) []utils.PaginatedSandbox {
+func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetSnapshotsWithCursorRow) []utils.PaginatedSandbox {
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
 	// Add snapshots to results
@@ -219,14 +219,14 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 		if build.TotalDiskSizeMb != nil {
 			diskSize = int32(*build.TotalDiskSizeMb)
 		} else {
-			zap.L().Error("disk size is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
+			logger.L().Error(ctx, "disk size is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
 		}
 
 		envdVersion := ""
 		if build.EnvdVersion != nil {
 			envdVersion = *build.EnvdVersion
 		} else {
-			zap.L().Error("envd version is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
+			logger.L().Error(ctx, "envd version is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
 		}
 
 		sandbox := utils.PaginatedSandbox{

@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // TODO: Remove once migrated (ENG-3320)
@@ -23,7 +24,7 @@ var _ SandboxesCatalog = (*RedisFallbackSandboxCatalog)(nil)
 func (r *RedisFallbackSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error) {
 	redisSecurePrimary, err := r.featureFlags.BoolFlag(ctx, featureflags.ClientProxyRedisSecurePrimary)
 	if err != nil {
-		zap.L().Warn("failed to get feature flag", zap.Error(err))
+		logger.L().Warn(ctx, "failed to get feature flag", zap.Error(err))
 	}
 
 	if redisSecurePrimary {

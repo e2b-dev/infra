@@ -9,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
@@ -35,7 +36,7 @@ func (c *ClusterPlacementProvider) GetLogs(ctx context.Context, templateID strin
 	}
 
 	if res.StatusCode() != 200 || res.JSON200 == nil {
-		zap.L().Error("failed to get build logs in template manager", zap.String("body", string(res.Body)))
+		logger.L().Error(ctx, "failed to get build logs in template manager", zap.String("body", string(res.Body)))
 
 		return nil, errors.New("failed to get build logs in template manager")
 	}

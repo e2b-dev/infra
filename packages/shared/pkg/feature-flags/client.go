@@ -10,6 +10,8 @@ import (
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // LaunchDarklyOfflineStore is a test fixture that provides dynamically updatable feature flag state
@@ -76,14 +78,14 @@ func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontex
 	return value, nil
 }
 
-func (c *Client) Close(context.Context) error {
+func (c *Client) Close(ctx context.Context) error {
 	if c.ld == nil {
 		return nil
 	}
 
 	err := c.ld.Close()
 	if err != nil {
-		zap.L().Error("Error during launch-darkly client shutdown", zap.Error(err))
+		logger.L().Error(ctx, "Error during launch-darkly client shutdown", zap.Error(err))
 
 		return err
 	}

@@ -44,7 +44,7 @@ func (c *Checks) GetMetrics(ctx context.Context, timeout time.Duration) (*Metric
 		request.Header.Set("X-Access-Token", *c.sandbox.Config.Envd.AccessToken)
 	}
 
-	response, err := httpClient.Do(request)
+	response, err := sandboxHttpClient.Do(request)
 	if err != nil {
 		return nil, err
 	}

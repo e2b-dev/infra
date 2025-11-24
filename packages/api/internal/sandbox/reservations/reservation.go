@@ -75,7 +75,7 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID, sandboxID stri
 	return func(sbx sandbox.Sandbox, err error) {
 		setErr := startResult.SetResult(sbx, err)
 		if setErr != nil {
-			zap.L().Error("failed to set the result of the reservation", zap.Error(setErr), logger.WithSandboxID(sandboxID))
+			logger.L().Error(ctx, "failed to set the result of the reservation", zap.Error(setErr), logger.WithSandboxID(sandboxID))
 		}
 
 		// Remove the reservation if the sandbox creation failed

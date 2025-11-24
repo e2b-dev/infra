@@ -36,11 +36,13 @@ func New(
 	maxConnectionAttempts MaxConnectionAttempts,
 	idleTimeout time.Duration,
 	getDestination func(r *http.Request) (*pool.Destination, error),
+	disableKeepAlives bool,
 ) *Proxy {
 	p := pool.New(
 		maxClientConns,
 		int(maxConnectionAttempts),
 		idleTimeout,
+		disableKeepAlives,
 	)
 
 	return &Proxy{

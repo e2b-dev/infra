@@ -30,11 +30,11 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName,
 		featureflags.SandboxContext(sandboxID))
 	if err != nil {
-		zap.L().Error("error getting metrics read feature flag, soft failing", zap.Error(err))
+		logger.L().Error(ctx, "error getting metrics read feature flag, soft failing", zap.Error(err))
 	}
 
 	if !metricsReadFlag {
-		zap.L().Debug("sandbox metrics read feature flag is disabled")
+		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
 		// If we are not reading from ClickHouse, we can return an empty map
 		// This is here just to have the possibility to turn off ClickHouse metrics reading
 
@@ -63,7 +63,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	metrics, err := a.clickhouseStore.QuerySandboxMetrics(ctx, sandboxID, team.ID.String(), start, end, step)
 	if err != nil {
-		zap.L().Error("Error fetching sandbox metrics from ClickHouse",
+		logger.L().Error(ctx, "Error fetching sandbox metrics from ClickHouse",
 			logger.WithSandboxID(sandboxID),
 			logger.WithTeamID(team.ID.String()),
 			zap.Error(err),
@@ -126,7 +126,7 @@ func getSandboxStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clic
 	if start.IsZero() || end.IsZero() {
 		sbxStart, sbxEnd, err := clickhouseStore.QuerySandboxTimeRange(ctx, sandboxID, teamID)
 		if err != nil {
-			zap.L().Error("Error fetching sandbox time range from ClickHouse",
+			logger.L().Error(ctx, "Error fetching sandbox time range from ClickHouse",
 				logger.WithSandboxID(sandboxID),
 				logger.WithTeamID(teamID),
 				zap.Error(err),

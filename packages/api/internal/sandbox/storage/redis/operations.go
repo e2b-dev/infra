@@ -11,6 +11,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 // Add stores a sandbox in Redis
@@ -57,15 +59,15 @@ func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
 	// Remove from Redis
 	key := getSandboxKey(sandboxID)
 
-	lock, err := s.lockService.Obtain(ctx, key, lockTimeout, nil)
+	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
 	if err != nil {
 		return fmt.Errorf("failed to obtain lock: %w", err)
 	}
 
 	defer func() {
-		err := lock.Release(ctx)
+		err := lock.Release(context.WithoutCancel(ctx))
 		if err != nil {
-			zap.L().Error("Failed to release lock", zap.Error(err))
+			logger.L().Error(ctx, "Failed to release lock", zap.Error(err))
 		}
 	}()
 
@@ -88,15 +90,15 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 	key := getSandboxKey(sandboxID)
 	var updatedSbx sandbox.Sandbox
 
-	lock, err := s.lockService.Obtain(ctx, key, lockTimeout, nil)
+	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
 	if err != nil {
 		return sandbox.Sandbox{}, fmt.Errorf("failed to obtain lock: %w", err)
 	}
 
 	defer func() {
-		err := lock.Release(ctx)
+		err := lock.Release(context.WithoutCancel(ctx))
 		if err != nil {
-			zap.L().Error("Failed to release lock", zap.Error(err))
+			logger.L().Error(ctx, "Failed to release lock", zap.Error(err))
 		}
 	}()
 
@@ -139,7 +141,7 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 }
 
 // StartRemoving initiates the removal process for a sandbox
-func (s *Storage) StartRemoving(_ context.Context, _ string, _ sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {
+func (s *Storage) StartRemoving(_ context.Context, _ string, _ sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
 	// TODO: Implement later (ENG-3285)
 	return false, nil, nil
 }

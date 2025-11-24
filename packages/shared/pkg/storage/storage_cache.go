@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -93,9 +94,9 @@ func (c CachedProvider) GetDetails() string {
 		c.rootPath, c.inner.GetDetails())
 }
 
-func cleanup(msg string, fn func() error) {
+func cleanup(ctx context.Context, msg string, fn func() error) {
 	if err := fn(); err != nil {
-		zap.L().Warn(msg, zap.Error(err))
+		logger.L().Warn(ctx, msg, zap.Error(err))
 	}
 }
 
@@ -109,10 +110,10 @@ func ignoreEOF(err error) error {
 
 // moveWithoutReplace tries to rename a file but will not replace the target if it already exists.
 // If the file already exists, the file will be deleted.
-func moveWithoutReplace(oldPath, newPath string) error {
+func moveWithoutReplace(ctx context.Context, oldPath, newPath string) error {
 	defer func() {
 		if err := os.Remove(oldPath); err != nil {
-			zap.L().Warn("failed to remove existing file", zap.Error(err))
+			logger.L().Warn(ctx, "failed to remove existing file", zap.Error(err))
 		}
 	}()
 
