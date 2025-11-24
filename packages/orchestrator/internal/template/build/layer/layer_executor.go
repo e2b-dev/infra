@@ -214,14 +214,14 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	err = lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
 	if err != nil {
 		return fmt.Errorf("failed to remove proxy from pool: %w", err)
-	} else {
-		lb.logger.Debug(
-			ctx,
-			"removed proxy from pool after restarting envd",
-			logger.WithSandboxID(sbx.Runtime.SandboxID),
-			logger.WithExecutionID(sbx.Runtime.ExecutionID),
-		)
 	}
+
+	lb.logger.Debug(
+		ctx,
+		"removed proxy from pool after restarting envd",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithExecutionID(sbx.Runtime.ExecutionID),
+	)
 
 	// Step 4: Wait for envd to initialize
 	err = sbx.WaitForEnvd(
