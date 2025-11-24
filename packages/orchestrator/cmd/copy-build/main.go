@@ -343,7 +343,7 @@ func main() {
 				return nil
 			}
 
-			if fromDestination.isLocal {
+			if fromDestination.isLocal && toDestination.isLocal {
 				err := localCopy(ctx, fromDestination, toDestination)
 				if err != nil {
 					return fmt.Errorf("failed to copy local file: %w", err)
