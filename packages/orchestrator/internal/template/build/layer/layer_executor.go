@@ -246,7 +246,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	userLogger.Debug(ctx, fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
+	userLogger.Debug(ctx, fmt.Sprintf("Processing layer: %s", meta.Template.BuildID))
 
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
@@ -276,7 +276,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		return fmt.Errorf("error adding snapshot to template cache: %w", err)
 	}
 
-	userLogger.Debug(ctx, fmt.Sprintf("Uploading to storage: %s", meta.Template.BuildID))
+	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
 	// Upload snapshot async, it's added to the template cache immediately
 	lb.UploadErrGroup.Go(func() error {
