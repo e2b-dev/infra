@@ -54,11 +54,17 @@ func (o *DirectProvider) ExportDiff(
 	ctx context.Context,
 	out io.Writer,
 	stopSandbox func(context.Context) error,
-) (*header.DiffMetadata, error) {
+) (h *header.DiffMetadata, e error) {
 	ctx, childSpan := tracer.Start(ctx, "direct-provider-export")
 	defer childSpan.End()
 
 	o.exporting.CompareAndSwap(false, true)
+
+	defer func() {
+		if e != nil {
+			e = errors.Join(e, o.cache.Close())
+		}
+	}()
 
 	// the error is already logged in go routine in SandboxCreate handler
 	go func() {
@@ -82,11 +88,6 @@ func (o *DirectProvider) ExportDiff(
 	}
 
 	telemetry.ReportEvent(ctx, "cache exported")
-
-	err = errors.Join(o.sync(ctx), o.cache.Close())
-	if err != nil {
-		return nil, fmt.Errorf("error syncing and closing: %w", err)
-	}
 
 	return m, nil
 }
