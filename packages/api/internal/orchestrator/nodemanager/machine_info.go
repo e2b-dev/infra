@@ -18,6 +18,8 @@ func (n *Node) setMachineInfo(info *infogrpc.MachineInfo) {
 
 	if info == nil {
 		n.machineInfo = MachineInfo{}
+
+		return
 	}
 
 	n.machineInfo = MachineInfo{
