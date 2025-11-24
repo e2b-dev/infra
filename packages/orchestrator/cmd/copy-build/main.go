@@ -273,34 +273,42 @@ func main() {
 			if strings.HasPrefix(*from, "gs://") {
 				bucketName, _ := strings.CutPrefix(*from, "gs://")
 				fromObject := googleStorageClient.Bucket(bucketName).Object(file)
-				fromDestination, err = NewDestinationFromObject(ctx, fromObject)
-				if err != nil {
-					return fmt.Errorf("failed to create destination from object: %w", err)
+				d, destErr := NewDestinationFromObject(ctx, fromObject)
+				if destErr != nil {
+					return fmt.Errorf("failed to create destination from object: %w", destErr)
 				}
+
+				fromDestination = d
 			} else {
-				fromDestination, err = NewDestinationFromPath(*from, file)
-				if err != nil {
-					return fmt.Errorf("failed to create destination from path: %w", err)
+				d, destErr := NewDestinationFromPath(*from, file)
+				if destErr != nil {
+					return fmt.Errorf("failed to create destination from path: %w", destErr)
 				}
+
+				fromDestination = d
 			}
 
 			var toDestination *Destination
 			if strings.HasPrefix(*to, "gs://") {
 				bucketName, _ := strings.CutPrefix(*to, "gs://")
 				toObject := googleStorageClient.Bucket(bucketName).Object(file)
-				toDestination, err = NewDestinationFromObject(ctx, toObject)
-				if err != nil {
-					return fmt.Errorf("failed to create destination from object: %w", err)
-				}
-			} else {
-				toDestination, err = NewDestinationFromPath(*to, file)
-				if err != nil {
-					return fmt.Errorf("failed to create destination from path: %w", err)
+				d, destErr := NewDestinationFromObject(ctx, toObject)
+				if destErr != nil {
+					return fmt.Errorf("failed to create destination from object: %w", destErr)
 				}
 
-				err = os.MkdirAll(path.Dir(toDestination.Path), 0o755)
-				if err != nil {
-					return fmt.Errorf("failed to create directory: %w", err)
+				toDestination = d
+			} else {
+				d, destErr := NewDestinationFromPath(*to, file)
+				if destErr != nil {
+					return fmt.Errorf("failed to create destination from path: %w", destErr)
+				}
+
+				toDestination = d
+
+				mkdirErr := os.MkdirAll(path.Dir(toDestination.Path), 0o755)
+				if mkdirErr != nil {
+					return fmt.Errorf("failed to create directory: %w", mkdirErr)
 				}
 			}
 
@@ -329,5 +337,5 @@ func main() {
 		log.Fatalf("failed to copy files: %s", err)
 	}
 
-	fmt.Printf("Build '%s' copied to bucket '%s'\n", *buildId, *to)
+	fmt.Printf("Build '%s' copied to '%s'\n", *buildId, *to)
 }
