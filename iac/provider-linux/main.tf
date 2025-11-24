@@ -30,6 +30,10 @@ module "machines" {
   clients             = local.clients
   consul_acl_token    = var.consul_acl_token
   docker_image_prefix = var.docker_image_prefix
+  nomad_acl_token     = var.nomad_acl_token
+  docker_http_proxy   = var.docker_http_proxy
+  docker_https_proxy  = var.docker_https_proxy
+  docker_no_proxy     = var.docker_no_proxy
 }
 
 module "nomad" {

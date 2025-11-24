@@ -80,6 +80,9 @@ tf_vars := \
 # Pass-through for Docker image prefix and artifact HTTP server
 tf_vars += \
 	$(call tfvar, DOCKER_IMAGE_PREFIX) \
+	$(call tfvar, DOCKER_HTTP_PROXY) \
+	$(call tfvar, DOCKER_HTTPS_PROXY) \
+	$(call tfvar, DOCKER_NO_PROXY) \
 	$(call tfvar, ARTIFACT_SCP_HOST) \
 	$(call tfvar, ARTIFACT_SCP_USER) \
 	$(call tfvar, ARTIFACT_SCP_DIR) \

@@ -22,7 +22,27 @@ variable "consul_acl_token" {
   default = ""
 }
 
+variable "nomad_acl_token" {
+  type    = string
+  default = ""
+}
+
 variable "docker_image_prefix" {
+  type    = string
+  default = ""
+}
+
+variable "docker_http_proxy" {
+  type    = string
+  default = ""
+}
+
+variable "docker_https_proxy" {
+  type    = string
+  default = ""
+}
+
+variable "docker_no_proxy" {
   type    = string
   default = ""
 }

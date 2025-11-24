@@ -92,6 +92,21 @@ variable "docker_image_prefix" {
   default = ""
 }
 
+variable "docker_http_proxy" {
+  type    = string
+  default = ""
+}
+
+variable "docker_https_proxy" {
+  type    = string
+  default = ""
+}
+
+variable "docker_no_proxy" {
+  type    = string
+  default = ""
+}
+
 variable "clickhouse_database" {
   type    = string
   default = ""
