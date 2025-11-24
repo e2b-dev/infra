@@ -11,6 +11,7 @@ type MachineInfo struct {
 	Family    string
 	Model     string
 	ModelName string
+	Flags     []string
 	Arch      string
 }
 
@@ -25,6 +26,7 @@ func Detect() (MachineInfo, error) {
 			Family:    info[0].Family,
 			Model:     info[0].Model,
 			ModelName: info[0].ModelName,
+			Flags:     info[0].Flags,
 			Arch:      runtime.GOARCH,
 		}, nil
 	}

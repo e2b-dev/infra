@@ -5,10 +5,11 @@ import (
 )
 
 type MachineInfo struct {
+	CPUArchitecture string
 	CPUFamily       string
 	CPUModel        string
 	CPUModelName    string
-	CPUArchitecture string
+	CPUFlags        []string
 }
 
 func (n *Node) setMachineInfo(info *infogrpc.MachineInfo) {
@@ -20,10 +21,11 @@ func (n *Node) setMachineInfo(info *infogrpc.MachineInfo) {
 	}
 
 	n.machineInfo = MachineInfo{
+		CPUArchitecture: info.GetCpuArchitecture(),
 		CPUFamily:       info.GetCpuFamily(),
 		CPUModel:        info.GetCpuModel(),
 		CPUModelName:    info.GetCpuModelName(),
-		CPUArchitecture: info.GetCpuArchitecture(),
+		CPUFlags:        info.GetCpuFlags(),
 	}
 }
 
