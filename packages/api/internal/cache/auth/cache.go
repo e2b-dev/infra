@@ -5,80 +5,40 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jellydator/ttlcache/v3"
-	"golang.org/x/sync/singleflight"
-
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
 )
 
 const (
 	authInfoExpiration = 5 * time.Minute
 	refreshInterval    = 1 * time.Minute
+	refreshTimeout     = 30 * time.Second
 )
-
-type TeamInfo struct {
-	team *types.Team
-
-	lastRefresh time.Time
-	once        singleflight.Group
-}
 
 type DataCallback = func(ctx context.Context, key string) (*types.Team, error)
 
 type TeamAuthCache struct {
-	cache *ttlcache.Cache[string, *TeamInfo]
+	cache *cache.Cache[string, *types.Team]
 }
 
 func NewTeamAuthCache() *TeamAuthCache {
-	cache := ttlcache.New(ttlcache.WithTTL[string, *TeamInfo](authInfoExpiration))
-	go cache.Start()
+	config := cache.Config{
+		TTL:             authInfoExpiration,
+		RefreshInterval: refreshInterval,
+		RefreshTimeout:  refreshTimeout,
+	}
 
 	return &TeamAuthCache{
-		cache: cache,
+		cache: cache.NewCache[string, *types.Team](config),
 	}
 }
 
 // TODO: save blocked teams to cache as well, handle the condition in the GetOrSet method
 func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback DataCallback) (team *types.Team, err error) {
-	var item *ttlcache.Item[string, *TeamInfo]
-	var templateInfo *TeamInfo
-
-	item = c.cache.Get(key)
-	if item == nil {
-		team, err = dataCallback(ctx, key)
-		if err != nil {
-			return nil, fmt.Errorf("error while getting the team: %w", err)
-		}
-
-		templateInfo = &TeamInfo{team: team, lastRefresh: time.Now()}
-		c.cache.Set(key, templateInfo, authInfoExpiration)
-
-		return team, nil
-	}
-
-	templateInfo = item.Value()
-	if time.Since(templateInfo.lastRefresh) > refreshInterval {
-		go templateInfo.once.Do(key, func() (any, error) { //nolint:contextcheck // TODO: fix this later
-			c.Refresh(key, dataCallback)
-
-			return nil, err
-		})
-	}
-
-	return templateInfo.team, nil
-}
-
-// Refresh refreshes the cache for the given team ID.
-func (c *TeamAuthCache) Refresh(key string, dataCallback DataCallback) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	team, err := dataCallback(ctx, key)
+	team, err = c.cache.GetOrSet(ctx, key, dataCallback)
 	if err != nil {
-		c.cache.Delete(key)
-
-		return
+		return nil, fmt.Errorf("error while getting the team: %w", err)
 	}
 
-	c.cache.Set(key, &TeamInfo{team: team, lastRefresh: time.Now()}, authInfoExpiration)
+	return team, nil
 }
