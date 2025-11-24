@@ -168,7 +168,7 @@ func gcloudCopy(ctx context.Context, from, to *Destination) (bool, error) {
 
 func main() {
 	buildId := flag.String("build", "", "build id")
-	from := flag.String("from", "", "from bucket")
+	from := flag.String("from", "", "from destination")
 	to := flag.String("to", "", "to destination")
 
 	flag.Parse()
