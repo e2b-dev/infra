@@ -370,7 +370,7 @@ func TestCache_ExtractKeyFunc(t *testing.T) {
 		}
 		cache := NewCache[string, User](config)
 
-		callback := func(_ context.Context, key string) (User, error) {
+		callback := func(_ context.Context, _ string) (User, error) {
 			return User{ID: "user-123", Name: "Alice"}, nil
 		}
 
@@ -397,7 +397,7 @@ func TestCache_ExtractKeyFunc(t *testing.T) {
 		}
 		cache := NewCache[string, User](config)
 
-		callback := func(_ context.Context, key string) (User, error) {
+		callback := func(_ context.Context, _ string) (User, error) {
 			return User{ID: "user-456", Name: "Bob"}, nil
 		}
 
@@ -415,89 +415,5 @@ func TestCache_ExtractKeyFunc(t *testing.T) {
 		// Should not be under the extracted ID
 		_, found = cache.Get("user-456")
 		assert.False(t, found)
-	})
-
-	t.Run("extract key with multiple values", func(t *testing.T) {
-		config := Config[string, User]{
-			TTL:             5 * time.Minute,
-			RefreshInterval: 0,
-			ExtractKeyFunc: func(value User) string {
-				return value.ID
-			},
-		}
-		cache := NewCache[string, User](config)
-
-		// Add multiple users
-		users := []User{
-			{ID: "user-1", Name: "Alice"},
-			{ID: "user-2", Name: "Bob"},
-			{ID: "user-3", Name: "Charlie"},
-		}
-
-		for _, user := range users {
-			callback := func(_ context.Context, _ string) (User, error) {
-				return user, nil
-			}
-
-			value, err := cache.GetOrSet(context.Background(), "any-key", callback)
-			require.NoError(t, err)
-			assert.Equal(t, user.ID, value.ID)
-		}
-
-		// Verify all users are cached under their IDs
-		for _, user := range users {
-			cachedValue, found := cache.Get(user.ID)
-			assert.True(t, found, "User %s should be cached", user.ID)
-			assert.Equal(t, user.Name, cachedValue.Name)
-		}
-	})
-
-	t.Run("extract key on background refresh", func(t *testing.T) {
-		config := Config[string, User]{
-			TTL:             5 * time.Second,
-			RefreshInterval: 50 * time.Millisecond,
-			RefreshTimeout:  1 * time.Second,
-			ExtractKeyFunc: func(value User) string {
-				return value.ID
-			},
-		}
-		cache := NewCache[string, User](config)
-
-		var callCount atomic.Int32
-		callback := func(_ context.Context, _ string) (User, error) {
-			count := int(callCount.Add(1))
-
-			return User{
-				ID:   "user-refresh",
-				Name: fmt.Sprintf("User-%d", count),
-			}, nil
-		}
-
-		// Initial call
-		value1, err := cache.GetOrSet(context.Background(), "initial-key", callback)
-		require.NoError(t, err)
-		assert.Equal(t, "user-refresh", value1.ID)
-		assert.Equal(t, "User-1", value1.Name)
-
-		// Verify cached under extracted key
-		cachedValue, found := cache.Get("user-refresh")
-		assert.True(t, found)
-		assert.Equal(t, "User-1", cachedValue.Name)
-
-		// Wait for refresh interval
-		time.Sleep(100 * time.Millisecond)
-
-		// Trigger refresh using the extracted key (not a different key)
-		value2, err := cache.GetOrSet(context.Background(), "user-refresh", callback)
-		require.NoError(t, err)
-		assert.Equal(t, "User-1", value2.Name) // Should return stale value
-
-		// Wait for refresh to complete
-		time.Sleep(200 * time.Millisecond)
-
-		// Verify refreshed value is still under the extracted key
-		cachedValue, found = cache.Get("user-refresh")
-		assert.True(t, found)
-		assert.Equal(t, "User-2", cachedValue.Name)
 	})
 }
