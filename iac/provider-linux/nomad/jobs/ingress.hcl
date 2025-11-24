@@ -1,5 +1,6 @@
 job "ingress" {
   datacenters = ["${datacenter}"]
+  node_pool   = "${node_pool}"
   priority    = 90
 
   group "ingress" {

@@ -1,5 +1,6 @@
 job "template-manager-system" {
   datacenters = ["${datacenter}"]
+  node_pool   = "${node_pool}"
   type        = "system"
   priority    = 70
 

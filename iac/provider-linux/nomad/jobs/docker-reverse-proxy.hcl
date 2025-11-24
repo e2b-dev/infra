@@ -1,5 +1,6 @@
 job "docker-reverse-proxy" {
   datacenters = ["${datacenter}"]
+  node_pool   = "${node_pool}"
   type        = "service"
   priority    = 85
 

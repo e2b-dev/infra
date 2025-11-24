@@ -1,5 +1,6 @@
 job "otel-collector" {
   datacenters = ["${datacenter}"]
+  node_pool   = "all"
   type        = "system"
 
   group "otel-collector" {
