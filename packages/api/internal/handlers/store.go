@@ -29,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -49,6 +50,7 @@ type APIStore struct {
 	orchestrator         *orchestrator.Orchestrator
 	templateManager      *template_manager.TemplateManager
 	sqlcDB               *sqlcdb.Client
+	redisClient          redis.UniversalClient
 	templateCache        *templatecache.TemplateCache
 	templateBuildsCache  *templatecache.TemplatesBuildCache
 	authCache            *authcache.TeamAuthCache
@@ -95,32 +97,17 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(err))
 	}
-	var redisClient redis.UniversalClient
-	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
-		// For managed Redis Cluster in GCP we should use Cluster Client, because
-		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
-		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
-		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
-		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:        []string{redisClusterUrl},
-			MinIdleConns: 1,
-		})
-	} else if rurl := config.RedisURL; rurl != "" {
-		redisClient = redis.NewClient(&redis.Options{
-			Addr:         rurl,
-			MinIdleConns: 1,
-		})
-	} else {
-		logger.L().Warn(ctx, "REDIS_URL not set, using local caches")
-	}
-
-	if redisClient != nil {
-		_, err := redisClient.Ping(ctx).Result()
-		if err != nil {
-			logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
+	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
+		RedisURL:         config.RedisURL,
+		RedisClusterURL:  config.RedisClusterURL,
+		RedisTLSCABase64: config.RedisTLSCABase64,
+	})
+	if err != nil {
+		if errors.Is(err, factories.ErrRedisDisabled) {
+			logger.L().Warn(ctx, "REDIS_URL not set, using local caches")
+		} else {
+			logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
 		}
-
-		logger.L().Info(ctx, "Connected to Redis cluster")
 	}
 
 	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, config)
@@ -172,6 +159,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		accessTokenGenerator: accessTokenGenerator,
 		clustersPool:         clustersPool,
 		featureFlags:         featureFlags,
+		redisClient:          redisClient,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
@@ -213,6 +201,12 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.sqlcDB.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
+	}
+
+	if a.redisClient != nil {
+		if err := a.redisClient.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing redis client: %w", err))
+		}
 	}
 
 	return errors.Join(errs...)
