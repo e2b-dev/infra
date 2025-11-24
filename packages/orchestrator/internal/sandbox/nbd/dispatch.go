@@ -132,7 +132,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 	for {
 		n, err := d.fp.Read(buffer[wp:])
 		if err != nil {
-			return err
+			return fmt.Errorf("nbd fp read error: %w", err)
 		}
 		wp += n
 
@@ -142,7 +142,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 			// Check if there is a fatal error from an async read/write to return
 			select {
 			case err := <-d.fatal:
-				return err
+				return fmt.Errorf("nbd fatal error: %w", err)
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
@@ -170,9 +170,9 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					return fmt.Errorf("not supported: Flush")
 				case NBDCmdRead:
 					rp += 28
-					err := d.cmdRead(ctx, request.Handle, request.From, request.Length)
+					err := d.cmdRead(context.WithoutCancel(ctx), request.Handle, request.From, request.Length)
 					if err != nil {
-						return err
+						return fmt.Errorf("nbd read error: %w", err)
 					}
 				case NBDCmdWrite:
 					rp += 28
@@ -200,22 +200,22 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 						select {
 						case err := <-d.fatal:
-							return err
+							return fmt.Errorf("nbd fatal error: %w", err)
 						case <-ctx.Done():
 							return ctx.Err()
 						default:
 						}
 					}
 
-					err := d.cmdWrite(ctx, request.Handle, request.From, data)
+					err := d.cmdWrite(context.WithoutCancel(ctx), request.Handle, request.From, data)
 					if err != nil {
-						return err
+						return fmt.Errorf("nbd write error: %w", err)
 					}
 				case NBDCmdTrim:
 					rp += 28
 					err := d.cmdTrim(request.Handle, request.From, request.Length)
 					if err != nil {
-						return err
+						return fmt.Errorf("nbd trim error: %w", err)
 					}
 				default:
 					return fmt.Errorf("nbd not implemented %d", request.Type)
