@@ -199,6 +199,18 @@ func (a *APIStore) Close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("closing Template manager client: %w", err))
 	}
 
+	if a.templateCache != nil {
+		if err := a.templateCache.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing template cache: %w", err))
+		}
+	}
+
+	if a.authCache != nil {
+		if err := a.authCache.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing auth cache: %w", err))
+		}
+	}
+
 	if err := a.sqlcDB.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
 	}
