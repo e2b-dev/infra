@@ -7,16 +7,32 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
 )
+
+// Runtime represents a runtime available in Piston
+type Runtime struct {
+	Language string   `json:"language"`
+	Version  string   `json:"version"`
+	Aliases  []string `json:"aliases"`
+}
+
+// RuntimesResponse represents the response from /api/v2/runtimes
+type RuntimesResponse map[string][]Runtime
 
 // Client is a client for Piston API
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
 	logger     *zap.Logger
+	
+	// Cache for runtimes
+	runtimesCache     RuntimesResponse
+	runtimesCacheOnce sync.Once
+	runtimesCacheMu   sync.RWMutex
 }
 
 // NewClient creates a new Piston client
@@ -70,18 +86,70 @@ type Compile struct {
 	Output string `json:"output"`
 }
 
+// GetRuntimes fetches available runtimes from Piston API
+func (c *Client) GetRuntimes(ctx context.Context) (RuntimesResponse, error) {
+	// Try to use cache first
+	c.runtimesCacheMu.RLock()
+	if c.runtimesCache != nil && len(c.runtimesCache) > 0 {
+		cache := c.runtimesCache
+		c.runtimesCacheMu.RUnlock()
+		return cache, nil
+	}
+	c.runtimesCacheMu.RUnlock()
+
+	// Fetch from API
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/v2/runtimes", c.baseURL), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("piston API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Piston API returns an array of Runtime objects, not a map
+	var runtimesArray []Runtime
+	if err := json.Unmarshal(body, &runtimesArray); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Convert array to map grouped by language
+	runtimes := make(RuntimesResponse)
+	for _, rt := range runtimesArray {
+		runtimes[rt.Language] = append(runtimes[rt.Language], rt)
+	}
+
+	// Update cache
+	c.runtimesCacheMu.Lock()
+	c.runtimesCache = runtimes
+	c.runtimesCacheMu.Unlock()
+
+	return runtimes, nil
+}
+
 // Execute executes code using Piston API
 func (c *Client) Execute(ctx context.Context, req ExecuteRequest) (*ExecuteResponse, error) {
 	// Map language names to Piston API language names
-	language := c.mapLanguageToPiston(req.Language)
-	
-	// Default version: use getDefaultVersion to get a specific version
-	if req.Version == "" {
-		req.Version = c.getDefaultVersion(language)
+	language, version, err := c.mapLanguageToPiston(ctx, req.Language, req.Version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to map language: %w", err)
 	}
 	
-	// Update language to mapped name
+	// Update language and version
 	req.Language = language
+	req.Version = version
 
 	// Default timeout if not specified
 	if req.Timeout == 0 {
@@ -128,12 +196,82 @@ func (c *Client) Execute(ctx context.Context, req ExecuteRequest) (*ExecuteRespo
 	return &executeResp, nil
 }
 
-// mapLanguageToPiston maps user-friendly language names to Piston API language names
-func (c *Client) mapLanguageToPiston(language string) string {
+// mapLanguageToPiston maps user-friendly language names to Piston API language names and versions
+// Returns (pistonLanguage, version, error)
+func (c *Client) mapLanguageToPiston(ctx context.Context, language, requestedVersion string) (string, string, error) {
+	// Get available runtimes
+	runtimes, err := c.GetRuntimes(ctx)
+	if err != nil {
+		c.logger.Warn("Failed to fetch runtimes, using fallback", zap.Error(err))
+		// Fallback to hardcoded mapping if API is unavailable
+		return c.mapLanguageToPistonFallback(language), c.getDefaultVersionFallback(language, requestedVersion), nil
+	}
+
+	// Normalize language name (lowercase)
+	languageLower := language
+
+	// Try to find exact match first
+	if versions, ok := runtimes[languageLower]; ok && len(versions) > 0 {
+		version := requestedVersion
+		if version == "" {
+			// Use the first (usually latest) version
+			version = versions[0].Version
+		} else {
+			// Check if requested version exists
+			found := false
+			for _, v := range versions {
+				if v.Version == version {
+					found = true
+					break
+				}
+			}
+			if !found {
+				// Use the first available version if requested not found
+				version = versions[0].Version
+			}
+		}
+		return languageLower, version, nil
+	}
+
+	// Try to find by alias
+	for lang, versions := range runtimes {
+		for _, v := range versions {
+			for _, alias := range v.Aliases {
+				if alias == languageLower {
+					version := requestedVersion
+					if version == "" {
+						version = v.Version
+					}
+					return lang, version, nil
+				}
+			}
+		}
+	}
+
+	// Fallback to common mappings
+	mappedLang := c.mapLanguageToPistonFallback(language)
+	if versions, ok := runtimes[mappedLang]; ok && len(versions) > 0 {
+		version := requestedVersion
+		if version == "" {
+			version = versions[0].Version
+		}
+		return mappedLang, version, nil
+	}
+
+	// If still not found, return as-is and let Piston handle it
+	version := requestedVersion
+	if version == "" {
+		version = "*"
+	}
+	return languageLower, version, nil
+}
+
+// mapLanguageToPistonFallback provides fallback mapping when API is unavailable
+func (c *Client) mapLanguageToPistonFallback(language string) string {
 	languageMap := map[string]string{
-		"javascript": "node", // Piston uses "node" for JavaScript
-		"cpp":        "gcc",   // Piston uses "gcc" for C++
-		"c":          "gcc",  // Piston uses "gcc" for C
+		"javascript": "node",
+		"cpp":        "gcc",
+		"c":          "gcc",
 	}
 	
 	if mapped, ok := languageMap[language]; ok {
@@ -143,26 +281,13 @@ func (c *Client) mapLanguageToPiston(language string) string {
 	return language
 }
 
-// getDefaultVersion returns default version for a language
-// Uses versions that are available in Piston (from /api/v2/packages)
-func (c *Client) getDefaultVersion(language string) string {
-	versions := map[string]string{
-		"python":     "3.10.0", // Available: 2.7.18, 3.5.10, 3.9.1, 3.9.4, 3.10.0, 3.11.0, 3.12.0
-		"node":       "18.15.0", // Available: 15.10.0, 16.3.0, 18.15.0, 20.11.1
-		"typescript": "5.0.3",   // Available: 4.2.3, 5.0.3
-		"java":       "15.0.2",  // Available: 15.0.2
-		"gcc":        "10.2.0",  // Available: 10.2.0 (for c and cpp)
-		"go":         "1.16.2",  // Available: 1.16.2
-		"rust":       "1.68.2",  // Available: 1.50.0, 1.56.1, 1.62.0, 1.63.0, 1.65.0, 1.68.2
-		"ruby":       "3.0.1",   // Available: 2.5.1, 3.0.1
-		"php":        "8.2.3",   // Available: 8.0.2, 8.2.3
+// getDefaultVersionFallback provides fallback version when API is unavailable
+func (c *Client) getDefaultVersionFallback(language, requestedVersion string) string {
+	if requestedVersion != "" {
+		return requestedVersion
 	}
-
-	if version, ok := versions[language]; ok {
-		return version
-	}
-
-	// Default to "*" if not found - let Piston choose
+	
+	// Default to "*" to let Piston choose
 	return "*"
 }
 

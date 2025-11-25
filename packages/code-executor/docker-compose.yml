@@ -40,8 +40,35 @@ services:
     privileged: true
     user: root
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:2000/api/v2/runtimes', (r) => process.exit(r.statusCode === 200 ? 0 : 1))\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - code-executor-network
+
+  piston-install-languages:
+    image: alpine:latest
+    container_name: piston-install-languages-ainosov
+    volumes:
+      - ./install-all-languages.sh:/install-all-languages.sh:ro
+    environment:
+      - PISTON_URL=http://piston:2000
+    command:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache curl jq bash
+        /bin/bash /install-all-languages.sh
+    depends_on:
+      piston:
+        condition: service_healthy
+    networks:
+      - code-executor-network
+    restart: "no"
+    user: root
 
   code-executor:
     build:
@@ -63,7 +90,10 @@ services:
         "http://piston:2000",
       ]
     depends_on:
-      - piston
+      piston:
+        condition: service_healthy
+      piston-install-languages:
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - code-executor-network
