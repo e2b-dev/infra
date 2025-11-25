@@ -46,7 +46,8 @@ type Node struct {
 	metrics   Metrics
 	metricsMu sync.RWMutex
 
-	meta NodeMetadata
+	machineInfo MachineInfo
+	meta        NodeMetadata
 
 	buildCache *ttlcache.Cache[string, any]
 
@@ -107,6 +108,7 @@ func New(
 		},
 	}
 	n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
+	n.setMachineInfo(nodeInfo.GetMachineInfo())
 
 	return n, nil
 }
@@ -156,6 +158,7 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 	}
 
 	n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
+	n.setMachineInfo(nodeInfo.GetMachineInfo())
 
 	return n, nil
 }
