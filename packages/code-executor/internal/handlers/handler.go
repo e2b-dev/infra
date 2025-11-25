@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -191,6 +192,22 @@ func (h *Handler) executeCode(ctx context.Context, lang, code, stdin string, tim
 		return nil, err
 	}
 
+	// Check compilation stage if present
+	if resp.Compile.Code != 0 {
+		// Compilation failed
+		compileErr := resp.Compile.Stderr
+		if compileErr == "" {
+			compileErr = resp.Compile.Stdout
+		}
+		if compileErr == "" {
+			compileErr = "Compilation failed"
+		}
+		return &ExecuteResponse{
+			Stdout: "",
+			Stderr: compileErr,
+		}, nil
+	}
+
 	// Check if execution timed out
 	if resp.Run.Code != 0 && resp.Run.Signal == "SIGKILL" {
 		return &ExecuteResponse{
@@ -199,8 +216,25 @@ func (h *Handler) executeCode(ctx context.Context, lang, code, stdin string, tim
 		}, nil
 	}
 
+	// Use Run.Output if Run.Stdout is empty (some runtimes redirect output)
+	stdout := resp.Run.Stdout
+	if stdout == "" {
+		stdout = resp.Run.Output
+	}
+
+	// For compiled languages, check if stdout contains only compilation logs instead of program output
+	if resp.Compile.Code == 0 && h.isCompiledLanguage(lang) {
+		if h.isCompilationLog(stdout, lang) {
+			// Program compiled but didn't run - only compilation logs in stdout
+			return &ExecuteResponse{
+				Stdout: "",
+				Stderr: "Program compiled successfully but did not execute. Only compilation logs found in output.",
+			}, nil
+		}
+	}
+
 	return &ExecuteResponse{
-		Stdout: resp.Run.Stdout,
+		Stdout: stdout,
 		Stderr: resp.Run.Stderr,
 	}, nil
 }
@@ -258,8 +292,14 @@ func getExtensionForLanguage(lang string) string {
 		"v":          ".v",
 		"ocaml":      ".ml",
 		"fsharp":     ".fsx",
+		"fsharp.net": ".fs",
 		"csharp":     ".cs",
+		"csharp.net": ".cs",
+		"basic":      ".vb",
+		"basic.net":  ".vb",
 		"vbnet":      ".vb",
+		"husk":       ".hs",
+		"freebasic":  ".bas",
 		"bash":       ".sh",
 		"powershell": ".ps1",
 		"sql":        ".sql",
@@ -352,5 +392,140 @@ func getFileNameFallback(lang string) string {
 
 	// Ultimate fallback
 	return "main"
+}
+
+// isCompiledLanguage checks if a language requires compilation
+func (h *Handler) isCompiledLanguage(lang string) bool {
+	compiledLanguages := map[string]bool{
+		"basic":      true,
+		"basic.net":  true,
+		"csharp":     true,
+		"csharp.net": true,
+		"fsharp.net": true,
+		"pascal":     true,
+		"kotlin":     true,
+		"scala":      true,
+		"husk":       true,
+		"freebasic":  true,
+		"c":          true,
+		"cpp":        true,
+		"gcc":        true,
+		"g++":        true,
+		"clang":      true,
+		"clang++":    true,
+		"rust":       true,
+		"go":         true,
+		"java":       true,
+		"d":          true,
+		"zig":        true,
+		"nim":        true,
+		"crystal":    true,
+		"dart":       true,
+		"ocaml":      true,
+		"haskell":    true,
+		"erlang":     true,
+		"elixir":     true,
+		"fortran":    true,
+		"cobol":      true,
+		"swift":      true,
+	}
+	return compiledLanguages[lang]
+}
+
+// isCompilationLog checks if stdout contains only compilation logs instead of program output
+func (h *Handler) isCompilationLog(stdout, lang string) bool {
+	if stdout == "" {
+		return false
+	}
+
+	// Check for .NET compilation logs
+	dotnetLanguages := map[string]bool{
+		"basic":     true,
+		"basic.net": true,
+		"csharp":    true,
+		"csharp.net": true,
+		"fsharp.net": true,
+	}
+	if dotnetLanguages[lang] {
+		// Check for .NET build engine logs (case-insensitive)
+		stdoutLower := strings.ToLower(stdout)
+		if strings.Contains(stdoutLower, "microsoft (r) build engine") ||
+			strings.Contains(stdoutLower, "microsoft (r) visual c#") ||
+			strings.Contains(stdoutLower, "microsoft (r) visual basic") ||
+			strings.Contains(stdoutLower, "getting ready") ||
+			strings.Contains(stdoutLower, "the template") ||
+			strings.Contains(stdoutLower, "build succeeded") ||
+			strings.Contains(stdoutLower, "build failed") ||
+			strings.Contains(stdoutLower, "determining projects") ||
+			strings.Contains(stdoutLower, "restored") ||
+			strings.Contains(stdoutLower, "compilation successful") ||
+			(strings.Contains(stdoutLower, "assembly") && strings.Contains(stdoutLower, "saved successfully")) {
+			return true
+		}
+	}
+
+	// Check for JVM compilation logs (Kotlin, Scala)
+	if lang == "kotlin" || lang == "scala" {
+		stdoutLower := strings.ToLower(stdout)
+		if strings.Contains(stdoutLower, "compiling") ||
+			strings.Contains(stdoutLower, "compilation") ||
+			strings.Contains(stdoutLower, "building") ||
+			strings.Contains(stdoutLower, "build") ||
+			strings.Contains(stdoutLower, ".class") ||
+			strings.Contains(stdoutLower, ".jar") {
+			// But check if there's actual program output
+			if !strings.Contains(stdoutLower, "hello, world!") && !strings.Contains(stdoutLower, "hello world!") {
+				return true
+			}
+		}
+	}
+
+	// Check for Pascal compilation logs
+	if lang == "pascal" {
+		stdoutLower := strings.ToLower(stdout)
+		if strings.Contains(stdoutLower, "compiling") ||
+			strings.Contains(stdoutLower, "linking") ||
+			strings.Contains(stdoutLower, ".exe") ||
+			strings.Contains(stdoutLower, ".o") ||
+			strings.Contains(stdoutLower, ".ppu") ||
+			strings.Contains(stdoutLower, "free pascal") ||
+			strings.Contains(stdoutLower, "fpc") {
+			if !strings.Contains(stdoutLower, "hello, world!") && !strings.Contains(stdoutLower, "hello world!") {
+				return true
+			}
+		}
+	}
+
+	// Check for FreeBASIC compilation logs
+	if lang == "freebasic" {
+		stdoutLower := strings.ToLower(stdout)
+		if strings.Contains(stdoutLower, "compiling") ||
+			strings.Contains(stdoutLower, "linking") ||
+			strings.Contains(stdoutLower, ".exe") ||
+			strings.Contains(stdoutLower, ".o") ||
+			strings.Contains(stdoutLower, "freebasic") ||
+			strings.Contains(stdoutLower, "fbc") {
+			if !strings.Contains(stdoutLower, "hello, world!") && !strings.Contains(stdoutLower, "hello world!") {
+				return true
+			}
+		}
+	}
+
+	// Check for general compilation patterns
+	stdoutLower := strings.ToLower(stdout)
+	if strings.Contains(stdoutLower, "compiling") ||
+		strings.Contains(stdoutLower, "linking") ||
+		strings.Contains(stdoutLower, "building") ||
+		strings.Contains(stdoutLower, ".exe") ||
+		strings.Contains(stdoutLower, ".o") ||
+		strings.Contains(stdoutLower, ".class") ||
+		strings.Contains(stdoutLower, ".jar") {
+		// If it contains compilation patterns but no program output, it's likely a compilation log
+		if !strings.Contains(stdoutLower, "hello, world!") && !strings.Contains(stdoutLower, "hello world!") {
+			return true
+		}
+	}
+
+	return false
 }
 
