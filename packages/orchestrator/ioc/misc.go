@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"github.com/google/uuid"
 	"go.uber.org/fx"
 
@@ -15,11 +16,15 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
-func newServiceInfo(state State, config cfg.Config, version VersionInfo) *service.ServiceInfo {
+func newMachineInfo() (machineinfo.MachineInfo, error) {
+	return machineinfo.Detect()
+}
+
+func newServiceInfo(state State, config cfg.Config, machineInfo machineinfo.MachineInfo, version VersionInfo) *service.ServiceInfo {
 	nodeID := state.NodeID
 	serviceInstanceID := state.ServiceInstanceID
 
-	return service.NewInfoContainer(nodeID, version.Version, version.Commit, serviceInstanceID, config)
+	return service.NewInfoContainer(nodeID, version.Version, version.Commit, serviceInstanceID, machineInfo, config)
 }
 
 func newFeatureFlagsClient(lc fx.Lifecycle) (*featureflags.Client, error) {

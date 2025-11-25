@@ -716,10 +716,10 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create template files: %w", err)
 	}
-	defer tf.Close(s.config)
+	defer tf.Close()
 
 	// The snapfile is required only because the FC API doesn't support passing /dev/null
-	snapfile := template.NewLocalFileLink(tf.CacheSnapfilePath(s.config))
+	snapfile := template.NewLocalFileLink(tf.CacheSnapfilePath())
 	defer snapfile.Close()
 
 	// The memfile is required only because the FC API doesn't support passing /dev/null
@@ -750,14 +750,24 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	m metadata.Template,
-) (*Snapshot, error) {
+) (st *Snapshot, e error) {
 	ctx, span := tracer.Start(ctx, "sandbox-snapshot")
 	defer span.End()
+
+	cleanup := NewCleanup()
+	defer func() {
+		// Cleanup the snapshot if an error occurs
+		if e != nil {
+			err := cleanup.Run(ctx)
+			e = errors.Join(e, err)
+		}
+	}()
 
 	snapshotTemplateFiles, err := m.Template.CacheFiles(s.config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
+	cleanup.AddNoContext(ctx, snapshotTemplateFiles.Close)
 
 	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
 	if err != nil {
@@ -776,7 +786,8 @@ func (s *Sandbox) Pause(
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
-	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath(s.config))
+	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
+	cleanup.AddNoContext(ctx, snapfile.Close)
 	// Memfile is also closed on diff creation processing
 	/* The process of snapshotting memory is as follows:
 	1. Pause FC via API
@@ -829,6 +840,7 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
+	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
 		ctx,
@@ -843,8 +855,11 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
+	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
-	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath(s.config))
+	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
+	cleanup.AddNoContext(ctx, metadataFileLink.Close)
+
 	err = m.ToFile(metadataFileLink.Path())
 	if err != nil {
 		return nil, err
@@ -857,6 +872,8 @@ func (s *Sandbox) Pause(
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,
 		RootfsDiffHeader:  rootfsDiffHeader,
+
+		cleanup: cleanup,
 	}, nil
 }
 
@@ -866,7 +883,7 @@ func pauseProcessMemory(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 	cacheDir string,
-) (build.Diff, *header.Header, error) {
+) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
@@ -881,55 +898,23 @@ func pauseProcessMemory(
 
 	m, err := diffCreator.process(ctx, memfileDiffFile)
 	if err != nil {
+		err = errors.Join(err, memfileDiffFile.Close())
+
 		return nil, nil, fmt.Errorf("error creating diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "created diff")
-
-	memfileMapping, err := m.CreateMapping(ctx, buildId)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile mapping: %w", err)
-	}
-
-	memfileMappings := header.MergeMappings(
-		originalHeader.Mapping,
-		memfileMapping,
-	)
-	// TODO: We can run normalization only when empty mappings are not empty for this snapshot
-	memfileMappings = header.NormalizeMappings(memfileMappings)
-	telemetry.ReportEvent(ctx, "merged memfile mappings")
 
 	memfileDiff, err := memfileDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
 	}
-
 	telemetry.ReportEvent(ctx, "converted memfile diff file to local diff")
 
-	memfileMetadata := originalHeader.Metadata.NextGeneration(buildId)
-
-	telemetry.SetAttributes(ctx,
-		attribute.Int64("snapshot.memfile.header.mappings.length", int64(len(memfileMappings))),
-		attribute.Int64("snapshot.memfile.diff.size", int64(m.Dirty.Count()*uint(originalHeader.Metadata.BlockSize))),
-		attribute.Int64("snapshot.memfile.mapped_size", int64(memfileMetadata.Size)),
-		attribute.Int64("snapshot.memfile.block_size", int64(memfileMetadata.BlockSize)),
-		attribute.Int64("snapshot.metadata.version", int64(memfileMetadata.Version)),
-		attribute.Int64("snapshot.metadata.generation", int64(memfileMetadata.Generation)),
-		attribute.String("snapshot.metadata.build_id", memfileMetadata.BuildId.String()),
-		attribute.String("snapshot.metadata.base_build_id", memfileMetadata.BaseBuildId.String()),
-	)
-
-	memfileHeader, err := header.NewHeader(memfileMetadata, memfileMappings)
+	memfileHeader, err := m.ToDiffHeader(ctx, originalHeader, buildId)
 	if err != nil {
+		err = errors.Join(err, memfileDiff.Close())
+
 		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
-	}
-
-	err = header.ValidateMappings(memfileHeader.Mapping, memfileHeader.Metadata.Size, memfileHeader.Metadata.BlockSize)
-	if err != nil {
-		if memfileHeader.IsNormalizeFixApplied() {
-			return nil, nil, fmt.Errorf("invalid memfile header mappings: %w", err)
-		}
-
-		logger.L().Warn(ctx, "memfile header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(memfileHeader.Metadata.BuildId.String()))
 	}
 
 	return memfileDiff, memfileHeader, nil
@@ -941,7 +926,7 @@ func pauseProcessRootfs(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 	cacheDir string,
-) (build.Diff, *header.Header, error) {
+) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
 
@@ -952,22 +937,11 @@ func pauseProcessRootfs(
 
 	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile)
 	if err != nil {
+		err = errors.Join(err, rootfsDiffFile.Close())
+
 		return nil, nil, fmt.Errorf("error creating diff: %w", err)
 	}
-
 	telemetry.ReportEvent(ctx, "exported rootfs")
-	rootfsMapping, err := rootfsDiffMetadata.CreateMapping(ctx, buildId)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
-	}
-
-	rootfsMappings := header.MergeMappings(
-		originalHeader.Mapping,
-		rootfsMapping,
-	)
-	// TODO: We can run normalization only when empty mappings are not empty for this snapshot
-	rootfsMappings = header.NormalizeMappings(rootfsMappings)
-	telemetry.ReportEvent(ctx, "merged rootfs mappings")
 
 	rootfsDiff, err := rootfsDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
 	if err != nil {
@@ -975,27 +949,11 @@ func pauseProcessRootfs(
 	}
 	telemetry.ReportEvent(ctx, "converted rootfs diff file to local diff")
 
-	rootfsMetadata := originalHeader.Metadata.NextGeneration(buildId)
-
-	telemetry.SetAttributes(ctx,
-		attribute.Int64("snapshot.rootfs.header.mappings.length", int64(len(rootfsMappings))),
-		attribute.Int64("snapshot.rootfs.diff.size", int64(rootfsDiffMetadata.Dirty.Count()*uint(originalHeader.Metadata.BlockSize))),
-		attribute.Int64("snapshot.rootfs.mapped_size", int64(rootfsMetadata.Size)),
-		attribute.Int64("snapshot.rootfs.block_size", int64(rootfsMetadata.BlockSize)),
-	)
-
-	rootfsHeader, err := header.NewHeader(rootfsMetadata, rootfsMappings)
+	rootfsHeader, err := rootfsDiffMetadata.ToDiffHeader(ctx, originalHeader, buildId)
 	if err != nil {
+		err = errors.Join(err, rootfsDiff.Close())
+
 		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
-	}
-
-	err = header.ValidateMappings(rootfsHeader.Mapping, rootfsHeader.Metadata.Size, rootfsHeader.Metadata.BlockSize)
-	if err != nil {
-		if rootfsHeader.IsNormalizeFixApplied() {
-			return nil, nil, fmt.Errorf("invalid rootfs header mappings: %w", err)
-		}
-
-		logger.L().Warn(ctx, "rootfs header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(rootfsHeader.Metadata.BuildId.String()))
 	}
 
 	return rootfsDiff, rootfsHeader, nil

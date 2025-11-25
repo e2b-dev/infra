@@ -42,6 +42,7 @@ func build(config cfg.Config, vInfo VersionInfo) []fx.Option {
 			newBlockMetrics,
 			newTemplateCache,
 			withDeliveryTargets(newSandboxEventsService),
+			newMachineInfo,
 			newServiceInfo,
 		),
 		fx.Invoke(

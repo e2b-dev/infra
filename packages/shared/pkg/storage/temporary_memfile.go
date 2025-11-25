@@ -28,12 +28,9 @@ func AcquireTmpMemfile(
 	config BuilderConfig,
 	buildID string,
 ) (*TemporaryMemfile, error) {
-	randomID, err := uuid.NewRandom()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate identifier: %w", err)
-	}
+	randomID := uuid.NewString()
 
-	err = snapshotCacheQueue.Acquire(ctx, 1)
+	err := snapshotCacheQueue.Acquire(ctx, 1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire cache: %w", err)
 	}
@@ -42,7 +39,7 @@ func AcquireTmpMemfile(
 	})
 
 	return &TemporaryMemfile{
-		path:    cacheMemfileFullSnapshotPath(config, buildID, randomID.String()),
+		path:    cacheMemfileFullSnapshotPath(config, buildID, randomID),
 		closeFn: releaseOnce,
 	}, nil
 }
@@ -54,7 +51,7 @@ func (f *TemporaryMemfile) Path() string {
 func (f *TemporaryMemfile) Close() error {
 	defer f.closeFn()
 
-	return os.RemoveAll(f.path)
+	return os.Remove(f.path)
 }
 
 func cacheMemfileFullSnapshotPath(config BuilderConfig, buildID string, randomID string) string {
