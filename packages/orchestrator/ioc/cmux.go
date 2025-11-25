@@ -2,6 +2,7 @@ package ioc
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -43,50 +44,33 @@ func withCMUXWaitBeforeShutdown(f any) any {
 func newCMUXModule() fx.Option {
 	return fx.Module(
 		"cmux",
-		fx.Provide(
-			newCMUXServer,
-		),
 		fx.Invoke(
 			withCMUXWaitBeforeShutdown(startCMUXServer),
 		),
 	)
 }
 
-type CMUXOut struct {
-	CMUX         cmux.CMux
-	GRPCListener net.Listener
-	HTTPListener net.Listener
-}
-
-func newCMUXServer(config cfg.Config) (CMUXOut, error) {
+func startCMUXServer(
+	waitBeforeShutdown []CMUXWaitBeforeShutdown,
+	config cfg.Config,
+	logger logger.Logger,
+	s fx.Shutdowner,
+	grpcServer *grpc.Server,
+	httpServer HealthHTTPServer,
+	lc fx.Lifecycle,
+	serviceInfo *service.ServiceInfo,
+) error {
 	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
 	cmuxServer, err := factories.NewCMUXServer(context.Background(), config.GRPCPort)
 	if err != nil {
-		return CMUXOut{}, err
+		return fmt.Errorf("failed to create cmux server: %w", err)
 	}
 
 	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
 	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
 
-	return CMUXOut{
-		CMUX:         cmuxServer,
-		GRPCListener: grpcListener,
-		HTTPListener: httpListener,
-	}, nil
-}
-
-func startCMUXServer(
-	waitBeforeShutdown []CMUXWaitBeforeShutdown,
-	logger logger.Logger,
-	s fx.Shutdowner,
-	input CMUXOut,
-	grpcServer *grpc.Server,
-	httpServer HealthHTTPServer,
-	lc fx.Lifecycle,
-	serviceInfo *service.ServiceInfo,
-) {
 	invokeAsync(s, func() error {
-		if err := input.CMUX.Serve(); ignoreUseOfClosed(err) != nil {
+		if err := cmuxServer.Serve(); ignoreUseOfClosed(err) != nil {
 			return err
 		}
 
@@ -94,7 +78,7 @@ func startCMUXServer(
 	})
 
 	invokeAsync(s, func() error {
-		if err := httpServer.Serve(input.HTTPListener); ignoreUseOfClosed(err) != nil {
+		if err := httpServer.Serve(httpListener); ignoreUseOfClosed(err) != nil {
 			return err
 		}
 
@@ -102,7 +86,7 @@ func startCMUXServer(
 	})
 
 	invokeAsync(s, func() error {
-		if err := grpcServer.Serve(input.GRPCListener); ignoreUseOfClosed(err) != nil {
+		if err := grpcServer.Serve(grpcListener); ignoreUseOfClosed(err) != nil {
 			return err
 		}
 
@@ -111,11 +95,19 @@ func startCMUXServer(
 
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
-			stopCMUXServerMockable(ctx, logger, input, grpcServer, httpServer, serviceInfo, waitBeforeShutdown)
+			stopCMUXServerMockable(
+				ctx, logger,
+				grpcListener, grpcServer,
+				httpListener, httpServer,
+				cmuxServer, serviceInfo,
+				waitBeforeShutdown,
+			)
 
 			return nil
 		},
 	})
+
+	return nil
 }
 
 func ignoreUseOfClosed(err error) error {
@@ -139,9 +131,11 @@ const (
 func stopCMUXServerMockable(
 	ctx context.Context,
 	logger logger.Logger,
-	input CMUXOut,
+	grpcListener net.Listener,
 	grpcServer *grpc.Server,
+	httpListener net.Listener,
 	httpServer HealthHTTPServer,
+	cmuxServer cmux.CMux,
 	serviceInfo *service.ServiceInfo,
 	preCMUXShutdowns []CMUXWaitBeforeShutdown,
 ) {
@@ -164,7 +158,7 @@ func stopCMUXServerMockable(
 	grpcServer.GracefulStop()
 
 	logger.Info(ctx, "closing grpc listener")
-	if err := input.GRPCListener.Close(); ignoreUseOfClosed(err) != nil {
+	if err := grpcListener.Close(); ignoreUseOfClosed(err) != nil {
 		logger.Error(ctx, "failed to close grpc listener", zap.Error(err))
 	}
 
@@ -177,10 +171,10 @@ func stopCMUXServerMockable(
 	}
 
 	logger.Info(ctx, "closing http listener")
-	if err := input.HTTPListener.Close(); ignoreUseOfClosed(err) != nil {
+	if err := httpListener.Close(); ignoreUseOfClosed(err) != nil {
 		logger.Error(ctx, "failed to close http listener", zap.Error(err))
 	}
 
 	logger.Info(ctx, "closing the cmux server")
-	input.CMUX.Close()
+	cmuxServer.Close()
 }
