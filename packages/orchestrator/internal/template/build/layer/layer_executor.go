@@ -159,7 +159,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx, childSpan := tracer.Start(ctx, "update-envd")
 	defer childSpan.End()
 
-	envdVersion, err := envd.GetEnvdVersion(ctx)
+	envdVersion, err := envd.GetEnvdVersion(ctx, lb.BuilderConfig.HostEnvdPath)
 	if err != nil {
 		return fmt.Errorf("error getting envd version: %w", err)
 	}
@@ -172,7 +172,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"root",
-		storage.HostEnvdPath(),
+		lb.BuilderConfig.HostEnvdPath,
 		tmpEnvdPath,
 	)
 	if err != nil {
