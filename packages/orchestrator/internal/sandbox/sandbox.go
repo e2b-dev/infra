@@ -211,12 +211,14 @@ func (f *Factory) CreateSandbox(
 	var rootfsProvider rootfs.Provider
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
+			f.config,
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(f.config),
 			f.devicePool,
 		)
 	} else {
 		rootfsProvider, err = rootfs.NewDirectProvider(
+			f.config,
 			rootFS,
 			// Populate direct cache directly from the source file
 			// This is needed for marking all blocks as dirty and being able to read them directly
@@ -233,6 +235,11 @@ func (f *Factory) CreateSandbox(
 			logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
 		}
 	}()
+
+	err = rootfsProvider.Verify(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify rootfs checksum: %w", err)
+	}
 
 	memfile, err := template.Memfile(ctx)
 	if err != nil {
@@ -253,6 +260,7 @@ func (f *Factory) CreateSandbox(
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
 	}
+
 	fcHandle, err := fc.NewProcess(
 		ctx,
 		execCtx,
@@ -398,6 +406,7 @@ func (f *Factory) ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got template rootfs")
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
+		f.config,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(f.config),
 		f.devicePool,
@@ -416,6 +425,11 @@ func (f *Factory) ResumeSandbox(
 			logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
 		}
 	}()
+
+	err = rootfsOverlay.Verify(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify rootfs checksum: %w", err)
+	}
 
 	memfile, err := t.Memfile(ctx)
 	if err != nil {

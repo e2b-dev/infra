@@ -56,6 +56,8 @@ type Template struct {
 	Start        *Start                `json:"start,omitempty"`
 	FromImage    *string               `json:"from_image,omitempty"`
 	FromTemplate *FromTemplate         `json:"from_template,omitempty"`
+
+	Checksum string `json:"checksum"`
 }
 
 func V1TemplateVersion() Template {

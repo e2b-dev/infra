@@ -59,6 +59,7 @@ func layerInfo(
 
 func Run(
 	ctx context.Context,
+	logger logger.Logger,
 	userLogger logger.Logger,
 	bc buildcontext.BuildContext,
 	metrics *metrics.BuildMetrics,
@@ -76,12 +77,15 @@ func Run(
 	for _, builder := range builders {
 		meta := builder.Metadata()
 
-		stepUserLogger := userLogger.With(
+		loggerFields := []zap.Field{
 			zap.String("phase", string(meta.Phase)),
 			zap.String("step_type", meta.StepType),
 			zap.Intp("step_number", meta.StepNumber),
 			zap.String("step", phaseToStepString(builder)),
-		)
+		}
+
+		logger.Debug(ctx, "running builder phase", loggerFields...)
+		stepUserLogger := userLogger.With(loggerFields...)
 
 		phaseStartTime := time.Now()
 		hash, err := builder.Hash(ctx, sourceLayer)
