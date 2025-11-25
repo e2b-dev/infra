@@ -71,6 +71,14 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		// We will use this to handle base builds that are already diffs.
 		// The passed slice p must start as empty, otherwise we would need to copy the empty values there.
 		if *buildID == uuid.Nil {
+			isEmpty, err := header.IsEmptyBlock(p[n:int64(n)+readLength], int64(b.header.Metadata.BlockSize))
+			if err != nil {
+				return 0, fmt.Errorf("failed to check if block is empty: %w", err)
+			}
+			if !isEmpty {
+				return 0, fmt.Errorf("block is not empty")
+			}
+
 			n += int(readLength)
 
 			continue

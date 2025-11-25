@@ -2,6 +2,7 @@ package header
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 
 	"github.com/bits-and-blooms/bitset"
@@ -13,12 +14,19 @@ import (
 
 const NormalizeFixVersion = 3
 
+type Checksums struct {
+	Checksum       [sha256.Size]byte
+	BlockChecksums [][sha256.Size]byte
+}
+
 type Header struct {
 	Metadata    *Metadata
 	blockStarts *bitset.BitSet
 	startMap    map[int64]*BuildMap
 
 	Mapping []*BuildMap
+
+	Checksums *Checksums
 }
 
 func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
