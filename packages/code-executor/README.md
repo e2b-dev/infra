@@ -188,10 +188,24 @@ volumes:
 
 ## Примеры использования
 
+**Примечание:** При запуске через `docker compose` сервис доступен на порту `8081`. При локальной разработке (`make run`) — на порту `8080`.
+
+### Health check
+
+```bash
+# Проверка доступности сервиса
+curl http://localhost:8081/health
+```
+
+Ответ:
+```json
+{"status":"ok"}
+```
+
 ### Выполнение Python кода
 
 ```bash
-curl -X POST http://localhost:8080/execute \
+curl -X POST http://localhost:8081/execute \
   -H "Content-Type: application/json" \
   -d '{
     "lang": "python",
@@ -200,10 +214,18 @@ curl -X POST http://localhost:8080/execute \
   }'
 ```
 
+Ответ:
+```json
+{
+  "stdout": "4\n",
+  "stderr": ""
+}
+```
+
 ### Выполнение тестов
 
 ```bash
-curl -X POST http://localhost:8080/tests \
+curl -X POST http://localhost:8081/tests \
   -H "Content-Type: application/json" \
   -d '{
     "lang": "python",
@@ -213,6 +235,60 @@ curl -X POST http://localhost:8080/tests \
       {"id": 0, "input": "5"},
       {"id": 1, "input": "10"}
     ]
+  }'
+```
+
+Ответ:
+```json
+[
+  {
+    "id": 0,
+    "stdout": "10\n",
+    "stderr": ""
+  },
+  {
+    "id": 1,
+    "stdout": "20\n",
+    "stderr": ""
+  }
+]
+```
+
+### Дополнительные примеры
+
+#### JavaScript/Node.js
+
+```bash
+curl -X POST http://localhost:8081/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "lang": "node",
+    "code": "console.log(\"Hello from Node.js!\");",
+    "timeout": 5
+  }'
+```
+
+#### Go
+
+```bash
+curl -X POST http://localhost:8081/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "lang": "go",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, Go!\")\n}",
+    "timeout": 5
+  }'
+```
+
+#### Java
+
+```bash
+curl -X POST http://localhost:8081/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "lang": "java",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Hello, Java!\");\n    }\n}",
+    "timeout": 5
   }'
 ```
 
