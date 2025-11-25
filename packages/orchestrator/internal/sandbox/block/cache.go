@@ -86,6 +86,22 @@ func (m *Cache) isClosed() bool {
 	return m.closed.Load()
 }
 
+func (m *Cache) Sync() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.isClosed() {
+		return NewErrCacheClosed(m.filePath)
+	}
+
+	err := m.mmap.Flush()
+	if err != nil {
+		return fmt.Errorf("error syncing cache: %w", err)
+	}
+
+	return nil
+}
+
 func (m *Cache) ExportToDiff(ctx context.Context, out io.Writer) (*header.DiffMetadata, error) {
 	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()

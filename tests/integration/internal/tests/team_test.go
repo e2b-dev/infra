@@ -40,7 +40,7 @@ UPDATE teams SET is_banned = $1 WHERE id = $2
 
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode())
 	assert.Equal(t, http.StatusForbidden, errResp.Code)
-	assert.Equal(t, "forbidden: error while getting the team: team is banned", errResp.Message)
+	assert.Equal(t, "forbidden: team is banned", errResp.Message)
 }
 
 func TestBlockedTeam(t *testing.T) {
@@ -68,5 +68,5 @@ UPDATE teams SET is_blocked = $1, blocked_reason = $2 WHERE id = $3
 
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode())
 	assert.Equal(t, http.StatusForbidden, errResp.Code)
-	assert.Equal(t, "blocked: error while getting the team: team is blocked", errResp.Message)
+	assert.Equal(t, "blocked: team is blocked", errResp.Message)
 }

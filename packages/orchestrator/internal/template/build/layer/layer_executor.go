@@ -2,6 +2,7 @@ package layer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel"
@@ -158,7 +159,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx, childSpan := tracer.Start(ctx, "update-envd")
 	defer childSpan.End()
 
-	envdVersion, err := envd.GetEnvdVersion(ctx)
+	envdVersion, err := envd.GetEnvdVersion(ctx, lb.BuilderConfig.HostEnvdPath)
 	if err != nil {
 		return fmt.Errorf("error getting envd version: %w", err)
 	}
@@ -171,7 +172,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"root",
-		storage.HostEnvdPath(),
+		lb.BuilderConfig.HostEnvdPath,
 		tmpEnvdPath,
 	)
 	if err != nil {
@@ -241,11 +242,11 @@ func (lb *LayerExecutor) PauseAndUpload(
 	sbx *sandbox.Sandbox,
 	hash string,
 	meta metadata.Template,
-) error {
+) (e error) {
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	userLogger.Debug(ctx, fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
+	userLogger.Debug(ctx, fmt.Sprintf("Processing layer: %s", meta.Template.BuildID))
 
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
@@ -258,7 +259,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Add snapshot to template cache so it can be used immediately
 	err = lb.templateCache.AddSnapshot(
-		ctx,
+		context.WithoutCancel(ctx),
 		meta.Template.BuildID,
 		meta.Template.KernelVersion,
 		meta.Template.FirecrackerVersion,
@@ -270,11 +271,18 @@ func (lb *LayerExecutor) PauseAndUpload(
 		snapshot.RootfsDiff,
 	)
 	if err != nil {
+		err = errors.Join(err, snapshot.Close(context.WithoutCancel(ctx)))
+
 		return fmt.Errorf("error adding snapshot to template cache: %w", err)
 	}
 
 	// Upload snapshot async, it's added to the template cache immediately
+	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 	lb.UploadErrGroup.Go(func() error {
+		ctx := context.WithoutCancel(ctx)
+		ctx, span := tracer.Start(ctx, "upload snapshot")
+		defer span.End()
+
 		err := snapshot.Upload(
 			ctx,
 			lb.templateStorage,

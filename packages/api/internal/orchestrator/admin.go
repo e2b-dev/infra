@@ -24,11 +24,18 @@ func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
 
 		meta := n.Metadata()
 		metrics := n.GetAPIMetric()
+		machineInfo := n.MachineInfo()
 		apiNodes[n.ID] = &api.Node{
-			NodeID:               n.NomadNodeShortID,
-			Id:                   n.ID,
-			ServiceInstanceID:    meta.ServiceInstanceID,
-			ClusterID:            n.ClusterID.String(),
+			NodeID:            n.NomadNodeShortID,
+			Id:                n.ID,
+			ServiceInstanceID: meta.ServiceInstanceID,
+			ClusterID:         n.ClusterID.String(),
+			MachineInfo: api.MachineInfo{
+				CpuArchitecture: machineInfo.CPUArchitecture,
+				CpuFamily:       machineInfo.CPUFamily,
+				CpuModel:        machineInfo.CPUModel,
+				CpuModelName:    machineInfo.CPUModelName,
+			},
 			Status:               n.Status(),
 			CreateSuccesses:      n.PlacementMetrics.SuccessCount(),
 			CreateFails:          n.PlacementMetrics.FailsCount(),
@@ -70,13 +77,19 @@ func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeSho
 
 	meta := n.Metadata()
 	metrics := n.GetAPIMetric()
+	machineInfo := n.MachineInfo()
 
 	node := &api.NodeDetail{
 		Id:                n.ID,
 		NodeID:            n.NomadNodeShortID,
 		ClusterID:         n.ClusterID.String(),
 		ServiceInstanceID: meta.ServiceInstanceID,
-
+		MachineInfo: api.MachineInfo{
+			CpuArchitecture: machineInfo.CPUArchitecture,
+			CpuFamily:       machineInfo.CPUFamily,
+			CpuModel:        machineInfo.CPUModel,
+			CpuModelName:    machineInfo.CPUModelName,
+		},
 		Status:          n.Status(),
 		CreateSuccesses: n.PlacementMetrics.SuccessCount(),
 		CreateFails:     n.PlacementMetrics.FailsCount(),

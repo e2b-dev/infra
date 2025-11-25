@@ -37,6 +37,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -148,7 +149,16 @@ func run(config cfg.Config) (success bool) {
 	nodeID := env.GetNodeID()
 	serviceName := cfg.GetServiceName(services)
 	serviceInstanceID := uuid.NewString()
-	serviceInfo := service.NewInfoContainer(ctx, nodeID, version, commitSHA, serviceInstanceID, config)
+
+	// Detect CPU platform for orchestrator pool matching
+	machineInfo, err := machineinfo.Detect()
+	if err != nil {
+		log.Printf("failed to detect machine info: %v", err)
+
+		return false
+	}
+
+	serviceInfo := service.NewInfoContainer(ctx, nodeID, version, commitSHA, serviceInstanceID, machineInfo, config)
 
 	serviceError := make(chan error)
 	defer close(serviceError)
