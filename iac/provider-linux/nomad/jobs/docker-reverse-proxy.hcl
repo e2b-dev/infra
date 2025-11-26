@@ -22,6 +22,14 @@ job "docker-reverse-proxy" {
       name = "docker-reverse-proxy"
       port = "${port_name}"
 
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.docker.rule=Host(`docker.${domain_name}`)",
+        "traefik.http.routers.docker.entrypoints=web",
+        "traefik.http.routers.docker.service=docker-reverse-proxy",
+        "traefik.http.services.docker-reverse-proxy.loadbalancer.server.port=${port_number}"
+      ]
+
       check {
         type     = "http"
         name     = "health"

@@ -32,6 +32,14 @@ job "api" {
       name = "api"
       port = "${port_number}"
       task = "start"
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.api.rule=Host(`api.${domain_name}`)",
+        "traefik.http.routers.api.entrypoints=websecure",
+        "traefik.http.routers.api.tls=true",
+        "traefik.http.routers.api.service=api",
+        "traefik.http.services.api.loadbalancer.server.port=${port_number}"
+      ]
 
       check {
         type     = "http"
@@ -83,6 +91,7 @@ job "api" {
         REDIS_URL                      = "${redis_url}"
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         DNS_PORT                       = "${dns_port_number}"
+        SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
         
         LOCAL_CLUSTER_ENDPOINT = "${local_cluster_endpoint}"
         LOCAL_CLUSTER_TOKEN    = "${local_cluster_token}"

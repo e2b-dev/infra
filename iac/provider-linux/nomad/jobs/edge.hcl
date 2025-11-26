@@ -54,6 +54,15 @@ job "client-proxy" {
       name = "edge-api"
       port = "${api_port}"
 
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.edge.rule=Host(`edge.${domain_name}`)",
+        "traefik.http.routers.edge.entrypoints=websecure",
+        "traefik.http.routers.edge.tls=true",
+        "traefik.http.routers.edge.service=edge-api",
+        "traefik.http.services.edge-api.loadbalancer.server.port=${api_port}"
+      ]
+
       check {
         type     = "http"
         name     = "health"
