@@ -138,6 +138,7 @@ plan-only-jobs/%:
 plan-without-jobs:
 	@ printf "Planning Terraform (without jobs) for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
+	$(eval TARGET := $(TARGET) -target=null_resource.artifact_scp_server)
 	$(tf_vars) \
 	$(TF) plan \
 	-out=.tfplan.$(ENV) \
