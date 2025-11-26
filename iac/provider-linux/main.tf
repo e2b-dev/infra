@@ -138,9 +138,9 @@ resource "null_resource" "artifact_scp_server" {
       "sudo mkdir -p ${var.artifact_scp_dir}",
       "sudo chown -R www-data:www-data ${var.artifact_scp_dir}",
       "URL=\"${var.orchestrator_artifact_url}\"",
-      "PORT=$(echo \"$URL\" | sed -E 's|.*://[^:/]+:([0-9]+).*|\\1|')",
+      "PORT=$(echo \"$URL\" | sed -E 's|^https?://[^:/]+:([0-9]+).*|\\1|')",
       "[ -z \"$PORT\" ] && PORT=80",
-      "printf 'server {\\n    listen %s;\\n    server_name _;\\n    location / {\\n        autoindex on;\\n        root %s;\\n    }\\n}\\n' \"$PORT\" \"${var.artifact_scp_dir}\" | sudo tee /etc/nginx/sites-available/artifacts >/dev/null",
+      "printf 'server {\\n    listen %s;\\n    server_name _;\\n    root %s;\\n    location / {\\n        autoindex on;\\n    }\\n}\\n' \"$PORT\" \"${var.artifact_scp_dir}\" | sudo tee /etc/nginx/sites-available/artifacts >/dev/null",
       "sudo ln -sf /etc/nginx/sites-available/artifacts /etc/nginx/sites-enabled/artifacts",
       "sudo rm -f /etc/nginx/sites-enabled/default || true",
       "sudo systemctl restart nginx"
