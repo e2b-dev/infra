@@ -315,13 +315,16 @@ func (w whitespaceStripper) With(fields []zapcore.Field) zapcore.Core {
 	return w.wrapped.With(fields)
 }
 
-func (w whitespaceStripper) Check(entry zapcore.Entry, entry2 *zapcore.CheckedEntry) *zapcore.CheckedEntry {
-	return w.wrapped.Check(entry, entry2)
+func (w whitespaceStripper) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	ce = w.wrapped.Check(ent, ce)
+	if ce != nil {
+		ce.Message = strings.TrimSpace(ce.Message)
+	}
+
+	return ce
 }
 
 func (w whitespaceStripper) Write(entry zapcore.Entry, fields []zapcore.Field) error {
-	entry.Message = strings.TrimSpace(entry.Message)
-
 	return w.wrapped.Write(entry, fields)
 }
 
