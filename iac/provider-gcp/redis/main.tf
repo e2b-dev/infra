@@ -153,6 +153,10 @@ resource "google_redis_cluster" "redis_cluster_api" {
     }
   }
 
+  redis_configs = {
+    "notify-keyspace-events" = "KEA"
+  }
+
   depends_on = [
     google_network_connectivity_service_connection_policy.default,
     google_service_networking_connection.private_service_connection,
