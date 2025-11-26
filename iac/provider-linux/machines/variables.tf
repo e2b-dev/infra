@@ -46,3 +46,13 @@ variable "docker_no_proxy" {
   type    = string
   default = ""
 }
+
+variable "builder_node_pool" {
+  type    = string
+  default = ""
+}
+
+variable "orchestrator_node_pool" {
+  type    = string
+  default = ""
+}

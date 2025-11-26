@@ -26,6 +26,7 @@ endef
 
 tf_vars := \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
+	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, DATACENTER) \
 	$(call tfvar, NOMAD_ADDRESS) \
 	$(call tfvar, NOMAD_ACL_TOKEN) \
@@ -83,7 +84,9 @@ tf_vars := \
 	$(call tfvar, CLICKHOUSE_SERVER_PORT) \
 	$(call tfvar, CLICKHOUSE_RESOURCES_MEMORY_MB) \
 	$(call tfvar, CLICKHOUSE_RESOURCES_CPU_COUNT) \
-	$(call tfvar, CLICKHOUSE_METRICS_PORT)
+	$(call tfvar, CLICKHOUSE_METRICS_PORT) \
+	$(call tfvar, SANDBOX_ACCESS_TOKEN_HASH_SEED) \
+	$(call tfvar, SANDBOX_HYPERLOOP_PROXY_PORT)
 
 # Pass-through for Docker image prefix and artifact HTTP server
 tf_vars += \

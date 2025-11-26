@@ -4,6 +4,7 @@ terraform {
 
 variable "environment" { type = string }
 variable "datacenter" { type = string }
+variable "domain_name" { type = string }
 
 variable "servers_json" { type = string }
 variable "clients_json" { type = string }
@@ -24,16 +25,18 @@ locals {
 }
 
 module "machines" {
-  source              = "./machines"
-  datacenter          = var.datacenter
-  servers             = local.servers
-  clients             = local.clients
-  consul_acl_token    = var.consul_acl_token
-  docker_image_prefix = var.docker_image_prefix
-  nomad_acl_token     = var.nomad_acl_token
-  docker_http_proxy   = var.docker_http_proxy
-  docker_https_proxy  = var.docker_https_proxy
-  docker_no_proxy     = var.docker_no_proxy
+  source                 = "./machines"
+  datacenter             = var.datacenter
+  servers                = local.servers
+  clients                = local.clients
+  consul_acl_token       = var.consul_acl_token
+  docker_image_prefix    = var.docker_image_prefix
+  nomad_acl_token        = var.nomad_acl_token
+  docker_http_proxy      = var.docker_http_proxy
+  docker_https_proxy     = var.docker_https_proxy
+  docker_no_proxy        = var.docker_no_proxy
+  builder_node_pool      = var.builder_node_pool
+  orchestrator_node_pool = var.orchestrator_node_pool
 }
 
 module "nomad" {
@@ -42,6 +45,8 @@ module "nomad" {
   nomad_address    = var.nomad_address
   nomad_acl_token  = var.nomad_acl_token
   consul_acl_token = var.consul_acl_token
+  consul_address   = replace(var.nomad_address, ":4646", ":8500")
+  ingress_node_ip  = replace(replace(var.nomad_address, "http://", ""), ":4646", "")
 
   api_node_pool           = var.api_node_pool
   ingress_count           = var.ingress_count
@@ -106,10 +111,17 @@ module "nomad" {
   allow_sandbox_internet             = var.allow_sandbox_internet
   builder_node_pool                  = var.builder_node_pool
   envd_timeout                       = var.envd_timeout
+  domain_name                        = var.domain_name
 }
 
 resource "null_resource" "artifact_scp_server" {
   count = var.artifact_scp_host != "" ? 1 : 0
+
+  triggers = {
+    url1 = var.orchestrator_artifact_url
+    url2 = var.template_manager_artifact_url
+    dir  = var.artifact_scp_dir
+  }
 
   connection {
     type        = "ssh"

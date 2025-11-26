@@ -25,11 +25,13 @@ resource "nomad_job" "ingress" {
       ingress_port = var.ingress_port.port
       control_port = 8900
 
-      nomad_endpoint = "http://localhost:4646"
+      nomad_endpoint = var.nomad_address
       nomad_token    = var.nomad_acl_token
 
-      consul_token    = var.consul_acl_token
-      consul_endpoint = "http://localhost:8500"
+      consul_token         = var.consul_acl_token
+      consul_endpoint      = var.consul_address
+      consul_endpoint_host = replace(var.consul_address, "http://", "")
+      ingress_node_ip      = var.ingress_node_ip
   })
 }
 
@@ -69,6 +71,7 @@ resource "nomad_job" "api" {
 
     local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
     local_cluster_token    = var.edge_api_secret
+    domain_name            = var.domain_name
   })
 }
 
@@ -97,6 +100,7 @@ resource "nomad_job" "client_proxy" {
       api_port          = var.edge_api_port.port
       api_secret        = var.edge_api_secret
       orchestrator_port = var.orchestrator_port
+      domain_name       = var.domain_name
 
       image_name = var.client_proxy_image
 
@@ -131,7 +135,7 @@ resource "nomad_job" "docker_reverse_proxy" {
       port_number                   = 30007
       port_name                     = "docker-reverse-proxy"
       health_check_path             = "/health"
-      domain_name                   = ""
+      domain_name                   = var.domain_name
       gcp_project_id                = ""
       gcp_region                    = ""
       docker_registry               = ""
@@ -194,6 +198,7 @@ resource "nomad_job" "template_manager" {
     dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
     launch_darkly_api_key           = trimspace(var.launch_darkly_api_key)
     shared_chunk_cache_path         = var.shared_chunk_cache_path
+    sandbox_hyperloop_proxy_port    = var.sandbox_hyperloop_proxy_port
   })
 }
 

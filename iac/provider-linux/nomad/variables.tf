@@ -1,5 +1,7 @@
 variable "datacenter" { type = string }
 variable "nomad_address" { type = string }
+variable "consul_address" { type = string }
+variable "ingress_node_ip" { type = string }
 variable "nomad_acl_token" {
   type    = string
   default = ""
@@ -22,6 +24,8 @@ variable "edge_proxy_port" { type = object({ name = string, port = number }) }
 variable "logs_proxy_port" { type = object({ name = string, port = number }) }
 variable "loki_service_port" { type = object({ name = string, port = number }) }
 
+variable "domain_name" { type = string }
+
 variable "api_admin_token" { type = string }
 variable "environment" { type = string }
 variable "edge_api_secret" { type = string }
@@ -40,6 +44,10 @@ variable "launch_darkly_api_key" {
 variable "orchestrator_port" { type = number }
 variable "orchestrator_proxy_port" { type = number }
 variable "template_manager_port" { type = number }
+variable "sandbox_hyperloop_proxy_port" {
+  type    = number
+  default = 5011
+}
 variable "otel_collector_grpc_port" {
   type    = number
   default = 4317

@@ -8,10 +8,13 @@ resource "null_resource" "servers" {
   for_each = { for s in var.servers : s.host => s }
 
   triggers = {
-    docker_http_proxy  = var.docker_http_proxy
-    docker_https_proxy = var.docker_https_proxy
-    docker_no_proxy    = var.docker_no_proxy
-    docker_image_prefix = var.docker_image_prefix
+    docker_http_proxy      = var.docker_http_proxy
+    docker_https_proxy     = var.docker_https_proxy
+    docker_no_proxy        = var.docker_no_proxy
+    docker_image_prefix    = var.docker_image_prefix
+    driver_raw_exec_enable = "1"
+    nbd_config_version     = "v2"
+    server_config_version  = "v2"
   }
 
   connection {
