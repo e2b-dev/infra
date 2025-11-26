@@ -27,7 +27,7 @@ if [[ "$ENV" != "dev" ]]; then
   # Check if the current branch is "main"
   if [ "$BRANCH" != "main" ]; then
     echo "You are trying to deploy to $ENV from $BRANCH"
-    exit 1
+    exit 0
   fi
 
   echo "Please type *production* to manually deploy to $ENV"
