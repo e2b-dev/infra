@@ -6,12 +6,12 @@ import (
 	"log"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"github.com/google/uuid"
 	"go.uber.org/fx"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )

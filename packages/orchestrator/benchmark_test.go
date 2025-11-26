@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -120,11 +123,14 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		require.NoError(b, err)
 	}
 
-	l, err := logger.NewDevelopmentLogger()
+	zc := zap.NewDevelopmentConfig()
+	zc.EncoderConfig.LineEnding = "\r\n"
+	zl, err := zc.Build(zap.WrapCore(stripWhitespace))
 	require.NoError(b, err)
+	l := logger.NewTracedLogger(zl)
 
 	sbxlogger.SetSandboxLoggerInternal(l)
-	// sbxlogger.SetSandboxLoggerExternal(logger)
+	sbxlogger.SetSandboxLoggerExternal(l)
 
 	slotStorage, err := network.NewStorageLocal(config.NetworkConfig)
 	require.NoError(b, err)
@@ -295,6 +301,36 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	for b.Loop() {
 		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
 	}
+}
+
+type whitespaceStripper struct {
+	wrapped zapcore.Core
+}
+
+func (w whitespaceStripper) Enabled(level zapcore.Level) bool {
+	return w.wrapped.Enabled(level)
+}
+
+func (w whitespaceStripper) With(fields []zapcore.Field) zapcore.Core {
+	return w.wrapped.With(fields)
+}
+
+func (w whitespaceStripper) Check(entry zapcore.Entry, entry2 *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	return w.wrapped.Check(entry, entry2)
+}
+
+func (w whitespaceStripper) Write(entry zapcore.Entry, fields []zapcore.Field) error {
+	entry.Message = strings.TrimSpace(entry.Message)
+
+	return w.wrapped.Write(entry, fields)
+}
+
+func (w whitespaceStripper) Sync() error {
+	return w.wrapped.Sync()
+}
+
+func stripWhitespace(core zapcore.Core) zapcore.Core {
+	return &whitespaceStripper{wrapped: core}
 }
 
 type testCycle string
