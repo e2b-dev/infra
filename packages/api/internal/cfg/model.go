@@ -3,7 +3,7 @@ package cfg
 import "github.com/caarlos0/env/v11"
 
 const (
-	DefaultKernelVersion = "vmlinux-6.1.102"
+	DefaultKernelVersion = "vmlinux-6.1.158"
 	// The Firecracker version the last tag + the short SHA (so we can build our dev previews)
 	// TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
 	DefaultFirecrackerVersion = "v1.12.1_d990331"

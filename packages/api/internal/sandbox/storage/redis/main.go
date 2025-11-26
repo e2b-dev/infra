@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	sandboxKeyPrefix = "sandbox:"
+	sandboxKeyPrefix = "sandbox:storage:"
 	lockTimeout      = time.Minute
 )
 
