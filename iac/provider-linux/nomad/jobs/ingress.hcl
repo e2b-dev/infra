@@ -60,15 +60,15 @@ job "ingress" {
         image        = "traefik:v3.5"
         ports        = ["control", "ingress"]
         args = [
-          "--entrypoints.web.address=:${ingress_port}",
+          "--entrypoints.websecure.address=:${ingress_port}",
           "--entrypoints.traefik.address=:${control_port}",
 
           "--api.dashboard=true",
-          "--api.insecure=false",
+          "--api.insecure=true",
 
           "--accesslog=true",
           "--ping=true",
-          "--ping.entryPoint=web",
+          "--ping.entryPoint=websecure",
           "--metrics=true",
           "--metrics.prometheus=true",
           "--metrics.prometheus.entryPoint=traefik",
@@ -76,10 +76,12 @@ job "ingress" {
           "--providers.nomad=true",
           "--providers.nomad.endpoint.address=${nomad_endpoint}",
           "--providers.nomad.endpoint.token=${nomad_token}",
+          "--providers.nomad.exposedByDefault=false",
 
           "--providers.consulcatalog=true",
-          "--providers.consulcatalog.exposedByDefault=false",
-          "--providers.consulcatalog.endpoint.address=${consul_endpoint}",
+          "--providers.consulcatalog.exposedbydefault=false",
+          "--providers.consulcatalog.endpoint.address=${consul_endpoint_host}",
+          "--providers.consulcatalog.endpoint.scheme=http",
           "--providers.consulcatalog.endpoint.token=${consul_token}",
         ]
       }
