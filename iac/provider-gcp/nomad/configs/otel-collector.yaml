@@ -24,53 +24,40 @@ receivers:
     scrapers:
       cpu:
         metrics:
-          system.cpu.time:
-            enabled: false
-          system.cpu.utilization:
-            enabled: false
+          # default, only need to be disabled
+
+          # optional, must be explicitly enabled
           system.cpu.logical.count:
             enabled: true
           system.cpu.physical.count:
             enabled: true
 
       load:
-        metrics:
-          system.cpu.load_average.1m:
-            enabled: true
-          system.cpu.load_average.5m:
-            enabled: true
-          system.cpu.load_average.15m:
-            enabled: false
 
-      # Scraping traffic going in/out of network interfaces
-      network:
+      #  filter not needed stuff (mode, type)
+      #  filter /dev/loop*, maybe check fo other that are polluting
+      filesystem:
         metrics:
-          system.network.connections:
-            enabled: false
-          system.network.dropped:
-            enabled: false
-          system.network.errors:
-            enabled: false
-          system.network.io:
-              enabled: true
-          system.network.packets:
-            enabled: false
+          # default, only need to be disabled
+
+          # optional, must be explicitly enabled
+          system.filesystem.utilization:
+            enabled: true
 
       # Scraping only total memory (memory limit) and available memory to reduce cardinality
       memory:
         metrics:
-          system.linux.memory.dirty:
-            enabled: false
+          # default, only need to be disabled
+
+          # optional, must be explicitly enabled
           system.linux.memory.available: # free memory
+            enabled: true
+          system.linux.memory.dirty:  # data waiting to be written to disk
             enabled: true
           system.memory.limit: # total memory
             enabled: true
-          system.memory.page_size:
-            enabled: false
-          system.memory.usage:
-            enabled: false
           system.memory.utilization:
-            enabled: false
+            enabled: true
 
           # Huge pages metrics added as part of temporal patch
           # https://github.com/e2b-dev/opentelemetry-collector-contrib/pull/1
@@ -85,13 +72,29 @@ receivers:
           system.linux.memory.huge_pages.total:
             enabled: true
 
-      #  filter not needed stuff (mode, type)
-      #  filter /dev/loop*, maybe check fo other that are polluting
-      filesystem:
+      # Scraping traffic going in/out of network interfaces
+      network:
         metrics:
-          system.filesystem.inodes.usage:
+          # default, only need to be disabled
+          system.network.packets:
             enabled: false
-          system.filesystem.usage:
+
+          # optional, must be explicitly enabled
+          system.network.conntrack.count:
+            enabled: true
+          system.network.conntrack.max:
+            enabled: true
+
+      paging:
+        metrics:
+          # default, only need to be disabled
+          system.paging.faults:
+            enabled: false
+          system.paging.usage:
+            enabled: false
+
+          # optional, must be explicitly enabled
+          system.paging.utilization:
             enabled: true
 
 processors:
