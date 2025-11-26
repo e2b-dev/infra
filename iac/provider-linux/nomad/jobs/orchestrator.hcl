@@ -8,6 +8,7 @@ job "orchestrator" {
       name = "orchestrator"
       port = "${port}"
       provider = "nomad"
+      address_mode = "host"
       check {
         type     = "http"
         path     = "/health"
@@ -21,6 +22,7 @@ job "orchestrator" {
       name = "orchestrator-proxy"
       port = "${proxy_port}"
       provider = "nomad"
+      address_mode = "host"
       check {
         type     = "tcp"
         name     = "health"
@@ -53,6 +55,10 @@ job "orchestrator" {
         GRPC_PORT                    = "${port}"
         PROXY_PORT                   = "${proxy_port}"
         GIN_MODE                     = "release"
+        STORAGE_PROVIDER             = "Local"
+        LOCAL_TEMPLATE_STORAGE_BASE_PATH = "/tmp/templates"
+        LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "/tmp/build-cache"
+        ARTIFACTS_REGISTRY_PROVIDER  = "Local"
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
 %{ endif }
@@ -60,11 +66,13 @@ job "orchestrator" {
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator"]
+        args    = ["-c", " set -e; modprobe nbd nbds_max=4096 max_part=16 || true; for i in $(seq 0 4095); do if [ -e /sys/block/nbd$i/pid ]; then nbd-client -d /dev/nbd$i || true; fi; done; chmod +x local/orchestrator && exec local/orchestrator"]
       }
 
       artifact {
-        source = "${artifact_url}"
+        source      = "${artifact_url}"
+        destination = "local/orchestrator"
+        mode        = "file"
       }
     }
   }

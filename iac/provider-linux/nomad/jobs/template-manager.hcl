@@ -28,6 +28,7 @@ job "template-manager-system" {
       name     = "template-manager"
       port     = "${port}"
       provider = "nomad"
+      address_mode = "host"
       check {
         type     = "http"
         path     = "/health"
@@ -67,6 +68,7 @@ job "template-manager-system" {
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         DOCKERHUB_REMOTE_REPOSITORY_URL  = "${dockerhub_remote_repository_url}"
         GRPC_PORT                     = "${port}"
+        SANDBOX_HYPERLOOP_PROXY_PORT  = "${sandbox_hyperloop_proxy_port}"
         GIN_MODE                      = "release"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
@@ -74,15 +76,21 @@ job "template-manager-system" {
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
 %{ endif }
+        STORAGE_PROVIDER                  = "Local"
+        LOCAL_TEMPLATE_STORAGE_BASE_PATH  = "/tmp/templates"
+        LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "/tmp/build-cache"
+        ARTIFACTS_REGISTRY_PROVIDER       = "Local"
       }
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/template-manager && local/template-manager"]
+        args    = ["-c", " set -e; modprobe nbd nbds_max=4096 max_part=16 || true; for i in $(seq 0 4095); do if [ -e /sys/block/nbd$i/pid ]; then nbd-client -d /dev/nbd$i || true; fi; done; chmod +x local/template-manager && exec local/template-manager"]
       }
 
       artifact {
         source      = "${artifact_url}"
+        destination = "local/template-manager"
+        mode        = "file"
 %{ if template_manager_checksum != "" }
         options { checksum = "md5:${template_manager_checksum}" }
 %{ endif }
