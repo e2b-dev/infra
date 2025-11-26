@@ -151,3 +151,18 @@ apply:
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(tf_vars) $(TF) import "$(TARGET)" "$(ID)" -no-color
+
+.PHONY: state-ls
+state-ls:
+	@ printf "List resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(tf_vars) $(TF) state list
+
+.PHONY: state-rm
+state-rm:
+	@ printf "Remove $(TARGET) in env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(tf_vars) $(TF) state rm $(TARGET)
+
+.PHONY: tf-import
+tf-import:
+	@ printf "Import $(SOURCE) to $(TARGET) in env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(tf_vars) $(TF) import $(TARGET) $(SOURCE)

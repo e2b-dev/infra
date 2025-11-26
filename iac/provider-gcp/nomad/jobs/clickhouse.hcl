@@ -111,7 +111,6 @@ EOF
         image = "otel/opentelemetry-collector-contrib:0.123.0"
         args = [
           "--config=local/otel.yaml",
-          "--feature-gates=pkg.translator.prometheus.NormalizeName",
         ]
       }
 
