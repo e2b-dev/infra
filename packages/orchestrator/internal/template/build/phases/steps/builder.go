@@ -117,15 +117,15 @@ func (sb *StepBuilder) Layer(
 		} else {
 			// Check if the layer is cached
 			meta, err := sb.index.Cached(ctx, m.Template.BuildID)
-			if err != nil {
-				logger.L().Info(ctx, "layer not cached, building new layer", zap.Error(err), zap.String("hash", hash))
-			} else {
+			if err == nil {
 				return phases.LayerResult{
 					Metadata: meta,
 					Cached:   true,
 					Hash:     hash,
 				}, nil
 			}
+
+			logger.L().Info(ctx, "layer not cached, building new layer", zap.Error(err), zap.String("hash", hash))
 		}
 	}
 

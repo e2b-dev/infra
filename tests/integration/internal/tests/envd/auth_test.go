@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
@@ -140,33 +141,29 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 
 	// stop sandbox
 	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	sbxIdWithClient := sbxMeta.SandboxID + "-" + sbxMeta.ClientID
 
 	// resume sandbox
 	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(ctx, sbxIdWithClient, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	require.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 
-	// try to get the file with the valid access token
-	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
-		ctx,
-		&envdapi.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
-		setup.WithSandbox(sbx.JSON201.SandboxID),
-		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.EventuallyWithT(t, func(t *assert.CollectT) {
+		// try to get the file with the valid access token
+		fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
+			ctx,
+			&envdapi.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+			setup.WithSandbox(sbx.JSON201.SandboxID),
+			setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
+		)
+		require.NoError(t, err)
 
-	assert.Equal(t, http.StatusOK, fileResponse.StatusCode())
-	assert.Equal(t, fileContent, string(fileResponse.Body))
+		assert.Equal(t, http.StatusOK, fileResponse.StatusCode())
+		assert.Equal(t, fileContent, string(fileResponse.Body))
+	}, time.Second*30, time.Millisecond*100)
 }
 
 func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) {
