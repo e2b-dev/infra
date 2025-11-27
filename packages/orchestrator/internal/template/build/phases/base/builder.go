@@ -40,7 +40,6 @@ import (
 
 const (
 	rootfsBuildFileName = "rootfs.filesystem.build"
-	rootfsProvisionLink = "rootfs.filesystem.build.provision"
 
 	baseLayerTimeout = 10 * time.Minute
 
@@ -196,13 +195,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	// Provision sandbox with systemd and other vital parts
 	userLogger.Info(ctx, "Provisioning sandbox template")
-	// Just a symlink to the rootfs build file, so when the COW cache deletes the underlying file (here symlink),
-	// it will not delete the rootfs file. We use the rootfs again later on to start the sandbox template.
-	rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
-	err = os.Symlink(rootfsPath, rootfsProvisionPath)
-	if err != nil {
-		return metadata.Template{}, fmt.Errorf("error creating provision rootfs: %w", err)
-	}
 
 	baseSbxConfig := sandbox.Config{
 		Vcpu:      bb.Config.VCpuCount,
@@ -230,7 +222,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			FirecrackerVersion: bb.Template.FirecrackerVersion,
 		},
 		localTemplate,
-		rootfsProvisionPath,
+		rootfsPath,
 		provisionLogPrefix,
 	)
 	if err != nil {
