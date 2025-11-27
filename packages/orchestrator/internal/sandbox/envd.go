@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -152,6 +153,9 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
+
+	request := response.Request
+	span.SetStatus(codes.Ok, fmt.Sprintf("%s %s returned %d", request.Method, request.RequestURI, response.StatusCode))
 
 	return nil
 }
