@@ -2,10 +2,10 @@ package templatecache
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,8 +14,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
 const (
@@ -29,6 +31,7 @@ type TemplateInfo struct {
 	teamID    uuid.UUID
 	clusterID uuid.UUID
 	build     *queries.EnvBuild
+	tag       *string
 }
 
 type AliasCache struct {
@@ -72,7 +75,7 @@ func NewTemplateCache(db *sqlcdb.Client) *TemplateCache {
 		RefreshTimeout:  refreshTimeout,
 		// With this we can use alias for getting template info without having it as a key in the cache
 		ExtractKeyFunc: func(value *TemplateInfo) string {
-			return value.template.TemplateID
+			return buildCacheKey(value.template.TemplateID, value.tag)
 		},
 	}
 	aliasCache := NewAliasCache()
@@ -84,15 +87,25 @@ func NewTemplateCache(db *sqlcdb.Client) *TemplateCache {
 	}
 }
 
-func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID, clusterID uuid.UUID, public bool) (*api.Template, *queries.EnvBuild, *api.APIError) {
+func buildCacheKey(templateID string, tag *string) string {
+	if tag == nil {
+		return templateID + ":" + id.DefaultTag
+	}
+
+	return templateID + ":" + *tag
+}
+
+func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, tag *string, teamID uuid.UUID, clusterID uuid.UUID, public bool) (*api.Template, *queries.EnvBuild, *api.APIError) {
 	// Resolve alias to template ID if needed
 	templateID, found := c.aliasCache.Get(aliasOrEnvID)
 	if !found {
 		templateID = aliasOrEnvID
 	}
 
+	cacheKey := buildCacheKey(templateID, tag)
+
 	// Fetch or get from cache with automatic refresh
-	templateInfo, err := c.cache.GetOrSet(ctx, templateID, c.fetchTemplateInfo)
+	templateInfo, err := c.cache.GetOrSet(ctx, cacheKey, c.fetchTemplateInfo)
 	if err != nil {
 		var apiErr *api.APIError
 		if errors.As(err, &apiErr) {
@@ -115,11 +128,24 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 }
 
 // fetchTemplateInfo fetches template info from the database
-func (c *TemplateCache) fetchTemplateInfo(ctx context.Context, aliasOrEnvID string) (*TemplateInfo, error) {
-	result, err := c.db.GetTemplateWithBuild(ctx, aliasOrEnvID)
+func (c *TemplateCache) fetchTemplateInfo(ctx context.Context, cacheKey string) (*TemplateInfo, error) {
+	aliasOrEnvID, tag, err := id.ParseTemplateIDOrAliasWithTag(cacheKey)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("template '%s' not found", aliasOrEnvID), Err: err}
+		return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("invalid template ID: %s", err), Err: err}
+	}
+
+	result, err := c.db.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
+		AliasOrEnvID: aliasOrEnvID,
+		Tag:          tag,
+	})
+	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			tagMsg := ""
+			if tag != nil {
+				tagMsg = fmt.Sprintf(" with tag '%s'", *tag)
+			}
+
+			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("template '%s'%s not found", aliasOrEnvID, tagMsg), Err: err}
 		}
 
 		return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: fmt.Sprintf("error while getting template: %v", err), Err: err}
@@ -129,7 +155,7 @@ func (c *TemplateCache) fetchTemplateInfo(ctx context.Context, aliasOrEnvID stri
 	template := result.Env
 	clusterID := utils.WithClusterFallback(template.ClusterID)
 
-	// Update alias cache
+	// Update alias cache (without tag, as aliases map to template IDs)
 	c.aliasCache.Set(template.ID, template.ID)
 	for _, alias := range result.Aliases {
 		c.aliasCache.Set(alias, template.ID)
@@ -145,12 +171,22 @@ func (c *TemplateCache) fetchTemplateInfo(ctx context.Context, aliasOrEnvID stri
 		teamID:    template.TeamID,
 		clusterID: clusterID,
 		build:     build,
+		tag:       tag,
 	}, nil
 }
 
-// Invalidate invalidates the cache for the given templateID
-func (c *TemplateCache) Invalidate(templateID string) {
-	c.cache.Delete(templateID)
+func (c *TemplateCache) Invalidate(templateID string, tag *string) {
+	c.cache.Delete(buildCacheKey(templateID, tag))
+}
+
+// Invalidate invalidates the cache for the given templateID across all tags
+func (c *TemplateCache) InvalidateAllTags(templateID string) {
+	templateIDKey := templateID + ":"
+	for _, key := range c.cache.Keys() {
+		if strings.HasPrefix(key, templateIDKey) {
+			c.cache.Delete(key)
+		}
+	}
 }
 
 func (c *TemplateCache) Close(ctx context.Context) error {
