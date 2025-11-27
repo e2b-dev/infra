@@ -98,14 +98,15 @@ processors:
     metrics:
       datapoint:
         # Drop system.network.io for veth-* or docker* interfaces
-        - 'IsMatch(metric.name, "system\.network\..*") and IsMatch(attributes["device"], "^(veth.*|docker.*|lo)$")'
+        - 'IsMatch(metric.name, "system.network..*") and IsMatch(attributes["device"], "^(veth.*|docker.*|lo)$")'
         # Drop anything related to loop devices
         - 'IsMatch(attributes["device"], "^/dev/loop.*$")'
 
   attributes/strip_fs_labels:
     include:
       match_type: strict
-      metric_names: [system.filesystem.usage]
+      metric_names:
+        - system.filesystem.usage
     actions:
       - action: delete
         key: mode
@@ -173,13 +174,15 @@ processors:
 
   metricstransform/single_cpu:
     transforms:
-      - include: "system_cpu_time_seconds_total"
+      - include: "system.cpu.time"
         match_type: strict
         action: update
         operations:
           - action: aggregate_labels
-            label_set: [ cpu ]
-            aggregation_type: mean
+            label_set:
+              - node.id
+              - state
+            aggregation_type: sum
 
   resourcedetection:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
@@ -306,6 +309,7 @@ service:
         - batch
       exporters:
         - otlphttp/grafana_cloud
+        - debug
     metrics/external:
       receivers:  [otlp]
       processors: [filter/external_metrics, batch/clickhouse]
