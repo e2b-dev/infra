@@ -22,28 +22,33 @@ type StorageLocal struct {
 	acquiredNsMu sync.Mutex
 }
 
+var _ Storage = &StorageLocal{}
+
 const netNamespacesDir = "/var/run/netns"
 
-func NewStorageLocal(ctx context.Context, config Config) (*StorageLocal, error) {
-	// get namespaces that we want to always skip
-	foreignNs, err := getForeignNamespaces()
-	if err != nil {
-		return nil, fmt.Errorf("error getting already used namespaces: %w", err)
-	}
-
-	foreignNsMap := make(map[string]struct{})
-	for _, ns := range foreignNs {
-		foreignNsMap[ns] = struct{}{}
-		logger.L().Info(ctx, fmt.Sprintf("Found foreign namespace: %s", ns))
-	}
-
+func NewStorageLocal(config Config) (*StorageLocal, error) {
 	return &StorageLocal{
 		config:       config,
-		foreignNs:    foreignNsMap,
+		foreignNs:    make(map[string]struct{}),
 		slotsSize:    vrtSlotsSize,
 		acquiredNs:   make(map[string]struct{}, vrtSlotsSize),
 		acquiredNsMu: sync.Mutex{},
 	}, nil
+}
+
+func (s *StorageLocal) Setup(ctx context.Context) error {
+	// get namespaces that we want to always skip
+	foreignNs, err := getForeignNamespaces()
+	if err != nil {
+		return fmt.Errorf("error getting already used namespaces: %w", err)
+	}
+
+	for _, ns := range foreignNs {
+		s.foreignNs[ns] = struct{}{}
+		logger.L().Info(ctx, fmt.Sprintf("Found foreign namespace: %s", ns))
+	}
+
+	return nil
 }
 
 func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {

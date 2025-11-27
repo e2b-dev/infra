@@ -50,7 +50,7 @@ func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.Ser
 	}
 }
 
-func NewInfoContainer(ctx context.Context, clientId string, version string, commit string, instanceID string, machineInfo machineinfo.MachineInfo, config cfg.Config) *ServiceInfo {
+func NewInfoContainer(clientId string, version string, commit string, instanceID string, machineInfo machineinfo.MachineInfo, config cfg.Config) *ServiceInfo {
 	services := cfg.GetServices(config)
 	serviceRoles := make([]orchestratorinfo.ServiceInfoRole, 0)
 
@@ -69,9 +69,9 @@ func NewInfoContainer(ctx context.Context, clientId string, version string, comm
 
 		SourceVersion: version,
 		SourceCommit:  commit,
-	}
 
-	serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Healthy)
+		status: orchestratorinfo.ServiceInfoStatus_Healthy,
+	}
 
 	return serviceInfo
 }
