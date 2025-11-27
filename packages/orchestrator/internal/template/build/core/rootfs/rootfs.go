@@ -5,11 +5,11 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"html/template"
 	"io"
 	"math"
 	"os"
 	"strings"
+	"text/template"
 
 	"github.com/dustin/go-humanize"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
