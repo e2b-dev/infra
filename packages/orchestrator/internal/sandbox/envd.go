@@ -99,9 +99,15 @@ type PostInitJSONBody struct {
 	DefaultWorkdir *string            `json:"defaultWorkdir,omitempty"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context) error {
+func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 	ctx, span := tracer.Start(ctx, "envd-init", trace.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version)))
-	defer span.End()
+	defer func() {
+		if e != nil {
+			span.SetStatus(codes.Error, e.Error())
+		}
+
+		span.End()
+	}()
 
 	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds())}
 	attributesFail := append(attributes, attribute.Bool("success", false))
@@ -154,8 +160,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 
-	request := response.Request
-	span.SetStatus(codes.Ok, fmt.Sprintf("%s %s returned %d", request.Method, request.RequestURI, response.StatusCode))
+	span.SetStatus(codes.Ok, fmt.Sprintf("envd init returned %d", response.StatusCode))
 
 	return nil
 }
