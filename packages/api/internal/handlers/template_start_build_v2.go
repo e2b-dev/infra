@@ -129,7 +129,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
+	builderNode, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
@@ -137,12 +137,28 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
+	machineInfo := builderNode.GetMachineInfo()
+	var buildCpuArch, buildCpuFamily, buildCpuModel, buildCpuModelName *string
+	var buildCpuFlags []string
+	if machineInfo != nil {
+		buildCpuArch = &machineInfo.CpuArchitecture
+		buildCpuFamily = &machineInfo.CpuFamily
+		buildCpuModel = &machineInfo.CpuModel
+		buildCpuModelName = &machineInfo.CpuModelName
+		buildCpuFlags = machineInfo.CpuFlags
+	}
+
 	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
-		StartCmd:      body.StartCmd,
-		ReadyCmd:      body.ReadyCmd,
-		Dockerfile:    utils.ToPtr(string(stepsMarshalled)),
-		ClusterNodeID: utils.ToPtr(builderNodeID),
-		BuildUuid:     buildUUID,
+		StartCmd:        body.StartCmd,
+		ReadyCmd:        body.ReadyCmd,
+		Dockerfile:      utils.ToPtr(string(stepsMarshalled)),
+		ClusterNodeID:   utils.ToPtr(builderNode.NodeID),
+		CpuArchitecture: buildCpuArch,
+		CpuFamily:       buildCpuFamily,
+		CpuModel:        buildCpuModel,
+		CpuModelName:    buildCpuModelName,
+		CpuFlags:        buildCpuFlags,
+		BuildUuid:       buildUUID,
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when updating build", err)
@@ -170,7 +186,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.Force,
 		body.Steps,
 		apiutils.WithClusterFallback(team.ClusterID),
-		builderNodeID,
+		builderNode.NodeID,
 		version,
 	)
 

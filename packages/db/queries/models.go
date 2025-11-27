@@ -95,6 +95,11 @@ type EnvBuild struct {
 	ClusterNodeID      *string
 	Reason             types.BuildReason
 	Version            *string
+	CpuArchitecture    *string
+	CpuFamily          *string
+	CpuModel           *string
+	CpuModelName       *string
+	CpuFlags           []string
 }
 
 type Snapshot struct {
