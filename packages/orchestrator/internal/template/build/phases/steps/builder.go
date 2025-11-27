@@ -182,7 +182,13 @@ func (sb *StepBuilder) Build(
 			},
 		)
 	} else {
-		sandboxCreator = layer.NewResumeSandbox(sbxConfig, sb.sandboxFactory, layerTimeout)
+		extraWait := 0 * time.Second
+		if step.Type == "USER" {
+			// extraWait = 20 * time.Second
+		}
+		userLogger.Warn(ctx, fmt.Sprintf("extra waiting %s", extraWait))
+
+		sandboxCreator = layer.NewResumeSandbox(sbxConfig, sb.sandboxFactory, layerTimeout, extraWait)
 	}
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {

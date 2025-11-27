@@ -15,6 +15,7 @@ import (
 
 	"github.com/Merovius/nbd/nbdnl"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -59,6 +60,9 @@ func NewDirectPathMount(b block.Device, devicePool *DevicePool) *DirectPathMount
 }
 
 func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err error) {
+	ctx, span := tracer.Start(ctx, "direct-path-mount-open")
+	defer span.End()
+
 	ctx, d.cancelfn = context.WithCancel(ctx)
 
 	defer func() {
@@ -84,13 +88,19 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			return math.MaxUint32, err
 		}
 
-		telemetry.ReportEvent(ctx, "got device index")
+		telemetry.ReportEvent(ctx, "got device index",
+			attribute.Int64("device_index", int64(deviceIndex)),
+		)
 
 		d.socksClient = make([]*os.File, 0)
 		d.socksServer = make([]io.Closer, 0)
 		d.dispatchers = make([]*Dispatch, 0)
 
 		for i := range connections {
+			telemetry.ReportEvent(ctx, "creating socket pair",
+				attribute.Int("socket_index", i),
+			)
+
 			// Create the socket pairs
 			sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 			if err != nil {
@@ -138,8 +148,16 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			// but we will use the one returned by nbdnl
 			deviceIndex = idx
 
+			telemetry.ReportEvent(ctx, "NBD connection opened",
+				attribute.Int64("device_index", int64(deviceIndex)),
+			)
+
 			break
 		}
+
+		telemetry.ReportEvent(ctx, "error opening NBD, retrying",
+			attribute.Int64("device_index", int64(deviceIndex)),
+		)
 
 		logger.L().Error(ctx, "error opening NBD, retrying", zap.Error(err), zap.Uint32("device_index", deviceIndex))
 
@@ -168,6 +186,10 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		}
 	}
 
+	telemetry.ReportEvent(ctx, "waiting for NBD connection",
+		attribute.Int64("device_index", int64(deviceIndex)),
+	)
+
 	// Wait until it's connected...
 	for {
 		select {
@@ -176,7 +198,9 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		default:
 		}
 
-		telemetry.ReportEvent(ctx, "waiting for NBD connection")
+		telemetry.ReportEvent(ctx, "waiting for NBD connection",
+			attribute.Int64("device_index", int64(deviceIndex)),
+		)
 
 		s, err := nbdnl.Status(deviceIndex)
 		if err == nil && s.Connected {
@@ -186,7 +210,9 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		time.Sleep(100 * time.Nanosecond)
 	}
 
-	telemetry.ReportEvent(ctx, "connected to NBD")
+	telemetry.ReportEvent(ctx, "connected to NBD",
+		attribute.Int64("device_index", int64(deviceIndex)),
+	)
 
 	return deviceIndex, nil
 }

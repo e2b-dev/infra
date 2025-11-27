@@ -18,12 +18,13 @@ type ResumeSandbox struct {
 	config         sandbox.Config
 	sandboxFactory *sandbox.Factory
 	timeout        time.Duration
+	extraWait      time.Duration
 }
 
 var _ SandboxCreator = (*ResumeSandbox)(nil)
 
-func NewResumeSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration) *ResumeSandbox {
-	return &ResumeSandbox{config: config, sandboxFactory: sandboxFactory, timeout: timeout}
+func NewResumeSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, extraWait time.Duration) *ResumeSandbox {
+	return &ResumeSandbox{config: config, sandboxFactory: sandboxFactory, timeout: timeout, extraWait: extraWait}
 }
 
 func (rs *ResumeSandbox) Sandbox(
@@ -43,6 +44,7 @@ func (rs *ResumeSandbox) Sandbox(
 		time.Now(),
 		time.Now().Add(rs.timeout),
 		nil,
+		rs.extraWait,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("resume sandbox: %w", err)

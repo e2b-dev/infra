@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer")
@@ -78,7 +79,18 @@ func (lb *LayerExecutor) BuildLayer(
 	if err != nil {
 		return metadata.Template{}, err
 	}
-	defer sbx.Close(ctx)
+	telemetry.ReportEvent(ctx, "created sandbox", telemetry.WithSandboxID(sbx.Runtime.SandboxID), telemetry.WithExecutionID(sbx.Runtime.ExecutionID))
+
+	defer func() {
+		telemetry.ReportEvent(ctx, "closing sandbox", telemetry.WithSandboxID(sbx.Runtime.SandboxID), telemetry.WithExecutionID(sbx.Runtime.ExecutionID))
+
+		err := sbx.Close(ctx)
+		if err != nil {
+			lb.logger.Error(ctx, "failed to close sandbox", logger.WithSandboxID(sbx.Runtime.SandboxID), logger.WithExecutionID(sbx.Runtime.ExecutionID), zap.Error(err))
+		}
+	}()
+
+	userLogger.Debug(ctx, fmt.Sprintf("Created sandbox: %s", sbx.Runtime.SandboxID))
 
 	// Add to proxy so we can call envd commands
 	lb.sandboxes.Insert(sbx)
@@ -101,6 +113,8 @@ func (lb *LayerExecutor) BuildLayer(
 
 	// Update envd binary to the latest version
 	if cmd.UpdateEnvd {
+		telemetry.ReportEvent(ctx, "updating envd", telemetry.WithSandboxID(sbx.Runtime.SandboxID), telemetry.WithExecutionID(sbx.Runtime.ExecutionID))
+
 		err = lb.updateEnvdInSandbox(ctx, userLogger, sbx)
 		if err != nil {
 			lb.logger.Error(
@@ -228,6 +242,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	err = sbx.WaitForEnvd(
 		ctx,
 		waitEnvdTimeout,
+		0,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to wait for envd initialization after update: %w", err)

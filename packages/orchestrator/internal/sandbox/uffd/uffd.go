@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -64,10 +65,15 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 }
 
 func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
+	ctx, span := tracer.Start(ctx, "start uffd")
+	defer span.End()
+
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
 		return fmt.Errorf("failed listening on socket: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "listening on socket")
 
 	u.lis = lis
 
@@ -75,6 +81,8 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 	if err != nil {
 		return fmt.Errorf("failed setting socket permissions: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "set socket permissions")
 
 	go func() {
 		ctx, span := tracer.Start(ctx, "serve uffd")
@@ -103,6 +111,8 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	if err != nil {
 		return fmt.Errorf("failed accepting firecracker connection: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "accepted firecracker connection")
 
 	unixConn := conn.(*net.UnixConn)
 
@@ -162,6 +172,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		}
 	}()
 
+	telemetry.ReportEvent(ctx, "uffd ready handle")
 	u.readyCh <- struct{}{}
 
 	err = uffd.Serve(

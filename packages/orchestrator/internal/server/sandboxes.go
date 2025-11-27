@@ -149,6 +149,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		req.GetStartTime().AsTime(),
 		req.GetEndTime().AsTime(),
 		req.GetSandbox(),
+		0,
 	)
 	if err != nil {
 		err := errors.Join(err, context.Cause(ctx))

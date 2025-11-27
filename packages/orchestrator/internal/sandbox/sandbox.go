@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -360,6 +361,7 @@ func (f *Factory) ResumeSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
+	extraWait time.Duration,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
@@ -411,7 +413,8 @@ func (f *Factory) ResumeSandbox(
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
 	go func() {
-		runErr := rootfsOverlay.Start(execCtx)
+		// TODO: Change back to execCtx
+		runErr := rootfsOverlay.Start(ctx)
 		if runErr != nil {
 			logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
 		}
@@ -427,7 +430,8 @@ func (f *Factory) ResumeSandbox(
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
 	fcUffd, err := serveMemory(
-		execCtx,
+		// TODO: Change back to execCtx
+		ctx,
 		cleanup,
 		memfile,
 		fcUffdPath,
@@ -454,14 +458,14 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
 
-	telemetry.ReportEvent(ctx, "got rootfs path")
+	telemetry.ReportEvent(ctx, "rootfs path ready")
 
 	ips := <-ipsCh
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
 	}
 
-	telemetry.ReportEvent(ctx, "got network slot")
+	telemetry.ReportEvent(ctx, "network slot ready")
 
 	meta, err := t.Metadata()
 	if err != nil {
@@ -573,6 +577,7 @@ func (f *Factory) ResumeSandbox(
 	err = sbx.WaitForEnvd(
 		ctx,
 		f.config.EnvdTimeout,
+		extraWait,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
@@ -649,9 +654,9 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
 	<-s.process.Exit.Done()
 
-	uffdStopErr := s.Resources.memory.Stop()
-	if uffdStopErr != nil {
-		errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
+	memoryStopErr := s.Resources.memory.Stop()
+	if memoryStopErr != nil {
+		errs = append(errs, fmt.Errorf("failed to stop memory: %w", memoryStopErr))
 	}
 
 	return errors.Join(errs...)
@@ -964,6 +969,7 @@ func getNetworkSlotAsync(
 			return nil
 		})
 
+		telemetry.ReportEvent(ctx, "network slot ready")
 		r <- networkSlotRes{ips, nil}
 	}()
 
@@ -1030,6 +1036,7 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	timeout time.Duration,
+	extraWait time.Duration,
 ) (e error) {
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
@@ -1069,6 +1076,19 @@ func (s *Sandbox) WaitForEnvd(
 	}
 
 	telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
+
+	pid, err := s.process.Pid()
+	if err != nil {
+		return fmt.Errorf("failed to get envd pid: %w", err)
+	}
+
+	logger.L().Error(ctx, "ENVD DEBUG: waiting for envd: "+strconv.Itoa(pid),
+		logger.WithSandboxID(s.Metadata.Runtime.SandboxID),
+		logger.WithExecutionID(s.Metadata.Runtime.ExecutionID),
+		zap.Int("pid", pid),
+	)
+
+	time.Sleep(extraWait)
 
 	return nil
 }

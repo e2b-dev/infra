@@ -8,10 +8,12 @@ import (
 	"io"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
@@ -124,17 +126,26 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  *
  */
 func (d *Dispatch) Handle(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "dispatch-handle")
+	defer span.End()
+
 	buffer := make([]byte, dispatchBufferSize)
 	wp := 0
 
 	request := Request{}
 
 	for {
+		telemetry.ReportEvent(ctx, "fp read")
+
 		n, err := d.fp.Read(buffer[wp:])
 		if err != nil {
 			return err
 		}
 		wp += n
+
+		telemetry.ReportEvent(ctx, "fp read done",
+			attribute.Int("bytes_read", n),
+		)
 
 		// Now go through processing complete packets
 		rp := 0
@@ -162,6 +173,14 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				if request.Magic != NBDRequestMagic {
 					return fmt.Errorf("received invalid MAGIC")
 				}
+
+				telemetry.ReportEvent(ctx, "request header",
+					attribute.Int("magic", int(request.Magic)),
+					attribute.Int("type", int(request.Type)),
+					attribute.Int64("handle", int64(request.Handle)),
+					attribute.Int64("from", int64(request.From)),
+					attribute.Int64("length", int64(request.Length)),
+				)
 
 				switch request.Type {
 				case NBDCmdDisconnect:
@@ -191,10 +210,19 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					// At the same time we don't want to increase the default buffer size as the max would be 32mb which is too large for hundreds of sandbox connections.
 
 					for dataCopied < int(request.Length) {
+						telemetry.ReportEvent(ctx, "reading more data",
+							attribute.Int("data_copied", dataCopied),
+							attribute.Int("request_length", int(request.Length)),
+						)
+
 						n, err := d.fp.Read(data[dataCopied:])
 						if err != nil {
 							return fmt.Errorf("nbd write read error: %w", err)
 						}
+
+						telemetry.ReportEvent(ctx, "read more data",
+							attribute.Int("bytes_read", n),
+						)
 
 						dataCopied += n
 
@@ -213,7 +241,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					}
 				case NBDCmdTrim:
 					rp += 28
-					err := d.cmdTrim(request.Handle, request.From, request.Length)
+					err := d.cmdTrim(ctx, request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
 					}
@@ -233,6 +261,9 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 }
 
 func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
+	ctx, span := tracer.Start(ctx, "dispatch-cmd-read")
+	defer span.End()
+
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
@@ -243,12 +274,15 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 	d.shuttingDownLock.Unlock()
 
-	performRead := func(handle uint64, from uint64, length uint32) error {
+	performRead := func(ctx context.Context, handle uint64, from uint64, length uint32) error {
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
 
 		go func() {
+			_, span := tracer.Start(ctx, "dispatch-cmd-read-perform-read-at")
+			defer span.End()
+
 			_, err := d.prov.ReadAt(ctx, data, int64(from))
 			errchan <- err
 		}()
@@ -268,8 +302,18 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 
 	go func() {
-		err := performRead(cmdHandle, cmdFrom, cmdLength)
+		ctx, span := tracer.Start(ctx, "dispatch-cmd-read-perform")
+		defer span.End()
+
+		err := performRead(ctx, cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
+			telemetry.ReportEvent(ctx, "nbd error cmd read",
+				attribute.Int64("handle", int64(cmdHandle)),
+				attribute.Int64("from", int64(cmdFrom)),
+				attribute.Int64("length", int64(cmdLength)),
+				attribute.String("error", err.Error()),
+			)
+
 			select {
 			case d.fatal <- err:
 			default:
@@ -283,6 +327,9 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 }
 
 func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+	ctx, span := tracer.Start(ctx, "dispatch-cmd-write")
+	defer span.End()
+
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
@@ -293,10 +340,13 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	}
 	d.shuttingDownLock.Unlock()
 
-	performWrite := func(handle uint64, from uint64, data []byte) error {
+	performWrite := func(ctx context.Context, handle uint64, from uint64, data []byte) error {
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
+			_, span := tracer.Start(ctx, "dispatch-cmd-write-perform-write-at")
+			defer span.End()
+
 			_, err := d.prov.WriteAt(data, int64(from))
 			errchan <- err
 		}()
@@ -316,8 +366,18 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	}
 
 	go func() {
-		err := performWrite(cmdHandle, cmdFrom, cmdData)
+		ctx, span := tracer.Start(ctx, "dispatch-cmd-write-perform")
+		defer span.End()
+
+		err := performWrite(ctx, cmdHandle, cmdFrom, cmdData)
 		if err != nil {
+			telemetry.ReportEvent(ctx, "nbd error cmd write",
+				attribute.Int64("handle", int64(cmdHandle)),
+				attribute.Int64("from", int64(cmdFrom)),
+				attribute.Int64("length", int64(len(cmdData))),
+				attribute.String("error", err.Error()),
+			)
+
 			select {
 			case d.fatal <- err:
 			default:
@@ -334,7 +394,10 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
  * cmdTrim
  *
  */
-func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
+func (d *Dispatch) cmdTrim(ctx context.Context, handle uint64, _ uint64, _ uint32) error {
+	_, span := tracer.Start(ctx, "dispatch-cmd-trim")
+	defer span.End()
+
 	// TODO: Ask the provider
 	/*
 		e := d.prov.Trim(from, length)
@@ -347,6 +410,11 @@ func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
 	*/
 	err := d.writeResponse(0, handle, []byte{})
 	if err != nil {
+		telemetry.ReportEvent(ctx, "nbd error cmd trim",
+			attribute.Int64("handle", int64(handle)),
+			attribute.String("error", err.Error()),
+		)
+
 		return err
 	}
 	//	}

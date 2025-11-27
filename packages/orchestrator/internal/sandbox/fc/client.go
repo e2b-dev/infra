@@ -67,6 +67,8 @@ func (c *apiClient) loadSnapshot(
 		},
 	}
 
+	telemetry.ReportEvent(ctx, "loading snapshot")
+
 	_, err = c.client.Operations.LoadSnapshot(&snapshotConfig)
 	if err != nil {
 		return fmt.Errorf("error loading snapshot: %w", err)

@@ -40,6 +40,10 @@ func WithEnvdVersion(envdVersion string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithEnvdVersion(envdVersion))
 }
 
+func WithExecutionID(executionID string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithExecutionID(executionID))
+}
+
 func zapFieldToOTELAttribute(f zap.Field) attribute.KeyValue {
 	e := &ZapFieldToOTELAttributeEncoder{}
 	f.AddTo(e)

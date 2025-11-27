@@ -152,6 +152,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 	if response.StatusCode != http.StatusNoContent {
 		logger.L().Error(ctx, "envd init request failed",
 			logger.WithSandboxID(s.Runtime.SandboxID),
+			logger.WithExecutionID(s.Runtime.ExecutionID),
 			logger.WithEnvdVersion(s.Config.Envd.Version),
 			zap.Int("status_code", response.StatusCode),
 			zap.String("response_body", utils.Truncate(string(body), 100)),
@@ -159,6 +160,14 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
+
+	telemetry.ReportEvent(ctx, "envd init returned successfully",
+		telemetry.WithSandboxID(s.Runtime.SandboxID),
+		telemetry.WithExecutionID(s.Runtime.ExecutionID),
+		telemetry.WithEnvdVersion(s.Config.Envd.Version),
+		attribute.Int("status_code", response.StatusCode),
+		attribute.String("response_body", utils.Truncate(string(body), 100)),
+	)
 
 	span.SetStatus(codes.Ok, fmt.Sprintf("envd init returned %d", response.StatusCode))
 
