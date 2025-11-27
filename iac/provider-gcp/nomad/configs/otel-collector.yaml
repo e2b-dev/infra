@@ -309,7 +309,6 @@ service:
         - batch
       exporters:
         - otlphttp/grafana_cloud
-        - debug
     metrics/external:
       receivers:  [otlp]
       processors: [filter/external_metrics, batch/clickhouse]
