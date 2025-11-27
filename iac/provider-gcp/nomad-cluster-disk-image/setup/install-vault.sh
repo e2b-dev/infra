@@ -43,15 +43,10 @@ function install_dependencies {
   sudo apt-get install -y curl unzip jq
 }
 
-function user_exists {
-  local -r username="$1"
-  id "$username" >/dev/null 2>&1
-}
-
 function create_vault_user {
   local -r username="$1"
 
-  if user_exists "$username"; then
+  if $(user_exists "$username"); then
     log_info "User $username already exists. Will not create again."
   else
     log_info "Creating user named $username"
