@@ -68,10 +68,19 @@ func (o *NBDProvider) Verify(ctx context.Context) error {
 	if !o.config.RootfsChecksumVerification {
 		return nil
 	}
-
 	l := logger.L().With(
-		zap.String("checksum_expected", hex.EncodeToString(o.overlay.Header().Checksums.Checksum[:])),
 		logger.WithBuildID(o.overlay.Header().Metadata.BuildId.String()),
+	)
+
+	headerChecksums := o.overlay.Header().Checksums
+	if headerChecksums == nil {
+		l.Warn(ctx, "no header checksums to verify")
+
+		return nil
+	}
+
+	l = l.With(
+		zap.String("checksum_expected", hex.EncodeToString(headerChecksums.Checksum[:])),
 	)
 
 	l.Debug(ctx, "verifying rootfs checksum nbd")
@@ -85,15 +94,15 @@ func (o *NBDProvider) Verify(ctx context.Context) error {
 		zap.String("checksum", hex.EncodeToString(checksums.Checksum[:])),
 	)
 
-	if len(checksums.BlockChecksums) != len(o.overlay.Header().Checksums.BlockChecksums) {
-		return fmt.Errorf("block checksums length mismatch, expected %d, got %d", len(o.overlay.Header().Checksums.BlockChecksums), len(checksums.BlockChecksums))
+	if len(checksums.BlockChecksums) != len(headerChecksums.BlockChecksums) {
+		return fmt.Errorf("block checksums length mismatch, expected %d, got %d", len(headerChecksums.BlockChecksums), len(checksums.BlockChecksums))
 	}
 
 	wrongCount := 0
 	for blockIndex, blockChecksum := range checksums.BlockChecksums {
 		blockOffset := header.BlockOffset(int64(blockIndex), o.blockSize)
 
-		blockChecksumExpected := o.overlay.Header().Checksums.BlockChecksums[blockIndex]
+		blockChecksumExpected := headerChecksums.BlockChecksums[blockIndex]
 		if !bytes.Equal(blockChecksum[:], blockChecksumExpected[:]) {
 			l.Error(ctx, "rootfs block checksum mismatch nbd",
 				zap.Int("block_index", blockIndex),
@@ -108,7 +117,7 @@ func (o *NBDProvider) Verify(ctx context.Context) error {
 		}
 	}
 
-	if !bytes.Equal(checksums.Checksum[:], o.overlay.Header().Checksums.Checksum[:]) {
+	if !bytes.Equal(checksums.Checksum[:], headerChecksums.Checksum[:]) {
 		return fmt.Errorf("rootfs checksum mismatch nbd")
 	}
 
