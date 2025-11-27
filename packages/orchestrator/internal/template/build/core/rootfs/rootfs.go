@@ -197,6 +197,7 @@ LimitCORE=infinity
 ExecStart=/bin/bash -l -c "/usr/bin/envd"
 OOMPolicy=continue
 OOMScoreAdjust=-1000
+Nice=-10
 Environment="GOMEMLIMIT=%dMiB"
 
 [Install]
