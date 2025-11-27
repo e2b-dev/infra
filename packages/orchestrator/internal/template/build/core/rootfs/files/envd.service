@@ -1,4 +1,4 @@
-{{ .WriteFile "/etc/systemd/system/envd.service" 0o644 -}}
+{{ .WriteFile "/etc/systemd/system/envd.service" 0o644 }}
 
 [Unit]
 Description=Env Daemon Service

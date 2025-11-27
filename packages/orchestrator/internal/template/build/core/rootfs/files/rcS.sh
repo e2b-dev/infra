@@ -1,4 +1,5 @@
-{{ .WriteFile "etc/init.d/rcS" 0o777 -}}
+{{ .WriteFile "etc/init.d/rcS" 0o777 }}
+
 #!/usr/bin/busybox ash
 echo "Mounting essential filesystems"
 # Ensure necessary mount points exist

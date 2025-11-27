@@ -1,2 +1,3 @@
-{{ .WriteFile "/etc/hostname" 0o644 -}}
+{{ .WriteFile "/etc/hostname" 0o644 }}
+
 e2b.local

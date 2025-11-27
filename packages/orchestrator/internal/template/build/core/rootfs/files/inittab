@@ -1,4 +1,4 @@
-{{ .WriteFile "/etc/inittab" 0o777 -}}
+{{ .WriteFile "/etc/inittab" 0o777 }}
 
 # Run system init
 ::sysinit:/etc/init.d/rcS

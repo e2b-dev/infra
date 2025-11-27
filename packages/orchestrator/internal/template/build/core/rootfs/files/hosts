@@ -1,4 +1,5 @@
-{{ .WriteFile "/etc/hosts" 0o644 -}}
+{{ .WriteFile "/etc/hosts" 0o644 }}
+
 127.0.0.1	localhost
 ::1	        localhost ip6-localhost ip6-loopback
 fe00::	    ip6-localnet
