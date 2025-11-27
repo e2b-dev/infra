@@ -3,14 +3,16 @@ package rootfs
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 )
 
 func TestAdditionalOCILayers(t *testing.T) {
@@ -46,7 +48,7 @@ func TestAdditionalOCILayers(t *testing.T) {
 		filesTarReader := tar.NewReader(filesLayer)
 		for {
 			header, err := filesTarReader.Next()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			require.NoError(t, err)
@@ -64,7 +66,7 @@ func TestAdditionalOCILayers(t *testing.T) {
 			actualFiles[filename] = buffer.String()
 		}
 
-		assert.Equal(t, 13, len(actualFiles))
+		assert.Len(t, actualFiles, 13)
 		assert.Equal(t, "e2b.local", actualFiles["etc/hostname"])
 		assert.Equal(t, "nameserver 8.8.8.8", actualFiles["etc/resolv.conf"])
 	})

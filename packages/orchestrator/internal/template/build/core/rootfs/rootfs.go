@@ -43,10 +43,6 @@ const (
 	BusyBoxInitPath = "usr/bin/init"
 
 	ProvisioningExitPrefix = "E2B_PROVISIONING_EXIT:"
-
-	serviceWatchDogDisabledConfig = `[Service]
-WatchdogSec=0
-`
 )
 
 type Rootfs struct {
