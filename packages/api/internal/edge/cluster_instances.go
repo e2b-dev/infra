@@ -17,6 +17,7 @@ import (
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 type ClusterInstance struct {
@@ -27,7 +28,7 @@ type ClusterInstance struct {
 	ServiceVersionCommit string
 
 	roles       []infogrpc.ServiceInfoRole
-	machineInfo *infogrpc.MachineInfo
+	machineInfo machineinfo.MachineInfo
 
 	status infogrpc.ServiceInfoStatus
 	mutex  sync.RWMutex
@@ -66,7 +67,7 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	instance.status = info.GetServiceStatus()
 	instance.roles = info.GetServiceRoles()
-	instance.machineInfo = info.GetMachineInfo()
+	instance.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
 }
 
 func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
@@ -76,12 +77,13 @@ func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
 	return n.status
 }
 
-func (n *ClusterInstance) GetMachineInfo() *infogrpc.MachineInfo {
+func (n *ClusterInstance) GetMachineInfo() machineinfo.MachineInfo {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 
 	return n.machineInfo
 }
+
 func (n *ClusterInstance) hasRole(r infogrpc.ServiceInfoRole) bool {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()

@@ -160,26 +160,15 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	}
 
 	machineInfo := builderNode.GetMachineInfo()
-	var buildCpuArch, buildCpuFamily, buildCpuModel, buildCpuModelName *string
-	var buildCpuFlags []string
-	if machineInfo != nil {
-		buildCpuArch = &machineInfo.CpuArchitecture
-		buildCpuFamily = &machineInfo.CpuFamily
-		buildCpuModel = &machineInfo.CpuModel
-		buildCpuModelName = &machineInfo.CpuModelName
-		buildCpuFlags = machineInfo.CpuFlags
-	}
-
 	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
 		StartCmd:        build.StartCmd,
 		ReadyCmd:        build.ReadyCmd,
 		Dockerfile:      build.Dockerfile,
 		ClusterNodeID:   utils.ToPtr(builderNode.NodeID),
-		CpuArchitecture: buildCpuArch,
-		CpuFamily:       buildCpuFamily,
-		CpuModel:        buildCpuModel,
-		CpuModelName:    buildCpuModelName,
-		CpuFlags:        buildCpuFlags,
+		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
+		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
+		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
+		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
 		BuildUuid:       buildUUID,
 	})
 	if err != nil {
