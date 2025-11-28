@@ -129,7 +129,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
+	builderNode, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
@@ -137,12 +137,18 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
+	machineInfo := builderNode.GetMachineInfo()
 	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
-		StartCmd:      body.StartCmd,
-		ReadyCmd:      body.ReadyCmd,
-		Dockerfile:    utils.ToPtr(string(stepsMarshalled)),
-		ClusterNodeID: utils.ToPtr(builderNodeID),
-		BuildUuid:     buildUUID,
+		StartCmd:        body.StartCmd,
+		ReadyCmd:        body.ReadyCmd,
+		Dockerfile:      utils.ToPtr(string(stepsMarshalled)),
+		ClusterNodeID:   utils.ToPtr(builderNode.NodeID),
+		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
+		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
+		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
+		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		CpuFlags:        machineInfo.CPUFlags,
+		BuildUuid:       buildUUID,
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when updating build", err)
@@ -170,7 +176,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.Force,
 		body.Steps,
 		apiutils.WithClusterFallback(team.ClusterID),
-		builderNodeID,
+		builderNode.NodeID,
 		version,
 	)
 
