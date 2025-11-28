@@ -169,6 +169,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
 		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
 		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		CpuFlags:        machineInfo.CPUFlags,
 		BuildUuid:       buildUUID,
 	})
 	if err != nil {
