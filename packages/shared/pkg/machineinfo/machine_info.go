@@ -11,6 +11,10 @@ type MachineInfo struct {
 }
 
 func FromGRPCInfo(info *infogrpc.MachineInfo) MachineInfo {
+	if info == nil {
+		return MachineInfo{}
+	}
+
 	return MachineInfo{
 		CPUArchitecture: info.GetCpuArchitecture(),
 		CPUFamily:       info.GetCpuFamily(),
