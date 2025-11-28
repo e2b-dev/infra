@@ -158,12 +158,12 @@ func (p *Process) configure(
 	}
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
-	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config))
-	if err != nil {
-		return fmt.Errorf("error symlinking rootfs: %w", err)
-	}
+	// err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config))
+	// if err != nil {
+	// 	return fmt.Errorf("error symlinking rootfs: %w", err)
+	// }
 
-	err = p.cmd.Start()
+	err := p.cmd.Start()
 	if err != nil {
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
@@ -224,7 +224,12 @@ func (p *Process) Create(
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
 
-	err := p.configure(
+	err := utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
+
+	err = p.configure(
 		ctx,
 		sbxMetadata,
 		options.Stdout,
@@ -317,13 +322,13 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc machine config")
 
-	err = p.client.setEntropyDevice(ctx)
-	if err != nil {
-		fcStopErr := p.Stop(ctx)
+	// err = p.client.setEntropyDevice(ctx)
+	// if err != nil {
+	// 	fcStopErr := p.Stop(ctx)
 
-		return errors.Join(fmt.Errorf("error setting fc entropy config: %w", err), fcStopErr)
-	}
-	telemetry.ReportEvent(ctx, "set fc entropy config")
+	// 	return errors.Join(fmt.Errorf("error setting fc entropy config: %w", err), fcStopErr)
+	// }
+	// telemetry.ReportEvent(ctx, "set fc entropy config")
 
 	err = p.client.startVM(ctx)
 	if err != nil {
@@ -348,7 +353,12 @@ func (p *Process) Resume(
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
 
-	err := p.configure(
+	err := utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
+
+	err = p.configure(
 		ctx,
 		sbxMetadata,
 		nil,
@@ -358,11 +368,6 @@ func (p *Process) Resume(
 		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
-	}
-
-	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
-	if err != nil {
-		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "symlinked rootfs")

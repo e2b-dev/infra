@@ -74,7 +74,7 @@ func (lb *LayerExecutor) BuildLayer(
 	}
 
 	// Create or resume sandbox
-	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate)
+	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate, userLogger)
 	if err != nil {
 		return metadata.Template{}, err
 	}
@@ -279,6 +279,8 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 	lb.UploadErrGroup.Go(func() error {
+		userLogger.Debug(ctx, fmt.Sprintf("Uploading: %s", meta.Template.BuildID))
+
 		ctx := context.WithoutCancel(ctx)
 		ctx, span := tracer.Start(ctx, "upload snapshot")
 		defer span.End()
@@ -301,7 +303,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		userLogger.Debug(ctx, fmt.Sprintf("Saved: %s", meta.Template.BuildID))
+		userLogger.Debug(ctx, fmt.Sprintf("Uploaded: %s", meta.Template.BuildID))
 
 		return nil
 	})

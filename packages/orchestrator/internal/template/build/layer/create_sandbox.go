@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -16,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -59,6 +62,7 @@ func (cs *CreateSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
 	sourceTemplate sbxtemplate.Template,
+	userLogger logger.Logger,
 ) (s *sandbox.Sandbox, err error) {
 	// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
 	// This is ok as the sandbox is started from the beginning.
@@ -98,6 +102,7 @@ func (cs *CreateSandbox) Sandbox(
 			KvmClock:            kvmClock,
 		},
 		nil,
+		userLogger,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox: %w", err)
@@ -109,6 +114,22 @@ func (cs *CreateSandbox) Sandbox(
 		}
 	}()
 
+	userLogger.Info(ctx, fmt.Sprintf("sandbox with rootfs path %s created", sbx.RootfsPath))
+
+	f, err := os.Open(sbx.RootfsPath)
+	if err != nil {
+		userLogger.Error(ctx, "failed to open rootfs device", zap.Error(err))
+	}
+	defer f.Close()
+
+	userLogger.Info(ctx, "opened rootfs device, reading 4MB from it")
+
+	buf := make([]byte, 4*1024*1024)
+	n, err := f.ReadAt(buf, 0)
+	if err != nil {
+		userLogger.Error(ctx, "failed to read from rootfs device", zap.Error(err))
+	}
+
 	err = sbx.WaitForEnvd(
 		ctx,
 		waitEnvdTimeout,
@@ -116,6 +137,8 @@ func (cs *CreateSandbox) Sandbox(
 	if err != nil {
 		return nil, fmt.Errorf("wait for envd: %w", err)
 	}
+
+	userLogger.Info(ctx, fmt.Sprintf("read %d bytes from rootfs device", n))
 
 	return sbx, nil
 }

@@ -169,7 +169,11 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		u.fdExit,
 	)
 	if err != nil {
+		logger.L().Error(ctx, "failed handling uffd", logger.WithSandboxID(sandboxId), zap.Error(err))
+
 		return fmt.Errorf("failed handling uffd: %w", err)
+	} else {
+		logger.L().Info(ctx, "successfully handled uffd", logger.WithSandboxID(sandboxId))
 	}
 
 	return nil

@@ -123,3 +123,7 @@ build-template:
 .PHONY: migrate
 migrate:
 	./upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)
+
+.PHONY: test-nbd
+test-nbd:
+	cd internal/sandbox/nbd && go test -c -o /tmp/nbd_test && sudo /tmp/nbd_test -test.v -test.run $(TEST)

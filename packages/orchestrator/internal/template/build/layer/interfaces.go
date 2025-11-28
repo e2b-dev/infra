@@ -7,6 +7,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -19,6 +20,7 @@ type SandboxCreator interface {
 		ctx context.Context,
 		layerExecutor *LayerExecutor,
 		template sbxtemplate.Template,
+		userLogger logger.Logger,
 	) (*sandbox.Sandbox, error)
 }
 

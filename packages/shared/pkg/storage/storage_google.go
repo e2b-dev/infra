@@ -31,7 +31,7 @@ const (
 	googleInitialBackoff           = 10 * time.Millisecond
 	googleMaxBackoff               = 10 * time.Second
 	googleBackoffMultiplier        = 2
-	googleMaxAttempts              = 10
+	googleMaxAttempts              = 2
 	gcloudDefaultUploadConcurrency = 16
 )
 
@@ -289,6 +289,8 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+	return nil
+
 	timer := googleWriteTimerFactory.Begin()
 
 	bucketName := g.storage.bucket.BucketName()

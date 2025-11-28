@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -112,6 +113,8 @@ type Sandbox struct {
 	*Resources
 	*Metadata
 
+	RootfsPath string
+
 	config  cfg.BuilderConfig
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
@@ -175,6 +178,7 @@ func (f *Factory) CreateSandbox(
 	rootfsCachePath string,
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
+	userLogger logger.Logger,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
@@ -269,6 +273,21 @@ func (f *Factory) CreateSandbox(
 
 	telemetry.ReportEvent(ctx, "created fc client")
 
+	rootfsTest, err := os.Open(rootfsPath)
+	if err != nil {
+		userLogger.Error(ctx, "failed to open rootfs device before creating sandbox", zap.Error(err))
+	}
+	defer rootfsTest.Close()
+
+	userLogger.Info(ctx, "opened rootfs device before creating sandbox, reading 4MB from it")
+
+	buf := make([]byte, 4*1024*1024)
+	n, err := rootfsTest.ReadAt(buf, 0)
+	if err != nil {
+		userLogger.Error(ctx, "failed to read from rootfs device", zap.Error(err))
+	}
+	userLogger.Info(ctx, fmt.Sprintf("read %d bytes from rootfs device before creating sandbox", n))
+
 	err = fcHandle.Create(
 		ctx,
 		sbxlogger.SandboxMetadata{
@@ -305,8 +324,9 @@ func (f *Factory) CreateSandbox(
 	}
 
 	sbx := &Sandbox{
-		Resources: resources,
-		Metadata:  metadata,
+		RootfsPath: rootfsPath,
+		Resources:  resources,
+		Metadata:   metadata,
 
 		Template: template,
 		config:   f.config,
@@ -360,6 +380,7 @@ func (f *Factory) ResumeSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
+	userLogger logger.Logger,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
@@ -502,6 +523,21 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "got snapfile")
 
+	rootfsTest, err := os.Open(rootfsPath)
+	if err != nil {
+		userLogger.Error(ctx, "failed to open rootfs device before resume", zap.Error(err))
+	}
+	defer rootfsTest.Close()
+
+	userLogger.Info(ctx, "opened rootfs device before resume, reading 4MB from it")
+
+	buf := make([]byte, 4*1024*1024)
+	n, err := rootfsTest.ReadAt(buf, 0)
+	if err != nil {
+		userLogger.Error(ctx, "failed to read from rootfs device before resume", zap.Error(err))
+	}
+	userLogger.Info(ctx, fmt.Sprintf("read %d bytes from rootfs device before resume", n))
+
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		sbxlogger.SandboxMetadata{
@@ -539,8 +575,9 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	sbx := &Sandbox{
-		Resources: resources,
-		Metadata:  metadata,
+		RootfsPath: rootfsPath,
+		Resources:  resources,
+		Metadata:   metadata,
 
 		Template: t,
 		config:   f.config,
@@ -570,12 +607,39 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(execCtx, "waiting for envd")
 
+	if userLogger != nil {
+		userLogger.Info(ctx, fmt.Sprintf("sandbox with rootfs path %s resuming", sbx.RootfsPath))
+
+		f, err := os.Open(sbx.RootfsPath)
+		if err != nil {
+			userLogger.Error(ctx, "failed to open rootfs device during resume", zap.Error(err))
+		}
+		defer f.Close()
+
+		userLogger.Info(ctx, "opened rootfs device during resume, reading 4MB from it")
+
+		buf := make([]byte, 4*1024*1024)
+		n, err := f.ReadAt(buf, 0)
+		if err != nil {
+			userLogger.Error(ctx, "failed to read from rootfs device during resume", zap.Error(err))
+		}
+		userLogger.Info(ctx, fmt.Sprintf("read %d bytes from rootfs device during resume", n))
+	}
+
 	err = sbx.WaitForEnvd(
 		ctx,
 		f.config.EnvdTimeout,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+	}
+
+	if userLogger != nil {
+		pid, err := sbx.process.Pid()
+		if err != nil {
+			userLogger.Error(ctx, "failed to get process id", zap.Error(err))
+		}
+		userLogger.Info(ctx, fmt.Sprintf("envd initialized for sandbox %s, process id %d", sbx.Runtime.SandboxID, pid))
 	}
 
 	telemetry.ReportEvent(execCtx, "envd initialized")

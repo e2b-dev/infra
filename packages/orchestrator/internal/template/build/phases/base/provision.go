@@ -136,6 +136,7 @@ func (bb *BaseBuilder) provisionSandbox(
 			Stderr: logsWriter,
 		},
 		nil,
+		userLogger,
 	)
 	if err != nil {
 		return fmt.Errorf("error creating sandbox: %w", err)

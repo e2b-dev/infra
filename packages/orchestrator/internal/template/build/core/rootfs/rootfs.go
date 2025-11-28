@@ -36,6 +36,9 @@ const (
 
 	ProvisioningExitPrefix = "E2B_PROVISIONING_EXIT:"
 
+	journaldVolatileConfig = `[Journal]
+Storage=volatile
+`
 	serviceWatchDogDisabledConfig = `[Service]
 WatchdogSec=0
 `
@@ -236,6 +239,7 @@ ff02::2	ip6-allrouters
 			"etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf": {Bytes: []byte(autologinService), Mode: 0o644},
 			"etc/systemd/system/systemd-journald.service.d/override.conf":    {Bytes: []byte(serviceWatchDogDisabledConfig), Mode: 0o644},
 			"etc/systemd/system/systemd-networkd.service.d/override.conf":    {Bytes: []byte(serviceWatchDogDisabledConfig), Mode: 0o644},
+			// "etc/systemd/journald.conf.d/volatile.conf":                      {Bytes: []byte(journaldVolatileConfig), Mode: 0o644},
 
 			// Provision script
 			"usr/local/bin/provision.sh": {Bytes: []byte(provisionScript), Mode: 0o777},

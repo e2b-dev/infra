@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	connections    = 4
+	connections    = 1
 	connectTimeout = 30 * time.Second
 
 	// disconnectTimeout should not be necessary if the disconnect is reliable
@@ -113,11 +113,18 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
-				logger.L().Info(ctx, "closing handler for NBD commands",
-					zap.Error(handleErr),
-					zap.Uint32("device_index", deviceIndex),
-					zap.Int("socket_index", i),
-				)
+				if handleErr != nil {
+					logger.L().Error(ctx, "error handling NBD commands",
+						zap.Error(handleErr),
+						zap.Uint32("device_index", deviceIndex),
+						zap.Int("socket_index", i),
+					)
+				} else {
+					logger.L().Info(ctx, "successfully handled NBD commands",
+						zap.Uint32("device_index", deviceIndex),
+						zap.Int("socket_index", i),
+					)
+				}
 			}()
 
 			d.socksServer = append(d.socksServer, serverc)
@@ -130,7 +137,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		opts = append(opts, nbdnl.WithTimeout(connectTimeout))
 		opts = append(opts, nbdnl.WithDeadconnTimeout(connectTimeout))
 
-		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn
+		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn | nbdnl.FlagSendFlush | nbdnl.FlagSendFUA
 
 		idx, err := nbdnl.Connect(deviceIndex, d.socksClient, uint64(size), 0, serverFlags, opts...)
 		if err == nil {
@@ -199,6 +206,12 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 
 	idx := d.deviceIndex
 
+	// Now wait for any pending responses to be sent
+	telemetry.ReportEvent(ctx, "waiting for pending responses")
+	for _, d := range d.dispatchers {
+		d.Drain()
+	}
+
 	// First cancel the context, which will stop waiting on pending readAt/writeAt...
 	telemetry.ReportEvent(ctx, "canceling context")
 	if d.cancelfn != nil {
@@ -217,12 +230,6 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 	// Now wait until the handlers return
 	telemetry.ReportEvent(ctx, "await handlers return")
 	d.handlersWg.Wait()
-
-	// Now wait for any pending responses to be sent
-	telemetry.ReportEvent(ctx, "waiting for pending responses")
-	for _, d := range d.dispatchers {
-		d.Drain()
-	}
 
 	// Disconnect NBD
 	if idx != math.MaxUint32 {

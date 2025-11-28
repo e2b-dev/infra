@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"go.uber.org/zap"
-	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -62,6 +61,8 @@ func (o *NBDProvider) Start(ctx context.Context) error {
 	if err != nil {
 		return o.ready.SetError(fmt.Errorf("error opening overlay file: %w", err))
 	}
+
+	// time.Sleep(1000 * time.Millisecond)
 
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
@@ -161,9 +162,9 @@ func (o *NBDProvider) sync(ctx context.Context) error {
 		}
 	}()
 
-	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
-		return fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
-	}
+	// if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
+	// 	return fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
+	// }
 
 	return flush(ctx, nbdPath)
 }

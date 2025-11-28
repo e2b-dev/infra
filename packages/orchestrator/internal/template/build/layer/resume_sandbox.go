@@ -11,6 +11,7 @@ import (
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // ResumeSandbox creates sandboxes for resuming existing templates
@@ -30,6 +31,7 @@ func (rs *ResumeSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
 	template sbxtemplate.Template,
+	userLogger logger.Logger,
 ) (*sandbox.Sandbox, error) {
 	sbx, err := rs.sandboxFactory.ResumeSandbox(
 		ctx,
@@ -43,6 +45,7 @@ func (rs *ResumeSandbox) Sandbox(
 		time.Now(),
 		time.Now().Add(rs.timeout),
 		nil,
+		userLogger,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("resume sandbox: %w", err)

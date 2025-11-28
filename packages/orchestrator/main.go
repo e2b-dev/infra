@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof" // Register pprof handlers
 	"os"
 	"os/signal"
 	"slices"
@@ -509,7 +510,22 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	httpServer := factories.NewHTTPServer()
-	httpServer.Handler = healthcheck.CreateHandler()
+
+	// Create mux with both healthcheck and pprof endpoints
+	mux := http.NewServeMux()
+
+	// Add healthcheck routes
+	healthHandler := healthcheck.CreateHandler()
+	mux.Handle("/health", healthHandler)
+
+	// Add pprof routes (pprof registers itself with http.DefaultServeMux when imported)
+	mux.Handle("/debug/pprof/", http.DefaultServeMux)
+	mux.Handle("/debug/pprof/cmdline", http.DefaultServeMux)
+	mux.Handle("/debug/pprof/profile", http.DefaultServeMux)
+	mux.Handle("/debug/pprof/symbol", http.DefaultServeMux)
+	mux.Handle("/debug/pprof/trace", http.DefaultServeMux)
+
+	httpServer.Handler = mux
 
 	startService("http server", func() error {
 		err := httpServer.Serve(httpListener)
