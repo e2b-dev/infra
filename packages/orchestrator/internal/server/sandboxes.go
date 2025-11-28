@@ -184,7 +184,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			sbxlogger.I(sbx).Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
 		}
 
-		sbxlogger.E(sbx).Info(ctx, "Sandbox killed")
+		sbxlogger.E(sbx).Info(ctx, "Sandbox stopped")
 	}()
 
 	eventType := events.SandboxCreatedEventPair
@@ -308,6 +308,8 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
 
+	sbxlogger.E(sbx).Info(ctx, "Killing sandbox")
+
 	// Remove the sandbox from the cache to prevent loading it again in API during the time the instance is stopping.
 	// Old comment:
 	// 	Ensure the sandbox is removed from cache.
@@ -374,6 +376,8 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
+
+	sbxlogger.E(sbx).Info(ctx, "Pausing sandbox")
 
 	s.sandboxes.Remove(in.GetSandboxId())
 
