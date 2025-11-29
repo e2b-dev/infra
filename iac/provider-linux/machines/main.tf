@@ -49,14 +49,17 @@ resource "null_resource" "servers" {
   }
 
   provisioner "file" {
+    # Include Consul token for Nomad → Consul integration when ACL is enabled
     content = jsonencode(merge(
       {
         datacenter = var.datacenter,
         data_dir   = "/var/lib/nomad",
         bind_addr  = "0.0.0.0",
         server     = { enabled = true, bootstrap_expect = local.bootstrap_expect },
-        consul     = { address = "127.0.0.1:8500" }
+        consul     = length(var.consul_acl_token) > 0 ? { address = "127.0.0.1:8500", token = var.consul_acl_token } : { address = "127.0.0.1:8500" }
       },
+      // Enable Nomad ACL when a token is provided to match provider-gcp behavior
+      length(var.nomad_acl_token) > 0 ? { acl = { enabled = true } } : {},
       contains(keys(local.client_map), each.value.host) ? {
         client = {
           enabled   = true,
@@ -199,7 +202,12 @@ resource "null_resource" "clients" {
   }
 
   provisioner "file" {
-    content     = jsonencode({ datacenter = var.datacenter, data_dir = "/var/lib/nomad", bind_addr = "0.0.0.0", client = { enabled = true, node_pool = each.value.node_pool, servers = [for s in local.server_ips : "${s}:4647"], options = { "driver.raw_exec.enable" = "1" } }, consul = { address = "127.0.0.1:8500" } })
+    # Include Consul token for Nomad clients when ACL is enabled
+    content = jsonencode(merge(
+      { datacenter = var.datacenter, data_dir = "/var/lib/nomad", bind_addr = "0.0.0.0", client = { enabled = true, node_pool = each.value.node_pool, servers = [for s in local.server_ips : "${s}:4647"], options = { "driver.raw_exec.enable" = "1" } }, consul = length(var.consul_acl_token) > 0 ? { address = "127.0.0.1:8500", token = var.consul_acl_token } : { address = "127.0.0.1:8500" } },
+      // Enable Nomad ACL when a token is provided to match provider-gcp behavior
+      length(var.nomad_acl_token) > 0 ? { acl = { enabled = true } } : {}
+    ))
     destination = "/tmp/nomad.json"
   }
 
