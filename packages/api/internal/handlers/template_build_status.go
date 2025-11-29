@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -64,7 +63,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	// early return if still waiting for build start
-	if buildInfo.BuildStatus == envbuild.StatusWaiting {
+	if buildInfo.BuildStatus == types.BuildStatusWaiting {
 		result := api.TemplateBuildInfo{
 			LogEntries: make([]api.BuildLogEntry, 0),
 			Logs:       make([]string, 0),
@@ -88,14 +87,6 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		Reason:     getAPIReason(buildInfo.Reason),
 	}
 
-	cli, err := a.templateManager.GetClusterBuildClient(utils.WithClusterFallback(team.ClusterID), buildInfo.NodeID)
-	if err != nil {
-		telemetry.ReportError(ctx, "error when getting build client", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build client")
-
-		return
-	}
-
 	lgs := make([]string, 0)
 	logEntries := make([]api.BuildLogEntry, 0)
 	offset := int32(0)
@@ -113,30 +104,41 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	for _, entry := range cli.GetLogs(ctx, templateID, buildID, offset, apiToLogLevel(params.Level)) {
-		if legacyLogs {
-			lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
+	nodeID := buildInfo.NodeID
+	if nodeID != nil {
+		cli, err := a.templateManager.GetClusterBuildClient(utils.WithClusterFallback(team.ClusterID), *nodeID)
+		if err != nil {
+			telemetry.ReportError(ctx, "error when getting build client", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build client")
+
+			return
 		}
-		logEntries = append(logEntries, getAPILogEntry(entry))
-	}
 
-	result.Logs = lgs
-	result.LogEntries = logEntries
+		for _, entry := range cli.GetLogs(ctx, templateID, buildID, offset, apiToLogLevel(params.Level)) {
+			if legacyLogs {
+				lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
+			}
+			logEntries = append(logEntries, getAPILogEntry(entry))
+		}
 
-	if result.Reason != nil && result.Reason.Step != nil {
-		result.Reason.LogEntries = sharedUtils.ToPtr(filterStepLogs(logEntries, *result.Reason.Step, api.LogLevelWarn))
+		result.Logs = lgs
+		result.LogEntries = logEntries
+
+		if result.Reason != nil && result.Reason.Step != nil {
+			result.Reason.LogEntries = sharedUtils.ToPtr(filterStepLogs(logEntries, *result.Reason.Step, api.LogLevelWarn))
+		}
 	}
 
 	c.JSON(http.StatusOK, result)
 }
 
-func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildStatus {
+func getCorrespondingTemplateBuildStatus(s types.BuildStatus) api.TemplateBuildStatus {
 	switch s {
-	case envbuild.StatusWaiting:
+	case types.BuildStatusWaiting:
 		return api.TemplateBuildStatusWaiting
-	case envbuild.StatusFailed:
+	case types.BuildStatusFailed:
 		return api.TemplateBuildStatusError
-	case envbuild.StatusUploaded:
+	case types.BuildStatusUploaded:
 		return api.TemplateBuildStatusReady
 	default:
 		return api.TemplateBuildStatusBuilding

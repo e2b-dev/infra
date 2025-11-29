@@ -75,7 +75,7 @@ func (a *APIStore) startSandbox(
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
 	_, analyticsSpan := tracer.Start(ctx, "analytics")
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
 	props := properties.
 		Set("environment", build.EnvID).
@@ -86,7 +86,7 @@ func (a *APIStore) startSandbox(
 		props = props.Set("mcp_servers", slices.Collect(maps.Keys(mcp)))
 	}
 
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "created_instance", props)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "created_instance", props)
 	analyticsSpan.End()
 
 	telemetry.ReportEvent(ctx, "Created analytics event")
@@ -103,7 +103,7 @@ func (a *APIStore) startSandbox(
 		SandboxID:  sandbox.SandboxID,
 		TemplateID: build.EnvID,
 		TeamID:     team.ID.String(),
-	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
+	}).Info(ctx, "Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
 	return sandbox.ToAPISandbox(), nil
 }

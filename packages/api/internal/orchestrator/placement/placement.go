@@ -78,18 +78,18 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		span.End()
 		if err != nil {
 			if algorithm.excludeNode(err) {
-				zap.L().Warn("Excluding node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
+				logger.L().Warn(ctx, "Excluding node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
 				nodesExcluded[node.ID] = struct{}{}
 			}
 
 			st, ok := status.FromError(err)
 			if !ok || st.Code() != codes.ResourceExhausted {
 				node.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
-				zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+				logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
 				attempt++
 			} else {
 				node.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
-				zap.L().Warn("Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
+				logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
 			}
 
 			node = nil

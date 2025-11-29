@@ -44,7 +44,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	nodeID, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithClusterFallback(templateDB.ClusterID))
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
+		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
 
 		return
 	}

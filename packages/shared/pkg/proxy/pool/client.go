@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -32,7 +33,8 @@ func newProxyClient(
 	idleTimeout time.Duration,
 	totalConnsCounter *atomic.Uint64,
 	currentConnsCounter *atomic.Int64,
-	logger *log.Logger,
+	l *log.Logger,
+	disableKeepAlives bool,
 ) *ProxyClient {
 	activeConnections := smap.New[*tracking.Connection]()
 
@@ -44,6 +46,8 @@ func newProxyClient(
 		IdleConnTimeout:       idleTimeout,
 		TLSHandshakeTimeout:   0,
 		ResponseHeaderTimeout: 0,
+		DisableKeepAlives:     disableKeepAlives,
+		ForceAttemptHTTP2:     false,
 		// TCP configuration
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			var conn net.Conn
@@ -114,23 +118,24 @@ func newProxyClient(
 			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			ctx := r.Context()
 			t, ok := pc.getDestination(r)
 			if !ok {
-				zap.L().Error("proxy request without sandbox received error", zap.Error(err))
+				logger.L().Error(ctx, "proxy request without sandbox received error", zap.Error(err))
 				http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
 
 				return
 			}
 
 			if r.Host == "" { // kept around for historical reasons, unsure of usefulness. todo: find out if this is useful.
-				t.RequestLogger.Error("error handler called from rewrite because of missing DestinationContext", zap.Error(err))
+				t.RequestLogger.Error(ctx, "error handler called from rewrite because of missing DestinationContext", zap.Error(err))
 				http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
 
 				return
 			}
 
 			if err != nil {
-				t.RequestLogger.Error("sandbox error handler called", zap.Error(err))
+				t.RequestLogger.Error(ctx, "sandbox error handler called", zap.Error(err))
 			}
 
 			if t.DefaultToPortError {
@@ -138,7 +143,7 @@ func newProxyClient(
 					NewPortClosedError(t.SandboxId, r.Host, t.SandboxPort).
 					HandleError(w, r)
 				if err != nil {
-					zap.L().Error("failed to handle error", zap.Error(err))
+					logger.L().Error(ctx, "failed to handle error", zap.Error(err))
 
 					http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
 
@@ -151,6 +156,7 @@ func newProxyClient(
 			http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
 		},
 		ModifyResponse: func(r *http.Response) error {
+			ctx := r.Request.Context()
 			t, ok := pc.getDestination(r.Request)
 			if !ok {
 				return nil
@@ -158,11 +164,12 @@ func newProxyClient(
 
 			if r.StatusCode >= 500 {
 				t.RequestLogger.Error(
+					ctx,
 					"Reverse proxy error",
 					zap.Int("status_code", r.StatusCode),
 				)
 			} else {
-				t.RequestLogger.Debug("Reverse proxy response",
+				t.RequestLogger.Debug(ctx, "Reverse proxy response",
 					zap.Int("status_code", r.StatusCode),
 				)
 			}
@@ -170,16 +177,17 @@ func newProxyClient(
 			return nil
 		},
 		// Ideally we would add info about sandbox to each error log, but there is no easy way right now.
-		ErrorLog: logger,
+		ErrorLog: l,
 	}
 
 	return pc
 }
 
 func (p *ProxyClient) getDestination(r *http.Request) (*Destination, bool) {
-	d, ok := getDestination(r.Context())
+	ctx := r.Context()
+	d, ok := getDestination(ctx)
 	if !ok {
-		zap.L().Error("failed to get routing target from context",
+		logger.L().Error(ctx, "failed to get routing target from context",
 			zap.String("request_method", r.Method),
 			zap.String("request_url", r.URL.String()))
 

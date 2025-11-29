@@ -1,8 +1,7 @@
 terraform {
   required_providers {
     docker = {
-      source  = "kreuzwerker/docker"
-      version = "3.0.2"
+      source = "kreuzwerker/docker"
     }
   }
 }
@@ -127,8 +126,9 @@ resource "nomad_job" "api" {
     otel_tracing_print             = var.otel_tracing_print
     nomad_acl_token                = var.nomad_acl_token_secret
     admin_token                    = var.api_admin_token
-    redis_url                      = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
-    redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+    redis_url                      = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+    redis_cluster_url              = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) == "" ? "" : data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data
+    redis_tls_ca_base64            = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
     dns_port_number                = var.api_dns_port_number
     clickhouse_connection_string   = local.clickhouse_connection_string
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
@@ -207,8 +207,10 @@ resource "nomad_job" "client_proxy" {
       gcp_zone    = var.gcp_zone
       environment = var.environment
 
-      redis_url         = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
-      redis_cluster_url = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+      redis_url                = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
+      redis_cluster_url        = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+      redis_secure_cluster_url = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) != "" ? data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data : ""
+      redis_tls_ca_base64      = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
       loki_url = "http://loki.service.consul:${var.loki_service_port.port}"
 

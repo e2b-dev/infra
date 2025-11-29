@@ -84,7 +84,7 @@ func (o *Orchestrator) CreateSandbox(
 	totalConcurrentInstances := team.Limits.SandboxConcurrency
 
 	// Check if team has reached max instances
-	finishStart, waitForStart, err := o.sandboxStore.Reserve(team.Team.ID.String(), sandboxID, totalConcurrentInstances)
+	finishStart, waitForStart, err := o.sandboxStore.Reserve(ctx, team.Team.ID.String(), sandboxID, int(totalConcurrentInstances))
 	if err != nil {
 		var limitErr *sandbox.LimitExceededError
 
@@ -100,7 +100,7 @@ func (o *Orchestrator) CreateSandbox(
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
 			}
 		default:
-			zap.L().Error("failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
+			logger.L().Error(ctx, "failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
 
 			return sandbox.Sandbox{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
@@ -111,11 +111,11 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	if waitForStart != nil {
-		zap.L().Info("sandbox is already being started, waiting for it to be ready", logger.WithSandboxID(sandboxID))
+		logger.L().Info(ctx, "sandbox is already being started, waiting for it to be ready", logger.WithSandboxID(sandboxID))
 
 		sbx, err = waitForStart(ctx)
 		if err != nil {
-			zap.L().Warn("Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
+			logger.L().Warn(ctx, "Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 			var apiErr *api.APIError
 			if errors.As(err, &apiErr) {
@@ -289,7 +289,26 @@ func (o *Orchestrator) CreateSandbox(
 		trafficAccessToken,
 	)
 
-	o.sandboxStore.Add(ctx, sbx, true)
+	err = o.sandboxStore.Add(ctx, sbx, true)
+	if err != nil {
+		telemetry.ReportError(ctx, "failed to add sandbox to store", err)
+
+		// Clean up the sandbox from the node
+		// Copy to a new variable to avoid race conditions
+		sbxToRemove := sbx
+		go func() {
+			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.StateActionKill)
+			if killErr != nil {
+				logger.L().Error(ctx, "Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
+			}
+		}()
+
+		return sandbox.Sandbox{}, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Failed to create sandbox",
+			Err:       fmt.Errorf("failed to add sandbox to store: %w", err),
+		}
+	}
 
 	return sbx, nil
 }

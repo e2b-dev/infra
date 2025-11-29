@@ -20,8 +20,7 @@ import (
 )
 
 type storageTemplate struct {
-	config cfg.BuilderConfig
-	files  storage.TemplateCacheFiles
+	files storage.TemplateCacheFiles
 
 	memfile  *utils.SetOnce[block.ReadonlyDevice]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
@@ -59,7 +58,6 @@ func newTemplateFromStorage(
 	}
 
 	return &storageTemplate{
-		config:        config,
 		files:         files,
 		localSnapfile: localSnapfile,
 		localMetafile: localMetafile,
@@ -90,7 +88,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			ctx,
 			t.persistence,
 			t.files.StorageSnapfilePath(),
-			t.files.CacheSnapfilePath(t.config),
+			t.files.CacheSnapfilePath(),
 			storage.SnapfileObjectType,
 		)
 		if snapfileErr != nil {
@@ -123,7 +121,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			ctx,
 			t.persistence,
 			t.files.StorageMetadataPath(),
-			t.files.CacheMetadataPath(t.config),
+			t.files.CacheMetadataPath(),
 			storage.MetadataObjectType,
 		)
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
@@ -138,12 +136,12 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		if err != nil {
 			// If we can't find the metadata, we still want to return the metafile.
 			// This is used for templates that don't have metadata, like v1 templates.
-			zap.L().Info("failed to fetch metafile, falling back to v1 template metadata",
+			logger.L().Info(ctx, "failed to fetch metafile, falling back to v1 template metadata",
 				logger.WithBuildID(t.files.BuildID),
 				zap.Error(err),
 			)
 			oldTemplateMetadata := metadata.V1TemplateVersion()
-			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath(t.config))
+			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath())
 			if err != nil {
 				sourceErr := fmt.Errorf("failed to write v1 template metadata to a file: %w", err)
 				if err := t.metafile.SetError(sourceErr); err != nil {
@@ -154,7 +152,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			}
 
 			if err := t.metafile.SetValue(&storageFile{
-				path: t.files.CacheMetadataPath(t.config),
+				path: t.files.CacheMetadataPath(),
 			}); err != nil {
 				return fmt.Errorf("failed to set metafile v1: %w", err)
 			}
@@ -226,7 +224,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 	err := wg.Wait()
 	if err != nil {
-		zap.L().Error("failed to fetch template files",
+		logger.L().Error(ctx, "failed to fetch template files",
 			logger.WithBuildID(t.files.BuildID),
 			zap.Error(err),
 		)

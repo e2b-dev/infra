@@ -1,6 +1,7 @@
 package block
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,11 +14,15 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block")
 
 type CacheClosedError struct {
 	filePath string
@@ -81,7 +86,26 @@ func (m *Cache) isClosed() bool {
 	return m.closed.Load()
 }
 
-func (m *Cache) ExportToDiff(out io.Writer) (*header.DiffMetadata, error) {
+func (m *Cache) Sync() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.isClosed() {
+		return NewErrCacheClosed(m.filePath)
+	}
+
+	err := m.mmap.Flush()
+	if err != nil {
+		return fmt.Errorf("error syncing cache: %w", err)
+	}
+
+	return nil
+}
+
+func (m *Cache) ExportToDiff(ctx context.Context, out io.Writer) (*header.DiffMetadata, error) {
+	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
+	defer childSpan.End()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -114,7 +138,7 @@ func (m *Cache) ExportToDiff(out io.Writer) (*header.DiffMetadata, error) {
 		dirty.Set(uint(blockIdx))
 		n, err := out.Write(block)
 		if err != nil {
-			zap.L().Error("error writing to out", zap.Error(err))
+			logger.L().Error(ctx, "error writing to out", zap.Error(err))
 
 			return nil, err
 		}

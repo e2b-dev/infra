@@ -46,7 +46,8 @@ type Node struct {
 	metrics   Metrics
 	metricsMu sync.RWMutex
 
-	meta NodeMetadata
+	machineInfo MachineInfo
+	meta        NodeMetadata
 
 	buildCache *ttlcache.Cache[string, any]
 
@@ -75,7 +76,7 @@ func New(
 
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.GetServiceStatus()]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.String("status", nodeInfo.GetServiceStatus().String()), logger.WithNodeID(nodeInfo.GetNodeId()))
+		logger.L().Error(ctx, "Unknown service info status", zap.String("status", nodeInfo.GetServiceStatus().String()), logger.WithNodeID(nodeInfo.GetNodeId()))
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
@@ -107,6 +108,7 @@ func New(
 		},
 	}
 	n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
+	n.setMachineInfo(nodeInfo.GetMachineInfo())
 
 	return n, nil
 }
@@ -114,7 +116,7 @@ func New(
 func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *edge.ClusterInstance) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))
+		logger.L().Error(ctx, "Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
@@ -150,25 +152,26 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 	nodeClient, ctx := n.GetClient(ctx)
 	nodeInfo, err := nodeClient.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {
-		zap.L().Error("Failed to get node service info", zap.Error(err), logger.WithNodeID(n.ID))
+		logger.L().Error(ctx, "Failed to get node service info", zap.Error(err), logger.WithNodeID(n.ID))
 
 		return n, nil
 	}
 
 	n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
+	n.setMachineInfo(nodeInfo.GetMachineInfo())
 
 	return n, nil
 }
 
-func (n *Node) Close() error {
+func (n *Node) Close(ctx context.Context) error {
 	if n.IsNomadManaged() {
-		zap.L().Info("Closing local node", logger.WithNodeID(n.ID))
+		logger.L().Info(ctx, "Closing local node", logger.WithNodeID(n.ID))
 		err := n.client.Close()
 		if err != nil {
-			zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.ID))
+			logger.L().Error(ctx, "Error closing connection to node", zap.Error(err), logger.WithNodeID(n.ID))
 		}
 	} else {
-		zap.L().Info("Closing cluster node", logger.WithNodeID(n.ID), logger.WithClusterID(n.ClusterID))
+		logger.L().Info(ctx, "Closing cluster node", logger.WithNodeID(n.ID), logger.WithClusterID(n.ClusterID))
 		// We are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
 	}
 	n.buildCache.Stop()

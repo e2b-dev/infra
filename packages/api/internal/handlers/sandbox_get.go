@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -42,7 +41,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// Try to get the running sandbox first
-	sbx, err := a.orchestrator.GetSandbox(sandboxId)
+	sbx, err := a.orchestrator.GetSandbox(ctx, sandboxId)
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if sbx.TeamID != team.ID {
@@ -107,7 +106,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if lastSnapshot.EnvBuild.TotalDiskSizeMb != nil {
 		diskSize = int32(*lastSnapshot.EnvBuild.TotalDiskSizeMb)
 	} else {
-		zap.L().Error("disk size is not set for the sandbox", logger.WithSandboxID(id))
+		logger.L().Error(ctx, "disk size is not set for the sandbox", logger.WithSandboxID(id))
 	}
 
 	// This shouldn't happen - if yes, the data are in corrupted state,
@@ -116,7 +115,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if lastSnapshot.EnvBuild.EnvdVersion != nil {
 		envdVersion = *lastSnapshot.EnvBuild.EnvdVersion
 	} else {
-		zap.L().Error("envd version is not set for the sandbox", logger.WithSandboxID(id))
+		logger.L().Error(ctx, "envd version is not set for the sandbox", logger.WithSandboxID(id))
 	}
 
 	var sbxAccessToken *string = nil

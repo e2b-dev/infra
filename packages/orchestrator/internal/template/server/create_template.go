@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -23,7 +24,7 @@ import (
 )
 
 func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templatemanager.TemplateCreateRequest) (*emptypb.Empty, error) {
-	_, childSpan := tracer.Start(ctx, "template-create")
+	ctx, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
 	cfg := templateRequest.GetTemplate()
@@ -39,7 +40,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	)
 
 	if s.info.GetStatus() != orchestrator.ServiceInfoStatus_Healthy {
-		s.logger.Error("Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.GetTemplateID()))
+		s.logger.Error(ctx, "Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.GetTemplateID()))
 
 		return nil, fmt.Errorf("server is draining")
 	}
@@ -96,7 +97,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	// Add new core that will log all messages using logger (zap.Logger) to the logs buffer too
 	encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
 	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
-	core := zapcore.NewTee(bufferCore, s.buildLogger.Core().
+	core := zapcore.NewTee(bufferCore, s.buildLogger.Detach(ctx).Core().
 		With([]zap.Field{
 			{Type: zapcore.StringType, Key: "envID", String: cfg.GetTemplateID()},
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
@@ -110,15 +111,19 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
+		ctx, buildSpan := tracer.Start(ctx, "template-background-build", trace.WithAttributes(
+			telemetry.WithTemplateID(template.TemplateID),
+			telemetry.WithBuildID(metadata.BuildID),
+			telemetry.WithTeamID(template.TeamID),
+		))
+		defer buildSpan.End()
+
 		defer func() {
 			if r := recover(); r != nil {
 				telemetry.ReportCriticalError(ctx, "recovered from panic in template build handler", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
 				buildInfo.SetFail(builderrors.UnwrapUserError(errors.New("fatal error occurred, please contact us")))
 			}
 		}()
-
-		ctx, buildSpan := tracer.Start(ctx, "template-background-build")
-		defer buildSpan.End()
 
 		// Watch for build cancellation requests
 		go func() {

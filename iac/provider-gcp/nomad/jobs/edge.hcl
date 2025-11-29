@@ -126,6 +126,8 @@ job "client-proxy" {
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
         REDIS_URL                     = "${redis_url}"
         REDIS_CLUSTER_URL             = "${redis_cluster_url}"
+        REDIS_SECURE_CLUSTER_URL      = "${redis_secure_cluster_url}"
+        REDIS_TLS_CA_BASE64           = "${redis_tls_ca_base64}"
         LOKI_URL                      = "${loki_url}"
 
         %{ if launch_darkly_api_key != "" }
