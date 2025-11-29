@@ -59,6 +59,11 @@ job "orchestrator" {
         LOCAL_TEMPLATE_STORAGE_BASE_PATH = "/tmp/templates"
         LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "/tmp/build-cache"
         ARTIFACTS_REGISTRY_PROVIDER  = "Local"
+        ORCHESTRATOR_BASE_PATH       = "/orchestrator"
+        FIRECRACKER_VERSIONS_DIR     = "/fc-versions"
+        HOST_KERNELS_DIR             = "/fc-kernels"
+        # Use tmpfs for lock file so it does not persist across crashes/reboots
+        ORCHESTRATOR_LOCK_PATH       = "/run/orchestrator.lock"
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
 %{ endif }

@@ -25,18 +25,22 @@ locals {
 }
 
 module "machines" {
-  source                 = "./machines"
-  datacenter             = var.datacenter
-  servers                = local.servers
-  clients                = local.clients
-  consul_acl_token       = var.consul_acl_token
-  docker_image_prefix    = var.docker_image_prefix
-  nomad_acl_token        = var.nomad_acl_token
-  docker_http_proxy      = var.docker_http_proxy
-  docker_https_proxy     = var.docker_https_proxy
-  docker_no_proxy        = var.docker_no_proxy
-  builder_node_pool      = var.builder_node_pool
-  orchestrator_node_pool = var.orchestrator_node_pool
+  source                      = "./machines"
+  datacenter                  = var.datacenter
+  servers                     = local.servers
+  clients                     = local.clients
+  consul_acl_token            = var.consul_acl_token
+  docker_image_prefix         = var.docker_image_prefix
+  nomad_acl_token             = var.nomad_acl_token
+  docker_http_proxy           = var.docker_http_proxy
+  docker_https_proxy          = var.docker_https_proxy
+  docker_no_proxy             = var.docker_no_proxy
+  builder_node_pool           = var.builder_node_pool
+  orchestrator_node_pool      = var.orchestrator_node_pool
+  kernel_source_base_url      = var.kernel_source_base_url
+  firecracker_source_base_url = var.firecracker_source_base_url
+  default_kernel_version      = var.default_kernel_version
+  default_firecracker_version = var.default_firecracker_version
 }
 
 module "nomad" {
@@ -112,6 +116,7 @@ module "nomad" {
   builder_node_pool                  = var.builder_node_pool
   envd_timeout                       = var.envd_timeout
   domain_name                        = var.domain_name
+  fc_artifact_node_pools             = var.fc_artifact_node_pools
 }
 
 resource "null_resource" "artifact_scp_server" {

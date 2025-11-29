@@ -80,6 +80,7 @@ tf_vars := \
 	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
 	$(call tfvar, TEMPLATE_MANAGER_MACHINE_COUNT) \
 	$(call tfvar, ORCHESTRATOR_PROXY_PORT) \
+	$(call tfvar, FC_ARTIFACT_NODE_POOLS) \
 	$(call tfvar, CLICKHOUSE_DATABASE) \
 	$(call tfvar, CLICKHOUSE_SERVER_PORT) \
 	$(call tfvar, CLICKHOUSE_RESOURCES_MEMORY_MB) \

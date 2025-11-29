@@ -202,3 +202,28 @@ variable "artifact_scp_port" {
   type    = number
   default = 0
 }
+
+variable "default_kernel_version" {
+  type    = string
+  default = "6.1.0"
+}
+
+variable "default_firecracker_version" {
+  type    = string
+  default = "1.4.0"
+}
+
+variable "kernel_source_base_url" {
+  type    = string
+  default = "https://storage.googleapis.com/e2b-prod-public-builds/kernels"
+}
+
+variable "firecracker_source_base_url" {
+  type    = string
+  default = "https://storage.googleapis.com/e2b-prod-public-builds/firecrackers"
+}
+
+variable "fc_artifact_node_pools" {
+  type    = list(string)
+  default = []
+}

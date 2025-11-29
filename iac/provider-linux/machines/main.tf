@@ -142,8 +142,14 @@ resource "null_resource" "servers" {
       "TOKEN=\"${var.nomad_acl_token}\"; for i in $(seq 1 5); do if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/build_node_pool.hcl && break; else $SUDO nomad node pool apply /tmp/build_node_pool.hcl && break; fi; sleep 2; done",
       "$SUDO mkdir -p /clickhouse/data",
       "$SUDO mkdir -p /etc/systemd/resolved.conf.d/",
-      "echo '[Resolve]\nDNS=127.0.0.1:8600\nDNSSEC=false' | $SUDO tee /etc/systemd/resolved.conf.d/consul.conf > /dev/null",
-      "$SUDO systemctl restart systemd-resolved"
+      "# Configure systemd-resolved to route *.consul queries to local Consul DNS (port 8600)",
+      "printf '[Resolve]\nDNS=127.0.0.1:8600\nDomains=~consul\nDNSSEC=false\n' | $SUDO tee /etc/systemd/resolved.conf.d/consul.conf >/dev/null",
+      "printf '[Resolve]\nDNSStubListener=yes\nDNSStubListenerExtra=172.17.0.1\n' | $SUDO tee /etc/systemd/resolved.conf.d/docker.conf >/dev/null",
+      "# Wait for Consul DNS (127.0.0.1:8600) to be ready before restarting systemd-resolved",
+      "for i in $(seq 1 10); do echo > /dev/tcp/127.0.0.1/8600 2>/dev/null && break || sleep 1; done",
+      "$SUDO systemctl restart systemd-resolved",
+      "REQUIRE_FC_ARTIFACTS=${contains(keys(local.client_map), each.value.host) && contains(var.fc_artifact_node_pools, local.client_map[each.value.host].node_pool) ? "1" : "0"}",
+      "if [ \"$REQUIRE_FC_ARTIFACTS\" = 1 ]; then KBASE=\"${var.kernel_source_base_url}\"; FBASE=\"${var.firecracker_source_base_url}\"; KV=\"${var.default_kernel_version}\"; FV=\"${var.default_firecracker_version}\"; $SUDO mkdir -p /orchestrator/sandbox /orchestrator/template /orchestrator/build /fc-vm /fc-kernels /fc-versions; if [ -n \"$KBASE\" ] && [ -n \"$KV\" ]; then $SUDO mkdir -p /fc-kernels/$KV; curl -fsSL \"$KBASE/$KV/vmlinux.bin\" | $SUDO tee /fc-kernels/$KV/vmlinux.bin >/dev/null || true; fi; if [ -n \"$FBASE\" ] && [ -n \"$FV\" ]; then $SUDO mkdir -p /fc-versions/$FV; curl -fsSL \"$FBASE/$FV/firecracker\" | $SUDO tee /fc-versions/$FV/firecracker >/dev/null && $SUDO chmod +x /fc-versions/$FV/firecracker || true; fi; fi"
     ]
   }
 }
@@ -264,8 +270,14 @@ resource "null_resource" "clients" {
       "$SUDO systemctl restart nomad",
       "$SUDO mkdir -p /clickhouse/data",
       "$SUDO mkdir -p /etc/systemd/resolved.conf.d/",
-      "echo '[Resolve]\nDNS=127.0.0.1:8600\nDNSSEC=false' | $SUDO tee /etc/systemd/resolved.conf.d/consul.conf > /dev/null",
-      "$SUDO systemctl restart systemd-resolved"
+      "# Configure systemd-resolved to route *.consul queries to local Consul DNS (port 8600)",
+      "printf '[Resolve]\nDNS=127.0.0.1:8600\nDomains=~consul\nDNSSEC=false\n' | $SUDO tee /etc/systemd/resolved.conf.d/consul.conf >/dev/null",
+      "printf '[Resolve]\nDNSStubListener=yes\nDNSStubListenerExtra=172.17.0.1\n' | $SUDO tee /etc/systemd/resolved.conf.d/docker.conf >/dev/null",
+      "# Wait for Consul DNS (127.0.0.1:8600) to be ready before restarting systemd-resolved",
+      "for i in $(seq 1 10); do echo > /dev/tcp/127.0.0.1/8600 2>/dev/null && break || sleep 1; done",
+      "$SUDO systemctl restart systemd-resolved",
+      "REQUIRE_FC_ARTIFACTS=${contains(var.fc_artifact_node_pools, each.value.node_pool) ? "1" : "0"}",
+      "if [ \"$REQUIRE_FC_ARTIFACTS\" = 1 ]; then KBASE=\"${var.kernel_source_base_url}\"; FBASE=\"${var.firecracker_source_base_url}\"; KV=\"${var.default_kernel_version}\"; FV=\"${var.default_firecracker_version}\"; $SUDO mkdir -p /orchestrator/sandbox /orchestrator/template /orchestrator/build /fc-vm /fc-kernels /fc-versions; if [ -n \"$KBASE\" ] && [ -n \"$KV\" ]; then $SUDO mkdir -p /fc-kernels/$KV; curl -fsSL \"$KBASE/$KV/vmlinux.bin\" | $SUDO tee /fc-kernels/$KV/vmlinux.bin >/dev/null || true; fi; if [ -n \"$FBASE\" ] && [ -n \"$FV\" ]; then $SUDO mkdir -p /fc-versions/$FV; curl -fsSL \"$FBASE/$FV/firecracker\" | $SUDO tee /fc-versions/$FV/firecracker >/dev/null && $SUDO chmod +x /fc-versions/$FV/firecracker || true; fi; fi"
     ]
   }
 }

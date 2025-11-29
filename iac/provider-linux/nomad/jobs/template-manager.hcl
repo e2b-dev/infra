@@ -80,6 +80,9 @@ job "template-manager-system" {
         LOCAL_TEMPLATE_STORAGE_BASE_PATH  = "/tmp/templates"
         LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "/tmp/build-cache"
         ARTIFACTS_REGISTRY_PROVIDER       = "Local"
+        ORCHESTRATOR_BASE_PATH            = "/orchestrator"
+        FIRECRACKER_VERSIONS_DIR          = "/fc-versions"
+        HOST_KERNELS_DIR                  = "/fc-kernels"
       }
 
       config {

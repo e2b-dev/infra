@@ -56,3 +56,23 @@ variable "orchestrator_node_pool" {
   type    = string
   default = ""
 }
+
+variable "kernel_source_base_url" {
+  type = string
+}
+
+variable "firecracker_source_base_url" {
+  type = string
+}
+
+variable "default_kernel_version" {
+  type = string
+}
+
+variable "default_firecracker_version" {
+  type = string
+}
+
+variable "fc_artifact_node_pools" {
+  type = list(string)
+}
