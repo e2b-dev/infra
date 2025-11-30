@@ -158,6 +158,10 @@ variable "redis_secure_cluster_url" {
   type    = string
   default = ""
 }
+variable "use_local_namespace_storage" {
+  type    = bool
+  default = false
+}
 variable "otel_collector_resources_memory_mb" { type = number }
 variable "otel_collector_resources_cpu_count" { type = number }
 variable "loki_resources_memory_mb" { type = number }

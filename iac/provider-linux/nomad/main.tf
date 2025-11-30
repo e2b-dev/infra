@@ -199,6 +199,7 @@ resource "nomad_job" "template_manager" {
     launch_darkly_api_key           = trimspace(var.launch_darkly_api_key)
     shared_chunk_cache_path         = var.shared_chunk_cache_path
     sandbox_hyperloop_proxy_port    = var.sandbox_hyperloop_proxy_port
+    use_local_namespace_storage     = var.use_local_namespace_storage
   })
 }
 
@@ -222,6 +223,7 @@ resource "nomad_job" "orchestrator" {
     redis_tls_ca_base64          = var.redis_tls_ca_base64
     launch_darkly_api_key        = trimspace(var.launch_darkly_api_key)
     artifact_url                 = var.orchestrator_artifact_url
+    use_local_namespace_storage  = var.use_local_namespace_storage
   })
 }
 

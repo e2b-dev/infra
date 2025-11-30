@@ -48,6 +48,10 @@ variable "sandbox_hyperloop_proxy_port" {
   type    = number
   default = 5011
 }
+variable "use_local_namespace_storage" {
+  type    = bool
+  default = false
+}
 variable "otel_collector_grpc_port" {
   type    = number
   default = 4317

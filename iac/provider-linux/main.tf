@@ -41,6 +41,7 @@ module "machines" {
   firecracker_source_base_url = var.firecracker_source_base_url
   default_kernel_version      = var.default_kernel_version
   default_firecracker_version = var.default_firecracker_version
+  fc_artifact_node_pools      = var.fc_artifact_node_pools
 }
 
 module "nomad" {
@@ -116,7 +117,7 @@ module "nomad" {
   builder_node_pool                  = var.builder_node_pool
   envd_timeout                       = var.envd_timeout
   domain_name                        = var.domain_name
-  fc_artifact_node_pools             = var.fc_artifact_node_pools
+  use_local_namespace_storage        = var.use_local_namespace_storage
 }
 
 resource "null_resource" "artifact_scp_server" {
