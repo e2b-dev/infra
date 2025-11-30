@@ -52,7 +52,7 @@ job "client-proxy" {
 
     service {
       name = "edge-api"
-      port = "${api_port}"
+      port = "${api_port_name}"
 
       tags = [
         "traefik.enable=true",
