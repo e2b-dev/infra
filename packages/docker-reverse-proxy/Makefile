@@ -23,7 +23,8 @@ build-and-upload:
 build-and-upload-linux:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	@if [ -z "$(DOCKER_IMAGE_PREFIX)" ]; then echo "DOCKER_IMAGE_PREFIX is required"; exit 1; fi
-	@docker build --platform linux/amd64 --tag "$(DOCKER_IMAGE_PREFIX)/docker-reverse-proxy:latest" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker build --platform linux/amd64 --tag "$(DOCKER_IMAGE_PREFIX)/docker-reverse-proxy:latest" --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker push "$(DOCKER_IMAGE_PREFIX)/docker-reverse-proxy:latest"
 
 .PHONY: test
 test:

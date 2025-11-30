@@ -77,7 +77,8 @@ build-and-upload-linux:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
 	@if [ -z "$(DOCKER_IMAGE_PREFIX)" ]; then echo "DOCKER_IMAGE_PREFIX is required"; exit 1; fi
-	@docker build --platform linux/amd64 --tag "$(DOCKER_IMAGE_PREFIX)/api:latest" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)" -f ./Dockerfile ..
+	@docker build --platform linux/amd64 --tag "$(DOCKER_IMAGE_PREFIX)/api:latest" --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)" -f ./Dockerfile ..
+	@docker push "$(DOCKER_IMAGE_PREFIX)/api:latest"
 
 .PHONY: test
 test:
