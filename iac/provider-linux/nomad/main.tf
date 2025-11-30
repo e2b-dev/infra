@@ -183,6 +183,7 @@ resource "nomad_job" "template_manager" {
     node_pool                       = var.builder_node_pool
     datacenter                      = var.datacenter
     port                            = var.template_manager_port
+    proxy_port                      = var.orchestrator_proxy_port
     environment                     = var.environment
     consul_acl_token                = var.consul_acl_token
     api_secret                      = var.api_secret

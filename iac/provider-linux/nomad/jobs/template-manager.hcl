@@ -68,6 +68,7 @@ job "template-manager-system" {
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         DOCKERHUB_REMOTE_REPOSITORY_URL  = "${dockerhub_remote_repository_url}"
         GRPC_PORT                     = "${port}"
+        PROXY_PORT                    = "${proxy_port}"
         SANDBOX_HYPERLOOP_PROXY_PORT  = "${sandbox_hyperloop_proxy_port}"
         USE_LOCAL_NAMESPACE_STORAGE    = "${use_local_namespace_storage}"
         GIN_MODE                      = "release"
