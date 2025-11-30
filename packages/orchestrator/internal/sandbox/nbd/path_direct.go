@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	connections    = 4
+	connections    = 1
 	connectTimeout = 30 * time.Second
 
 	// disconnectTimeout should not be necessary if the disconnect is reliable
@@ -130,7 +130,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		opts = append(opts, nbdnl.WithTimeout(connectTimeout))
 		opts = append(opts, nbdnl.WithDeadconnTimeout(connectTimeout))
 
-		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn
+		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn | nbdnl.FlagSendFlush | nbdnl.FlagSendFUA | nbdnl.FlagSendTrim
 
 		idx, err := nbdnl.Connect(deviceIndex, d.socksClient, uint64(size), 0, serverFlags, opts...)
 		if err == nil {

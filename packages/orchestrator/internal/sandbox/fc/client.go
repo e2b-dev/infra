@@ -189,6 +189,7 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error
 			IsRootDevice: &isRootDevice,
 			IsReadOnly:   false,
 			IoEngine:     &ioEngine,
+			CacheType:    utils.ToPtr("Writeback"),
 		},
 	}
 

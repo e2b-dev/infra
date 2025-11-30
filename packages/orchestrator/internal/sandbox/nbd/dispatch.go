@@ -70,6 +70,9 @@ type Dispatch struct {
 	shuttingDown     bool
 	shuttingDownLock sync.Mutex
 	fatal            chan error
+
+	// Keep track of pending writes to do proper flushing.
+	pendingWrites sync.WaitGroup
 }
 
 func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
@@ -78,6 +81,7 @@ func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
 		fp:             fp,
 		prov:           prov,
 		fatal:          make(chan error, 1),
+		pendingWrites:  sync.WaitGroup{},
 	}
 
 	binary.BigEndian.PutUint32(d.responseHeader, NBDResponseMagic)
@@ -167,7 +171,13 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				case NBDCmdDisconnect:
 					return nil // All done
 				case NBDCmdFlush:
-					return fmt.Errorf("not supported: Flush")
+					rp += 28
+					logger.L().Debug(ctx, "nbd flush command received", zap.Uint64("handle", request.Handle), zap.Uint64("from", request.From), zap.Uint32("length", request.Length))
+
+					err := d.cmdFlush(ctx, request.Handle, request.From, request.Length)
+					if err != nil {
+						return err
+					}
 				case NBDCmdRead:
 					rp += 28
 					err := d.cmdRead(ctx, request.Handle, request.From, request.Length)
@@ -286,6 +296,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
+		d.pendingWrites.Add(1)
 	} else {
 		d.shuttingDownLock.Unlock()
 
@@ -324,8 +335,54 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 				logger.L().Error(ctx, "nbd error cmd write", zap.Error(err))
 			}
 		}
+		d.pendingWrites.Done()
 		d.pendingResponses.Done()
 	}()
+
+	return nil
+}
+
+func (d *Dispatch) cmdFlush(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
+	d.shuttingDownLock.Lock()
+	if !d.shuttingDown {
+		d.pendingResponses.Add(1)
+	} else {
+		d.shuttingDownLock.Unlock()
+
+		return ErrShuttingDown
+	}
+	pw := &d.pendingWrites
+	d.pendingWrites = sync.WaitGroup{}
+	d.shuttingDownLock.Unlock()
+
+	performFlush := func(handle uint64, from uint64, length uint32) error {
+		errchan := make(chan error, 1)
+		go func() {
+			pw.Wait()
+			errchan <- nil
+		}()
+
+		select {
+		case <-ctx.Done():
+			return d.writeResponse(1, handle, []byte{})
+		case err := <-errchan:
+			if err != nil {
+				return d.writeResponse(1, handle, []byte{})
+			}
+		}
+
+		return d.writeResponse(0, handle, []byte{})
+	}
+
+	err := performFlush(cmdHandle, cmdFrom, cmdLength)
+	if err != nil {
+		select {
+		case d.fatal <- err:
+		default:
+			logger.L().Error(ctx, "nbd error cmd flush", zap.Error(err))
+		}
+	}
+	d.pendingResponses.Done()
 
 	return nil
 }
