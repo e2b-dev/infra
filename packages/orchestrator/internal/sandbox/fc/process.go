@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -73,6 +74,7 @@ type Process struct {
 func NewProcess(
 	ctx context.Context,
 	execCtx context.Context,
+	featureFlags *featureflags.Client,
 	config cfg.BuilderConfig,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
@@ -125,7 +127,7 @@ func NewProcess(
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		config:                config,
-		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
+		client:                newApiClient(featureFlags, files.SandboxFirecrackerSocketPath()),
 		providerRootfsPath:    rootfsProviderPath,
 		files:                 files,
 		slot:                  slot,

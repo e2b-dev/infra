@@ -6,28 +6,34 @@ import (
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type apiClient struct {
 	client *client.Firecracker
+
+	featureFlags *featureflags.Client
 }
 
-func newApiClient(socketPath string) *apiClient {
+func newApiClient(featureFlags *featureflags.Client, socketPath string) *apiClient {
 	client := client.NewHTTPClient(strfmt.NewFormats())
 
 	transport := firecracker.NewUnixSocketTransport(socketPath, nil, false)
 	client.SetTransport(transport)
 
 	return &apiClient{
-		client: client,
+		client:       client,
+		featureFlags: featureFlags,
 	}
 }
 
@@ -178,8 +184,15 @@ func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernel
 
 func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error {
 	rootfs := "rootfs"
-	// We use Sync for now as there seems to be a bad interaction between NBD and Async.
-	ioEngine := "Sync"
+
+	ioEngine, err := c.featureFlags.StringFlag(
+		ctx,
+		featureflags.BuildIoEngine,
+	)
+	if err != nil {
+		logger.L().Debug(ctx, "getting io engine failed, using default value", zap.String("io_engine", featureflags.BuildIoEngine.Fallback()), zap.Error(err))
+	}
+
 	isRootDevice := true
 	driversConfig := operations.PutGuestDriveByIDParams{
 		Context: ctx,
@@ -193,7 +206,7 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error
 		},
 	}
 
-	_, err := c.client.Operations.PutGuestDriveByID(&driversConfig)
+	_, err = c.client.Operations.PutGuestDriveByID(&driversConfig)
 	if err != nil {
 		return fmt.Errorf("error setting fc drivers config: %w", err)
 	}

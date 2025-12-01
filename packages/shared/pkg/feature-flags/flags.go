@@ -96,3 +96,27 @@ var (
 	BuildCacheMaxUsagePercentage = newIntFlag("build-cache-max-usage-percentage", 85)
 	BuildProvisionVersion        = newIntFlag("build-provision-version", 0)
 )
+
+type StringFlag struct {
+	name     string
+	fallback string
+}
+
+func (f StringFlag) String() string {
+	return f.name
+}
+
+func (f StringFlag) Fallback() string {
+	return f.fallback
+}
+
+func newStringFlag(name string, fallback string) StringFlag {
+	flag := StringFlag{name: name, fallback: fallback}
+	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback))
+	LaunchDarklyOfflineStore.Update(builder)
+
+	return flag
+}
+
+// BuildIoEngine Sync might be used for now as there seems to be a bad interaction between NBD and Async.
+var BuildIoEngine = newStringFlag("build-io-engine", "Async")
