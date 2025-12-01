@@ -256,7 +256,6 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-
 // updateBestOfKConfig periodically updates the BestOfK algorithm configuration from feature flags
 func (o *Orchestrator) updateBestOfKConfig(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second) // Check for config updates every 30 seconds
