@@ -256,10 +256,6 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// getPlacementAlgorithm returns the appropriate placement algorithm based on the passed context
-func (o *Orchestrator) getPlacementAlgorithm() placement.Algorithm {
-	return o.placementAlgorithm
-}
 
 // updateBestOfKConfig periodically updates the BestOfK algorithm configuration from feature flags
 func (o *Orchestrator) updateBestOfKConfig(ctx context.Context) {
