@@ -205,16 +205,12 @@ func additionalOCILayers(
 
 	// add templates
 	for _, t := range fileTemplates.Templates() {
-		var buff bytes.Buffer
 		model := newTemplateModel(buildContext, provisionLogPrefix, provisionResultPath)
-		if err := t.Execute(&buff, &model); err != nil {
-			return nil, fmt.Errorf("error executing template %q: %w", t.Name(), err)
-		}
-		if len(model.paths) == 0 {
-			return nil, fmt.Errorf("template %q did not set path", t.Name())
+		data, err := generateFile(t, model)
+		if err != nil {
+			return nil, fmt.Errorf("error generating file from %q: %w", t.Name(), err)
 		}
 
-		data := bytes.TrimSpace(buff.Bytes())
 		for _, path := range model.paths {
 			filesMap[path.path] = oci.File{
 				Bytes: data,
@@ -244,6 +240,20 @@ func additionalOCILayers(
 		filesLayer,
 		symlinkLayer,
 	}, nil
+}
+
+func generateFile(t *template.Template, model *templateModel) ([]byte, error) {
+	var buff bytes.Buffer
+	if err := t.Execute(&buff, &model); err != nil {
+		return nil, fmt.Errorf("error executing template %q: %w", t.Name(), err)
+	}
+	if len(model.paths) == 0 {
+		return nil, fmt.Errorf("template %q did not set path", t.Name())
+	}
+
+	data := bytes.TrimSpace(buff.Bytes())
+
+	return data, nil
 }
 
 type templateModel struct {
