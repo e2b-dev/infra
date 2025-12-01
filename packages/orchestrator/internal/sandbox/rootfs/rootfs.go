@@ -21,6 +21,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type Provider interface {
 	Start(ctx context.Context) error
 	Close(ctx context.Context) error
+	Sync(ctx context.Context) error
 	Path() (string, error)
 	ExportDiff(ctx context.Context, out io.Writer, closeSandbox func(context.Context) error) (*header.DiffMetadata, error)
 }

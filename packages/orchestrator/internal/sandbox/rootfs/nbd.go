@@ -66,6 +66,20 @@ func (o *NBDProvider) Start(ctx context.Context) error {
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
 
+func (o *NBDProvider) Sync(ctx context.Context) error {
+	err := o.sync(ctx)
+	if err != nil {
+		return fmt.Errorf("error syncing rootfs: %w", err)
+	}
+
+	err = o.mnt.Sync(ctx)
+	if err != nil {
+		return fmt.Errorf("error syncing nbd device: %w", err)
+	}
+
+	return nil
+}
+
 func (o *NBDProvider) ExportDiff(
 	ctx context.Context,
 	out io.Writer,

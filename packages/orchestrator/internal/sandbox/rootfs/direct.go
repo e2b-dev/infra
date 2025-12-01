@@ -50,6 +50,10 @@ func (o *DirectProvider) Start(_ context.Context) error {
 	return nil
 }
 
+func (o *DirectProvider) Sync(ctx context.Context) error {
+	return o.sync(ctx)
+}
+
 func (o *DirectProvider) ExportDiff(
 	ctx context.Context,
 	out io.Writer,

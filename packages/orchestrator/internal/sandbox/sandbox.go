@@ -635,6 +635,8 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sandbox-close")
 	defer span.End()
 
+	logger.L().Error(ctx, "!!! stopping sandbox !!!")
+
 	var errs []error
 
 	// Stop the health checks before stopping the sandbox
@@ -771,6 +773,11 @@ func (s *Sandbox) Pause(
 	}
 	// Close the file even if an error occurs
 	defer memfile.Close()
+
+	// err = s.rootfs.Sync(ctx)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to sync rootfs: %w", err)
+	// }
 
 	err = s.process.CreateSnapshot(
 		ctx,

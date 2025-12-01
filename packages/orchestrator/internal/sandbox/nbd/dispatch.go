@@ -87,11 +87,13 @@ func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
 
 func (d *Dispatch) Drain() {
 	d.shuttingDownLock.Lock()
-	d.shuttingDown = true
+	pendingResponses := &d.pendingResponses
+	d.pendingResponses = sync.WaitGroup{}
+	// d.shuttingDown = true
 	defer d.shuttingDownLock.Unlock()
 
 	// Wait for any pending responses
-	d.pendingResponses.Wait()
+	pendingResponses.Wait()
 }
 
 /**

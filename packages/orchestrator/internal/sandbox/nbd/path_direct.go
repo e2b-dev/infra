@@ -191,6 +191,16 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 	return deviceIndex, nil
 }
 
+func (d *DirectPathMount) Sync(ctx context.Context) error {
+	// Now wait for any pending responses to be sent
+	telemetry.ReportEvent(ctx, "waiting for pending responses")
+	for _, d := range d.dispatchers {
+		d.Drain()
+	}
+
+	return nil
+}
+
 func (d *DirectPathMount) Close(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "direct-path-mount-close")
 	defer span.End()
