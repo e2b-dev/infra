@@ -1,3 +1,4 @@
+{{- /*gotype:github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs.templateModel*/ -}}
 {{ .WriteFile "/etc/systemd/system/envd.service" 0o644 }}
 
 [Unit]

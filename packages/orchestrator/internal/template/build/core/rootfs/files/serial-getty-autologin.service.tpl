@@ -1,3 +1,4 @@
+{{- /*gotype:github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs.templateModel*/ -}}
 {{ .WriteFile "/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf" 0o644 }}
 
 [Service]

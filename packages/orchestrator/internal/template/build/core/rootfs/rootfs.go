@@ -249,6 +249,7 @@ func additionalOCILayers(
 type templateModel struct {
 	Context buildcontext.BuildContext
 
+	Hostname            string
 	ProvisionLogPrefix  string
 	ProvisionResultPath string
 	ProvisionExitPrefix string
@@ -262,6 +263,7 @@ type templateModel struct {
 func newTemplateModel(buildContext buildcontext.BuildContext, provisionLogPrefix, provisionResultPath string) *templateModel {
 	return &templateModel{
 		Context:             buildContext,
+		Hostname:            "e2b.local",
 		ProvisionLogPrefix:  provisionLogPrefix,
 		ProvisionExitPrefix: ProvisioningExitPrefix,
 		ProvisionResultPath: provisionResultPath,
