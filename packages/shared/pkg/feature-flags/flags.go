@@ -51,7 +51,6 @@ var (
 	MetricsReadFlagName           = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
 	SnapshotFeatureFlagName       = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlagName       = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
-	BestOfKPlacementAlgorithm     = newBoolFlag("best-of-k-placement-algorithm", env.IsDevelopment())
 	BestOfKCanFit                 = newBoolFlag("best-of-k-can-fit", true)
 	BestOfKTooManyStarting        = newBoolFlag("best-of-k-too-many-starting", false)
 	ClientProxyRedisSecurePrimary = newBoolFlag("client-proxy-redis-secure-primary", false)
