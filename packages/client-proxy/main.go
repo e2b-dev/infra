@@ -143,14 +143,14 @@ func run() int {
 		}()
 		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
-		if errors.Is(err, factories.ErrRedisDisabled) {
-			l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-			catalog = e2bcatalog.NewMemorySandboxesCatalog()
-		} else {
+		if !errors.Is(err, factories.ErrRedisDisabled) {
 			l.Error(ctx, "Failed to create redis client", zap.Error(err))
 
 			return 1
 		}
+
+		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
+		catalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
 
 	// TODO: Remove once migrated (ENG-3320)
@@ -169,13 +169,13 @@ func run() int {
 		fallbackCatalog := e2bcatalog.NewRedisSandboxesCatalog(redisSecureClient)
 		catalog = e2bcatalog.NewRedisFallbackSandboxesCatalog(catalog, fallbackCatalog, featureFlagsClient)
 	} else {
-		if errors.Is(err, factories.ErrRedisDisabled) {
-			l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		} else {
+		if !errors.Is(err, factories.ErrRedisDisabled) {
 			l.Error(ctx, "Failed to create redis secure client", zap.Error(err))
 
 			return 1
 		}
+
+		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
 	}
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, l, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
