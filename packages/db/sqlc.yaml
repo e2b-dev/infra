@@ -47,3 +47,8 @@ sql:
           - db_type: "jsonb"
             go_type: "github.com/e2b-dev/infra/packages/db/types.JSONBStringMap"
             nullable: true
+          - db_type: "jsonb"
+            go_type:
+              import: "github.com/e2b-dev/infra/packages/db/types"
+              type: "JSONBStringMap"
+              pointer: true
