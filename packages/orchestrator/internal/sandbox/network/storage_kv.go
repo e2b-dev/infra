@@ -18,6 +18,8 @@ type StorageKV struct {
 	nodeID       string
 }
 
+var _ Storage = &StorageKV{}
+
 func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
@@ -50,7 +52,11 @@ func newConsulClient(token string) (*consulApi.Client, error) {
 	return consulClient, nil
 }
 
-func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
+func (s *StorageKV) Setup(context.Context) error {
+	return nil
+}
+
+func (s *StorageKV) Acquire(context.Context) (*Slot, error) {
 	kv := s.consulClient.KV()
 
 	var slot *Slot

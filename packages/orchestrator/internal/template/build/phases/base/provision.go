@@ -95,6 +95,9 @@ func (bb *BaseBuilder) provisionSandbox(
 		scanner := bufio.NewScanner(exitCodeReader)
 		for scanner.Scan() {
 			line := scanner.Text()
+
+			line = strings.TrimSpace(line)
+
 			if strings.HasPrefix(line, rootfs.ProvisioningExitPrefix) {
 				exitStatus := strings.TrimPrefix(line, rootfs.ProvisioningExitPrefix)
 				if exitStatus == "0" {

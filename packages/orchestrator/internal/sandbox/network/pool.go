@@ -106,15 +106,19 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 	return ips, nil
 }
 
-func (p *Pool) Populate(ctx context.Context) {
+func (p *Pool) Populate(ctx context.Context) error {
 	defer close(p.newSlots)
+
+	if err := p.slotStorage.Setup(ctx); err != nil {
+		return fmt.Errorf("failed to set up slot storage: %w", err)
+	}
 
 	for {
 		select {
 		case <-p.done:
-			return
+			return nil
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		default:
 			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {
