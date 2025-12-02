@@ -21,10 +21,10 @@ build-base-template:
     	npx tsx build.prod.ts
 	@echo "Done"
 
-.PHONE: seed-db
+.PHONY: seed-db
 seed-db:
 	@echo "Seeding database..."
-	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/post
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/seed-db.go
 
 .PHONY: prep-cluster
 prep-cluster:
