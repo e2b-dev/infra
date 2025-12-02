@@ -282,6 +282,8 @@ func runBuild(
 		builder.templateStorage,
 		builder.proxy,
 		layerExecutor,
+		builder.featureFlags,
+		builder.logger,
 	)
 
 	// Construct the phases/steps to run

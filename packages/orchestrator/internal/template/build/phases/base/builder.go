@@ -259,7 +259,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Create sandbox for building template
 	userLogger.Debug(ctx, "Creating base sandbox template layer")
 
-	sandboxCreator := layer.NewCreateSandboxFromCache(
+	sandboxCreator := layer.NewCreateSandbox(
 		baseSbxConfig,
 		bb.sandboxFactory,
 		baseLayerTimeout,
@@ -267,7 +267,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			KernelVersion:      bb.Template.KernelVersion,
 			FirecrackerVersion: bb.Template.FirecrackerVersion,
 		},
-		rootfsPath,
+		layer.WithRootfsCachePath(rootfsPath),
 	)
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {

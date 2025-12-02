@@ -256,7 +256,6 @@ func (f *Factory) CreateSandbox(
 	fcHandle, err := fc.NewProcess(
 		ctx,
 		execCtx,
-		f.featureFlags,
 		f.config,
 		ips.slot,
 		sandboxFiles,
@@ -474,7 +473,6 @@ func (f *Factory) ResumeSandbox(
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
 		execCtx,
-		f.featureFlags,
 		f.config,
 		ips.slot,
 		sandboxFiles,

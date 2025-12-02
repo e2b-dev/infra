@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -32,6 +31,9 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
 
 type ProcessOptions struct {
+	// IoEngine is the io engine to use for the rootfs drive.
+	IoEngine *string
+
 	// InitScriptPath is the path to the init script that will be executed inside the VM on kernel start.
 	InitScriptPath string
 
@@ -74,7 +76,6 @@ type Process struct {
 func NewProcess(
 	ctx context.Context,
 	execCtx context.Context,
-	featureFlags *featureflags.Client,
 	config cfg.BuilderConfig,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
@@ -127,7 +128,7 @@ func NewProcess(
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		config:                config,
-		client:                newApiClient(featureFlags, files.SandboxFirecrackerSocketPath()),
+		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		providerRootfsPath:    rootfsProviderPath,
 		files:                 files,
 		slot:                  slot,
@@ -294,7 +295,7 @@ func (p *Process) Create(
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
-	err = p.client.setRootfsDrive(ctx, p.rootfsPath)
+	err = p.client.setRootfsDrive(ctx, p.rootfsPath, options.IoEngine)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
