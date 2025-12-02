@@ -85,8 +85,8 @@ data "google_artifact_registry_tag" "clickhouse_migrator_image" {
 
 # Helper function to build docker image references from artifact registry tags
 locals {
-  # Extract digest from GCP resource path (projects/.../versions/sha256:xxx -> sha256:xxx)
-  artifact_registry_images = {
+  # Raw version paths from GCP (projects/.../versions/sha256:xxx)
+  artifact_registry_versions = {
     api                  = data.google_artifact_registry_tag.api_image.version
     db-migrator          = data.google_artifact_registry_tag.db_migrator_image.version
     docker-reverse-proxy = data.google_artifact_registry_tag.docker_reverse_proxy_image.version
@@ -94,10 +94,17 @@ locals {
     clickhouse-migrator  = data.google_artifact_registry_tag.clickhouse_migrator_image.version
   }
 
+  # Extract digest from GCP resource path using split (more robust than regex)
+  # Example: projects/.../versions/sha256:abc123 -> sha256:abc123
+  artifact_registry_digests = {
+    for name, version_path in local.artifact_registry_versions :
+    name => split("/versions/", version_path)[1]
+  }
+
   # Build full docker image references
   docker_images = {
-    for name, version in local.artifact_registry_images :
-    name => "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/${name}@${replace(version, "/^.*\\/versions\\//", "")}"
+    for name, digest in local.artifact_registry_digests :
+    name => "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/${name}@${digest}"
   }
 
   # Individual image references for backward compatibility
