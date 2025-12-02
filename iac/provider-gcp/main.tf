@@ -6,11 +6,6 @@ terraform {
   }
 
   required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "~> 3"
-    }
-
     google = {
       source  = "hashicorp/google"
       version = "6.50.0"
@@ -30,21 +25,6 @@ terraform {
       source  = "hashicorp/random"
       version = "3.5.1"
     }
-
-    grafana = {
-      source  = "grafana/grafana"
-      version = "3.18.3"
-    }
-  }
-}
-
-data "google_client_config" "default" {}
-
-provider "docker" {
-  registry_auth {
-    address  = "${var.gcp_region}-docker.pkg.dev"
-    username = "oauth2accesstoken"
-    password = data.google_client_config.default.access_token
   }
 }
 

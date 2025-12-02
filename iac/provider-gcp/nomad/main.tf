@@ -1,11 +1,3 @@
-terraform {
-  required_providers {
-    docker = {
-      source = "kreuzwerker/docker"
-    }
-  }
-}
-
 locals {
   clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
 }
@@ -56,24 +48,64 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 }
 
 
-data "docker_registry_image" "api_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/api:latest"
+data "google_artifact_registry_tag" "api_image" {
+  location      = var.gcp_region
+  package_name  = "api"
+  repository_id = var.orchestration_repository_name
+  tag_name      = "latest"
 }
 
-resource "docker_image" "api_image" {
-  name          = data.docker_registry_image.api_image.name
-  pull_triggers = [data.docker_registry_image.api_image.sha256_digest]
-  platform      = "linux/amd64/v8"
+data "google_artifact_registry_tag" "db_migrator_image" {
+  location      = var.gcp_region
+  package_name  = "db-migrator"
+  repository_id = var.orchestration_repository_name
+  tag_name      = "latest"
 }
 
-data "docker_registry_image" "db_migrator_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/db-migrator:latest"
+data "google_artifact_registry_tag" "docker_reverse_proxy_image" {
+  location      = var.gcp_region
+  package_name  = "docker-reverse-proxy"
+  repository_id = var.orchestration_repository_name
+  tag_name      = "latest"
 }
 
-resource "docker_image" "db_migrator_image" {
-  name          = data.docker_registry_image.db_migrator_image.name
-  pull_triggers = [data.docker_registry_image.db_migrator_image.sha256_digest]
-  platform      = "linux/amd64/v8"
+data "google_artifact_registry_tag" "client_proxy_image" {
+  location      = var.gcp_region
+  package_name  = "client-proxy"
+  repository_id = var.orchestration_repository_name
+  tag_name      = "latest"
+}
+
+data "google_artifact_registry_tag" "clickhouse_migrator_image" {
+  location      = var.gcp_region
+  package_name  = "clickhouse-migrator"
+  repository_id = var.orchestration_repository_name
+  tag_name      = "latest"
+}
+
+# Helper function to build docker image references from artifact registry tags
+locals {
+  # Extract digest from GCP resource path (projects/.../versions/sha256:xxx -> sha256:xxx)
+  artifact_registry_images = {
+    api                  = data.google_artifact_registry_tag.api_image.version
+    db-migrator          = data.google_artifact_registry_tag.db_migrator_image.version
+    docker-reverse-proxy = data.google_artifact_registry_tag.docker_reverse_proxy_image.version
+    client-proxy         = data.google_artifact_registry_tag.client_proxy_image.version
+    clickhouse-migrator  = data.google_artifact_registry_tag.clickhouse_migrator_image.version
+  }
+
+  # Build full docker image references
+  docker_images = {
+    for name, version in local.artifact_registry_images :
+    name => "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/${name}@${replace(version, "/^.*\\/versions\\//", "")}"
+  }
+
+  # Individual image references for backward compatibility
+  api_image                  = local.docker_images["api"]
+  db_migrator_image          = local.docker_images["db-migrator"]
+  docker_reverse_proxy_image = local.docker_images["docker-reverse-proxy"]
+  client_proxy_image         = local.docker_images["client-proxy"]
+  clickhouse_migrator_image  = local.docker_images["clickhouse-migrator"]
 }
 
 resource "nomad_job" "ingress" {
@@ -116,7 +148,7 @@ resource "nomad_job" "api" {
     gcp_zone                       = var.gcp_zone
     port_name                      = var.api_port.name
     port_number                    = var.api_port.port
-    api_docker_image               = docker_image.api_image.repo_digest
+    api_docker_image               = local.api_image
     postgres_connection_string     = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
     supabase_jwt_secrets           = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
     posthog_api_key                = data.google_secret_manager_secret_version.posthog_api_key.secret_data
@@ -132,7 +164,7 @@ resource "nomad_job" "api" {
     dns_port_number                = var.api_dns_port_number
     clickhouse_connection_string   = local.clickhouse_connection_string
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
-    db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
+    db_migrator_docker_image       = local.db_migrator_image
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 
     local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
@@ -153,23 +185,12 @@ resource "nomad_job" "redis" {
   )
 }
 
-data "docker_registry_image" "docker_reverse_proxy_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/docker-reverse-proxy"
-}
-
-resource "docker_image" "docker_reverse_proxy_image" {
-  name          = data.docker_registry_image.docker_reverse_proxy_image.name
-  pull_triggers = [data.docker_registry_image.docker_reverse_proxy_image.sha256_digest]
-  platform      = "linux/amd64/v8"
-}
-
-
 resource "nomad_job" "docker_reverse_proxy" {
   jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
     {
       gcp_zone                      = var.gcp_zone
       node_pool                     = var.api_node_pool
-      image_name                    = docker_image.docker_reverse_proxy_image.repo_digest
+      image_name                    = local.docker_reverse_proxy_image
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
       google_service_account_secret = var.docker_reverse_proxy_service_account_key
       port_number                   = var.docker_reverse_proxy_port.port
@@ -181,16 +202,6 @@ resource "nomad_job" "docker_reverse_proxy" {
       docker_registry               = var.custom_envs_repository_name
     }
   )
-}
-
-data "docker_registry_image" "proxy_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/client-proxy"
-}
-
-resource "docker_image" "client_proxy_image" {
-  name          = data.docker_registry_image.proxy_image.name
-  pull_triggers = [data.docker_registry_image.proxy_image.sha256_digest]
-  platform      = "linux/amd64/v8"
 }
 
 resource "nomad_job" "client_proxy" {
@@ -222,7 +233,7 @@ resource "nomad_job" "client_proxy" {
       orchestrator_port = var.orchestrator_port
 
       environment = var.environment
-      image_name  = docker_image.client_proxy_image.repo_digest
+      image_name  = local.client_proxy_image
 
       nomad_endpoint = "http://localhost:4646"
       nomad_token    = var.nomad_acl_token_secret
@@ -701,22 +712,10 @@ resource "nomad_job" "clickhouse_backup_restore" {
   })
 }
 
-
-data "docker_registry_image" "clickhouse_migrator_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/clickhouse-migrator:latest"
-}
-
-resource "docker_image" "clickhouse_migrator_image" {
-  name          = data.docker_registry_image.clickhouse_migrator_image.name
-  pull_triggers = [data.docker_registry_image.clickhouse_migrator_image.sha256_digest]
-  platform      = "linux/amd64/v8"
-}
-
-
 resource "nomad_job" "clickhouse_migrator" {
   count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/clickhouse-migrator.hcl", {
-    clickhouse_migrator_version = docker_image.clickhouse_migrator_image.repo_digest
+    clickhouse_migrator_version = local.clickhouse_migrator_image
 
     server_count          = var.clickhouse_server_count
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
