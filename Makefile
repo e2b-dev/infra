@@ -123,12 +123,12 @@ migrate:
 .PHONY: set-env
 set-env:
 	@ touch .last_used_env
-	@ printf "Setting environment to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ echo $(ENV) > .last_used_env
 	@ . ${ENV_FILE}
 
 .PHONY: switch-env
 switch-env:
+	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(MAKE) set-env ENV=$(ENV)
 	make -C iac/provider-gcp switch
 
