@@ -73,10 +73,6 @@ func New(
 	return tm, nil
 }
 
-func (tm *TemplateManager) Close() error {
-	return nil
-}
-
 func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	ticker := time.NewTicker(syncInterval)
 	for {
