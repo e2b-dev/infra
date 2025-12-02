@@ -65,13 +65,7 @@ func promptDefaultOrGenerate(reader *bufio.Reader, prompt, defaultValue string, 
 	}
 
 	// No default, generate new
-	fmt.Printf("%s: Generating new...\n", prompt)
-	key, err := keys.GenerateKey(keys.ApiKeyPrefix)
-	if err != nil {
-		return "", fmt.Errorf("error generating key: %w", err)
-	}
-
-	return key.PrefixedRawValue, nil
+	return generateDefault()
 }
 
 func main() {
