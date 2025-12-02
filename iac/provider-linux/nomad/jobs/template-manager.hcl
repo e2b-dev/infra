@@ -67,6 +67,7 @@ job "template-manager-system" {
         SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         DOCKERHUB_REMOTE_REPOSITORY_URL  = "${dockerhub_remote_repository_url}"
+        DOCKERHUB_REMOTE_REPOSITORY_PROVIDER = "${dockerhub_remote_repository_provider}"
         GRPC_PORT                     = "${port}"
         PROXY_PORT                    = "${proxy_port}"
         SANDBOX_HYPERLOOP_PROXY_PORT  = "${sandbox_hyperloop_proxy_port}"
@@ -85,6 +86,9 @@ job "template-manager-system" {
         ORCHESTRATOR_BASE_PATH            = "/orchestrator"
         FIRECRACKER_VERSIONS_DIR          = "/fc-versions"
         HOST_KERNELS_DIR                  = "/fc-kernels"
+%{ if should_download_envd && envd_artifact_url != "" }
+        HOST_ENVD_PATH                    = "local/envd"
+%{ endif }
       }
 
       config {
@@ -100,6 +104,14 @@ job "template-manager-system" {
         options { checksum = "md5:${template_manager_checksum}" }
 %{ endif }
       }
+
+%{ if should_download_envd && envd_artifact_url != "" }
+      artifact {
+        source      = "${envd_artifact_url}"
+        destination = "local/envd"
+        mode        = "file"
+      }
+%{ endif }
     }
   }
 }

@@ -129,6 +129,10 @@ variable "sandbox_access_token_hash_seed" {
 variable "orchestrator_proxy_port" { type = number }
 variable "orchestrator_artifact_url" { type = string }
 variable "template_manager_artifact_url" { type = string }
+variable "envd_artifact_url" {
+  type    = string
+  default = ""
+}
 variable "orchestrator_node_pool" { type = string }
 variable "builder_node_pool" { type = string }
 variable "template_bucket_name" {
@@ -146,6 +150,10 @@ variable "shared_chunk_cache_path" {
   default = ""
 }
 variable "dockerhub_remote_repository_url" {
+  type    = string
+  default = ""
+}
+variable "dockerhub_remote_repository_provider" {
   type    = string
   default = ""
 }

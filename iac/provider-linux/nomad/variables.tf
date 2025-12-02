@@ -64,6 +64,8 @@ variable "docker_reverse_proxy_image" { type = string }
 
 variable "orchestrator_artifact_url" { type = string }
 variable "template_manager_artifact_url" { type = string }
+variable "envd_artifact_url" { type = string }
+variable "fc_artifact_node_pools" { type = list(string) }
 variable "orchestrator_node_pool" { type = string }
 variable "builder_node_pool" { type = string }
 variable "template_bucket_name" { type = string }
@@ -72,6 +74,10 @@ variable "envd_timeout" { type = string }
 variable "allow_sandbox_internet" { type = bool }
 variable "shared_chunk_cache_path" { type = string }
 variable "dockerhub_remote_repository_url" { type = string }
+variable "dockerhub_remote_repository_provider" {
+  type    = string
+  default = ""
+}
 variable "api_secret" { type = string }
 variable "redis_tls_ca_base64" { type = string }
 variable "redis_secure_cluster_url" { type = string }

@@ -60,6 +60,8 @@ job "orchestrator" {
         LOCAL_TEMPLATE_STORAGE_BASE_PATH = "/tmp/templates"
         LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "/tmp/build-cache"
         ARTIFACTS_REGISTRY_PROVIDER  = "Local"
+        DOCKERHUB_REMOTE_REPOSITORY_URL      = "${dockerhub_remote_repository_url}"
+        DOCKERHUB_REMOTE_REPOSITORY_PROVIDER = "${dockerhub_remote_repository_provider}"
         ORCHESTRATOR_BASE_PATH       = "/orchestrator"
         FIRECRACKER_VERSIONS_DIR     = "/fc-versions"
         HOST_KERNELS_DIR             = "/fc-kernels"

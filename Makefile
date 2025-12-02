@@ -102,6 +102,7 @@ build-and-upload/%:
 
 .PHONY: build-and-upload-linux
 build-and-upload-linux:
+	@if [ "$(PROVIDER)" != "linux" ]; then echo "build-and-upload-linux is only applicable for provider=linux"; exit 0; fi
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(MAKE) -C packages/api build-and-upload-linux
 	$(MAKE) -C packages/client-proxy build-and-upload-linux
@@ -109,6 +110,7 @@ build-and-upload-linux:
 	$(MAKE) -C packages/db build-and-upload-linux
 	$(MAKE) -C packages/orchestrator build-and-upload/orchestrator
 	$(MAKE) -C packages/orchestrator build-and-upload/template-manager
+	$(MAKE) -C packages/envd build-and-upload
 
 .PHONY: copy-public-builds
 copy-public-builds:

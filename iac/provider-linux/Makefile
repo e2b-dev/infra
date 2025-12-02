@@ -64,6 +64,7 @@ tf_vars := \
 	$(call tfvar, API_SECRET) \
 	$(call tfvar, ORCHESTRATOR_ARTIFACT_URL) \
 	$(call tfvar, TEMPLATE_MANAGER_ARTIFACT_URL) \
+	$(call tfvar, ENVD_ARTIFACT_URL) \
 	$(call tfvar, ORCHESTRATOR_NODE_POOL) \
 	$(call tfvar, BUILDER_NODE_POOL) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
@@ -71,7 +72,8 @@ tf_vars := \
 	$(call tfvar, ENVD_TIMEOUT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, SHARED_CHUNK_CACHE_PATH) \
-	$(call tfvar, DOCKERHUB_REMOTE_REPOSITORY_URL) \
+		$(call tfvar, DOCKERHUB_REMOTE_REPOSITORY_URL) \
+		$(call tfvar, DOCKERHUB_REMOTE_REPOSITORY_PROVIDER) \
 	$(call tfvar, REDIS_TLS_CA_BASE64) \
 	$(call tfvar, REDIS_SECURE_CLUSTER_URL) \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
