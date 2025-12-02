@@ -672,7 +672,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.memory.Disable(); err != nil {
+	if _, err := s.memory.Disable(ctx); err != nil {
 		return fmt.Errorf("failed to disable uffd: %w", err)
 	}
 

@@ -11,10 +11,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -31,8 +31,11 @@ func TestNoOperations(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	logger, err := logger.NewDevelopmentLogger()
+	require.NoError(t, err)
+
 	// Placeholder uffd that does not serve anything
-	uffd, err := NewUserfaultfdFromFd(newMockFd(), h.data, &memory.Mapping{}, zap.L())
+	uffd, err := NewUserfaultfdFromFd(newMockFd(), h.data, &memory.Mapping{}, logger)
 	require.NoError(t, err)
 
 	accessedOffsets, err := h.accessedOffsetsOnce()
@@ -258,10 +261,13 @@ func TestUffdEvents(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	logger, err := logger.NewDevelopmentLogger()
+	require.NoError(t, err)
+
 	mockFd := newMockFd()
 
 	// Placeholder uffd that does not serve anything
-	uffd, err := NewUserfaultfdFromFd(mockFd, h.data, &memory.Mapping{}, zap.L())
+	uffd, err := NewUserfaultfdFromFd(mockFd, h.data, &memory.Mapping{}, logger)
 	require.NoError(t, err)
 
 	events := []event{
@@ -511,13 +517,16 @@ func TestUffdSettleRequests(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	logger, err := logger.NewDevelopmentLogger()
+	require.NoError(t, err)
+
 	testEventsSettle := func(t *testing.T, events []event) {
 		t.Helper()
 
 		mockFd := newMockFd()
 
 		// Placeholder uffd that does not serve anything
-		uffd, err := NewUserfaultfdFromFd(mockFd, h.data, &memory.Mapping{}, zap.L())
+		uffd, err := NewUserfaultfdFromFd(mockFd, h.data, &memory.Mapping{}, logger)
 		require.NoError(t, err)
 
 		for _, e := range events {
@@ -693,7 +702,7 @@ func (e event) trigger(ctx context.Context, uffd *Userfaultfd) error {
 	case e.UffdioCopy != nil:
 		triggerMissing(ctx, uffd, *e.UffdioCopy, e.offset)
 	case e.UffdioWriteProtect != nil:
-		triggerWriteProtected(uffd, *e.UffdioWriteProtect, e.offset)
+		triggerWriteProtected(ctx, uffd, *e.UffdioWriteProtect, e.offset)
 	default:
 		return fmt.Errorf("invalid event: %+v", e)
 	}
@@ -733,8 +742,9 @@ func triggerMissing(ctx context.Context, uffd *Userfaultfd, c UffdioCopy, offset
 	)
 }
 
-func triggerWriteProtected(uffd *Userfaultfd, c UffdioWriteProtect, offset int64) {
+func triggerWriteProtected(ctx context.Context, uffd *Userfaultfd, c UffdioWriteProtect, offset int64) {
 	uffd.handleWriteProtected(
+		ctx,
 		func() error { return nil },
 		uintptr(c._range.start),
 		uintptr(uffd.src.BlockSize()),
