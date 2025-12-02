@@ -170,6 +170,7 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 		mutex: sync.RWMutex{},
 	}
 
+	d.cluster.syncInstance(ctx, instance)
 	d.cluster.instances.Insert(item.NodeID, instance)
 }
 
