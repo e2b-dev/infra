@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -16,40 +17,161 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
+func promptWithDefault(reader *bufio.Reader, prompt, defaultValue string) string {
+	if defaultValue != "" {
+		fmt.Printf("%s [%s]: ", prompt, defaultValue)
+	} else {
+		fmt.Printf("%s: ", prompt)
+	}
+
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Println("Error reading input:", err)
+
+		return defaultValue
+	}
+
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return defaultValue
+	}
+
+	return input
+}
+
+func promptDefaultOrGenerate(reader *bufio.Reader, prompt, defaultValue string, generateDefault func() (string, error)) (string, error) {
+	if defaultValue != "" {
+		fmt.Printf("%s:\n", prompt)
+		fmt.Printf("  [1] Use existing: %s\n", defaultValue)
+		fmt.Printf("  [2] Generate new\n")
+		fmt.Printf("Choice [1]: ")
+
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return "", fmt.Errorf("error reading input: %w", err)
+		}
+
+		input = strings.TrimSpace(input)
+		if input == "" || input == "1" {
+			return defaultValue, nil
+		}
+
+		if input == "2" {
+			// Generate new
+			return generateDefault()
+		}
+
+		return "", fmt.Errorf("invalid choice: %s", input)
+	}
+
+	// No default, generate new
+	fmt.Printf("%s: Generating new...\n", prompt)
+	key, err := keys.GenerateKey(keys.ApiKeyPrefix)
+	if err != nil {
+		return "", fmt.Errorf("error generating key: %w", err)
+	}
+
+	return key.PrefixedRawValue, nil
+}
+
 func main() {
 	ctx := context.Background()
 	hasher := keys.NewSHA256Hashing()
 
-	db, err := client.NewClient(ctx)
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-
+	// Try to read config file for defaults
+	configDefaults := make(map[string]string)
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Println("Error getting home directory:", err)
 
 		return
 	}
-
 	configPath := filepath.Join(homeDir, ".e2b", "config.json")
 	data, err := os.ReadFile(configPath)
+	if err == nil {
+		config := map[string]any{}
+		if err := json.Unmarshal(data, &config); err == nil {
+			if email, ok := config["email"].(string); ok {
+				configDefaults["email"] = email
+			}
+			if teamID, ok := config["teamId"].(string); ok {
+				configDefaults["teamId"] = teamID
+			}
+			if accessToken, ok := config["accessToken"].(string); ok {
+				configDefaults["accessToken"] = accessToken
+			}
+			if teamAPIKey, ok := config["teamApiKey"].(string); ok {
+				configDefaults["teamApiKey"] = teamAPIKey
+			}
+			fmt.Println("Loaded defaults from ~/.e2b/config.json")
+		}
+	}
+
+	// Prompt user for values
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("\nPlease enter the following values (press Enter to use default):")
+	fmt.Println()
+
+	email := promptWithDefault(reader, "Email", configDefaults["email"])
+	teamIDStr, err := promptDefaultOrGenerate(reader, "Team ID", configDefaults["teamId"], func() (string, error) {
+		return uuid.New().String(), nil
+	})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+
+		return
+	}
+
+	accessToken, err := promptDefaultOrGenerate(reader, "Access Token", configDefaults["accessToken"], func() (string, error) {
+		key, err := keys.GenerateKey(keys.AccessTokenPrefix)
+		if err != nil {
+			return "", err
+		}
+
+		return key.PrefixedRawValue, nil
+	})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+
+		return
+	}
+
+	teamAPIKey, err := promptDefaultOrGenerate(reader, "Team API Key", configDefaults["teamApiKey"], func() (string, error) {
+		key, err := keys.GenerateKey(keys.ApiKeyPrefix)
+		if err != nil {
+			return "", err
+		}
+
+		return key.PrefixedRawValue, nil
+	})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+
+		return
+	}
+
+	// Validate and parse team UUID
+	var teamUUID uuid.UUID
+	teamUUID, err = uuid.Parse(teamIDStr)
+	if err != nil {
+		fmt.Printf("Error: Invalid Team ID UUID: %v\n", err)
+
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("Seeding database with:")
+	fmt.Printf("  Email: %s\n", email)
+	fmt.Printf("  Team ID: %s\n", teamUUID)
+	fmt.Printf("  Access Token: %s\n", accessToken)
+	fmt.Printf("  Team API Key: %s\n", teamAPIKey)
+	fmt.Println()
+
+	db, err := client.NewClient(ctx)
 	if err != nil {
 		panic(err)
 	}
-
-	config := map[string]any{}
-	err = json.Unmarshal(data, &config)
-	if err != nil {
-		panic(err)
-	}
-
-	email := config["email"].(string)
-	teamID := config["teamId"].(string)
-	accessToken := config["accessToken"].(string)
-	teamAPIKey := config["teamApiKey"].(string)
-	teamUUID := uuid.MustParse(teamID)
+	defer db.Close()
 
 	// Open .e2b/config.json
 	// Delete existing user and recreate (simpler for seeding)
