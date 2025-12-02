@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -124,6 +125,9 @@ func (bb *BaseBuilder) provisionSandbox(
 		provisionTimeout,
 		rootfsPath,
 		fc.ProcessOptions{
+			// Set the IO Engine explicitly to the default value
+			IoEngine: utils.ToPtr(layer.DefaultIoEngine),
+
 			InitScriptPath: rootfs.BusyBoxInitPath,
 			// Always show kernel logs during the provisioning phase,
 			// the sandbox is then started with systemd and without kernel logs.
