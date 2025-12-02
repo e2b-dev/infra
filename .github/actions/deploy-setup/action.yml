@@ -45,18 +45,6 @@ runs:
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    - name: Set up Docker
-      env:
-        GCP_REGION: ${{ env.GCP_REGION }}
-      run: |
-        gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-        export ACCESS_TOKEN=$(gcloud auth print-access-token)
-        export DOCKER_AUTH_BASE64=$(echo -n "{\"username\":\"oauth2accesstoken\",\"password\":\"$ACCESS_TOKEN\"}" | base64 -w 0)
-
-        echo "::add-mask::$DOCKER_AUTH_BASE64"
-        echo "DOCKER_AUTH_BASE64=${DOCKER_AUTH_BASE64}" >> $GITHUB_ENV
-      shell: bash
-
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
