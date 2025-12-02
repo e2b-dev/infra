@@ -42,17 +42,27 @@ SET
     start_cmd = $1,
     ready_cmd = $2,
     dockerfile = $3,
-    cluster_node_id = $4
+    cluster_node_id = $4,
+    cpu_architecture = $5,
+    cpu_family = $6,
+    cpu_model = $7,
+    cpu_model_name = $8,
+    cpu_flags = $9
 WHERE
-    id = $5
+    id = $10
 `
 
 type UpdateTemplateBuildParams struct {
-	StartCmd      *string
-	ReadyCmd      *string
-	Dockerfile    *string
-	ClusterNodeID *string
-	BuildUuid     uuid.UUID
+	StartCmd        *string
+	ReadyCmd        *string
+	Dockerfile      *string
+	ClusterNodeID   *string
+	CpuArchitecture *string
+	CpuFamily       *string
+	CpuModel        *string
+	CpuModelName    *string
+	CpuFlags        []string
+	BuildUuid       uuid.UUID
 }
 
 func (q *Queries) UpdateTemplateBuild(ctx context.Context, arg UpdateTemplateBuildParams) error {
@@ -61,6 +71,11 @@ func (q *Queries) UpdateTemplateBuild(ctx context.Context, arg UpdateTemplateBui
 		arg.ReadyCmd,
 		arg.Dockerfile,
 		arg.ClusterNodeID,
+		arg.CpuArchitecture,
+		arg.CpuFamily,
+		arg.CpuModel,
+		arg.CpuModelName,
+		arg.CpuFlags,
 		arg.BuildUuid,
 	)
 	return err

@@ -31,6 +31,9 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
 
 type ProcessOptions struct {
+	// IoEngine is the io engine to use for the rootfs drive.
+	IoEngine *string
+
 	// InitScriptPath is the path to the init script that will be executed inside the VM on kernel start.
 	InitScriptPath string
 
@@ -292,7 +295,7 @@ func (p *Process) Create(
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
-	err = p.client.setRootfsDrive(ctx, p.rootfsPath)
+	err = p.client.setRootfsDrive(ctx, p.rootfsPath, options.IoEngine)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 

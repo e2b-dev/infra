@@ -19,6 +19,7 @@ import (
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -46,7 +47,7 @@ type Node struct {
 	metrics   Metrics
 	metricsMu sync.RWMutex
 
-	machineInfo MachineInfo
+	machineInfo machineinfo.MachineInfo
 	meta        NodeMetadata
 
 	buildCache *ttlcache.Cache[string, any]

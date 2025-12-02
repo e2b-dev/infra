@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -27,31 +28,51 @@ type CreateSandbox struct {
 	sandboxFactory *sandbox.Factory
 
 	rootfsCachePath string
+	ioEngine        *string
 }
 
 const (
-	minEnvdVersionForKVMClock = "0.2.11" // Minimum version of envd that supports KVM clock
+	minEnvdVersionForKVMClock = "0.2.11"                 // Minimum version of envd that supports KVM clock
+	DefaultIoEngine           = models.DriveIoEngineSync // Use the Sync io engine by default to avoid issues with Async.
 )
 
 var _ SandboxCreator = (*CreateSandbox)(nil)
 
-func NewCreateSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, fcVersions fc.FirecrackerVersions) *CreateSandbox {
-	return &CreateSandbox{
-		config:          config,
-		sandboxFactory:  sandboxFactory,
-		timeout:         timeout,
-		fcVersions:      fcVersions,
-		rootfsCachePath: "",
+type createSandboxOptions struct {
+	rootfsCachePath string
+	ioEngine        *string
+}
+
+type CreateSandboxOption func(*createSandboxOptions)
+
+func WithIoEngine(ioEngine string) CreateSandboxOption {
+	return func(opts *createSandboxOptions) {
+		opts.ioEngine = &ioEngine
 	}
 }
 
-func NewCreateSandboxFromCache(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, fcVersions fc.FirecrackerVersions, rootfsCachePath string) *CreateSandbox {
+func WithRootfsCachePath(rootfsCachePath string) CreateSandboxOption {
+	return func(opts *createSandboxOptions) {
+		opts.rootfsCachePath = rootfsCachePath
+	}
+}
+
+func NewCreateSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, fcVersions fc.FirecrackerVersions, options ...CreateSandboxOption) *CreateSandbox {
+	opts := &createSandboxOptions{
+		rootfsCachePath: "",
+		ioEngine:        utils.ToPtr(DefaultIoEngine),
+	}
+	for _, option := range options {
+		option(opts)
+	}
+
 	return &CreateSandbox{
 		config:          config,
 		timeout:         timeout,
 		fcVersions:      fcVersions,
-		rootfsCachePath: rootfsCachePath,
+		rootfsCachePath: opts.rootfsCachePath,
 		sandboxFactory:  sandboxFactory,
+		ioEngine:        opts.ioEngine,
 	}
 }
 
@@ -96,6 +117,7 @@ func (cs *CreateSandbox) Sandbox(
 			KernelLogs:          env.IsDevelopment(),
 			SystemdToKernelLogs: false,
 			KvmClock:            kvmClock,
+			IoEngine:            cs.ioEngine,
 		},
 		nil,
 	)
