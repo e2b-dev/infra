@@ -38,8 +38,6 @@ type Config struct {
 	// tokens signed with the old secret for some time.
 	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
 
-	TemplateManagerHost string `env:"TEMPLATE_MANAGER_HOST"`
-
 	DefaultKernelVersion      string `env:"DEFAULT_KERNEL_VERSION"`
 	DefaultFirecrackerVersion string `env:"DEFAULT_FIRECRACKER_VERSION"`
 }

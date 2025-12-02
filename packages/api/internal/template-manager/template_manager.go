@@ -9,15 +9,12 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	buildlogs "github.com/e2b-dev/infra/packages/api/internal/template-manager/logs"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -36,7 +33,6 @@ type processingBuilds struct {
 }
 
 type TemplateManager struct {
-	grpc     *grpclient.GRPCClient
 	edgePool *edge.Pool
 
 	lock          sync.Mutex
@@ -59,21 +55,12 @@ const (
 )
 
 func New(
-	config cfg.Config,
-	tracerProvider trace.TracerProvider,
-	meterProvider metric.MeterProvider,
 	sqlcDB *sqlcdb.Client,
 	edgePool *edge.Pool,
 	buildCache *templatecache.TemplatesBuildCache,
 	templateCache *templatecache.TemplateCache,
 ) (*TemplateManager, error) {
-	client, err := createClient(config, tracerProvider, meterProvider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
-	}
-
 	tm := &TemplateManager{
-		grpc:          client,
 		sqlcDB:        sqlcDB,
 		buildCache:    buildCache,
 		templateCache: templateCache,
@@ -84,10 +71,6 @@ func New(
 	}
 
 	return tm, nil
-}
-
-func (tm *TemplateManager) Close() error {
-	return tm.grpc.Close()
 }
 
 func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
