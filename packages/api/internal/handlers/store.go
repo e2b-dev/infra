@@ -29,9 +29,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -42,38 +43,33 @@ const minSupabaseJWTSecretLength = 16
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	Healthy                  bool
-	config                   cfg.Config
-	posthog                  *analyticscollector.PosthogClient
-	Telemetry                *telemetry.Client
-	orchestrator             *orchestrator.Orchestrator
-	templateManager          *template_manager.TemplateManager
-	db                       *db.DB
-	sqlcDB                   *sqlcdb.Client
-	templateCache            *templatecache.TemplateCache
-	templateBuildsCache      *templatecache.TemplatesBuildCache
-	authCache                *authcache.TeamAuthCache
-	templateSpawnCounter     *utils.TemplateSpawnCounter
-	clickhouseStore          clickhouse.Clickhouse
-	envdAccessTokenGenerator *sandbox.EnvdAccessTokenGenerator
-	featureFlags             *featureflags.Client
-	clustersPool             *edge.Pool
+	Healthy              bool
+	config               cfg.Config
+	posthog              *analyticscollector.PosthogClient
+	Telemetry            *telemetry.Client
+	orchestrator         *orchestrator.Orchestrator
+	templateManager      *template_manager.TemplateManager
+	sqlcDB               *sqlcdb.Client
+	redisClient          redis.UniversalClient
+	templateCache        *templatecache.TemplateCache
+	templateBuildsCache  *templatecache.TemplatesBuildCache
+	authCache            *authcache.TeamAuthCache
+	templateSpawnCounter *utils.TemplateSpawnCounter
+	clickhouseStore      clickhouse.Clickhouse
+	accessTokenGenerator *sandbox.AccessTokenGenerator
+	featureFlags         *featureflags.Client
+	clustersPool         *edge.Pool
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
-	zap.L().Info("Initializing API store and services")
-
-	dbClient, err := db.NewClient(40, 20)
-	if err != nil {
-		zap.L().Fatal("Initializing Supabase client", zap.Error(err))
-	}
+	logger.L().Info(ctx, "Initializing API store and services")
 
 	sqlcDB, err := sqlcdb.NewClient(ctx, sqlcdb.WithMaxConnections(40), sqlcdb.WithMinIdle(5))
 	if err != nil {
-		zap.L().Fatal("Initializing SQLC client", zap.Error(err))
+		logger.L().Fatal(ctx, "Initializing SQLC client", zap.Error(err))
 	}
 
-	zap.L().Info("Created database client")
+	logger.L().Info(ctx, "Created database client")
 
 	var clickhouseStore clickhouse.Clickhouse
 
@@ -83,13 +79,13 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	} else {
 		clickhouseStore, err = clickhouse.New(clickhouseConnectionString)
 		if err != nil {
-			zap.L().Fatal("initializing ClickHouse store", zap.Error(err))
+			logger.L().Fatal(ctx, "initializing ClickHouse store", zap.Error(err))
 		}
 	}
 
-	posthogClient, posthogErr := analyticscollector.NewPosthogClient(config.PosthogAPIKey)
+	posthogClient, posthogErr := analyticscollector.NewPosthogClient(ctx, config.PosthogAPIKey)
 	if posthogErr != nil {
-		zap.L().Fatal("Initializing Posthog client", zap.Error(posthogErr))
+		logger.L().Fatal(ctx, "Initializing Posthog client", zap.Error(posthogErr))
 	}
 
 	nomadConfig := &nomadapi.Config{
@@ -99,87 +95,71 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 
 	nomadClient, err := nomadapi.NewClient(nomadConfig)
 	if err != nil {
-		zap.L().Fatal("Initializing Nomad client", zap.Error(err))
+		logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(err))
 	}
-
-	var redisClient redis.UniversalClient
-	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
-		// For managed Redis Cluster in GCP we should use Cluster Client, because
-		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
-		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
-		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
-		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:        []string{redisClusterUrl},
-			MinIdleConns: 1,
-		})
-	} else if rurl := config.RedisURL; rurl != "" {
-		redisClient = redis.NewClient(&redis.Options{
-			Addr:         rurl,
-			MinIdleConns: 1,
-		})
-	} else {
-		zap.L().Warn("REDIS_URL not set, using local caches")
-	}
-
-	if redisClient != nil {
-		_, err := redisClient.Ping(ctx).Result()
-		if err != nil {
-			zap.L().Fatal("Could not connect to Redis", zap.Error(err))
+	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
+		RedisURL:         config.RedisURL,
+		RedisClusterURL:  config.RedisClusterURL,
+		RedisTLSCABase64: config.RedisTLSCABase64,
+	})
+	if err != nil {
+		if errors.Is(err, factories.ErrRedisDisabled) {
+			logger.L().Warn(ctx, "REDIS_URL not set, using local caches")
+		} else {
+			logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
 		}
-
-		zap.L().Info("Connected to Redis cluster")
 	}
 
 	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, config)
 	if err != nil {
-		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
+		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}
 
 	featureFlags, err := featureflags.NewClient()
 	if err != nil {
-		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
+		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, dbClient, sqlcDB, clustersPool, featureFlags)
+	accessTokenGenerator, err := sandbox.NewAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
 	if err != nil {
-		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
+		logger.L().Fatal(ctx, "Initializing access token generator failed", zap.Error(err))
+	}
+
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clustersPool, featureFlags, accessTokenGenerator)
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
 
 	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(sqlcDB)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
-	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
-	if err != nil {
-		zap.L().Fatal("Initializing access token generator failed", zap.Error(err))
-	}
-
 	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
-	templateManager, err := template_manager.New(config, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
+	templateManager, err := template_manager.New(sqlcDB, clustersPool, templateBuildsCache, templateCache)
 	if err != nil {
-		zap.L().Fatal("Initializing Template manager client", zap.Error(err))
+		logger.L().Fatal(ctx, "Initializing Template manager client", zap.Error(err))
 	}
 
 	// Start the periodic sync of template builds statuses
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	a := &APIStore{
-		config:                   config,
-		Healthy:                  false,
-		orchestrator:             orch,
-		templateManager:          templateManager,
-		db:                       dbClient,
-		sqlcDB:                   sqlcDB,
-		Telemetry:                tel,
-		posthog:                  posthogClient,
-		templateCache:            templateCache,
-		templateBuildsCache:      templateBuildsCache,
-		authCache:                authCache,
-		templateSpawnCounter:     templateSpawnCounter,
-		clickhouseStore:          clickhouseStore,
-		envdAccessTokenGenerator: accessTokenGenerator,
-		clustersPool:             clustersPool,
-		featureFlags:             featureFlags,
+		config:               config,
+		Healthy:              false,
+		orchestrator:         orch,
+		templateManager:      templateManager,
+		sqlcDB:               sqlcDB,
+		Telemetry:            tel,
+		posthog:              posthogClient,
+		templateCache:        templateCache,
+		templateBuildsCache:  templateBuildsCache,
+		authCache:            authCache,
+		templateSpawnCounter: templateSpawnCounter,
+		clickhouseStore:      clickhouseStore,
+		accessTokenGenerator: accessTokenGenerator,
+		clustersPool:         clustersPool,
+		featureFlags:         featureFlags,
+		redisClient:          redisClient,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
@@ -191,7 +171,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 				return
 			case <-ticker.C:
 				if orch.NodeCount() != 0 {
-					zap.L().Info("Nodes are ready, setting API as healthy")
+					logger.L().Info(ctx, "Nodes are ready, setting API as healthy")
 					a.Healthy = true
 
 					return
@@ -215,16 +195,26 @@ func (a *APIStore) Close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("closing Orchestrator client: %w", err))
 	}
 
-	if err := a.templateManager.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("closing Template manager client: %w", err))
+	if a.templateCache != nil {
+		if err := a.templateCache.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing template cache: %w", err))
+		}
+	}
+
+	if a.authCache != nil {
+		if err := a.authCache.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing auth cache: %w", err))
+		}
 	}
 
 	if err := a.sqlcDB.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
 	}
 
-	if err := a.db.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("closing database client: %w", err))
+	if a.redisClient != nil {
+		if err := a.redisClient.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing redis client: %w", err))
+		}
 	}
 
 	return errors.Join(errs...)
@@ -321,12 +311,12 @@ type supabaseClaims struct {
 	jwt.RegisteredClaims
 }
 
-func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
+func getJWTClaims(ctx context.Context, secrets []string, token string) (*supabaseClaims, error) {
 	errs := make([]error, 0)
 
 	for _, secret := range secrets {
 		if len(secret) < minSupabaseJWTSecretLength {
-			zap.L().Warn("jwt secret is too short and will be ignored", zap.Int("min_length", minSupabaseJWTSecretLength), zap.String("secret_start", secret[:min(3, len(secret))]))
+			logger.L().Warn(ctx, "jwt secret is too short and will be ignored", zap.Int("min_length", minSupabaseJWTSecretLength), zap.String("secret_start", secret[:min(3, len(secret))]))
 
 			continue
 		}
@@ -360,8 +350,8 @@ func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
 	return nil, errors.Join(errs...)
 }
 
-func (a *APIStore) GetUserIDFromSupabaseToken(_ context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
-	claims, err := getJWTClaims(a.config.SupabaseJWTSecrets, supabaseToken)
+func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
+	claims, err := getJWTClaims(ctx, a.config.SupabaseJWTSecrets, supabaseToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
 			Err:       err,

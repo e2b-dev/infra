@@ -1,6 +1,7 @@
 package header
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bits-and-blooms/bitset"
@@ -60,8 +61,8 @@ func (t *Header) IsNormalizeFixApplied() bool {
 	return t.Metadata.Version >= NormalizeFixVersion
 }
 
-func (t *Header) GetShiftedMapping(offset int64) (mappedOffset int64, mappedLength int64, buildID *uuid.UUID, err error) {
-	mapping, shift, err := t.getMapping(offset)
+func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (mappedOffset int64, mappedLength int64, buildID *uuid.UUID, err error) {
+	mapping, shift, err := t.getMapping(ctx, offset)
 	if err != nil {
 		return 0, 0, nil, err
 	}
@@ -75,7 +76,7 @@ func (t *Header) GetShiftedMapping(offset int64) (mappedOffset int64, mappedLeng
 			return 0, 0, nil, fmt.Errorf("mapped length for offset %d is negative: %d", offset, mappedLength)
 		}
 
-		zap.L().Warn("mapped length is negative, but normalize fix is not applied",
+		logger.L().Warn(ctx, "mapped length is negative, but normalize fix is not applied",
 			zap.Int64("offset", offset),
 			zap.Int64("mappedLength", mappedLength),
 			logger.WithBuildID(mapping.BuildId.String()),
@@ -85,13 +86,14 @@ func (t *Header) GetShiftedMapping(offset int64) (mappedOffset int64, mappedLeng
 	return mappedOffset, mappedLength, buildID, nil
 }
 
-func (t *Header) getMapping(offset int64) (*BuildMap, int64, error) {
+// TODO: Maybe we can optimize mapping by automatically assuming the mapping is uuid.Nil if we don't find it + stopping storing the nil mapping.
+func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64, error) {
 	if offset < 0 || offset >= int64(t.Metadata.Size) {
 		if t.IsNormalizeFixApplied() {
 			return nil, 0, fmt.Errorf("offset %d is out of bounds (size: %d)", offset, t.Metadata.Size)
 		}
 
-		zap.L().Warn("offset is out of bounds, but normalize fix is not applied",
+		logger.L().Warn(ctx, "offset is out of bounds, but normalize fix is not applied",
 			zap.Int64("offset", offset),
 			zap.Int64("size", int64(t.Metadata.Size)),
 			logger.WithBuildID(t.Metadata.BuildId.String()),
@@ -102,7 +104,7 @@ func (t *Header) getMapping(offset int64) (*BuildMap, int64, error) {
 			return nil, 0, fmt.Errorf("offset %d is not aligned to block size %d", offset, t.Metadata.BlockSize)
 		}
 
-		zap.L().Warn("offset is not aligned to block size, but normalize fix is not applied",
+		logger.L().Warn(ctx, "offset is not aligned to block size, but normalize fix is not applied",
 			zap.Int64("offset", offset),
 			zap.Int64("blockSize", int64(t.Metadata.BlockSize)),
 			logger.WithBuildID(t.Metadata.BuildId.String()),
@@ -130,7 +132,7 @@ func (t *Header) getMapping(offset int64) (*BuildMap, int64, error) {
 				offset, block, mapping.Offset, mapping.Offset+mapping.Length)
 		}
 
-		zap.L().Warn("offset is beyond the end of mapping, but normalize fix is not applied",
+		logger.L().Warn(ctx, "offset is beyond the end of mapping, but normalize fix is not applied",
 			zap.Int64("offset", offset),
 			zap.Int64("block", block),
 			zap.Uint64("mappingOffset", mapping.Offset),

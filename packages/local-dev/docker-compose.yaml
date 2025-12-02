@@ -30,6 +30,12 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     ports:
       - "3100:3100"
+    healthcheck:
+      test: wget --quiet --tries=1 --output-document=- http://localhost:3100/ready | grep -q -w ready || exit 1
+      start_period: 20s
+      interval: 10s
+      timeout: 1s
+      retries: 12  # try for 2 minutes
 
   memcached:
     image: memcached:1.6.38
@@ -73,7 +79,7 @@ services:
 
   tempo:
     image: grafana/tempo:2.8.2
-    command: ["-config.file=/etc/tempo.yaml"]
+    command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml
       - tempo:/var/tempo
@@ -95,7 +101,20 @@ services:
     volumes:
       - tempo:/var/tempo
 
+  vector:
+    image: timberio/vector:0.34.X-alpine
+    depends_on:
+      - loki
+    environment:
+      VECTOR_CONFIG: "/etc/vector.toml"
+      VECTOR_LOG: "warn"
+    ports:
+      - "30006:30006"
+    volumes:
+      - ./vector.toml:/etc/vector.toml
+
+
 volumes:
-  clickhouse: {}
-  postgres: {}
-  tempo: {}
+  clickhouse: { }
+  postgres: { }
+  tempo: { }

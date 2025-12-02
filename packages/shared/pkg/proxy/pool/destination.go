@@ -3,8 +3,10 @@ package pool
 import (
 	"net/url"
 
-	"go.uber.org/zap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+const MaskRequestHostPortPlaceholder = "${PORT}"
 
 type DestinationContextKey struct{}
 
@@ -15,9 +17,11 @@ type Destination struct {
 	SandboxPort uint64
 	// Should we return the error about closed port if there is a problem with a connection to upstream?
 	DefaultToPortError bool
-	RequestLogger      *zap.Logger
+	RequestLogger      logger.Logger
 	// ConnectionKey is used for identifying which keepalive connections are not the same so we can prevent unintended reuse.
 	// This is evaluated before checking for existing connection to the IP:port pair.
 	ConnectionKey                      string
 	IncludeSandboxIdInProxyErrorLogger bool
+	// MaskRequestHost is used to mask the request host.
+	MaskRequestHost *string
 }

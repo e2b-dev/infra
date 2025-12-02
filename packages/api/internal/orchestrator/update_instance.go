@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"time"
 

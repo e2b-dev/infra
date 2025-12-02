@@ -14,16 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// snapshotCacheDir is a tmpfs directory mounted on the host.
-// This is used for speed optimization as the final diff is copied to the persistent storage.
-func snapshotCacheDir() string {
-	if value := os.Getenv("SNAPSHOT_CACHE_DIR"); value != "" {
-		return value
-	}
-
-	return "/mnt/snapshot-cache"
-}
-
 var maxParallelMemfileSnapshotting = utils.Must(env.GetEnvAsInt("MAX_PARALLEL_MEMFILE_SNAPSHOTTING", 8))
 
 var snapshotCacheQueue = semaphore.NewWeighted(int64(maxParallelMemfileSnapshotting))
@@ -35,14 +25,12 @@ type TemporaryMemfile struct {
 
 func AcquireTmpMemfile(
 	ctx context.Context,
+	config BuilderConfig,
 	buildID string,
 ) (*TemporaryMemfile, error) {
-	randomID, err := uuid.NewRandom()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate identifier: %w", err)
-	}
+	randomID := uuid.NewString()
 
-	err = snapshotCacheQueue.Acquire(ctx, 1)
+	err := snapshotCacheQueue.Acquire(ctx, 1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire cache: %w", err)
 	}
@@ -51,7 +39,7 @@ func AcquireTmpMemfile(
 	})
 
 	return &TemporaryMemfile{
-		path:    cacheMemfileFullSnapshotPath(buildID, randomID.String()),
+		path:    cacheMemfileFullSnapshotPath(config, buildID, randomID),
 		closeFn: releaseOnce,
 	}, nil
 }
@@ -63,11 +51,11 @@ func (f *TemporaryMemfile) Path() string {
 func (f *TemporaryMemfile) Close() error {
 	defer f.closeFn()
 
-	return os.RemoveAll(f.path)
+	return os.Remove(f.path)
 }
 
-func cacheMemfileFullSnapshotPath(buildID string, randomID string) string {
+func cacheMemfileFullSnapshotPath(config BuilderConfig, buildID string, randomID string) string {
 	name := fmt.Sprintf("%s-%s-%s.full", buildID, MemfileName, randomID)
 
-	return filepath.Join(snapshotCacheDir(), name)
+	return filepath.Join(config.GetSnapshotCacheDir(), name)
 }

@@ -217,6 +217,27 @@ components:
       additionalProperties: {}
       nullable: true
 
+    SandboxNetworkConfig:
+      type: object
+      properties:
+        allowPublicTraffic:
+          type: boolean
+          default: true
+          description: Specify if the sandbox URLs should be accessible only with authentication.
+        allowOut:
+          type: array
+          description: List of allowed CIDR blocks or IP addresses for egress traffic. Allowed addresses always take precedence over blocked addresses.
+          items:
+            type: string
+        denyOut:
+          type: array
+          description: List of denied CIDR blocks or IP addresses for egress traffic
+          items:
+            type: string
+        maskRequestHost:
+          type: string
+          description: Specify host mask which will be used for all sandbox requests
+
     SandboxLog:
       description: Log entry with timestamp and line
       required:
@@ -339,6 +360,10 @@ components:
         envdAccessToken:
           type: string
           description: Access token used for envd communication
+        trafficAccessToken:
+          type: string
+          nullable: true
+          description: Token required for accessing sandbox via proxy.
         domain:
           type: string
           nullable: true
@@ -475,7 +500,11 @@ components:
           description: Secure all system communication with sandbox
         allow_internet_access:
           type: boolean
-          description: Allow sandbox to access the internet
+          description:
+            Allow sandbox to access the internet. When set to false, it behaves the same as specifying denyOut
+            to 0.0.0.0/0 in the network config.
+        network:
+          $ref: "#/components/schemas/SandboxNetworkConfig"
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
         envVars:
@@ -1146,6 +1175,25 @@ components:
           description: Detailed metrics for each disk/mount point
           items:
             $ref: "#/components/schemas/DiskMetrics"
+    MachineInfo:
+      required:
+        - cpuFamily
+        - cpuModel
+        - cpuModelName
+        - cpuArchitecture
+      properties:
+        cpuFamily:
+          type: string
+          description: CPU family of the node
+        cpuModel:
+          type: string
+          description: CPU model of the node
+        cpuModelName:
+          type: string
+          description: CPU model name of the node
+        cpuArchitecture:
+          type: string
+          description: CPU architecture of the node
 
     Node:
       required:
@@ -1161,6 +1209,7 @@ components:
         - sandboxStartingCount
         - version
         - commit
+        - machineInfo
       properties:
         version:
           type: string
@@ -1181,6 +1230,8 @@ components:
         clusterID:
           type: string
           description: Identifier of the cluster
+        machineInfo:
+          $ref: "#/components/schemas/MachineInfo"
         status:
           $ref: "#/components/schemas/NodeStatus"
         sandboxCount:
@@ -1216,6 +1267,7 @@ components:
         - version
         - commit
         - metrics
+        - machineInfo
       properties:
         clusterID:
           type: string
@@ -1236,6 +1288,8 @@ components:
           type: string
           deprecated: true
           description: Identifier of the nomad node
+        machineInfo:
+          $ref: "#/components/schemas/MachineInfo"
         status:
           $ref: "#/components/schemas/NodeStatus"
         sandboxes:

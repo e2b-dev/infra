@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
@@ -71,7 +72,7 @@ func (s *NodePassThroughServer) catalogCreateEventHandler(ctx context.Context, m
 		ctx := context.WithoutCancel(ctx)
 		deleteErr := s.catalog.DeleteSandbox(ctx, c.SandboxID, c.ExecutionID)
 		if deleteErr != nil {
-			zap.L().Error("Failed to delete sandbox in catalog after failing request", zap.Error(deleteErr))
+			logger.L().Error(ctx, "Failed to delete sandbox in catalog after failing request", zap.Error(deleteErr))
 		}
 	}, nil
 }

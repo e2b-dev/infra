@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -21,7 +22,14 @@ type Provider interface {
 	Size() (int64, error)
 }
 
-const dispatchBufferSize = 4 * 1024 * 1024
+const (
+	// TODO: Look into optimizing the buffer reads by increasing the buffer size by 28 bytes,
+	// to account for a request that is 28 bytes of header + 4MB of data (this seems to be preferred kernel buffer size).
+	dispatchBufferSize = 4 * 1024 * 1024
+	// https://sourceforge.net/p/nbd/mailman/message/35081223/
+	// 32MB is the maximum buffer size for a single request that should be universally supported.
+	dispatchMaxWriteBufferSize = 32 * 1024 * 1024
+)
 
 // NBD Commands
 const (
@@ -130,7 +138,6 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 		// Now go through processing complete packets
 		rp := 0
-	process:
 		for {
 			// Check if there is a fatal error from an async read/write to return
 			select {
@@ -169,14 +176,37 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					}
 				case NBDCmdWrite:
 					rp += 28
-					if wp-rp < int(request.Length) {
-						rp -= 28
 
-						break process // We don't have enough data yet... Wait for next read
+					if request.Length > dispatchMaxWriteBufferSize {
+						return fmt.Errorf("nbd write request length %d exceeds maximum %d", request.Length, dispatchMaxWriteBufferSize)
 					}
+
 					data := make([]byte, request.Length)
-					copy(data, buffer[rp:rp+int(request.Length)])
-					rp += int(request.Length)
+
+					dataCopied := copy(data, buffer[rp:wp])
+
+					rp += dataCopied
+
+					// We need to wait for more data here, otherwise we will deadlock if the buffer is Xmb and the length is Xmb because of the header's extra 28 bytes needed.
+					// At the same time we don't want to increase the default buffer size as the max would be 32mb which is too large for hundreds of sandbox connections.
+
+					for dataCopied < int(request.Length) {
+						n, err := d.fp.Read(data[dataCopied:])
+						if err != nil {
+							return fmt.Errorf("nbd write read error: %w", err)
+						}
+
+						dataCopied += n
+
+						select {
+						case err := <-d.fatal:
+							return err
+						case <-ctx.Done():
+							return ctx.Err()
+						default:
+						}
+					}
+
 					err := d.cmdWrite(ctx, request.Handle, request.From, data)
 					if err != nil {
 						return err
@@ -243,7 +273,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			select {
 			case d.fatal <- err:
 			default:
-				zap.L().Error("nbd error cmd read", zap.Error(err))
+				logger.L().Error(ctx, "nbd error cmd read", zap.Error(err))
 			}
 		}
 		d.pendingResponses.Done()
@@ -291,7 +321,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			select {
 			case d.fatal <- err:
 			default:
-				zap.L().Error("nbd error cmd write", zap.Error(err))
+				logger.L().Error(ctx, "nbd error cmd write", zap.Error(err))
 			}
 		}
 		d.pendingResponses.Done()

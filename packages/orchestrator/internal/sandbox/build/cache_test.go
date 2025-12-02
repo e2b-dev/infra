@@ -13,7 +13,6 @@ package build
 // causing a race when closing the cancel channel.
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -73,8 +72,6 @@ func newDiffWithAsserts(t *testing.T, cachePath, buildId string, diffType DiffTy
 
 func TestNewDiffStore(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	c, err := cfg.Parse()
 	require.NoError(t, err)
@@ -82,23 +79,18 @@ func TestNewDiffStore(t *testing.T) {
 	flags := flagsWithMaxBuildCachePercentage(t, 90)
 
 	store, err := NewDiffStore(
-		ctx,
 		c,
 		flags,
 		cachePath,
 		25*time.Hour,
 		60*time.Second,
 	)
-	t.Cleanup(store.Close)
-
 	require.NoError(t, err)
 	assert.NotNil(t, store)
 }
 
 func TestDiffStoreTTLEviction(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	c, err := cfg.Parse()
 	require.NoError(t, err)
@@ -108,15 +100,16 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
 	store, err := NewDiffStore(
-		ctx,
 		c,
 		flags,
 		cachePath,
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
+
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
 
 	// Add an item to the cache
 	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
@@ -133,8 +126,6 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 
 func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	c, err := cfg.Parse()
 	require.NoError(t, err)
@@ -144,14 +135,12 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
 	store, err := NewDiffStore(
-		ctx,
 		c,
 		flags,
 		cachePath,
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
 	// Add an item to the cache
@@ -175,8 +164,6 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 
 func TestDiffStoreDelayEviction(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	c, err := cfg.Parse()
 	require.NoError(t, err)
@@ -186,15 +173,16 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
-		ctx,
 		c,
 		flags,
 		cachePath,
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
+
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
 
 	// Add an item to the cache
 	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
@@ -222,8 +210,6 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 
 func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	c, err := cfg.Parse()
 	require.NoError(t, err)
@@ -233,15 +219,16 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
-		ctx,
 		c,
 		flags,
 		cachePath,
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
+
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
 
 	// Add an item to the cache
 	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
@@ -285,14 +272,12 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
-		t.Context(),
 		c,
 		flags,
 		cachePath,
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
 	// Add items to the cache
@@ -345,8 +330,6 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 // detector enabled: go test -race
 func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	c, err := cfg.Parse()
 	require.NoError(t, err)
@@ -358,15 +341,16 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	ttl := 10 * time.Millisecond
 	delay := 50 * time.Millisecond
 	store, err := NewDiffStore(
-		ctx,
 		c,
 		flags,
 		cachePath,
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
+
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
 
 	// Number of concurrent operations to create race conditions
 	numGoroutines := 50
@@ -436,8 +420,6 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 // race condition by simulating the exact scenario from the race report
 func TestDiffStoreResetDeleteRace(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	c, err := cfg.Parse()
 	require.NoError(t, err)
@@ -448,15 +430,16 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 	ttl := 5 * time.Millisecond
 	delay := 100 * time.Millisecond
 	store, err := NewDiffStore(
-		ctx,
 		c,
 		flags,
 		cachePath,
 		ttl,
 		delay,
 	)
-	t.Cleanup(store.Close)
 	require.NoError(t, err)
+
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
 
 	// Create a base build ID for generating test diffs
 	buildID := "race-test-build"

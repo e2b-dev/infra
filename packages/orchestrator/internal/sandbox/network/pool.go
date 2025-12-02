@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -93,7 +95,7 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 		return nil, fmt.Errorf("failed to acquire network slot: %w", err)
 	}
 
-	err = ips.CreateNetwork()
+	err = ips.CreateNetwork(ctx)
 	if err != nil {
 		releaseErr := p.slotStorage.Release(ips)
 		err = errors.Join(err, releaseErr)
@@ -116,7 +118,7 @@ func (p *Pool) Populate(ctx context.Context) {
 		default:
 			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {
-				zap.L().Error("[network slot pool]: failed to create network", zap.Error(err))
+				logger.L().Error(ctx, "[network slot pool]: failed to create network", zap.Error(err))
 
 				continue
 			}
@@ -127,7 +129,7 @@ func (p *Pool) Populate(ctx context.Context) {
 	}
 }
 
-func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
+func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (*Slot, error) {
 	var slot *Slot
 
 	select {
@@ -154,8 +156,15 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 		}
 	}
 
-	err := slot.ConfigureInternet(ctx, allowInternet)
+	err := slot.ConfigureInternet(ctx, network)
 	if err != nil {
+		// Return the slot to the pool if configuring internet fails
+		go func() {
+			if returnErr := p.Return(context.WithoutCancel(ctx), slot); returnErr != nil {
+				logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
+			}
+		}()
+
 		return nil, fmt.Errorf("error setting slot internet access: %w", err)
 	}
 
@@ -218,7 +227,7 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 }
 
 func (p *Pool) Close(ctx context.Context) error {
-	zap.L().Info("Closing network pool")
+	logger.L().Info(ctx, "Closing network pool")
 
 	p.doneOnce.Do(func() {
 		close(p.done)
