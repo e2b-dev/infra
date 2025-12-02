@@ -76,7 +76,7 @@ Check if you can use config for terraform state management
   - e2b-supabase-jwt-secrets (optional / required to self-host the [E2B dashboard](https://github.com/e2b-dev/dashboard))
       > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
 11. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
-12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, etc.
+12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template. You can also run `make seed-db` to only create the initial data without building a template.
 
 
 ### Interacting with the cluster
