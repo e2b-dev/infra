@@ -8,6 +8,18 @@ receivers:
         max_concurrent_streams: 200
         write_buffer_size: 10943040
 
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: nomad
+          scrape_interval: 15s
+          scrape_timeout: 5s
+          metrics_path: '/v1/metrics'
+          static_configs:
+            - targets: ['localhost:4646']
+          params:
+            format: ['prometheus']
+
   hostmetrics:
     root_path: /hostfs
     collection_interval: 30s
@@ -211,6 +223,16 @@ processors:
           - "Click*"
           - "pgxpool.*"
 
+  filter/only_client_allocs:
+    metrics:
+      include:
+        match_type: regexp
+        metric_names:
+          - "^nomad_client_allocs_.*$"
+          - "^nomad_client_allocated_.*$"
+          - "^nomad_client_allocations_.*$"
+          - "^nomad_client_unallocated_.*$"
+
   filter/external_metrics:
     metrics:
       include:
@@ -326,6 +348,16 @@ service:
         - otlp
       processors:
         - filter/otlp
+        - resourcedetection
+        - transform/set-name
+        - batch
+      exporters:
+        - otlphttp/grafana_cloud
+    metrics/prometheus:
+      receivers:
+        - prometheus
+      processors:
+        - filter/only_client_allocs
         - resourcedetection
         - transform/set-name
         - batch
