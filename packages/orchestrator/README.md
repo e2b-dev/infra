@@ -30,3 +30,10 @@ udevadm trigger
 ```bash
 ./cmd/mount-rootfs/start.sh <bucket> <build-id> <mount-path>
 ```
+
+### Browse FS
+
+```bash
+TEMPLATE_BUCKET_NAME=<bucket> go run cmd/browse-fs/main.go -build <build-id> -cat <file>
+TEMPLATE_BUCKET_NAME=<bucket> go run cmd/browse-fs/main.go -build <build-id> -ls <directory>
+```
