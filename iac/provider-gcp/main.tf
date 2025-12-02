@@ -6,14 +6,6 @@ terraform {
   }
 
   required_providers {
-<<<<<<< Updated upstream
-=======
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "~> 3.0"
-    }
-
->>>>>>> Stashed changes
     google = {
       source  = "hashicorp/google"
       version = "6.50.0"
