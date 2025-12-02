@@ -21,41 +21,74 @@ receivers:
   hostmetrics:
     root_path: /hostfs
     collection_interval: 30s
+
+    # all scrapers are added explicitly, so we can be clear
+    # about which metrics we've chosen to include/exclude.
+    # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md
     scrapers:
       cpu:
         metrics:
-          # default, only need to be disabled
-
-          # optional, must be explicitly enabled
+          system.cpu.time:  # counter of seconds spent
+            enabled: true
+          system.cpu.frequency:
+            enabled: false
           system.cpu.logical.count:
             enabled: true
           system.cpu.physical.count:
             enabled: true
+          system.cpu.utilization:  # percentage utilized in the moment
+            enabled: false
+
+      # entirely disabled, so we omit the module
+      #disk:
+      #  metrics:
+      #    system.disk.io:
+      #      enabled: false
+      #    system.disk.io_time:
+      #      enabled: false
+      #    system.disk.merged:
+      #      enabled: false
+      #    system.disk.operation_time:
+      #      enabled: false
+      #    system.disk.operations:
+      #      enabled: false
+      #    system.disk.pending_operations:
+      #      enabled: false
+      #    system.disk.weighted_io_time:
+      #      enabled: false
 
       load:
+        metrics:
+          system.cpu.load_average.15m:
+            enabled: true
+          system.cpu.load_average.1m:
+            enabled: true
+          system.cpu.load_average.5m:
+            enabled: true
 
       #  filter not needed stuff (mode, type)
-      #  filter /dev/loop*, maybe check fo other that are polluting
       filesystem:
         metrics:
-          # default, only need to be disabled
-
-          # optional, must be explicitly enabled
+          system.filesystem.inodes.usage:
+            enabled: true
+          system.filesystem.usage:
+            enabled: true
           system.filesystem.utilization:
             enabled: true
 
       # Scraping only total memory (memory limit) and available memory to reduce cardinality
       memory:
         metrics:
-          # default, only need to be disabled
-
-          # optional, must be explicitly enabled
+          system.memory.usage:
+            enabled: true
           system.linux.memory.available: # free memory
             enabled: true
           system.linux.memory.dirty:  # data waiting to be written to disk
             enabled: true
           system.memory.limit: # total memory
             enabled: true
+          system.memory.page_size:
+            enabled: false
           system.memory.utilization:
             enabled: true
 
@@ -75,15 +108,77 @@ receivers:
       # Scraping traffic going in/out of network interfaces
       network:
         metrics:
-          # default, only need to be disabled
+          system.network.connections:
+            enabled: true
+          system.network.dropped:
+            enabled: true
+          system.network.errors:
+            enabled: true
+          system.network.io:
+            enabled: true
           system.network.packets:
             enabled: false
-
-          # optional, must be explicitly enabled
           system.network.conntrack.count:
             enabled: true
           system.network.conntrack.max:
             enabled: true
+
+      # entirely disabled, so we omit the module
+      #paging:
+      #  metrics:
+      #    system.paging.faults:
+      #      enabled: false
+      #    system.paging.operations:
+      #      enabled: false
+      #    system.paging.usage:
+      #      enabled: false
+      #    system.paging.utilization:
+      #      enabled: false
+
+      processes:
+        metrics:
+          system.processes.count:
+            enabled: true
+          system.processes.created:
+            enabled: true
+
+      # entirely disabled, so we omit the module
+      #process:
+      #  metrics:
+      #    process.cpu.time:
+      #      enabled: false
+      #    process.disk.io:
+      #      enabled: false
+      #    process.memory.usage:
+      #      enabled: false
+      #    process.memory.virtual:
+      #      enabled: false
+      #    process.context_switches:
+      #      enabled: false
+      #    process.cpu.utilization:
+      #      enabled: false
+      #    process.disk.operations:
+      #      enabled: false
+      #    process.handles:
+      #      enabled: false
+      #    process.memory.utilization:
+      #      enabled: false
+      #    process.open_file_descriptors:
+      #      enabled: false
+      #    process.paging.faults:
+      #      enabled: false
+      #    process.signals_pending:
+      #      enabled: false
+      #    process.threads:
+      #      enabled: false
+      #    process.uptime:
+      #      enabled: false
+
+      # entirely disabled, so we omit the module
+      #system:
+      #  metrics:
+      #    system.uptime:
+      #      enabled: false
 
 processors:
   batch:
@@ -135,7 +230,6 @@ processors:
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
-          - "otelcol.*"
           - "pgxpool.*"
 
   filter/prometheus:
