@@ -107,6 +107,12 @@ func main() {
 	fmt.Println()
 
 	email := promptWithDefault(reader, "Email", configDefaults["email"])
+	if email == "" {
+		fmt.Println("Error: Email cannot be empty")
+
+		return
+	}
+
 	teamIDStr, err := promptDefaultOrGenerate(reader, "Team ID", configDefaults["teamId"], func() (string, error) {
 		return uuid.New().String(), nil
 	})
