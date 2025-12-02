@@ -16,7 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 type ClusterInstance struct {
@@ -26,7 +27,9 @@ type ClusterInstance struct {
 	ServiceVersion       string
 	ServiceVersionCommit string
 
-	roles  []infogrpc.ServiceInfoRole
+	roles       []infogrpc.ServiceInfoRole
+	machineInfo machineinfo.MachineInfo
+
 	status infogrpc.ServiceInfoStatus
 	mutex  sync.RWMutex
 }
@@ -36,8 +39,8 @@ const (
 	instancesSyncTimeout  = 5 * time.Second
 )
 
-func (c *Cluster) startSync() {
-	c.synchronization.Start(instancesSyncInterval, instancesSyncTimeout, true)
+func (c *Cluster) startSync(ctx context.Context) {
+	c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
 }
 
 func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
@@ -49,7 +52,12 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
-		zap.L().Error("Failed to get instance info", zap.Error(err), l.WithClusterID(c.ID), l.WithNodeID(instance.NodeID), l.WithServiceInstanceID(instance.ServiceInstanceID))
+		logger.L().Error(ctx, "Failed to get instance info",
+			zap.Error(err),
+			logger.WithClusterID(c.ID),
+			logger.WithNodeID(instance.NodeID),
+			logger.WithServiceInstanceID(instance.ServiceInstanceID),
+		)
 
 		return
 	}
@@ -59,6 +67,7 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	instance.status = info.GetServiceStatus()
 	instance.roles = info.GetServiceRoles()
+	instance.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
 }
 
 func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
@@ -66,6 +75,13 @@ func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
 	defer n.mutex.RUnlock()
 
 	return n.status
+}
+
+func (n *ClusterInstance) GetMachineInfo() machineinfo.MachineInfo {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+
+	return n.machineInfo
 }
 
 func (n *ClusterInstance) hasRole(r infogrpc.ServiceInfoRole) bool {
@@ -133,8 +149,12 @@ func (d clusterSynchronizationStore) PoolExists(_ context.Context, s api.Cluster
 	return found
 }
 
-func (d clusterSynchronizationStore) PoolInsert(_ context.Context, item api.ClusterOrchestratorNode) {
-	zap.L().Info("Adding instance into cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(item.NodeID), l.WithServiceInstanceID(item.ServiceInstanceID))
+func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.ClusterOrchestratorNode) {
+	logger.L().Info(ctx, "Adding instance into cluster pool",
+		logger.WithClusterID(d.cluster.ID),
+		logger.WithNodeID(item.NodeID),
+		logger.WithServiceInstanceID(item.ServiceInstanceID),
+	)
 
 	instance := &ClusterInstance{
 		NodeID: item.NodeID,
@@ -150,6 +170,7 @@ func (d clusterSynchronizationStore) PoolInsert(_ context.Context, item api.Clus
 		mutex: sync.RWMutex{},
 	}
 
+	d.cluster.syncInstance(ctx, instance)
 	d.cluster.instances.Insert(item.NodeID, instance)
 }
 
@@ -157,7 +178,11 @@ func (d clusterSynchronizationStore) PoolUpdate(ctx context.Context, instance *C
 	d.cluster.syncInstance(ctx, instance)
 }
 
-func (d clusterSynchronizationStore) PoolRemove(_ context.Context, instance *ClusterInstance) {
-	zap.L().Info("Removing instance from cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(instance.NodeID), l.WithServiceInstanceID(instance.ServiceInstanceID))
+func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, instance *ClusterInstance) {
+	logger.L().Info(ctx, "Removing instance from cluster pool",
+		logger.WithClusterID(d.cluster.ID),
+		logger.WithNodeID(instance.NodeID),
+		logger.WithServiceInstanceID(instance.ServiceInstanceID),
+	)
 	d.cluster.instances.Remove(instance.NodeID)
 }

@@ -38,14 +38,14 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 			return sbx, errCannotSetTTL
 		}
 
-		zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
+		logger.L().Debug(ctx, "sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
 		sbx.EndTime = newEndTime
 
 		return sbx, nil
 	}
 
 	var sbxNotFoundErr *sandbox.NotFoundError
-	sbx, err := o.sandboxStore.Update(sandboxID, updateFunc)
+	sbx, err := o.sandboxStore.Update(ctx, sandboxID, updateFunc)
 	if err != nil {
 		switch {
 		case errors.As(err, &sbxNotFoundErr):

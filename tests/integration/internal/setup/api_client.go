@@ -55,6 +55,14 @@ func WithAccessToken() func(ctx context.Context, req *http.Request) error {
 	}
 }
 
+func WithCustomAccessToken(accessToken string) func(ctx context.Context, req *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+
+		return nil
+	}
+}
+
 func WithSupabaseToken(t *testing.T, userID ...string) func(ctx context.Context, req *http.Request) error {
 	t.Helper()
 

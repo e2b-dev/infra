@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -33,6 +34,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -45,8 +47,9 @@ const progressDelay = 5 * time.Second
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build")
 
 type Builder struct {
-	logger *zap.Logger
+	logger logger.Logger
 
+	config              cfg.BuilderConfig
 	sandboxFactory      *sandbox.Factory
 	templateStorage     storage.StorageProvider
 	buildStorage        storage.StorageProvider
@@ -60,7 +63,8 @@ type Builder struct {
 }
 
 func NewBuilder(
-	logger *zap.Logger,
+	config cfg.BuilderConfig,
+	logger logger.Logger,
 	featureFlags *featureflags.Client,
 	sandboxFactory *sandbox.Factory,
 	templateStorage storage.StorageProvider,
@@ -73,6 +77,7 @@ func NewBuilder(
 	buildMetrics *metrics.BuildMetrics,
 ) *Builder {
 	return &Builder{
+		config:              config,
 		logger:              logger,
 		featureFlags:        featureFlags,
 		sandboxFactory:      sandboxFactory,
@@ -110,6 +115,13 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	ctx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
+	// setup launch darkly context
+	ctx = featureflags.SetContext(
+		ctx,
+		featureflags.TemplateContext(cfg.TemplateID),
+		featureflags.TeamContext(cfg.TeamID),
+	)
+
 	// Record build duration and result at the end
 	startTime := time.Now()
 	defer func() {
@@ -133,18 +145,18 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 
 	isV1Build := utils.IsVersion(cfg.Version, templates.TemplateV1Version) || (cfg.FromImage == "" && cfg.FromTemplate == nil)
 
-	logger := zap.New(logsCore)
-	defer func() {
+	l := logger.NewTracedLoggerFromCore(logsCore)
+	defer func(ctx context.Context) {
 		switch {
 		case errors.Is(ctx.Err(), context.Canceled):
-			logger.Error(fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
+			l.Error(ctx, fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
 		case e != nil:
-			logger.Error(fmt.Sprintf("Build failed: %v", e))
+			l.Error(ctx, fmt.Sprintf("Build failed: %v", e))
 		default:
-			logger.Info(fmt.Sprintf("Build finished, took %s",
+			l.Info(ctx, fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
 		}
-	}()
+	}(ctx)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -154,12 +166,12 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	}()
 
 	if isV1Build {
-		hookedCore, done := writer.NewPostProcessor(progressDelay, logsCore)
+		hookedCore, done := writer.NewPostProcessor(ctx, progressDelay, logsCore)
 		defer done()
-		logger = zap.New(hookedCore)
+		l = logger.NewTracedLoggerFromCore(hookedCore)
 	}
 
-	logger.Info(fmt.Sprintf("Building template %s/%s", cfg.TemplateID, template.BuildID))
+	l.Info(ctx, fmt.Sprintf("Building template %s/%s", cfg.TemplateID, template.BuildID))
 
 	defer func(ctx context.Context) {
 		if e == nil {
@@ -173,12 +185,12 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		}
 	}(context.WithoutCancel(ctx))
 
-	envdVersion, err := envd.GetEnvdVersion(ctx)
+	envdVersion, err := envd.GetEnvdVersion(ctx, b.config.HostEnvdPath)
 	if err != nil {
 		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}
 
-	var uploadErrGroup errgroup.Group
+	uploadErrGroup := &errgroup.Group{}
 	defer func() {
 		// Wait for all template layers to be uploaded even if the build fails
 		err := uploadErrGroup.Wait()
@@ -188,21 +200,22 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	}()
 
 	buildContext := buildcontext.BuildContext{
+		BuilderConfig:  b.config,
 		Config:         cfg,
 		Template:       template,
-		UploadErrGroup: &uploadErrGroup,
+		UploadErrGroup: uploadErrGroup,
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
 		IsV1Build:      isV1Build,
 		Version:        cfg.Version,
 	}
 
-	return runBuild(ctx, logger, buildContext, b)
+	return runBuild(ctx, l, buildContext, b)
 }
 
 func runBuild(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	bc buildcontext.BuildContext,
 	builder *Builder,
 ) (*Result, error) {
@@ -269,6 +282,8 @@ func runBuild(
 		builder.templateStorage,
 		builder.proxy,
 		layerExecutor,
+		builder.featureFlags,
+		builder.logger,
 	)
 
 	// Construct the phases/steps to run
@@ -304,7 +319,7 @@ func runBuild(
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}
-	zap.L().Info("rootfs size", zap.Uint64("size", rootfsSize))
+	logger.L().Info(ctx, "rootfs size", zap.Uint64("size", rootfsSize))
 
 	return &Result{
 		EnvdVersion:  bc.EnvdVersion,

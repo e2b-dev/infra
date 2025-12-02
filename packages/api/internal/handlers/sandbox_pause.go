@@ -34,7 +34,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandbox(sandboxID)
+	sbx, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 	if err != nil {
 		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
@@ -70,7 +70,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sandboxID string, teamID uuid.UUID) api.APIError {
 	_, err := sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
 	if err == nil {
-		zap.L().Warn("Sandbox is already paused", logger.WithSandboxID(sandboxID))
+		logger.L().Warn(ctx, "Sandbox is already paused", logger.WithSandboxID(sandboxID))
 
 		return api.APIError{
 			Code:      http.StatusConflict,
@@ -79,7 +79,7 @@ func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sa
 	}
 
 	if errors.Is(err, sql.ErrNoRows) {
-		zap.L().Debug("Snapshot not found", logger.WithSandboxID(sandboxID))
+		logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
 
 		return api.APIError{
 			Code:      http.StatusNotFound,
@@ -87,7 +87,7 @@ func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sa
 		}
 	}
 
-	zap.L().Error("Error getting snapshot", zap.Error(err), logger.WithSandboxID(sandboxID))
+	logger.L().Error(ctx, "Error getting snapshot", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 	return api.APIError{
 		Code:      http.StatusInternalServerError,

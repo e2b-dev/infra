@@ -1,5 +1,5 @@
 gcloud 534.0.0
-golang 1.24.7
+golang 1.25.4
 golangci-lint 2.4.0
 packer 1.13.1
 terraform 1.5.7

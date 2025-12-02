@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,18 +12,14 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/shared/pkg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
 	ToMBShift        = 20
 	fallbackDiffSize = 100 << ToMBShift
 )
-
-func DefaultCachePath() string {
-	return filepath.Join(pkg.OrchestratorBasePath(), "build")
-}
 
 type deleteDiff struct {
 	size      int64
@@ -35,7 +30,9 @@ type deleteDiff struct {
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
-	close     chan struct{}
+	cancel    func()
+	config    cfg.Config
+	flags     *featureflags.Client
 
 	// pdSizes is used to keep track of the diff sizes
 	// that are scheduled for deletion, as this won't show up in the disk usage.
@@ -45,7 +42,6 @@ type DiffStore struct {
 }
 
 func NewDiffStore(
-	ctx context.Context,
 	config cfg.Config,
 	flags *featureflags.Client,
 	cachePath string,
@@ -63,23 +59,22 @@ func NewDiffStore(
 	ds := &DiffStore{
 		cachePath: cachePath,
 		cache:     cache,
-		close:     make(chan struct{}),
+		cancel:    func() {},
+		config:    config,
+		flags:     flags,
 		pdSizes:   make(map[DiffStoreKey]*deleteDiff),
 		pdDelay:   delay,
 	}
 
-	cache.OnEviction(func(_ context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
+	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
 		buildData := item.Value()
 		// buildData will be deleted by calling buildData.Close()
 		defer ds.resetDelete(item.Key())
 
 		if closeErr := buildData.Close(); closeErr != nil {
-			zap.L().Warn("failed to cleanup build data cache for item", zap.Any("item_key", item.Key()), zap.Error(closeErr))
+			logger.L().Warn(ctx, "failed to cleanup build data cache for item", zap.Any("item_key", item.Key()), zap.Error(closeErr))
 		}
 	})
-
-	go cache.Start()
-	go ds.startDiskSpaceEviction(ctx, config, flags)
 
 	return ds, nil
 }
@@ -90,8 +85,16 @@ func GetDiffStoreKey(buildID string, diffType DiffType) DiffStoreKey {
 	return DiffStoreKey(fmt.Sprintf("%s/%s", buildID, diffType))
 }
 
+func (s *DiffStore) Start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	s.cancel = cancel
+
+	go s.cache.Start()
+	go s.startDiskSpaceEviction(ctx, s.config, s.flags)
+}
+
 func (s *DiffStore) Close() {
-	close(s.close)
+	s.cancel()
 	s.cache.Stop()
 }
 
@@ -149,12 +152,10 @@ func (s *DiffStore) startDiskSpaceEviction(
 		select {
 		case <-ctx.Done():
 			return
-		case <-s.close:
-			return
 		case <-timer.C:
 			dUsed, dTotal, err := diskUsage(s.cachePath)
 			if err != nil {
-				zap.L().Error("failed to get disk usage", zap.Error(err))
+				logger.L().Error(ctx, "failed to get disk usage", zap.Error(err))
 				timer.Reset(getDelay(false))
 
 				continue
@@ -170,7 +171,7 @@ func (s *DiffStore) startDiskSpaceEviction(
 			for _, s := range services {
 				st, err := flags.IntFlag(ctx, featureflags.BuildCacheMaxUsagePercentage, featureflags.ServiceContext(string(s)))
 				if err != nil {
-					zap.L().Warn("failed to get build cache max usage percentage flag", zap.Error(err))
+					logger.L().Warn(ctx, "failed to get build cache max usage percentage flag", zap.Error(err))
 
 					continue
 				}
@@ -188,7 +189,7 @@ func (s *DiffStore) startDiskSpaceEviction(
 
 			succ, err := s.deleteOldestFromCache(ctx)
 			if err != nil {
-				zap.L().Error("failed to delete oldest item from cache", zap.Error(err))
+				logger.L().Error(ctx, "failed to delete oldest item from cache", zap.Error(err))
 				timer.Reset(getDelay(false))
 
 				continue
@@ -221,7 +222,7 @@ func (s *DiffStore) deleteOldestFromCache(ctx context.Context) (suc bool, e erro
 			e = fmt.Errorf("recovered from panic in deleteOldestFromCache: %v", r)
 			suc = false
 
-			zap.L().Error("recovered from panic in deleteOldestFromCache", zap.Error(e))
+			logger.L().Error(ctx, "recovered from panic in deleteOldestFromCache", zap.Error(e))
 		}
 	}()
 
@@ -234,7 +235,7 @@ func (s *DiffStore) deleteOldestFromCache(ctx context.Context) (suc bool, e erro
 
 		sfSize, err := item.Value().FileSize()
 		if err != nil {
-			zap.L().Warn("failed to get size of deleted item from cache", zap.Error(err))
+			logger.L().Warn(ctx, "failed to get size of deleted item from cache", zap.Error(err))
 			sfSize = fallbackDiffSize
 		}
 
@@ -308,4 +309,8 @@ func diskUsage(path string) (uint64, uint64, error) {
 	used := total - free
 
 	return used, total, nil
+}
+
+func (s *DiffStore) RemoveCache() {
+	s.cache.DeleteAll()
 }

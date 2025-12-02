@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,8 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -101,7 +102,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	build := templateBuildDB.EnvBuild
 
 	// only waiting builds can be triggered
-	if build.Status != envbuild.StatusWaiting.String() {
+	if build.Status != string(types.BuildStatusWaiting) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
 		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
 
@@ -120,23 +121,38 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	err = a.db.Client.EnvBuild.Update().
-		SetNillableStartCmd(body.StartCmd).
-		SetNillableReadyCmd(body.ReadyCmd).
-		SetDockerfile(string(stepsMarshalled)).
-		Where(envbuild.ID(buildUUID)).
-		Exec(ctx)
+	version, err := userAgentToTemplateVersion(ctx, logger.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID)), c.Request.UserAgent())
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when updating build", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
+		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
 
 		return
 	}
 
-	version, err := userAgentToTemplateVersion(zap.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID)), c.Request.UserAgent())
+	builderNode, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
+		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
+	machineInfo := builderNode.GetMachineInfo()
+	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
+		StartCmd:        body.StartCmd,
+		ReadyCmd:        body.ReadyCmd,
+		Dockerfile:      utils.ToPtr(string(stepsMarshalled)),
+		ClusterNodeID:   utils.ToPtr(builderNode.NodeID),
+		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
+		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
+		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
+		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		CpuFlags:        machineInfo.CPUFlags,
+		BuildUuid:       buildUUID,
+	})
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when updating build", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err))
 
 		return
 	}
@@ -160,11 +176,11 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.Force,
 		body.Steps,
 		apiutils.WithClusterFallback(team.ClusterID),
-		build.ClusterNodeID,
+		builderNode.NodeID,
 		version,
 	)
 
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "built environment", posthog.NewProperties().
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "built environment", posthog.NewProperties().
 		Set("environment", templateID).
 		Set("build_id", buildID).
 		Set("duration", time.Since(startTime).String()).
@@ -183,7 +199,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 
 // userAgentToTemplateVersion returns the template semver version based on the user agent string.
 // If the user agent is not recognized, it defaults to the latest stable version.
-func userAgentToTemplateVersion(logger *zap.Logger, userAgent string) (string, error) {
+func userAgentToTemplateVersion(ctx context.Context, logger logger.Logger, userAgent string) (string, error) {
 	version := templates.TemplateV2LatestVersion
 
 	switch {
@@ -210,7 +226,7 @@ func userAgentToTemplateVersion(logger *zap.Logger, userAgent string) (string, e
 			version = templates.TemplateV2BetaVersion
 		}
 	default:
-		logger.Debug("Unrecognized user agent, defaulting to the latest template version", zap.String("user_agent", userAgent), zap.String("version", version))
+		logger.Debug(ctx, "Unrecognized user agent, defaulting to the latest template version", zap.String("user_agent", userAgent), zap.String("version", version))
 	}
 
 	return version, nil

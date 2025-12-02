@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -63,7 +64,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 	defer func() {
 		// Set the device index to the one returned, correctly capture error values
 		d.deviceIndex = retDeviceIndex
-		zap.L().Debug("opening direct path mount", zap.Uint32("device_index", d.deviceIndex), zap.Error(err))
+		logger.L().Debug(ctx, "opening direct path mount", zap.Uint32("device_index", d.deviceIndex), zap.Error(err))
 	}()
 
 	telemetry.ReportEvent(ctx, "opening direct path mount")
@@ -112,7 +113,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
-				zap.L().Info("closing handler for NBD commands",
+				logger.L().Info(ctx, "closing handler for NBD commands",
 					zap.Error(handleErr),
 					zap.Uint32("device_index", deviceIndex),
 					zap.Int("socket_index", i),
@@ -140,7 +141,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			break
 		}
 
-		zap.L().Error("error opening NBD, retrying", zap.Error(err), zap.Uint32("device_index", deviceIndex))
+		logger.L().Error(ctx, "error opening NBD, retrying", zap.Error(err), zap.Uint32("device_index", deviceIndex))
 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
@@ -153,7 +154,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		// Release the device back to the pool
 		releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
 		if releaseErr != nil {
-			zap.L().Error("error opening NBD, error releasing device", zap.Error(releaseErr), zap.Uint32("device_index", deviceIndex))
+			logger.L().Error(ctx, "error opening NBD, error releasing device", zap.Error(releaseErr), zap.Uint32("device_index", deviceIndex))
 		}
 
 		if strings.Contains(err.Error(), "invalid argument") {

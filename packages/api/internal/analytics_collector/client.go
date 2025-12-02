@@ -6,10 +6,11 @@ import (
 	"crypto/x509"
 	"fmt"
 
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type Analytics struct {
@@ -17,12 +18,12 @@ type Analytics struct {
 	connection *grpc.ClientConn
 }
 
-func NewAnalytics(host, grpcAPIKey string) (*Analytics, error) {
+func NewAnalytics(ctx context.Context, host, grpcAPIKey string) (*Analytics, error) {
 	var client AnalyticsCollectorClient
 	var connection *grpc.ClientConn
 
 	if host == "" {
-		zap.L().Info("Running dummy implementation of analytics collector client, no host provided")
+		logger.L().Info(ctx, "Running dummy implementation of analytics collector client, no host provided")
 	} else {
 		systemRoots, err := x509.SystemCertPool()
 		if err != nil {

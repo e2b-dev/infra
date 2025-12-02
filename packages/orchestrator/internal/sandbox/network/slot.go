@@ -16,6 +16,7 @@ import (
 	netutils "k8s.io/utils/net"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
@@ -226,7 +227,7 @@ func (s *Slot) InitializeFirewall() error {
 		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
 	}
 
-	fw, err := NewFirewall(s.TapName())
+	fw, err := NewFirewall(s.TapName(), s.HyperloopIPString())
 	if err != nil {
 		return fmt.Errorf("error initializing firewall: %w", err)
 	}
@@ -248,14 +249,13 @@ func (s *Slot) CloseFirewall() error {
 	return nil
 }
 
-func (s *Slot) ConfigureInternet(ctx context.Context, allowInternet bool) (e error) {
+func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (e error) {
 	_, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
-		attribute.Bool("allow_internet", allowInternet),
 	))
 	defer span.End()
 
-	if allowInternet {
+	if e := network.GetEgress(); len(e.GetAllowedCidrs()) == 0 && len(e.GetDeniedCidrs()) == 0 {
 		// Internet access is allowed by default.
 		return nil
 	}
@@ -269,9 +269,18 @@ func (s *Slot) ConfigureInternet(ctx context.Context, allowInternet bool) (e err
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		err = s.Firewall.AddBlockedIP("0.0.0.0/0")
-		if err != nil {
-			return fmt.Errorf("error setting firewall rules: %w", err)
+		for _, cidr := range network.GetEgress().GetAllowedCidrs() {
+			err = s.Firewall.AddAllowedCIDR(cidr)
+			if err != nil {
+				return fmt.Errorf("error setting firewall rules: %w", err)
+			}
+		}
+
+		for _, cidr := range network.GetEgress().GetDeniedCidrs() {
+			err = s.Firewall.AddDeniedCIDR(cidr)
+			if err != nil {
+				return fmt.Errorf("error setting firewall rules: %w", err)
+			}
 		}
 
 		return nil
@@ -300,7 +309,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		err := s.Firewall.ResetAllCustom()
+		err := s.Firewall.ResetAllSets()
 		if err != nil {
 			return fmt.Errorf("error cleaning firewall rules: %w", err)
 		}

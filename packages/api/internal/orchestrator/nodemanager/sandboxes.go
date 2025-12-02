@@ -10,7 +10,9 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
@@ -46,6 +48,30 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.GetBuildId(), parseErr)
 		}
 
+		var networkTrafficAccessToken *string
+		if ingress := config.GetNetwork().GetIngress(); ingress != nil {
+			networkTrafficAccessToken = ingress.TrafficAccessToken
+		}
+
+		var network *types.SandboxNetworkConfig
+		if config.GetNetwork() != nil {
+			network = &types.SandboxNetworkConfig{}
+
+			if ingress := config.GetNetwork().GetIngress(); ingress != nil {
+				network.Ingress = &types.SandboxNetworkIngressConfig{
+					AllowPublicAccess: ut.ToPtr(networkTrafficAccessToken == nil),
+					MaskRequestHost:   ingress.MaskRequestHost,
+				}
+			}
+
+			if egress := config.GetNetwork().GetEgress(); egress != nil {
+				network.Egress = &types.SandboxNetworkEgressConfig{
+					AllowedAddresses: egress.GetAllowedCidrs(),
+					DeniedAddresses:  egress.GetDeniedCidrs(),
+				}
+			}
+		}
+
 		sandboxesInfo = append(
 			sandboxesInfo,
 			sandbox.NewSandbox(
@@ -73,6 +99,8 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				config.AllowInternetAccess, //nolint:protogetter // we need the nil check too
 				config.GetBaseTemplateId(),
 				n.SandboxDomain,
+				network,
+				networkTrafficAccessToken,
 			),
 		)
 	}

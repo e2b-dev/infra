@@ -1,11 +1,13 @@
 import { Sandbox } from "@e2b/code-interpreter";
-import { log, runTestWithSandbox } from "./utils.ts";
+import { DEBUG_TIMEOUT_MS, log, runTestWithSandbox } from "./utils.ts";
 
-const sbx = await Sandbox.create();
+const sbx = await Sandbox.create({ timeoutMs: DEBUG_TIMEOUT_MS });
 log("ℹ️ sandbox created", sbx.sandboxId);
 
 await runTestWithSandbox(sbx, "snapshot-and-resume", async () => {
-  await sbx.runCode("x = 1");
+  await sbx.runCode("x = 1", {
+    requestTimeoutMs: 10000,
+  });
   log("Sandbox code executed");
 
   const success = await sbx.betaPause();
@@ -15,7 +17,9 @@ await runTestWithSandbox(sbx, "snapshot-and-resume", async () => {
   const sameSbx = await Sandbox.connect(sbx.sandboxId);
   log("Sandbox resumed", sameSbx.sandboxId);
 
-  const execution = await sameSbx.runCode("x+=1; x");
+  const execution = await sameSbx.runCode("x+=1; x", {
+    requestTimeoutMs: 10000,
+  });
   // Output result
   log("RunCode Output:", execution.text);
 

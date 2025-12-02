@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -36,6 +37,7 @@ type storageTemplate struct {
 }
 
 func newTemplateFromStorage(
+	config cfg.BuilderConfig,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
@@ -50,7 +52,7 @@ func newTemplateFromStorage(
 		BuildID:            buildId,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
-	}.CacheFiles()
+	}.CacheFiles(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
 	}
@@ -134,7 +136,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		if err != nil {
 			// If we can't find the metadata, we still want to return the metafile.
 			// This is used for templates that don't have metadata, like v1 templates.
-			zap.L().Info("failed to fetch metafile, falling back to v1 template metadata",
+			logger.L().Info(ctx, "failed to fetch metafile, falling back to v1 template metadata",
 				logger.WithBuildID(t.files.BuildID),
 				zap.Error(err),
 			)
@@ -222,7 +224,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 	err := wg.Wait()
 	if err != nil {
-		zap.L().Error("failed to fetch template files",
+		logger.L().Error(ctx, "failed to fetch template files",
 			logger.WithBuildID(t.files.BuildID),
 			zap.Error(err),
 		)

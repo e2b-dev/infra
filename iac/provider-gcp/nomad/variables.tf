@@ -116,12 +116,6 @@ variable "loki_node_pool" {
   type = string
 }
 
-
-variable "api_dns_port_number" {
-  type    = number
-  default = 5353
-}
-
 variable "custom_envs_repository_name" {
   type = string
 }
@@ -250,6 +244,14 @@ variable "loki_service_port" {
 }
 
 variable "redis_url_secret_version" {
+  type = any
+}
+
+variable "redis_tls_ca_base64_secret_version" {
+  type = any
+}
+
+variable "redis_secure_cluster_url_secret_version" {
   type = any
 }
 

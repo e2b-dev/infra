@@ -21,7 +21,7 @@ func (c *Checks) getHealth(ctx context.Context, timeout time.Duration) (bool, er
 		return false, err
 	}
 
-	response, err := httpClient.Do(request)
+	response, err := sandboxHttpClient.Do(request)
 	if err != nil {
 		return false, err
 	}
