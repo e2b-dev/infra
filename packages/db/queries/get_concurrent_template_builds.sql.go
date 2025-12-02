@@ -12,7 +12,7 @@ import (
 )
 
 const getConcurrentTemplateBuilds = `-- name: GetConcurrentTemplateBuilds :many
-SELECT id, created_at, updated_at, finished_at, status, dockerfile, start_cmd, vcpu, ram_mb, free_disk_size_mb, total_disk_size_mb, kernel_version, firecracker_version, env_id, envd_version, ready_cmd, cluster_node_id, reason, version FROM env_builds eb
+SELECT id, created_at, updated_at, finished_at, status, dockerfile, start_cmd, vcpu, ram_mb, free_disk_size_mb, total_disk_size_mb, kernel_version, firecracker_version, env_id, envd_version, ready_cmd, cluster_node_id, reason, version, cpu_architecture, cpu_family, cpu_model, cpu_model_name, cpu_flags FROM env_builds eb
 WHERE
     eb.env_id = $1
     AND eb.status in ('waiting', 'building')
@@ -53,6 +53,11 @@ func (q *Queries) GetConcurrentTemplateBuilds(ctx context.Context, arg GetConcur
 			&i.ClusterNodeID,
 			&i.Reason,
 			&i.Version,
+			&i.CpuArchitecture,
+			&i.CpuFamily,
+			&i.CpuModel,
+			&i.CpuModelName,
+			&i.CpuFlags,
 		); err != nil {
 			return nil, err
 		}

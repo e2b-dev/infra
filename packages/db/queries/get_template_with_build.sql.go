@@ -18,7 +18,7 @@ WITH s AS NOT MATERIALIZED (
     SELECT $1 as env_id
 )
 
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, aliases
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags, aliases
 FROM s
 JOIN public.envs AS e ON e.id = s.env_id
 JOIN public.env_builds AS eb ON eb.env_id = e.id
@@ -72,6 +72,11 @@ func (q *Queries) GetTemplateWithBuild(ctx context.Context, aliasOrEnvID string)
 		&i.EnvBuild.ClusterNodeID,
 		&i.EnvBuild.Reason,
 		&i.EnvBuild.Version,
+		&i.EnvBuild.CpuArchitecture,
+		&i.EnvBuild.CpuFamily,
+		&i.EnvBuild.CpuModel,
+		&i.EnvBuild.CpuModelName,
+		&i.EnvBuild.CpuFlags,
 		&i.Aliases,
 	)
 	return i, err
