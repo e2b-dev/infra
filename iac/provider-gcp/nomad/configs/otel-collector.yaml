@@ -72,7 +72,7 @@ receivers:
         include_virtual_filesystems: false
         exclude_devices:
           devices:
-            - "^/dev/loop\\d+$"
+            - "^/dev/loop.*$"
           match_type: regexp
         metrics:
           system.filesystem.inodes.usage:
@@ -116,7 +116,7 @@ receivers:
         exclude:
           interfaces:
             - "^lo$"
-            - "^docker\\d+$"
+            - "^docker.*$"
             - "^nomad$"
             - "^veth.*$"
           match_type: regexp
