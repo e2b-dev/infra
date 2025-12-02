@@ -13,7 +13,7 @@ const gh = new Octokit({ auth: token });
 const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
 
 // Slack configuration
-const slackToken = process.env.SLACK_BOT_TOKEN;
+const slackToken = process.env.SLACK_BOT_TOKEN?.trim() || null;
 const slack = slackToken ? new WebClient(slackToken) : null;
 
 function getEvent() {
@@ -201,11 +201,12 @@ function parseCodeowners(content) {
 
     // Read and parse CODEOWNERS file
     let codeownersContent;
+    const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+    const codeownersPath = path.join(repoRoot, "CODEOWNERS");
     try {
-      const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd();
-      codeownersContent = fs.readFileSync(path.join(repoRoot, "CODEOWNERS"), "utf8");
+      codeownersContent = fs.readFileSync(codeownersPath, "utf8");
     } catch (error) {
-      console.log(`Failed to read CODEOWNERS file: ${error.message}`);
+      console.log(`Failed to read CODEOWNERS file at ${codeownersPath}: ${error.message}`);
       return;
     }
 
