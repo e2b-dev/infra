@@ -82,7 +82,6 @@ resource "nomad_job" "api" {
     cpu_count = var.api_resources_cpu_count
 
     orchestrator_port              = var.orchestrator_port
-    template_manager_host          = "template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address         = "http://localhost:${var.logs_proxy_port.port}"
     gcp_zone                       = var.gcp_zone
@@ -101,7 +100,6 @@ resource "nomad_job" "api" {
     redis_url                      = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
     redis_cluster_url              = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) == "" ? "" : data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data
     redis_tls_ca_base64            = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-    dns_port_number                = var.api_dns_port_number
     clickhouse_connection_string   = local.clickhouse_connection_string
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = data.google_artifact_registry_docker_image.db_migrator_image.self_link
