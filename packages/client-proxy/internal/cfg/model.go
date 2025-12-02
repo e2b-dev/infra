@@ -14,10 +14,9 @@ type Config struct {
 	EdgeServiceDiscovery                  ServiceDiscoveryConfig `envPrefix:"SD_EDGE_"`
 	OrchestratorServiceDiscovery          ServiceDiscoveryConfig `envPrefix:"SD_ORCHESTRATOR_"`
 
-	RedisURL              string `env:"REDIS_URL"`
-	RedisClusterURL       string `env:"REDIS_CLUSTER_URL"`
-	RedisSecureClusterURL string `env:"REDIS_SECURE_CLUSTER_URL"`
-	RedisTLSCABase64      string `env:"REDIS_TLS_CA_BASE64"`
+	RedisURL         string `env:"REDIS_URL"`
+	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
+	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 }
 
 type ServiceDiscoveryConfig struct {

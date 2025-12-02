@@ -207,10 +207,9 @@ resource "nomad_job" "client_proxy" {
       gcp_zone    = var.gcp_zone
       environment = var.environment
 
-      redis_url                = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
-      redis_cluster_url        = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
-      redis_secure_cluster_url = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) != "" ? data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data : ""
-      redis_tls_ca_base64      = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+      redis_url           = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+      redis_cluster_url   = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) != "" ? data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data : ""
+      redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
       loki_url = "http://loki.service.consul:${var.loki_service_port.port}"
 
