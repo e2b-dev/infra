@@ -33,7 +33,7 @@ type CreateSandbox struct {
 
 const (
 	minEnvdVersionForKVMClock = "0.2.11"                 // Minimum version of envd that supports KVM clock
-	defaultIoEngine           = models.DriveIoEngineSync // Use the Sync io engine by default to avoid issues with Async.
+	DefaultIoEngine           = models.DriveIoEngineSync // Use the Sync io engine by default to avoid issues with Async.
 )
 
 var _ SandboxCreator = (*CreateSandbox)(nil)
@@ -60,7 +60,7 @@ func WithRootfsCachePath(rootfsCachePath string) CreateSandboxOption {
 func NewCreateSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, fcVersions fc.FirecrackerVersions, options ...CreateSandboxOption) *CreateSandbox {
 	opts := &createSandboxOptions{
 		rootfsCachePath: "",
-		ioEngine:        utils.ToPtr(defaultIoEngine),
+		ioEngine:        utils.ToPtr(DefaultIoEngine),
 	}
 	for _, option := range options {
 		option(opts)
