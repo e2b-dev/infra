@@ -48,71 +48,34 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 }
 
 
-data "google_artifact_registry_tag" "api_image" {
+data "google_artifact_registry_docker_image" "api_image" {
   location      = var.gcp_region
-  package_name  = "api"
   repository_id = var.orchestration_repository_name
-  tag_name      = "latest"
+  image_name    = "api:latest"
 }
 
-data "google_artifact_registry_tag" "db_migrator_image" {
+data "google_artifact_registry_docker_image" "db_migrator_image" {
   location      = var.gcp_region
-  package_name  = "db-migrator"
+  image_name    = "db-migrator:latest"
   repository_id = var.orchestration_repository_name
-  tag_name      = "latest"
 }
 
-data "google_artifact_registry_tag" "docker_reverse_proxy_image" {
+data "google_artifact_registry_docker_image" "docker_reverse_proxy_image" {
   location      = var.gcp_region
-  package_name  = "docker-reverse-proxy"
+  image_name    = "docker-reverse-proxy:latest"
   repository_id = var.orchestration_repository_name
-  tag_name      = "latest"
 }
 
-data "google_artifact_registry_tag" "client_proxy_image" {
+data "google_artifact_registry_docker_image" "client_proxy_image" {
   location      = var.gcp_region
-  package_name  = "client-proxy"
+  image_name    = "client-proxy:latest"
   repository_id = var.orchestration_repository_name
-  tag_name      = "latest"
 }
 
-data "google_artifact_registry_tag" "clickhouse_migrator_image" {
+data "google_artifact_registry_docker_image" "clickhouse_migrator_image" {
   location      = var.gcp_region
-  package_name  = "clickhouse-migrator"
+  image_name    = "clickhouse-migrator:latest"
   repository_id = var.orchestration_repository_name
-  tag_name      = "latest"
-}
-
-# Helper function to build docker image references from artifact registry tags
-locals {
-  # Raw version paths from GCP (projects/.../versions/sha256:xxx)
-  artifact_registry_versions = {
-    api                  = data.google_artifact_registry_tag.api_image.version
-    db-migrator          = data.google_artifact_registry_tag.db_migrator_image.version
-    docker-reverse-proxy = data.google_artifact_registry_tag.docker_reverse_proxy_image.version
-    client-proxy         = data.google_artifact_registry_tag.client_proxy_image.version
-    clickhouse-migrator  = data.google_artifact_registry_tag.clickhouse_migrator_image.version
-  }
-
-  # Extract digest from GCP resource path using split (more robust than regex)
-  # Example: projects/.../versions/sha256:abc123 -> sha256:abc123
-  artifact_registry_digests = {
-    for name, version_path in local.artifact_registry_versions :
-    name => split("/versions/", version_path)[1]
-  }
-
-  # Build full docker image references
-  docker_images = {
-    for name, digest in local.artifact_registry_digests :
-    name => "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/${name}@${digest}"
-  }
-
-  # Individual image references for backward compatibility
-  api_image                  = local.docker_images["api"]
-  db_migrator_image          = local.docker_images["db-migrator"]
-  docker_reverse_proxy_image = local.docker_images["docker-reverse-proxy"]
-  client_proxy_image         = local.docker_images["client-proxy"]
-  clickhouse_migrator_image  = local.docker_images["clickhouse-migrator"]
 }
 
 resource "nomad_job" "ingress" {
@@ -155,7 +118,7 @@ resource "nomad_job" "api" {
     gcp_zone                       = var.gcp_zone
     port_name                      = var.api_port.name
     port_number                    = var.api_port.port
-    api_docker_image               = local.api_image
+    api_docker_image               = data.google_artifact_registry_docker_image.api_image.self_link
     postgres_connection_string     = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
     supabase_jwt_secrets           = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
     posthog_api_key                = data.google_secret_manager_secret_version.posthog_api_key.secret_data
@@ -171,7 +134,7 @@ resource "nomad_job" "api" {
     dns_port_number                = var.api_dns_port_number
     clickhouse_connection_string   = local.clickhouse_connection_string
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
-    db_migrator_docker_image       = local.db_migrator_image
+    db_migrator_docker_image       = data.google_artifact_registry_docker_image.db_migrator_image.self_link
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 
     local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
@@ -197,7 +160,7 @@ resource "nomad_job" "docker_reverse_proxy" {
     {
       gcp_zone                      = var.gcp_zone
       node_pool                     = var.api_node_pool
-      image_name                    = local.docker_reverse_proxy_image
+      image_name                    = data.google_artifact_registry_docker_image.docker_reverse_proxy_image.self_link
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
       google_service_account_secret = var.docker_reverse_proxy_service_account_key
       port_number                   = var.docker_reverse_proxy_port.port
@@ -240,7 +203,7 @@ resource "nomad_job" "client_proxy" {
       orchestrator_port = var.orchestrator_port
 
       environment = var.environment
-      image_name  = local.client_proxy_image
+      image_name  = data.google_artifact_registry_docker_image.client_proxy_image.self_link
 
       nomad_endpoint = "http://localhost:4646"
       nomad_token    = var.nomad_acl_token_secret
@@ -722,7 +685,7 @@ resource "nomad_job" "clickhouse_backup_restore" {
 resource "nomad_job" "clickhouse_migrator" {
   count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/clickhouse-migrator.hcl", {
-    clickhouse_migrator_version = local.clickhouse_migrator_image
+    clickhouse_migrator_version = data.google_artifact_registry_docker_image.clickhouse_migrator_image.self_link
 
     server_count          = var.clickhouse_server_count
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
