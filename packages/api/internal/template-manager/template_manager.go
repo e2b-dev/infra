@@ -15,7 +15,6 @@ import (
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
-	buildlogs "github.com/e2b-dev/infra/packages/api/internal/template-manager/logs"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -130,16 +129,9 @@ func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID str
 	}
 
 	grpc := cluster.GetGRPC(instance.ServiceInstanceID)
-	http := cluster.GetHTTP(instance.NodeID)
-
-	logProviders := []buildlogs.Provider{
-		&buildlogs.TemplateManagerProvider{GRPC: grpc},
-		&buildlogs.ClusterPlacementProvider{HTTP: http},
-	}
 
 	return &BuildClient{
-		GRPC:         grpc,
-		logProviders: logProviders,
+		GRPC: grpc,
 	}, nil
 }
 
