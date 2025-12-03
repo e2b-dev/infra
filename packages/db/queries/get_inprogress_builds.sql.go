@@ -10,7 +10,7 @@ import (
 )
 
 const getInProgressTemplateBuilds = `-- name: GetInProgressTemplateBuilds :many
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags
 FROM public.env_builds b
 JOIN public.envs e ON e.id = b.env_id
 JOIN public.teams t ON e.team_id = t.id
@@ -72,6 +72,11 @@ func (q *Queries) GetInProgressTemplateBuilds(ctx context.Context) ([]GetInProgr
 			&i.EnvBuild.ClusterNodeID,
 			&i.EnvBuild.Reason,
 			&i.EnvBuild.Version,
+			&i.EnvBuild.CpuArchitecture,
+			&i.EnvBuild.CpuFamily,
+			&i.EnvBuild.CpuModel,
+			&i.EnvBuild.CpuModelName,
+			&i.EnvBuild.CpuFlags,
 		); err != nil {
 			return nil, err
 		}
