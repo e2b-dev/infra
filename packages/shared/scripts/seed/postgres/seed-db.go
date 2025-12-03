@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -173,9 +174,8 @@ VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 `, "rki5dems9wqfm4r03t7g", teamUUID, true, 0, 0)
 	if err != nil {
 		var pgxErr *pgconn.PgError
-		if errors.As(err, &pgxErr) && pgxErr.Code == "23505" { // unique_violation
-			// Env with ID 'rki5dems9wqfm4r03t7g' already exists. Skipping env creation
-		} else {
+		// Env with ID 'rki5dems9wqfm4r03t7g' already exists. Skipping env creation
+		if !errors.As(err, &pgxErr) || pgxErr.Code != "23505" {
 			panic(err)
 		}
 	}
