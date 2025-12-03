@@ -23,6 +23,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -40,6 +42,9 @@ type PostProcessingBuilder struct {
 	proxy           *proxy.SandboxProxy
 
 	layerExecutor *layer.LayerExecutor
+	featureFlags  *featureflags.Client
+
+	logger logger.Logger
 }
 
 func New(
@@ -48,6 +53,8 @@ func New(
 	templateStorage storage.StorageProvider,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
+	featureFlags *featureflags.Client,
+	logger logger.Logger,
 ) *PostProcessingBuilder {
 	return &PostProcessingBuilder{
 		BuildContext: buildContext,
@@ -57,6 +64,9 @@ func New(
 		proxy:           proxy,
 
 		layerExecutor: layerExecutor,
+		featureFlags:  featureFlags,
+
+		logger: logger,
 	}
 }
 
@@ -109,7 +119,7 @@ func (ppb *PostProcessingBuilder) Layer(
 // Build runs post-processing actions in the sandbox
 func (ppb *PostProcessingBuilder) Build(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	_ string,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
@@ -146,6 +156,17 @@ func (ppb *PostProcessingBuilder) Build(
 		},
 	}
 
+	// Select the IO Engine to use for the rootfs drive
+	ioEngine, err := ppb.featureFlags.StringFlag(
+		ctx,
+		featureflags.BuildIoEngine,
+	)
+	if err != nil {
+		ppb.logger.Debug(ctx, "getting io engine failed, using default value", zap.String("io_engine", featureflags.BuildIoEngine.Fallback()), zap.Error(err))
+	}
+	span.SetAttributes(attribute.String("io_engine", ioEngine))
+	ppb.logger.Debug(ctx, "using io engine", zap.String("io_engine", ioEngine))
+
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
 	sandboxCreator := layer.NewCreateSandbox(
 		sbxConfig,
@@ -155,6 +176,7 @@ func (ppb *PostProcessingBuilder) Build(
 			KernelVersion:      currentLayer.Metadata.Template.KernelVersion,
 			FirecrackerVersion: currentLayer.Metadata.Template.FirecrackerVersion,
 		},
+		layer.WithIoEngine(ioEngine),
 	)
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(userLogger))
@@ -184,7 +206,7 @@ func (ppb *PostProcessingBuilder) Build(
 	}, nil
 }
 
-func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer.FunctionActionFn {
+func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) layer.FunctionActionFn {
 	return func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (cm metadata.Template, e error) {
 		ctx, span := tracer.Start(ctx, "run postprocessing")
 		defer span.End()
@@ -232,7 +254,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 		var startCmdRun errgroup.Group
 		startCmdConfirm := make(chan struct{})
 		if meta.Start.StartCmd != "" {
-			userLogger.Info(fmt.Sprintf("Running start command: %s", meta.Start.StartCmd))
+			userLogger.Info(ctx, fmt.Sprintf("Running start command: %s", meta.Start.StartCmd))
 			startCmdRun.Go(func() error {
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,

@@ -79,7 +79,6 @@ job "api" {
       env {
         NODE_ID                        = "$${node.unique.id}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
-        TEMPLATE_MANAGER_HOST          = "${template_manager_host}"
         POSTGRES_CONNECTION_STRING     = "${postgres_connection_string}"
         SUPABASE_JWT_SECRETS           = "${supabase_jwt_secrets}"
         CLICKHOUSE_CONNECTION_STRING   = "${clickhouse_connection_string}"
@@ -94,7 +93,7 @@ job "api" {
         ADMIN_TOKEN                    = "${admin_token}"
         REDIS_URL                      = "${redis_url}"
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
-        DNS_PORT                       = "${dns_port_number}"
+        REDIS_TLS_CA_BASE64            = "${redis_tls_ca_base64}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 
         LOCAL_CLUSTER_ENDPOINT = "${local_cluster_endpoint}"

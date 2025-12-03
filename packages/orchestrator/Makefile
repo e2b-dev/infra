@@ -58,7 +58,7 @@ endef
 .PHONY: run-local
 run-local:
 	$(call setup_local_env)
-	NODE_ID=$$(hostname) ./bin/orchestrator --port 3000
+	NODE_ID=$$(hostname) ./bin/orchestrator
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:
@@ -84,10 +84,6 @@ build-and-upload/template-manager: build upload/template-manager
 .PHONY: mock
 mock:
 	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="testclient" go run cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -build "f0370054-b669-eeee-b33b-573d5287c6ef" -alive 1 -count 2
-
-.PHONY: mock-nbd
-mock-nbd:
-	sudo go run -gcflags=all="-N -l" cmd/mock-nbd/mock.go
 
 .PHONY: mock-snapshot
 mock-snapshot:

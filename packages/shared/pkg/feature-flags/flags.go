@@ -47,15 +47,12 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 }
 
 var (
-	MetricsWriteFlagName                = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
-	MetricsReadFlagName                 = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
-	SandboxLifeCycleEventsWriteFlagName = newBoolFlag("sandbox-lifecycle-events-write", env.IsDevelopment())
-	SnapshotFeatureFlagName             = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
-	TemplateFeatureFlagName             = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
-	SandboxEventsPublishFlagName        = newBoolFlag("sandbox-events-publish", env.IsDevelopment())
-	BestOfKPlacementAlgorithm           = newBoolFlag("best-of-k-placement-algorithm", env.IsDevelopment())
-	BestOfKCanFit                       = newBoolFlag("best-of-k-can-fit", true)
-	BestOfKTooManyStarting              = newBoolFlag("best-of-k-too-many-starting", false)
+	MetricsWriteFlagName    = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
+	MetricsReadFlagName     = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
+	SnapshotFeatureFlagName = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
+	TemplateFeatureFlagName = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
+	BestOfKCanFit           = newBoolFlag("best-of-k-can-fit", true)
+	BestOfKTooManyStarting  = newBoolFlag("best-of-k-too-many-starting", false)
 )
 
 type IntFlag struct {
@@ -97,3 +94,27 @@ var (
 	BuildCacheMaxUsagePercentage = newIntFlag("build-cache-max-usage-percentage", 85)
 	BuildProvisionVersion        = newIntFlag("build-provision-version", 0)
 )
+
+type StringFlag struct {
+	name     string
+	fallback string
+}
+
+func (f StringFlag) String() string {
+	return f.name
+}
+
+func (f StringFlag) Fallback() string {
+	return f.fallback
+}
+
+func newStringFlag(name string, fallback string) StringFlag {
+	flag := StringFlag{name: name, fallback: fallback}
+	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback))
+	LaunchDarklyOfflineStore.Update(builder)
+
+	return flag
+}
+
+// BuildIoEngine Sync might be used for now as there seems to be a bad interaction between NBD and Async.
+var BuildIoEngine = newStringFlag("build-io-engine", "Async")

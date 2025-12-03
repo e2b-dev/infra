@@ -1,5 +1,4 @@
 .terraform
-.terraform.lock.hcl
 .idea
 .tfplan.*
 .DS_Store

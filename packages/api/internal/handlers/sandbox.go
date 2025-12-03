@@ -13,8 +13,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -28,7 +29,7 @@ func (a *APIStore) startSandbox(
 	envVars map[string]string,
 	metadata map[string]string,
 	alias string,
-	team *types.Team,
+	team *typesteam.Team,
 	build queries.EnvBuild,
 	requestHeader *http.Header,
 	isResume bool,
@@ -37,6 +38,7 @@ func (a *APIStore) startSandbox(
 	autoPause bool,
 	envdAccessToken *string,
 	allowInternetAccess *bool,
+	network *types.SandboxNetworkConfig,
 	mcp api.Mcp,
 ) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
@@ -62,6 +64,7 @@ func (a *APIStore) startSandbox(
 		autoPause,
 		envdAccessToken,
 		allowInternetAccess,
+		network,
 	)
 	if instanceErr != nil {
 		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)
@@ -72,7 +75,7 @@ func (a *APIStore) startSandbox(
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
 	_, analyticsSpan := tracer.Start(ctx, "analytics")
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
 	props := properties.
 		Set("environment", build.EnvID).
@@ -83,7 +86,7 @@ func (a *APIStore) startSandbox(
 		props = props.Set("mcp_servers", slices.Collect(maps.Keys(mcp)))
 	}
 
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "created_instance", props)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "created_instance", props)
 	analyticsSpan.End()
 
 	telemetry.ReportEvent(ctx, "Created analytics event")
@@ -100,7 +103,7 @@ func (a *APIStore) startSandbox(
 		SandboxID:  sandbox.SandboxID,
 		TemplateID: build.EnvID,
 		TeamID:     team.ID.String(),
-	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
+	}).Info(ctx, "Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
 	return sandbox.ToAPISandbox(), nil
 }

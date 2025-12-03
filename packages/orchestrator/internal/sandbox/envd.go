@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -72,14 +73,14 @@ func doRequestWithInfiniteRetries(
 			request.Header.Set("X-Access-Token", *accessToken)
 		}
 
-		response, err := httpClient.Do(request)
+		response, err := sandboxHttpClient.Do(request)
 		cancel()
 
 		if err == nil {
 			return response, requestCount, nil
 		}
 
-		zap.L().Warn("failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
+		logger.L().Warn(ctx, "failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
 
 		select {
 		case <-ctx.Done():
@@ -98,9 +99,15 @@ type PostInitJSONBody struct {
 	DefaultWorkdir *string            `json:"defaultWorkdir,omitempty"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context) error {
+func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 	ctx, span := tracer.Start(ctx, "envd-init", trace.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version)))
-	defer span.End()
+	defer func() {
+		if e != nil {
+			span.SetStatus(codes.Error, e.Error())
+		}
+
+		span.End()
+	}()
 
 	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds())}
 	attributesFail := append(attributes, attribute.Bool("success", false))
@@ -143,7 +150,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 	}
 
 	if response.StatusCode != http.StatusNoContent {
-		zap.L().Error("envd init request failed",
+		logger.L().Error(ctx, "envd init request failed",
 			logger.WithSandboxID(s.Runtime.SandboxID),
 			logger.WithEnvdVersion(s.Config.Envd.Version),
 			zap.Int("status_code", response.StatusCode),
@@ -152,6 +159,8 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
+
+	span.SetStatus(codes.Ok, fmt.Sprintf("envd init returned %d", response.StatusCode))
 
 	return nil
 }

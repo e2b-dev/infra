@@ -1,6 +1,8 @@
 package proxy
 
-import "errors"
+import (
+	"errors"
+)
 
 var ErrInvalidHost = errors.New("invalid url host")
 
@@ -29,4 +31,36 @@ func NewErrSandboxNotFound(sandboxId string) *SandboxNotFoundError {
 
 func (e SandboxNotFoundError) Error() string {
 	return "sandbox not found"
+}
+
+type MissingTrafficAccessTokenError struct {
+	SandboxId string
+	Header    string
+}
+
+func (e MissingTrafficAccessTokenError) Error() string {
+	return "missing traffic access token"
+}
+
+func NewErrMissingTrafficAccessToken(sandboxId, header string) *MissingTrafficAccessTokenError {
+	return &MissingTrafficAccessTokenError{
+		SandboxId: sandboxId,
+		Header:    header,
+	}
+}
+
+type InvalidTrafficAccessTokenError struct {
+	SandboxId string
+	Header    string
+}
+
+func (e InvalidTrafficAccessTokenError) Error() string {
+	return "invalid traffic access token"
+}
+
+func NewErrInvalidTrafficAccessToken(sandboxId string, header string) *InvalidTrafficAccessTokenError {
+	return &InvalidTrafficAccessTokenError{
+		SandboxId: sandboxId,
+		Header:    header,
+	}
 }

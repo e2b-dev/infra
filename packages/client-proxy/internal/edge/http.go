@@ -15,12 +15,12 @@ import (
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -41,7 +41,7 @@ var (
 	skippedPaths = regexp.MustCompile(`^(?:/health(?:/.*)?|/v1/info)$`)
 )
 
-func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi3.T, auth authorization.AuthorizationService) *gin.Engine {
+func NewGinServer(logger logger.Logger, store *handlers.APIStore, swagger *openapi3.T, auth authorization.AuthorizationService) *gin.Engine {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -68,6 +68,7 @@ func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi
 		),
 
 		func(c *gin.Context) {
+			ctx := c.Request.Context()
 			if skippedPaths.MatchString(c.Request.URL.Path) {
 				c.Next()
 
@@ -76,7 +77,7 @@ func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi
 
 			func(c *gin.Context) {
 				reqLogger := logger
-				ginzap.Ginzap(reqLogger, time.RFC3339Nano, true)(c)
+				ginzap.Ginzap(reqLogger.Detach(ctx), time.RFC3339Nano, true)(c)
 			}(c)
 		},
 	)

@@ -2,19 +2,18 @@ package rootfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
 
-	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs")
 
 type DirectProvider struct {
 	cache *block.Cache
@@ -55,17 +54,23 @@ func (o *DirectProvider) ExportDiff(
 	ctx context.Context,
 	out io.Writer,
 	stopSandbox func(context.Context) error,
-) (*header.DiffMetadata, error) {
+) (h *header.DiffMetadata, e error) {
 	ctx, childSpan := tracer.Start(ctx, "direct-provider-export")
 	defer childSpan.End()
 
 	o.exporting.CompareAndSwap(false, true)
 
+	defer func() {
+		if e != nil {
+			e = errors.Join(e, o.cache.Close())
+		}
+	}()
+
 	// the error is already logged in go routine in SandboxCreate handler
 	go func() {
 		err := stopSandbox(ctx)
 		if err != nil {
-			zap.L().Error("error stopping sandbox on cow export", zap.Error(err))
+			logger.L().Error(ctx, "error stopping sandbox on cow export", zap.Error(err))
 		}
 	}()
 
@@ -77,31 +82,30 @@ func (o *DirectProvider) ExportDiff(
 	telemetry.ReportEvent(ctx, "sandbox stopped")
 
 	o.cache.MarkAllAsDirty()
-	m, err := o.cache.ExportToDiff(out)
+	m, err := o.cache.ExportToDiff(ctx, out)
 	if err != nil {
 		return nil, fmt.Errorf("error exporting cache: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "cache exported")
 
-	err = o.cache.Close()
-	if err != nil {
-		return nil, fmt.Errorf("error closing cache: %w", err)
-	}
-
 	return m, nil
 }
 
-func (o *DirectProvider) Close(_ context.Context) error {
+func (o *DirectProvider) Close(ctx context.Context) error {
 	o.finishedOperations <- struct{}{}
 
 	if !o.exporting.CompareAndSwap(false, true) {
 		return nil
 	}
 
-	return o.cache.Close()
+	return errors.Join(o.sync(ctx), o.cache.Close())
 }
 
 func (o *DirectProvider) Path() (string, error) {
 	return o.path, nil
+}
+
+func (o *DirectProvider) sync(ctx context.Context) error {
+	return errors.Join(o.cache.Sync(), flush(ctx, o.path))
 }

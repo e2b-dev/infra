@@ -84,6 +84,7 @@ EOT
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
         REDIS_URL                    = "${redis_url}"
         REDIS_CLUSTER_URL            = "${redis_cluster_url}"
+        REDIS_TLS_CA_BASE64          = "${redis_tls_ca_base64}"
         GRPC_PORT                    = "${port}"
         PROXY_PORT                   = "${proxy_port}"
         GIN_MODE                     = "release"

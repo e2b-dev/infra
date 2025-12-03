@@ -285,6 +285,21 @@ type ListedSandbox struct {
 // LogLevel State of the sandbox
 type LogLevel string
 
+// MachineInfo defines model for MachineInfo.
+type MachineInfo struct {
+	// CpuArchitecture CPU architecture of the node
+	CpuArchitecture string `json:"cpuArchitecture"`
+
+	// CpuFamily CPU family of the node
+	CpuFamily string `json:"cpuFamily"`
+
+	// CpuModel CPU model of the node
+	CpuModel string `json:"cpuModel"`
+
+	// CpuModelName CPU model name of the node
+	CpuModelName string `json:"cpuModelName"`
+}
+
 // MaxTeamMetric Team metric with timestamp
 type MaxTeamMetric struct {
 	// Timestamp Timestamp of the metric entry
@@ -312,7 +327,7 @@ type NewAccessToken struct {
 
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
-	// AllowInternetAccess Allow sandbox to access the internet
+	// AllowInternetAccess Allow sandbox to access the internet. When set to false, it behaves the same as specifying denyOut to 0.0.0.0/0 in the network config.
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 
 	// AutoPause Automatically pauses the sandbox after the timeout
@@ -320,8 +335,9 @@ type NewSandbox struct {
 	EnvVars   *EnvVars `json:"envVars,omitempty"`
 
 	// Mcp MCP configuration for the sandbox
-	Mcp      *Mcp             `json:"mcp"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+	Mcp      *Mcp                  `json:"mcp"`
+	Metadata *SandboxMetadata      `json:"metadata,omitempty"`
+	Network  *SandboxNetworkConfig `json:"network,omitempty"`
 
 	// Secure Secure all system communication with sandbox
 	Secure *bool `json:"secure,omitempty"`
@@ -354,7 +370,8 @@ type Node struct {
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
 	// Id Identifier of the node
-	Id string `json:"id"`
+	Id          string      `json:"id"`
+	MachineInfo MachineInfo `json:"machineInfo"`
 
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
@@ -397,7 +414,8 @@ type NodeDetail struct {
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
 	// Id Identifier of the node
-	Id string `json:"id"`
+	Id          string      `json:"id"`
+	MachineInfo MachineInfo `json:"machineInfo"`
 
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
@@ -488,6 +506,9 @@ type Sandbox struct {
 
 	// TemplateID Identifier of the template from which is the sandbox created
 	TemplateID string `json:"templateID"`
+
+	// TrafficAccessToken Token required for accessing sandbox via proxy.
+	TrafficAccessToken *string `json:"trafficAccessToken"`
 }
 
 // SandboxDetail defines model for SandboxDetail.
@@ -595,6 +616,21 @@ type SandboxMetric struct {
 
 	// TimestampUnix Timestamp of the metric entry in Unix time (seconds since epoch)
 	TimestampUnix int64 `json:"timestampUnix"`
+}
+
+// SandboxNetworkConfig defines model for SandboxNetworkConfig.
+type SandboxNetworkConfig struct {
+	// AllowOut List of allowed CIDR blocks or IP addresses for egress traffic. Allowed addresses always take precedence over blocked addresses.
+	AllowOut *[]string `json:"allowOut,omitempty"`
+
+	// AllowPublicTraffic Specify if the sandbox URLs should be accessible only with authentication.
+	AllowPublicTraffic *bool `json:"allowPublicTraffic,omitempty"`
+
+	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic
+	DenyOut *[]string `json:"denyOut,omitempty"`
+
+	// MaskRequestHost Specify host mask which will be used for all sandbox requests
+	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 }
 
 // SandboxState State of the sandbox

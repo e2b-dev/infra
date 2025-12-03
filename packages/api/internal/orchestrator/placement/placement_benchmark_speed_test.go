@@ -17,12 +17,6 @@ func BenchmarkChooseNode(b *testing.B) {
 		newAlg func() Algorithm // factory in case the alg holds state
 	}{
 		{
-			name: "LeastBusy",
-			newAlg: func() Algorithm {
-				return &LeastBusyAlgorithm{}
-			},
-		},
-		{
 			name: "BestOfK_K3",
 			newAlg: func() Algorithm {
 				return NewBestOfK(DefaultBestOfKConfig())

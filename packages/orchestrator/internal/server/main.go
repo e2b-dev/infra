@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -15,9 +16,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
-	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -25,6 +26,7 @@ import (
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
+	config            cfg.Config
 	sandboxFactory    *sandbox.Factory
 	info              *service.ServiceInfo
 	sandboxes         *sandbox.Map
@@ -35,11 +37,12 @@ type Server struct {
 	devicePool        *nbd.DevicePool
 	persistence       storage.StorageProvider
 	featureFlags      *featureflags.Client
-	sbxEventsService  events.EventsService[event.SandboxEvent]
+	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
 }
 
 type ServiceConfig struct {
+	Config           cfg.Config
 	Tel              *telemetry.Client
 	NetworkPool      *network.Pool
 	DevicePool       *nbd.DevicePool
@@ -50,11 +53,12 @@ type ServiceConfig struct {
 	Sandboxes        *sandbox.Map
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
-	SbxEventsService events.EventsService[event.SandboxEvent]
+	SbxEventsService *events.EventsService
 }
 
-func New(cfg ServiceConfig) *Server {
+func New(ctx context.Context, cfg ServiceConfig) *Server {
 	server := &Server{
+		config:            cfg.Config,
 		sandboxFactory:    cfg.SandboxFactory,
 		info:              cfg.Info,
 		proxy:             cfg.Proxy,
@@ -75,7 +79,7 @@ func New(cfg ServiceConfig) *Server {
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("Error registering sandbox count metric", zap.String("metric_name", string(telemetry.OrchestratorSandboxCountMeterName)), zap.Error(err))
+		logger.L().Error(ctx, "Error registering sandbox count metric", zap.String("metric_name", string(telemetry.OrchestratorSandboxCountMeterName)), zap.Error(err))
 	}
 
 	return server

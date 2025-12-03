@@ -1,12 +1,16 @@
 package base
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"strings"
 	tt "text/template"
 	"time"
 
@@ -20,12 +24,17 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const provisionTimeout = 5 * time.Minute
+const (
+	provisionTimeout = 5 * time.Minute
+)
 
 //go:embed provision.sh
 var provisionScriptFile string
@@ -58,21 +67,54 @@ func getProvisionScript(
 
 func (bb *BaseBuilder) provisionSandbox(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	sandboxConfig sandbox.Config,
 	sandboxRuntime sandbox.RuntimeMetadata,
 	fcVersions fc.FirecrackerVersions,
 	localTemplate *sbxtemplate.LocalTemplate,
 	rootfsPath string,
-	provisionScriptResultPath string,
 	logExternalPrefix string,
 ) (e error) {
 	ctx, childSpan := tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
-	zapWriter := &zapio.Writer{Log: userLogger, Level: zap.DebugLevel}
-	logsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
-	defer logsWriter.Close()
+	zapWriter := &zapio.Writer{Log: userLogger.Detach(ctx), Level: zap.DebugLevel}
+	prefixedLogsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
+	defer prefixedLogsWriter.Close()
+
+	exitCodeReader, exitCodeWriter := io.Pipe()
+	defer exitCodeWriter.Close()
+
+	// read all incoming logs and detect message "{exitPrefix}:X" where X is the exit code
+	done := utils.NewErrorOnce()
+	go func() (e error) {
+		defer io.Copy(io.Discard, exitCodeReader)
+		defer func() {
+			done.SetError(e)
+		}()
+
+		scanner := bufio.NewScanner(exitCodeReader)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, rootfs.ProvisioningExitPrefix) {
+				exitStatus := strings.TrimPrefix(line, rootfs.ProvisioningExitPrefix)
+				if exitStatus == "0" {
+					// Success exit code
+					return nil
+				}
+
+				return fmt.Errorf("exit status: %s", exitStatus)
+			}
+		}
+
+		if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+
+		return errors.New("exit code not detected")
+	}()
+
+	logsWriter := io.MultiWriter(prefixedLogsWriter, exitCodeWriter)
 
 	sbx, err := bb.sandboxFactory.CreateSandbox(
 		ctx,
@@ -83,6 +125,9 @@ func (bb *BaseBuilder) provisionSandbox(
 		provisionTimeout,
 		rootfsPath,
 		fc.ProcessOptions{
+			// Set the IO Engine explicitly to the default value
+			IoEngine: utils.ToPtr(layer.DefaultIoEngine),
+
 			InitScriptPath: rootfs.BusyBoxInitPath,
 			// Always show kernel logs during the provisioning phase,
 			// the sandbox is then started with systemd and without kernel logs.
@@ -101,26 +146,23 @@ func (bb *BaseBuilder) provisionSandbox(
 	}
 	defer sbx.Close(ctx)
 
-	err = sbx.WaitForExit(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to wait for sandbox start: %w", err)
+	if err := done.WaitWithContext(ctx); err != nil {
+		return fmt.Errorf("error waiting for provisioning sandbox: %w", err)
 	}
-	userLogger.Info("Sandbox template provisioned")
 
-	// Verify the provisioning script exit status
-	exitStatus, err := filesystem.ReadFile(ctx, rootfsPath, provisionScriptResultPath)
-	if err != nil {
-		return fmt.Errorf("error reading provision result: %w", err)
-	}
-	defer filesystem.RemoveFile(ctx, rootfsPath, provisionScriptResultPath)
+	userLogger.Info(ctx, "Provisioning was successful, cleaning up")
 
-	// Fallback to "1" if the file is empty or not found
-	if exitStatus == "" {
-		exitStatus = "1"
+	err = sbx.Shutdown(ctx)
+	if err != nil {
+		return fmt.Errorf("error shutting down provisioned sandbox: %w", err)
 	}
-	if exitStatus != "0" {
-		return fmt.Errorf("provision script failed with exit status: %s", exitStatus)
+
+	err = filesystem.RemoveFile(ctx, rootfsPath, provisionScriptResultPath)
+	if err != nil {
+		return fmt.Errorf("result file cleanup failed: %w", err)
 	}
+
+	userLogger.Info(ctx, "Sandbox template provisioned")
 
 	return nil
 }
@@ -138,13 +180,13 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 		return fmt.Errorf("error getting free space: %w", err)
 	}
 	sizeDiff := template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
-	zap.L().Debug("adding provision size diff to rootfs",
+	logger.L().Debug(ctx, "adding provision size diff to rootfs",
 		zap.Int64("size_add", sizeDiff),
 		zap.Int64("size_free", rootfsFreeSpace),
 		zap.Int64("size_target", template.DiskSizeMB<<constants.ToMBShift),
 	)
 	if sizeDiff <= 0 {
-		zap.L().Debug("no need to enlarge rootfs, skipping")
+		logger.L().Debug(ctx, "no need to enlarge rootfs, skipping")
 
 		return nil
 	}
@@ -153,7 +195,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 		// Debug filesystem stats on error
 		cmd := exec.CommandContext(ctx, "tune2fs", "-l", rootfsPath)
 		output, dErr := cmd.Output()
-		zap.L().Error(string(output), zap.Error(dErr))
+		logger.L().Error(ctx, string(output), zap.Error(dErr))
 
 		return fmt.Errorf("error enlarging rootfs: %w", err)
 	}
@@ -161,14 +203,14 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 	// Check the rootfs filesystem corruption
 	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, false)
 	if err != nil {
-		zap.L().Error("final enlarge filesystem ext4 integrity",
+		logger.L().Error(ctx, "final enlarge filesystem ext4 integrity",
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
 
 		// Occasionally there are Block bitmap differences. For this reason, we retry with fix.
 		ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
-		zap.L().Error("final enlarge filesystem ext4 integrity - retry with fix",
+		logger.L().Error(ctx, "final enlarge filesystem ext4 integrity - retry with fix",
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
@@ -176,7 +218,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 			return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
 		}
 	} else {
-		zap.L().Debug("final enlarge filesystem ext4 integrity",
+		logger.L().Debug(ctx, "final enlarge filesystem ext4 integrity",
 			zap.String("result", ext4Check),
 		)
 	}

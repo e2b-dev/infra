@@ -14,7 +14,7 @@ func Generate() string {
 	return uniuri.NewLenChars(uniuri.UUIDLen, caseInsensitiveAlphabet)
 }
 
-func CleanEnvID(envID string) (string, error) {
+func CleanTemplateID(envID string) (string, error) {
 	cleanedEnvID := strings.ToLower(strings.TrimSpace(envID))
 	ok, err := regexp.MatchString("^[a-z0-9-_]+$", cleanedEnvID)
 	if err != nil {

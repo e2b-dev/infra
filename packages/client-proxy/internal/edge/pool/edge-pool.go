@@ -10,7 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	sd "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 )
@@ -23,7 +23,7 @@ type EdgePool struct {
 	instances        *smap.Map[*EdgeInstance]
 	synchronization  *synchronization.Synchronize[sd.ServiceDiscoveryItem, *EdgeInstance]
 
-	logger *zap.Logger
+	logger logger.Logger
 }
 
 const (
@@ -34,7 +34,7 @@ const (
 
 var ErrEdgeServiceInstanceNotFound = errors.New("edge service instance not found")
 
-func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, instanceSelfHost string, auth authorization.AuthorizationService) *EdgePool {
+func NewEdgePool(ctx context.Context, logger logger.Logger, discovery sd.ServiceDiscoveryAdapter, instanceSelfHost string, auth authorization.AuthorizationService) *EdgePool {
 	pool := &EdgePool{
 		discovery: discovery,
 		auth:      auth,
@@ -49,7 +49,9 @@ func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, insta
 	pool.synchronization = synchronization.NewSynchronize("edge-instances", "Edge instances", store)
 
 	// Background synchronization of edge instances available in cluster
-	go func() { pool.synchronization.Start(edgeInstancesPoolInterval, edgeInstancesPoolRoundTimeout, true) }()
+	go func() {
+		pool.synchronization.Start(ctx, edgeInstancesPoolInterval, edgeInstancesPoolRoundTimeout, true)
+	}()
 
 	return pool
 }
@@ -124,7 +126,7 @@ func (e *edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.Servi
 
 	o, err := NewEdgeInstance(host, e.pool.auth)
 	if err != nil {
-		zap.L().Error("failed to register new edge instance", zap.String("host", host), zap.Error(err))
+		logger.L().Error(ctx, "failed to register new edge instance", zap.String("host", host), zap.Error(err))
 
 		return
 	}
@@ -136,7 +138,7 @@ func (e *edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.Servi
 	// We want to do it separately here so failed init will cause not adding the instance to the pool
 	err = o.sync(ctx)
 	if err != nil {
-		zap.L().Error("Failed to finish initial edge instance sync", zap.Error(err), l.WithNodeID(o.GetInfo().NodeID))
+		logger.L().Error(ctx, "Failed to finish initial edge instance sync", zap.Error(err), logger.WithNodeID(o.GetInfo().NodeID))
 
 		return
 	}
@@ -150,14 +152,14 @@ func (e *edgeInstancesSyncStore) PoolUpdate(ctx context.Context, item *EdgeInsta
 
 	err := item.sync(ctx)
 	if err != nil {
-		zap.L().Error("Failed to sync edge instance", zap.Error(err), l.WithNodeID(item.GetInfo().NodeID))
+		logger.L().Error(ctx, "Failed to sync edge instance", zap.Error(err), logger.WithNodeID(item.GetInfo().NodeID))
 	}
 }
 
-func (e *edgeInstancesSyncStore) PoolRemove(_ context.Context, item *EdgeInstance) {
+func (e *edgeInstancesSyncStore) PoolRemove(ctx context.Context, item *EdgeInstance) {
 	info := item.GetInfo()
-	zap.L().Info("Edge instance connection is not active anymore, closing.", l.WithNodeID(info.NodeID))
+	logger.L().Info(ctx, "Edge instance connection is not active anymore, closing.", logger.WithNodeID(info.NodeID))
 
 	e.pool.instances.Remove(item.info.Host)
-	zap.L().Info("Edge instance connection has been deregistered.", l.WithNodeID(info.NodeID))
+	logger.L().Info(ctx, "Edge instance connection has been deregistered.", logger.WithNodeID(info.NodeID))
 }

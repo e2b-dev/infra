@@ -141,7 +141,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		uintptr(fds[0]),
 		u.memfile,
 		m,
-		zap.L().With(logger.WithSandboxID(sandboxId)),
+		logger.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create uffd: %w", err)
@@ -152,7 +152,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	defer func() {
 		closeErr := uffd.Close()
 		if closeErr != nil {
-			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
+			logger.L().Error(ctx, "failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
 
