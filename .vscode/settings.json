@@ -84,8 +84,10 @@
   "go.goroot": "${workspaceFolder}/.vscode/mise-tools/goRoot",
   "go.alternateTools": {
     "customFormatter": "golangci-lint",
+    "dlv": "${workspaceFolder}/.vscode/mise-tools/dlv",
     "go": "${workspaceFolder}/.vscode/mise-tools/go",
-    "dlv": "${workspaceFolder}/.vscode/mise-tools/dlv"
+    "golangci-lint-v2": "golangci-lint",
+    "gopls": "${workspaceFolder}/.vscode/mise-tools/gopls"
   },
   "mise.configureExtensionsUseSymLinks": true,
   "mise.configureExtensionsAutomatically": true,
