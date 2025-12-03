@@ -34,7 +34,7 @@ func (c *EdgeProvider) GetLogs(ctx context.Context, templateID string, buildID s
 			TemplateID: templateID,
 			Offset:     &offset,
 			Level:      logToEdgeLevel(level),
-			// TODO: remove this once the API spec is not required to have orchestratorID
+			// TODO: remove this once the API spec is not required to have orchestratorID (https://linear.app/e2b/issue/ENG-3352)
 			OrchestratorID: utils.ToPtr("unused"),
 		},
 	)
