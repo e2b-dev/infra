@@ -6,6 +6,13 @@ on:
     types:
       - opened
       - ready_for_review
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to test with'
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -44,4 +51,5 @@ jobs:
           SF_TEAM_SLUG: eng-sf
           PRG_TEAM_SLUG: eng-prg
           REVIEWERS_TO_REQUEST: "1"
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: node .github/actions/auto-request-same-site/script.js

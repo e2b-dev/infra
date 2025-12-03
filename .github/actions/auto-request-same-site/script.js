@@ -21,6 +21,10 @@ function getEvent() {
 }
 
 function prNumber(ev) {
+  // Support manual trigger via workflow_dispatch
+  if (process.env.PR_NUMBER) {
+    return parseInt(process.env.PR_NUMBER, 10);
+  }
   return ev.pull_request?.number ?? null;
 }
 
