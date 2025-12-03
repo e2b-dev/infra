@@ -86,7 +86,6 @@
     "customFormatter": "golangci-lint",
     "dlv": "${workspaceFolder}/.vscode/mise-tools/dlv",
     "go": "${workspaceFolder}/.vscode/mise-tools/go",
-    "golangci-lint-v2": "golangci-lint",
     "gopls": "${workspaceFolder}/.vscode/mise-tools/gopls"
   },
   "mise.configureExtensionsUseSymLinks": true,
