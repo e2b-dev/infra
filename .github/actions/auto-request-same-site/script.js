@@ -1,5 +1,7 @@
 const { Octokit } = require("@octokit/rest");
+const { WebClient } = require("@slack/web-api");
 const fs = require("fs");
+const path = require("path");
 
 const token = process.env.APP_TOKEN;
 const org = process.env.ORG;
@@ -10,11 +12,19 @@ const n = Math.max(1, parseInt(process.env.REVIEWERS_TO_REQUEST || "1", 10));
 const gh = new Octokit({ auth: token });
 const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
 
+// Slack configuration
+const slackToken = process.env.SLACK_BOT_TOKEN?.trim() || null;
+const slack = slackToken ? new WebClient(slackToken) : null;
+
 function getEvent() {
   return JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
 }
 
 function prNumber(ev) {
+  // Support manual trigger via workflow_dispatch
+  if (process.env.PR_NUMBER) {
+    return parseInt(process.env.PR_NUMBER, 10);
+  }
   return ev.pull_request?.number ?? null;
 }
 
@@ -40,6 +50,109 @@ async function listTeamMembers(teamSlug) {
   return res.data.map((u) => u.login);
 }
 
+async function getGitHubUserEmail(username) {
+  const orgEmail = await getOrgVerifiedEmail(username);
+  if (orgEmail) {
+    return orgEmail;
+  }
+
+  try {
+    const { data } = await gh.users.getByUsername({ username });
+    return data.email || null;
+  } catch (error) {
+    console.log(`Failed to fetch email for ${username}: ${error.message}`);
+    return null;
+  }
+}
+
+async function getOrgVerifiedEmail(username) {
+  try {
+    const data = await gh.graphql(
+      `query($org:String!, $login:String!){
+        user(login:$login){
+          organizationVerifiedDomainEmails(login:$org)
+        }
+      }`,
+      { org, login: username },
+    );
+
+    const emails = data.user?.organizationVerifiedDomainEmails || [];
+    const verified = emails.find((email) => email.endsWith("@e2b.dev"));
+    if (verified) {
+      console.log(`Found org-verified email ${verified} for ${username}`);
+    }
+    return verified || null;
+  } catch (error) {
+    console.log(`GraphQL org email lookup failed for ${username}: ${error.message}`);
+    return null;
+  }
+}
+
+async function getSlackUserId(githubUsername) {
+  if (!slack) {
+    return null;
+  }
+
+  const email = await getGitHubUserEmail(githubUsername);
+  if (!email || !email.endsWith("@e2b.dev")) {
+    console.log(`No @e2b.dev email found for ${githubUsername}`);
+    return null;
+  }
+
+  try {
+    const result = await slack.users.lookupByEmail({ email });
+    if (result.ok && result.user?.id) {
+      console.log(`Found Slack user ${result.user.id} for ${githubUsername} via ${email}`);
+      return result.user.id;
+    }
+  } catch (error) {
+    console.log(`Slack lookup failed for ${githubUsername} (${email}): ${error.message}`);
+  }
+
+  return null;
+}
+
+async function notifySlackUsers(assignees, prNumber, prUrl, prTitle) {
+  if (!slack) {
+    console.log("Slack not configured; skipping notifications.");
+    return;
+  }
+
+  for (const assignee of assignees) {
+    const slackUserId = await getSlackUserId(assignee);
+    if (!slackUserId) {
+      console.log(`Skipping Slack notification for ${assignee} (no Slack user found)`);
+      continue;
+    }
+
+    try {
+      await slack.chat.postMessage({
+        channel: slackUserId,
+        text: `You've been assigned to review PR #${prNumber}: ${prTitle}\n${prUrl}`,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `You've been assigned to review *<${prUrl}|PR #${prNumber}>*`,
+            },
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*${prTitle}*`,
+            },
+          },
+        ],
+      });
+      console.log(`Sent Slack DM to ${assignee} (${slackUserId})`);
+    } catch (error) {
+      console.log(`Failed to send Slack DM to ${assignee}: ${error.message}`);
+    }
+  }
+}
+
 function pickRandom(arr, k) {
   const list = [...arr];
   for (let i = list.length - 1; i > 0; i--) {
@@ -47,6 +160,27 @@ function pickRandom(arr, k) {
     [list[i], list[j]] = [list[j], list[i]];
   }
   return list.slice(0, Math.max(0, Math.min(k, list.length)));
+}
+
+function parseCodeowners(content) {
+  const lines = content.split("\n");
+  const owners = new Set();
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    // Match @username patterns, skip team patterns like @org/team
+    const matches = trimmed.matchAll(/@(\S+)/g);
+    for (const match of matches) {
+      const owner = match[1];
+      if (!owner.includes("/")) {
+        owners.add(owner);
+      }
+    }
+  }
+
+  return Array.from(owners);
 }
 
 (async () => {
@@ -64,37 +198,78 @@ function pickRandom(arr, k) {
   const teams = await getUserTeams(author);
   const site = teams.includes(sf) ? sf : teams.includes(prg) ? prg : null;
 
+  let assignees;
+
   if (!site) {
-    console.log("Author not in configured teams; skipping assignee update.");
-    return;
-  }
+    console.log("Author not in configured teams; assigning from CODEOWNERS.");
 
-  const siteMembers = (await listTeamMembers(site)).filter((user) => user !== author);
-  if (!siteMembers.length) {
-    console.log(`No teammates found in ${site}; skipping assignee update.`);
-    return;
-  }
+    // Read and parse CODEOWNERS file
+    let codeownersContent;
+    const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+    const codeownersPath = path.join(repoRoot, "CODEOWNERS");
+    try {
+      codeownersContent = fs.readFileSync(codeownersPath, "utf8");
+    } catch (error) {
+      console.log(`Failed to read CODEOWNERS file at ${codeownersPath}: ${error.message}`);
+      return;
+    }
 
-  const siteMemberSet = new Set(siteMembers);
-  const assignedFromSite = [...alreadyAssigned].filter((login) => siteMemberSet.has(login));
+    const codeowners = parseCodeowners(codeownersContent);
 
-  if (assignedFromSite.length >= n) {
-    console.log(`PR #${num} already has ${assignedFromSite.length} teammate assignee(s); nothing to do.`);
-    return;
-  }
+    if (!codeowners.length) {
+      console.log("No CODEOWNERS found; skipping assignee update.");
+      return;
+    }
 
-  const needed = n - assignedFromSite.length;
+    const codeownerSet = new Set(codeowners);
+    const assignedFromCodeowners = [...alreadyAssigned].filter((login) => codeownerSet.has(login));
 
-  const candidates = siteMembers.filter((member) => !alreadyAssigned.has(member));
-  if (!candidates.length) {
-    console.log(`All teammates from ${site} are already assigned; nothing to add.`);
-    return;
-  }
+    if (assignedFromCodeowners.length >= n) {
+      console.log(`PR #${num} already has ${assignedFromCodeowners.length} CODEOWNER assignee(s); nothing to do.`);
+      return;
+    }
 
-  const assignees = pickRandom(candidates, needed);
-  if (!assignees.length) {
-    console.log(`Unable to select additional assignees from ${site}; skipping.`);
-    return;
+    const needed = n - assignedFromCodeowners.length;
+    const candidates = codeowners.filter((owner) => owner !== author && !alreadyAssigned.has(owner));
+
+    if (!candidates.length) {
+      console.log("All CODEOWNERS are either the author or already assigned; nothing to add.");
+      return;
+    }
+
+    assignees = pickRandom(candidates, needed);
+    if (!assignees.length) {
+      console.log("Unable to select assignees from CODEOWNERS; skipping.");
+      return;
+    }
+  } else {
+    const siteMembers = (await listTeamMembers(site)).filter((user) => user !== author);
+    if (!siteMembers.length) {
+      console.log(`No teammates found in ${site}; skipping assignee update.`);
+      return;
+    }
+
+    const siteMemberSet = new Set(siteMembers);
+    const assignedFromSite = [...alreadyAssigned].filter((login) => siteMemberSet.has(login));
+
+    if (assignedFromSite.length >= n) {
+      console.log(`PR #${num} already has ${assignedFromSite.length} teammate assignee(s); nothing to do.`);
+      return;
+    }
+
+    const needed = n - assignedFromSite.length;
+
+    const candidates = siteMembers.filter((member) => !alreadyAssigned.has(member));
+    if (!candidates.length) {
+      console.log(`All teammates from ${site} are already assigned; nothing to add.`);
+      return;
+    }
+
+    assignees = pickRandom(candidates, needed);
+    if (!assignees.length) {
+      console.log(`Unable to select additional assignees from ${site}; skipping.`);
+      return;
+    }
   }
 
   await gh.issues.addAssignees({
@@ -105,6 +280,9 @@ function pickRandom(arr, k) {
   });
 
   console.log(`Assigned ${assignees.join(", ")} to PR #${num}.`);
+
+  // Send Slack notifications
+  await notifySlackUsers(assignees, num, pr.html_url, pr.title);
 })().catch((error) => {
   console.error(error);
   process.exit(1);

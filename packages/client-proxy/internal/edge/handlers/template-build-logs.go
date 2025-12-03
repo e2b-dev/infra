@@ -5,10 +5,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -48,10 +51,19 @@ func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params ap
 		return
 	}
 
-	lgs := make([]string, 0, len(logsRaw))
+	logger.L().Debug(ctx, "fetched template build logs",
+		zap.Int("count", len(logsRaw)),
+		logger.WithBuildID(buildID),
+		logger.WithTemplateID(params.TemplateID),
+		zap.Int32("req_offset", offset),
+		zap.Time("req_start", start),
+		zap.Time("req_end", end),
+		zap.Int("req_limit", templateBuildLogsLimit),
+		zap.String("req_level", utils.Sprintp(params.Level)),
+	)
+
 	logEntries := make([]api.BuildLogEntry, 0, len(logsRaw))
 	for _, log := range logsRaw {
-		lgs = append(lgs, log.Message)
 		logEntries = append(logEntries, api.BuildLogEntry{
 			Timestamp: log.Timestamp,
 			Message:   log.Message,
@@ -63,7 +75,6 @@ func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params ap
 	c.JSON(
 		http.StatusOK,
 		api.TemplateBuildLogsResponse{
-			Logs:       lgs,
 			LogEntries: logEntries,
 		},
 	)
