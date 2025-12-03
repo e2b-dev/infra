@@ -113,6 +113,7 @@ module "nomad" {
   shared_chunk_cache_path              = var.shared_chunk_cache_path
   dockerhub_remote_repository_url      = var.dockerhub_remote_repository_url
   dockerhub_remote_repository_provider = var.dockerhub_remote_repository_provider
+  docker_image_prefix                  = var.docker_image_prefix
   orchestrator_proxy_port              = var.orchestrator_proxy_port
   orchestrator_node_pool               = var.orchestrator_node_pool
   redis_secure_cluster_url             = var.redis_secure_cluster_url

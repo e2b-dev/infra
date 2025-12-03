@@ -33,7 +33,11 @@ job "loki" {
       driver = "docker"
       config {
         network_mode = "host"
+%{ if docker_image_prefix != "" }
+        image = "${docker_image_prefix}/grafana/loki:2.9.8"
+%{ else }
         image = "grafana/loki:2.9.8"
+%{ endif }
         args  = ["-config.file","local/loki-config.yml"]
       }
 

@@ -54,7 +54,11 @@ job "clickhouse" {
       }
 
       config {
+%{ if docker_image_prefix != "" }
+        image  = "${docker_image_prefix}/clickhouse/clickhouse-server:${clickhouse_version}"
+%{ else }
         image  = "clickhouse/clickhouse-server:${clickhouse_version}"
+%{ endif }
         ports  = ["clickhouse-server", "clickhouse-http"]
         ulimit { nofile = "262144:262144" }
         volumes = ["/clickhouse/data:/var/lib/clickhouse"]

@@ -32,6 +32,7 @@ resource "nomad_job" "ingress" {
       consul_endpoint      = var.consul_address
       consul_endpoint_host = replace(var.consul_address, "http://", "")
       ingress_node_ip      = var.ingress_node_ip
+      docker_image_prefix  = var.docker_image_prefix
   })
 }
 
@@ -116,10 +117,11 @@ resource "nomad_job" "client_proxy" {
 resource "nomad_job" "redis" {
   jobspec = templatefile("${path.module}/jobs/redis.hcl",
     {
-      node_pool   = var.api_node_pool
-      datacenter  = var.datacenter
-      port_number = 6379
-      port_name   = "redis"
+      node_pool           = var.api_node_pool
+      datacenter          = var.datacenter
+      port_number         = 6379
+      port_name           = "redis"
+      docker_image_prefix = var.docker_image_prefix
     }
   )
 }
@@ -139,6 +141,7 @@ resource "nomad_job" "docker_reverse_proxy" {
       gcp_project_id                = ""
       gcp_region                    = ""
       docker_registry               = ""
+      docker_image_prefix           = var.docker_image_prefix
     }
   )
 }
@@ -154,6 +157,7 @@ resource "nomad_job" "otel_collector" {
     otel_collector_config = templatefile("${path.module}/configs/otel-collector.yaml", {
       otel_collector_grpc_port = var.otel_collector_grpc_port
     })
+    docker_image_prefix = var.docker_image_prefix
   })
 }
 
@@ -163,6 +167,7 @@ resource "nomad_job" "logs_collector" {
     logs_port_number         = var.logs_proxy_port.port
     logs_health_path         = var.logs_health_proxy_port.health_path
     loki_service_port_number = var.loki_service_port.port
+    docker_image_prefix      = var.docker_image_prefix
   })
 }
 
@@ -174,6 +179,7 @@ resource "nomad_job" "loki" {
     cpu_count                = var.loki_resources_cpu_count
     loki_service_port_number = var.loki_service_port.port
     loki_service_port_name   = var.loki_service_port.name
+    docker_image_prefix      = var.docker_image_prefix
   })
 }
 
@@ -246,5 +252,6 @@ resource "nomad_job" "clickhouse" {
     clickhouse_server_port  = var.clickhouse_server_port.port
     clickhouse_metrics_port = var.clickhouse_metrics_port
     clickhouse_version      = "24.3.3"
+    docker_image_prefix     = var.docker_image_prefix
   })
 }

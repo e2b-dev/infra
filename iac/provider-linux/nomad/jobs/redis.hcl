@@ -42,7 +42,11 @@ job "redis" {
 
       config {
         network_mode = "host"
+%{ if docker_image_prefix != "" }
+        image        = "${docker_image_prefix}/redis:7.4.2-alpine"
+%{ else }
         image        = "redis:7.4.2-alpine"
+%{ endif }
         ports        = ["${port_name}"]
         args = [
         ]

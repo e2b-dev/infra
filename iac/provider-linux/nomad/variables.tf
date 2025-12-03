@@ -78,6 +78,10 @@ variable "dockerhub_remote_repository_provider" {
   type    = string
   default = ""
 }
+variable "docker_image_prefix" {
+  type    = string
+  default = ""
+}
 variable "api_secret" { type = string }
 variable "redis_tls_ca_base64" { type = string }
 variable "redis_secure_cluster_url" { type = string }

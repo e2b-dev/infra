@@ -37,7 +37,11 @@ job "logs-collector" {
 
       config {
         network_mode = "host"
+%{ if docker_image_prefix != "" }
+        image        = "${docker_image_prefix}/timberio/vector:0.34.X-alpine"
+%{ else }
         image        = "timberio/vector:0.34.X-alpine"
+%{ endif }
         ports        = ["health","logs"]
       }
 
