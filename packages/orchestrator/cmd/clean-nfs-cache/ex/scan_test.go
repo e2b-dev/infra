@@ -2,42 +2,53 @@ package ex
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/stretchr/testify/require"
 )
 
 func TestClean(t *testing.T) {
-	testFileSize := 10000
-	path := t.TempDir()
-	CreateTestDir(path, 1, 10, testFileSize)
-	t.Cleanup(func() {
-		os.RemoveAll(path)
-	})
+	const (
+		testFileSize = 7317
+		NDirs        = 100
+		NFiles       = 10000
+		PercentClean = 13
+	)
+
 	ctx := context.Background()
 
-	c := NewCleaner(Options{
-		Path:    path,
-		DeleteN: 1,
-		BatchN:  5,
-		DryRun:  false,
-	})
+	for _, nScan := range []int{1, 2, 4, 16, 64} {
+		for _, nDel := range []int{1, 2, 4, 8} {
+			t.Run(fmt.Sprintf("S%v-D%v", nScan, nDel), func(t *testing.T) {
+				path := t.TempDir()
+				CreateTestDir(path, NDirs, NFiles, testFileSize)
+				t.Cleanup(func() {
+					os.RemoveAll(path)
+				})
+				start := time.Now()
+				targetBytesToDelete := uint64(NFiles*testFileSize*PercentClean/100) + 1
+				c := NewCleaner(Options{
+					Path:                path,
+					DeleteN:             NFiles / 100,
+					BatchN:              NFiles / 10,
+					DryRun:              false,
+					NumScanners:         nScan,
+					NumDeleters:         nDel,
+					TargetBytesToDelete: targetBytesToDelete,
+				}, logger.NewNopLogger())
 
-	err := c.Clean(ctx, 1, uint64(2*testFileSize-1))
-	require.NoError(t, err)
-	require.Equal(t, 2, int(c.RemoveC.Load()))
-	require.Equal(t, 2*testFileSize, int(c.DeletedBytes))
-	require.Equal(t, 2, len(c.DeletedAges))
-
-	entries, err := os.ReadDir(path)
-	require.NoError(t, err)
-	require.Equal(t, 1, len(entries))
-
-	entries, err = os.ReadDir(filepath.Join(path, entries[0].Name()))
-	require.NoError(t, err)
-	require.Equal(t, 8, len(entries))
+				err := c.Clean(ctx)
+				require.NoError(t, err)
+				require.GreaterOrEqual(t, c.DeletedBytes, targetBytesToDelete)
+				t.Logf("Cleaned %d out of %d bytes in %v with S%d D%d", c.DeletedBytes, targetBytesToDelete, time.Since(start), nScan, nDel)
+			})
+		}
+	}
 }
 
 func TestScanDir(t *testing.T) {
@@ -49,12 +60,12 @@ func TestScanDir(t *testing.T) {
 
 	c := NewCleaner(Options{
 		Path: path,
-	})
+	}, logger.NewNopLogger())
 	df, err := os.Open(path)
 	require.NoError(t, err)
 	defer df.Close()
 
-	dir := c.root
+	dir := c.cacheRoot
 	err = c.scanDir(df, &dir, true, false)
 	require.NoError(t, err)
 	require.True(t, dir.IsScanned())

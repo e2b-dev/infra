@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func (c *Cleaner) fullStat(path string) (*Candidate, error) {
+func (c *Cleaner) stat(path string) (*Candidate, error) {
 	c.StatxC.Add(1)
 	stat, err := os.Stat(path)
 	if err != nil {
@@ -35,9 +35,9 @@ func (c *Cleaner) fullStat(path string) (*Candidate, error) {
 	}, nil
 }
 
-func (c *Cleaner) quickStat(df *os.File, filename string) (*File, error) {
+func (c *Cleaner) statInDir(df *os.File, filename string) (*File, error) {
 	// performance on OS X doeas not matter, so just use the full stat
-	cand, err := c.fullStat(filepath.Join(df.Name(), filename))
+	cand, err := c.stat(filepath.Join(df.Name(), filename))
 	if err != nil {
 		return nil, err
 	}

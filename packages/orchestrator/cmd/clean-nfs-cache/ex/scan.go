@@ -1,6 +1,7 @@
 package ex
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,76 +12,11 @@ import (
 	"time"
 )
 
-// func (c *Cleaner) Scan(ctx context.Context, numWorkers int, quitCh chan struct{}, out chan []*Candidate) {
-// 	workerPool := make(chan struct{}, numWorkers) // limit concurrency
-// 	for i := 0; i < cap(workerPool); i++ {
-// 		workerPool <- struct{}{}
-// 	}
-// 	wg := sync.WaitGroup{}
-
-// 	cc := make([]*Candidate, 0, c.DeleteN)
-// 	candidateCh := make(chan *Candidate)
-// 	errCh := make(chan error)
-// 	continuousErrors := 0
-// 	n := 0
-
-// 	for {
-// 		start := time.Now()
-// 		select {
-// 		case <-ctx.Done():
-// 			return
-
-// 		case <-quitCh:
-// 			wg.Wait()
-// 			return
-
-// 		case <-workerPool:
-// 			wg.Add(1)
-// 			go func() {
-// 				defer wg.Done()
-// 				candidate, err := c.FindCandidate()
-// 				if err != nil {
-// 					errCh <- err
-// 				} else {
-// 					candidateCh <- candidate
-// 				}
-// 				workerPool <- struct{}{}
-// 			}()
-
-// 		case candidate := <-candidateCh:
-// 			logger.L().Debug(ctx, "received candidate to delete",
-// 				zap.Duration("waited", time.Since(start)),
-// 				zap.Uint32("age_minutes", candidate.AgeMinutes),
-// 				zap.Uint64("size_bytes", candidate.Size),
-// 				zap.String("name", filepath.Base(candidate.FullPath)))
-
-// 			continuousErrors = 0
-// 			n++
-// 			cc = append(cc, candidate)
-// 			if n >= c.BatchN {
-// 				// This will block if the previous batch is still being processed
-// 				out <- cc
-// 				cc = cc[:0]
-// 				n = 0
-// 			}
-
-// 		case err := <-errCh:
-// 			logger.L().Info(ctx, "error during scanning",
-// 				zap.Error(err))
-// 			continuousErrors++
-// 			if continuousErrors > 10 {
-// 				logger.L().Error(ctx, "too many continuous errors, stopping scan")
-// 				close(quitCh)
-// 			}
-// 		}
-// 	}
-// }
-
-func (c *Cleaner) FindCandidate() (*Candidate, error) {
-	return c.findCandidate([]*Dir{&c.root})
+func (c *Cleaner) FindCandidate(ctx context.Context) (*Candidate, error) {
+	return c.findCandidate(ctx, []*Dir{&c.cacheRoot})
 }
 
-func (c *Cleaner) findCandidate(dirs []*Dir) (*Candidate, error) {
+func (c *Cleaner) findCandidate(ctx context.Context, dirs []*Dir) (*Candidate, error) {
 	var err error
 	var df *os.File
 	defer func() {
@@ -127,7 +63,7 @@ func (c *Cleaner) findCandidate(dirs []*Dir) (*Candidate, error) {
 		for inc = 0; inc < len(d.Dirs) && inc < maxErrorRetries; inc++ {
 			tryDir := &d.Dirs[(i+inc)%len(d.Dirs)]
 			// Recurse into the chosen subdir, if nothing found there try again in this dir
-			candidate, err := c.findCandidate(append(dirs, tryDir))
+			candidate, err := c.findCandidate(ctx, append(dirs, tryDir))
 			switch {
 			case err == nil:
 				return candidate, nil
@@ -211,8 +147,11 @@ func (c *Cleaner) scanDir(df *os.File, d *Dir, readDir bool, stat bool) error {
 		d.Files = make([]File, 0)
 
 		for _, e := range entries {
+			// TODO: e.Type, e.Info, or e.IsDir?
 			name := e.Name()
 			t := e.Type()
+			// info , err := e.Info()
+
 			if t&os.ModeDir != 0 {
 				d.Dirs = append(d.Dirs, Dir{Name: name})
 				c.SeenDirC.Add(1)
@@ -226,7 +165,7 @@ func (c *Cleaner) scanDir(df *os.File, d *Dir, readDir bool, stat bool) error {
 	if stat && !d.AreFilesScanned() {
 		for i, f := range d.Files {
 			path := f.Name
-			f, err := c.quickStat(df, path)
+			f, err := c.statInDir(df, path)
 			if err != nil {
 				return fmt.Errorf("failed to stat file %s: %w", path, err)
 			}

@@ -10,7 +10,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func (c *Cleaner) fullStat(fullPath string) (*Candidate, error) {
+func (c *Cleaner) stat(fullPath string) (*Candidate, error) {
 	c.StatxC.Add(1)
 	var statx unix.Statx_t
 	err := unix.Statx(unix.AT_FDCWD, fullPath,
@@ -34,7 +34,7 @@ func (c *Cleaner) fullStat(fullPath string) (*Candidate, error) {
 	}, nil
 }
 
-func (c *Cleaner) quickStat(df *os.File, filename string) (*File, error) {
+func (c *Cleaner) statInDir(df *os.File, filename string) (*File, error) {
 	c.StatxC.Add(1)
 	var statx unix.Statx_t
 	err := unix.Statx(int(df.Fd()), filename,
@@ -49,6 +49,6 @@ func (c *Cleaner) quickStat(df *os.File, filename string) (*File, error) {
 	return &File{
 		Name:       filename,
 		Size:       statx.Size,
-		AgeMinutes: uint32(statx.Atime.Sec / 60),
+		AgeMinutes: uint32(time.Since(time.Unix(int64(statx.Atime.Sec), int64(statx.Atime.Nsec))).Minutes()),
 	}, nil
 }
