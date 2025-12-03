@@ -10,7 +10,7 @@ echo "Making configuration immutable"
 $BUSYBOX chattr +i /etc/resolv.conf
 
 # Install required packages if not already installed
-PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp socat curl ca-certificates"
+PACKAGES="systemd systemd-oomd systemd-sysv openssh-server sudo chrony linuxptp socat curl ca-certificates"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=""
