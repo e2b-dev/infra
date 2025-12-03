@@ -174,11 +174,11 @@ func standardDeviation(accessed []time.Duration) (mean, stddev time.Duration) {
 		return 0, 0
 	}
 
-	var sum time.Duration
+	var sum float64
 	for i := range accessed {
-		sum += accessed[i]
+		sum += float64(accessed[i])
 	}
-	mean = sum / time.Duration(len(accessed))
+	mean = time.Duration(sum / float64(len(accessed)))
 
 	var sd float64
 	for i := range accessed {

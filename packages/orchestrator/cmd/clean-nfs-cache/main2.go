@@ -74,7 +74,7 @@ func main() {
 	log.Info(ctx, "summary",
 		zap.Bool("dry_run", opts.DryRun),
 		zap.Int64("files", c.RemoveC.Load()),
-		zap.Uint64("bytes", c.DeletedBytes),
+		zap.Uint64("bytes", c.DeletedBytes.Load()),
 		zap.Duration("most_recently_used", minDuration(c.DeletedAges).Round(time.Second)),
 		zap.Duration("least_recently_used", maxDuration(c.DeletedAges).Round(time.Second)),
 		zap.Duration("mean_age", mean.Round(time.Second)),

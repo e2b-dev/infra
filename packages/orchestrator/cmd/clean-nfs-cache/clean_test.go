@@ -45,9 +45,9 @@ func TestClean(t *testing.T) {
 
 				err := c.Clean(ctx)
 				require.NoError(t, err)
-				require.GreaterOrEqual(t, c.DeletedBytes, targetBytesToDelete)
+				require.GreaterOrEqual(t, c.DeletedBytes.Load(), targetBytesToDelete)
 				mean, sd := standardDeviation(c.DeletedAges)
-				t.Logf("Cleaned %d out of %d bytes in %v with S%d D%d; file age %v (%v)", c.DeletedBytes, targetBytesToDelete, time.Since(start), nScan, nDel, mean.Round(time.Hour), sd.Round(time.Minute))
+				t.Logf("Cleaned %d out of %d bytes in %v with S%d D%d; file age %v (%v)", c.DeletedBytes.Load(), targetBytesToDelete, time.Since(start), nScan, nDel, mean.Round(time.Hour), sd.Round(time.Minute))
 			})
 		}
 	}

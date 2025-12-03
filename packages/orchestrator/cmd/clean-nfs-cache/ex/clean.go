@@ -44,7 +44,7 @@ type Counters struct {
 	SeenDirC  atomic.Uint32
 	SeenFileC atomic.Uint64
 
-	DeletedBytes uint64
+	DeletedBytes atomic.Uint64
 	DeletedAges  []time.Duration
 
 	// Syscalls
@@ -101,7 +101,6 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	errCh := make(chan error)
 	candidateCh := make(chan *Candidate, 1)
 	deleteCh := make(chan *Candidate, c.DeleteN*2)
-	deletedNotifyCh := make(chan *Candidate, c.DeleteN*2)
 	quitCh := make(chan struct{})
 	doneCh := make(chan struct{})
 	cleanShutdown := &sync.WaitGroup{}
@@ -112,7 +111,7 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	}
 	for i := 0; i < c.NumDeleters; i++ {
 		cleanShutdown.Add(1)
-		go c.Deleter(ctx, deleteCh, deletedNotifyCh, quitCh, cleanShutdown)
+		go c.Deleter(ctx, deleteCh, quitCh, cleanShutdown)
 	}
 
 	batch := make([]*Candidate, 0, c.DeleteN)
@@ -136,7 +135,7 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	}
 
 	for {
-		if c.DeletedBytes >= c.TargetBytesToDelete && !draining {
+		if c.DeletedBytes.Load() >= c.TargetBytesToDelete && !draining {
 			c.Info(ctx, "target bytes deleted reached, draining remaining candidates")
 			drain(nil)
 		}
@@ -190,10 +189,6 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 			if !draining && errors.Is(err, ErrMaxRetries) {
 				drain(err)
 			}
-
-		case deleted := <-deletedNotifyCh:
-			c.DeletedBytes += deleted.Size
-			c.DeletedAges = append(c.DeletedAges, time.Duration(deleted.AgeMinutes)*time.Minute)
 		}
 	}
 }
@@ -228,7 +223,7 @@ func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, er
 	}
 }
 
-func (c *Cleaner) Deleter(ctx context.Context, toDelete <-chan *Candidate, deletedCh chan<- *Candidate, quitCh <-chan struct{}, done *sync.WaitGroup) {
+func (c *Cleaner) Deleter(ctx context.Context, toDelete <-chan *Candidate, quitCh <-chan struct{}, done *sync.WaitGroup) {
 	defer done.Done()
 	for {
 		select {
@@ -236,7 +231,7 @@ func (c *Cleaner) Deleter(ctx context.Context, toDelete <-chan *Candidate, delet
 			return
 		case d := <-toDelete:
 			c.timeit(ctx, "deleting file", func() {
-				c.deleteFile(ctx, d, deletedCh)
+				c.deleteFile(ctx, d)
 			})
 		}
 	}
@@ -272,7 +267,7 @@ func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
 	}
 }
 
-func (c *Cleaner) deleteFile(ctx context.Context, candidate *Candidate, deletedCh chan<- *Candidate) {
+func (c *Cleaner) deleteFile(ctx context.Context, candidate *Candidate) {
 	// Best-effort: get current metadata to detect atime changes or if file is gone
 	deleted := false
 	meta, err := c.stat(candidate.FullPath)
@@ -293,7 +288,10 @@ func (c *Cleaner) deleteFile(ctx context.Context, candidate *Candidate, deletedC
 	}
 
 	if deleted {
-		deletedCh <- candidate
+		c.DeletedBytes.Add(candidate.Size)
+		c.mu.Lock()
+		c.DeletedAges = append(c.DeletedAges, time.Duration(candidate.AgeMinutes)*time.Minute)
+		c.mu.Unlock()
 	}
 }
 
