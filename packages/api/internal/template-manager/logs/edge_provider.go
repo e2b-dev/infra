@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
-type ClusterPlacementProvider struct {
+type EdgeProvider struct {
 	HTTP *edge.ClusterHTTP
 }
 
@@ -27,9 +27,9 @@ func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {
 	return &value
 }
 
-func (c *ClusterPlacementProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
+func (c *EdgeProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
 	res, err := c.HTTP.Client.V1TemplateBuildLogsWithResponse(
-		ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{TemplateID: templateID, OrchestratorID: c.HTTP.NodeID, Offset: &offset, Level: logToEdgeLevel(level)},
+		ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{TemplateID: templateID, Offset: &offset, Level: logToEdgeLevel(level)},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build logs in template manager: %w", err)

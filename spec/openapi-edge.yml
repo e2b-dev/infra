@@ -247,15 +247,8 @@ components:
 
     TemplateBuildLogsResponse:
       required:
-        - logs
         - logEntries
       properties:
-        logs:
-          default: []
-          description: Build logs
-          type: array
-          items:
-            type: string
         logEntries:
           default: []
           description: Build logs structured
@@ -570,11 +563,6 @@ paths:
       parameters:
         - name: buildID
           in: path
-          required: true
-          schema:
-            type: string
-        - in: query
-          name: orchestratorID
           required: true
           schema:
             type: string
