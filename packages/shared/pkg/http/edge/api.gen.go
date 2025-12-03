@@ -281,6 +281,14 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildLogs(c *gin.Context) {
 	// Parameter object where we will unmarshal all parameters from the context
 	var params V1TemplateBuildLogsParams
 
+	// ------------- Optional query parameter "orchestratorID" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "orchestratorID", c.Request.URL.Query(), &params.OrchestratorID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter orchestratorID: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	// ------------- Required query parameter "templateID" -------------
 
 	if paramValue := c.Query("templateID"); paramValue != "" {

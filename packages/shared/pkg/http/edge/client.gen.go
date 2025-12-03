@@ -761,6 +761,22 @@ func NewV1TemplateBuildLogsRequest(server string, buildID string, params *V1Temp
 	if params != nil {
 		queryValues := queryURL.Query()
 
+		if params.OrchestratorID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "orchestratorID", runtime.ParamLocationQuery, *params.OrchestratorID); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "templateID", runtime.ParamLocationQuery, params.TemplateID); err != nil {
 			return nil, err
 		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
