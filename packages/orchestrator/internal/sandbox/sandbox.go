@@ -672,7 +672,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.memory.Disable(); err != nil {
+	if _, err := s.memory.Disable(ctx); err != nil {
 		return fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
@@ -750,6 +750,9 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
+	// This disables the uffd and returns the dirty pages.
+	// With FC async io engine, there can be some further writes to the memory during the actual create snapshot process,
+	// but as we are still including even read pages as dirty so this should not introduce more bugs right now.
 	dirty, err := s.memory.Disable(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
