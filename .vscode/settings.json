@@ -90,7 +90,7 @@
   },
   "mise.configureExtensionsUseSymLinks": true,
   "mise.configureExtensionsAutomatically": true,
-  "debug.javascript.defaultRuntimeExecutable": {
-    "pwa-node": "${workspaceFolder}/.vscode/mise-tools/node"
-  }
+  "mise.configureExtensionsAutomaticallyIgnoreList": [
+    "ms-vscode.js-debug"
+  ],
 }
