@@ -210,9 +210,6 @@ type ServiceDiscoveryNodeStatusRequest struct {
 type TemplateBuildLogsResponse struct {
 	// LogEntries Build logs structured
 	LogEntries []BuildLogEntry `json:"logEntries"`
-
-	// Logs Build logs
-	Logs []string `json:"logs"`
 }
 
 // Timestamp defines model for Timestamp.
@@ -243,8 +240,8 @@ type V1SandboxLogsParams struct {
 
 // V1TemplateBuildLogsParams defines parameters for V1TemplateBuildLogs.
 type V1TemplateBuildLogsParams struct {
-	OrchestratorID string `form:"orchestratorID" json:"orchestratorID"`
-	TemplateID     string `form:"templateID" json:"templateID"`
+	OrchestratorID *string `form:"orchestratorID,omitempty" json:"orchestratorID,omitempty"`
+	TemplateID     string  `form:"templateID" json:"templateID"`
 
 	// Offset Index of the starting build log that should be returned with the template
 	Offset *int32    `form:"offset,omitempty" json:"offset,omitempty"`
