@@ -175,9 +175,9 @@ VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 		var pgxErr *pgconn.PgError
 		if errors.As(err, &pgxErr) && pgxErr.Code == "23505" { // unique_violation
 			// Env with ID 'rki5dems9wqfm4r03t7g' already exists. Skipping env creation
+		} else {
+			panic(err)
 		}
-	} else {
-		panic(err)
 	}
 
 	fmt.Printf("Database seeded.\n")
