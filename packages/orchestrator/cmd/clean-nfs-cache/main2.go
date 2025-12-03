@@ -64,6 +64,7 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 	flags.BoolVar(&opts.AggressiveStat, "aggressive-stat", false, "use aggressive stat calls to get file metadata")
 	flags.IntVar(&opts.NumScanners, "num-scanners", 16, "number of concurrent scanner goroutines")
 	flags.IntVar(&opts.NumDeleters, "num-deleters", 4, "number of concurrent deleter goroutines")
+	flags.IntVar(&opts.MaxErrorRetries, "max-error-retries", 10, "maximum number of continuous error retries before giving up")
 	flags.Uint64Var(&opts.TargetBytesToDelete, "target-bytes-to-delete", 0, "target number of bytes to delete (overrides disk-usage-target-percent if set)")
 	flags.BoolVar(&opts.Experimental, "experimental", false, "enable experimental features")
 
@@ -89,18 +90,23 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 		return opts, nil, err
 	}
 
-	fmt.Printf("<>/<> got flag value: %v type %v, values %+v\n", v, v.Type(), v.AsValueMap())
-
 	if v.Type() == ldvalue.ObjectType {
 		m := v.AsValueMap()
-		if opts.Experimental ||
-			(m.Get("experimental").IsBool() && m.Get("experimental").BoolValue()) {
-			opts.Experimental = true
+		if m.Get("experimental").IsBool() {
+			opts.Experimental = m.Get("experimental").BoolValue()
+		}
+
+		opts.Experimental = true // REMOVE ME!!!
+
+		if opts.Experimental {
 			if opts.NumDeleters == 0 && m.Get("deleters").IsInt() {
 				opts.NumDeleters = m.Get("deleters").IntValue()
 			}
 			if opts.NumScanners == 0 && m.Get("scanners").IsInt() {
 				opts.NumScanners = m.Get("scanners").IntValue()
+			}
+			if opts.MaxErrorRetries == 0 && m.Get("maxErrorRetries").IsInt() {
+				opts.MaxErrorRetries = m.Get("maxErrorRetries").IntValue()
 			}
 		}
 	}

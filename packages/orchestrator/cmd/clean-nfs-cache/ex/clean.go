@@ -3,6 +3,7 @@ package ex
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -45,6 +46,7 @@ type Options struct {
 	DryRun                 bool
 	NumScanners            int
 	NumDeleters            int
+	MaxErrorRetries        int
 	TargetDiskUsagePercent float64
 	OtelCollectorEndpoint  string
 }
@@ -72,8 +74,6 @@ type Cleaner struct {
 	cacheRoot Dir
 }
 
-const maxErrorRetries = 10
-
 var (
 	ErrNoFiles    = errors.New("no files found to clean")
 	ErrMaxRetries = errors.New("maximum error retries reached")
@@ -93,85 +93,123 @@ func NewCleaner(opts Options, log logger.Logger) *Cleaner {
 	return c
 }
 
+func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, errCh chan<- error, quitCh <-chan struct{}, done *sync.WaitGroup) {
+	defer done.Done()
+	continuousErrors := 0
+	for {
+		select {
+		case <-quitCh:
+			return
+		default:
+			candidate, err := c.FindCandidate(ctx)
+			if err != nil {
+				if !errors.Is(err, ErrNoFiles) {
+					c.Info(ctx, "error during scanning", zap.Error(err))
+				}
+				continuousErrors++
+				if continuousErrors >= c.MaxErrorRetries {
+					errCh <- ErrMaxRetries
+					return
+				}
+				errCh <- err
+			} else {
+				candidateCh <- candidate
+			}
+		}
+	}
+}
+
+func (c *Cleaner) Deleter(ctx context.Context, toDelete <-chan *Candidate, deletedCh chan<- *Candidate, quitCh <-chan struct{}, done *sync.WaitGroup) {
+	defer done.Done()
+	for {
+		select {
+		case <-quitCh:
+			return
+		case d := <-toDelete:
+			c.deleteFile(ctx, d, deletedCh)
+		}
+	}
+}
+
+func (c *Cleaner) validateOptions() error {
+	if c.Path == "" {
+		return ErrUsage
+	}
+	if c.DeleteN <= 0 {
+		return errors.New("deletions-per-loop must be > 0")
+	}
+	if c.BatchN <= 0 {
+		return errors.New("files-per-loop must be > 0")
+	}
+	if c.BatchN < c.DeleteN {
+		return errors.New("files-per-loop must be >= deletions-per-loop")
+	}
+	if c.TargetBytesToDelete == 0 && c.TargetDiskUsagePercent == 0 {
+		return errors.New("either target-bytes-to-delete or disk-usage-target-percent must be set")
+	}
+	return nil
+}
+
 func (c *Cleaner) Clean(ctx context.Context) error {
-	scanErrCh := make(chan error)
-	candidateCh := make(chan *Candidate)
-	deletedCh := make(chan *Candidate)
+	if err := c.validateOptions(); err != nil {
+		return err
+	}
+
+	errCh := make(chan error)
+	candidateCh := make(chan *Candidate, 1)
+	deleteCh := make(chan *Candidate, c.DeleteN*2)
+	deletedNotifyCh := make(chan *Candidate)
 	quitCh := make(chan struct{})
+	doneCh := make(chan struct{})
+	cleanShutdown := &sync.WaitGroup{}
 
-	scanPool := make(chan struct{}, c.NumScanners) // limit concurrency
-	for i := 0; i < cap(scanPool); i++ {
-		scanPool <- struct{}{}
+	for i := 0; i < c.NumScanners; i++ {
+		cleanShutdown.Add(1)
+		go c.Scanner(ctx, candidateCh, errCh, quitCh, cleanShutdown)
 	}
-	deletePool := make(chan struct{}, c.NumDeleters) // limit concurrency
-	for i := 0; i < cap(deletePool); i++ {
-		deletePool <- struct{}{}
+	for i := 0; i < c.NumDeleters; i++ {
+		cleanShutdown.Add(1)
+		go c.Deleter(ctx, deleteCh, deletedNotifyCh, quitCh, cleanShutdown)
 	}
-
-	cleanShutdown := sync.WaitGroup{}
 
 	batch := make([]*Candidate, 0, c.DeleteN)
-	continuousErrors := 0
 	n := 0
 
+	draining := false
 	var result error
-	completed := false
-	done := false
-
-	drain := func() {
-		cleanShutdown.Wait()
+	drain := func(err error) {
+		if draining {
+			return
+		}
 		close(quitCh)
+		draining = true
+		result = err
+
+		go func() {
+			// wait for scanners and deleters to finish
+			cleanShutdown.Wait()
+			close(doneCh)
+		}()
 	}
 
-LOOP:
 	for {
-		if !completed {
-			switch {
-			case c.DeletedBytes >= c.TargetBytesToDelete:
-				completed = true // stop making goroutines
-				result = nil
-				go drain()
-			case continuousErrors >= maxErrorRetries:
-				completed = true
-				result = ErrMaxRetries
-				go drain()
-			case done:
-				completed = true
-				// result has been set
-				go drain()
-			}
-
+		if c.DeletedBytes >= c.TargetBytesToDelete && !draining {
+			c.Info(ctx, "target bytes deleted reached, draining remaining candidates")
+			drain(nil)
 		}
 
 		select {
-		case <-quitCh:
-			break LOOP
+		case <-doneCh:
+			return result
 
 		case <-ctx.Done():
-			result = ctx.Err()
-
-		case <-scanPool:
-			if completed {
-				continue // drain remaining goroutines
-			}
-			cleanShutdown.Add(1)
-			go func() {
-				defer cleanShutdown.Done()
-				candidate, err := c.FindCandidate(ctx)
-				if err != nil {
-					scanErrCh <- err
-				} else {
-					candidateCh <- candidate
-				}
-				scanPool <- struct{}{}
-			}()
+			drain(ctx.Err())
 
 		case candidate := <-candidateCh:
-			if completed {
-				continue // drain remaining goroutines
+			if draining {
+				continue
 			}
 
-			continuousErrors = 0
 			n++
 			batch = append(batch, candidate)
 			if n < c.BatchN {
@@ -196,33 +234,25 @@ LOOP:
 
 			total := uint64(0)
 			for _, toDelete := range batch[:c.DeleteN] {
-				cleanShutdown.Add(1)
-				go func() {
-					<-deletePool
-					defer cleanShutdown.Done()
-					c.deleteFile(ctx, toDelete, deletedCh)
-					deletePool <- struct{}{}
-				}()
+				deleteCh <- toDelete
 				total += toDelete.Size
 			}
-			c.Info(ctx, "submitted file deletions",
+			c.Info(ctx, "deleting files",
 				zap.Int("count", c.DeleteN),
 				zap.Uint64("bytes", total))
 			batch = batch[:0]
 			n = 0
 
-		case err := <-scanErrCh:
-			if !errors.Is(err, ErrNoFiles) {
-				c.Info(ctx, "error during scanning", zap.Error(err))
+		case err := <-errCh:
+			if !draining && errors.Is(err, ErrMaxRetries) {
+				drain(err)
 			}
-			continuousErrors++
 
-		case deleted := <-deletedCh:
+		case deleted := <-deletedNotifyCh:
 			c.DeletedBytes += deleted.Size
 			c.DeletedAges = append(c.DeletedAges, time.Duration(deleted.AgeMinutes)*time.Minute)
 		}
 	}
-	return result
 }
 
 func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
@@ -286,4 +316,33 @@ func (c *Cleaner) timeit(ctx context.Context, message string, fn func()) {
 	done := time.Since(start).Round(time.Millisecond)
 
 	c.Debug(ctx, message, zap.Duration("duration", done))
+}
+
+func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {
+	os.MkdirAll(path, 0755)
+
+	for i := 0; i < nDirs; i++ {
+		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i))
+		err := os.Mkdir(dirPath, 0755)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	for i := 0; i < nFiles; i++ {
+		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i%nDirs))
+		filePath := filepath.Join(dirPath, fmt.Sprintf("file%d.txt", i))
+		err := os.WriteFile(filePath, []byte(""), 0644)
+		if err == nil {
+			err = os.Truncate(filePath, int64(fsize))
+		}
+		if err != nil {
+			panic(err)
+		}
+		tt := time.Now().Add(-1 * time.Duration(i) * time.Minute)
+		err = os.Chtimes(filePath, tt, tt)
+		if err != nil {
+			panic(err)
+		}
+	}
 }

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"time"
 )
 
 func (c *Cleaner) FindCandidate(ctx context.Context) (*Candidate, error) {
@@ -60,7 +59,7 @@ func (c *Cleaner) findCandidate(ctx context.Context, dirs []*Dir) (*Candidate, e
 		c.mu.Unlock()
 
 		inc := 0
-		for inc = 0; inc < len(d.Dirs) && inc < maxErrorRetries; inc++ {
+		for inc = 0; inc < len(d.Dirs) && inc < c.MaxErrorRetries; inc++ {
 			tryDir := &d.Dirs[(i+inc)%len(d.Dirs)]
 			// Recurse into the chosen subdir, if nothing found there try again in this dir
 			candidate, err := c.findCandidate(ctx, append(dirs, tryDir))
@@ -75,7 +74,7 @@ func (c *Cleaner) findCandidate(ctx context.Context, dirs []*Dir) (*Candidate, e
 			}
 		}
 
-		if inc >= maxErrorRetries {
+		if inc >= c.MaxErrorRetries {
 			return nil, fmt.Errorf("%w: too many retries scanning subdirectories in %s", ErrMaxRetries, absPath)
 		} else {
 			return nil, fmt.Errorf("%w: nothing left to delete in %s", ErrNoFiles, absPath)
@@ -213,33 +212,4 @@ func (d *Dir) IsScanned() bool {
 
 func (d *Dir) IsEmpty() bool {
 	return d.IsScanned() && len(d.Files) == 0 && len(d.Dirs) == 0
-}
-
-func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {
-	os.MkdirAll(path, 0755)
-
-	for i := 0; i < nDirs; i++ {
-		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i))
-		err := os.Mkdir(dirPath, 0755)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	for i := 0; i < nFiles; i++ {
-		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i%nDirs))
-		filePath := filepath.Join(dirPath, fmt.Sprintf("file%d.txt", i))
-		err := os.WriteFile(filePath, []byte(""), 0644)
-		if err == nil {
-			err = os.Truncate(filePath, int64(fsize))
-		}
-		if err != nil {
-			panic(err)
-		}
-		tt := time.Now().Add(-1 * time.Duration(i) * time.Minute)
-		err = os.Chtimes(filePath, tt, tt)
-		if err != nil {
-			panic(err)
-		}
-	}
 }

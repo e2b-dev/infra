@@ -31,23 +31,24 @@ const (
 
 func main1() {
 	ctx := context.Background()
-	if err := cleanNFSCache(ctx); err != nil {
+	if _, err := cleanNFSCache(ctx, os.Args, 0); err != nil {
 		logger.L().Error(ctx, "clean NFS cache failed", zap.Error(err))
 		os.Exit(1)
 	}
 }
 
-func cleanNFSCache(ctx context.Context) error {
-	path, opts, err := parseArgs()
+func cleanNFSCache(ctx context.Context, args []string, targetBytesToDelete int64) (results, error) {
+	var allResults results
+	path, opts, err := parseArgs(args)
 	if err != nil {
-		return fmt.Errorf("invalid arguments: %w", err)
+		return allResults, fmt.Errorf("invalid arguments: %w", err)
 	}
 
 	var cores []zapcore.Core
 	if opts.otelCollectorEndpoint != "" {
 		otelCore, err := newOtelCore(ctx, opts.otelCollectorEndpoint)
 		if err != nil {
-			return fmt.Errorf("failed to create otel logger: %w", err)
+			return allResults, fmt.Errorf("failed to create otel logger: %w", err)
 		}
 		cores = append(cores, otelCore)
 	}
@@ -78,16 +79,19 @@ func cleanNFSCache(ctx context.Context) error {
 		diskInfo, err = pkg.GetDiskInfo(ctx, path)
 	})
 	if err != nil {
-		return fmt.Errorf("could not get disk info: %w", err)
+		return allResults, fmt.Errorf("could not get disk info: %w", err)
 	}
 	targetDiskUsage := int64(float64(opts.targetDiskUsagePercent) / 100 * float64(diskInfo.Total))
+	// for testing
+	if targetBytesToDelete > 0 {
+		targetDiskUsage = diskInfo.Used - int64(targetBytesToDelete)
+	}
 	areWeDone := func() bool {
 		return diskInfo.Used < targetDiskUsage
 	}
 
 	cache := pkg.NewListingCache(path)
 
-	var allResults results
 	defer func() {
 		printSummary(ctx, allResults, opts)
 	}()
@@ -101,7 +105,7 @@ func cleanNFSCache(ctx context.Context) error {
 			logger.L().Info(ctx, "got files", zap.Int("count", len(files)))
 		})
 		if err != nil {
-			return fmt.Errorf("could not get File metadata: %w", err)
+			return allResults, fmt.Errorf("could not get File metadata: %w", err)
 		}
 
 		// sort files by access timestamp
@@ -118,11 +122,11 @@ func cleanNFSCache(ctx context.Context) error {
 		})
 		allResults = allResults.sum(results)
 		if err != nil {
-			return fmt.Errorf("failed to delete files: %w", err)
+			return allResults, fmt.Errorf("failed to delete files: %w", err)
 		}
 	}
 
-	return nil
+	return allResults, nil
 }
 
 func newOtelCore(ctx context.Context, endpoint string) (zapcore.Core, error) {
@@ -154,25 +158,27 @@ func printSummary(ctx context.Context, r results, opts opts) {
 		return
 	}
 
+	_, sd := standardDeviation(r.lastAccessed)
+
 	logger.L().Info(ctx, "summary",
 		zap.Bool("dry_run", opts.dryRun),
 		zap.Int64("files", r.deletedFiles),
 		zap.Int64("bytes", r.deletedBytes),
 		zap.Duration("most_recently_used", minDuration(r.lastAccessed).Round(time.Second)),
 		zap.Duration("least_recently_used", maxDuration(r.lastAccessed).Round(time.Second)),
-		zap.Duration("std_deviation", standardDeviation(r.lastAccessed).Round(time.Second)))
+		zap.Duration("std_deviation", sd.Round(time.Second)))
 }
 
-func standardDeviation(accessed []time.Duration) time.Duration {
+func standardDeviation(accessed []time.Duration) (mean, stddev time.Duration) {
 	if len(accessed) == 0 {
-		return 0
+		return 0, 0
 	}
 
 	var sum time.Duration
 	for i := range accessed {
 		sum += accessed[i]
 	}
-	mean := sum / time.Duration(len(accessed))
+	mean = sum / time.Duration(len(accessed))
 
 	var sd float64
 	for i := range accessed {
@@ -181,7 +187,7 @@ func standardDeviation(accessed []time.Duration) time.Duration {
 
 	sd = math.Sqrt(sd / float64(len(accessed)))
 
-	return time.Duration(sd)
+	return mean, time.Duration(sd)
 }
 
 func maxDuration(durations []time.Duration) time.Duration {
@@ -331,7 +337,7 @@ var (
 	ErrFail  = errors.New("clean-nfs-cache failed to find enough space")
 )
 
-func parseArgs() (string, opts, error) {
+func parseArgs(args []string) (string, opts, error) {
 	flags := flag.NewFlagSet("clean-nfs-cache", flag.ExitOnError)
 
 	var opts opts
@@ -341,7 +347,7 @@ func parseArgs() (string, opts, error) {
 	flags.Int64Var(&opts.filesToDeletePerLoop, "deletions-per-loop", 100, "maximum number of files to delete per loop")
 	flags.StringVar(&opts.otelCollectorEndpoint, "otel-collector-endpoint", "", "endpoint of the otel collector")
 
-	args := os.Args[1:] // skip the command name
+	args = args[1:] // skip the command name
 	if err := flags.Parse(args); err != nil {
 		return "", opts, fmt.Errorf("could not parse flags: %w", err)
 	}
