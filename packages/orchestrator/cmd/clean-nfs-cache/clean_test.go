@@ -15,8 +15,8 @@ import (
 func TestClean(t *testing.T) {
 	const (
 		testFileSize = 7317
-		NDirs        = 100
-		NFiles       = 20000
+		NDirs        = 500
+		NFiles       = 50000
 		PercentClean = 13
 	)
 

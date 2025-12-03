@@ -26,7 +26,7 @@ func (c *Cleaner) stat(fullPath string) (*Candidate, error) {
 	bage := time.Since(time.Unix(int64(statx.Btime.Sec), int64(statx.Btime.Nsec))).Minutes()
 	return &Candidate{
 		Parent:      nil,   // not relevant here
-		IsDir:       false, // not relevant: we are only called for files
+		IsDir:       false, // not relevant: this function is only called for files
 		FullPath:    fullPath,
 		Size:        statx.Size,
 		AgeMinutes:  uint32(age),

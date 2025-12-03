@@ -15,25 +15,14 @@ import (
 	"go.uber.org/zap"
 )
 
-type Candidate struct {
-	Parent      *Dir
-	FullPath    string
-	IsDir       bool
-	AgeMinutes  uint32
-	BAgeMinutes uint32
-	Size        uint64
-}
+type Cleaner struct {
+	Options
+	Counters
+	logger.Logger
 
-type File struct {
-	Name       string // short name
-	AgeMinutes uint32 // minutes since last access
-	Size       uint64
-}
-
-type Dir struct {
-	Name  string
-	Dirs  []Dir
-	Files []File
+	mu        sync.RWMutex
+	basePath  string
+	cacheRoot Dir
 }
 
 type Options struct {
@@ -64,14 +53,25 @@ type Counters struct {
 	RemoveC  atomic.Int64
 }
 
-type Cleaner struct {
-	Options
-	logger.Logger
-	Counters
+type Dir struct {
+	Name  string
+	Dirs  []Dir
+	Files []File
+}
 
-	mu        sync.RWMutex
-	basePath  string
-	cacheRoot Dir
+type File struct {
+	Name       string // short name
+	AgeMinutes uint32 // minutes since last access
+	Size       uint64
+}
+
+type Candidate struct {
+	Parent      *Dir
+	FullPath    string
+	IsDir       bool
+	AgeMinutes  uint32
+	BAgeMinutes uint32
+	Size        uint64
 }
 
 var (
@@ -93,63 +93,6 @@ func NewCleaner(opts Options, log logger.Logger) *Cleaner {
 	return c
 }
 
-func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, errCh chan<- error, quitCh <-chan struct{}, done *sync.WaitGroup) {
-	defer done.Done()
-	continuousErrors := 0
-	for {
-		select {
-		case <-quitCh:
-			return
-		default:
-			candidate, err := c.FindCandidate(ctx)
-			if err != nil {
-				if !errors.Is(err, ErrNoFiles) {
-					c.Info(ctx, "error during scanning", zap.Error(err))
-				}
-				continuousErrors++
-				if continuousErrors >= c.MaxErrorRetries {
-					errCh <- ErrMaxRetries
-					return
-				}
-				errCh <- err
-			} else {
-				candidateCh <- candidate
-			}
-		}
-	}
-}
-
-func (c *Cleaner) Deleter(ctx context.Context, toDelete <-chan *Candidate, deletedCh chan<- *Candidate, quitCh <-chan struct{}, done *sync.WaitGroup) {
-	defer done.Done()
-	for {
-		select {
-		case <-quitCh:
-			return
-		case d := <-toDelete:
-			c.deleteFile(ctx, d, deletedCh)
-		}
-	}
-}
-
-func (c *Cleaner) validateOptions() error {
-	if c.Path == "" {
-		return ErrUsage
-	}
-	if c.DeleteN <= 0 {
-		return errors.New("deletions-per-loop must be > 0")
-	}
-	if c.BatchN <= 0 {
-		return errors.New("files-per-loop must be > 0")
-	}
-	if c.BatchN < c.DeleteN {
-		return errors.New("files-per-loop must be >= deletions-per-loop")
-	}
-	if c.TargetBytesToDelete == 0 && c.TargetDiskUsagePercent == 0 {
-		return errors.New("either target-bytes-to-delete or disk-usage-target-percent must be set")
-	}
-	return nil
-}
-
 func (c *Cleaner) Clean(ctx context.Context) error {
 	if err := c.validateOptions(); err != nil {
 		return err
@@ -158,7 +101,7 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	errCh := make(chan error)
 	candidateCh := make(chan *Candidate, 1)
 	deleteCh := make(chan *Candidate, c.DeleteN*2)
-	deletedNotifyCh := make(chan *Candidate)
+	deletedNotifyCh := make(chan *Candidate, c.DeleteN*2)
 	quitCh := make(chan struct{})
 	doneCh := make(chan struct{})
 	cleanShutdown := &sync.WaitGroup{}
@@ -255,6 +198,50 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	}
 }
 
+func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, errCh chan<- error, quitCh <-chan struct{}, done *sync.WaitGroup) {
+	defer done.Done()
+	continuousErrors := 0
+	for {
+		select {
+		case <-quitCh:
+			return
+		default:
+			var candidate *Candidate
+			var err error
+			c.timeit(ctx, "finding candidate", func() {
+				candidate, err = c.FindCandidate(ctx)
+			})
+			if err != nil {
+				if !errors.Is(err, ErrNoFiles) {
+					c.Info(ctx, "error during scanning", zap.Error(err))
+				}
+				continuousErrors++
+				if continuousErrors >= c.MaxErrorRetries {
+					errCh <- ErrMaxRetries
+					return
+				}
+				errCh <- err
+			} else {
+				candidateCh <- candidate
+			}
+		}
+	}
+}
+
+func (c *Cleaner) Deleter(ctx context.Context, toDelete <-chan *Candidate, deletedCh chan<- *Candidate, quitCh <-chan struct{}, done *sync.WaitGroup) {
+	defer done.Done()
+	for {
+		select {
+		case <-quitCh:
+			return
+		case d := <-toDelete:
+			c.timeit(ctx, "deleting file", func() {
+				c.deleteFile(ctx, d, deletedCh)
+			})
+		}
+	}
+}
+
 func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -296,7 +283,7 @@ func (c *Cleaner) deleteFile(ctx context.Context, candidate *Candidate, deletedC
 	} else if meta.AgeMinutes == candidate.AgeMinutes {
 		c.RemoveC.Add(1)
 		if !c.DryRun {
-			c.timeit(ctx, "deleting file", func() {
+			c.timeit(ctx, "deleting file (OS)", func() {
 				err = os.Remove(candidate.FullPath)
 			})
 		}
@@ -345,4 +332,23 @@ func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {
 			panic(err)
 		}
 	}
+}
+
+func (c *Cleaner) validateOptions() error {
+	if c.Path == "" {
+		return ErrUsage
+	}
+	if c.DeleteN <= 0 {
+		return errors.New("deletions-per-loop must be > 0")
+	}
+	if c.BatchN <= 0 {
+		return errors.New("files-per-loop must be > 0")
+	}
+	if c.BatchN < c.DeleteN {
+		return errors.New("files-per-loop must be >= deletions-per-loop")
+	}
+	if c.TargetBytesToDelete == 0 && c.TargetDiskUsagePercent == 0 {
+		return errors.New("either target-bytes-to-delete or disk-usage-target-percent must be set")
+	}
+	return nil
 }
