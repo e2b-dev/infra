@@ -132,7 +132,7 @@ func run() int {
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
-		RedisTLSCABase64: "",
+		RedisTLSCABase64: config.RedisTLSCABase64,
 	})
 	if err == nil {
 		defer func() {
@@ -148,31 +148,6 @@ func run() int {
 			catalog = e2bcatalog.NewMemorySandboxesCatalog()
 		} else {
 			l.Error(ctx, "Failed to create redis client", zap.Error(err))
-
-			return 1
-		}
-	}
-
-	// TODO: Remove once migrated (ENG-3320)
-	redisSecureClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
-		RedisURL:         "",
-		RedisClusterURL:  config.RedisSecureClusterURL,
-		RedisTLSCABase64: config.RedisTLSCABase64,
-	})
-	if err == nil {
-		defer func() {
-			err := factories.CloseCleanly(redisSecureClient)
-			if err != nil {
-				l.Error(ctx, "Failed to close redis secure client", zap.Error(err))
-			}
-		}()
-		fallbackCatalog := e2bcatalog.NewRedisSandboxesCatalog(redisSecureClient)
-		catalog = e2bcatalog.NewRedisFallbackSandboxesCatalog(catalog, fallbackCatalog, featureFlagsClient)
-	} else {
-		if errors.Is(err, factories.ErrRedisDisabled) {
-			l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		} else {
-			l.Error(ctx, "Failed to create redis secure client", zap.Error(err))
 
 			return 1
 		}

@@ -116,12 +116,6 @@ variable "loki_node_pool" {
   type = string
 }
 
-
-variable "api_dns_port_number" {
-  type    = number
-  default = 5353
-}
-
 variable "custom_envs_repository_name" {
   type = string
 }

@@ -2,7 +2,6 @@ package storage
 
 import (
 	"fmt"
-	"os"
 )
 
 const (
@@ -15,14 +14,6 @@ const (
 
 	HeaderSuffix = ".header"
 )
-
-func HostEnvdPath() string {
-	if value := os.Getenv("HOST_ENVD_PATH"); value != "" {
-		return value
-	}
-
-	return "/fc-envd/envd"
-}
 
 type TemplateFiles struct {
 	BuildID            string `json:"build_id"`

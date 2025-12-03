@@ -42,7 +42,6 @@ type ClusterGRPC struct {
 
 type ClusterHTTP struct {
 	Client *api.ClientWithResponses
-	NodeID string
 }
 
 var (
@@ -165,8 +164,8 @@ func (c *Cluster) GetGRPC(serviceInstanceID string) *ClusterGRPC {
 	return &ClusterGRPC{c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: serviceInstanceID})}
 }
 
-func (c *Cluster) GetHTTP(nodeID string) *ClusterHTTP {
-	return &ClusterHTTP{c.httpClient, nodeID}
+func (c *Cluster) GetHTTP() *ClusterHTTP {
+	return &ClusterHTTP{c.httpClient}
 }
 
 func (c *Cluster) GetOrchestrators() []*ClusterInstance {

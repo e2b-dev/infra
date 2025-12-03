@@ -472,7 +472,6 @@ func BenchmarkPlacementComparison(t *testing.B) {
 		name string
 		algo Algorithm
 	}{
-		{"LeastBusy", &LeastBusyAlgorithm{}},
 		{"BestOfK_K3", NewBestOfK(DefaultBestOfKConfig())},
 		{"BestOfK_K5", NewBestOfK(BestOfKConfig{R: 4, K: 5, Alpha: 0.5})},
 	}

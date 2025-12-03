@@ -139,7 +139,7 @@ func (c *apiClient) createSnapshot(
 
 	_, err := c.client.Operations.CreateSnapshot(&snapshotConfig)
 	if err != nil {
-		return fmt.Errorf("error loading snapshot: %w", err)
+		return fmt.Errorf("error creating snapshot: %w", err)
 	}
 
 	return nil
@@ -176,9 +176,9 @@ func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernel
 	return err
 }
 
-func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error {
+func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEngine *string) error {
 	rootfs := "rootfs"
-	ioEngine := "Async"
+
 	isRootDevice := true
 	driversConfig := operations.PutGuestDriveByIDParams{
 		Context: ctx,
@@ -188,7 +188,7 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error
 			PathOnHost:   rootfsPath,
 			IsRootDevice: &isRootDevice,
 			IsReadOnly:   false,
-			IoEngine:     &ioEngine,
+			IoEngine:     ioEngine,
 		},
 	}
 

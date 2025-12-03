@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"syscall"
 
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
@@ -116,7 +115,7 @@ func (o *NBDProvider) Close(ctx context.Context) error {
 
 	var errs []error
 
-	err := o.flush(ctx)
+	err := o.sync(ctx)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error flushing cow device: %w", err))
 	}
@@ -142,10 +141,9 @@ func (o *NBDProvider) Path() (string, error) {
 	return o.ready.Wait()
 }
 
-// flush flushes the data to the operating system's buffer.
-func (o *NBDProvider) flush(ctx context.Context) error {
-	telemetry.ReportEvent(ctx, "flushing cow device")
-	defer telemetry.ReportEvent(ctx, "flushing cow done")
+func (o *NBDProvider) sync(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "sync")
+	defer span.End()
 
 	nbdPath, err := o.Path()
 	if err != nil {
@@ -154,7 +152,7 @@ func (o *NBDProvider) flush(ctx context.Context) error {
 
 	file, err := os.Open(nbdPath)
 	if err != nil {
-		return fmt.Errorf("failed to open cow path: %w", err)
+		return fmt.Errorf("failed to open path: %w", err)
 	}
 	defer func() {
 		err := file.Close()
@@ -167,15 +165,5 @@ func (o *NBDProvider) flush(ctx context.Context) error {
 		return fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
 	}
 
-	err = syscall.Fsync(int(file.Fd()))
-	if err != nil {
-		return fmt.Errorf("failed to fsync cow path: %w", err)
-	}
-
-	err = file.Sync()
-	if err != nil {
-		return fmt.Errorf("failed to sync cow path: %w", err)
-	}
-
-	return nil
+	return flush(ctx, nbdPath)
 }

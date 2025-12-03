@@ -135,7 +135,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
-	templateManager, err := template_manager.New(config, tel.TracerProvider, tel.MeterProvider, sqlcDB, clustersPool, templateBuildsCache, templateCache)
+	templateManager, err := template_manager.New(sqlcDB, clustersPool, templateBuildsCache, templateCache)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Template manager client", zap.Error(err))
 	}
@@ -195,8 +195,16 @@ func (a *APIStore) Close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("closing Orchestrator client: %w", err))
 	}
 
-	if err := a.templateManager.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("closing Template manager client: %w", err))
+	if a.templateCache != nil {
+		if err := a.templateCache.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing template cache: %w", err))
+		}
+	}
+
+	if a.authCache != nil {
+		if err := a.authCache.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing auth cache: %w", err))
+		}
 	}
 
 	if err := a.sqlcDB.Close(); err != nil {

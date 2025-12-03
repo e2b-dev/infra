@@ -42,8 +42,7 @@ type Orchestrator struct {
 	nomadClient             *nomadapi.Client
 	sandboxStore            *sandbox.Store
 	nodes                   *smap.Map[*nodemanager.Node]
-	leastBusyAlgorithm      placement.Algorithm
-	bestOfKAlgorithm        *placement.BestOfK
+	placementAlgorithm      *placement.BestOfK
 	featureFlagsClient      *featureflags.Client
 	analytics               *analyticscollector.Analytics
 	posthogClient           *analyticscollector.PosthogClient
@@ -110,8 +109,6 @@ func New(
 		Timeout: nodeHealthCheckTimeout,
 	}
 
-	// Initialize both placement algorithms
-	leastBusyAlgorithm := &placement.LeastBusyAlgorithm{}
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
 	o := Orchestrator{
@@ -120,8 +117,7 @@ func New(
 		posthogClient:        posthogClient,
 		nomadClient:          nomadClient,
 		nodes:                smap.New[*nodemanager.Node](),
-		leastBusyAlgorithm:   leastBusyAlgorithm,
-		bestOfKAlgorithm:     bestOfKAlgorithm,
+		placementAlgorithm:   bestOfKAlgorithm,
 		featureFlagsClient:   featureFlags,
 		accessTokenGenerator: accessTokenGenerator,
 		routingCatalog:       routingCatalog,
@@ -260,24 +256,6 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// getPlacementAlgorithm returns the appropriate placement algorithm based on the passed context
-func (o *Orchestrator) getPlacementAlgorithm(ctx context.Context) placement.Algorithm {
-	// Use sandbox ID as context key for feature flag evaluation
-	useBestOfK, err := o.featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKPlacementAlgorithm)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to evaluate placement algorithm feature flag, using least-busy",
-			zap.Error(err))
-
-		return o.leastBusyAlgorithm
-	}
-
-	if useBestOfK {
-		return o.bestOfKAlgorithm
-	}
-
-	return o.leastBusyAlgorithm
-}
-
 // updateBestOfKConfig periodically updates the BestOfK algorithm configuration from feature flags
 func (o *Orchestrator) updateBestOfKConfig(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second) // Check for config updates every 30 seconds
@@ -291,7 +269,7 @@ func (o *Orchestrator) updateBestOfKConfig(ctx context.Context) {
 			config := getBestOfKConfig(ctx, o.featureFlagsClient)
 
 			// Update the config
-			o.bestOfKAlgorithm.UpdateConfig(config)
+			o.placementAlgorithm.UpdateConfig(config)
 		}
 	}
 }

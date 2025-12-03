@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -161,7 +162,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	baseMetadata metadata.Template,
 	hash string,
 ) (metadata.Template, error) {
-	templateBuildDir := filepath.Join(bb.BuilderConfig.TemplatesDir, bb.Template.BuildID)
+	templateBuildDir := filepath.Join(bb.BuilderConfig.TemplatesDir, baseMetadata.Template.BuildID)
 	err := os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error creating template build directory: %w", err)
@@ -186,6 +187,8 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	cacheFiles, err := baseMetadata.Template.CacheFiles(bb.BuildContext.BuilderConfig)
 	if err != nil {
+		err = errors.Join(err, rootfs.Close())
+
 		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}
 	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
@@ -256,7 +259,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Create sandbox for building template
 	userLogger.Debug(ctx, "Creating base sandbox template layer")
 
-	sandboxCreator := layer.NewCreateSandboxFromCache(
+	sandboxCreator := layer.NewCreateSandbox(
 		baseSbxConfig,
 		bb.sandboxFactory,
 		baseLayerTimeout,
@@ -264,7 +267,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			KernelVersion:      bb.Template.KernelVersion,
 			FirecrackerVersion: bb.Template.FirecrackerVersion,
 		},
-		rootfsPath,
+		layer.WithRootfsCachePath(rootfsPath),
 	)
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {

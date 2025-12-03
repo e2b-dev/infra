@@ -9,16 +9,12 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
-	buildlogs "github.com/e2b-dev/infra/packages/api/internal/template-manager/logs"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -36,7 +32,6 @@ type processingBuilds struct {
 }
 
 type TemplateManager struct {
-	grpc     *grpclient.GRPCClient
 	edgePool *edge.Pool
 
 	lock          sync.Mutex
@@ -59,21 +54,12 @@ const (
 )
 
 func New(
-	config cfg.Config,
-	tracerProvider trace.TracerProvider,
-	meterProvider metric.MeterProvider,
 	sqlcDB *sqlcdb.Client,
 	edgePool *edge.Pool,
 	buildCache *templatecache.TemplatesBuildCache,
 	templateCache *templatecache.TemplateCache,
 ) (*TemplateManager, error) {
-	client, err := createClient(config, tracerProvider, meterProvider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
-	}
-
 	tm := &TemplateManager{
-		grpc:          client,
 		sqlcDB:        sqlcDB,
 		buildCache:    buildCache,
 		templateCache: templateCache,
@@ -84,10 +70,6 @@ func New(
 	}
 
 	return tm, nil
-}
-
-func (tm *TemplateManager) Close() error {
-	return tm.grpc.Close()
 }
 
 func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
@@ -121,18 +103,18 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	}
 }
 
-func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID uuid.UUID) (string, error) {
+func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID uuid.UUID) (*edge.ClusterInstance, error) {
 	cluster, ok := tm.edgePool.GetClusterById(clusterID)
 	if !ok {
-		return "", fmt.Errorf("cluster with ID '%s' not found", clusterID)
+		return nil, fmt.Errorf("cluster with ID '%s' not found", clusterID)
 	}
 
 	builder, err := cluster.GetAvailableTemplateBuilder(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to get available template builder for cluster '%s': %w", clusterID, err)
+		return nil, fmt.Errorf("failed to get available template builder for cluster '%s': %w", clusterID, err)
 	}
 
-	return builder.NodeID, nil
+	return builder, nil
 }
 
 func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID string) (*BuildClient, error) {
@@ -147,16 +129,9 @@ func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID str
 	}
 
 	grpc := cluster.GetGRPC(instance.ServiceInstanceID)
-	http := cluster.GetHTTP(instance.NodeID)
-
-	logProviders := []buildlogs.Provider{
-		&buildlogs.TemplateManagerProvider{GRPC: grpc},
-		&buildlogs.ClusterPlacementProvider{HTTP: http},
-	}
 
 	return &BuildClient{
-		GRPC:         grpc,
-		logProviders: logProviders,
+		GRPC: grpc,
 	}, nil
 }
 
@@ -173,10 +148,11 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, t
 		// nodeID can be an orchestrator ID, if the build corresponds to a snapshot.
 		// We may want to improve this later by adding the Delete method to Orchestrator as well.
 		// This way we can remove the build (snapshot) from cache as well
-		nodeID, err = tm.GetAvailableBuildClient(ctx, clusterID)
+		node, err := tm.GetAvailableBuildClient(ctx, clusterID)
 		if err != nil {
 			return fmt.Errorf("failed to get any available node in the cluster: %w", err)
 		}
+		nodeID = node.NodeID
 
 		logger.L().Info(ctx, "Fallback to available node", zap.String("nodeID", nodeID), zap.String("clusterID", clusterID.String()))
 		client, err = tm.GetClusterBuildClient(clusterID, nodeID)

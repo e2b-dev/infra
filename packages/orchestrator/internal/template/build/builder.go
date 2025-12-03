@@ -115,6 +115,13 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	ctx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
+	// setup launch darkly context
+	ctx = featureflags.SetContext(
+		ctx,
+		featureflags.TemplateContext(cfg.TemplateID),
+		featureflags.TeamContext(cfg.TeamID),
+	)
+
 	// Record build duration and result at the end
 	startTime := time.Now()
 	defer func() {
@@ -139,7 +146,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	isV1Build := utils.IsVersion(cfg.Version, templates.TemplateV1Version) || (cfg.FromImage == "" && cfg.FromTemplate == nil)
 
 	l := logger.NewTracedLoggerFromCore(logsCore)
-	defer func() {
+	defer func(ctx context.Context) {
 		switch {
 		case errors.Is(ctx.Err(), context.Canceled):
 			l.Error(ctx, fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
@@ -149,7 +156,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 			l.Info(ctx, fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
 		}
-	}()
+	}(ctx)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -178,12 +185,12 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		}
 	}(context.WithoutCancel(ctx))
 
-	envdVersion, err := envd.GetEnvdVersion(ctx)
+	envdVersion, err := envd.GetEnvdVersion(ctx, b.config.HostEnvdPath)
 	if err != nil {
 		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}
 
-	var uploadErrGroup errgroup.Group
+	uploadErrGroup := &errgroup.Group{}
 	defer func() {
 		// Wait for all template layers to be uploaded even if the build fails
 		err := uploadErrGroup.Wait()
@@ -196,7 +203,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		BuilderConfig:  b.config,
 		Config:         cfg,
 		Template:       template,
-		UploadErrGroup: &uploadErrGroup,
+		UploadErrGroup: uploadErrGroup,
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
 		IsV1Build:      isV1Build,
@@ -275,6 +282,8 @@ func runBuild(
 		builder.templateStorage,
 		builder.proxy,
 		layerExecutor,
+		builder.featureFlags,
+		builder.logger,
 	)
 
 	// Construct the phases/steps to run

@@ -604,7 +604,7 @@ resource "google_compute_security_policy_rule" "api-throttling-ip" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 20000 : 20000
+      count        = 20000
       interval_sec = 30
     }
   }
@@ -662,7 +662,7 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 40000 : 40000
+      count        = 60000
       interval_sec = 60
     }
   }
