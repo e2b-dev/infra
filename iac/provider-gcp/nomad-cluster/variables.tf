@@ -118,26 +118,20 @@ variable "client_cluster_name" {
   default = "orch-client"
 }
 
-variable "client_cluster_size" {
-  type = number
-}
-
-variable "client_cluster_size_max" {
-  type = number
-}
-
-variable "client_cluster_autoscaling_cpu_target" {
-  description = "Target CPU utilization for client cluster autoscaling (0.0-1.0)"
-  type        = number
-}
-
-variable "client_cluster_autoscaling_memory_target" {
-  description = "Target memory utilization percentage for client cluster autoscaling (0-100)"
-  type        = number
-}
-
-variable "client_machine_type" {
-  type = string
+variable "client_clusters_config" {
+  description = "List of client cluster configuration object"
+  type = list(object({
+    size                      = number
+    size_max                  = number
+    autoscaling_cpu_target    = number
+    autoscaling_memory_target = number
+    machine_type              = string
+    min_cpu_platform          = string
+    cache_disk_size_gb        = number
+    cache_disk_type           = string
+    cache_disk_count          = number
+    boot_disk_type            = string
+  }))
 }
 
 variable "gcp_project_id" {
@@ -326,6 +320,16 @@ variable "api_nat_min_ports_per_vm" {
   type = number
 }
 
+variable "build_cluster_cache_disk_type" {
+  description = "The GCE cache disk type for the build machines."
+  type        = string
+}
+
+variable "build_cluster_cache_disk_size_gb" {
+  description = "The size in GB of each cache disk for the build machines."
+  type        = number
+}
+
 variable "build_cluster_cache_disk_count" {
   type = number
 
@@ -335,21 +339,7 @@ variable "build_cluster_cache_disk_count" {
   }
 }
 
-variable "client_cluster_cache_disk_count" {
-  type = number
-
-  validation {
-    condition     = var.client_cluster_cache_disk_count > 0
-    error_message = "Must include at least 1 client cluster cache disk"
-  }
-}
-
 # Boot disk type variables
-variable "client_boot_disk_type" {
-  description = "The GCE boot disk type for the client (orchestrator) machines."
-  type        = string
-}
-
 variable "build_boot_disk_type" {
   description = "The GCE boot disk type for the build machines."
   type        = string

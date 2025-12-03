@@ -277,10 +277,6 @@ variable "fc_env_pipeline_bucket_name" {
   type = string
 }
 
-variable "client_machine_type" {
-  type = string
-}
-
 variable "allow_sandbox_internet" {
   type = bool
 }

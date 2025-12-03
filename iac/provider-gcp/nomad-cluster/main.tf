@@ -114,7 +114,6 @@ module "network" {
   domain_name               = var.domain_name
   additional_domains        = var.additional_domains
 
-  client_instance_group    = google_compute_region_instance_group_manager.client_pool.instance_group
   client_proxy_port        = var.edge_proxy_port
   client_proxy_health_port = var.edge_api_port
 
@@ -149,4 +148,55 @@ module "filestore" {
 
   tier        = var.filestore_cache_tier
   capacity_gb = var.filestore_cache_capacity_gb
+}
+
+module "client_cluster" {
+  for_each = {
+    for k, v in var.client_clusters_config :
+    k => v
+  }
+  source = "./client-cluster"
+
+  gcp_region                   = var.gcp_region
+  gcp_zone                     = var.gcp_zone
+  google_service_account_email = var.google_service_account_email
+  google_service_account_key   = var.google_service_account_key
+
+  client_cluster_config                  = each.value
+  client_cluster_name                    = each.key == "0" ? var.client_cluster_name : "${var.client_cluster_name}-${split("-", each.value.machine_type)[0]}"
+  client_image_family                    = var.client_image_family
+  network_name                           = var.network_name
+  orchestrator_base_hugepages_percentage = var.orchestrator_base_hugepages_percentage
+
+  cluster_tag_name                         = var.cluster_tag_name
+  orchestrator_node_pool                   = var.orchestrator_node_pool
+  nomad_port                               = var.nomad_port
+  consul_acl_token_secret                  = var.consul_acl_token_secret
+  nomad_acl_token_secret                   = var.nomad_acl_token_secret
+  consul_gossip_encryption_key_secret_data = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
+  consul_dns_request_token_secret_data     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+
+
+  docker_contexts_bucket_name = var.docker_contexts_bucket_name
+  cluster_setup_bucket_name   = var.cluster_setup_bucket_name
+  fc_env_pipeline_bucket_name = var.fc_env_pipeline_bucket_name
+  fc_kernels_bucket_name      = var.fc_kernels_bucket_name
+  fc_versions_bucket_name     = var.fc_versions_bucket_name
+
+  filestore_cache_enabled = var.filestore_cache_enabled
+  nfs_ip_addresses        = var.filestore_cache_enabled ? module.filestore[0].nfs_ip_addresses : []
+  nfs_mount_path          = local.nfs_mount_path
+  nfs_mount_subdir        = local.nfs_mount_subdir
+  nfs_mount_opts          = local.nfs_mount_opts
+
+  environment = var.environment
+  labels      = var.labels
+  prefix      = var.prefix
+
+  file_hash = local.file_hash
+
+  depends_on = [
+    google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+  ]
 }

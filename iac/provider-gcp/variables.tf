@@ -115,7 +115,7 @@ variable "build_cluster_cache_disk_size_gb" {
 }
 
 variable "build_cluster_cache_disk_type" {
-  description = "The GCE cache disk type for the build machines."
+  description = "The cache disk type for the build machines."
   type        = string
   default     = "pd-ssd"
 }
@@ -302,7 +302,7 @@ variable "client_cluster_cache_disk_size_gb" {
 }
 
 variable "client_cluster_cache_disk_type" {
-  description = "The GCE cache disk type for the client machines."
+  description = "The cache disk type for the client machines."
   type        = string
   default     = "pd-ssd"
 }
@@ -502,14 +502,39 @@ variable "remote_repository_enabled" {
 
 variable "build_cluster_cache_disk_count" {
   type        = number
-  description = "The number of 375 GB NVME disks to raid together for storing build files."
-  default     = 3
+  description = "The number of disks for storing build files."
+  default     = 1
 }
 
 variable "client_cluster_cache_disk_count" {
   type        = number
-  description = "The number of 375 GB NVME disks to raid together for storing sandbox files."
-  default     = 3
+  description = "The number of disks to for storing sandbox files."
+  default     = 1
+}
+
+variable "client_clusters_config_json" {
+  type        = string
+  description = <<EOT
+JSON configuration for the client clusters. This will override individual client_cluster_* variables.
+Format: [{
+  "size": 1,
+  "size_max": 2,
+  "autoscaling_cpu_target": 0.6,
+  "autoscaling_memory_target": 85,
+  "machine_type": "n1-standard-8",
+  "min_cpu_platform": "Intel Skylake",
+  "cache_disk_size_gb": 500,
+  "cache_disk_type": "local-ssd",
+  "cache_disk_count": 3,
+  "boot_disk_type": "pd-ssd"
+}]
+EOT
+  default     = ""
+
+  validation {
+    condition     = var.client_clusters_config_json == "" || can(jsondecode(var.client_clusters_config_json))
+    error_message = "client_cluster_config_json must be empty or valid JSON"
+  }
 }
 
 # Boot disk type variables
@@ -547,4 +572,9 @@ variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string
   default     = "pd-ssd"
+}
+
+
+output "json" {
+  value = local.client_clusters_config
 }
