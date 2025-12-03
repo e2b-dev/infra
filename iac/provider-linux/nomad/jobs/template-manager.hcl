@@ -80,8 +80,8 @@ job "template-manager-system" {
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
 %{ endif }
         STORAGE_PROVIDER                  = "Local"
-        LOCAL_TEMPLATE_STORAGE_BASE_PATH  = "/tmp/templates"
-        LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "/tmp/build-cache"
+        LOCAL_TEMPLATE_STORAGE_BASE_PATH  = "/e2b-share/templates"
+        LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "/e2b-share/build-cache"
         ARTIFACTS_REGISTRY_PROVIDER       = "Local"
         ORCHESTRATOR_BASE_PATH            = "/orchestrator"
         FIRECRACKER_VERSIONS_DIR          = "/fc-versions"
@@ -89,11 +89,22 @@ job "template-manager-system" {
 %{ if should_download_envd && envd_artifact_url != "" }
         HOST_ENVD_PATH                    = "local/envd"
 %{ endif }
+%{ if use_nfs_share_storage }
+        NFS_SERVER_IP                     = "${nfs_server_ip}"
+%{ endif }
+        E2B_DEBUG=false
+      }
+
+      template {
+        data        = <<EOH
+${start_script}
+EOH
+        destination = "local/start.sh"
+        perms       = "0755"
       }
 
       config {
-        command = "/bin/bash"
-        args    = ["-c", " set -e; modprobe nbd nbds_max=4096 max_part=16 || true; for i in $(seq 0 4095); do if [ -e /sys/block/nbd$i/pid ]; then nbd-client -d /dev/nbd$i || true; fi; done; chmod +x local/template-manager && exec local/template-manager"]
+        command = "local/start.sh"
       }
 
       artifact {

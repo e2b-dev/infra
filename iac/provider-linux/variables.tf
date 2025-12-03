@@ -170,6 +170,26 @@ variable "use_local_namespace_storage" {
   type    = bool
   default = false
 }
+
+variable "use_nfs_share_storage" {
+  type    = bool
+  default = false
+}
+
+variable "nfs_server_ip" {
+  type    = string
+  default = ""
+}
+
+variable "enable_network_policy_job" {
+  type    = bool
+  default = false
+}
+
+variable "network_open_ports" {
+  type    = list(string)
+  default = ["2049/tcp", "111/tcp", "111/udp"]
+}
 variable "otel_collector_resources_memory_mb" { type = number }
 variable "otel_collector_resources_cpu_count" { type = number }
 variable "loki_resources_memory_mb" { type = number }

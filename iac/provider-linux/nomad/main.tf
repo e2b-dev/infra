@@ -210,7 +210,15 @@ resource "nomad_job" "template_manager" {
     shared_chunk_cache_path              = var.shared_chunk_cache_path
     sandbox_hyperloop_proxy_port         = var.sandbox_hyperloop_proxy_port
     use_local_namespace_storage          = var.use_local_namespace_storage
+    use_nfs_share_storage                = var.use_nfs_share_storage
+    nfs_server_ip                        = var.nfs_server_ip
+    start_script = templatefile("${path.module}/scripts/template_manager_start.sh.tpl", {
+      use_nfs_share_storage = var.use_nfs_share_storage
+      nfs_server_ip         = var.nfs_server_ip
+    })
   })
+
+  depends_on = [nomad_job.nfs_server]
 }
 
 resource "nomad_job" "orchestrator" {
@@ -236,8 +244,36 @@ resource "nomad_job" "orchestrator" {
     use_local_namespace_storage          = var.use_local_namespace_storage
     dockerhub_remote_repository_url      = var.dockerhub_remote_repository_url
     dockerhub_remote_repository_provider = var.dockerhub_remote_repository_provider
+    use_nfs_share_storage                = var.use_nfs_share_storage
+    nfs_server_ip                        = var.nfs_server_ip
+    start_script = templatefile("${path.module}/scripts/orchestrator_start.sh.tpl", {
+      use_nfs_share_storage = var.use_nfs_share_storage
+      nfs_server_ip         = var.nfs_server_ip
+    })
   })
 
+  depends_on = [nomad_job.nfs_server]
+}
+
+resource "nomad_job" "nfs_server" {
+  count = var.use_nfs_share_storage && var.nfs_server_ip != "" ? 1 : 0
+
+  jobspec = templatefile("${path.module}/jobs/nfs-server.hcl", {
+    datacenter   = var.datacenter
+    node_pool    = var.builder_node_pool
+    server_ip    = var.nfs_server_ip
+    start_script = templatefile("${path.module}/scripts/nfs_server_start.sh.tpl", {})
+  })
+}
+
+resource "nomad_job" "network_policy" {
+  count = var.enable_network_policy_job ? 1 : 0
+
+  jobspec = templatefile("${path.module}/jobs/network-policy.hcl", {
+    datacenter   = var.datacenter
+    node_pool    = "all"
+    ports        = join(",", var.network_open_ports)
+    start_script = templatefile("${path.module}/scripts/network_policy.sh.tpl", {})
   })
 }
 

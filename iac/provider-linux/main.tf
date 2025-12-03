@@ -123,6 +123,11 @@ module "nomad" {
   domain_name                          = var.domain_name
   use_local_namespace_storage          = var.use_local_namespace_storage
 
+  use_nfs_share_storage = var.use_nfs_share_storage
+  nfs_server_ip         = var.nfs_server_ip
+
+  enable_network_policy_job = var.enable_network_policy_job
+  network_open_ports        = var.network_open_ports
 }
 
 resource "null_resource" "artifact_scp_server" {
