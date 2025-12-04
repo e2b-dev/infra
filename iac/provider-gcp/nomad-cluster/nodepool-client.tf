@@ -59,13 +59,14 @@ resource "google_compute_region_autoscaler" "client" {
     mode = "ONLY_SCALE_OUT"
 
     cpu_utilization {
-      target = 0.6
+      target = var.client_cluster_autoscaling_cpu_target
     }
 
     metric {
       name   = "agent.googleapis.com/memory/percent_used"
       type   = "GAUGE"
-      target = 70
+      filter = "resource.type = \"gce_instance\""
+      target = var.client_cluster_autoscaling_memory_target
     }
   }
 }

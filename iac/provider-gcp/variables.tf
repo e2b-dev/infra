@@ -30,6 +30,18 @@ variable "client_cluster_size_max" {
   default = 0
 }
 
+variable "client_cluster_autoscaling_cpu_target" {
+  description = "Target CPU utilization for client autoscaling (0.0-1.0)"
+  type        = number
+  default     = 0.6
+}
+
+variable "client_cluster_autoscaling_memory_target" {
+  description = "Target memory utilization percentage for client autoscaling (0-100)"
+  type        = number
+  default     = 70
+}
+
 variable "client_machine_type" {
   type = string
 }
