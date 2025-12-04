@@ -116,5 +116,5 @@ func newStringFlag(name string, fallback string) StringFlag {
 	return flag
 }
 
-// BuildIoEngine Sync might be used for now as there seems to be a bad interaction between NBD and Async.
-var BuildIoEngine = newStringFlag("build-io-engine", "Async")
+// BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
+var BuildIoEngine = newStringFlag("build-io-engine", "Sync")
