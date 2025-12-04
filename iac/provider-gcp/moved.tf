@@ -206,7 +206,7 @@ moved {
 
 moved {
   from = module.api.google_secret_manager_secret.redis_url
-  to   = google_secret_manager_secret.redis_url
+  to   = google_secret_manager_secret.redis_cluster_url
 }
 
 moved {
@@ -232,11 +232,6 @@ moved {
 moved {
   from = module.api.google_secret_manager_secret_version.posthog_api_key
   to   = google_secret_manager_secret_version.posthog_api_key
-}
-
-moved {
-  from = module.api.google_secret_manager_secret_version.redis_url
-  to   = google_secret_manager_secret_version.redis_url
 }
 
 moved {

@@ -243,7 +243,7 @@ variable "loki_service_port" {
   })
 }
 
-variable "redis_url_secret_version" {
+variable "redis_cluster_url_secret_version" {
   type = any
 }
 

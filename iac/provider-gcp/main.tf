@@ -180,7 +180,7 @@ module "nomad" {
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
   api_admin_token                           = random_password.api_admin_secret.result
-  redis_url_secret_version                  = google_secret_manager_secret_version.redis_url
+  redis_cluster_url_secret_version          = google_secret_manager_secret_version.redis_cluster_url
   redis_tls_ca_base64_secret_version        = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed            = random_password.sandbox_access_token_hash_seed.result
 
@@ -251,7 +251,7 @@ module "redis" {
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
-  redis_url_secret_version           = google_secret_manager_secret_version.redis_url.secret
+  redis_cluster_url_secret_version   = google_secret_manager_secret_version.redis_cluster_url.secret
   redis_tls_ca_base64_secret_version = module.init.redis_tls_ca_base64_secret_version
 
   prefix = var.prefix

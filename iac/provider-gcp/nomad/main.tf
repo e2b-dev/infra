@@ -1,7 +1,7 @@
 locals {
   clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-  redis_url                    = data.google_secret_manager_secret_version.redis_url.secret_data == "redis.service.consul" ? "redis.service.consul:${var.redis_port.port}" : ""
-  redis_cluster_url            = data.google_secret_manager_secret_version.redis_url.secret_data == "redis.service.consul" ? "" : data.google_secret_manager_secret_version.redis_url.secret_data
+  redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
 }
 
 # API
@@ -36,8 +36,8 @@ provider "nomad" {
   consul_token = var.consul_acl_token_secret
 }
 
-data "google_secret_manager_secret_version" "redis_url" {
-  secret = var.redis_url_secret_version.secret
+data "google_secret_manager_secret_version" "redis_cluster_url" {
+  secret = var.redis_cluster_url_secret_version.secret
 }
 
 data "google_secret_manager_secret_version" "redis_tls_ca_base64" {

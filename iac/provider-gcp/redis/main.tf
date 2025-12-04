@@ -118,8 +118,8 @@ locals {
   redis_connection = google_memorystore_instance.valkey_cluster.endpoints[0].connections[0].psc_auto_connection[0]
 }
 
-resource "google_secret_manager_secret_version" "redis_url" {
-  secret      = var.redis_url_secret_version
+resource "google_secret_manager_secret_version" "redis_cluster_url" {
+  secret      = var.redis_cluster_url_secret_version
   secret_data = "${local.redis_connection.ip_address}:${local.redis_connection.port}"
 }
 
