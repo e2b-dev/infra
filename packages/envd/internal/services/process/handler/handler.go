@@ -51,8 +51,9 @@ type Handler struct {
 
 	stdin io.WriteCloser
 
-	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
-	EndEvent  *MultiplexedChannel[rpc.ProcessEvent_End]
+	DataEvent     *MultiplexedChannel[rpc.ProcessEvent_Data]
+	EndEvent      *MultiplexedChannel[rpc.ProcessEvent_End]
+	cgroupManager *CGroupManager
 }
 
 // This method must be called only after the process has been started
@@ -66,6 +67,7 @@ func New(
 	req *rpc.StartRequest,
 	logger *zerolog.Logger,
 	defaults *execcontext.Defaults,
+	cgroupManager *CGroupManager,
 	cancel context.CancelFunc,
 ) (*Handler, error) {
 	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
@@ -129,15 +131,16 @@ func New(
 	outCtx, outCancel := context.WithCancel(ctx)
 
 	h := &Handler{
-		Config:    req.GetProcess(),
-		cmd:       cmd,
-		Tag:       req.Tag,
-		DataEvent: outMultiplex,
-		cancel:    cancel,
-		outCtx:    outCtx,
-		outCancel: outCancel,
-		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:    logger,
+		Config:        req.GetProcess(),
+		cmd:           cmd,
+		Tag:           req.Tag,
+		DataEvent:     outMultiplex,
+		cancel:        cancel,
+		outCtx:        outCtx,
+		outCancel:     outCancel,
+		EndEvent:      NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		logger:        logger,
+		cgroupManager: cgroupManager,
 	}
 
 	if req.GetPty() != nil {
@@ -354,6 +357,8 @@ func (p *Handler) Start() (uint32, error) {
 		}
 	}
 
+	p.setCgroup(p.cmd.Process.Pid)
+
 	adjustErr := adjustOomScore(p.cmd.Process.Pid, defaultOomScore)
 	if adjustErr != nil {
 		fmt.Fprintf(os.Stderr, "error adjusting oom score for process '%s': %s\n", p.cmd, adjustErr)
@@ -367,6 +372,12 @@ func (p *Handler) Start() (uint32, error) {
 		Msg(fmt.Sprintf("Process with pid %d started", p.cmd.Process.Pid))
 
 	return uint32(p.cmd.Process.Pid), nil
+}
+
+func (p *Handler) setCgroup(pid int) {
+	if err := p.cgroupManager.Assign(pid); err != nil {
+		fmt.Fprintf(os.Stderr, "error adjusting cgroup for process '%s': %s\n", p.cmd, err)
+	}
 }
 
 func (p *Handler) Wait() {

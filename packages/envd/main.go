@@ -24,6 +24,7 @@ import (
 	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
+	handler2 "github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
@@ -164,8 +165,9 @@ func main() {
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger, defaults)
 
+	cgroupManager := handler2.NewCGroupManager()
 	processLogger := l.With().Str("logger", "process").Logger()
-	processService := processRpc.Handle(m, &processLogger, defaults)
+	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
