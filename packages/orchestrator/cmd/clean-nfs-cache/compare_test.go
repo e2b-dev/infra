@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func TestClean(t *testing.T) {
+func TestCompare(t *testing.T) {
 	const (
 		testFileSize = 7317
 		NDirs        = 500

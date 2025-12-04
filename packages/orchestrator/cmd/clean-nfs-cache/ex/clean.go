@@ -255,7 +255,6 @@ func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].Parent.Name < candidates[j].Parent.Name
 	})
-
 	var prevParent *Dir
 	for _, candidate := range candidates {
 		parent := candidate.Parent
@@ -266,8 +265,13 @@ func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
 			Size:      candidate.Size,
 		}
 		parent.Files = append(parent.Files, f)
+		if prevParent == nil {
+			prevParent = parent
 
-		if prevParent != nil && parent != prevParent {
+			continue
+		}
+
+		if parent != prevParent {
 			prevParent.Sort()
 			prevParent = parent
 		}
