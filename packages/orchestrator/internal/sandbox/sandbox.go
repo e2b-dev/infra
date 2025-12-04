@@ -672,7 +672,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.memory.Disable(); err != nil {
+	if _, err := s.memory.Disable(ctx); err != nil {
 		return fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
@@ -750,8 +750,12 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.memory.Disable(); err != nil {
-		return nil, fmt.Errorf("failed to disable uffd: %w", err)
+	// This disables the uffd and returns the dirty pages.
+	// With FC async io engine, there can be some further writes to the memory during the actual create snapshot process,
+	// but as we are still including even read pages as dirty so this should not introduce more bugs right now.
+	dirty, err := s.memory.Disable(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
@@ -798,7 +802,7 @@ func (s *Sandbox) Pause(
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
 			memfile:    memfile,
-			dirtyPages: s.memory.Dirty(),
+			dirtyPages: dirty.BitSet(),
 			blockSize:  originalMemfile.BlockSize(),
 			doneHook: func(context.Context) error {
 				return memfile.Close()
@@ -979,7 +983,7 @@ func serveMemory(
 	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
 
-	fcUffd, err := uffd.New(memfile, socketPath, memfile.BlockSize())
+	fcUffd, err := uffd.New(memfile, socketPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
