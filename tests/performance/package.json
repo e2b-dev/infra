@@ -1,0 +1,12 @@
+{
+  "name": "e2b-periodic-tests",
+  "version": "0.0.1",
+  "devDependencies": {
+    "@types/bun": "^1.3.2"
+  },
+  "description": "Periodic tests for e2b",
+  "type": "module",
+  "dependencies": {
+    "e2b": "^2.8.3"
+  }
+}
