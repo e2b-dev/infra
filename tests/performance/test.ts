@@ -15,7 +15,6 @@ function parseDdSpeed(output: string): number {
   const speed = parseFloat(match[1])
   const unit = match[2]
 
-  // Convert everything to MB/s for consistency
   switch (unit) {
     case 'KB':
       return speed * 1024
