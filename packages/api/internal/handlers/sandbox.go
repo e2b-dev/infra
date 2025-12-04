@@ -14,7 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
-	tracing "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
