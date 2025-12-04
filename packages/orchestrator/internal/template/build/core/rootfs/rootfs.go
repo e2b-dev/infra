@@ -198,6 +198,7 @@ ExecStart=/bin/bash -l -c "/usr/bin/envd"
 OOMPolicy=continue
 OOMScoreAdjust=-1000
 Environment="GOMEMLIMIT=%dMiB"
+Slice=envd.slice
 
 [Install]
 WantedBy=multi-user.target
