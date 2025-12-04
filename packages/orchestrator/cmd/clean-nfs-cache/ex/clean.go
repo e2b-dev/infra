@@ -108,18 +108,9 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	errCh := make(chan error)
 	candidateCh := make(chan *Candidate, 1)
 	deleteCh := make(chan *Candidate, c.DeleteN*2)
-	quitCh := make(chan struct{})
-	doneCh := make(chan struct{})
+	drainCh := make(chan struct{})
+	drainedCh := make(chan struct{})
 	cleanShutdown := &sync.WaitGroup{}
-
-	for range c.NumScanners {
-		cleanShutdown.Add(1)
-		go c.Scanner(ctx, candidateCh, errCh, quitCh, cleanShutdown)
-	}
-	for range c.NumDeleters {
-		cleanShutdown.Add(1)
-		go c.Deleter(ctx, deleteCh, quitCh, cleanShutdown)
-	}
 
 	batch := make([]*Candidate, 0, c.DeleteN)
 	n := 0
@@ -130,15 +121,24 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 		if draining {
 			return
 		}
-		close(quitCh)
+		close(drainCh)
 		draining = true
 		result = err
 
 		go func() {
 			// wait for scanners and deleters to finish
 			cleanShutdown.Wait()
-			close(doneCh)
+			close(drainedCh)
 		}()
+	}
+
+	for range c.NumScanners {
+		cleanShutdown.Add(1)
+		go c.Scanner(ctx, candidateCh, errCh, drainCh, cleanShutdown)
+	}
+	for range c.NumDeleters {
+		cleanShutdown.Add(1)
+		go c.Deleter(ctx, deleteCh, drainCh, cleanShutdown)
 	}
 
 	for {
@@ -148,7 +148,7 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 		}
 
 		select {
-		case <-doneCh:
+		case <-drainedCh:
 			return result
 
 		case <-ctx.Done():
