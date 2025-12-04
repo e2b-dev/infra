@@ -11,8 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type Cleaner struct {
@@ -48,9 +49,14 @@ type Counters struct {
 	DeletedAges  []time.Duration
 
 	// Syscalls
-	ReadDirC atomic.Int64
-	StatxC   atomic.Int64
-	RemoveC  atomic.Int64
+	ReadDirC           atomic.Int64
+	StatxC             atomic.Int64
+	DeleteSubmittedC   atomic.Int64
+	DeleteAttemptC     atomic.Int64
+	DeleteAlreadyGoneC atomic.Int64
+	DeleteChangedMDC   atomic.Int64
+	RemoveC            atomic.Int64
+	RemoveDirC         atomic.Int64
 }
 
 type Dir struct {
@@ -60,18 +66,18 @@ type Dir struct {
 }
 
 type File struct {
-	Name       string // short name
-	AgeMinutes uint32 // minutes since last access
-	Size       uint64
+	Name      string // short name
+	ATimeUnix int64  // atime in unix seconds
+	Size      uint64
 }
 
 type Candidate struct {
-	Parent      *Dir
-	FullPath    string
-	IsDir       bool
-	AgeMinutes  uint32
-	BAgeMinutes uint32
-	Size        uint64
+	Parent    *Dir
+	FullPath  string
+	IsDir     bool
+	ATimeUnix int64
+	BTimeUnix int64
+	Size      uint64
 }
 
 var (
@@ -160,13 +166,13 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 
 			// Process the batch, start by sorting candidates by age (oldest first)
 			sort.Slice(batch, func(i, j int) bool {
-				return batch[i].AgeMinutes > batch[j].AgeMinutes
+				return batch[i].ATimeUnix > batch[j].ATimeUnix
 			})
 
 			c.Info(ctx, "selected batch",
 				zap.Int("count", len(batch)),
-				zap.Uint32("oldest_age_minutes", batch[0].AgeMinutes),
-				zap.Uint32("newest_age_minutes", batch[len(batch)-1].AgeMinutes),
+				zap.Int64("oldest_atime_unix", batch[0].ATimeUnix),
+				zap.Int64("newest_atime_unix", batch[len(batch)-1].ATimeUnix),
 			)
 
 			// reinsert the "younger" candidates back into the directory tree
@@ -177,6 +183,7 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 			total := uint64(0)
 			for _, toDelete := range batch[:c.DeleteN] {
 				deleteCh <- toDelete
+				c.DeleteSubmittedC.Add(1)
 				total += toDelete.Size
 			}
 			c.Info(ctx, "deleting files",
@@ -213,10 +220,12 @@ func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, er
 				continuousErrors++
 				if continuousErrors >= c.MaxErrorRetries {
 					errCh <- ErrMaxRetries
+
 					return
 				}
 				errCh <- err
 			} else {
+				continuousErrors = 0
 				candidateCh <- candidate
 			}
 		}
@@ -251,9 +260,9 @@ func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
 		parent := candidate.Parent
 
 		f := File{
-			Name:       filepath.Base(candidate.FullPath),
-			AgeMinutes: candidate.AgeMinutes,
-			Size:       candidate.Size,
+			Name:      filepath.Base(candidate.FullPath),
+			ATimeUnix: candidate.ATimeUnix,
+			Size:      candidate.Size,
 		}
 		parent.Files = append(parent.Files, f)
 
@@ -271,11 +280,13 @@ func (c *Cleaner) deleteFile(ctx context.Context, candidate *Candidate) {
 	// Best-effort: get current metadata to detect atime changes or if file is gone
 	deleted := false
 	meta, err := c.stat(candidate.FullPath)
+	c.DeleteAttemptC.Add(1)
 	if err != nil {
+		c.DeleteAlreadyGoneC.Add(1)
 		// Already gone?
 		deleted = true
 		err = nil
-	} else if meta.AgeMinutes == candidate.AgeMinutes {
+	} else if meta.ATimeUnix == candidate.ATimeUnix {
 		c.RemoveC.Add(1)
 		if !c.DryRun {
 			c.timeit(ctx, "deleting file (OS)", func() {
@@ -285,12 +296,14 @@ func (c *Cleaner) deleteFile(ctx context.Context, candidate *Candidate) {
 		if err == nil {
 			deleted = true
 		}
+	} else {
+		c.DeleteChangedMDC.Add(1)
 	}
 
 	if deleted {
 		c.DeletedBytes.Add(candidate.Size)
 		c.mu.Lock()
-		c.DeletedAges = append(c.DeletedAges, time.Duration(candidate.AgeMinutes)*time.Minute)
+		c.DeletedAges = append(c.DeletedAges, time.Since(time.Unix(candidate.ATimeUnix, 0)))
 		c.mu.Unlock()
 	}
 }
@@ -304,11 +317,11 @@ func (c *Cleaner) timeit(ctx context.Context, message string, fn func()) {
 }
 
 func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {
-	os.MkdirAll(path, 0755)
+	os.MkdirAll(path, 0o755)
 
 	for i := 0; i < nDirs; i++ {
 		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i))
-		err := os.Mkdir(dirPath, 0755)
+		err := os.Mkdir(dirPath, 0o755)
 		if err != nil {
 			panic(err)
 		}
@@ -317,7 +330,7 @@ func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {
 	for i := 0; i < nFiles; i++ {
 		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i%nDirs))
 		filePath := filepath.Join(dirPath, fmt.Sprintf("file%d.txt", i))
-		err := os.WriteFile(filePath, []byte(""), 0644)
+		err := os.WriteFile(filePath, []byte(""), 0o644)
 		if err == nil {
 			err = os.Truncate(filePath, int64(fsize))
 		}

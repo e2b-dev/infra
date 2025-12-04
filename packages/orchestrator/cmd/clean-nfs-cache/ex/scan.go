@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"go.uber.org/zap"
 )
 
 func (c *Cleaner) FindCandidate(ctx context.Context) (*Candidate, error) {
@@ -39,6 +41,37 @@ func (c *Cleaner) findCandidate(ctx context.Context, dirs []*Dir) (*Candidate, e
 		if err != nil {
 			return nil, err
 		}
+
+		// If we came across an empty directory, delete it before we get too far
+		if d.IsEmpty() {
+			if len(dirs) > 1 {
+				c.mu.Lock()
+				parent := dirs[len(dirs)-2]
+				// remove this dir from parent
+				for i, subdir := range parent.Dirs {
+					if subdir.Name != d.Name {
+						continue
+					}
+					parent.Dirs = append(parent.Dirs[:i], parent.Dirs[i+1:]...)
+
+					break
+				}
+				*node = d
+				c.mu.Unlock()
+			}
+
+			if !c.DryRun {
+				c.timeit(ctx, "deleting empty dir (OS)", func() {
+					if err := os.Remove(absPath); err == nil {
+						c.RemoveDirC.Add(1)
+					} else {
+						c.Info(ctx, "failed to delete empty dir",
+							zap.String("dir", absPath),
+							zap.Error(err))
+					}
+				})
+			}
+		}
 	}
 
 	if d.IsEmpty() {
@@ -54,12 +87,11 @@ func (c *Cleaner) findCandidate(ctx context.Context, dirs []*Dir) (*Candidate, e
 		df = nil
 
 		c.mu.Lock()
-		d.Name = node.Name // TODO why is this needed?
 		*node = d
 		c.mu.Unlock()
 
 		inc := 0
-		for inc = 0; inc < len(d.Dirs) && inc < c.MaxErrorRetries; inc++ {
+		for ; inc < len(d.Dirs) && inc < 10; inc++ {
 			tryDir := &d.Dirs[(i+inc)%len(d.Dirs)]
 			// Recurse into the chosen subdir, if nothing found there try again in this dir
 			candidate, err := c.findCandidate(ctx, append(dirs, tryDir))
@@ -74,11 +106,7 @@ func (c *Cleaner) findCandidate(ctx context.Context, dirs []*Dir) (*Candidate, e
 			}
 		}
 
-		if inc >= c.MaxErrorRetries {
-			return nil, fmt.Errorf("%w: too many retries scanning subdirectories in %s", ErrMaxRetries, absPath)
-		} else {
-			return nil, fmt.Errorf("%w: nothing left to delete in %s", ErrNoFiles, absPath)
-		}
+		return nil, fmt.Errorf("%w: nothing found to delete in %s", ErrNoFiles, absPath)
 	}
 
 	// chose the oldest file, make sure we have metadata for all files in the dir
@@ -105,10 +133,10 @@ func (c *Cleaner) findCandidate(ctx context.Context, dirs []*Dir) (*Candidate, e
 	c.mu.Unlock()
 
 	candidate := &Candidate{
-		Parent:     node,
-		FullPath:   filepath.Join(absPath, f.Name),
-		AgeMinutes: f.AgeMinutes,
-		Size:       f.Size,
+		Parent:    node,
+		FullPath:  filepath.Join(absPath, f.Name),
+		ATimeUnix: f.ATimeUnix,
+		Size:      f.Size,
 	}
 
 	return candidate, nil
@@ -139,6 +167,7 @@ func (c *Cleaner) scanDir(df *os.File, d *Dir, readDir bool, stat bool) error {
 				// got exactly 2048, keep reading
 				continue
 			}
+
 			break
 		}
 
@@ -149,7 +178,6 @@ func (c *Cleaner) scanDir(df *os.File, d *Dir, readDir bool, stat bool) error {
 			// TODO: e.Type, e.Info, or e.IsDir?
 			name := e.Name()
 			t := e.Type()
-			// info , err := e.Info()
 
 			if t&os.ModeDir != 0 {
 				d.Dirs = append(d.Dirs, Dir{Name: name})
@@ -168,8 +196,8 @@ func (c *Cleaner) scanDir(df *os.File, d *Dir, readDir bool, stat bool) error {
 			if err != nil {
 				return fmt.Errorf("failed to stat file %s: %w", path, err)
 			}
-			if f.AgeMinutes == 0 {
-				f.AgeMinutes = 1 // mark as scanned even if atime is somehow zero
+			if f.ATimeUnix == 0 {
+				f.ATimeUnix = 1 // mark as scanned even if atime is somehow zero
 			}
 			d.Files[i] = *f
 		}
@@ -198,12 +226,12 @@ func (d *Dir) Sort() {
 
 	// sort the files by age, oldest last
 	sort.Slice(d.Files, func(i, j int) bool {
-		return d.Files[i].AgeMinutes < d.Files[j].AgeMinutes
+		return d.Files[i].ATimeUnix < d.Files[j].ATimeUnix
 	})
 }
 
 func (d *Dir) AreFilesScanned() bool {
-	return d.IsScanned() && len(d.Files) > 0 && d.Files[0].AgeMinutes != 0
+	return d.IsScanned() && len(d.Files) > 0 && d.Files[0].ATimeUnix != 0
 }
 
 func (d *Dir) IsScanned() bool {

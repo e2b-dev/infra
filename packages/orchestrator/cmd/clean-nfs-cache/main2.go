@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -15,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/clean-nfs-cache/ex"
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/clean-nfs-cache/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -67,13 +67,19 @@ func main() {
 
 	if c.RemoveC.Load() == 0 {
 		log.Info(ctx, "no files deleted")
+
 		return
 	}
 
 	mean, sd := standardDeviation(c.DeletedAges)
 	log.Info(ctx, "summary",
 		zap.Bool("dry_run", opts.DryRun),
+		zap.Int64("submitted", c.DeleteSubmittedC.Load()),
+		zap.Int64("attempted", c.DeleteAttemptC.Load()),
+		zap.Int64("already_gone", c.DeleteAlreadyGoneC.Load()),
+		zap.Int64("changed_MD", c.DeleteChangedMDC.Load()),
 		zap.Int64("files", c.RemoveC.Load()),
+		zap.Int64("empty_dirs", c.RemoveDirC.Load()),
 		zap.Uint64("bytes", c.DeletedBytes.Load()),
 		zap.Duration("most_recently_used", minDuration(c.DeletedAges).Round(time.Second)),
 		zap.Duration("least_recently_used", maxDuration(c.DeletedAges).Round(time.Second)),
@@ -125,17 +131,18 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 			opts.Experimental = m.Get("experimental").BoolValue()
 		}
 
-		opts.Experimental = true // REMOVE ME!!!
-
 		if opts.Experimental {
-			if opts.NumDeleters == 0 && m.Get("deleters").IsInt() {
+			if m.Get("deleters").IsNumber() {
 				opts.NumDeleters = m.Get("deleters").IntValue()
 			}
-			if opts.NumScanners == 0 && m.Get("scanners").IsInt() {
+			if m.Get("scanners").IsNumber() {
 				opts.NumScanners = m.Get("scanners").IntValue()
 			}
-			if opts.MaxErrorRetries == 0 && m.Get("maxErrorRetries").IsInt() {
+			if m.Get("maxErrorRetries").IsNumber() {
 				opts.MaxErrorRetries = m.Get("maxErrorRetries").IntValue()
+			}
+			if m.Get("targetBytesToDelete").IsNumber() {
+				opts.TargetBytesToDelete = uint64(m.Get("targetBytesToDelete").Float64Value())
 			}
 		}
 	}
@@ -167,7 +174,9 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 			return opts, nil, fmt.Errorf("could not get disk info: %w", err)
 		}
 		targetDiskUsage := uint64(opts.TargetDiskUsagePercent / 100 * float64(diskInfo.Total))
-		opts.TargetBytesToDelete = uint64(diskInfo.Used) - targetDiskUsage
+		if uint64(diskInfo.Used) > targetDiskUsage {
+			opts.TargetBytesToDelete = uint64(diskInfo.Used) - targetDiskUsage
+		}
 	}
 
 	return opts, l, nil

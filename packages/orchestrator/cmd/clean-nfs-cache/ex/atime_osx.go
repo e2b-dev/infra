@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
-	"time"
 )
 
 func (c *Cleaner) stat(path string) (*Candidate, error) {
@@ -23,15 +22,13 @@ func (c *Cleaner) stat(path string) (*Candidate, error) {
 			stat.Name(), stat.Sys())
 	}
 
-	age := time.Since(time.Unix(int64(actualStruct.Atimespec.Sec), int64(actualStruct.Atimespec.Nsec))).Minutes()
-	bage := time.Since(time.Unix(int64(actualStruct.Birthtimespec.Sec), int64(actualStruct.Birthtimespec.Nsec))).Minutes()
 	return &Candidate{
-		Parent:      nil,   // not relevant here
-		IsDir:       false, // not relevant: we are only called for files
-		FullPath:    path,
-		Size:        uint64(stat.Size()),
-		AgeMinutes:  uint32(age),
-		BAgeMinutes: uint32(bage),
+		Parent:    nil,   // not relevant here
+		IsDir:     false, // not relevant: we are only called for files
+		FullPath:  path,
+		Size:      uint64(stat.Size()),
+		ATimeUnix: actualStruct.Atimespec.Sec,
+		BTimeUnix: actualStruct.Birthtimespec.Sec,
 	}, nil
 }
 
@@ -41,9 +38,10 @@ func (c *Cleaner) statInDir(df *os.File, filename string) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &File{
-		Name:       filename,
-		AgeMinutes: cand.AgeMinutes,
-		Size:       cand.Size,
+		Name:      filename,
+		ATimeUnix: cand.ATimeUnix,
+		Size:      cand.Size,
 	}, nil
 }

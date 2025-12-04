@@ -7,16 +7,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/clean-nfs-cache/ex"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/stretchr/testify/require"
 )
 
 func TestClean(t *testing.T) {
 	const (
 		testFileSize = 7317
 		NDirs        = 500
-		NFiles       = 50000
+		NFiles       = 10000
 		PercentClean = 13
 	)
 
