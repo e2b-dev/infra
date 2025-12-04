@@ -50,7 +50,7 @@
     },
   },
   "editor.tabCompletion": "on",
-  "go.lintTool": "golangci-lint",
+  "go.lintTool": "golangci-lint-v2",
   "go.lintFlags": [
     "--path-mode=abs",
     "--fast-only",
@@ -60,22 +60,11 @@
     "fmt",
     "--stdin"
   ],
-  "go.liveErrors": {
-    "enabled": true,
-    "delay": 500
-  },
   "go.lintOnSave": "package",
   "editor.codeActionsOnSave": {
     "source.organizeImports": "explicit",
   },
   "go.useLanguageServer": true,
-  "go.languageServerExperimentalFeatures": {
-    "diagnostics": true
-  },
-  "remote.SSH.defaultExtensions": [
-    "golang.go",
-  ],
-  "go.autocompleteUnimportedPackages": true,
   "go.toolsManagement.autoUpdate": true,
   "go.testOnSave": false,
   "go.testTimeout": "20s",
@@ -87,8 +76,6 @@
   "go.inlayHints.rangeVariableTypes": true,
   "go.inlayHints.parameterNames": true,
   "go.survey.prompt": false,
-  "go.useCodeSnippetsOnFunctionSuggestWithoutType": true,
-  "go.useCodeSnippetsOnFunctionSuggest": true,
   "[go][go.mod]": {
     "editor.codeActionsOnSave": {
       "source.organizeImports": "explicit"
@@ -97,9 +84,13 @@
   "go.goroot": "${workspaceFolder}/.vscode/mise-tools/goRoot",
   "go.alternateTools": {
     "customFormatter": "golangci-lint",
+    "dlv": "${workspaceFolder}/.vscode/mise-tools/dlv",
     "go": "${workspaceFolder}/.vscode/mise-tools/go",
-    "gopls": "${workspaceFolder}/.vscode/mise-tools/gopls",
-    "dlv": "${workspaceFolder}/.vscode/mise-tools/dlv"
+    "gopls": "${workspaceFolder}/.vscode/mise-tools/gopls"
   },
-  "mise.configureExtensionsUseSymLinks": true
+  "mise.configureExtensionsUseSymLinks": true,
+  "mise.configureExtensionsAutomatically": true,
+  "mise.configureExtensionsAutomaticallyIgnoreList": [
+    "ms-vscode.js-debug"
+  ],
 }
