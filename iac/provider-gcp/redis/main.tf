@@ -119,7 +119,7 @@ locals {
 }
 
 resource "google_secret_manager_secret_version" "redis_cluster_url" {
-  secret      = var.redis_cluster_url_secret_version
+  secret      = var.redis_cluster_url_secret_version.secret
   secret_data = "${local.redis_connection.ip_address}:${local.redis_connection.port}"
 }
 
