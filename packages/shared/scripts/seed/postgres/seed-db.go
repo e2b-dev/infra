@@ -4,13 +4,11 @@ import (
 	"bufio"
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -165,19 +163,6 @@ VALUES ($1, $2, $3)
 	})
 	if err != nil {
 		panic(err)
-	}
-
-	// Create init template
-	err = db.TestsRawSQL(ctx, `
-INSERT INTO envs (id, team_id, public, build_count, spawn_count, updated_at)
-VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-`, "rki5dems9wqfm4r03t7g", teamUUID, true, 0, 0)
-	if err != nil {
-		var pgxErr *pgconn.PgError
-		// Env with ID 'rki5dems9wqfm4r03t7g' already exists. Skipping env creation
-		if !errors.As(err, &pgxErr) || pgxErr.Code != "23505" {
-			panic(err)
-		}
 	}
 
 	fmt.Printf("Database seeded.\n")
