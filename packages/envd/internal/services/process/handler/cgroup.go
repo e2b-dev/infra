@@ -15,7 +15,7 @@ type CGroupManager struct {
 	mgr *cgroup2.Manager
 }
 
-func NewCGroupManager() *CGroupManager {
+func NewCGroupManager(parent, name string, resources *cgroup2.Resources) *CGroupManager {
 	switch mode := cgroups.Mode(); mode {
 	case cgroups.Unified:
 	default:
@@ -24,20 +24,20 @@ func NewCGroupManager() *CGroupManager {
 		return nil
 	}
 
-	m, err := cgroup2.LoadSystemd("/", "envd.slice")
+	parentSlice, err := cgroup2.LoadSystemd(parent, "")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load systemd cgroups: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to load parent cgroups %q: %v", parent, err)
 
 		return nil
 	}
 
-	res := cgroup2.Resources{}
-	m, err = m.NewChild("envd-commands.slice", &res)
+	childSlice, err := parentSlice.NewChild(name, resources)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create systemd sub-cgroup: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to create child cgroup %q: %v", name, err)
+		return nil
 	}
 
-	return &CGroupManager{mgr: m}
+	return &CGroupManager{mgr: childSlice}
 }
 
 func (m *CGroupManager) Assign(pid int) error {

@@ -165,7 +165,7 @@ func main() {
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger, defaults)
 
-	cgroupManager := handler2.NewCGroupManager()
+	cgroupManager := handler2.NewCGroupManager("envd.slice", "envdcommands.slice", nil)
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
