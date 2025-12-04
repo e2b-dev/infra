@@ -50,7 +50,7 @@
     },
   },
   "editor.tabCompletion": "on",
-  "go.lintTool": "golangci-lint-v2",
+  "go.lintTool": "golangci-lint",
   "go.lintFlags": [
     "--path-mode=abs",
     "--fast-only",
