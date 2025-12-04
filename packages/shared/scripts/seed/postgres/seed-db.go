@@ -23,7 +23,7 @@ func main() {
 
 	// Prompt user for values
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Println("\nPlease enter the following values (press Enter to use default):")
+	fmt.Println("\nPlease enter the following values:")
 	fmt.Println()
 
 	fmt.Printf("Email: ")
