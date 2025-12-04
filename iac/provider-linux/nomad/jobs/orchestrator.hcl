@@ -57,9 +57,11 @@ job "orchestrator" {
         PROXY_PORT                   = "${proxy_port}"
         GIN_MODE                     = "release"
         STORAGE_PROVIDER             = "Local"
-        LOCAL_TEMPLATE_STORAGE_BASE_PATH = "/tmp/templates"
-        LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "/tmp/build-cache"
+        LOCAL_TEMPLATE_STORAGE_BASE_PATH = "/e2b-share/templates"
+        LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "/e2b-share/build-cache"
         ARTIFACTS_REGISTRY_PROVIDER  = "Local"
+        DOCKERHUB_REMOTE_REPOSITORY_URL      = "${dockerhub_remote_repository_url}"
+        DOCKERHUB_REMOTE_REPOSITORY_PROVIDER = "${dockerhub_remote_repository_provider}"
         ORCHESTRATOR_BASE_PATH       = "/orchestrator"
         FIRECRACKER_VERSIONS_DIR     = "/fc-versions"
         HOST_KERNELS_DIR             = "/fc-kernels"
@@ -68,11 +70,22 @@ job "orchestrator" {
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
 %{ endif }
+%{ if use_nfs_share_storage }
+        NFS_SERVER_IP                 = "${nfs_server_ip}"
+%{ endif }
+        E2B_DEBUG=false
+      }
+
+      template {
+        data        = <<EOH
+${start_script}
+EOH
+        destination = "local/start.sh"
+        perms       = "0755"
       }
 
       config {
-        command = "/bin/bash"
-        args    = ["-c", " set -e; modprobe nbd nbds_max=4096 max_part=16 || true; for i in $(seq 0 4095); do if [ -e /sys/block/nbd$i/pid ]; then nbd-client -d /dev/nbd$i || true; fi; done; chmod +x local/orchestrator && exec local/orchestrator"]
+        command = "local/start.sh"
       }
 
       artifact {

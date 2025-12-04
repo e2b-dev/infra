@@ -9,7 +9,11 @@ job "otel-collector" {
 
       config {
         network_mode = "host"
+%{ if docker_image_prefix != "" }
+        image        = "${docker_image_prefix}/otel/opentelemetry-collector:0.101.0"
+%{ else }
         image        = "otel/opentelemetry-collector:0.101.0"
+%{ endif }
         args = [
           "--config", "local/config/otel-collector-config.yaml"
         ]

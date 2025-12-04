@@ -64,6 +64,7 @@ tf_vars := \
 	$(call tfvar, API_SECRET) \
 	$(call tfvar, ORCHESTRATOR_ARTIFACT_URL) \
 	$(call tfvar, TEMPLATE_MANAGER_ARTIFACT_URL) \
+	$(call tfvar, ENVD_ARTIFACT_URL) \
 	$(call tfvar, ORCHESTRATOR_NODE_POOL) \
 	$(call tfvar, BUILDER_NODE_POOL) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
@@ -72,6 +73,7 @@ tf_vars := \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, SHARED_CHUNK_CACHE_PATH) \
 	$(call tfvar, DOCKERHUB_REMOTE_REPOSITORY_URL) \
+	$(call tfvar, DOCKERHUB_REMOTE_REPOSITORY_PROVIDER) \
 	$(call tfvar, REDIS_TLS_CA_BASE64) \
 	$(call tfvar, REDIS_SECURE_CLUSTER_URL) \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
@@ -88,7 +90,11 @@ tf_vars := \
 	$(call tfvar, CLICKHOUSE_METRICS_PORT) \
 	$(call tfvar, SANDBOX_ACCESS_TOKEN_HASH_SEED) \
 	$(call tfvar, SANDBOX_HYPERLOOP_PROXY_PORT) \
-	$(call tfvar, USE_LOCAL_NAMESPACE_STORAGE)
+	$(call tfvar, USE_LOCAL_NAMESPACE_STORAGE) \
+	$(call tfvar, USE_NFS_SHARE_STORAGE) \
+	$(call tfvar, NFS_SERVER_IP) \
+	$(call tfvar, ENABLE_NETWORK_POLICY_JOB) \
+	$(call tfvar, NETWORK_OPEN_PORTS)
 
 # Pass-through for Docker image prefix and artifact HTTP server
 tf_vars += \

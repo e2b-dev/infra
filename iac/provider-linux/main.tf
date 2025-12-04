@@ -88,36 +88,46 @@ module "nomad" {
   docker_reverse_proxy_image     = var.docker_reverse_proxy_image
   sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
 
-  clickhouse_username                = "e2b"
-  clickhouse_database                = var.clickhouse_database
-  clickhouse_server_count            = 0
-  clickhouse_server_port             = var.clickhouse_server_port
-  clickhouse_resources_memory_mb     = var.clickhouse_resources_memory_mb
-  clickhouse_resources_cpu_count     = var.clickhouse_resources_cpu_count
-  clickhouse_metrics_port            = var.clickhouse_metrics_port
-  clickhouse_version                 = "24.3.3"
-  api_secret                         = var.api_secret
-  otel_collector_resources_memory_mb = var.otel_collector_resources_memory_mb
-  otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
-  orchestrator_artifact_url          = var.orchestrator_artifact_url
-  template_manager_artifact_url      = var.template_manager_artifact_url
-  template_manager_machine_count     = var.template_manager_machine_count
-  logs_health_proxy_port             = var.logs_health_proxy_port
-  template_bucket_name               = var.template_bucket_name
-  build_cache_bucket_name            = var.build_cache_bucket_name
-  loki_resources_memory_mb           = var.loki_resources_memory_mb
-  loki_resources_cpu_count           = var.loki_resources_cpu_count
-  redis_tls_ca_base64                = var.redis_tls_ca_base64
-  shared_chunk_cache_path            = var.shared_chunk_cache_path
-  dockerhub_remote_repository_url    = var.dockerhub_remote_repository_url
-  orchestrator_proxy_port            = var.orchestrator_proxy_port
-  orchestrator_node_pool             = var.orchestrator_node_pool
-  redis_secure_cluster_url           = var.redis_secure_cluster_url
-  allow_sandbox_internet             = var.allow_sandbox_internet
-  builder_node_pool                  = var.builder_node_pool
-  envd_timeout                       = var.envd_timeout
-  domain_name                        = var.domain_name
-  use_local_namespace_storage        = var.use_local_namespace_storage
+  clickhouse_username                  = "e2b"
+  clickhouse_database                  = var.clickhouse_database
+  clickhouse_server_count              = 0
+  clickhouse_server_port               = var.clickhouse_server_port
+  clickhouse_resources_memory_mb       = var.clickhouse_resources_memory_mb
+  clickhouse_resources_cpu_count       = var.clickhouse_resources_cpu_count
+  clickhouse_metrics_port              = var.clickhouse_metrics_port
+  clickhouse_version                   = "24.3.3"
+  api_secret                           = var.api_secret
+  otel_collector_resources_memory_mb   = var.otel_collector_resources_memory_mb
+  otel_collector_resources_cpu_count   = var.otel_collector_resources_cpu_count
+  orchestrator_artifact_url            = var.orchestrator_artifact_url
+  template_manager_artifact_url        = var.template_manager_artifact_url
+  envd_artifact_url                    = var.envd_artifact_url
+  fc_artifact_node_pools               = var.fc_artifact_node_pools
+  template_manager_machine_count       = var.template_manager_machine_count
+  logs_health_proxy_port               = var.logs_health_proxy_port
+  template_bucket_name                 = var.template_bucket_name
+  build_cache_bucket_name              = var.build_cache_bucket_name
+  loki_resources_memory_mb             = var.loki_resources_memory_mb
+  loki_resources_cpu_count             = var.loki_resources_cpu_count
+  redis_tls_ca_base64                  = var.redis_tls_ca_base64
+  shared_chunk_cache_path              = var.shared_chunk_cache_path
+  dockerhub_remote_repository_url      = var.dockerhub_remote_repository_url
+  dockerhub_remote_repository_provider = var.dockerhub_remote_repository_provider
+  docker_image_prefix                  = var.docker_image_prefix
+  orchestrator_proxy_port              = var.orchestrator_proxy_port
+  orchestrator_node_pool               = var.orchestrator_node_pool
+  redis_secure_cluster_url             = var.redis_secure_cluster_url
+  allow_sandbox_internet               = var.allow_sandbox_internet
+  builder_node_pool                    = var.builder_node_pool
+  envd_timeout                         = var.envd_timeout
+  domain_name                          = var.domain_name
+  use_local_namespace_storage          = var.use_local_namespace_storage
+
+  use_nfs_share_storage = var.use_nfs_share_storage
+  nfs_server_ip         = var.nfs_server_ip
+
+  enable_network_policy_job = var.enable_network_policy_job
+  network_open_ports        = var.network_open_ports
 }
 
 resource "null_resource" "artifact_scp_server" {

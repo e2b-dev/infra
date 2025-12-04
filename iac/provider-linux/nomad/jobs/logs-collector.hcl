@@ -37,7 +37,11 @@ job "logs-collector" {
 
       config {
         network_mode = "host"
+%{ if docker_image_prefix != "" }
+        image        = "${docker_image_prefix}/timberio/vector:0.34.X-alpine"
+%{ else }
         image        = "timberio/vector:0.34.X-alpine"
+%{ endif }
         ports        = ["health","logs"]
       }
 
@@ -76,13 +80,26 @@ path_key = "_path"
 type = "remap"
 inputs = ["http_server"]
 source = """
-del("._path")
+del(."_path")
 .sandboxID = .instanceID
 .timestamp = parse_timestamp(.timestamp, format: "%+") ?? now()
 if exists(.sandbox_id) { .sandboxID = .sandbox_id }
 if exists(.build_id) { .buildID = .build_id }
 if exists(.env_id) { .envID = .env_id }
 if exists(.team_id) { .teamID = .team_id }
+
+if exists(."template.id") { .templateID = ."template.id"; del(."template.id") }
+if exists(."sandbox.id") { .sandboxID = ."sandbox.id"; del(."sandbox.id") }
+if exists(."build.id") { .buildID = ."build.id"; del(."build.id") }
+if exists(."env.id") { .envID = ."env.id"; del(."env.id") }
+if exists(."team.id") { .teamID = ."team.id"; del(."team.id") }
+
+if !exists(.envID) { .envID = "unknown" }
+if !exists(.category) { .category = "default" }
+if !exists(.teamID) { .teamID = "unknown" }
+if !exists(.sandboxID) { .sandboxID = "unknown" }
+if !exists(.buildID) { .buildID = "unknown" }
+if !exists(.service) { .service = "envd" }
 """
 
 [transforms.internal_routing]

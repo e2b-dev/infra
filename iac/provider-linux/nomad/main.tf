@@ -32,6 +32,7 @@ resource "nomad_job" "ingress" {
       consul_endpoint      = var.consul_address
       consul_endpoint_host = replace(var.consul_address, "http://", "")
       ingress_node_ip      = var.ingress_node_ip
+      docker_image_prefix  = var.docker_image_prefix
   })
 }
 
@@ -116,10 +117,11 @@ resource "nomad_job" "client_proxy" {
 resource "nomad_job" "redis" {
   jobspec = templatefile("${path.module}/jobs/redis.hcl",
     {
-      node_pool   = var.api_node_pool
-      datacenter  = var.datacenter
-      port_number = 6379
-      port_name   = "redis"
+      node_pool           = var.api_node_pool
+      datacenter          = var.datacenter
+      port_number         = 6379
+      port_name           = "redis"
+      docker_image_prefix = var.docker_image_prefix
     }
   )
 }
@@ -139,6 +141,7 @@ resource "nomad_job" "docker_reverse_proxy" {
       gcp_project_id                = ""
       gcp_region                    = ""
       docker_registry               = ""
+      docker_image_prefix           = var.docker_image_prefix
     }
   )
 }
@@ -154,6 +157,7 @@ resource "nomad_job" "otel_collector" {
     otel_collector_config = templatefile("${path.module}/configs/otel-collector.yaml", {
       otel_collector_grpc_port = var.otel_collector_grpc_port
     })
+    docker_image_prefix = var.docker_image_prefix
   })
 }
 
@@ -163,6 +167,7 @@ resource "nomad_job" "logs_collector" {
     logs_port_number         = var.logs_proxy_port.port
     logs_health_path         = var.logs_health_proxy_port.health_path
     loki_service_port_number = var.loki_service_port.port
+    docker_image_prefix      = var.docker_image_prefix
   })
 }
 
@@ -174,57 +179,101 @@ resource "nomad_job" "loki" {
     cpu_count                = var.loki_resources_cpu_count
     loki_service_port_number = var.loki_service_port.port
     loki_service_port_name   = var.loki_service_port.name
+    docker_image_prefix      = var.docker_image_prefix
   })
 }
 
 resource "nomad_job" "template_manager" {
   jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
-    update_stanza                   = var.template_manager_machine_count > 1
-    node_pool                       = var.builder_node_pool
-    datacenter                      = var.datacenter
-    port                            = var.template_manager_port
-    proxy_port                      = var.orchestrator_proxy_port
-    environment                     = var.environment
-    consul_acl_token                = var.consul_acl_token
-    api_secret                      = var.api_secret
-    artifact_url                    = var.template_manager_artifact_url
-    template_manager_checksum       = ""
-    otel_tracing_print              = false
-    template_bucket_name            = var.template_bucket_name
-    build_cache_bucket_name         = var.build_cache_bucket_name
-    otel_collector_grpc_endpoint    = "localhost:${var.otel_collector_grpc_port}"
-    logs_collector_address          = "http://localhost:${var.logs_proxy_port.port}"
-    orchestrator_services           = "template-manager"
-    clickhouse_connection_string    = local.clickhouse_connection_string
-    dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
-    launch_darkly_api_key           = trimspace(var.launch_darkly_api_key)
-    shared_chunk_cache_path         = var.shared_chunk_cache_path
-    sandbox_hyperloop_proxy_port    = var.sandbox_hyperloop_proxy_port
-    use_local_namespace_storage     = var.use_local_namespace_storage
+    update_stanza                        = var.template_manager_machine_count > 1
+    node_pool                            = var.builder_node_pool
+    datacenter                           = var.datacenter
+    port                                 = var.template_manager_port
+    proxy_port                           = var.orchestrator_proxy_port
+    environment                          = var.environment
+    consul_acl_token                     = var.consul_acl_token
+    api_secret                           = var.api_secret
+    artifact_url                         = var.template_manager_artifact_url
+    envd_artifact_url                    = var.envd_artifact_url
+    should_download_envd                 = contains(var.fc_artifact_node_pools, var.builder_node_pool)
+    template_manager_checksum            = ""
+    otel_tracing_print                   = false
+    template_bucket_name                 = var.template_bucket_name
+    build_cache_bucket_name              = var.build_cache_bucket_name
+    otel_collector_grpc_endpoint         = "localhost:${var.otel_collector_grpc_port}"
+    logs_collector_address               = "http://localhost:${var.logs_proxy_port.port}"
+    orchestrator_services                = "template-manager"
+    clickhouse_connection_string         = local.clickhouse_connection_string
+    dockerhub_remote_repository_url      = var.dockerhub_remote_repository_url
+    dockerhub_remote_repository_provider = var.dockerhub_remote_repository_provider
+    launch_darkly_api_key                = trimspace(var.launch_darkly_api_key)
+    shared_chunk_cache_path              = var.shared_chunk_cache_path
+    sandbox_hyperloop_proxy_port         = var.sandbox_hyperloop_proxy_port
+    use_local_namespace_storage          = var.use_local_namespace_storage
+    use_nfs_share_storage                = var.use_nfs_share_storage
+    nfs_server_ip                        = var.nfs_server_ip
+    start_script = templatefile("${path.module}/scripts/template_manager_start.sh.tpl", {
+      use_nfs_share_storage = var.use_nfs_share_storage
+      nfs_server_ip         = var.nfs_server_ip
+    })
   })
+
+  depends_on = [nomad_job.nfs_server]
 }
 
 resource "nomad_job" "orchestrator" {
   jobspec = templatefile("${path.module}/jobs/orchestrator.hcl", {
-    node_pool                    = var.orchestrator_node_pool
-    port                         = var.orchestrator_port
-    proxy_port                   = var.orchestrator_proxy_port
-    environment                  = var.environment
-    consul_acl_token             = var.consul_acl_token
-    otel_tracing_print           = false
-    logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    envd_timeout                 = var.envd_timeout
-    template_bucket_name         = var.template_bucket_name
-    otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-    allow_sandbox_internet       = var.allow_sandbox_internet
-    shared_chunk_cache_path      = var.shared_chunk_cache_path
-    clickhouse_connection_string = local.clickhouse_connection_string
-    redis_url                    = var.redis_url == "redis.service.consul" ? "" : var.redis_url
-    redis_cluster_url            = var.redis_secure_cluster_url
-    redis_tls_ca_base64          = var.redis_tls_ca_base64
-    launch_darkly_api_key        = trimspace(var.launch_darkly_api_key)
-    artifact_url                 = var.orchestrator_artifact_url
-    use_local_namespace_storage  = var.use_local_namespace_storage
+    node_pool                            = var.orchestrator_node_pool
+    port                                 = var.orchestrator_port
+    proxy_port                           = var.orchestrator_proxy_port
+    environment                          = var.environment
+    consul_acl_token                     = var.consul_acl_token
+    otel_tracing_print                   = false
+    logs_collector_address               = "http://localhost:${var.logs_proxy_port.port}"
+    envd_timeout                         = var.envd_timeout
+    template_bucket_name                 = var.template_bucket_name
+    otel_collector_grpc_endpoint         = "localhost:${var.otel_collector_grpc_port}"
+    allow_sandbox_internet               = var.allow_sandbox_internet
+    shared_chunk_cache_path              = var.shared_chunk_cache_path
+    clickhouse_connection_string         = local.clickhouse_connection_string
+    redis_url                            = var.redis_url == "redis.service.consul" ? "" : var.redis_url
+    redis_cluster_url                    = var.redis_secure_cluster_url
+    redis_tls_ca_base64                  = var.redis_tls_ca_base64
+    launch_darkly_api_key                = trimspace(var.launch_darkly_api_key)
+    artifact_url                         = var.orchestrator_artifact_url
+    use_local_namespace_storage          = var.use_local_namespace_storage
+    dockerhub_remote_repository_url      = var.dockerhub_remote_repository_url
+    dockerhub_remote_repository_provider = var.dockerhub_remote_repository_provider
+    use_nfs_share_storage                = var.use_nfs_share_storage
+    nfs_server_ip                        = var.nfs_server_ip
+    start_script = templatefile("${path.module}/scripts/orchestrator_start.sh.tpl", {
+      use_nfs_share_storage = var.use_nfs_share_storage
+      nfs_server_ip         = var.nfs_server_ip
+    })
+  })
+
+  depends_on = [nomad_job.nfs_server]
+}
+
+resource "nomad_job" "nfs_server" {
+  count = var.use_nfs_share_storage && var.nfs_server_ip != "" ? 1 : 0
+
+  jobspec = templatefile("${path.module}/jobs/nfs-server.hcl", {
+    datacenter   = var.datacenter
+    node_pool    = var.builder_node_pool
+    server_ip    = var.nfs_server_ip
+    start_script = templatefile("${path.module}/scripts/nfs_server_start.sh.tpl", {})
+  })
+}
+
+resource "nomad_job" "network_policy" {
+  count = var.enable_network_policy_job ? 1 : 0
+
+  jobspec = templatefile("${path.module}/jobs/network-policy.hcl", {
+    datacenter   = var.datacenter
+    node_pool    = "all"
+    ports        = join(",", var.network_open_ports)
+    start_script = templatefile("${path.module}/scripts/network_policy.sh.tpl", {})
   })
 }
 
@@ -239,5 +288,6 @@ resource "nomad_job" "clickhouse" {
     clickhouse_server_port  = var.clickhouse_server_port.port
     clickhouse_metrics_port = var.clickhouse_metrics_port
     clickhouse_version      = "24.3.3"
+    docker_image_prefix     = var.docker_image_prefix
   })
 }

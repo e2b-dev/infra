@@ -129,6 +129,10 @@ variable "sandbox_access_token_hash_seed" {
 variable "orchestrator_proxy_port" { type = number }
 variable "orchestrator_artifact_url" { type = string }
 variable "template_manager_artifact_url" { type = string }
+variable "envd_artifact_url" {
+  type    = string
+  default = ""
+}
 variable "orchestrator_node_pool" { type = string }
 variable "builder_node_pool" { type = string }
 variable "template_bucket_name" {
@@ -149,6 +153,10 @@ variable "dockerhub_remote_repository_url" {
   type    = string
   default = ""
 }
+variable "dockerhub_remote_repository_provider" {
+  type    = string
+  default = ""
+}
 variable "api_secret" { type = string }
 variable "redis_tls_ca_base64" {
   type    = string
@@ -161,6 +169,26 @@ variable "redis_secure_cluster_url" {
 variable "use_local_namespace_storage" {
   type    = bool
   default = false
+}
+
+variable "use_nfs_share_storage" {
+  type    = bool
+  default = false
+}
+
+variable "nfs_server_ip" {
+  type    = string
+  default = ""
+}
+
+variable "enable_network_policy_job" {
+  type    = bool
+  default = false
+}
+
+variable "network_open_ports" {
+  type    = list(string)
+  default = ["2049/tcp", "111/tcp", "111/udp"]
 }
 variable "otel_collector_resources_memory_mb" { type = number }
 variable "otel_collector_resources_cpu_count" { type = number }

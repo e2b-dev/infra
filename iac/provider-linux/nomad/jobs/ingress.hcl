@@ -57,7 +57,11 @@ job "ingress" {
 
       config {
         network_mode = "host"
+%{ if docker_image_prefix != "" }
+        image        = "${docker_image_prefix}/traefik:v3.5"
+%{ else }
         image        = "traefik:v3.5"
+%{ endif }
         ports        = ["control", "ingress"]
         args = [
           "--entrypoints.websecure.address=:${ingress_port}",
