@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -80,7 +81,20 @@ func (a *APIStore) startSandbox(
 	props := properties.
 		Set("environment", build.EnvID).
 		Set("instance_id", sandbox.SandboxID).
-		Set("alias", alias)
+		Set("alias", alias).
+		Set("resume", isResume).
+		Set("build_id", sandbox.BuildID).
+		Set("envd_version", build.EnvdVersion).
+		Set("node_id", sandbox.NodeID).
+		Set("vcpu", sandbox.VCpu).
+		Set("ram_mb", sandbox.RamMB).
+		Set("total_disk_size_mb", sandbox.TotalDiskSizeMB).
+		Set("auto_pause", autoPause)
+
+	// Calculate the time it took for the sandbox to start from request receipt
+	if requestStartTime, ok := tracing.GetRequestStartTime(ctx); ok {
+		props = props.Set("start_time_ms", time.Since(requestStartTime).Milliseconds())
+	}
 
 	if mcp != nil {
 		props = props.Set("mcp_servers", slices.Collect(maps.Keys(mcp)))
