@@ -5,8 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func TestScanDir(t *testing.T) {

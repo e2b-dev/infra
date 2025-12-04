@@ -40,8 +40,10 @@ func main() {
 	if err != nil {
 		return
 	}
+	defer log.Sync()
 	if !opts.Experimental {
 		main1()
+
 		return
 	}
 
@@ -74,11 +76,11 @@ func main() {
 	mean, sd := standardDeviation(c.DeletedAges)
 	log.Info(ctx, "summary",
 		zap.Bool("dry_run", opts.DryRun),
-		zap.Int64("submitted", c.DeleteSubmittedC.Load()),
-		zap.Int64("attempted", c.DeleteAttemptC.Load()),
-		zap.Int64("already_gone", c.DeleteAlreadyGoneC.Load()),
-		zap.Int64("changed_MD", c.DeleteChangedMDC.Load()),
-		zap.Int64("files", c.RemoveC.Load()),
+		zap.Int64("del_submitted", c.DeleteSubmittedC.Load()),
+		zap.Int64("del_attempted", c.DeleteAttemptC.Load()),
+		zap.Int64("del_already_gone", c.DeleteAlreadyGoneC.Load()),
+		zap.Int64("del_skip_changed", c.DeleteSkipC.Load()),
+		zap.Int64("del_files", c.RemoveC.Load()),
 		zap.Int64("empty_dirs", c.RemoveDirC.Load()),
 		zap.Uint64("bytes", c.DeletedBytes.Load()),
 		zap.Duration("most_recently_used", minDuration(c.DeletedAges).Round(time.Second)),

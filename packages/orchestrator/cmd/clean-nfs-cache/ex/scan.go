@@ -204,6 +204,7 @@ func (c *Cleaner) scanDir(df *os.File, d *Dir, readDir bool, stat bool) error {
 	}
 
 	d.Sort()
+
 	return nil
 }
 
@@ -215,6 +216,7 @@ func (c *Cleaner) abs(path []*Dir, name string) string {
 	if name != "" {
 		join = filepath.Join(join, name)
 	}
+
 	return join
 }
 

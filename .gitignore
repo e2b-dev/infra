@@ -13,5 +13,5 @@ tests/periodic-test/build-template/e2b.toml
 .air
 go.work.sum
 .infisical.json
-**/.vscode/mise-tools
+.vscode/mise-tools
 /packages/fc-kernels

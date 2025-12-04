@@ -54,7 +54,7 @@ type Counters struct {
 	DeleteSubmittedC   atomic.Int64
 	DeleteAttemptC     atomic.Int64
 	DeleteAlreadyGoneC atomic.Int64
-	DeleteChangedMDC   atomic.Int64
+	DeleteSkipC        atomic.Int64
 	RemoveC            atomic.Int64
 	RemoveDirC         atomic.Int64
 }
@@ -96,6 +96,7 @@ func NewCleaner(opts Options, log logger.Logger) *Cleaner {
 			Name: filepath.Base(opts.Path),
 		},
 	}
+
 	return c
 }
 
@@ -111,11 +112,11 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	doneCh := make(chan struct{})
 	cleanShutdown := &sync.WaitGroup{}
 
-	for i := 0; i < c.NumScanners; i++ {
+	for range c.NumScanners {
 		cleanShutdown.Add(1)
 		go c.Scanner(ctx, candidateCh, errCh, quitCh, cleanShutdown)
 	}
-	for i := 0; i < c.NumDeleters; i++ {
+	for range c.NumDeleters {
 		cleanShutdown.Add(1)
 		go c.Deleter(ctx, deleteCh, quitCh, cleanShutdown)
 	}
@@ -281,12 +282,15 @@ func (c *Cleaner) deleteFile(ctx context.Context, candidate *Candidate) {
 	deleted := false
 	meta, err := c.stat(candidate.FullPath)
 	c.DeleteAttemptC.Add(1)
-	if err != nil {
+
+	switch {
+	case err != nil:
 		c.DeleteAlreadyGoneC.Add(1)
 		// Already gone?
 		deleted = true
 		err = nil
-	} else if meta.ATimeUnix == candidate.ATimeUnix {
+
+	case meta.ATimeUnix == candidate.ATimeUnix:
 		c.RemoveC.Add(1)
 		if !c.DryRun {
 			c.timeit(ctx, "deleting file (OS)", func() {
@@ -296,8 +300,9 @@ func (c *Cleaner) deleteFile(ctx context.Context, candidate *Candidate) {
 		if err == nil {
 			deleted = true
 		}
-	} else {
-		c.DeleteChangedMDC.Add(1)
+
+	default:
+		c.DeleteSkipC.Add(1)
 	}
 
 	if deleted {
@@ -319,7 +324,7 @@ func (c *Cleaner) timeit(ctx context.Context, message string, fn func()) {
 func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {
 	os.MkdirAll(path, 0o755)
 
-	for i := 0; i < nDirs; i++ {
+	for i := range nDirs {
 		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i))
 		err := os.Mkdir(dirPath, 0o755)
 		if err != nil {
@@ -327,7 +332,7 @@ func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {
 		}
 	}
 
-	for i := 0; i < nFiles; i++ {
+	for i := range nFiles {
 		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i%nDirs))
 		filePath := filepath.Join(dirPath, fmt.Sprintf("file%d.txt", i))
 		err := os.WriteFile(filePath, []byte(""), 0o644)
@@ -361,5 +366,6 @@ func (c *Cleaner) validateOptions() error {
 	if c.TargetBytesToDelete == 0 && c.TargetDiskUsagePercent == 0 {
 		return errors.New("either target-bytes-to-delete or disk-usage-target-percent must be set")
 	}
+
 	return nil
 }

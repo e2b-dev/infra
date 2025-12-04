@@ -84,7 +84,7 @@ func cleanNFSCache(ctx context.Context, args []string, targetBytesToDelete int64
 	targetDiskUsage := int64(float64(opts.targetDiskUsagePercent) / 100 * float64(diskInfo.Total))
 	// for testing
 	if targetBytesToDelete > 0 {
-		targetDiskUsage = diskInfo.Used - int64(targetBytesToDelete)
+		targetDiskUsage = diskInfo.Used - targetBytesToDelete
 	}
 	areWeDone := func() bool {
 		return diskInfo.Used < targetDiskUsage
