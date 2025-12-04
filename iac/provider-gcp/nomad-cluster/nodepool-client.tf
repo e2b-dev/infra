@@ -61,6 +61,12 @@ resource "google_compute_region_autoscaler" "client" {
     cpu_utilization {
       target = 0.6
     }
+
+    metric {
+      name   = "agent.googleapis.com/memory/percent_used"
+      type   = "GAUGE"
+      target = 70
+    }
   }
 }
 
