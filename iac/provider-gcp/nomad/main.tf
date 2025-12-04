@@ -1,5 +1,7 @@
 locals {
   clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  redis_url                    = data.google_secret_manager_secret_version.redis_url.secret_data == "redis.service.consul" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url            = data.google_secret_manager_secret_version.redis_url.secret_data == "redis.service.consul" ? "" : data.google_secret_manager_secret_version.redis_url.secret_data
 }
 
 # API
@@ -37,11 +39,6 @@ provider "nomad" {
 data "google_secret_manager_secret_version" "redis_url" {
   secret = var.redis_url_secret_version.secret
 }
-
-data "google_secret_manager_secret_version" "redis_secure_cluster_url" {
-  secret = var.redis_secure_cluster_url_secret_version.secret
-}
-
 
 data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
   secret = var.redis_tls_ca_base64_secret_version.secret
@@ -97,8 +94,8 @@ resource "nomad_job" "api" {
     otel_tracing_print             = var.otel_tracing_print
     nomad_acl_token                = var.nomad_acl_token_secret
     admin_token                    = var.api_admin_token
-    redis_url                      = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
-    redis_cluster_url              = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) == "" ? "" : data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data
+    redis_url                      = local.redis_url
+    redis_cluster_url              = local.redis_cluster_url
     redis_tls_ca_base64            = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
     clickhouse_connection_string   = local.clickhouse_connection_string
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
@@ -156,8 +153,8 @@ resource "nomad_job" "client_proxy" {
       gcp_zone    = var.gcp_zone
       environment = var.environment
 
-      redis_url           = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
-      redis_cluster_url   = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) != "" ? data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data : ""
+      redis_url           = local.redis_url
+      redis_cluster_url   = local.redis_cluster_url
       redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
       loki_url = "http://loki.service.consul:${var.loki_service_port.port}"
@@ -401,11 +398,10 @@ locals {
     allow_sandbox_internet       = var.allow_sandbox_internet
     launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
     clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-    redis_url                    = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
-    # Secure redis url uses " " as a default, redis url uses "redis.service.consul"
-    redis_cluster_url       = trimspace(data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data) != "" ? data.google_secret_manager_secret_version.redis_secure_cluster_url.secret_data : ""
-    redis_tls_ca_base64     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-    shared_chunk_cache_path = var.shared_chunk_cache_path
+    redis_url                    = local.redis_url
+    redis_cluster_url            = local.redis_cluster_url
+    redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    shared_chunk_cache_path      = var.shared_chunk_cache_path
   }
 
   orchestrator_job_check = templatefile("${path.module}/jobs/orchestrator.hcl", merge(
