@@ -208,7 +208,7 @@ ExecStart=
 ExecStart=-/sbin/agetty --noissue --autologin root %I 115200,38400,9600 vt102
 `
 
-	hostname := "e2b.local"
+	hostname := "e2b"
 
 	hosts := fmt.Sprintf(`127.0.0.1	localhost
 ::1	localhost ip6-localhost ip6-loopback
