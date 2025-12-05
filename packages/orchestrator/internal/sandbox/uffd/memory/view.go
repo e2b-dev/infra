@@ -56,7 +56,7 @@ func (v *View) ReadAt(d []byte, off int64) (n int, err error) {
 	for n < len(d) {
 		addr, size, err := v.m.GetHostVirtAddr(off + int64(n))
 		if err != nil {
-			return 0, fmt.Errorf("failed to get host virt addr: %w", err)
+			return n, fmt.Errorf("failed to get host virt addr: %w", err)
 		}
 
 		remainingSize := min(size, int64(len(d)-n))
@@ -67,7 +67,7 @@ func (v *View) ReadAt(d []byte, off int64) (n int, err error) {
 		}
 
 		if err != nil {
-			return n, fmt.Errorf("failed to read from : %w", err)
+			return n, fmt.Errorf("failed to read from /proc/%d/mem: %w", os.Getpid(), err)
 		}
 
 		n += written
