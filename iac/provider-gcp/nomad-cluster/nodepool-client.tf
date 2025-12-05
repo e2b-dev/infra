@@ -62,11 +62,14 @@ resource "google_compute_region_autoscaler" "client" {
       target = var.client_cluster_autoscaling_cpu_target
     }
 
-    metric {
-      name   = "agent.googleapis.com/memory/percent_used"
-      type   = "GAUGE"
-      filter = "resource.type = \"gce_instance\""
-      target = var.client_cluster_autoscaling_memory_target
+    dynamic "metric" {
+      for_each = var.client_cluster_autoscaling_memory_target < 100 ? [1] : []
+      content {
+        name   = "agent.googleapis.com/memory/percent_used"
+        type   = "GAUGE"
+        filter = "resource.type = \"gce_instance\" AND metric.labels.state = \"used\""
+        target = var.client_cluster_autoscaling_memory_target
+      }
     }
   }
 }
