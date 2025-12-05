@@ -212,7 +212,7 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 
 			// Process the batch, start by sorting candidates by age (oldest first)
 			sort.Slice(batch, func(i, j int) bool {
-				return batch[i].ATimeUnix < batch[j].ATimeUnix
+				return batch[i].ATimeUnix > batch[j].ATimeUnix
 			})
 
 			c.Info(ctx, "selected batch",
@@ -310,9 +310,8 @@ func (d *Dir) sort() {
 		return d.Dirs[i].Name < d.Dirs[j].Name
 	})
 
-	// sort the files by age, oldest last
 	sort.Slice(d.Files, func(i, j int) bool {
-		return d.Files[i].ATimeUnix < d.Files[j].ATimeUnix
+		return d.Files[i].ATimeUnix > d.Files[j].ATimeUnix
 	})
 }
 

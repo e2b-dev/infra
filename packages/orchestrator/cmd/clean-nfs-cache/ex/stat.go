@@ -25,8 +25,17 @@ func (c *Cleaner) Statter(quitCh <-chan struct{}, done *sync.WaitGroup) {
 	}
 }
 
-func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (*Dir, error) {
+func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error) {
 	d := path[len(path)-1]
+
+	defer func() {
+		if err != nil {
+			// on error, mark dir as not scanned
+			d.mu.Lock()
+			d.state = initial
+			d.mu.Unlock()
+		}
+	}()
 
 	d.mu.Lock()
 

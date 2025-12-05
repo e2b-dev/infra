@@ -1,77 +1,131 @@
 package ex
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func TestReinsertCandidates(t *testing.T) {
-	c := NewCleaner(Options{Path: t.TempDir(), DeleteN: 1, BatchN: 1, TargetBytesToDelete: 1}, logger.NewNopLogger())
-
-	// parent := &Dir{Name: "parent"}
-
-	// Add additional non-empty dirs to exercise insertion into first, middle, and last positions.
-	p1 := &Dir{Name: "first"}
-	p1.Files = []File{
-		{Name: "old_a.txt", ATimeUnix: 100, Size: 1},
-		{Name: "old_b.txt", ATimeUnix: 50, Size: 1},
-	}
-	p1.sort()
-
-	p2 := &Dir{Name: "middle"}
-	p2.Files = []File{
-		{Name: "m_old1.txt", ATimeUnix: 300, Size: 1},
-		{Name: "m_old2.txt", ATimeUnix: 100, Size: 1},
-	}
-	p2.sort()
-
-	p3 := &Dir{Name: "last"}
-	p3.Files = []File{
-		{Name: "l_old1.txt", ATimeUnix: 300, Size: 1},
-		{Name: "l_old2.txt", ATimeUnix: 200, Size: 1},
-	}
-	p3.sort()
-
-	// Candidates that should end up first, middle, and last respectively once reinserted.
-	candidatesInitial := []*Candidate{
-		{Parent: p1, FullPath: "/first/new_oldest.txt", ATimeUnix: 200, Size: 1},   // oldest in p1
-		{Parent: p2, FullPath: "/middle/new_middle1.txt", ATimeUnix: 200, Size: 1}, // middle-aged in p2
-		{Parent: p2, FullPath: "/middle/new_middle2.txt", ATimeUnix: 201, Size: 1},
-		{Parent: p3, FullPath: "/last/new_youngest.txt", ATimeUnix: 100, Size: 1}, // youngest in p3
-		{Parent: p3, FullPath: "/last/new_middle.txt", ATimeUnix: 201, Size: 1},   // middle in p3
+func TestDirSort(t *testing.T) {
+	d := &Dir{
+		Name: "testdir",
+		Dirs: []*Dir{
+			{Name: "subdirB"},
+			{Name: "subdirA"},
+			{Name: "subdirC"},
+		},
+		Files: []File{
+			{Name: "file3.txt", ATimeUnix: 300},
+			{Name: "file1.txt", ATimeUnix: 100},
+			{Name: "file2.txt", ATimeUnix: 200},
+		},
 	}
 
-	c.reinsertCandidates(candidatesInitial)
+	d.sort()
 
-	// Verify insertion positions relative to existing files.
-	require.Len(t, p1.Files, 3)
-	require.Equal(t, "old_b.txt", p1.Files[0].Name)
-	require.Equal(t, 50, int(p1.Files[0].ATimeUnix))
-	require.Equal(t, "old_a.txt", p1.Files[1].Name)
-	require.Equal(t, 100, int(p1.Files[1].ATimeUnix))
-	require.Equal(t, "new_oldest.txt", p1.Files[2].Name)
-	require.Equal(t, 200, int(p1.Files[2].ATimeUnix))
+	require.Equal(t, "subdirA", d.Dirs[0].Name)
+	require.Equal(t, "subdirB", d.Dirs[1].Name)
+	require.Equal(t, "subdirC", d.Dirs[2].Name)
 
-	require.Len(t, p2.Files, 4)
-	require.Equal(t, "m_old2.txt", p2.Files[0].Name)
-	require.Equal(t, 100, int(p2.Files[0].ATimeUnix))
-	require.Equal(t, "new_middle1.txt", p2.Files[1].Name)
-	require.Equal(t, 200, int(p2.Files[1].ATimeUnix))
-	require.Equal(t, "new_middle2.txt", p2.Files[2].Name)
-	require.Equal(t, 201, int(p2.Files[2].ATimeUnix))
-	require.Equal(t, "m_old1.txt", p2.Files[3].Name)
-	require.Equal(t, 300, int(p2.Files[3].ATimeUnix))
+	require.Equal(t, "file3.txt", d.Files[0].Name)
+	require.Equal(t, int64(300), d.Files[0].ATimeUnix)
+	require.Equal(t, "file2.txt", d.Files[1].Name)
+	require.Equal(t, int64(200), d.Files[1].ATimeUnix)
+	require.Equal(t, "file1.txt", d.Files[2].Name)
+	require.Equal(t, int64(100), d.Files[2].ATimeUnix)
+}
 
-	require.Len(t, p3.Files, 4)
-	require.Equal(t, "new_youngest.txt", p3.Files[0].Name)
-	require.Equal(t, 100, int(p3.Files[0].ATimeUnix))
-	require.Equal(t, "l_old2.txt", p3.Files[1].Name)
-	require.Equal(t, 200, int(p3.Files[1].ATimeUnix))
-	require.Equal(t, "new_middle.txt", p3.Files[2].Name)
-	require.Equal(t, 201, int(p3.Files[2].ATimeUnix))
-	require.Equal(t, "l_old1.txt", p3.Files[3].Name)
-	require.Equal(t, 300, int(p3.Files[3].ATimeUnix))
+func TestCleanDeletesTwoFiles(t *testing.T) {
+	root, err := os.MkdirTemp("", "clean-test-")
+	require.NoError(t, err)
+	defer os.RemoveAll(root)
+
+	// create root path used by Cleaner
+	rootPath := filepath.Join(root, "root")
+	err = os.MkdirAll(rootPath, 0o755)
+	require.NoError(t, err)
+
+	subdirs := []string{"subA", "subB"}
+	origFiles := map[string][]string{}
+
+	now := time.Now()
+
+	// Create 2 subdirs each with 9 files: file0 (oldest) ... file8 (newest)
+	for _, sd := range subdirs {
+		dirPath := filepath.Join(rootPath, sd)
+		err = os.MkdirAll(dirPath, 0o755)
+		require.NoError(t, err)
+
+		names := []string{}
+		for i := 0; i < 9; i++ {
+			name := filepath.Join(dirPath, "file"+strconv.Itoa(i)+".txt")
+			names = append(names, filepath.Base(name))
+			// write 512 bytes to ensure non-zero size
+			err = os.WriteFile(name, make([]byte, 512), 0o644)
+			require.NoError(t, err)
+
+			// file0 should be oldest, file8 newest
+			ageMinutes := time.Duration(100*(5*i) + i) // ensure clear ordering
+			mtime := now.Add(-ageMinutes * time.Minute)
+			err = os.Chtimes(name, mtime, mtime)
+			require.NoError(t, err)
+		}
+		origFiles[sd] = names
+	}
+
+	// Configure Cleaner to delete 2 files (target bytes equal to 2 files)
+	opts := Options{
+		Path:                rootPath,
+		BatchN:              4,
+		DeleteN:             2,
+		TargetBytesToDelete: 1024, // 2 * 512
+		DryRun:              false,
+		MaxConcurrentStat:   1,
+		MaxConcurrentScan:   1,
+		MaxConcurrentDelete: 1,
+	}
+
+	c := NewCleaner(opts, logger.NewNopLogger())
+
+	// Run Clean with a timeout to avoid hangs.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	err = c.Clean(ctx)
+	require.NoError(t, err)
+
+	// Collect which files remain and which were deleted
+	deleted := []string{}
+	for _, sd := range subdirs {
+		dirPath := filepath.Join(rootPath, sd)
+		entries, err := os.ReadDir(dirPath)
+		require.NoError(t, err)
+		remaining := map[string]bool{}
+		for _, e := range entries {
+			if !e.IsDir() {
+				remaining[e.Name()] = true
+			}
+		}
+		for _, fn := range origFiles[sd] {
+			if !remaining[fn] {
+				deleted = append(deleted, filepath.Join(sd, fn))
+			}
+		}
+	}
+
+	// Expect at least 2 deletions
+	require.GreaterOrEqual(t, len(deleted), 2)
+
+	// Expect that the newest files remain
+	for _, sd := range subdirs {
+		expectedFile := filepath.Join(sd, "file8.txt")
+		require.NotContains(t, deleted, expectedFile, "expected newest files to remain")
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -54,4 +55,29 @@ func TestScanDir(t *testing.T) {
 	require.True(t, sub.IsScanned())
 	require.False(t, sub.IsEmpty())
 	require.NotEmpty(t, sub.Files)
+}
+
+func TestRandomSubdirOrOldestFile(t *testing.T) {
+	// build a Dir with files sorted so that the oldest file is at the end
+	d := &Dir{}
+	count := 10
+	d.Files = make([]File, count)
+	for i := range count {
+		// timestamps decrease so the last entry is the oldest
+		ts := int64(1000 - i)
+		name := "f" + strconv.Itoa(i)
+		d.Files[i] = File{
+			Name:      name,
+			ATimeUnix: ts,
+			Size:      uint64(100000 + i),
+		}
+	}
+	d.sort()
+
+	f, sub, err := d.randomSubdirOrOldestFile()
+	require.NoError(t, err)
+	require.Nil(t, sub)
+	require.NotNil(t, f)
+	require.Equal(t, "f9", f.Name)
+	require.Equal(t, int64(991), f.ATimeUnix)
 }
