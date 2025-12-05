@@ -184,6 +184,10 @@ func TestHelperServingProcess(t *testing.T) {
 	}
 
 	err := crossProcessServe()
+	if errors.Is(err, fdexit.ErrFdExit) {
+		os.Exit(2)
+	}
+
 	if err != nil {
 		fmt.Println("exit serving process", err)
 		os.Exit(1)
@@ -289,6 +293,14 @@ func crossProcessServe() error {
 		}()
 
 		serverErr := uffd.Serve(ctx, fdExit)
+		if errors.Is(serverErr, fdexit.ErrFdExit) {
+			err := fmt.Errorf("serving finished via fd exit: %w", serverErr)
+
+			cancel(err)
+
+			return
+		}
+
 		if serverErr != nil {
 			msg := fmt.Errorf("error serving: %w", serverErr)
 

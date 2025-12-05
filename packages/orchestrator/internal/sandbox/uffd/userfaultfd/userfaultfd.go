@@ -113,7 +113,7 @@ outerLoop:
 				return fmt.Errorf("failed to handle uffd: %w", errMsg)
 			}
 
-			return nil
+			return fdexit.ErrFdExit
 		}
 
 		uffdFd := pollFds[0]

@@ -162,6 +162,10 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		ctx,
 		u.fdExit,
 	)
+	if errors.Is(err, fdexit.ErrFdExit) {
+		return nil
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}
