@@ -152,10 +152,10 @@ func (b *DiffMetadataBuilder) Process(ctx context.Context, block []byte, out io.
 	return nil
 }
 
-func (b *DiffMetadataBuilder) Build() (*DiffMetadata, error) {
+func (b *DiffMetadataBuilder) Build() *DiffMetadata {
 	return &DiffMetadata{
 		Dirty:     b.dirty,
 		Empty:     b.empty,
 		BlockSize: b.blockSize,
-	}, nil
+	}
 }

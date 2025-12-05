@@ -160,12 +160,7 @@ func (o *DirectProvider) exportToDiff(ctx context.Context, out io.Writer) (*head
 		}
 	}
 
-	m, err := builder.Build()
-	if err != nil {
-		return nil, fmt.Errorf("error building diff metadata: %w", err)
-	}
-
-	return m, nil
+	return builder.Build(), nil
 }
 
 func (o *DirectProvider) sync(ctx context.Context) error {

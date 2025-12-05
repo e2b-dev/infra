@@ -126,7 +126,7 @@ func (m *Cache) ExportToDiff(ctx context.Context, out io.Writer) (*header.DiffMe
 		}
 	}
 
-	return builder.Build()
+	return builder.Build(), nil
 }
 
 func (m *Cache) ReadAt(b []byte, off int64) (int, error) {
