@@ -10,41 +10,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) {
+func (a *APIStore) V1SandboxMetrics(c *gin.Context, sandboxID string, params api.V1SandboxMetricsParams) {
 	ctx := c.Request.Context()
 	ctx, span := tracer.Start(ctx, "sandbox-metrics")
 	defer span.End()
-	sandboxID = utils.ShortID(sandboxID)
 
-	team := c.Value(auth.TeamContextKey).(*types.Team)
-
-	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName,
-		featureflags.SandboxContext(sandboxID))
-	if err != nil {
-		logger.L().Error(ctx, "error getting metrics read feature flag, soft failing", zap.Error(err))
-	}
-
-	if !metricsReadFlag {
-		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
-		// If we are not reading from ClickHouse, we can return an empty map
-		// This is here just to have the possibility to turn off ClickHouse metrics reading
-
-		c.JSON(http.StatusOK, []api.SandboxMetric{})
-
-		return
-	}
-
-	start, end, err := getSandboxStartEndTime(ctx, a.clickhouseStore, team.ID.String(), sandboxID, params)
+	start, end, err := getSandboxStartEndTime(ctx, a, sandboxID, params)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error when getting metrics time range: %s", err))
 
@@ -53,7 +29,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	start, end, err = dates.ValidateRange(start, end)
 	if err != nil {
-		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
+		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(params.TeamID))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 
 		return
@@ -62,11 +38,11 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	// Calculate the step size
 	step := dates.CalculateStep(start, end)
 
-	metrics, err := a.clickhouseStore.QuerySandboxMetrics(ctx, sandboxID, team.ID.String(), start, end, step)
+	metrics, err := a.querySandboxMetricsProvider.QuerySandboxMetrics(ctx, sandboxID, params.TeamID, start, end, step)
 	if err != nil {
 		logger.L().Error(ctx, "Error fetching sandbox metrics from ClickHouse",
 			logger.WithSandboxID(sandboxID),
-			logger.WithTeamID(team.ID.String()),
+			logger.WithTeamID(params.TeamID),
 			zap.Error(err),
 		)
 
@@ -92,7 +68,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	c.JSON(http.StatusOK, apiMetrics)
 }
 
-func getSandboxStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clickhouse, teamID, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) (time.Time, time.Time, error) {
+func getSandboxStartEndTime(ctx context.Context, a *APIStore, sandboxID string, params api.V1SandboxMetricsParams) (time.Time, time.Time, error) {
 	// Check if the sandbox exists
 	var start, end time.Time
 	if params.Start != nil {
@@ -104,11 +80,11 @@ func getSandboxStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clic
 	}
 
 	if start.IsZero() || end.IsZero() {
-		sbxStart, sbxEnd, err := clickhouseStore.QuerySandboxTimeRange(ctx, sandboxID, teamID)
+		sbxStart, sbxEnd, err := a.querySandboxMetricsProvider.QuerySandboxTimeRange(ctx, sandboxID, params.TeamID)
 		if err != nil {
 			logger.L().Error(ctx, "Error fetching sandbox time range from ClickHouse",
 				logger.WithSandboxID(sandboxID),
-				logger.WithTeamID(teamID),
+				logger.WithTeamID(params.TeamID),
 				zap.Error(err),
 			)
 
