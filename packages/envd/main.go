@@ -165,7 +165,7 @@ func main() {
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger, defaults)
 
-	cgroupManager := handler.NewCGroupManager("/sys/fs/cgroups/envdcommands.slice", map[string]string{})
+	cgroupManager := handler.NewCGroupManager("/sys/fs/cgroup/envdcommands.slice", map[string]string{})
 	defer cgroupManager.Close()
 
 	processLogger := l.With().Str("logger", "process").Logger()
