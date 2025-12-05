@@ -253,6 +253,7 @@ func (f *Factory) CreateSandbox(
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
 	}
+
 	fcHandle, err := fc.NewProcess(
 		ctx,
 		execCtx,
@@ -705,6 +706,12 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	)
 	if err != nil {
 		return fmt.Errorf("error creating snapshot: %w", err)
+	}
+
+	// Close the memfile right after the snapshot to release the lock.
+	err = memfile.Close()
+	if err != nil {
+		return fmt.Errorf("error closing memfile: %w", err)
 	}
 
 	// This should properly flush rootfs to the underlying device.
