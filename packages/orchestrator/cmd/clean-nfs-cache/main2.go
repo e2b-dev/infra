@@ -47,6 +47,7 @@ func main() {
 		return
 	}
 
+	start := time.Now()
 	log.Info(ctx, "starting",
 		zap.Bool("dry_run", opts.DryRun),
 		zap.Bool("experimental", opts.Experimental),
@@ -74,6 +75,9 @@ func main() {
 	}
 
 	mean, sd := standardDeviation(c.DeletedAge)
+	dur := time.Since(start)
+	filesPerSec := float64(c.RemoveC.Load()) / dur.Seconds()
+	bytesPerSec := float64(c.DeletedBytes.Load()) / dur.Seconds()
 	log.Info(ctx, "summary",
 		zap.Bool("dry_run", opts.DryRun),
 		zap.Int64("del_submitted", c.DeleteSubmittedC.Load()),
@@ -86,6 +90,9 @@ func main() {
 		zap.Duration("most_recently_used", minDuration(c.DeletedAge).Round(time.Second)),
 		zap.Duration("least_recently_used", maxDuration(c.DeletedAge).Round(time.Second)),
 		zap.Duration("mean_age", mean.Round(time.Second)),
+		zap.Float64("files_per_second", filesPerSec),
+		zap.Float64("bytes_per_second", bytesPerSec),
+		zap.Duration("duration", dur.Round(time.Second)),
 		zap.Duration("std_deviation", sd.Round(time.Second)))
 }
 
@@ -146,10 +153,12 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 			if m.Get("maxErrorRetries").IsNumber() {
 				opts.MaxErrorRetries = m.Get("maxErrorRetries").IntValue()
 			}
-			if m.Get("targetBytesToDelete").IsNumber() {
-				opts.TargetBytesToDelete = uint64(m.Get("targetBytesToDelete").Float64Value())
-			}
 		}
+
+		if m.Get("targetBytesToDelete").IsNumber() {
+			opts.TargetBytesToDelete = uint64(m.Get("targetBytesToDelete").Float64Value())
+		}
+
 	}
 
 	var cores []zapcore.Core

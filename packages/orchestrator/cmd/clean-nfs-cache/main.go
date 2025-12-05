@@ -91,9 +91,9 @@ func cleanNFSCache(ctx context.Context, args []string, targetBytesToDelete int64
 	}
 
 	cache := pkg.NewListingCache(path)
-
+	start := time.Now()
 	defer func() {
-		printSummary(ctx, allResults, opts)
+		printSummary(ctx, allResults, opts, start)
 	}()
 
 	// if conditions are met, we're done
@@ -151,7 +151,7 @@ func newOtelCore(ctx context.Context, endpoint string) (zapcore.Core, error) {
 	return otelCore, nil
 }
 
-func printSummary(ctx context.Context, r results, opts opts) {
+func printSummary(ctx context.Context, r results, opts opts, start time.Time) {
 	if r.deletedFiles == 0 {
 		logger.L().Info(ctx, "no files deleted")
 
@@ -159,6 +159,9 @@ func printSummary(ctx context.Context, r results, opts opts) {
 	}
 
 	_, sd := standardDeviation(r.lastAccessed)
+	dur := time.Since(start)
+	filesPerSec := float64(r.deletedFiles) / dur.Seconds()
+	bytesPerSec := float64(r.deletedBytes) / dur.Seconds()
 
 	logger.L().Info(ctx, "summary",
 		zap.Bool("dry_run", opts.dryRun),
@@ -166,6 +169,10 @@ func printSummary(ctx context.Context, r results, opts opts) {
 		zap.Int64("bytes", r.deletedBytes),
 		zap.Duration("most_recently_used", minDuration(r.lastAccessed).Round(time.Second)),
 		zap.Duration("least_recently_used", maxDuration(r.lastAccessed).Round(time.Second)),
+		zap.Duration("mean_age", time.Duration(float64(r.deletedBytes)/float64(r.deletedFiles)).Round(time.Second)),
+		zap.Float64("files_per_second", filesPerSec),
+		zap.Float64("bytes_per_second", bytesPerSec),
+		zap.Duration("duration", dur.Round(time.Second)),
 		zap.Duration("std_deviation", sd.Round(time.Second)))
 }
 
