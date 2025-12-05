@@ -22,8 +22,7 @@ func (c *Cleaner) stat(fullPath string) (*Candidate, error) {
 	}
 
 	return &Candidate{
-		Parent:    nil,   // not relevant here
-		IsDir:     false, // not relevant: this function is only called for files
+		Parent:    nil, // not relevant here
 		FullPath:  fullPath,
 		Size:      statx.Size,
 		ATimeUnix: statx.Atime.Sec,

@@ -24,7 +24,6 @@ func (c *Cleaner) stat(path string) (*Candidate, error) {
 
 	return &Candidate{
 		Parent:    nil,   // not relevant here
-		IsDir:     false, // not relevant: we are only called for files
 		FullPath:  path,
 		Size:      uint64(stat.Size()),
 		ATimeUnix: actualStruct.Atimespec.Sec,

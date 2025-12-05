@@ -50,16 +50,16 @@ func main() {
 	log.Info(ctx, "starting",
 		zap.Bool("dry_run", opts.DryRun),
 		zap.Bool("experimental", opts.Experimental),
-		zap.Int("num_scanners", opts.NumScanners),
-		zap.Int("num_deleters", opts.NumDeleters),
 		zap.Uint64("target_bytes_to_delete", opts.TargetBytesToDelete),
 		zap.Float64("target_disk_usage_percent", opts.TargetDiskUsagePercent),
 		zap.Int("batch_n", opts.BatchN),
 		zap.Int("delete_n", opts.DeleteN),
 		zap.Int("max_error_retries", opts.MaxErrorRetries),
-		zap.Bool("aggressive_stat", opts.AggressiveStat),
 		zap.String("path", opts.Path),
 		zap.String("otel_collector_endpoint", opts.OtelCollectorEndpoint),
+		zap.Int("max_concurrent_stat", opts.MaxConcurrentStat),
+		zap.Int("max_concurrent_scan", opts.MaxConcurrentScan),
+		zap.Int("max_concurrent_delete", opts.MaxConcurrentDelete),
 	)
 
 	c := ex.NewCleaner(opts, log)
@@ -73,7 +73,7 @@ func main() {
 		return
 	}
 
-	mean, sd := standardDeviation(c.DeletedAges)
+	mean, sd := standardDeviation(c.DeletedAge)
 	log.Info(ctx, "summary",
 		zap.Bool("dry_run", opts.DryRun),
 		zap.Int64("del_submitted", c.DeleteSubmittedC.Load()),
@@ -83,8 +83,8 @@ func main() {
 		zap.Int64("del_files", c.RemoveC.Load()),
 		zap.Int64("empty_dirs", c.RemoveDirC.Load()),
 		zap.Uint64("bytes", c.DeletedBytes.Load()),
-		zap.Duration("most_recently_used", minDuration(c.DeletedAges).Round(time.Second)),
-		zap.Duration("least_recently_used", maxDuration(c.DeletedAges).Round(time.Second)),
+		zap.Duration("most_recently_used", minDuration(c.DeletedAge).Round(time.Second)),
+		zap.Duration("least_recently_used", maxDuration(c.DeletedAge).Round(time.Second)),
 		zap.Duration("mean_age", mean.Round(time.Second)),
 		zap.Duration("std_deviation", sd.Round(time.Second)))
 }
@@ -98,9 +98,9 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 	flags.IntVar(&opts.BatchN, "files-per-loop", 10000, "number of files to gather metadata for per loop")
 	flags.IntVar(&opts.DeleteN, "deletions-per-loop", 100, "maximum number of files to delete per loop")
 	flags.StringVar(&opts.OtelCollectorEndpoint, "otel-collector-endpoint", "", "endpoint of the otel collector")
-	flags.BoolVar(&opts.AggressiveStat, "aggressive-stat", false, "use aggressive stat calls to get file metadata")
-	flags.IntVar(&opts.NumScanners, "num-scanners", 1, "number of concurrent scanner goroutines")
-	flags.IntVar(&opts.NumDeleters, "num-deleters", 1, "number of concurrent deleter goroutines")
+	flags.IntVar(&opts.MaxConcurrentStat, "max-concurrent-stat", 1, "number of concurrent stat goroutines")
+	flags.IntVar(&opts.MaxConcurrentScan, "max-concurrent-scan", 1, "number of concurrent scanner goroutines")
+	flags.IntVar(&opts.MaxConcurrentDelete, "max-concurrent-delete", 1, "number of concurrent deleter goroutines")
 	flags.IntVar(&opts.MaxErrorRetries, "max-error-retries", 10, "maximum number of continuous error retries before giving up")
 	flags.Uint64Var(&opts.TargetBytesToDelete, "target-bytes-to-delete", 0, "target number of bytes to delete (overrides disk-usage-target-percent if set)")
 	flags.BoolVar(&opts.Experimental, "experimental", false, "enable experimental features")
@@ -134,11 +134,14 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 		}
 
 		if opts.Experimental {
-			if m.Get("deleters").IsNumber() {
-				opts.NumDeleters = m.Get("deleters").IntValue()
+			if m.Get("maxConcurrentDelete").IsNumber() {
+				opts.MaxConcurrentDelete = m.Get("maxConcurrentDelete").IntValue()
 			}
-			if m.Get("scanners").IsNumber() {
-				opts.NumScanners = m.Get("scanners").IntValue()
+			if m.Get("maxConcurrentScan").IsNumber() {
+				opts.MaxConcurrentScan = m.Get("maxConcurrentScan").IntValue()
+			}
+			if m.Get("maxConcurrentStat").IsNumber() {
+				opts.MaxConcurrentStat = m.Get("maxConcurrentStat").IntValue()
 			}
 			if m.Get("maxErrorRetries").IsNumber() {
 				opts.MaxErrorRetries = m.Get("maxErrorRetries").IntValue()

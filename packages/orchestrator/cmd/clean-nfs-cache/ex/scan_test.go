@@ -1,8 +1,10 @@
 package ex
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,16 +22,25 @@ func TestScanDir(t *testing.T) {
 	c := NewCleaner(Options{
 		Path: path,
 	}, logger.NewNopLogger())
+
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	c.statRequestCh = make(chan *statReq, 1)
+	quitCh := make(chan struct{})
+	go c.Statter(context.Background(), quitCh, wg)
+	defer func() {
+		close(quitCh)
+		wg.Wait()
+	}()
+
 	df, err := os.Open(path)
 	require.NoError(t, err)
 	defer df.Close()
 
-	dir := c.cacheRoot
-	err = c.scanDir(df, &dir, true, false)
+	dir, err := c.scanDir([]*Dir{c.root})
 	require.NoError(t, err)
 	require.True(t, dir.IsScanned())
 	require.False(t, dir.IsEmpty())
-	require.False(t, dir.AreFilesScanned())
 	require.NotEmpty(t, dir.Dirs)
 
 	sub := dir.Dirs[0]
@@ -37,17 +48,9 @@ func TestScanDir(t *testing.T) {
 	require.NoError(t, err)
 	defer dfsub.Close()
 
-	err = c.scanDir(dfsub, &sub, true, false)
+	sub, err = c.scanDir([]*Dir{c.root, sub})
 	require.NoError(t, err)
 	require.True(t, sub.IsScanned())
 	require.False(t, sub.IsEmpty())
-	require.False(t, sub.AreFilesScanned())
-	require.NotEmpty(t, sub.Files)
-
-	err = c.scanDir(dfsub, &sub, false, true)
-	require.NoError(t, err)
-	require.True(t, sub.IsScanned())
-	require.False(t, sub.IsEmpty())
-	require.True(t, sub.AreFilesScanned())
 	require.NotEmpty(t, sub.Files)
 }

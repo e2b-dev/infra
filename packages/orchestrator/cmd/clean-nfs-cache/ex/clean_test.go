@@ -19,21 +19,21 @@ func TestReinsertCandidates(t *testing.T) {
 		{Name: "old_a.txt", ATimeUnix: 100, Size: 1},
 		{Name: "old_b.txt", ATimeUnix: 50, Size: 1},
 	}
-	p1.Sort()
+	p1.sort()
 
 	p2 := &Dir{Name: "middle"}
 	p2.Files = []File{
 		{Name: "m_old1.txt", ATimeUnix: 300, Size: 1},
 		{Name: "m_old2.txt", ATimeUnix: 100, Size: 1},
 	}
-	p2.Sort()
+	p2.sort()
 
 	p3 := &Dir{Name: "last"}
 	p3.Files = []File{
 		{Name: "l_old1.txt", ATimeUnix: 300, Size: 1},
 		{Name: "l_old2.txt", ATimeUnix: 200, Size: 1},
 	}
-	p3.Sort()
+	p3.sort()
 
 	// Candidates that should end up first, middle, and last respectively once reinserted.
 	candidatesInitial := []*Candidate{

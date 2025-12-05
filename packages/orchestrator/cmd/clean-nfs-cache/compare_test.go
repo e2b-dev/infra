@@ -30,31 +30,34 @@ func TestCompare(t *testing.T) {
 			deletedBytes, targetBytesToDelete, time.Since(start), mean.Round(time.Hour), sd.Round(time.Minute))
 	}
 
-	for _, nScan := range []int{1, 2, 4, 16, 64} {
-		for _, nDel := range []int{1, 2, 4, 8} {
-			t.Run(fmt.Sprintf("S%v-D%v", nScan, nDel), func(t *testing.T) {
-				path := t.TempDir()
-				ex.CreateTestDir(path, NDirs, NFiles, testFileSize)
-				t.Cleanup(func() {
-					os.RemoveAll(path)
-				})
-				start := time.Now()
-				c := ex.NewCleaner(ex.Options{
-					Path:                path,
-					DeleteN:             NFiles / 100,
-					BatchN:              NFiles / 10,
-					DryRun:              false,
-					NumScanners:         nScan,
-					NumDeleters:         nDel,
-					TargetBytesToDelete: targetBytesToDelete,
-					MaxErrorRetries:     10,
-				}, logger.NewNopLogger())
+	for _, nScan := range []int{1, 4, 16, 1024} {
+		for _, nDel := range []int{1, 2, 8, 1024} {
+			for _, nStat := range []int{1, 4, 16, 1024} {
+				t.Run(fmt.Sprintf("Scan%v-Del%v-Stat%v", nScan, nDel, nStat), func(t *testing.T) {
+					path := t.TempDir()
+					ex.CreateTestDir(path, NDirs, NFiles, testFileSize)
+					t.Cleanup(func() {
+						os.RemoveAll(path)
+					})
+					start := time.Now()
+					c := ex.NewCleaner(ex.Options{
+						Path:                path,
+						DeleteN:             NFiles / 100,
+						BatchN:              NFiles / 10,
+						DryRun:              false,
+						MaxConcurrentStat:   nStat,
+						MaxConcurrentScan:   nScan,
+						MaxConcurrentDelete: nDel,
+						TargetBytesToDelete: targetBytesToDelete,
+						MaxErrorRetries:     10,
+					}, logger.NewNopLogger())
 
-				err := c.Clean(ctx)
-				require.NoError(t, err)
-				require.GreaterOrEqual(t, c.DeletedBytes.Load(), targetBytesToDelete)
-				printSummary(start, c.DeletedAges, c.DeletedBytes.Load())
-			})
+					err := c.Clean(ctx)
+					require.NoError(t, err)
+					require.GreaterOrEqual(t, c.DeletedBytes.Load(), targetBytesToDelete)
+					printSummary(start, c.DeletedAge, c.DeletedBytes.Load())
+				})
+			}
 		}
 	}
 
