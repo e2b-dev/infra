@@ -61,7 +61,6 @@ require (
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
-	lukechampine.com/blake3 v1.4.1
 )
 
 require (

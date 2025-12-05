@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -20,8 +19,6 @@ import (
 )
 
 type DirectProvider struct {
-	config cfg.BuilderConfig
-
 	header *header.Header
 
 	path      string
@@ -35,7 +32,7 @@ type DirectProvider struct {
 	mmap *mmap.MMap
 }
 
-func NewDirectProvider(config cfg.BuilderConfig, rootfs block.ReadonlyDevice, path string) (Provider, error) {
+func NewDirectProvider(rootfs block.ReadonlyDevice, path string) (Provider, error) {
 	blockSize := rootfs.BlockSize()
 
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
@@ -55,8 +52,6 @@ func NewDirectProvider(config cfg.BuilderConfig, rootfs block.ReadonlyDevice, pa
 	}
 
 	return &DirectProvider{
-		config: config,
-
 		header: rootfs.Header(),
 
 		path:      path,
@@ -66,11 +61,6 @@ func NewDirectProvider(config cfg.BuilderConfig, rootfs block.ReadonlyDevice, pa
 
 		mmap: &mm,
 	}, nil
-}
-
-func (o *DirectProvider) Verify(_ context.Context) error {
-	// No verification needed for direct provider for now
-	return nil
 }
 
 func (o *DirectProvider) Start(_ context.Context) error {

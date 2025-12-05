@@ -211,14 +211,12 @@ func (f *Factory) CreateSandbox(
 	var rootfsProvider rootfs.Provider
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
-			f.config,
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(f.config),
 			f.devicePool,
 		)
 	} else {
 		rootfsProvider, err = rootfs.NewDirectProvider(
-			f.config,
 			rootFS,
 			// Populate direct cache directly from the source file
 			// This is needed for marking all blocks as dirty and being able to read them directly
@@ -401,7 +399,6 @@ func (f *Factory) ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got template rootfs")
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
-		f.config,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(f.config),
 		f.devicePool,

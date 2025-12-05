@@ -10,7 +10,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -20,8 +19,6 @@ import (
 )
 
 type NBDProvider struct {
-	config cfg.BuilderConfig
-
 	overlay *block.Overlay
 	mnt     *nbd.DirectPathMount
 
@@ -33,7 +30,7 @@ type NBDProvider struct {
 	devicePool         *nbd.DevicePool
 }
 
-func NewNBDProvider(config cfg.BuilderConfig, rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (Provider, error) {
+func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (Provider, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -51,8 +48,6 @@ func NewNBDProvider(config cfg.BuilderConfig, rootfs block.ReadonlyDevice, cache
 	mnt := nbd.NewDirectPathMount(overlay, devicePool)
 
 	return &NBDProvider{
-		config: config,
-
 		mnt:                mnt,
 		overlay:            overlay,
 		ready:              utils.NewSetOnce[string](),
