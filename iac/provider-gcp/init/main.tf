@@ -286,22 +286,3 @@ resource "google_secret_manager_secret_version" "redis_tls_ca_base64" {
     ignore_changes = [secret_data]
   }
 }
-
-resource "google_secret_manager_secret" "redis_secure_cluster_url" {
-  secret_id = "${var.prefix}redis-secure-cluster-url"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "redis_secure_cluster_url" {
-  secret      = google_secret_manager_secret.redis_secure_cluster_url.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
