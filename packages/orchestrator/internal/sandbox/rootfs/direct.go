@@ -75,7 +75,9 @@ func (o *DirectProvider) ExportDiff(
 	ctx, childSpan := tracer.Start(ctx, "direct-provider-export")
 	defer childSpan.End()
 
-	o.exporting.CompareAndSwap(false, true)
+	if !o.exporting.CompareAndSwap(false, true) {
+		return nil, fmt.Errorf("direct provider close is already in progress")
+	}
 
 	defer func() {
 		err := o.mmap.Unmap()
