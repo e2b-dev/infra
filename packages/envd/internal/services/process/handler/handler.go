@@ -68,20 +68,8 @@ func New(
 	defaults *execcontext.Defaults,
 	cancel context.CancelFunc,
 ) (*Handler, error) {
-	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
-
-	uid, gid, err := permissions.GetUserIds(user)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	cmd.SysProcAttr.Credential = &syscall.Credential{
-		Uid:         uid,
-		Gid:         gid,
-		Groups:      []uint32{gid},
-		NoSetGroups: true,
-	}
+	name, args := buildSystemdRunCommand(user, req.GetProcess())
+	cmd := exec.CommandContext(ctx, name, args...)
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
 	if err != nil {
@@ -293,6 +281,39 @@ func New(
 	}()
 
 	return h, nil
+}
+
+const userCommandsSlice = "envd-commands"
+
+func buildSystemdRunCommand(user *user.User, process *rpc.ProcessConfig) (string, []string) {
+	requestedCmd := process.GetCmd()
+	requestedArgs := process.GetArgs()
+
+	systemdProperties := map[string]string{
+		"CPUQuota":                      "95%", // this process can use up to 95% of the cpu
+		"ManagedOOMSwap":                "kill",
+		"ManagedOOMMemoryPressure":      "kill",
+		"ManagedOOMMemoryPressureLimit": "25%",
+	}
+
+	runCmd := "systemd-run"
+	systemdArgs := []string{
+		fmt.Sprintf("--slice=%s", userCommandsSlice),
+		fmt.Sprintf("--uid=%s", user.Uid),
+		fmt.Sprintf("--gid=%s", user.Gid),
+		"--quiet",
+		"--pipe",
+		"--wait",
+	}
+
+	for key, val := range systemdProperties {
+		systemdArgs = append(systemdArgs, fmt.Sprintf(`--property=%s=%s`, key, val))
+	}
+
+	args := append(systemdArgs, requestedCmd)
+	args = append(args, requestedArgs...)
+
+	return runCmd, args
 }
 
 func (p *Handler) SendSignal(signal syscall.Signal) error {
