@@ -59,12 +59,13 @@ module "nomad" {
   api_resources_cpu_count = var.api_resources_cpu_count
   api_resources_memory_mb = var.api_resources_memory_mb
 
-  api_port          = var.api_port
-  ingress_port      = var.ingress_port
-  edge_api_port     = var.edge_api_port
-  edge_proxy_port   = var.edge_proxy_port
-  logs_proxy_port   = var.logs_proxy_port
-  loki_service_port = var.loki_service_port
+  api_port             = var.api_port
+  ingress_port         = var.ingress_port
+  edge_api_port        = var.edge_api_port
+  edge_proxy_port      = var.edge_proxy_port
+  logs_proxy_port      = var.logs_proxy_port
+  loki_service_port    = var.loki_service_port
+  grafana_service_port = var.grafana_service_port
 
   api_admin_token = var.api_admin_token
   environment     = var.environment
@@ -109,6 +110,8 @@ module "nomad" {
   build_cache_bucket_name              = var.build_cache_bucket_name
   loki_resources_memory_mb             = var.loki_resources_memory_mb
   loki_resources_cpu_count             = var.loki_resources_cpu_count
+  grafana_resources_memory_mb          = var.grafana_resources_memory_mb
+  grafana_resources_cpu_count          = var.grafana_resources_cpu_count
   redis_tls_ca_base64                  = var.redis_tls_ca_base64
   shared_chunk_cache_path              = var.shared_chunk_cache_path
   dockerhub_remote_repository_url      = var.dockerhub_remote_repository_url

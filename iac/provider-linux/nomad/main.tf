@@ -70,7 +70,7 @@ resource "nomad_job" "api" {
     launch_darkly_api_key          = trimspace(var.launch_darkly_api_key)
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
 
-    local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
+    local_cluster_endpoint = "127.0.0.1:${var.edge_api_port.port}"
     local_cluster_token    = var.edge_api_secret
     domain_name            = var.domain_name
   })
@@ -180,6 +180,19 @@ resource "nomad_job" "loki" {
     loki_service_port_number = var.loki_service_port.port
     loki_service_port_name   = var.loki_service_port.name
     docker_image_prefix      = var.docker_image_prefix
+  })
+}
+
+resource "nomad_job" "grafana" {
+  jobspec = templatefile("${path.module}/jobs/grafana.hcl", {
+    datacenter                  = var.datacenter
+    node_pool                   = var.api_node_pool
+    memory_mb                   = var.grafana_resources_memory_mb
+    cpu_count                   = var.grafana_resources_cpu_count
+    grafana_service_port_number = var.grafana_service_port.port
+    grafana_service_port_name   = var.grafana_service_port.name
+    loki_service_port_number    = var.loki_service_port.port
+    docker_image_prefix         = var.docker_image_prefix
   })
 }
 

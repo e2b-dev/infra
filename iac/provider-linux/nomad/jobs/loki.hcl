@@ -14,7 +14,7 @@ job "loki" {
     }
 
     network {
-      port "loki" { to = "${loki_service_port_number}" }
+      port "${loki_service_port_name}" { to = "${loki_service_port_number}" }
     }
 
     service {
@@ -25,7 +25,7 @@ job "loki" {
         path     = "/ready"
         interval = "20s"
         timeout  = "2s"
-        port     = "${loki_service_port_number}"
+        port     = "${loki_service_port_name}"
       }
     }
 
