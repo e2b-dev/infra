@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (c *Cleaner) Statter(ctx context.Context, quitCh <-chan struct{}, done *sync.WaitGroup) {
+func (c *Cleaner) Statter(quitCh <-chan struct{}, done *sync.WaitGroup) {
 	defer done.Done()
 	for {
 		select {
@@ -29,8 +29,8 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (*Dir, error) {
 	d := path[len(path)-1]
 
 	d.mu.Lock()
-	switch d.state {
 
+	switch d.state {
 	case scanned:
 		d.mu.Unlock()
 

@@ -28,7 +28,7 @@ func TestScanDir(t *testing.T) {
 	wg.Add(1)
 	c.statRequestCh = make(chan *statReq, 1)
 	quitCh := make(chan struct{})
-	go c.Statter(ctx, quitCh, wg)
+	go c.Statter(quitCh, wg)
 	defer func() {
 		close(quitCh)
 		wg.Wait()

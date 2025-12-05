@@ -178,7 +178,7 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 
 	for range c.MaxConcurrentStat {
 		cleanShutdown.Add(1)
-		go c.Statter(ctx, drainCh, cleanShutdown)
+		go c.Statter(drainCh, cleanShutdown)
 	}
 	for range c.MaxConcurrentScan {
 		cleanShutdown.Add(1)
@@ -333,6 +333,7 @@ func (d *Dir) isEmpty() bool {
 func (d *Dir) IsEmpty() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
 	return d.isEmpty()
 }
 
