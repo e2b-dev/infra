@@ -30,6 +30,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
+	machineInfo := node.MachineInfo()
 	snapshotConfig := queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:     id.Generate(),
@@ -53,8 +54,13 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 			Version: types.PausedSandboxConfigVersion,
 			Network: sbx.Network,
 		},
-		OriginNodeID: utils.ToPtr(node.ID),
-		Status:       string(types.BuildStatusSnapshotting),
+		OriginNodeID:    utils.ToPtr(node.ID),
+		Status:          string(types.BuildStatusSnapshotting),
+		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
+		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
+		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
+		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		CpuFlags:        machineInfo.CPUFlags,
 	}
 
 	result, err := o.sqlcDB.UpsertSnapshot(ctx, snapshotConfig)
