@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 
 	"connectrpc.com/authn"
@@ -33,7 +34,8 @@ const (
 	idleTimeout = 640 * time.Second
 	maxAge      = 2 * time.Hour
 
-	defaultPort = 49983
+	defaultPort     = 49983
+	defaultEnvdNice = -99
 
 	portScannerInterval = 1000 * time.Millisecond
 
@@ -43,12 +45,13 @@ const (
 )
 
 var (
-	Version = "0.4.2"
+	Version = "0.4.3"
 
 	commitSHA string
 
-	isNotFC bool
-	port    int64
+	isNotFC   bool
+	port      int64
+	niceLevel int
 
 	versionFlag  bool
 	commitFlag   bool
@@ -91,6 +94,13 @@ func parseFlags() {
 		"a command to run on the daemon start",
 	)
 
+	flag.IntVar(
+		&niceLevel,
+		"nice",
+		defaultEnvdNice,
+		"set the nice level of the envd process",
+	)
+
 	flag.Parse()
 }
 
@@ -131,6 +141,12 @@ func main() {
 		fmt.Printf("%s\n", commitSHA)
 
 		return
+	}
+
+	if niceLevel != defaultEnvdNice {
+		if err := syscall.Setpriority(syscall.PRIO_PROCESS, os.Getpid(), niceLevel); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to set nice to %d: %v\n", niceLevel, err)
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

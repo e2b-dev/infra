@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
@@ -96,6 +97,9 @@ type ClientInterface interface {
 
 	// DeleteAccessTokensAccessTokenID request
 	DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostAdminTeamsTeamIDSandboxesKill request
+	PostAdminTeamsTeamIDSandboxesKill(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApiKeys request
 	GetApiKeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -260,6 +264,18 @@ func (c *Client) PostAccessTokens(ctx context.Context, body PostAccessTokensJSON
 
 func (c *Client) DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteAccessTokensAccessTokenIDRequest(c.Server, accessTokenID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostAdminTeamsTeamIDSandboxesKill(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostAdminTeamsTeamIDSandboxesKillRequest(c.Server, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -937,6 +953,40 @@ func NewDeleteAccessTokensAccessTokenIDRequest(server string, accessTokenID Acce
 	}
 
 	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostAdminTeamsTeamIDSandboxesKillRequest generates requests for PostAdminTeamsTeamIDSandboxesKill
+func NewPostAdminTeamsTeamIDSandboxesKillRequest(server string, teamID openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "teamID", runtime.ParamLocationPath, teamID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/teams/%s/sandboxes/kill", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2732,6 +2782,9 @@ type ClientWithResponsesInterface interface {
 	// DeleteAccessTokensAccessTokenIDWithResponse request
 	DeleteAccessTokensAccessTokenIDWithResponse(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*DeleteAccessTokensAccessTokenIDResponse, error)
 
+	// PostAdminTeamsTeamIDSandboxesKillWithResponse request
+	PostAdminTeamsTeamIDSandboxesKillWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*PostAdminTeamsTeamIDSandboxesKillResponse, error)
+
 	// GetApiKeysWithResponse request
 	GetApiKeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiKeysResponse, error)
 
@@ -2911,6 +2964,31 @@ func (r DeleteAccessTokensAccessTokenIDResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r DeleteAccessTokensAccessTokenIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostAdminTeamsTeamIDSandboxesKillResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AdminSandboxKillResult
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostAdminTeamsTeamIDSandboxesKillResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostAdminTeamsTeamIDSandboxesKillResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3826,6 +3904,15 @@ func (c *ClientWithResponses) DeleteAccessTokensAccessTokenIDWithResponse(ctx co
 	return ParseDeleteAccessTokensAccessTokenIDResponse(rsp)
 }
 
+// PostAdminTeamsTeamIDSandboxesKillWithResponse request returning *PostAdminTeamsTeamIDSandboxesKillResponse
+func (c *ClientWithResponses) PostAdminTeamsTeamIDSandboxesKillWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*PostAdminTeamsTeamIDSandboxesKillResponse, error) {
+	rsp, err := c.PostAdminTeamsTeamIDSandboxesKill(ctx, teamID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostAdminTeamsTeamIDSandboxesKillResponse(rsp)
+}
+
 // GetApiKeysWithResponse request returning *GetApiKeysResponse
 func (c *ClientWithResponses) GetApiKeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiKeysResponse, error) {
 	rsp, err := c.GetApiKeys(ctx, reqEditors...)
@@ -4316,6 +4403,53 @@ func ParseDeleteAccessTokensAccessTokenIDResponse(rsp *http.Response) (*DeleteAc
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostAdminTeamsTeamIDSandboxesKillResponse parses an HTTP response from a PostAdminTeamsTeamIDSandboxesKillWithResponse call
+func ParsePostAdminTeamsTeamIDSandboxesKillResponse(rsp *http.Response) (*PostAdminTeamsTeamIDSandboxesKillResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostAdminTeamsTeamIDSandboxesKillResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminSandboxKillResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

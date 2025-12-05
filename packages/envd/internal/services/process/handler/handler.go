@@ -23,6 +23,7 @@ import (
 
 const (
 	defaultOomScore  = 100
+	defaultNiceScore = 0 // between -20 and 19, lower values = higher priority
 	outputBufferSize = 64
 	stdChunkSize     = 2 << 14
 	ptyChunkSize     = 2 << 13
@@ -354,9 +355,14 @@ func (p *Handler) Start() (uint32, error) {
 		}
 	}
 
-	adjustErr := adjustOomScore(p.cmd.Process.Pid, defaultOomScore)
-	if adjustErr != nil {
-		fmt.Fprintf(os.Stderr, "error adjusting oom score for process '%s': %s\n", p.cmd, adjustErr)
+	err := adjustOomScore(p.cmd.Process.Pid, defaultOomScore)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error adjusting oom score for process '%s': %s\n", p.cmd, err)
+	}
+
+	err = syscall.Setpriority(syscall.PRIO_PROCESS, p.cmd.Process.Pid, defaultNiceScore)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error adjusting nice score for process '%s': %s\n", p.cmd, err)
 	}
 
 	p.logger.
