@@ -23,7 +23,7 @@ type Limits struct {
 
 func NewCGroupManager(slice, group string, resources *cgroup2.Resources) *CGroupManager {
 	if strings.Contains(slice, "/") || strings.Contains(group, "/") {
-		fmt.Fprintf(os.Stderr, "cgroup slice or group contains invalid characters\n")
+		fmt.Fprintf(os.Stderr, "cgroup slice (%q) or group (%s) contains invalid characters\n", slice, group)
 
 		return nil
 	}
