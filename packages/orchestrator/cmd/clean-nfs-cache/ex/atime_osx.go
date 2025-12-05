@@ -23,7 +23,7 @@ func (c *Cleaner) stat(path string) (*Candidate, error) {
 	}
 
 	return &Candidate{
-		Parent:    nil,   // not relevant here
+		Parent:    nil, // not relevant here
 		FullPath:  path,
 		Size:      uint64(stat.Size()),
 		ATimeUnix: actualStruct.Atimespec.Sec,
