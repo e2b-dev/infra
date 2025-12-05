@@ -42,7 +42,6 @@ type Options struct {
 }
 
 type Counters struct {
-
 	DeleteSubmittedC   atomic.Int64
 	DeleteAttemptC     atomic.Int64
 	DeleteAlreadyGoneC atomic.Int64
