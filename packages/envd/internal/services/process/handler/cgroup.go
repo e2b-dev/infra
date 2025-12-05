@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/containerd/cgroups/v3"
 	"github.com/containerd/cgroups/v3/cgroup2"
@@ -13,8 +14,9 @@ import (
 )
 
 type CGroupManager struct {
-	cgroupFD int
-	mgr      *cgroup2.Manager
+	cgroupFD  int
+	mgr       *cgroup2.Manager
+	closeOnce sync.Once
 }
 
 type Limits struct {
@@ -61,6 +63,10 @@ func NewCGroupManager(slice, group string, resources *cgroup2.Resources) *CGroup
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open cgroup %q: %v", sysfsPath, err)
 
+		if err := mgr.DeleteSystemd(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to delete cgroup %q, %q: %v", slice, group, err)
+		}
+
 		return nil
 	}
 
@@ -68,7 +74,7 @@ func NewCGroupManager(slice, group string, resources *cgroup2.Resources) *CGroup
 }
 
 func (m *CGroupManager) enabled() bool {
-	return m != nil && m.cgroupFD != 0
+	return m != nil
 }
 
 func (m *CGroupManager) GetFileDescriptor() (int, bool) {
@@ -80,18 +86,23 @@ func (m *CGroupManager) GetFileDescriptor() (int, bool) {
 }
 
 func (m *CGroupManager) Close() error {
-	if !m.enabled() {
-		return nil
-	}
+	var err error
+	m.closeOnce.Do(func() {
+		if !m.enabled() {
+			return
+		}
 
-	var errs []error
-	if err := unix.Close(m.cgroupFD); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close cgroup fd: %w", err))
-	}
+		var errs []error
+		if err := unix.Close(m.cgroupFD); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close cgroup fd: %w", err))
+		}
 
-	if err := m.mgr.DeleteSystemd(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to delete cgroup: %w", err))
-	}
+		if err := m.mgr.DeleteSystemd(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to delete cgroup: %w", err))
+		}
 
-	return errors.Join(errs...)
+		err = errors.Join(errs...)
+	})
+
+	return err
 }
