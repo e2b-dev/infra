@@ -24,7 +24,7 @@ import (
 	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
-	handler2 "github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
@@ -165,18 +165,20 @@ func main() {
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger, defaults)
 
-	cgroupManager := handler2.NewCGroupManager("envd.slice", "envdcommands.slice", nil)
+	cgroupManager := handler.NewCGroupManager("/sys/fs/cgroups/envdcommands.slice", map[string]string{})
+	defer cgroupManager.Close()
+	
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
-	handler := api.HandlerFromMux(service, m)
+	apiHandler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
 	s := &http.Server{
 		Handler: withCORS(
 			service.WithAuthorization(
-				middleware.Wrap(handler),
+				middleware.Wrap(apiHandler),
 			),
 		),
 		Addr: fmt.Sprintf("0.0.0.0:%d", port),

@@ -77,12 +77,17 @@ func New(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	cmd.SysProcAttr.Credential = &syscall.Credential{
-		Uid:         uid,
-		Gid:         gid,
-		Groups:      []uint32{gid},
-		NoSetGroups: true,
+	cgroupFD, ok := cgroupManager.GetFileDescriptor()
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: ok,
+		CgroupFD:    cgroupFD,
+		Credential: &syscall.Credential{
+			Uid:         uid,
+			Gid:         gid,
+			Groups:      []uint32{gid},
+			NoSetGroups: true,
+		},
 	}
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
@@ -357,8 +362,6 @@ func (p *Handler) Start() (uint32, error) {
 		}
 	}
 
-	p.setCgroup(p.cmd.Process.Pid)
-
 	adjustErr := adjustOomScore(p.cmd.Process.Pid, defaultOomScore)
 	if adjustErr != nil {
 		fmt.Fprintf(os.Stderr, "error adjusting oom score for process '%s': %s\n", p.cmd, adjustErr)
@@ -372,12 +375,6 @@ func (p *Handler) Start() (uint32, error) {
 		Msg(fmt.Sprintf("Process with pid %d started", p.cmd.Process.Pid))
 
 	return uint32(p.cmd.Process.Pid), nil
-}
-
-func (p *Handler) setCgroup(pid int) {
-	if err := p.cgroupManager.Assign(pid); err != nil {
-		fmt.Fprintf(os.Stderr, "error adjusting cgroup for process '%s': %s\n", p.cmd, err)
-	}
 }
 
 func (p *Handler) Wait() {

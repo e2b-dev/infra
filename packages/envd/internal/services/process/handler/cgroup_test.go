@@ -2,14 +2,16 @@ package handler
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
 
-	"github.com/containerd/cgroups/v3/cgroup2"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +34,7 @@ func TestCgroupRoundTrip(t *testing.T) {
 		t.Parallel()
 
 		// create new child process
-		cmd := startProcess(t)
+		cmd := startProcess(t, nil)
 
 		// wait for child process to die
 		err := waitForProcess(t, cmd, maxTimeout)
@@ -44,31 +46,30 @@ func TestCgroupRoundTrip(t *testing.T) {
 		t.Parallel()
 
 		// find current process' cgroup
-		cgroupOfParent := "envdcommands.slice" //getTestCgroupName(t)
-
-		// create a child cgroup with a low memory limit
-		cgroupOfTest := "test-commands.service"
+		cgroupOfParent := fmt.Sprintf("envdtests%d.slice", rand.Int())
 
 		// create manager
-		m := NewCGroupManager(cgroupOfParent, cgroupOfTest, &cgroup2.Resources{
-			Memory: &cgroup2.Memory{
-				Swap: utils.ToPtr(int64(0)),
-				High: utils.ToPtr(int64(float64(maxMemory) * 0.8)),
-				Max:  &maxMemory,
-			},
-		})
+		cgroupPath := filepath.Join("/sys/fs/cgroup", cgroupOfParent)
+		m := NewCGroupManager(
+			cgroupPath,
+			map[string]string{"memory.max": strconv.FormatInt(maxMemory, 10)},
+		)
 		require.NotNil(t, m)
-		require.NotNil(t, m.mgr)
+		require.Positive(t, m.cgroupFD)
+
+		t.Cleanup(func() {
+			err := os.Remove(cgroupPath)
+			assert.NoError(t, err)
+
+			err = m.Close()
+			assert.NoError(t, err)
+		})
 
 		// create new child process
-		cmd := startProcess(t)
-
-		// put child process in the child cgroup
-		err := m.Assign(cmd.Process.Pid)
-		require.NoError(t, err)
+		cmd := startProcess(t, &m.cgroupFD)
 
 		// wait for child process to die
-		err = waitForProcess(t, cmd, maxTimeout)
+		err := waitForProcess(t, cmd, maxTimeout)
 
 		// verify process exited correctly
 		var exitErr *exec.ExitError
@@ -91,11 +92,18 @@ func TestCgroupRoundTrip(t *testing.T) {
 	})
 }
 
-func startProcess(t *testing.T) *exec.Cmd {
+func startProcess(t *testing.T, cgroupFD *int) *exec.Cmd {
 	t.Helper()
 
 	cmdName, args := "bash", []string{"-c", `sleep 1 && tail /dev/zero`}
 	cmd := exec.CommandContext(t.Context(), cmdName, args...)
+
+	if cgroupFD != nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			UseCgroupFD: true,
+			CgroupFD:    *cgroupFD,
+		}
+	}
 	err := cmd.Start()
 	require.NoError(t, err)
 
