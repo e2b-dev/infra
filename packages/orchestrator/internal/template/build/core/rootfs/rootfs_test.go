@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 )
 
 func TestAdditionalOCILayers(t *testing.T) {
@@ -26,6 +28,9 @@ func TestAdditionalOCILayers(t *testing.T) {
 		buildContext := buildcontext.BuildContext{
 			BuilderConfig: cfg.BuilderConfig{
 				HostEnvdPath: envdPath,
+			},
+			Config: config.TemplateConfig{
+				MemoryMB: 100,
 			},
 		}
 		provisionScript := "provision.sh"
@@ -69,5 +74,15 @@ func TestAdditionalOCILayers(t *testing.T) {
 		assert.Len(t, actualFiles, 13)
 		assert.Equal(t, "e2b.local", actualFiles["etc/hostname"])
 		assert.Equal(t, "nameserver 8.8.8.8", actualFiles["etc/resolv.conf"])
+
+		// verify that memory function works
+		assert.Contains(t, actualFiles["etc/systemd/system/envd.service"], `"GOMEMLIMIT=50MiB"`)
+
+		// ensure that both files have identical content
+		disabledContent := strings.TrimSpace(`
+[Service]
+WatchdogSec=0`)
+		assert.Equal(t, disabledContent, actualFiles["etc/systemd/system/systemd-journald.service.d/override.conf"])
+		assert.Equal(t, disabledContent, actualFiles["etc/systemd/system/systemd-networkd.service.d/override.conf"])
 	})
 }
