@@ -35,7 +35,7 @@ const (
 	maxAge      = 2 * time.Hour
 
 	defaultPort     = 49983
-	defaultEnvdNice = -10
+	defaultEnvdNice = -99
 
 	portScannerInterval = 1000 * time.Millisecond
 
@@ -143,7 +143,7 @@ func main() {
 		return
 	}
 
-	if niceLevel != 0 {
+	if niceLevel != defaultEnvdNice {
 		if err := syscall.Setpriority(syscall.PRIO_PROCESS, os.Getpid(), niceLevel); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to set nice to %d: %v\n", niceLevel, err)
 		}
