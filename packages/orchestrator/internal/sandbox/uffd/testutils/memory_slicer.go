@@ -33,3 +33,7 @@ func (s *MemorySlicer) Size() (int64, error) {
 func (s *MemorySlicer) Content() []byte {
 	return s.content
 }
+
+func (s *MemorySlicer) BlockSize() int64 {
+	return s.pagesize
+}

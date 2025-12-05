@@ -7,6 +7,7 @@ receivers:
         read_buffer_size: 10943040
         max_concurrent_streams: 200
         write_buffer_size: 10943040
+
   prometheus:
     config:
       scrape_configs:
@@ -18,6 +19,7 @@ receivers:
             - targets: ['localhost:4646']
           params:
             format: ['prometheus']
+
   hostmetrics:
     root_path: /hostfs
     collection_interval: 30s
@@ -66,8 +68,12 @@ receivers:
           system.cpu.load_average.5m:
             enabled: true
 
-      #  filter not needed stuff (mode, type)
       filesystem:
+        include_virtual_filesystems: false
+        exclude_devices:
+          devices:
+            - "^/dev/loop.*$"
+          match_type: regexp
         metrics:
           system.filesystem.inodes.usage:
             enabled: true
@@ -107,6 +113,13 @@ receivers:
 
       # Scraping traffic going in/out of network interfaces
       network:
+        exclude:
+          interfaces:
+            - "^lo$"
+            - "^docker.*$"
+            - "^nomad$"
+            - "^veth.*$"
+          match_type: regexp
         metrics:
           system.network.connections:
             enabled: true
@@ -188,28 +201,6 @@ processors:
     timeout: 5s
     send_batch_size: 50000
 
-  filter/drop_by_device:
-    error_mode: ignore
-    metrics:
-      datapoint:
-        # Drop system.network.io for veth-* or docker* interfaces
-        - 'IsMatch(metric.name, "system.network..*") and IsMatch(attributes["device"], "^(veth.*|docker.*|lo)$")'
-        # Drop anything related to loop devices
-        - 'IsMatch(attributes["device"], "^/dev/loop.*$")'
-
-  attributes/strip_fs_labels:
-    include:
-      match_type: strict
-      metric_names:
-        - system.filesystem.usage
-    actions:
-      - action: delete
-        key: mode
-      - action: delete
-        key: type
-      - action: delete
-        key: mountpoint
-
   attributes/host_metrics_node:
     actions:
       - key: node.id
@@ -232,21 +223,15 @@ processors:
           - "Click*"
           - "pgxpool.*"
 
-  filter/prometheus:
+  filter/only_client_allocs:
     metrics:
       include:
-        match_type: strict
+        match_type: regexp
         metric_names:
-          - "nomad_client.host_cpu_total_percent"
-          - "nomad_client_host_cpu_idle"
-          - "nomad_client_host_disk_available"
-          - "nomad_client_host_disk_size"
-          - "nomad_client_host_memory_available"
-          - "nomad_client_host_memory_total"
-          - "nomad_client_allocs_memory_usage"
-          - "nomad_client_allocs_memory_allocated"
-          - "nomad_client_allocs_cpu_total_ticks"
-          - "nomad_client_allocs_cpu_allocated"
+          - "^nomad_client_allocs_.*$"
+          - "^nomad_client_allocated_.*$"
+          - "^nomad_client_allocations_.*$"
+          - "^nomad_client_unallocated_.*$"
 
   filter/external_metrics:
     metrics:
@@ -254,17 +239,6 @@ processors:
         match_type: regexp
         metric_names:
           - "e2b.*"
-
-  metricstransform:
-    # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/metricstransformprocessor
-    transforms:
-      - include: "nomad_client_host_cpu_idle"
-        match_type: strict
-        action: update
-        operations:
-          - action: aggregate_labels
-            aggregation_type: sum
-            label_set: [instance, node_id, node_status, node_pool]
 
   metricstransform/single_cpu:
     transforms:
@@ -372,15 +346,18 @@ service:
     metrics:
       receivers:
         - otlp
-      processors: [filter/otlp, resourcedetection, transform/set-name, batch]
+      processors:
+        - filter/otlp
+        - resourcedetection
+        - transform/set-name
+        - batch
       exporters:
         - otlphttp/grafana_cloud
     metrics/prometheus:
       receivers:
         - prometheus
       processors:
-        - filter/prometheus
-        - metricstransform
+        - filter/only_client_allocs
         - resourcedetection
         - transform/set-name
         - batch
@@ -389,33 +366,42 @@ service:
     metrics/rpc_only:
       receivers:
         - otlp
-      processors: [filter/rpc_duration_only, resource/remove_instance, resourcedetection, transform/set-name, batch]
+      processors:
+        - filter/rpc_duration_only
+        - resource/remove_instance
+        - resourcedetection
+        - transform/set-name
+        - batch
       exporters:
         - otlphttp/grafana_cloud
     metrics/host:
       receivers:
         - hostmetrics
       processors:
-        - filter/drop_by_device
-        - attributes/strip_fs_labels
         - attributes/host_metrics_node
         - metricstransform/single_cpu
         - batch
       exporters:
         - otlphttp/grafana_cloud
     metrics/external:
-      receivers:  [otlp]
-      processors: [filter/external_metrics, batch/clickhouse]
-      exporters:  [clickhouse]
+      receivers:
+        - otlp
+      processors:
+        - filter/external_metrics
+        - batch/clickhouse
+      exporters:
+        - clickhouse
     traces:
       receivers:
         - otlp
-      processors: [batch]
+      processors:
+        - batch
       exporters:
         - otlphttp/grafana_cloud
     logs:
       receivers:
         - otlp
-      processors: [batch]
+      processors:
+        - batch
       exporters:
         - otlphttp/grafana_cloud

@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
@@ -104,29 +105,27 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	nodeID := buildInfo.NodeID
-	if nodeID != nil {
-		cli, err := a.templateManager.GetClusterBuildClient(utils.WithClusterFallback(team.ClusterID), *nodeID)
-		if err != nil {
-			telemetry.ReportError(ctx, "error when getting build client", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build client")
+	cluster, ok := a.clustersPool.GetClusterById(utils.WithClusterFallback(team.ClusterID))
+	if !ok {
+		telemetry.ReportError(ctx, "error when getting cluster", fmt.Errorf("cluster with ID '%s' not found", team.ClusterID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting cluster")
 
-			return
+		return
+	}
+
+	logs := template_manager.GetBuildLogs(ctx, cluster, buildInfo.NodeID, templateID, buildID, offset, apiToLogLevel(params.Level))
+	for _, entry := range logs {
+		if legacyLogs {
+			lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
 		}
+		logEntries = append(logEntries, getAPILogEntry(entry))
+	}
 
-		for _, entry := range cli.GetLogs(ctx, templateID, buildID, offset, apiToLogLevel(params.Level)) {
-			if legacyLogs {
-				lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
-			}
-			logEntries = append(logEntries, getAPILogEntry(entry))
-		}
+	result.Logs = lgs
+	result.LogEntries = logEntries
 
-		result.Logs = lgs
-		result.LogEntries = logEntries
-
-		if result.Reason != nil && result.Reason.Step != nil {
-			result.Reason.LogEntries = sharedUtils.ToPtr(filterStepLogs(logEntries, *result.Reason.Step, api.LogLevelWarn))
-		}
+	if result.Reason != nil && result.Reason.Step != nil {
+		result.Reason.LogEntries = sharedUtils.ToPtr(filterStepLogs(logEntries, *result.Reason.Step, api.LogLevelWarn))
 	}
 
 	c.JSON(http.StatusOK, result)

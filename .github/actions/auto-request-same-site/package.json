@@ -1,0 +1,11 @@
+{
+  "name": "auto-request-same-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Action to auto-assign PR reviewers from the same site with Slack notifications",
+  "main": "script.js",
+  "dependencies": {
+    "@octokit/rest": "^21.0.0",
+    "@slack/web-api": "^7.0.0"
+  }
+}
