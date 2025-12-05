@@ -30,6 +30,20 @@ variable "client_cluster_size_max" {
   default = 0
 }
 
+variable "client_cluster_autoscaling_cpu_target" {
+  description = "Target CPU utilization for client autoscaling (0.0-1.0)"
+  type        = number
+  default     = 0.6
+}
+
+variable "client_cluster_autoscaling_memory_target" {
+  # Note: This must be higher than orchestrator_base_hugepages_percentage (default 80%)
+  # because preallocated hugepages are counted as used memory in monitoring.
+  description = "Target memory utilization percentage for client autoscaling"
+  type        = number
+  default     = 85
+}
+
 variable "client_machine_type" {
   type = string
 }

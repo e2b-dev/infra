@@ -17,6 +17,8 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, CLIENT_MACHINE_TYPE) \
 	$(call tfvar, CLIENT_CLUSTER_SIZE) \
 	$(call tfvar, CLIENT_CLUSTER_SIZE_MAX) \
+	$(call tfvar, CLIENT_CLUSTER_AUTOSCALING_CPU_TARGET) \
+	$(call tfvar, CLIENT_CLUSTER_AUTOSCALING_MEMORY_TARGET) \
 	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
 	$(call tfvar, API_MACHINE_TYPE) \
 	$(call tfvar, API_CLUSTER_SIZE) \
