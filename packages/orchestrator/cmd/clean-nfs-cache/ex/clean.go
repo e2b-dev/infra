@@ -322,6 +322,7 @@ func (d *Dir) sort() {
 func (d *Dir) IsScanned() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
 	return d.state == scanned
 }
 

@@ -159,7 +159,6 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 		if m.Get("targetBytesToDelete").IsNumber() {
 			opts.TargetBytesToDelete = uint64(m.Get("targetBytesToDelete").Float64Value())
 		}
-
 	}
 
 	var cores []zapcore.Core

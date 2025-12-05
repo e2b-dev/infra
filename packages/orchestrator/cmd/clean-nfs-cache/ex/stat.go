@@ -25,17 +25,22 @@ func (c *Cleaner) Statter(ctx context.Context, quitCh <-chan struct{}, done *syn
 	}
 }
 
-func (c *Cleaner) scanDir(path []*Dir) (*Dir, error) {
+func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (*Dir, error) {
 	d := path[len(path)-1]
 
 	d.mu.Lock()
 	switch d.state {
+
 	case scanned:
 		d.mu.Unlock()
+
 		return d, nil
+
 	case scanning:
 		d.mu.Unlock()
+
 		return nil, ErrBusy
+
 	default:
 		// continue
 	}
@@ -73,7 +78,8 @@ func (c *Cleaner) scanDir(path []*Dir) (*Dir, error) {
 
 	// If the directory is empty, remove it from its parent and delete it
 	if len(entries) == 0 && len(path) > 1 {
-		c.removeEmptyDir(context.Background(), path)
+		c.removeEmptyDir(ctx, path)
+
 		return nil, fmt.Errorf("%w: empty directory %s", ErrNoFiles, absPath)
 	}
 
@@ -112,6 +118,7 @@ func (c *Cleaner) scanDir(path []*Dir) (*Dir, error) {
 		resp := <-responseCh
 		if resp.err != nil {
 			err = resp.err
+
 			continue
 		}
 		files[i] = *resp.f

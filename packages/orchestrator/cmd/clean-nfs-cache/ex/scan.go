@@ -32,6 +32,7 @@ func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, er
 			case errors.Is(err, ErrBusy):
 				// We tried a busy directory, just retry
 				time.Sleep(1 * time.Millisecond)
+
 				continue
 
 			default:
@@ -55,7 +56,7 @@ func (c *Cleaner) FindCandidate(ctx context.Context) (*Candidate, error) {
 }
 
 func (c *Cleaner) findCandidate(ctx context.Context, path []*Dir) (*Candidate, error) {
-	d, err := c.scanDir(path)
+	d, err := c.scanDir(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -95,5 +96,6 @@ func (d *Dir) randomSubdirOrOldestFile() (cadidate *File, randomSubdir *Dir, err
 	// file needs to be unlinked before it's returned
 	f := d.Files[len(d.Files)-1]
 	d.Files = d.Files[:len(d.Files)-1]
+
 	return &f, nil, nil
 }

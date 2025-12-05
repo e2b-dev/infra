@@ -23,11 +23,12 @@ func TestScanDir(t *testing.T) {
 		Path: path,
 	}, logger.NewNopLogger())
 
+	ctx := context.Background()
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	c.statRequestCh = make(chan *statReq, 1)
 	quitCh := make(chan struct{})
-	go c.Statter(context.Background(), quitCh, wg)
+	go c.Statter(ctx, quitCh, wg)
 	defer func() {
 		close(quitCh)
 		wg.Wait()
@@ -37,7 +38,7 @@ func TestScanDir(t *testing.T) {
 	require.NoError(t, err)
 	defer df.Close()
 
-	dir, err := c.scanDir([]*Dir{c.root})
+	dir, err := c.scanDir(ctx, []*Dir{c.root})
 	require.NoError(t, err)
 	require.True(t, dir.IsScanned())
 	require.False(t, dir.IsEmpty())
@@ -48,7 +49,7 @@ func TestScanDir(t *testing.T) {
 	require.NoError(t, err)
 	defer dfsub.Close()
 
-	sub, err = c.scanDir([]*Dir{c.root, sub})
+	sub, err = c.scanDir(ctx, []*Dir{c.root, sub})
 	require.NoError(t, err)
 	require.True(t, sub.IsScanned())
 	require.False(t, sub.IsEmpty())
