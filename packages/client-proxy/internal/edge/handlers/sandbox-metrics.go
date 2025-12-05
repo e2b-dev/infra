@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/dates"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	clickhouseUtils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -27,7 +27,7 @@ func (a *APIStore) V1SandboxMetrics(c *gin.Context, sandboxID string, params api
 		return
 	}
 
-	start, end, err = dates.ValidateRange(start, end)
+	start, end, err = clickhouseUtils.ValidateRange(start, end)
 	if err != nil {
 		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(params.TeamID))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
@@ -36,7 +36,7 @@ func (a *APIStore) V1SandboxMetrics(c *gin.Context, sandboxID string, params api
 	}
 
 	// Calculate the step size
-	step := dates.CalculateStep(start, end)
+	step := clickhouseUtils.CalculateStep(start, end)
 
 	metrics, err := a.querySandboxMetricsProvider.QuerySandboxMetrics(ctx, sandboxID, params.TeamID, start, end, step)
 	if err != nil {

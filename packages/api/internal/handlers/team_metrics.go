@@ -5,13 +5,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/dates"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	clickhouseUtils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dates"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -66,7 +67,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 		return
 	}
 
-	step := dates.CalculateStep(start, end)
+	step := clickhouseUtils.CalculateStep(start, end)
 
 	metrics, err := a.clickhouseStore.QueryTeamMetrics(ctx, teamID, start, end, step)
 	if err != nil {
