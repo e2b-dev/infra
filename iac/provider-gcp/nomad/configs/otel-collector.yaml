@@ -7,6 +7,7 @@ receivers:
         read_buffer_size: 10943040
         max_concurrent_streams: 200
         write_buffer_size: 10943040
+
   prometheus:
     config:
       scrape_configs:
@@ -18,59 +19,84 @@ receivers:
             - targets: ['localhost:4646']
           params:
             format: ['prometheus']
+
   hostmetrics:
     root_path: /hostfs
     collection_interval: 30s
+
+    # all scrapers are added explicitly, so we can be clear
+    # about which metrics we've chosen to include/exclude.
+    # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md
     scrapers:
       cpu:
         metrics:
-          system.cpu.time:
-            enabled: false
-          system.cpu.utilization:
+          system.cpu.time:  # counter of seconds spent
+            enabled: true
+          system.cpu.frequency:
             enabled: false
           system.cpu.logical.count:
             enabled: true
           system.cpu.physical.count:
             enabled: true
+          system.cpu.utilization:  # percentage utilized in the moment
+            enabled: false
+
+      # entirely disabled, so we omit the module
+      #disk:
+      #  metrics:
+      #    system.disk.io:
+      #      enabled: false
+      #    system.disk.io_time:
+      #      enabled: false
+      #    system.disk.merged:
+      #      enabled: false
+      #    system.disk.operation_time:
+      #      enabled: false
+      #    system.disk.operations:
+      #      enabled: false
+      #    system.disk.pending_operations:
+      #      enabled: false
+      #    system.disk.weighted_io_time:
+      #      enabled: false
 
       load:
         metrics:
+          system.cpu.load_average.15m:
+            enabled: true
           system.cpu.load_average.1m:
             enabled: true
           system.cpu.load_average.5m:
             enabled: true
-          system.cpu.load_average.15m:
-            enabled: false
 
-      # Scraping traffic going in/out of network interfaces
-      network:
+      filesystem:
+        include_virtual_filesystems: false
+        exclude_devices:
+          devices:
+            - "^/dev/loop.*$"
+          match_type: regexp
         metrics:
-          system.network.connections:
-            enabled: false
-          system.network.dropped:
-            enabled: false
-          system.network.errors:
-            enabled: false
-          system.network.io:
-              enabled: true
-          system.network.packets:
-            enabled: false
+          system.filesystem.inodes.usage:
+            enabled: true
+          system.filesystem.usage:
+            enabled: true
+          system.filesystem.utilization:
+            enabled: true
 
       # Scraping only total memory (memory limit) and available memory to reduce cardinality
       memory:
         metrics:
-          system.linux.memory.dirty:
-            enabled: false
+          system.memory.usage:
+            enabled: true
           system.linux.memory.available: # free memory
+            enabled: true
+          system.linux.memory.dirty:  # data waiting to be written to disk
             enabled: true
           system.memory.limit: # total memory
             enabled: true
           system.memory.page_size:
             enabled: false
-          system.memory.usage:
-            enabled: false
           system.memory.utilization:
-            enabled: false
+            enabled: true
 
           # Huge pages metrics added as part of temporal patch
           # https://github.com/e2b-dev/opentelemetry-collector-contrib/pull/1
@@ -85,14 +111,87 @@ receivers:
           system.linux.memory.huge_pages.total:
             enabled: true
 
-      #  filter not needed stuff (mode, type)
-      #  filter /dev/loop*, maybe check fo other that are polluting
-      filesystem:
+      # Scraping traffic going in/out of network interfaces
+      network:
+        exclude:
+          interfaces:
+            - "^lo$"
+            - "^docker.*$"
+            - "^nomad$"
+            - "^veth.*$"
+          match_type: regexp
         metrics:
-          system.filesystem.inodes.usage:
-            enabled: false
-          system.filesystem.usage:
+          system.network.connections:
             enabled: true
+          system.network.dropped:
+            enabled: true
+          system.network.errors:
+            enabled: true
+          system.network.io:
+            enabled: true
+          system.network.packets:
+            enabled: false
+          system.network.conntrack.count:
+            enabled: true
+          system.network.conntrack.max:
+            enabled: true
+
+      # entirely disabled, so we omit the module
+      #paging:
+      #  metrics:
+      #    system.paging.faults:
+      #      enabled: false
+      #    system.paging.operations:
+      #      enabled: false
+      #    system.paging.usage:
+      #      enabled: false
+      #    system.paging.utilization:
+      #      enabled: false
+
+      processes:
+        metrics:
+          system.processes.count:
+            enabled: true
+          system.processes.created:
+            enabled: true
+
+      # entirely disabled, so we omit the module
+      #process:
+      #  metrics:
+      #    process.cpu.time:
+      #      enabled: false
+      #    process.disk.io:
+      #      enabled: false
+      #    process.memory.usage:
+      #      enabled: false
+      #    process.memory.virtual:
+      #      enabled: false
+      #    process.context_switches:
+      #      enabled: false
+      #    process.cpu.utilization:
+      #      enabled: false
+      #    process.disk.operations:
+      #      enabled: false
+      #    process.handles:
+      #      enabled: false
+      #    process.memory.utilization:
+      #      enabled: false
+      #    process.open_file_descriptors:
+      #      enabled: false
+      #    process.paging.faults:
+      #      enabled: false
+      #    process.signals_pending:
+      #      enabled: false
+      #    process.threads:
+      #      enabled: false
+      #    process.uptime:
+      #      enabled: false
+
+      # entirely disabled, so we omit the module
+      #system:
+      #  metrics:
+      #    system.uptime:
+      #      enabled: false
 
 processors:
   batch:
@@ -101,27 +200,6 @@ processors:
   batch/clickhouse:
     timeout: 5s
     send_batch_size: 50000
-
-  filter/drop_by_device:
-    error_mode: ignore
-    metrics:
-      datapoint:
-        # Drop system.network.io for veth-* or docker* interfaces
-        - 'metric.name == "system.network.io" and IsMatch(attributes["device"], "^(veth-.*|docker.*|lo)$")'
-        # Drop system.filesystem.usage for loop devices
-        - 'metric.name == "system.filesystem.usage" and IsMatch(attributes["device"], "^/dev/loop.*$")'
-
-  attributes/strip_fs_labels:
-    include:
-      match_type: strict
-      metric_names: [system.filesystem.usage]
-    actions:
-      - action: delete
-        key: mode
-      - action: delete
-        key: type
-      - action: delete
-        key: mountpoint
 
   attributes/host_metrics_node:
     actions:
@@ -143,24 +221,17 @@ processors:
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
-          - "otelcol.*"
           - "pgxpool.*"
 
-  filter/prometheus:
+  filter/only_client_allocs:
     metrics:
       include:
-        match_type: strict
+        match_type: regexp
         metric_names:
-          - "nomad_client.host_cpu_total_percent"
-          - "nomad_client_host_cpu_idle"
-          - "nomad_client_host_disk_available"
-          - "nomad_client_host_disk_size"
-          - "nomad_client_host_memory_available"
-          - "nomad_client_host_memory_total"
-          - "nomad_client_allocs_memory_usage"
-          - "nomad_client_allocs_memory_allocated"
-          - "nomad_client_allocs_cpu_total_ticks"
-          - "nomad_client_allocs_cpu_allocated"
+          - "^nomad_client_allocs_.*$"
+          - "^nomad_client_allocated_.*$"
+          - "^nomad_client_allocations_.*$"
+          - "^nomad_client_unallocated_.*$"
 
   filter/external_metrics:
     metrics:
@@ -169,16 +240,17 @@ processors:
         metric_names:
           - "e2b.*"
 
-  metricstransform:
-    # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/metricstransformprocessor
+  metricstransform/single_cpu:
     transforms:
-      - include: "nomad_client_host_cpu_idle"
+      - include: "system.cpu.time"
         match_type: strict
         action: update
         operations:
           - action: aggregate_labels
+            label_set:
+              - node.id
+              - state
             aggregation_type: sum
-            label_set: [instance, node_id, node_status, node_pool]
 
   resourcedetection:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
@@ -274,40 +346,62 @@ service:
     metrics:
       receivers:
         - otlp
-      processors: [filter/otlp, resourcedetection, transform/set-name, batch]
+      processors:
+        - filter/otlp
+        - resourcedetection
+        - transform/set-name
+        - batch
       exporters:
         - otlphttp/grafana_cloud
     metrics/prometheus:
       receivers:
         - prometheus
-      processors: [filter/prometheus, metricstransform, resourcedetection, transform/set-name, batch]
+      processors:
+        - filter/only_client_allocs
+        - resourcedetection
+        - transform/set-name
+        - batch
       exporters:
         - otlphttp/grafana_cloud
     metrics/rpc_only:
       receivers:
         - otlp
-      processors: [filter/rpc_duration_only, resource/remove_instance, resourcedetection, transform/set-name, batch]
+      processors:
+        - filter/rpc_duration_only
+        - resource/remove_instance
+        - resourcedetection
+        - transform/set-name
+        - batch
       exporters:
         - otlphttp/grafana_cloud
     metrics/host:
       receivers:
         - hostmetrics
-      processors: [filter/drop_by_device, attributes/strip_fs_labels, attributes/host_metrics_node, batch]
+      processors:
+        - attributes/host_metrics_node
+        - metricstransform/single_cpu
+        - batch
       exporters:
         - otlphttp/grafana_cloud
     metrics/external:
-      receivers:  [otlp]
-      processors: [filter/external_metrics, batch/clickhouse]
-      exporters:  [clickhouse]
+      receivers:
+        - otlp
+      processors:
+        - filter/external_metrics
+        - batch/clickhouse
+      exporters:
+        - clickhouse
     traces:
       receivers:
         - otlp
-      processors: [batch]
+      processors:
+        - batch
       exporters:
         - otlphttp/grafana_cloud
     logs:
       receivers:
         - otlp
-      processors: [batch]
+      processors:
+        - batch
       exporters:
         - otlphttp/grafana_cloud

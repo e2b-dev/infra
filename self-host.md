@@ -54,7 +54,7 @@ Check if you can use config for terraform state management
     > Get Postgres database connection string from your database, e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct
     
     > Your Postgres database needs to have enabled IPv4 access. You can do that in Connect screen
-3. Run `make switch-env ENV={prod,staging,dev}` to start using your env
+3. Run `make set-env ENV={prod,staging,dev}` to start using your env
 4. Run `make login-gcloud` to login to `gcloud`
 5. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
@@ -72,13 +72,12 @@ Check if you can use config for terraform state management
   - Posthog API keys for monitoring (optional)
 9. Run `make plan-without-jobs` and then `make apply`
 10. Fill out the following secret in the GCP Secrets Manager:
+  - e2b-postgres-connection-string
   - e2b-supabase-jwt-secrets (optional / required to self-host the [E2B dashboard](https://github.com/e2b-dev/dashboard))
       > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
-  - e2b-postgres-connection-string
 11. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
-12. Setup data in the cluster by following one of the two 
-    - `make prep-cluster` in `packages/shared` to create an initial user, etc. (You need to be logged in via [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli)). It will create a user with same information (access token, api key, etc.) as you have in E2B. 
-    - You can also create a user in database, it will automatically also create a team, an API key and an access token. You will need to build template(s) for your cluster. Use [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli?activetab=versions)) and run `E2B_DOMAIN=<your-domain> e2b template build`.
+12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
+  - You can also run `make seed-db` to create more users and teams.
 
 
 ### Interacting with the cluster

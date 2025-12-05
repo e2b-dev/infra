@@ -78,6 +78,19 @@ func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontex
 	return value, nil
 }
 
+func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ldcontext.Context) (string, error) {
+	if c.ld == nil {
+		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
+	}
+
+	value, err := c.ld.StringVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
+	if err != nil {
+		return value, fmt.Errorf("error evaluating %s: %w", flag, err)
+	}
+
+	return value, nil
+}
+
 func (c *Client) Close(ctx context.Context) error {
 	if c.ld == nil {
 		return nil

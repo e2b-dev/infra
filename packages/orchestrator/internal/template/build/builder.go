@@ -115,6 +115,13 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	ctx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
+	// setup launch darkly context
+	ctx = featureflags.SetContext(
+		ctx,
+		featureflags.TemplateContext(cfg.TemplateID),
+		featureflags.TeamContext(cfg.TeamID),
+	)
+
 	// Record build duration and result at the end
 	startTime := time.Now()
 	defer func() {
@@ -275,6 +282,8 @@ func runBuild(
 		builder.templateStorage,
 		builder.proxy,
 		layerExecutor,
+		builder.featureFlags,
+		builder.logger,
 	)
 
 	// Construct the phases/steps to run
