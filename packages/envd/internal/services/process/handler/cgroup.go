@@ -5,28 +5,32 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/containerd/cgroups/v3"
 	"github.com/containerd/cgroups/v3/cgroup2"
 	"golang.org/x/sys/unix"
 )
 
-var ErrCGroup2Unsupported = errors.New("unsupported cgroup v2")
-
 type CGroupManager struct {
 	cgroupFD int
 	mgr      *cgroup2.Manager
 }
-
-const defaultDirPerm = 0o755
 
 type Limits struct {
 	MaxMemory int64
 }
 
 func NewCGroupManager(slice, group string, resources *cgroup2.Resources) *CGroupManager {
+	if strings.Contains(slice, "/") || strings.Contains(group, "/") {
+		fmt.Fprintf(os.Stderr, "cgroup slice or group contains invalid characters\n")
+
+		return nil
+	}
+
 	if slice == "" || group == "" {
 		fmt.Fprintf(os.Stderr, "cgroup slice or group not set\n")
+
 		return nil
 	}
 
@@ -39,9 +43,17 @@ func NewCGroupManager(slice, group string, resources *cgroup2.Resources) *CGroup
 	}
 
 	sysfsPath := filepath.Join("/sys/fs/cgroup", slice, group)
-	mgr, err := cgroup2.NewSystemd(slice, group, -1, resources)
+	mgr, err := cgroup2.LoadSystemd(slice, "")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create cgroup manager: %v", err)
+
+		return nil
+	}
+
+	mgr, err = mgr.NewChild(group, resources)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create cgroup: %v", err)
+
 		return nil
 	}
 

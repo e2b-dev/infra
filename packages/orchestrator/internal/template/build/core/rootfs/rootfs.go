@@ -193,7 +193,7 @@ Restart=always
 User=root
 Group=root
 Environment=GOTRACEBACK=all
-ExecStart=/bin/bash -l -c "/usr/bin/envd -parent-cgroup=/sys/fs/cgroup/envd.slice -cmd-cgroup=commands.slice"
+ExecStart=/bin/bash -l -c "/usr/bin/envd -parent-cgroup=envd.slice -cmd-cgroup=commands.slice"
 Environment="GOMEMLIMIT=%dMiB"
 
 Slice=envd.slice

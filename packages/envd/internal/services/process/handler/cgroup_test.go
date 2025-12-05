@@ -7,13 +7,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/containerd/cgroups/v3/cgroup2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -50,18 +52,29 @@ func TestCgroupRoundTrip(t *testing.T) {
 
 		// find current process' cgroup
 		cgroupOfParent := fmt.Sprintf("envdtests%d.slice", rand.Int())
+		cgroupOfCommands := "commands.slice"
 
 		// create manager
-		cgroupPath := filepath.Join("/sys/fs/cgroup", cgroupOfParent)
 		m := NewCGroupManager(
-			cgroupPath,
-			map[string]string{"memory.max": strconv.FormatInt(maxMemory, 10)},
+			cgroupOfParent,
+			cgroupOfCommands,
+			&cgroup2.Resources{
+				Memory: &cgroup2.Memory{
+					Max: utils.ToPtr(maxMemory),
+				},
+			},
 		)
 		require.NotNil(t, m)
 		require.Positive(t, m.cgroupFD)
 
 		t.Cleanup(func() {
+			cgroupParentPath := filepath.Join("/sys/fs/cgroup", cgroupOfParent)
+			cgroupPath := filepath.Join(cgroupParentPath, cgroupOfCommands)
+
 			err := os.Remove(cgroupPath)
+			assert.NoError(t, err)
+
+			err = os.Remove(cgroupParentPath)
 			assert.NoError(t, err)
 
 			err = m.Close()
