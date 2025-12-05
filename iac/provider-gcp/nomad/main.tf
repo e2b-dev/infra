@@ -157,7 +157,8 @@ resource "nomad_job" "client_proxy" {
       redis_cluster_url   = local.redis_cluster_url
       redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
-      loki_url = "http://loki.service.consul:${var.loki_service_port.port}"
+      loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
+      clickhouse_connection_string = local.clickhouse_connection_string
 
       proxy_port_name   = var.edge_proxy_port.name
       proxy_port        = var.edge_proxy_port.port

@@ -31,9 +31,15 @@ type ServerInterface interface {
 	// Create a sandbox catalog entry
 	// (POST /v1/sandboxes/catalog)
 	V1SandboxCatalogCreate(c *gin.Context)
+	// Get latest metrics for multiple sandboxes
+	// (GET /v1/sandboxes/metrics)
+	V1SandboxesMetrics(c *gin.Context, params V1SandboxesMetricsParams)
 	// List structured sandbox logs
 	// (GET /v1/sandboxes/{sandboxID}/logs)
 	V1SandboxLogs(c *gin.Context, sandboxID string, params V1SandboxLogsParams)
+	// Get time-series metrics for a sandbox
+	// (GET /v1/sandboxes/{sandboxID}/metrics)
+	V1SandboxMetrics(c *gin.Context, sandboxID string, params V1SandboxMetricsParams)
 
 	// (GET /v1/service-discovery/nodes)
 	V1ServiceDiscoveryNodes(c *gin.Context)
@@ -142,6 +148,56 @@ func (siw *ServerInterfaceWrapper) V1SandboxCatalogCreate(c *gin.Context) {
 	siw.Handler.V1SandboxCatalogCreate(c)
 }
 
+// V1SandboxesMetrics operation middleware
+func (siw *ServerInterfaceWrapper) V1SandboxesMetrics(c *gin.Context) {
+
+	var err error
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params V1SandboxesMetricsParams
+
+	// ------------- Required query parameter "teamID" -------------
+
+	if paramValue := c.Query("teamID"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument teamID is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "teamID", c.Request.URL.Query(), &params.TeamID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Required query parameter "sandbox_ids" -------------
+
+	if paramValue := c.Query("sandbox_ids"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument sandbox_ids is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "sandbox_ids", c.Request.URL.Query(), &params.SandboxIds)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandbox_ids: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1SandboxesMetrics(c, params)
+}
+
 // V1SandboxLogs operation middleware
 func (siw *ServerInterfaceWrapper) V1SandboxLogs(c *gin.Context) {
 
@@ -200,6 +256,66 @@ func (siw *ServerInterfaceWrapper) V1SandboxLogs(c *gin.Context) {
 	}
 
 	siw.Handler.V1SandboxLogs(c, sandboxID, params)
+}
+
+// V1SandboxMetrics operation middleware
+func (siw *ServerInterfaceWrapper) V1SandboxMetrics(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params V1SandboxMetricsParams
+
+	// ------------- Required query parameter "teamID" -------------
+
+	if paramValue := c.Query("teamID"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument teamID is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "teamID", c.Request.URL.Query(), &params.TeamID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "start" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "start", c.Request.URL.Query(), &params.Start)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter start: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "end" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "end", c.Request.URL.Query(), &params.End)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter end: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1SandboxMetrics(c, sandboxID, params)
 }
 
 // V1ServiceDiscoveryNodes operation middleware
@@ -363,7 +479,9 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/v1/info", wrapper.V1Info)
 	router.DELETE(options.BaseURL+"/v1/sandboxes/catalog", wrapper.V1SandboxCatalogDelete)
 	router.POST(options.BaseURL+"/v1/sandboxes/catalog", wrapper.V1SandboxCatalogCreate)
+	router.GET(options.BaseURL+"/v1/sandboxes/metrics", wrapper.V1SandboxesMetrics)
 	router.GET(options.BaseURL+"/v1/sandboxes/:sandboxID/logs", wrapper.V1SandboxLogs)
+	router.GET(options.BaseURL+"/v1/sandboxes/:sandboxID/metrics", wrapper.V1SandboxMetrics)
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes", wrapper.V1ServiceDiscoveryNodes)
 	router.POST(options.BaseURL+"/v1/service-discovery/nodes/drain", wrapper.V1ServiceDiscoveryNodeDrain)
 	router.POST(options.BaseURL+"/v1/service-discovery/nodes/kill", wrapper.V1ServiceDiscoveryNodeKill)

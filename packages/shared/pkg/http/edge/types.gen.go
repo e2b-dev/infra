@@ -197,6 +197,39 @@ type SandboxLogsResponse struct {
 	Logs []SandboxLog `json:"logs"`
 }
 
+// SandboxMetric defines model for SandboxMetric.
+type SandboxMetric struct {
+	// CpuCount Number of CPUs
+	CpuCount int32 `json:"cpu_count"`
+
+	// CpuUsedPct CPU usage percentage
+	CpuUsedPct float32 `json:"cpu_used_pct"`
+
+	// DiskTotal Total disk space in bytes
+	DiskTotal int64 `json:"disk_total"`
+
+	// DiskUsed Used disk space in bytes
+	DiskUsed int64 `json:"disk_used"`
+
+	// MemTotal Total memory in bytes
+	MemTotal int64 `json:"mem_total"`
+
+	// MemUsed Used memory in bytes
+	MemUsed int64 `json:"mem_used"`
+
+	// Timestamp Timestamp of the metric
+	Timestamp time.Time `json:"timestamp"`
+
+	// TimestampUnix Unix timestamp in seconds
+	TimestampUnix int64 `json:"timestamp_unix"`
+}
+
+// SandboxesWithMetrics defines model for SandboxesWithMetrics.
+type SandboxesWithMetrics struct {
+	// Sandboxes Map of sandbox IDs to their latest metrics
+	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
+}
+
 // ServiceDiscoveryNodeStatusRequest defines model for ServiceDiscoveryNodeStatusRequest.
 type ServiceDiscoveryNodeStatusRequest struct {
 	// ServiceInstanceID Service instance ID that should be handled by the request
@@ -227,6 +260,15 @@ type N404 = Error
 // N500 defines model for 500.
 type N500 = Error
 
+// V1SandboxesMetricsParams defines parameters for V1SandboxesMetrics.
+type V1SandboxesMetricsParams struct {
+	// TeamID Team ID that owns the sandboxes
+	TeamID string `form:"teamID" json:"teamID"`
+
+	// SandboxIds List of sandbox IDs (max 100)
+	SandboxIds []string `form:"sandbox_ids" json:"sandbox_ids"`
+}
+
 // V1SandboxLogsParams defines parameters for V1SandboxLogs.
 type V1SandboxLogsParams struct {
 	TeamID string `form:"teamID" json:"teamID"`
@@ -236,6 +278,18 @@ type V1SandboxLogsParams struct {
 
 	// Limit Maximum number of logs that should be returned
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// V1SandboxMetricsParams defines parameters for V1SandboxMetrics.
+type V1SandboxMetricsParams struct {
+	// TeamID Team ID that owns the sandbox
+	TeamID string `form:"teamID" json:"teamID"`
+
+	// Start Start time in Unix seconds
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+
+	// End End time in Unix seconds
+	End *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
 
 // V1TemplateBuildLogsParams defines parameters for V1TemplateBuildLogs.

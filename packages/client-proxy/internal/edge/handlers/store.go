@@ -9,9 +9,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	loggerprovider "github.com/e2b-dev/infra/packages/proxy/internal/edge/logger-provider"
+	metricsprovider "github.com/e2b-dev/infra/packages/proxy/internal/edge/metrics-provider"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
@@ -23,12 +25,13 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/client-proxy/internal/edge/handlers")
 
 type APIStore struct {
-	logger            logger.Logger
-	info              *info.ServiceInfo
-	orchestratorPool  *e2borchestrators.OrchestratorsPool
-	edgePool          *e2borchestrators.EdgePool
-	sandboxes         catalog.SandboxesCatalog
-	queryLogsProvider loggerprovider.LogsQueryProvider
+	logger                      logger.Logger
+	info                        *info.ServiceInfo
+	orchestratorPool            *e2borchestrators.OrchestratorsPool
+	edgePool                    *e2borchestrators.EdgePool
+	sandboxes                   catalog.SandboxesCatalog
+	queryLogsProvider           loggerprovider.LogsQueryProvider
+	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider
 }
 
 const (
@@ -49,10 +52,16 @@ func NewStore(
 		return nil, fmt.Errorf("error when getting logs query provider: %w", err)
 	}
 
+	querySandboxMetricsProvider, err := metricsprovider.GetSandboxMetricsQueryProvider(config)
+	if err != nil {
+		return nil, fmt.Errorf("error when getting sandbox metrics query provider: %w", err)
+	}
+
 	store := &APIStore{
-		orchestratorPool:  orchestratorsPool,
-		edgePool:          edgePool,
-		queryLogsProvider: queryLogsProvider,
+		orchestratorPool:            orchestratorsPool,
+		edgePool:                    edgePool,
+		queryLogsProvider:           queryLogsProvider,
+		querySandboxMetricsProvider: querySandboxMetricsProvider,
 
 		info:      info,
 		logger:    l,

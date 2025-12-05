@@ -323,6 +323,62 @@ components:
       type: string
       format: date-time
 
+    SandboxMetric:
+      type: object
+      required:
+        - timestamp
+        - timestamp_unix
+        - cpu_used_pct
+        - cpu_count
+        - mem_total
+        - mem_used
+        - disk_total
+        - disk_used
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the metric
+        timestamp_unix:
+          type: integer
+          format: int64
+          description: Unix timestamp in seconds
+        cpu_used_pct:
+          type: number
+          format: float
+          description: CPU usage percentage
+        cpu_count:
+          type: integer
+          format: int32
+          description: Number of CPUs
+        mem_total:
+          type: integer
+          format: int64
+          description: Total memory in bytes
+        mem_used:
+          type: integer
+          format: int64
+          description: Used memory in bytes
+        disk_total:
+          type: integer
+          format: int64
+          description: Total disk space in bytes
+        disk_used:
+          type: integer
+          format: int64
+          description: Used disk space in bytes
+
+    SandboxesWithMetrics:
+      type: object
+      required:
+        - sandboxes
+      properties:
+        sandboxes:
+          type: object
+          description: Map of sandbox IDs to their latest metrics
+          additionalProperties:
+            $ref: "#/components/schemas/SandboxMetric"
+
 tags:
   - name: service-discovery
   - name: sandboxes
@@ -546,6 +602,92 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SandboxLogsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/sandboxes/{sandboxID}/metrics:
+    get:
+      operationId: v1SandboxMetrics
+      summary: Get time-series metrics for a sandbox
+      security:
+        - ApiKeyAuth: []
+      tags: [sandboxes]
+      parameters:
+        - name: sandboxID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Sandbox ID
+        - name: teamID
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Team ID that owns the sandbox
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: Start time in Unix seconds
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: End time in Unix seconds
+      responses:
+        "200":
+          description: Successfully returned sandbox metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SandboxMetric"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/sandboxes/metrics:
+    get:
+      operationId: v1SandboxesMetrics
+      summary: Get latest metrics for multiple sandboxes
+      security:
+        - ApiKeyAuth: []
+      tags: [sandboxes]
+      parameters:
+        - name: teamID
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Team ID that owns the sandboxes
+        - name: sandbox_ids
+          in: query
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+          description: List of sandbox IDs (max 100)
+      responses:
+        "200":
+          description: Successfully returned sandboxes with metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxesWithMetrics"
         "400":
           $ref: "#/components/responses/400"
         "401":
