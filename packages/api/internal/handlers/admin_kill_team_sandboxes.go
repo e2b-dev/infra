@@ -2,17 +2,15 @@ package handlers
 
 import (
 	"net/http"
-	"sync"
 	"sync/atomic"
-
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid.UUID) {
@@ -22,33 +20,22 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 
 	logger.L().Info(ctx, "Admin killing all sandboxes for team", logger.WithTeamID(teamID.String()))
 
-	// 2. Get all running/pausing sandboxes for team
+	// Get all running sandboxes for the team
 	sandboxes := a.orchestrator.GetSandboxes(ctx, teamID, []sandbox.State{sandbox.StateRunning})
 	logger.L().Info(ctx, "Found sandboxes to kill",
 		logger.WithTeamID(teamID.String()),
 		zap.Int("count", len(sandboxes)),
 	)
 
-	// 3. Kill each sandbox
 	killedCount := atomic.Int64{}
 	failedCount := atomic.Int64{}
 
-	sem := semaphore.NewWeighted(10)
-	wg := sync.WaitGroup{}
+	wg := errgroup.Group{}
+	wg.SetLimit(10)
+
+	// Kill each sandbox
 	for _, sbx := range sandboxes {
-		err := sem.Acquire(ctx, 1)
-		if err != nil {
-			failedCount.Add(1)
-			logger.L().Error(ctx, "Failed to acquire semaphore", zap.Error(err))
-
-			continue
-		}
-
-		wg.Add(1)
-		go func() {
-			defer sem.Release(1)
-			defer wg.Done()
-
+		wg.Go(func() error {
 			err := a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionKill)
 			if err != nil {
 				logger.L().Error(ctx, "Failed to kill sandbox",
@@ -62,17 +49,25 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 					logger.WithTeamID(teamID.String()))
 				killedCount.Add(1)
 			}
-		}()
+
+			return nil
+		})
 	}
 
-	wg.Wait()
+	err := wg.Wait()
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to kill sandboxes")
+
+		return
+	}
+
 	logger.L().Info(ctx, "Completed killing team sandboxes",
 		zap.String("teamID", teamID.String()),
 		zap.Int64("killed", killedCount.Load()),
 		zap.Int64("failed", failedCount.Load()),
 	)
 
-	// 5. Return result
+	// Return result
 	result := api.AdminSandboxKillResult{
 		KilledCount: int(killedCount.Load()),
 		FailedCount: int(failedCount.Load()),
