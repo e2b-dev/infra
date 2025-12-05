@@ -708,6 +708,12 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("error creating snapshot: %w", err)
 	}
 
+	// Close the memfile right after the snapshot to release the lock.
+	err = memfile.Close()
+	if err != nil {
+		return fmt.Errorf("error closing memfile: %w", err)
+	}
+
 	// This should properly flush rootfs to the underlying device.
 	err = s.Close(ctx)
 	if err != nil {

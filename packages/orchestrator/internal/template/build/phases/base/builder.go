@@ -181,17 +181,17 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error building environment: %w", err)
 	}
 
-	// Env variables from the Docker image
-	baseMetadata.Context.EnvVars = oci.ParseEnvs(envsImg.Env)
-
 	cacheFiles, err := baseMetadata.Template.CacheFiles(bb.BuildContext.BuilderConfig)
 	if err != nil {
-		err = errors.Join(err, rootfs.Close())
+		err = errors.Join(err, rootfs.Close(), memfile.Close())
 
 		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}
 	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
 	defer localTemplate.Close(ctx)
+
+	// Env variables from the Docker image
+	baseMetadata.Context.EnvVars = oci.ParseEnvs(envsImg.Env)
 
 	// Provision sandbox with systemd and other vital parts
 	userLogger.Info(ctx, "Provisioning sandbox template")
