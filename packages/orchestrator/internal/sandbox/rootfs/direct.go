@@ -27,7 +27,7 @@ type DirectProvider struct {
 	// TODO: Remove when the snapshot flow is improved
 	finishedOperations chan struct{}
 	// TODO: Remove when the snapshot flow is improved
-	exporting atomic.Bool
+	closed atomic.Bool
 
 	mmap *mmap.MMap
 }
@@ -75,7 +75,7 @@ func (o *DirectProvider) ExportDiff(
 	ctx, childSpan := tracer.Start(ctx, "direct-provider-export")
 	defer childSpan.End()
 
-	if !o.exporting.CompareAndSwap(false, true) {
+	if !o.closed.CompareAndSwap(false, true) {
 		return nil, fmt.Errorf("direct provider close is already in progress")
 	}
 
@@ -114,7 +114,7 @@ func (o *DirectProvider) ExportDiff(
 func (o *DirectProvider) Close(ctx context.Context) error {
 	o.finishedOperations <- struct{}{}
 
-	if !o.exporting.CompareAndSwap(false, true) {
+	if !o.closed.CompareAndSwap(false, true) {
 		return nil
 	}
 
