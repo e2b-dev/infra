@@ -10,6 +10,10 @@ WORKDIR /build/shared
 COPY ./shared/go.mod ./shared/go.sum ./
 RUN go mod download
 
+WORKDIR /build/clickhouse
+COPY ./clickhouse/go.mod ./clickhouse/go.sum ./
+RUN go mod download
+
 WORKDIR /build/client-proxy
 COPY ./client-proxy/go.mod ./client-proxy/go.sum ./
 RUN go mod download
@@ -18,6 +22,8 @@ RUN go mod download
 WORKDIR /build
 
 COPY ./shared/pkg ./shared/pkg
+
+COPY ./clickhouse/pkg ./clickhouse/pkg
 
 COPY ./client-proxy/internal ./client-proxy/internal
 COPY ./client-proxy/main.go ./client-proxy/main.go
