@@ -30,7 +30,7 @@ func (a *APIStore) V1SandboxesMetrics(c *gin.Context, params api.V1SandboxesMetr
 	}
 
 	if len(params.SandboxIds) == 0 {
-		zap.L().Info("No sandbox IDs provided in request", logger.WithTeamID(params.TeamID))
+		logger.L().Info(ctx, "No sandbox IDs provided in request", logger.WithTeamID(params.TeamID))
 		c.JSON(http.StatusOK, api.SandboxesWithMetrics{Sandboxes: map[string]api.SandboxMetric{}})
 
 		return
