@@ -20,7 +20,7 @@ import (
 func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	ctx := c.Request.Context()
 
-	cleanedAliasOrTemplateID, err := id.CleanTemplateID(aliasOrTemplateID)
+	cleanedAliasOrTemplateID, _, err := id.ParseTemplateIDOrAliasWithTag(aliasOrTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID))
 
@@ -119,7 +119,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.ReportEvent(ctx, "deleted template from storage")
 	}
 
-	a.templateCache.Invalidate(templateID)
+	a.templateCache.InvalidateAllTags(templateID)
 
 	telemetry.ReportEvent(ctx, "deleted template from db")
 
