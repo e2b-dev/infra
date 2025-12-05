@@ -32,7 +32,7 @@ func NewTrackerFromBitset(b *bitset.BitSet, blockSize int64) *Tracker {
 	}
 }
 
-func (t *Tracker) has(off int64) bool {
+func (t *Tracker) Has(off int64) bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 

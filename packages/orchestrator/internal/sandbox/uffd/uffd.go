@@ -187,21 +187,12 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 
 // Dirty waits for the current requests to finish and returns the dirty pages.
 //
-// It *MUST* only be called after the sandbox was successfully paused and the snapshot create endpoint returned as these can still write to the memory.
+// It *MUST* be only called after the sandbox was successfully paused via API.
 func (u *Uffd) Dirty(ctx context.Context) (*block.Tracker, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	return uffd.Dirty(), nil
-}
-
-func (u *Uffd) Mapping(ctx context.Context) (*memory.Mapping, error) {
-	uffd, err := u.handler.WaitWithContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get uffd: %w", err)
-	}
-
-	return uffd.Mapping(), nil
+	return uffd.dirty(), nil
 }

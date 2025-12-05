@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 // BenchmarkConfig contains configuration for realistic benchmark scenarios
@@ -317,7 +318,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 					node, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
 						Vcpu:  sbx.RequestedCPU,
 						RamMb: sbx.RequestedMemory,
-					}})
+					}}, machineinfo.MachineInfo{})
 
 					placementTime := time.Since(placementStart)
 					sbx.PlacementLatency = placementTime

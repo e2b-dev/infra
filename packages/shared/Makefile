@@ -21,10 +21,14 @@ build-base-template:
     	npx tsx build.prod.ts
 	@echo "Done"
 
-.PHONY: prep-cluster
-prep-cluster:
+.PHONY: seed-db
+seed-db:
 	@echo "Seeding database..."
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/seed-db.go
+
+.PHONY: prep-cluster
+prep-cluster:
+	$(MAKE) seed-db
 	$(MAKE) build-base-template
 
 .PHONY: test
