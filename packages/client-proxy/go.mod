@@ -19,11 +19,14 @@ exclude k8s.io/client-go v8.0.0+incompatible
 // https://github.com/grafana/loki/issues/2826
 replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.47.2-0.20231010075449-4b9c19fe5510
 
-replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
+replace (
+	github.com/e2b-dev/infra/packages/clickhouse v0.0.0 => ../clickhouse
+	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
+)
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
-	github.com/e2b-dev/infra/packages/clickhouse v0.0.0-20251205132835-e24374e403b1
+	github.com/e2b-dev/infra/packages/clickhouse v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/getkin/kin-openapi v0.132.0
 	github.com/gin-contrib/size v1.0.2
