@@ -29,14 +29,6 @@ const (
 	serviceVersion = "0.1.0"
 )
 
-func main1() {
-	ctx := context.Background()
-	if _, err := cleanNFSCache(ctx, os.Args, 0); err != nil {
-		logger.L().Error(ctx, "clean NFS cache failed", zap.Error(err))
-		os.Exit(1)
-	}
-}
-
 func cleanNFSCache(ctx context.Context, args []string, targetBytesToDelete int64) (results, error) {
 	var allResults results
 	path, opts, err := parseArgs(args)

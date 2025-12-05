@@ -42,8 +42,7 @@ func main() {
 	}
 	defer log.Sync()
 	if !opts.Experimental {
-		// main1()
-		_, _ = cleanNFSCache(ctx, os.Args, int64(opts.TargetBytesToDelete))
+		_, err = cleanNFSCache(ctx, os.Args, int64(opts.TargetBytesToDelete))
 
 		return
 	}
