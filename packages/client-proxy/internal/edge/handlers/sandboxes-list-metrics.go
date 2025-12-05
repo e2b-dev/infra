@@ -29,6 +29,13 @@ func (a *APIStore) V1SandboxesMetrics(c *gin.Context, params api.V1SandboxesMetr
 		return
 	}
 
+	if len(params.SandboxIds) == 0 {
+		zap.L().Info("No sandbox IDs provided in request", logger.WithTeamID(params.TeamID))
+		c.JSON(http.StatusOK, api.SandboxesWithMetrics{Sandboxes: map[string]api.SandboxMetric{}})
+
+		return
+	}
+
 	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, params.TeamID, params.SandboxIds)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error fetching metrics for sandboxes", err)
