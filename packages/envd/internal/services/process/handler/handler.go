@@ -51,8 +51,9 @@ type Handler struct {
 
 	stdin io.WriteCloser
 
-	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
-	EndEvent  *MultiplexedChannel[rpc.ProcessEvent_End]
+	DataEvent     *MultiplexedChannel[rpc.ProcessEvent_Data]
+	EndEvent      *MultiplexedChannel[rpc.ProcessEvent_End]
+	cgroupManager *CGroupManager
 }
 
 // This method must be called only after the process has been started
@@ -66,6 +67,7 @@ func New(
 	req *rpc.StartRequest,
 	logger *zerolog.Logger,
 	defaults *execcontext.Defaults,
+	cgroupManager *CGroupManager,
 	cancel context.CancelFunc,
 ) (*Handler, error) {
 	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
@@ -75,12 +77,17 @@ func New(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	cmd.SysProcAttr.Credential = &syscall.Credential{
-		Uid:         uid,
-		Gid:         gid,
-		Groups:      []uint32{gid},
-		NoSetGroups: true,
+	cgroupFD, ok := cgroupManager.GetFileDescriptor()
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: ok,
+		CgroupFD:    cgroupFD,
+		Credential: &syscall.Credential{
+			Uid:         uid,
+			Gid:         gid,
+			Groups:      []uint32{gid},
+			NoSetGroups: true,
+		},
 	}
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
@@ -129,15 +136,16 @@ func New(
 	outCtx, outCancel := context.WithCancel(ctx)
 
 	h := &Handler{
-		Config:    req.GetProcess(),
-		cmd:       cmd,
-		Tag:       req.Tag,
-		DataEvent: outMultiplex,
-		cancel:    cancel,
-		outCtx:    outCtx,
-		outCancel: outCancel,
-		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:    logger,
+		Config:        req.GetProcess(),
+		cmd:           cmd,
+		Tag:           req.Tag,
+		DataEvent:     outMultiplex,
+		cancel:        cancel,
+		outCtx:        outCtx,
+		outCancel:     outCancel,
+		EndEvent:      NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		logger:        logger,
+		cgroupManager: cgroupManager,
 	}
 
 	if req.GetPty() != nil {
