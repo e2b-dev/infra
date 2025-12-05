@@ -2,7 +2,6 @@ package rootfs
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -12,11 +11,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
-	"lukechampine.com/blake3"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -27,7 +23,6 @@ type Provider interface {
 	Close(ctx context.Context) error
 	Path() (string, error)
 	ExportDiff(ctx context.Context, out io.Writer, closeSandbox func(context.Context) error) (*header.DiffMetadata, error)
-	Verify(ctx context.Context) error
 }
 
 // flush flushes the data to the operating system's buffer.
@@ -57,40 +52,4 @@ func flush(ctx context.Context, path string) error {
 	}
 
 	return nil
-}
-
-func CalculateChecksumsReader(ctx context.Context, r storage.ReaderAtCtx, size, blockSize int64) (header.Checksums, error) {
-	blocks := header.BlocksOffsets(size, blockSize)
-	blockChecksums := make([][sha256.Size]byte, len(blocks))
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(16)
-
-	for i, blockOffset := range blocks {
-		g.Go(func() error {
-			blockBuffer := make([]byte, blockSize)
-			_, err := r.ReadAt(ctx, blockBuffer, blockOffset)
-			if err != nil {
-				return fmt.Errorf("error reading block %d: %w", i, err)
-			}
-
-			blockChecksums[i] = blake3.Sum256(blockBuffer)
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return header.Checksums{}, err
-	}
-
-	checksum := blake3.New(sha256.Size, nil)
-	for _, blockChecksum := range blockChecksums {
-		checksum.Write(blockChecksum[:])
-	}
-
-	return header.Checksums{
-		Checksum:       [sha256.Size]byte(checksum.Sum(nil)),
-		BlockChecksums: blockChecksums,
-	}, nil
 }

@@ -27,8 +27,6 @@ type BuilderConfig struct {
 	TemplateCacheDir string `env:"TEMPLATE_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/template"`
 
 	NetworkConfig network.Config
-
-	RootfsChecksumVerification bool `env:"ROOTFS_CHECKSUM_VERIFICATION" envDefault:"false"`
 }
 
 func (bc BuilderConfig) GetSandboxCacheDir() string  { return bc.SandboxCacheDir }

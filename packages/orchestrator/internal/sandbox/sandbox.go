@@ -236,11 +236,6 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	err = rootfsProvider.Verify(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify rootfs checksum: %w", err)
-	}
-
 	memfile, err := template.Memfile(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
@@ -425,11 +420,6 @@ func (f *Factory) ResumeSandbox(
 			logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
 		}
 	}()
-
-	err = rootfsOverlay.Verify(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify rootfs checksum: %w", err)
-	}
 
 	memfile, err := t.Memfile(ctx)
 	if err != nil {

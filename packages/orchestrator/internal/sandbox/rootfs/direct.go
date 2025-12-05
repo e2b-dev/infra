@@ -2,7 +2,6 @@ package rootfs
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -115,19 +114,6 @@ func (o *DirectProvider) ExportDiff(
 		return nil, fmt.Errorf("error building diff metadata: %w", err)
 	}
 
-	if o.config.RootfsChecksumVerification {
-		checksums, err := calculateChecksums(ctx, o.path, o.blockSize)
-		if err != nil {
-			return nil, fmt.Errorf("error calculating checksum: %w", err)
-		}
-
-		logger.L().Debug(ctx, "exported rootfs checksum direct",
-			zap.String("checksum", hex.EncodeToString(checksums.Checksum[:])),
-		)
-
-		m.Checksums = &checksums
-	}
-
 	telemetry.ReportEvent(ctx, "cache exported")
 
 	return m, nil
@@ -197,21 +183,4 @@ type FileCtx struct {
 
 func (f *FileCtx) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
 	return f.File.ReadAt(p, off)
-}
-
-func calculateChecksums(ctx context.Context, path string, blockSize int64) (header.Checksums, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return header.Checksums{}, fmt.Errorf("error opening path: %w", err)
-	}
-	defer f.Close()
-
-	size, err := f.Stat()
-	if err != nil {
-		return header.Checksums{}, fmt.Errorf("error getting file size: %w", err)
-	}
-
-	fctx := &FileCtx{File: f}
-
-	return CalculateChecksumsReader(ctx, fctx, size.Size(), blockSize)
 }

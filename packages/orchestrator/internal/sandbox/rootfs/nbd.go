@@ -1,9 +1,7 @@
 package rootfs
 
 import (
-	"bytes"
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -31,7 +29,7 @@ type NBDProvider struct {
 
 	blockSize int64
 
-	finishedOperations chan *header.Checksums
+	finishedOperations chan struct{}
 	devicePool         *nbd.DevicePool
 }
 
@@ -58,72 +56,10 @@ func NewNBDProvider(config cfg.BuilderConfig, rootfs block.ReadonlyDevice, cache
 		mnt:                mnt,
 		overlay:            overlay,
 		ready:              utils.NewSetOnce[string](),
-		finishedOperations: make(chan *header.Checksums, 1),
+		finishedOperations: make(chan struct{}, 1),
 		blockSize:          blockSize,
 		devicePool:         devicePool,
 	}, nil
-}
-
-func (o *NBDProvider) Verify(ctx context.Context) error {
-	if !o.config.RootfsChecksumVerification {
-		return nil
-	}
-	l := logger.L().With(
-		logger.WithBuildID(o.overlay.Header().Metadata.BuildId.String()),
-	)
-
-	headerChecksums := o.overlay.Header().Checksums
-	if headerChecksums == nil {
-		l.Warn(ctx, "no header checksums to verify")
-
-		return nil
-	}
-
-	l = l.With(
-		zap.String("checksum_expected", hex.EncodeToString(headerChecksums.Checksum[:])),
-	)
-
-	l.Debug(ctx, "verifying rootfs checksum nbd")
-
-	checksums, err := o.calculateChecksums(ctx)
-	if err != nil {
-		return fmt.Errorf("error calculating checksum: %w", err)
-	}
-
-	l = l.With(
-		zap.String("checksum", hex.EncodeToString(checksums.Checksum[:])),
-	)
-
-	if len(checksums.BlockChecksums) != len(headerChecksums.BlockChecksums) {
-		return fmt.Errorf("block checksums length mismatch, expected %d, got %d", len(headerChecksums.BlockChecksums), len(checksums.BlockChecksums))
-	}
-
-	wrongCount := 0
-	for blockIndex, blockChecksum := range checksums.BlockChecksums {
-		blockOffset := header.BlockOffset(int64(blockIndex), o.blockSize)
-
-		blockChecksumExpected := headerChecksums.BlockChecksums[blockIndex]
-		if !bytes.Equal(blockChecksum[:], blockChecksumExpected[:]) {
-			l.Error(ctx, "rootfs block checksum mismatch nbd",
-				zap.Int("block_index", blockIndex),
-				zap.Int64("block_offset", blockOffset),
-				zap.String("block_checksum", hex.EncodeToString(blockChecksum[:])),
-				zap.String("block_checksum_expected", hex.EncodeToString(blockChecksumExpected[:])),
-			)
-			wrongCount++
-			if wrongCount > 10 {
-				return fmt.Errorf("too many block checksum mismatches")
-			}
-		}
-	}
-
-	if !bytes.Equal(checksums.Checksum[:], headerChecksums.Checksum[:]) {
-		return fmt.Errorf("rootfs checksum mismatch nbd")
-	}
-
-	l.Debug(ctx, "rootfs checksum verified nbd", zap.String("checksum", hex.EncodeToString(checksums.Checksum[:])))
-
-	return nil
 }
 
 func (o *NBDProvider) Start(ctx context.Context) error {
@@ -156,9 +92,8 @@ func (o *NBDProvider) ExportDiff(
 		}
 	}()
 
-	var checksums *header.Checksums
 	select {
-	case checksums = <-o.finishedOperations:
+	case <-o.finishedOperations:
 	case <-ctx.Done():
 		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
 	}
@@ -168,8 +103,6 @@ func (o *NBDProvider) ExportDiff(
 	if err != nil {
 		return nil, fmt.Errorf("error exporting cache: %w", err)
 	}
-
-	m.Checksums = checksums
 
 	telemetry.ReportEvent(ctx, "cache exported")
 
@@ -192,22 +125,12 @@ func (o *NBDProvider) Close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("error flushing cow device: %w", err))
 	}
 
-	var checksums *header.Checksums
-	if o.config.RootfsChecksumVerification {
-		c, err := o.calculateChecksums(ctx)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error calculating checksum: %w", err))
-		}
-
-		checksums = &c
-	}
-
 	err = o.mnt.Close(ctx)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error closing overlay mount: %w", err))
 	}
 
-	o.finishedOperations <- checksums
+	o.finishedOperations <- struct{}{}
 
 	err = o.overlay.Close()
 	if err != nil {
@@ -248,27 +171,4 @@ func (o *NBDProvider) sync(ctx context.Context) error {
 	}
 
 	return flush(ctx, nbdPath)
-}
-
-func (o *NBDProvider) calculateChecksums(ctx context.Context) (header.Checksums, error) {
-	// go over the whole cache and calculate the checksum, include all blocks
-	path, err := o.Path()
-	if err != nil {
-		return header.Checksums{}, fmt.Errorf("error getting path: %w", err)
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		return header.Checksums{}, fmt.Errorf("error opening path: %w", err)
-	}
-	defer f.Close()
-
-	fctx := &FileCtx{File: f}
-
-	size, err := o.overlay.Size()
-	if err != nil {
-		return header.Checksums{}, fmt.Errorf("error getting cache size: %w", err)
-	}
-
-	return CalculateChecksumsReader(ctx, fctx, size, o.blockSize)
 }

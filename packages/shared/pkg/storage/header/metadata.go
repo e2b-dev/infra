@@ -22,8 +22,6 @@ type DiffMetadata struct {
 	Empty *bitset.BitSet
 
 	BlockSize int64
-
-	Checksums *Checksums
 }
 
 func (d *DiffMetadata) toDiffMapping(
@@ -97,8 +95,6 @@ func (d *DiffMetadata) ToDiffHeader(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
-
-	header.Checksums = d.Checksums
 
 	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
 	if err != nil {
