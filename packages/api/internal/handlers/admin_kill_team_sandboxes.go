@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -32,11 +33,22 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 	killedCount := atomic.Int64{}
 	failedCount := atomic.Int64{}
 
+	sem := semaphore.NewWeighted(10)
 	wg := sync.WaitGroup{}
 	for _, sbx := range sandboxes {
 		wg.Add(1)
+		err := sem.Acquire(ctx, 1)
+		if err != nil {
+			failedCount.Add(1)
+			logger.L().Error(ctx, "Failed to acquire semaphore", zap.Error(err))
+
+			continue
+		}
+
 		go func() {
+			defer sem.Release(1)
 			defer wg.Done()
+
 			err := a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionKill)
 			if err != nil {
 				logger.L().Error(ctx, "Failed to kill sandbox",
@@ -61,7 +73,7 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 	)
 
 	// 5. Return result
-	result := api.BulkKillResult{
+	result := api.AdminSandboxKillResult{
 		KilledCount: int(killedCount.Load()),
 		FailedCount: int(failedCount.Load()),
 	}

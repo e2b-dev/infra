@@ -89,6 +89,15 @@ type AWSRegistry struct {
 // AWSRegistryType Type of registry authentication
 type AWSRegistryType string
 
+// AdminSandboxKillResult defines model for AdminSandboxKillResult.
+type AdminSandboxKillResult struct {
+	// FailedCount Number of sandboxes that failed to kill
+	FailedCount int `json:"failedCount"`
+
+	// KilledCount Number of sandboxes successfully killed
+	KilledCount int `json:"killedCount"`
+}
+
 // BuildLogEntry defines model for BuildLogEntry.
 type BuildLogEntry struct {
 	// Level State of the sandbox
@@ -114,15 +123,6 @@ type BuildStatusReason struct {
 
 	// Step Step that failed
 	Step *string `json:"step,omitempty"`
-}
-
-// BulkKillResult defines model for BulkKillResult.
-type BulkKillResult struct {
-	// FailedCount Number of sandboxes that failed to kill
-	FailedCount int `json:"failedCount"`
-
-	// KilledCount Number of sandboxes successfully killed
-	KilledCount int `json:"killedCount"`
 }
 
 // CPUCount CPU cores for the sandbox
