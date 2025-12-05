@@ -36,7 +36,7 @@ func NewNoopMemory(size, blockSize int64) *NoopMemory {
 	}
 }
 
-func (m *NoopMemory) Disable(context.Context) (*block.Tracker, error) {
+func (m *NoopMemory) Dirty(context.Context) (*block.Tracker, error) {
 	return m.dirty.Clone(), nil
 }
 

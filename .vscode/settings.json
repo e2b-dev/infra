@@ -96,7 +96,6 @@
   },
   "go.goroot": "${workspaceFolder}/.vscode/mise-tools/goRoot",
   "go.alternateTools": {
-    "customFormatter": "golangci-lint",
     "go": "${workspaceFolder}/.vscode/mise-tools/go",
     "gopls": "${workspaceFolder}/.vscode/mise-tools/gopls",
     "dlv": "${workspaceFolder}/.vscode/mise-tools/dlv"

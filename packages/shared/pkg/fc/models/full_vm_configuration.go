@@ -25,8 +25,14 @@ type FullVMConfiguration struct {
 	// boot source
 	BootSource *BootSource `json:"boot-source,omitempty"`
 
+	// cpu config
+	CPUConfig *CPUConfig `json:"cpu-config,omitempty"`
+
 	// Configurations for all block devices.
 	Drives []*Drive `json:"drives"`
+
+	// entropy
+	Entropy *EntropyDevice `json:"entropy,omitempty"`
 
 	// logger
 	Logger *Logger `json:"logger,omitempty"`
@@ -59,7 +65,15 @@ func (m *FullVMConfiguration) Validate(formats strfmt.Registry) error {
 		res = append(res, err)
 	}
 
+	if err := m.validateCPUConfig(formats); err != nil {
+		res = append(res, err)
+	}
+
 	if err := m.validateDrives(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateEntropy(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -131,6 +145,25 @@ func (m *FullVMConfiguration) validateBootSource(formats strfmt.Registry) error 
 	return nil
 }
 
+func (m *FullVMConfiguration) validateCPUConfig(formats strfmt.Registry) error {
+	if swag.IsZero(m.CPUConfig) { // not required
+		return nil
+	}
+
+	if m.CPUConfig != nil {
+		if err := m.CPUConfig.Validate(formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("cpu-config")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("cpu-config")
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (m *FullVMConfiguration) validateDrives(formats strfmt.Registry) error {
 	if swag.IsZero(m.Drives) { // not required
 		return nil
@@ -152,6 +185,25 @@ func (m *FullVMConfiguration) validateDrives(formats strfmt.Registry) error {
 			}
 		}
 
+	}
+
+	return nil
+}
+
+func (m *FullVMConfiguration) validateEntropy(formats strfmt.Registry) error {
+	if swag.IsZero(m.Entropy) { // not required
+		return nil
+	}
+
+	if m.Entropy != nil {
+		if err := m.Entropy.Validate(formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("entropy")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("entropy")
+			}
+			return err
+		}
 	}
 
 	return nil
@@ -290,7 +342,15 @@ func (m *FullVMConfiguration) ContextValidate(ctx context.Context, formats strfm
 		res = append(res, err)
 	}
 
+	if err := m.contextValidateCPUConfig(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
 	if err := m.contextValidateDrives(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.contextValidateEntropy(ctx, formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -366,6 +426,27 @@ func (m *FullVMConfiguration) contextValidateBootSource(ctx context.Context, for
 	return nil
 }
 
+func (m *FullVMConfiguration) contextValidateCPUConfig(ctx context.Context, formats strfmt.Registry) error {
+
+	if m.CPUConfig != nil {
+
+		if swag.IsZero(m.CPUConfig) { // not required
+			return nil
+		}
+
+		if err := m.CPUConfig.ContextValidate(ctx, formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("cpu-config")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("cpu-config")
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (m *FullVMConfiguration) contextValidateDrives(ctx context.Context, formats strfmt.Registry) error {
 
 	for i := 0; i < len(m.Drives); i++ {
@@ -386,6 +467,27 @@ func (m *FullVMConfiguration) contextValidateDrives(ctx context.Context, formats
 			}
 		}
 
+	}
+
+	return nil
+}
+
+func (m *FullVMConfiguration) contextValidateEntropy(ctx context.Context, formats strfmt.Registry) error {
+
+	if m.Entropy != nil {
+
+		if swag.IsZero(m.Entropy) { // not required
+			return nil
+		}
+
+		if err := m.Entropy.ContextValidate(ctx, formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("entropy")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("entropy")
+			}
+			return err
+		}
 	}
 
 	return nil

@@ -5,7 +5,7 @@ info:
     The API is accessible through HTTP calls on specific URLs
     carrying JSON modeled data.
     The transport medium is a Unix Domain Socket.
-  version: 1.7.0-dev
+  version: 1.10.1
   termsOfService: ""
   contact:
     email: "compute-capsule@amazon.com"
@@ -85,12 +85,12 @@ paths:
         Will fail if update is not possible.
       operationId: putBalloon
       parameters:
-        - name: body
-          in: body
-          description: Balloon properties
-          required: true
-          schema:
-            $ref: "#/definitions/Balloon"
+      - name: body
+        in: body
+        description: Balloon properties
+        required: true
+        schema:
+          $ref: "#/definitions/Balloon"
       responses:
         204:
           description: Balloon device created/updated
@@ -109,12 +109,12 @@ paths:
         Will fail if update is not possible.
       operationId: patchBalloon
       parameters:
-        - name: body
-          in: body
-          description: Balloon properties
-          required: true
-          schema:
-            $ref: "#/definitions/BalloonUpdate"
+      - name: body
+        in: body
+        description: Balloon properties
+        required: true
+        schema:
+          $ref: "#/definitions/BalloonUpdate"
       responses:
         204:
           description: Balloon device updated
@@ -151,12 +151,12 @@ paths:
         Will fail if update is not possible.
       operationId: patchBalloonStatsInterval
       parameters:
-        - name: body
-          in: body
-          description: Balloon properties
-          required: true
-          schema:
-            $ref: "#/definitions/BalloonStatsUpdate"
+      - name: body
+        in: body
+        description: Balloon properties
+        required: true
+        schema:
+          $ref: "#/definitions/BalloonStatsUpdate"
       responses:
         204:
           description: Balloon statistics interval updated
@@ -219,6 +219,7 @@ paths:
           description: Internal server error
           schema:
             $ref: "#/definitions/Error"
+
 
   /drives/{drive_id}:
     put:
@@ -487,7 +488,8 @@ paths:
   /entropy:
     put:
       summary: Creates an entropy device. Pre-boot only.
-      description: Enables an entropy device that provides high-quality random data to the guest.
+      description:
+        Enables an entropy device that provides high-quality random data to the guest.
       operationId: putEntropyDevice
       parameters:
         - name: body
@@ -504,10 +506,12 @@ paths:
           schema:
             $ref: "#/definitions/Error"
 
+
   /network-interfaces/{iface_id}:
     put:
       summary: Creates a network interface. Pre-boot only.
-      description: Creates new network interface with ID specified by iface_id path parameter.
+      description:
+        Creates new network interface with ID specified by iface_id path parameter.
       operationId: putGuestNetworkInterfaceByID
       parameters:
         - name: iface_id
@@ -534,7 +538,8 @@ paths:
             $ref: "#/definitions/Error"
     patch:
       summary: Updates the rate limiters applied to a network interface. Post-boot only.
-      description: Updates the rate limiters applied to a network interface.
+      description:
+        Updates the rate limiters applied to a network interface.
       operationId: patchGuestNetworkInterfaceByID
       parameters:
         - name: iface_id
@@ -589,7 +594,8 @@ paths:
   /snapshot/load:
     put:
       summary: Loads a snapshot. Pre-boot only.
-      description: Loads the microVM state from a snapshot.
+      description:
+        Loads the microVM state from a snapshot.
         Only accepted on a fresh Firecracker process (before configuring
         any resource other than the Logger and Metrics).
       operationId: loadSnapshot
@@ -629,7 +635,8 @@ paths:
   /vm:
     patch:
       summary: Updates the microVM state.
-      description: Sets the desired state (Paused or Resumed) for the microVM.
+      description:
+        Sets the desired state (Paused or Resumed) for the microVM.
       operationId: patchVm
       parameters:
         - name: body
@@ -700,7 +707,8 @@ definitions:
     required:
       - amount_mib
       - deflate_on_oom
-    description: Balloon device descriptor.
+    description:
+      Balloon device descriptor.
     properties:
       amount_mib:
         type: integer
@@ -716,7 +724,8 @@ definitions:
     type: object
     required:
       - amount_mib
-    description: Balloon device descriptor.
+    description:
+      Balloon device descriptor.
     properties:
       amount_mib:
         type: integer
@@ -724,7 +733,8 @@ definitions:
 
   BalloonStats:
     type: object
-    description: Describes the balloon device statistics.
+    description:
+      Describes the balloon device statistics.
     required:
       - target_pages
       - actual_pages
@@ -788,7 +798,8 @@ definitions:
     type: object
     required:
       - stats_polling_interval_s
-    description: Update the statistics polling interval, with the first statistics update scheduled immediately. Statistics cannot be turned on/off after boot.
+    description:
+      Update the statistics polling interval, with the first statistics update scheduled immediately. Statistics cannot be turned on/off after boot.
     properties:
       stats_polling_interval_s:
         type: integer
@@ -798,7 +809,8 @@ definitions:
     type: object
     required:
       - kernel_image_path
-    description: Boot source descriptor.
+    description:
+      Boot source descriptor.
     properties:
       boot_args:
         type: string
@@ -861,18 +873,21 @@ definitions:
         type: boolean
       cache_type:
         type: string
-        description: Represents the caching strategy for the block device.
+        description:
+          Represents the caching strategy for the block device.
         enum: ["Unsafe", "Writeback"]
         default: "Unsafe"
 
       # VirtioBlock specific parameters
       is_read_only:
         type: boolean
-        description: Is block read only.
+        description:
+          Is block read only. 
           This field is required for virtio-block config and should be omitted for vhost-user-block configuration.
       path_on_host:
         type: string
-        description: Host level path for the guest drive.
+        description:
+          Host level path for the guest drive.
           This field is required for virtio-block config and should be omitted for vhost-user-block configuration.
       rate_limiter:
         $ref: "#/definitions/RateLimiter"
@@ -888,7 +903,8 @@ definitions:
       # VhostUserBlock specific parameters
       socket:
         type: string
-        description: Path to the socket of vhost-user-block backend.
+        description:
+          Path to the socket of vhost-user-block backend.
           This field is required for vhost-user-block config should be omitted for virtio-block configuration.
 
   Error:
@@ -911,6 +927,8 @@ definitions:
           $ref: "#/definitions/Drive"
       boot-source:
         $ref: "#/definitions/BootSource"
+      cpu-config:
+        $ref: "#/definitions/CpuConfig"
       logger:
         $ref: "#/definitions/Logger"
       machine-config:
@@ -926,10 +944,13 @@ definitions:
           $ref: "#/definitions/NetworkInterface"
       vsock:
         $ref: "#/definitions/Vsock"
+      entropy:
+        $ref: "#/definitions/EntropyDevice"
 
   InstanceActionInfo:
     type: object
-    description: Variant wrapper containing the real action.
+    description:
+      Variant wrapper containing the real action.
     required:
       - action_type
     properties:
@@ -943,7 +964,8 @@ definitions:
 
   InstanceInfo:
     type: object
-    description: Describes MicroVM instance information.
+    description:
+      Describes MicroVM instance information.
     required:
       - app_name
       - id
@@ -968,10 +990,37 @@ definitions:
       vmm_version:
         description: MicroVM hypervisor build version.
         type: string
+      memory_regions:
+        type: array
+        description: The regions of the guest memory.
+        items:
+          $ref: "#/definitions/GuestMemoryRegionMapping"
+
+  GuestMemoryRegionMapping:
+    type: object
+    description: Describes the region of guest memory that can be used for creating the memfile.
+    required:
+      - base_host_virt_addr
+      - size
+      - offset
+      - page_size
+    properties:
+      base_host_virt_addr:
+        type: integer
+      size:
+        description: The size of the region in bytes.
+        type: integer
+      offset:
+        description: The offset of the region in bytes.
+        type: integer
+      page_size:
+        description: The page size of the region in pages.
+        type: integer
 
   Logger:
     type: object
-    description: Describes the configuration option for the logging capability.
+    description:
+      Describes the configuration option for the logging capability.
     properties:
       level:
         type: string
@@ -1005,6 +1054,9 @@ definitions:
     properties:
       cpu_template:
         $ref: "#/definitions/CpuTemplate"
+      # gdb_socket_path:
+      #   type: string
+      #   description: Path to the GDB socket. Requires the gdb feature to be enabled.
       smt:
         type: boolean
         description: Flag for enabling/disabling simultaneous multithreading. Can be enabled only on x86.
@@ -1053,7 +1105,8 @@ definitions:
 
   Metrics:
     type: object
-    description: Describes the configuration option for the metrics capability.
+    description:
+      Describes the configuration option for the metrics capability.
     required:
       - metrics_path
     properties:
@@ -1063,7 +1116,8 @@ definitions:
 
   MmdsConfig:
     type: object
-    description: Defines the MMDS configuration.
+    description:
+      Defines the MMDS configuration.
     required:
       - network_interfaces
     properties:
@@ -1094,11 +1148,13 @@ definitions:
 
   MmdsContentsObject:
     type: object
-    description: Describes the contents of MMDS in JSON format.
+    description:
+      Describes the contents of MMDS in JSON format.
 
   NetworkInterface:
     type: object
-    description: Defines a network interface.
+    description:
+      Defines a network interface.
     required:
       - host_dev_name
       - iface_id
@@ -1124,7 +1180,8 @@ definitions:
         type: string
       path_on_host:
         type: string
-        description: Host level path for the guest drive.
+        description:
+          Host level path for the guest drive.
           This field is optional for virtio-block config and should be omitted for vhost-user-block configuration.
       rate_limiter:
         $ref: "#/definitions/RateLimiter"
@@ -1161,7 +1218,6 @@ definitions:
   SnapshotCreateParams:
     type: object
     required:
-      - mem_file_path
       - snapshot_path
     properties:
       mem_file_path:
@@ -1189,7 +1245,8 @@ definitions:
     properties:
       enable_diff_snapshots:
         type: boolean
-        description: Enable support for incremental (diff) snapshots by tracking dirty guest pages.
+        description:
+          Enable support for incremental (diff) snapshots by tracking dirty guest pages.
       mem_file_path:
         type: string
         description:
@@ -1207,7 +1264,8 @@ definitions:
         description: Path to the file that contains the microVM state to be loaded.
       resume_vm:
         type: boolean
-        description: When set to true, the vm is also resumed if the snapshot load is successful.
+        description:
+          When set to true, the vm is also resumed if the snapshot load is successful.
 
   TokenBucket:
     type: object
@@ -1242,7 +1300,8 @@ definitions:
 
   Vm:
     type: object
-    description: Defines the microVM running state. It is especially useful in the snapshotting context.
+    description:
+      Defines the microVM running state. It is especially useful in the snapshotting context.
     required:
       - state
     properties:
@@ -1254,14 +1313,16 @@ definitions:
 
   EntropyDevice:
     type: object
-    description: Defines an entropy device.
+    description:
+      Defines an entropy device.
     properties:
       rate_limiter:
         $ref: "#/definitions/RateLimiter"
 
   FirecrackerVersion:
     type: object
-    description: Describes the Firecracker version.
+    description:
+      Describes the Firecracker version.
     required:
       - firecracker_version
     properties:

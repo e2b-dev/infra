@@ -361,16 +361,6 @@ func (u *Userfaultfd) handleWriteProtected(ctx context.Context, onFailure func()
 	})
 }
 
-func (u *Userfaultfd) Unregister() error {
-	for _, r := range u.m.Regions {
-		if err := u.uffd.unregister(r.BaseHostVirtAddr, r.Size); err != nil {
-			return fmt.Errorf("failed to unregister: %w", err)
-		}
-	}
-
-	return nil
-}
-
 // Dirty returns the dirty pages.
 func (u *Userfaultfd) Dirty() *block.Tracker {
 	// This will be at worst cancelled when the uffd is closed.
