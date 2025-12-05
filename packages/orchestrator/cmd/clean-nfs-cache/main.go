@@ -159,7 +159,7 @@ func printSummary(ctx context.Context, r results, opts opts, start time.Time) {
 		return
 	}
 
-	_, sd := standardDeviation(r.lastAccessed)
+	avg, sd := standardDeviation(r.lastAccessed)
 	dur := time.Since(start)
 	filesPerSec := float64(r.deletedFiles) / dur.Seconds()
 	bytesPerSec := float64(r.deletedBytes) / dur.Seconds()
@@ -170,7 +170,7 @@ func printSummary(ctx context.Context, r results, opts opts, start time.Time) {
 		zap.Int64("bytes", r.deletedBytes),
 		zap.Duration("most_recently_used", minDuration(r.lastAccessed).Round(time.Second)),
 		zap.Duration("least_recently_used", maxDuration(r.lastAccessed).Round(time.Second)),
-		zap.Duration("mean_age", time.Duration(float64(r.deletedBytes)/float64(r.deletedFiles)).Round(time.Second)),
+		zap.Duration("mean_age", avg.Round(time.Second)),
 		zap.Float64("files_per_second", filesPerSec),
 		zap.Float64("bytes_per_second", bytesPerSec),
 		zap.Duration("duration", dur.Round(time.Second)),
