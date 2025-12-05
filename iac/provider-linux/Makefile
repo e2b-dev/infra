@@ -44,6 +44,9 @@ tf_vars := \
 	$(call tfvar, EDGE_PROXY_PORT) \
 	$(call tfvar, LOGS_PROXY_PORT) \
 	$(call tfvar, LOKI_SERVICE_PORT) \
+	$(call tfvar, GRAFANA_SERVICE_PORT) \
+	$(call tfvar, GRAFANA_RESOURCES_MEMORY_MB) \
+	$(call tfvar, GRAFANA_RESOURCES_CPU_COUNT) \
 	$(call tfvar, LOGS_HEALTH_PROXY_PORT) \
 	$(call tfvar, EDGE_API_SECRET) \
 	$(call tfvar, API_ADMIN_TOKEN) \

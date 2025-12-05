@@ -22,7 +22,22 @@ variable "ingress_port" { type = object({ name = string, port = number, health_p
 variable "edge_api_port" { type = object({ name = string, port = number, path = string }) }
 variable "edge_proxy_port" { type = object({ name = string, port = number }) }
 variable "logs_proxy_port" { type = object({ name = string, port = number }) }
-variable "loki_service_port" { type = object({ name = string, port = number }) }
+variable "loki_service_port" {
+  type    = object({ name = string, port = number })
+  default = { name = "loki", port = 31000 }
+}
+variable "grafana_service_port" {
+  type    = object({ name = string, port = number })
+  default = { name = "grafana", port = 30008 }
+}
+variable "grafana_resources_memory_mb" {
+  type    = number
+  default = 512
+}
+variable "grafana_resources_cpu_count" {
+  type    = number
+  default = 0.5
+}
 
 variable "domain_name" { type = string }
 

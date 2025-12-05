@@ -183,6 +183,19 @@ resource "nomad_job" "loki" {
   })
 }
 
+resource "nomad_job" "grafana" {
+  jobspec = templatefile("${path.module}/jobs/grafana.hcl", {
+    datacenter                  = var.datacenter
+    node_pool                   = var.api_node_pool
+    memory_mb                   = var.grafana_resources_memory_mb
+    cpu_count                   = var.grafana_resources_cpu_count
+    grafana_service_port_number = var.grafana_service_port.port
+    grafana_service_port_name   = var.grafana_service_port.name
+    loki_service_port_number    = var.loki_service_port.port
+    docker_image_prefix         = var.docker_image_prefix
+  })
+}
+
 resource "nomad_job" "template_manager" {
   jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
     update_stanza                        = var.template_manager_machine_count > 1

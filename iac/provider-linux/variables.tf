@@ -49,6 +49,25 @@ variable "loki_service_port" {
   })
 }
 
+variable "grafana_service_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  default = {
+    name = "grafana"
+    port = 30008
+  }
+}
+variable "grafana_resources_memory_mb" {
+  type    = number
+  default = 512
+}
+variable "grafana_resources_cpu_count" {
+  type    = number
+  default = 1
+}
+
 variable "api_admin_token" { type = string }
 variable "edge_api_secret" { type = string }
 
