@@ -15,6 +15,8 @@ import (
 
 	"github.com/Merovius/nbd/nbdnl"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -111,13 +113,17 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			go func() {
 				defer d.handlersWg.Done()
 
+				ctx, span := tracer.Start(ctx, "handle nbd", trace.WithAttributes(attribute.Int("socket.index", i)))
+				defer span.End()
+
 				handleErr := dispatch.Handle(ctx)
-				// The error is expected to happen if the nbd (socket connection) is closed
 				logger.L().Info(ctx, "closing handler for NBD commands",
-					zap.Error(handleErr),
 					zap.Uint32("device_index", deviceIndex),
 					zap.Int("socket_index", i),
 				)
+				if handleErr != nil {
+					logger.L().Error(ctx, "error handling NBD commands", zap.Error(handleErr), zap.Uint32("device_index", deviceIndex), zap.Int("socket_index", i))
+				}
 			}()
 
 			d.socksServer = append(d.socksServer, serverc)
@@ -199,7 +205,15 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 
 	idx := d.deviceIndex
 
-	// First cancel the context, which will stop waiting on pending readAt/writeAt...
+	// Disconnect NBD
+	if idx != math.MaxUint32 {
+		err := disconnectNBDWithTimeout(ctx, idx, disconnectTimeout)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error disconnecting NBD: %w", err))
+		}
+	}
+
+	// Cancel the context, will force exit any pending reads/writes
 	telemetry.ReportEvent(ctx, "canceling context")
 	if d.cancelfn != nil {
 		d.cancelfn()
@@ -222,14 +236,6 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 	telemetry.ReportEvent(ctx, "waiting for pending responses")
 	for _, d := range d.dispatchers {
 		d.Drain()
-	}
-
-	// Disconnect NBD
-	if idx != math.MaxUint32 {
-		err := disconnectNBDWithTimeout(ctx, idx, disconnectTimeout)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error disconnecting NBD: %w", err))
-		}
 	}
 
 	// Close all client socket pairs...
