@@ -92,10 +92,8 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (*Dir, error) {
 
 		if t&os.ModeDir != 0 {
 			dirs = append(dirs, NewDir(name))
-			c.SeenDirC.Add(1)
 		} else {
 			// file
-			c.SeenFileC.Add(1)
 			nFiles++
 			filenames = append(filenames, name)
 		}

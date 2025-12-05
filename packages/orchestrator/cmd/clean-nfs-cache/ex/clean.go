@@ -42,8 +42,6 @@ type Options struct {
 }
 
 type Counters struct {
-	SeenDirC  atomic.Uint32
-	SeenFileC atomic.Uint64
 
 	DeleteSubmittedC   atomic.Int64
 	DeleteAttemptC     atomic.Int64
