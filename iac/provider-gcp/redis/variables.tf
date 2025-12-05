@@ -32,7 +32,7 @@ variable "replica_count" {
   default = 1
 }
 
-variable "redis_secure_cluster_url_secret_version" {
+variable "redis_cluster_url_secret_version" {
   type = any
 }
 

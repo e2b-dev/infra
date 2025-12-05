@@ -35,17 +35,17 @@ resource "google_secret_manager_secret_version" "supabase_jwt_secrets" {
   }
 }
 
-resource "google_secret_manager_secret" "redis_url" {
-  secret_id = "${var.prefix}redis-url"
+resource "google_secret_manager_secret" "redis_cluster_url" {
+  secret_id = "${var.prefix}redis-cluster-url"
 
   replication {
     auto {}
   }
 }
 
-resource "google_secret_manager_secret_version" "redis_url" {
-  secret      = google_secret_manager_secret.redis_url.name
-  secret_data = "redis.service.consul"
+resource "google_secret_manager_secret_version" "redis_cluster_url" {
+  secret      = google_secret_manager_secret.redis_cluster_url.name
+  secret_data = " "
 
   lifecycle {
     ignore_changes = [secret_data]

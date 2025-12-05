@@ -158,3 +158,7 @@ func (b *StorageDiff) FileSize() (int64, error) {
 
 	return c.FileSize()
 }
+
+func (b *StorageDiff) BlockSize() int64 {
+	return b.blockSize
+}

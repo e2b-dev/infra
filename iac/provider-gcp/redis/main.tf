@@ -12,20 +12,9 @@ resource "time_sleep" "secrets_service_networking_api_wait_60_seconds" {
 
 
 # Enable the Redis API
-resource "google_project_service" "redis" {
-  service            = "redis.googleapis.com"
-  disable_on_destroy = false
-}
-
 resource "google_project_service" "memory_store" {
   service            = "memorystore.googleapis.com"
   disable_on_destroy = false
-}
-
-resource "time_sleep" "redis_api_wait_60_seconds" {
-  depends_on = [google_project_service.redis]
-
-  create_duration = "60s"
 }
 
 resource "time_sleep" "memory_store_api_wait_60_seconds" {
@@ -125,64 +114,12 @@ resource "google_memorystore_instance" "valkey_cluster" {
   ]
 }
 
-
-resource "google_redis_cluster" "redis_cluster_api" {
-  name        = "${var.prefix}redis-cluster-api"
-  shard_count = 1
-
-  psc_configs {
-    network = "projects/${var.gcp_project_id}/global/networks/${var.network_name}"
-  }
-
-  region                  = var.gcp_region
-  replica_count           = 1
-  node_type               = "REDIS_STANDARD_SMALL"
-  transit_encryption_mode = "TRANSIT_ENCRYPTION_MODE_DISABLED"
-  authorization_mode      = "AUTH_MODE_DISABLED"
-
-  deletion_protection_enabled = true
-
-  zone_distribution_config {
-    mode = "MULTI_ZONE"
-  }
-
-  persistence_config {
-    mode = "AOF"
-    aof_config {
-      append_fsync = "EVERYSEC"
-    }
-  }
-
-  depends_on = [
-    google_network_connectivity_service_connection_policy.default,
-    google_service_networking_connection.private_service_connection,
-    google_project_service.redis
-  ]
-}
-
-resource "google_network_connectivity_service_connection_policy" "default" {
-  name          = "${var.prefix}redis-connection-policy"
-  location      = var.gcp_region
-  service_class = "gcp-memorystore-redis"
-  description   = "my basic service connection policy"
-  network       = "projects/${var.gcp_project_id}/global/networks/${var.network_name}"
-  psc_config {
-    subnetworks = [google_compute_subnetwork.default.id]
-  }
-}
-
-
-resource "google_secret_manager_secret_version" "redis_url" {
-  secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}redis-url"
-  secret_data = google_redis_cluster.redis_cluster_api.psc_connections[0].address
-}
-
 locals {
   redis_connection = google_memorystore_instance.valkey_cluster.endpoints[0].connections[0].psc_auto_connection[0]
 }
 
-resource "google_secret_manager_secret_version" "redis_secure_cluster_url_secret_version" {
-  secret      = var.redis_secure_cluster_url_secret_version.secret
+resource "google_secret_manager_secret_version" "redis_cluster_url" {
+  secret      = var.redis_cluster_url_secret_version.secret
   secret_data = "${local.redis_connection.ip_address}:${local.redis_connection.port}"
 }
 

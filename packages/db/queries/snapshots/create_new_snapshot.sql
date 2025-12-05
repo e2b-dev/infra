@@ -59,7 +59,12 @@ INSERT INTO "public"."env_builds" (
     status,
     cluster_node_id,
     total_disk_size_mb,
-    updated_at
+    updated_at,
+    cpu_architecture,
+    cpu_family,
+    cpu_model,
+    cpu_model_name,
+    cpu_flags
 ) VALUES (
     (SELECT template_id FROM snapshot),
     @vcpu,
@@ -71,5 +76,10 @@ INSERT INTO "public"."env_builds" (
     @status,
     @origin_node_id,
     @total_disk_size_mb,
-    now()
+    now(),
+    @cpu_architecture,
+    @cpu_family,
+    @cpu_model,
+    @cpu_model_name,
+    @cpu_flags
 ) RETURNING id as build_id, env_id as template_id;

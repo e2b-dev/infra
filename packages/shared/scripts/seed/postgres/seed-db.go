@@ -1,12 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
@@ -20,36 +19,55 @@ func main() {
 	ctx := context.Background()
 	hasher := keys.NewSHA256Hashing()
 
+	// Prompt user for values
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("\nPlease enter the following values:")
+	fmt.Println()
+
+	fmt.Printf("Email: ")
+	email, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Println("Error reading input:", err)
+
+		return
+	}
+
+	email = strings.TrimSpace(email)
+	if email == "" {
+		fmt.Println("Error: Email cannot be empty")
+
+		return
+	}
+
+	teamUUID := uuid.New()
+
+	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
+	if err != nil {
+		fmt.Println("Error generating access token:", err)
+
+		return
+	}
+
+	teamAPIKey, err := keys.GenerateKey(keys.ApiKeyPrefix)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("Seeding database with:")
+	fmt.Printf("  Email: %s\n", email)
+	fmt.Printf("  Team ID: %s\n", teamUUID)
+	fmt.Printf("  Access Token: %s\n", accessToken.PrefixedRawValue)
+	fmt.Printf("  Team API Key: %s\n", teamAPIKey.PrefixedRawValue)
+	fmt.Println()
+
 	db, err := client.NewClient(ctx)
 	if err != nil {
 		panic(err)
 	}
 	defer db.Close()
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Println("Error getting home directory:", err)
-
-		return
-	}
-
-	configPath := filepath.Join(homeDir, ".e2b", "config.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		panic(err)
-	}
-
-	config := map[string]any{}
-	err = json.Unmarshal(data, &config)
-	if err != nil {
-		panic(err)
-	}
-
-	email := config["email"].(string)
-	teamID := config["teamId"].(string)
-	accessToken := config["accessToken"].(string)
-	teamAPIKey := config["teamApiKey"].(string)
-	teamUUID := uuid.MustParse(teamID)
 
 	// Open .e2b/config.json
 	// Delete existing user and recreate (simpler for seeding)
@@ -97,7 +115,7 @@ VALUES ($1, $2, $3)
 	}
 
 	// Create access token
-	tokenWithoutPrefix := strings.TrimPrefix(accessToken, keys.AccessTokenPrefix)
+	tokenWithoutPrefix := strings.TrimPrefix(accessToken.PrefixedRawValue, keys.AccessTokenPrefix)
 	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
 	if err != nil {
 		panic(err)
@@ -123,7 +141,7 @@ VALUES ($1, $2, $3)
 	}
 
 	// Create team api key
-	keyWithoutPrefix := strings.TrimPrefix(teamAPIKey, keys.ApiKeyPrefix)
+	keyWithoutPrefix := strings.TrimPrefix(teamAPIKey.PrefixedRawValue, keys.ApiKeyPrefix)
 	apiKeyBytes, err := hex.DecodeString(keyWithoutPrefix)
 	if err != nil {
 		panic(err)
@@ -146,16 +164,6 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		panic(err)
 	}
-
-	// Create init template
-	err = db.TestsRawSQL(ctx, `
-INSERT INTO envs (id, team_id, public, build_count, spawn_count, updated_at)
-VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-`, "rki5dems9wqfm4r03t7g", teamUUID, true, 0, 0)
-	if err != nil {
-		panic(err)
-	}
-	// Run from make file and build base env
 
 	fmt.Printf("Database seeded.\n")
 }

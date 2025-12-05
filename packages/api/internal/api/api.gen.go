@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // ServerInterface represents all server handlers.
@@ -19,6 +20,9 @@ type ServerInterface interface {
 
 	// (DELETE /access-tokens/{accessTokenID})
 	DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID AccessTokenID)
+	// Kill all sandboxes for a team
+	// (POST /admin/teams/{teamID}/sandboxes/kill)
+	PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID openapi_types.UUID)
 
 	// (GET /api-keys)
 	GetApiKeys(c *gin.Context)
@@ -177,6 +181,32 @@ func (siw *ServerInterfaceWrapper) DeleteAccessTokensAccessTokenID(c *gin.Contex
 	}
 
 	siw.Handler.DeleteAccessTokensAccessTokenID(c, accessTokenID)
+}
+
+// PostAdminTeamsTeamIDSandboxesKill operation middleware
+func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "teamID" -------------
+	var teamID openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "teamID", c.Param("teamID"), &teamID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(AdminTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostAdminTeamsTeamIDSandboxesKill(c, teamID)
 }
 
 // GetApiKeys operation middleware
@@ -1364,6 +1394,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 
 	router.POST(options.BaseURL+"/access-tokens", wrapper.PostAccessTokens)
 	router.DELETE(options.BaseURL+"/access-tokens/:accessTokenID", wrapper.DeleteAccessTokensAccessTokenID)
+	router.POST(options.BaseURL+"/admin/teams/:teamID/sandboxes/kill", wrapper.PostAdminTeamsTeamIDSandboxesKill)
 	router.GET(options.BaseURL+"/api-keys", wrapper.GetApiKeys)
 	router.POST(options.BaseURL+"/api-keys", wrapper.PostApiKeys)
 	router.DELETE(options.BaseURL+"/api-keys/:apiKeyID", wrapper.DeleteApiKeysApiKeyID)

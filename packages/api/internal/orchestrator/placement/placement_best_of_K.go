@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 // BestOfKConfig holds the configuration parameters for the placement algorithm
@@ -115,12 +116,12 @@ func (b *BestOfK) excludeNode(err error) bool {
 }
 
 // chooseNode selects the best node for placing a VM with the given quota
-func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources) (bestNode *nodemanager.Node, err error) {
+func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo) (bestNode *nodemanager.Node, err error) {
 	// Fix the config, we want to dynamically update it
 	config := b.getConfig()
 
 	// Filter eligible nodes
-	candidates := b.sample(nodes, config, excludedNodes, resources)
+	candidates := b.sample(nodes, config, excludedNodes, resources, buildMachineInfo)
 
 	// Find the best node among candidates
 	bestScore := math.MaxFloat64
@@ -143,7 +144,7 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 }
 
 // sample returns up to k items chosen uniformly from those passing ok.
-func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources) []*nodemanager.Node {
+func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo) []*nodemanager.Node {
 	if config.K <= 0 || len(items) == 0 {
 		return nil
 	}
@@ -173,6 +174,11 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 
 		// If the node is not ready, skip it
 		if n.Status() != api.NodeStatusReady {
+			continue
+		}
+
+		// Skip if node is not CPU compatible
+		if !isNodeCPUCompatible(n, buildMachineInfo) {
 			continue
 		}
 

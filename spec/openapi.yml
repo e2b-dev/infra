@@ -582,6 +582,18 @@ components:
           type: number
           description: The maximum value of the requested metric in the given interval
 
+    AdminSandboxKillResult:
+      required:
+        - killedCount
+        - failedCount
+      properties:
+        killedCount:
+          type: integer
+          description: Number of sandboxes successfully killed
+        failedCount:
+          type: integer
+          description: Number of sandboxes that failed to kill
+
     Template:
       required:
         - templateID
@@ -2386,6 +2398,35 @@ paths:
       responses:
         "204":
           description: The node status was changed successfully
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/sandboxes/kill:
+    post:
+      summary: Kill all sandboxes for a team
+      description: Kills all sandboxes for the specified team
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      parameters:
+        - name: teamID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team ID
+      responses:
+        "200":
+          description: Successfully killed sandboxes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSandboxKillResult"
         "401":
           $ref: "#/components/responses/401"
         "404":

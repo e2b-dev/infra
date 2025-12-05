@@ -17,7 +17,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 
@@ -260,18 +259,7 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				offsets, err := getAccessedOffsets(&uffd.missingRequests)
-				if err != nil {
-					msg := fmt.Errorf("error getting accessed offsets from cross process: %w", err)
-
-					fmt.Fprint(os.Stderr, msg.Error())
-
-					cancel(msg)
-
-					return
-				}
-
-				for _, offset := range offsets {
+				for offset := range uffd.Dirty().Offsets() {
 					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
 					if writeErr != nil {
 						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
@@ -346,16 +334,4 @@ func crossProcessServe() error {
 	case <-exitSignal:
 		return nil
 	}
-}
-
-func getAccessedOffsets(missingRequests *sync.Map) ([]uint, error) {
-	var offsets []uint
-
-	missingRequests.Range(func(key, _ any) bool {
-		offsets = append(offsets, uint(key.(int64)))
-
-		return true
-	})
-
-	return offsets, nil
 }

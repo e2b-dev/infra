@@ -72,7 +72,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
 		customMiddleware.ExcludeRoutes(
-			tracingMiddleware.Middleware(tel.TracerProvider, serviceName),
+			tracingMiddleware.Middleware(tel.TracerProvider, serviceName), //nolint:contextcheck // TODO: fix this later
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
 			"/templates/:templateID/builds/:buildID/logs",
