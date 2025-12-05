@@ -167,7 +167,7 @@ func main() {
 
 	cgroupManager := handler.NewCGroupManager("/sys/fs/cgroups/envdcommands.slice", map[string]string{})
 	defer cgroupManager.Close()
-	
+
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 

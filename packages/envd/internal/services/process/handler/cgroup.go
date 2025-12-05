@@ -37,13 +37,11 @@ func NewCGroupManager(sysfsPath string, fields map[string]string) *CGroupManager
 		return nil
 	}
 
-	if fields != nil {
-		for prop, value := range fields {
-			propPath := filepath.Join(sysfsPath, prop)
-			err := os.WriteFile(propPath, []byte(value), defaultDirPerm)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to write cgroup property %q: %v", propPath, err)
-			}
+	for prop, value := range fields {
+		propPath := filepath.Join(sysfsPath, prop)
+		err := os.WriteFile(propPath, []byte(value), defaultDirPerm)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to write cgroup property %q: %v", propPath, err)
 		}
 	}
 

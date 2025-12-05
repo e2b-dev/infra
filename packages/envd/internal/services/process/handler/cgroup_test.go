@@ -16,14 +16,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const oneByte = 1
-const kilobyte = 1024 * oneByte
+const (
+	oneByte  = 1
+	kilobyte = 1024 * oneByte
+)
 
 func TestCgroupRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	if os.Geteuid() != 0 {
 		t.Skip("must run as root")
+
 		return
 	}
 
@@ -83,11 +86,11 @@ func TestCgroupRoundTrip(t *testing.T) {
 		ws, ok := exitErr.Sys().(syscall.WaitStatus)
 		require.True(t, ok)
 		assert.Equal(t, syscall.SIGKILL, ws.Signal())
-		assert.Equal(t, true, ws.Signaled())
-		assert.Equal(t, false, ws.Stopped())
-		assert.Equal(t, false, ws.Continued())
-		assert.Equal(t, false, ws.CoreDump())
-		assert.Equal(t, false, ws.Exited())
+		assert.True(t, ws.Signaled())
+		assert.False(t, ws.Stopped())
+		assert.False(t, ws.Continued())
+		assert.False(t, ws.CoreDump())
+		assert.False(t, ws.Exited())
 		assert.Equal(t, -1, ws.ExitStatus())
 	})
 }
