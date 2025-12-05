@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/containerd/cgroups/v3"
+	"github.com/containerd/cgroups/v3/cgroup2"
 	"golang.org/x/sys/unix"
 )
 
@@ -14,6 +15,7 @@ var ErrCGroup2Unsupported = errors.New("unsupported cgroup v2")
 
 type CGroupManager struct {
 	cgroupFD int
+	mgr      *cgroup2.Manager
 }
 
 const defaultDirPerm = 0o755
@@ -22,7 +24,12 @@ type Limits struct {
 	MaxMemory int64
 }
 
-func NewCGroupManager(sysfsPath string, fields map[string]string) *CGroupManager {
+func NewCGroupManager(slice, group string, resources *cgroup2.Resources) *CGroupManager {
+	if slice == "" || group == "" {
+		fmt.Fprintf(os.Stderr, "cgroup slice or group not set\n")
+		return nil
+	}
+
 	switch mode := cgroups.Mode(); mode {
 	case cgroups.Unified:
 	default:
@@ -31,18 +38,11 @@ func NewCGroupManager(sysfsPath string, fields map[string]string) *CGroupManager
 		return nil
 	}
 
-	if err := os.MkdirAll(sysfsPath, defaultDirPerm); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to make cgroup %q: %v", sysfsPath, err)
-
+	sysfsPath := filepath.Join("/sys/fs/cgroup", slice, group)
+	mgr, err := cgroup2.NewSystemd(slice, group, -1, resources)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create cgroup manager: %v", err)
 		return nil
-	}
-
-	for prop, value := range fields {
-		propPath := filepath.Join(sysfsPath, prop)
-		err := os.WriteFile(propPath, []byte(value), defaultDirPerm)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to write cgroup property %q: %v", propPath, err)
-		}
 	}
 
 	fd, err := unix.Open(sysfsPath, 0, 0)
@@ -52,7 +52,7 @@ func NewCGroupManager(sysfsPath string, fields map[string]string) *CGroupManager
 		return nil
 	}
 
-	return &CGroupManager{cgroupFD: fd}
+	return &CGroupManager{cgroupFD: fd, mgr: mgr}
 }
 
 func (m *CGroupManager) enabled() bool {
@@ -72,5 +72,14 @@ func (m *CGroupManager) Close() error {
 		return nil
 	}
 
-	return unix.Close(m.cgroupFD)
+	var errs []error
+	if err := unix.Close(m.cgroupFD); err != nil {
+		errs = append(errs, fmt.Errorf("failed to close cgroup fd: %w", err))
+	}
+
+	if err := m.mgr.DeleteSystemd(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to delete cgroup: %w", err))
+	}
+
+	return errors.Join(errs...)
 }

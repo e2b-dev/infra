@@ -193,12 +193,15 @@ Restart=always
 User=root
 Group=root
 Environment=GOTRACEBACK=all
+ExecStart=/bin/bash -l -c "/usr/bin/envd -parent-cgroup=/sys/fs/cgroup/envd.slice -cmd-cgroup=commands.slice"
+Environment="GOMEMLIMIT=%dMiB"
+
+Slice=envd.slice
 LimitCORE=infinity
-ExecStart=/bin/bash -l -c "/usr/bin/envd"
+Delegate=yes
 OOMPolicy=continue
 OOMScoreAdjust=-1000
-Environment="GOMEMLIMIT=%dMiB"
-Slice=envd.slice
+CPUAccounting=yes
 
 [Install]
 WantedBy=multi-user.target

@@ -13,6 +13,7 @@ import (
 
 	"connectrpc.com/authn"
 	connectcors "connectrpc.com/cors"
+	"github.com/containerd/cgroups/v3/cgroup2"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/cors"
 
@@ -51,9 +52,11 @@ var (
 	isNotFC bool
 	port    int64
 
-	versionFlag  bool
-	commitFlag   bool
-	startCmdFlag string
+	versionFlag       bool
+	commitFlag        bool
+	startCmdFlag      string
+	parentCgroup      string
+	cgroupForCommands string
 )
 
 func parseFlags() {
@@ -90,6 +93,20 @@ func parseFlags() {
 		"cmd",
 		"",
 		"a command to run on the daemon start",
+	)
+
+	flag.StringVar(
+		&parentCgroup,
+		"parent-cgroup",
+		"",
+		"cgroup path containing the daemon",
+	)
+
+	flag.StringVar(
+		&cgroupForCommands,
+		"cmd-cgroup",
+		"",
+		"cgroup path to run the command in",
 	)
 
 	flag.Parse()
@@ -165,7 +182,17 @@ func main() {
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger, defaults)
 
-	cgroupManager := handler.NewCGroupManager("/sys/fs/cgroup/envdcommands.slice", map[string]string{})
+	resources := cgroup2.Resources{
+		CPU: &cgroup2.CPU{
+			Max: "95000 100000", // use no more than 95% of the CPU
+		},
+		Memory: &cgroup2.Memory{
+			Max:  nil,
+			Low:  nil,
+			High: nil,
+		},
+	}
+	cgroupManager := handler.NewCGroupManager(parentCgroup, cgroupForCommands, &resources)
 	defer cgroupManager.Close()
 
 	processLogger := l.With().Str("logger", "process").Logger()
