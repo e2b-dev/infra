@@ -116,6 +116,15 @@ type BuildStatusReason struct {
 	Step *string `json:"step,omitempty"`
 }
 
+// BulkKillResult defines model for BulkKillResult.
+type BulkKillResult struct {
+	// FailedCount Number of sandboxes that failed to kill
+	FailedCount int `json:"failedCount"`
+
+	// KilledCount Number of sandboxes successfully killed
+	KilledCount int `json:"killedCount"`
+}
+
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
 
