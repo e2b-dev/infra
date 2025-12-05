@@ -11,9 +11,10 @@ import (
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-type ClusterPlacementProvider struct {
+type EdgeProvider struct {
 	HTTP *edge.ClusterHTTP
 }
 
@@ -27,9 +28,15 @@ func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {
 	return &value
 }
 
-func (c *ClusterPlacementProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
+func (c *EdgeProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
 	res, err := c.HTTP.Client.V1TemplateBuildLogsWithResponse(
-		ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{TemplateID: templateID, OrchestratorID: c.HTTP.NodeID, Offset: &offset, Level: logToEdgeLevel(level)},
+		ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{
+			TemplateID: templateID,
+			Offset:     &offset,
+			Level:      logToEdgeLevel(level),
+			// TODO: remove this once the API spec is not required to have orchestratorID (https://linear.app/e2b/issue/ENG-3352)
+			OrchestratorID: utils.ToPtr("unused"),
+		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build logs in template manager: %w", err)
