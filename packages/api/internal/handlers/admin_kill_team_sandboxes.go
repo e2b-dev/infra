@@ -36,7 +36,6 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 	sem := semaphore.NewWeighted(10)
 	wg := sync.WaitGroup{}
 	for _, sbx := range sandboxes {
-		wg.Add(1)
 		err := sem.Acquire(ctx, 1)
 		if err != nil {
 			failedCount.Add(1)
@@ -45,6 +44,7 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 			continue
 		}
 
+		wg.Add(1)
 		go func() {
 			defer sem.Release(1)
 			defer wg.Done()
