@@ -72,6 +72,7 @@ func cleanNFSCache(ctx context.Context, args []string, targetBytesToDelete int64
 	logger.L().Info(ctx, "starting",
 		zap.Bool("dry_run", opts.dryRun),
 		zap.Float64("target_percent", opts.targetDiskUsagePercent),
+		zap.Int64("target_bytes_to_delete", targetBytesToDelete),
 		zap.String("path", path))
 
 	var diskInfo pkg.DiskInfo
