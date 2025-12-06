@@ -29,25 +29,18 @@ const (
 	serviceVersion = "0.1.0"
 )
 
-func main() {
-	ctx := context.Background()
-	if err := cleanNFSCache(ctx); err != nil {
-		logger.L().Error(ctx, "clean NFS cache failed", zap.Error(err))
-		os.Exit(1)
-	}
-}
-
-func cleanNFSCache(ctx context.Context) error {
-	path, opts, err := parseArgs()
+func cleanNFSCache(ctx context.Context, args []string, targetBytesToDelete int64) (results, error) {
+	var allResults results
+	path, opts, err := parseArgs(args)
 	if err != nil {
-		return fmt.Errorf("invalid arguments: %w", err)
+		return allResults, fmt.Errorf("invalid arguments: %w", err)
 	}
 
 	var cores []zapcore.Core
 	if opts.otelCollectorEndpoint != "" {
-		otelCore, err := newOtelCore(ctx, opts)
+		otelCore, err := newOtelCore(ctx, opts.otelCollectorEndpoint)
 		if err != nil {
-			return fmt.Errorf("failed to create otel logger: %w", err)
+			return allResults, fmt.Errorf("failed to create otel logger: %w", err)
 		}
 		cores = append(cores, otelCore)
 	}
@@ -71,6 +64,7 @@ func cleanNFSCache(ctx context.Context) error {
 	logger.L().Info(ctx, "starting",
 		zap.Bool("dry_run", opts.dryRun),
 		zap.Float64("target_percent", opts.targetDiskUsagePercent),
+		zap.Int64("target_bytes_to_delete", targetBytesToDelete),
 		zap.String("path", path))
 
 	var diskInfo pkg.DiskInfo
@@ -78,18 +72,21 @@ func cleanNFSCache(ctx context.Context) error {
 		diskInfo, err = pkg.GetDiskInfo(ctx, path)
 	})
 	if err != nil {
-		return fmt.Errorf("could not get disk info: %w", err)
+		return allResults, fmt.Errorf("could not get disk info: %w", err)
 	}
 	targetDiskUsage := int64(float64(opts.targetDiskUsagePercent) / 100 * float64(diskInfo.Total))
+	// for testing
+	if targetBytesToDelete > 0 {
+		targetDiskUsage = diskInfo.Used - targetBytesToDelete
+	}
 	areWeDone := func() bool {
 		return diskInfo.Used < targetDiskUsage
 	}
 
 	cache := pkg.NewListingCache(path)
-
-	var allResults results
+	start := time.Now()
 	defer func() {
-		printSummary(ctx, allResults, opts)
+		printSummary(ctx, allResults, opts, start)
 	}()
 
 	// if conditions are met, we're done
@@ -101,7 +98,7 @@ func cleanNFSCache(ctx context.Context) error {
 			logger.L().Info(ctx, "got files", zap.Int("count", len(files)))
 		})
 		if err != nil {
-			return fmt.Errorf("could not get File metadata: %w", err)
+			return allResults, fmt.Errorf("could not get File metadata: %w", err)
 		}
 
 		// sort files by access timestamp
@@ -118,14 +115,14 @@ func cleanNFSCache(ctx context.Context) error {
 		})
 		allResults = allResults.sum(results)
 		if err != nil {
-			return fmt.Errorf("failed to delete files: %w", err)
+			return allResults, fmt.Errorf("failed to delete files: %w", err)
 		}
 	}
 
-	return nil
+	return allResults, nil
 }
 
-func newOtelCore(ctx context.Context, opts opts) (zapcore.Core, error) {
+func newOtelCore(ctx context.Context, endpoint string) (zapcore.Core, error) {
 	nodeID := env.GetNodeID()
 	serviceInstanceID := uuid.NewString()
 
@@ -135,7 +132,7 @@ func newOtelCore(ctx context.Context, opts opts) (zapcore.Core, error) {
 	}
 
 	logsExporter, err := telemetry.NewLogExporter(ctx,
-		otlploggrpc.WithEndpoint(opts.otelCollectorEndpoint),
+		otlploggrpc.WithEndpoint(endpoint),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logs exporter: %w", err)
@@ -147,12 +144,17 @@ func newOtelCore(ctx context.Context, opts opts) (zapcore.Core, error) {
 	return otelCore, nil
 }
 
-func printSummary(ctx context.Context, r results, opts opts) {
+func printSummary(ctx context.Context, r results, opts opts, start time.Time) {
 	if r.deletedFiles == 0 {
 		logger.L().Info(ctx, "no files deleted")
 
 		return
 	}
+
+	avg, sd := standardDeviation(r.lastAccessed)
+	dur := time.Since(start)
+	filesPerSec := float64(r.deletedFiles) / dur.Seconds()
+	bytesPerSec := float64(r.deletedBytes) / dur.Seconds()
 
 	logger.L().Info(ctx, "summary",
 		zap.Bool("dry_run", opts.dryRun),
@@ -160,19 +162,23 @@ func printSummary(ctx context.Context, r results, opts opts) {
 		zap.Int64("bytes", r.deletedBytes),
 		zap.Duration("most_recently_used", minDuration(r.lastAccessed).Round(time.Second)),
 		zap.Duration("least_recently_used", maxDuration(r.lastAccessed).Round(time.Second)),
-		zap.Duration("std_deviation", standardDeviation(r.lastAccessed).Round(time.Second)))
+		zap.Duration("mean_age", avg.Round(time.Second)),
+		zap.Float64("files_per_second", filesPerSec),
+		zap.Float64("bytes_per_second", bytesPerSec),
+		zap.Duration("duration", dur.Round(time.Second)),
+		zap.Duration("std_deviation", sd.Round(time.Second)))
 }
 
-func standardDeviation(accessed []time.Duration) time.Duration {
+func standardDeviation(accessed []time.Duration) (mean, stddev time.Duration) {
 	if len(accessed) == 0 {
-		return 0
+		return 0, 0
 	}
 
-	var sum time.Duration
+	var sum float64
 	for i := range accessed {
-		sum += accessed[i]
+		sum += float64(accessed[i])
 	}
-	mean := sum / time.Duration(len(accessed))
+	mean = time.Duration(sum / float64(len(accessed)))
 
 	var sd float64
 	for i := range accessed {
@@ -181,7 +187,7 @@ func standardDeviation(accessed []time.Duration) time.Duration {
 
 	sd = math.Sqrt(sd / float64(len(accessed)))
 
-	return time.Duration(sd)
+	return mean, time.Duration(sd)
 }
 
 func maxDuration(durations []time.Duration) time.Duration {
@@ -331,7 +337,7 @@ var (
 	ErrFail  = errors.New("clean-nfs-cache failed to find enough space")
 )
 
-func parseArgs() (string, opts, error) {
+func parseArgs(args []string) (string, opts, error) {
 	flags := flag.NewFlagSet("clean-nfs-cache", flag.ExitOnError)
 
 	var opts opts
@@ -341,7 +347,7 @@ func parseArgs() (string, opts, error) {
 	flags.Int64Var(&opts.filesToDeletePerLoop, "deletions-per-loop", 100, "maximum number of files to delete per loop")
 	flags.StringVar(&opts.otelCollectorEndpoint, "otel-collector-endpoint", "", "endpoint of the otel collector")
 
-	args := os.Args[1:] // skip the command name
+	args = args[1:] // skip the command name
 	if err := flags.Parse(args); err != nil {
 		return "", opts, fmt.Errorf("could not parse flags: %w", err)
 	}
