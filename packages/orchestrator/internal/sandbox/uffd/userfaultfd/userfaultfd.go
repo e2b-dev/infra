@@ -315,9 +315,6 @@ func (u *Userfaultfd) handleMissing(
 			u.writeRequests.Add(offset)
 		}
 
-		// Add the offset to the missing requests tracker.
-		u.missingRequests.Add(offset)
-
 		return nil
 	})
 }
