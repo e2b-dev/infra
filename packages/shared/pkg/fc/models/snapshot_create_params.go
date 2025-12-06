@@ -21,8 +21,7 @@ import (
 type SnapshotCreateParams struct {
 
 	// Path to the file that will contain the guest memory.
-	// Required: true
-	MemFilePath *string `json:"mem_file_path"`
+	MemFilePath string `json:"mem_file_path,omitempty"`
 
 	// Path to the file that will contain the microVM state.
 	// Required: true
@@ -37,10 +36,6 @@ type SnapshotCreateParams struct {
 func (m *SnapshotCreateParams) Validate(formats strfmt.Registry) error {
 	var res []error
 
-	if err := m.validateMemFilePath(formats); err != nil {
-		res = append(res, err)
-	}
-
 	if err := m.validateSnapshotPath(formats); err != nil {
 		res = append(res, err)
 	}
@@ -52,15 +47,6 @@ func (m *SnapshotCreateParams) Validate(formats strfmt.Registry) error {
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)
 	}
-	return nil
-}
-
-func (m *SnapshotCreateParams) validateMemFilePath(formats strfmt.Registry) error {
-
-	if err := validate.Required("mem_file_path", "body", m.MemFilePath); err != nil {
-		return err
-	}
-
 	return nil
 }
 

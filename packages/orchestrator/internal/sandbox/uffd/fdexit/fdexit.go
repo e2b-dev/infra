@@ -7,6 +7,8 @@ import (
 	"sync"
 )
 
+var ErrFdExit = errors.New("fd exit signal")
+
 // FdExit is a wrapper around a pipe that allows to signal the exit of the uffd.
 type FdExit struct {
 	r    *os.File

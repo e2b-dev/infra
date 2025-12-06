@@ -126,13 +126,11 @@ func (c *apiClient) pauseVM(ctx context.Context) error {
 func (c *apiClient) createSnapshot(
 	ctx context.Context,
 	snapfilePath string,
-	memfilePath string,
 ) error {
 	snapshotConfig := operations.CreateSnapshotParams{
 		Context: ctx,
 		Body: &models.SnapshotCreateParams{
 			SnapshotType: models.SnapshotCreateParamsSnapshotTypeFull,
-			MemFilePath:  &memfilePath,
 			SnapshotPath: &snapfilePath,
 		},
 	}
@@ -300,4 +298,18 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// vmInfo retrieves general information about an instance from the Firecracker API.
+func (c *apiClient) instanceInfo(ctx context.Context) (*models.InstanceInfo, error) {
+	req := operations.DescribeInstanceParams{
+		Context: ctx,
+	}
+
+	resp, err := c.client.Operations.DescribeInstance(&req)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving vm info: %w", err)
+	}
+
+	return resp.Payload, nil
 }

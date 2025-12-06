@@ -9,6 +9,8 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 )
 
@@ -41,8 +43,26 @@ type testHandler struct {
 	data       *testutils.MemorySlicer
 	// Returns offsets of the pages that were faulted.
 	// It can only be called once.
-	offsetsOnce func() ([]uint, error)
-	mutex       sync.Mutex
+	// Sorted in ascending order.
+	accessedOffsetsOnce func() ([]uint, error)
+	// Returns offsets of the pages that were dirtied.
+	// It can only be called once.
+	// Sorted in ascending order.
+	dirtyOffsetsOnce func() ([]uint, error)
+
+	mutex   sync.Mutex
+	mapping *memory.Mapping
+}
+
+func (h *testHandler) executeOperation(ctx context.Context, op operation) error {
+	switch op.mode {
+	case operationModeRead:
+		return h.executeRead(ctx, op)
+	case operationModeWrite:
+		return h.executeWrite(ctx, op)
+	default:
+		return fmt.Errorf("invalid operation mode: %d", op.mode)
+	}
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
@@ -55,9 +75,7 @@ func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 
 	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
 	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-
-		return fmt.Errorf("content mismatch: want '%x, got %x at index %d", want, got, idx)
+		return fmt.Errorf("content mismatch: %w", testutils.ErrorFromByteSlicesDifference(expectedBytes, readBytes))
 	}
 
 	return nil
@@ -82,6 +100,7 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 }
 
 // Get a bitset of the offsets of the operations for the given mode.
+// Sorted in ascending order.
 func getOperationsOffsets(ops []operation, m operationMode) []uint {
 	b := bitset.New(0)
 
@@ -92,4 +111,11 @@ func getOperationsOffsets(ops []operation, m operationMode) []uint {
 	}
 
 	return slices.Collect(b.EachSet())
+}
+
+func accessed(u *Userfaultfd) *block.Tracker {
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
+	return u.missingRequests.Clone()
 }
