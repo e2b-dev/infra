@@ -32,6 +32,7 @@ func (c *Cleaner) stat(path string) (*Candidate, error) {
 }
 
 func (c *Cleaner) statInDir(df *os.File, filename string) (*File, error) {
+	c.StatxInDirC.Add(1)
 	// performance on OS X doeas not matter, so just use the full stat
 	cand, err := c.stat(filepath.Join(df.Name(), filename))
 	if err != nil {

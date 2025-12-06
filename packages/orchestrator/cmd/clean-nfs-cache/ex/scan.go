@@ -10,12 +10,12 @@ import (
 	"go.uber.org/zap"
 )
 
-func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, errCh chan<- error, quitCh <-chan struct{}, done *sync.WaitGroup) {
+func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, errCh chan<- error, done *sync.WaitGroup) {
 	defer done.Done()
 	continuousErrors := 0
 	for {
 		select {
-		case <-quitCh:
+		case <-ctx.Done():
 			return
 		default:
 			var candidate *Candidate

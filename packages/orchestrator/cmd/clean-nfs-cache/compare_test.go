@@ -55,6 +55,8 @@ func TestCompare(t *testing.T) {
 					err := c.Clean(ctx)
 					require.NoError(t, err)
 					require.GreaterOrEqual(t, c.DeletedBytes.Load(), targetBytesToDelete)
+					require.LessOrEqual(t, c.StatxInDirC.Load(), int64(NFiles))
+					require.LessOrEqual(t, c.StatxC.Load(), int64(NFiles)+c.DeleteSubmittedC.Load())
 					printSummary(start, c.DeletedAge, c.DeletedBytes.Load())
 				})
 			}

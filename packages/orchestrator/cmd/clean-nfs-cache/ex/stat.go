@@ -10,11 +10,11 @@ import (
 	"go.uber.org/zap"
 )
 
-func (c *Cleaner) Statter(quitCh <-chan struct{}, done *sync.WaitGroup) {
+func (c *Cleaner) Statter(ctx context.Context, done *sync.WaitGroup) {
 	defer done.Done()
 	for {
 		select {
-		case <-quitCh:
+		case <-ctx.Done():
 			return
 		case req := <-c.statRequestCh:
 			f, err := c.statInDir(req.df, req.name)
@@ -27,15 +27,6 @@ func (c *Cleaner) Statter(quitCh <-chan struct{}, done *sync.WaitGroup) {
 
 func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error) {
 	d := path[len(path)-1]
-
-	defer func() {
-		if err != nil {
-			// on error, mark dir as not scanned
-			d.mu.Lock()
-			d.state = initial
-			d.mu.Unlock()
-		}
-	}()
 
 	d.mu.Lock()
 
@@ -55,6 +46,16 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 	}
 	d.state = scanning
 	d.mu.Unlock()
+
+	defer func() {
+		if err != nil {
+			// on error, mark dir as not scanned
+			d.mu.Lock()
+			fmt.Printf("state %v, ERRRR %v\n", d.state, err)
+			d.state = initial
+			d.mu.Unlock()
+		}
+	}()
 
 	absPath := c.abs(path, "")
 	df, err := os.Open(absPath)
@@ -111,10 +112,11 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 	// submit all stat requests
 	responseCh := make(chan *statReq, len(filenames))
 	for _, name := range filenames {
-		c.statRequestCh <- &statReq{
-			df:       df,
-			name:     name,
-			response: responseCh,
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case c.statRequestCh <- &statReq{df: df, name: name, response: responseCh}:
+			// submitted
 		}
 	}
 
@@ -122,13 +124,17 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 	err = nil
 	files := make([]File, nFiles)
 	for i := range nFiles {
-		resp := <-responseCh
-		if resp.err != nil {
-			err = resp.err
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case resp := <-responseCh:
+			if resp.err != nil {
+				err = resp.err
 
-			continue
+				continue
+			}
+			files[i] = *resp.f
 		}
-		files[i] = *resp.f
 	}
 	if err != nil {
 		return nil, err

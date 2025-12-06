@@ -32,6 +32,7 @@ func (c *Cleaner) stat(fullPath string) (*Candidate, error) {
 
 func (c *Cleaner) statInDir(df *os.File, filename string) (*File, error) {
 	c.StatxC.Add(1)
+	c.StatxInDirC.Add(1)
 	var statx unix.Statx_t
 	err := unix.Statx(int(df.Fd()), filename,
 		unix.AT_STATX_DONT_SYNC|unix.AT_SYMLINK_NOFOLLOW|unix.AT_NO_AUTOMOUNT,

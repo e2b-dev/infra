@@ -24,14 +24,13 @@ func TestScanDir(t *testing.T) {
 		Path: path,
 	}, logger.NewNopLogger())
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	c.statRequestCh = make(chan *statReq, 1)
-	quitCh := make(chan struct{})
-	go c.Statter(quitCh, wg)
+	go c.Statter(ctx, wg)
 	defer func() {
-		close(quitCh)
+		cancel()
 		wg.Wait()
 	}()
 

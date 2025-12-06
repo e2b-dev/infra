@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-func (c *Cleaner) Deleter(ctx context.Context, toDelete <-chan *Candidate, quitCh <-chan struct{}, done *sync.WaitGroup) {
+func (c *Cleaner) Deleter(ctx context.Context, toDelete <-chan *Candidate, done *sync.WaitGroup) {
 	defer done.Done()
 	for {
 		select {
-		case <-quitCh:
+		case <-ctx.Done():
 			return
 		case d := <-toDelete:
 			c.deleteFile(ctx, d)

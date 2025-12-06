@@ -50,10 +50,11 @@ type Counters struct {
 	DeletedAge         []time.Duration
 
 	// Syscalls
-	ReadDirC   atomic.Int64
-	StatxC     atomic.Int64
-	RemoveC    atomic.Int64
-	RemoveDirC atomic.Int64
+	ReadDirC    atomic.Int64
+	StatxInDirC atomic.Int64
+	StatxC      atomic.Int64
+	RemoveC     atomic.Int64
+	RemoveDirC  atomic.Int64
 }
 
 const (
@@ -145,10 +146,11 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 		return err
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+
 	errCh := make(chan error)
 	candidateCh := make(chan *Candidate, c.MaxConcurrentScan*2)
 	deleteCh := make(chan *Candidate, c.MaxConcurrentDelete*2)
-	drainCh := make(chan struct{})
 	drainedCh := make(chan struct{})
 	cleanShutdown := &sync.WaitGroup{}
 	c.statRequestCh = make(chan *statReq)
@@ -162,7 +164,8 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 		if draining {
 			return
 		}
-		close(drainCh)
+
+		cancel()
 		draining = true
 		result = err
 
@@ -175,15 +178,15 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 
 	for range c.MaxConcurrentStat {
 		cleanShutdown.Add(1)
-		go c.Statter(drainCh, cleanShutdown)
+		go c.Statter(ctx, cleanShutdown)
 	}
 	for range c.MaxConcurrentScan {
 		cleanShutdown.Add(1)
-		go c.Scanner(ctx, candidateCh, errCh, drainCh, cleanShutdown)
+		go c.Scanner(ctx, candidateCh, errCh, cleanShutdown)
 	}
 	for range c.MaxConcurrentDelete {
 		cleanShutdown.Add(1)
-		go c.Deleter(ctx, deleteCh, drainCh, cleanShutdown)
+		go c.Deleter(ctx, deleteCh, cleanShutdown)
 	}
 
 	for {
