@@ -43,13 +43,12 @@ func TestDirSort(t *testing.T) {
 }
 
 func TestCleanDeletesTwoFiles(t *testing.T) {
-	root, err := os.MkdirTemp("", "clean-test-")
-	require.NoError(t, err)
+	root := t.TempDir()
 	defer os.RemoveAll(root)
 
 	// create root path used by Cleaner
 	rootPath := filepath.Join(root, "root")
-	err = os.MkdirAll(rootPath, 0o755)
+	err := os.MkdirAll(rootPath, 0o755)
 	require.NoError(t, err)
 
 	subdirs := []string{"subA", "subB"}
@@ -64,7 +63,7 @@ func TestCleanDeletesTwoFiles(t *testing.T) {
 		require.NoError(t, err)
 
 		names := []string{}
-		for i := 0; i < 9; i++ {
+		for i := range 9 {
 			name := filepath.Join(dirPath, "file"+strconv.Itoa(i)+".txt")
 			names = append(names, filepath.Base(name))
 			// write 512 bytes to ensure non-zero size
@@ -72,8 +71,8 @@ func TestCleanDeletesTwoFiles(t *testing.T) {
 			require.NoError(t, err)
 
 			// file0 should be oldest, file8 newest
-			ageMinutes := time.Duration(100*(5*i) + i) // ensure clear ordering
-			mtime := now.Add(-ageMinutes * time.Minute)
+			ageMinutes := 100*(5*i) + i // ensure clear ordering
+			mtime := now.Add(time.Duration(-ageMinutes) * time.Minute)
 			err = os.Chtimes(name, mtime, mtime)
 			require.NoError(t, err)
 		}
