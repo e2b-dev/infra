@@ -33,9 +33,11 @@ type MemoryDiffCreator struct {
 
 func (r *MemoryDiffCreator) process(ctx context.Context, out io.Writer) (h *header.DiffMetadata, e error) {
 	defer func() {
-		err := r.doneHook(ctx)
-		if err != nil {
-			e = errors.Join(e, err)
+		if r.doneHook != nil {
+			err := r.doneHook(ctx)
+			if err != nil {
+				e = errors.Join(e, err)
+			}
 		}
 	}()
 
