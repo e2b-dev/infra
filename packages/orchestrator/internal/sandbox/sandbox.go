@@ -25,7 +25,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -674,10 +673,6 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if _, err := s.memory.Disable(ctx); err != nil {
-		return fmt.Errorf("failed to disable uffd: %w", err)
-	}
-
 	// This is required because the FC API doesn't support passing /dev/null
 	tf, err := storage.TemplateFiles{
 		BuildID:            uuid.New().String(),
@@ -689,30 +684,15 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	}
 	defer tf.Close()
 
-	// The snapfile is required only because the FC API doesn't support passing /dev/null
 	snapfile := template.NewLocalFileLink(tf.CacheSnapfilePath())
 	defer snapfile.Close()
-
-	// The memfile is required only because the FC API doesn't support passing /dev/null
-	memfile, err := storage.AcquireTmpMemfile(ctx, s.config, tf.BuildID)
-	if err != nil {
-		return fmt.Errorf("failed to acquire memfile snapshot: %w", err)
-	}
-	defer memfile.Close()
 
 	err = s.process.CreateSnapshot(
 		ctx,
 		snapfile.Path(),
-		memfile.Path(),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating snapshot: %w", err)
-	}
-
-	// Close the memfile right after the snapshot to release the lock.
-	err = memfile.Close()
-	if err != nil {
-		return fmt.Errorf("error closing memfile: %w", err)
 	}
 
 	// This should properly flush rootfs to the underlying device.
@@ -754,58 +734,18 @@ func (s *Sandbox) Pause(
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 
-	if err := s.process.Pause(ctx); err != nil {
-		return nil, fmt.Errorf("failed to pause VM: %w", err)
-	}
-
-	// This disables the uffd and returns the dirty pages.
-	// With FC async io engine, there can be some further writes to the memory during the actual create snapshot process,
-	// but as we are still including even read pages as dirty so this should not introduce more bugs right now.
-	dirty, err := s.memory.Disable(ctx)
+	err = s.process.Pause(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
+		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
 	cleanup.AddNoContext(ctx, snapfile.Close)
-	// Memfile is also closed on diff creation processing
-	/* The process of snapshotting memory is as follows:
-	1. Pause FC via API
-	2. Snapshot FC via API—memory dump to “file on disk” that is actually tmpfs, because it is too slow
-	3. Create the diff - copy the diff pages from tmpfs to normal disk file
-	4. Delete tmpfs file
-	5. Unlock so another snapshot can use tmpfs space
-	*/
-	memfile, err := storage.AcquireTmpMemfile(ctx, s.config, buildID.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
-	}
-	// Close the file even if an error occurs
-	defer memfile.Close()
 
-	err = s.process.CreateSnapshot(
-		ctx,
-		snapfile.Path(),
-		"/dev/null",
-	)
+	err = s.process.CreateSnapshot(ctx, snapfile.Path())
 	if err != nil {
-		// If the snapshot creation with /dev/null fails (the FC is not our custom version),
-		// we try to create a snapshot with the memfile path.
-		createSnapshotFallbackErr := s.process.CreateSnapshot(
-			ctx,
-			snapfile.Path(),
-			memfile.Path(),
-		)
-		if createSnapshotFallbackErr != nil {
-			return nil, fmt.Errorf("error creating snapshot fallback: %w", createSnapshotFallbackErr)
-		}
-
-		// Delete the memfile as it is not used—we always use the process memory view.
-		closeErr := memfile.Close()
-		if closeErr != nil {
-			return nil, fmt.Errorf("error closing memfile: %w", closeErr)
-		}
+		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
 
 	// Gather data for postprocessing
@@ -813,24 +753,20 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
+
 	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	pid, err := s.process.Pid()
+	dirty, err := s.memory.Dirty(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process pid: %w", err)
+		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
 	}
 
-	memoryMapping, err := s.memory.Mapping(ctx)
+	memoryView, err := s.process.Memory(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get memory mapping: %w", err)
-	}
-
-	memoryView, err := memory.NewView(pid, memoryMapping)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create memory view: %w", err)
+		return nil, fmt.Errorf("failed to get memory view: %w", err)
 	}
 
 	// Start POSTPROCESSING

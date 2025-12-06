@@ -2,6 +2,8 @@ package memory
 
 import (
 	"fmt"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 )
 
 type AddressNotFoundError struct {
@@ -26,6 +28,25 @@ type Mapping struct {
 
 func NewMapping(regions []Region) *Mapping {
 	return &Mapping{Regions: regions}
+}
+
+func NewMappingFromFCInfo(regions []*models.GuestMemoryRegionMapping) (*Mapping, error) {
+	r := make([]Region, len(regions))
+
+	for i, infoRegion := range regions {
+		if infoRegion.BaseHostVirtAddr == nil || infoRegion.Size == nil || infoRegion.Offset == nil || infoRegion.PageSize == nil {
+			return nil, fmt.Errorf("missing required fields for memory region %d", i)
+		}
+
+		r[i] = Region{
+			BaseHostVirtAddr: uintptr(*infoRegion.BaseHostVirtAddr),
+			Size:             uintptr(*infoRegion.Size),
+			Offset:           uintptr(*infoRegion.Offset),
+			PageSize:         uintptr(*infoRegion.PageSize),
+		}
+	}
+
+	return NewMapping(r), nil
 }
 
 // GetOffset returns the relative offset and the pagesize of the mapped range for a given address.

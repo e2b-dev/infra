@@ -487,9 +487,9 @@ func (p *Process) Pause(ctx context.Context) error {
 }
 
 // CreateSnapshot VM needs to be paused before creating a snapshot.
-func (p *Process) CreateSnapshot(ctx context.Context, snapfilePath string, memfilePath string) error {
+func (p *Process) CreateSnapshot(ctx context.Context, snapfilePath string) error {
 	ctx, childSpan := tracer.Start(ctx, "create-snapshot-fc")
 	defer childSpan.End()
 
-	return p.client.createSnapshot(ctx, snapfilePath, memfilePath)
+	return p.client.createSnapshot(ctx, snapfilePath)
 }
