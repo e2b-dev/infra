@@ -768,6 +768,7 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memory view: %w", err)
 	}
+	defer memoryView.Close()
 
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
@@ -778,9 +779,6 @@ func (s *Sandbox) Pause(
 			memory:     memoryView,
 			dirtyPages: dirty.BitSet(),
 			blockSize:  originalMemfile.BlockSize(),
-			doneHook: func(context.Context) error {
-				return memoryView.Close()
-			},
 		},
 		s.config.DefaultCacheDir,
 	)

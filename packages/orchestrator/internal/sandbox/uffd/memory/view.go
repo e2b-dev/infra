@@ -67,7 +67,7 @@ func (v *View) ReadAt(d []byte, off int64) (n int, err error) {
 		}
 
 		if err != nil {
-			return n, fmt.Errorf("failed to read from /proc/%d/mem: %w", os.Getpid(), err)
+			return n, fmt.Errorf("failed to read from /proc/%d/mem: %w", v.procMem.Name(), err)
 		}
 
 		n += written
