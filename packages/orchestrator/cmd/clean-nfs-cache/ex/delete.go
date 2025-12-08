@@ -6,6 +6,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 func (c *Cleaner) Deleter(ctx context.Context, toDelete <-chan *Candidate, done *sync.WaitGroup) {
@@ -27,7 +29,12 @@ func (c *Cleaner) deleteFile(ctx context.Context, candidate *Candidate) {
 
 	switch {
 	case err != nil:
-		c.DeleteAlreadyGoneC.Add(1)
+		if !os.IsNotExist(err) {
+			c.Info(ctx, "error stating file before delete", zap.Error(err))
+			c.DeleteAlreadyGoneC.Add(1)
+		} else {
+			c.DeleteErrC.Add(1)
+		}
 
 	case meta.ATimeUnix == candidate.ATimeUnix:
 		c.RemoveC.Add(1)

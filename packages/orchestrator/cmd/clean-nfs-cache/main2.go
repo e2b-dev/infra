@@ -83,6 +83,7 @@ func main() {
 		zap.Int64("del_submitted", c.DeleteSubmittedC.Load()),
 		zap.Int64("del_attempted", c.DeleteAttemptC.Load()),
 		zap.Int64("del_already_gone", c.DeleteAlreadyGoneC.Load()),
+		zap.Int64("del_err", c.DeleteErrC.Load()),
 		zap.Int64("del_skip_changed", c.DeleteSkipC.Load()),
 		zap.Int64("del_files", c.RemoveC.Load()),
 		zap.Int64("empty_dirs", c.RemoveDirC.Load()),
