@@ -19,6 +19,10 @@ job "filestore-cleanup" {
         task "filestore-cleanup" {
           driver = "raw_exec"
 
+          resources {
+              memory = 2048 // in MB
+          }
+
           env {
             NODE_ID = "$${node.unique.name}"
             %{ if launch_darkly_api_key != "" }
