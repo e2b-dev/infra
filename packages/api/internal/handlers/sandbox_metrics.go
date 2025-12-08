@@ -78,7 +78,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	}
 	if apiErr != nil {
 		logger.L().Error(ctx, "error getting sandbox metrics", zap.Error(apiErr.Err))
-		c.JSON(apiErr.Code, apiErr)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
