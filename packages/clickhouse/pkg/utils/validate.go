@@ -7,7 +7,7 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 )
 
-func ValidateDates(start time.Time, end time.Time) (time.Time, time.Time, error) {
+func ValidateRange(start time.Time, end time.Time) (time.Time, time.Time, error) {
 	if start.After(clickhouse.MaxDate64) {
 		return start, end, fmt.Errorf("start time cannot be after %s", clickhouse.MaxDate64)
 	}

@@ -128,6 +128,7 @@ job "client-proxy" {
         REDIS_CLUSTER_URL             = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64           = "${redis_tls_ca_base64}"
         LOKI_URL                      = "${loki_url}"
+        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
 
         %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
