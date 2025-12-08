@@ -271,18 +271,21 @@ processors:
         host.type:
           enabled: false
         host.id:
-          enabled: false
+          enabled: true
+        host.name:
+          enabled: true
         gcp.gce.instance.name:
           enabled: false
         gcp.gce.instance_group_manager.region:
           enabled: false
+        gcp.gce.instance_group_manager.zone:
+          enabled: false
         gcp.gce.instance_group_manager.name:
           enabled: false
-        host.name:
-          enabled: true
 
-  transform/remove_unnecessary_attributes:
+  transform/set_metric_labels:
     metric_statements:
+      # We have to set the service instance here as it's necessary to set it as a datapoint attribute
       - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
       - delete_key(datapoint.attributes, "instance")
       - delete_key(datapoint.attributes, "node_id")
@@ -291,7 +294,6 @@ processors:
       - delete_key(datapoint.attributes, "node_status")
       - delete_key(datapoint.attributes, "service_name")
       - delete_key(datapoint.attributes, "host.name")
-      - delete_key(datapoint.attributes, "cloud.account.id")
 
   filter/rpc_duration_only:
     metrics:
@@ -300,16 +302,25 @@ processors:
         # Include info about grpc server endpoint durations - used for monitoring request times
         metric_names:
           - "rpc.server.duration.*"
+
   resource/remove_instance:
     attributes:
       - action: delete
         key: service.instance.id
-  resource/promote_project_id:
+
+  resource/set_attributes:
     attributes:
       - key: deployment.environment
         from_attribute: cloud.account.id
         action: insert
       - key: cloud.account.id
+        action: delete
+      - key: service.instance.id
+        from_attribute: host.name
+        action: upsert
+      - key: host.id
+        action: delete
+      - key: host.name
         action: delete
 
 extensions:
@@ -363,8 +374,7 @@ service:
       processors:
         - filter/otlp
         - resourcedetection
-        - resource/promote_project_id
-        - transform/remove_unnecessary_attributes
+        - transform/set_metric_labels
         - batch
       exporters:
         - otlphttp/grafana_cloud
@@ -374,8 +384,7 @@ service:
       processors:
         - filter/only_client_allocs
         - resourcedetection
-        - resource/promote_project_id
-        - transform/remove_unnecessary_attributes
+        - transform/set_metric_labels
         - batch
       exporters:
         - otlphttp/grafana_cloud
@@ -386,8 +395,7 @@ service:
         - filter/rpc_duration_only
         - resource/remove_instance
         - resourcedetection
-        - resource/promote_project_id
-        - transform/remove_unnecessary_attributes
+        - transform/set_metric_labels
         - batch
       exporters:
         - otlphttp/grafana_cloud
@@ -397,7 +405,7 @@ service:
       processors:
         - attributes/host_metrics_node
         - resourcedetection
-        - resource/promote_project_id
+        - transform/set_metric_labels
         - metricstransform/single_cpu
         - batch
       exporters:
@@ -415,7 +423,7 @@ service:
         - otlp
       processors:
         - resourcedetection
-        - resource/promote_project_id
+        - resource/set_attributes
         - batch
       exporters:
         - otlphttp/grafana_cloud
@@ -424,7 +432,7 @@ service:
         - otlp
       processors:
         - resourcedetection
-        - resource/promote_project_id
+        - resource/set_attributes
         - batch
       exporters:
         - otlphttp/grafana_cloud
