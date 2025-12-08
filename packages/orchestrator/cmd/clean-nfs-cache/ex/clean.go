@@ -117,29 +117,30 @@ func (c *Cleaner) validateOptions() error {
 	if c.Path == "" {
 		return ErrUsage
 	}
+	var errs []error
 	if c.DeleteN <= 0 {
-		return errors.New("deletions-per-loop must be > 0")
+		errs = append(errs, errors.New("deletions-per-loop must be > 0"))
 	}
 	if c.BatchN <= 0 {
-		return errors.New("files-per-loop must be > 0")
+		errs = append(errs, errors.New("files-per-loop must be > 0"))
 	}
 	if c.BatchN < c.DeleteN {
-		return errors.New("files-per-loop must be >= deletions-per-loop")
+		errs = append(errs, errors.New("files-per-loop must be >= deletions-per-loop"))
 	}
 	if c.TargetBytesToDelete == 0 && c.TargetDiskUsagePercent == 0 {
-		return errors.New("either target-bytes-to-delete or disk-usage-target-percent must be set")
+		errs = append(errs, errors.New("either target-bytes-to-delete or disk-usage-target-percent must be set"))
 	}
 	if c.MaxConcurrentStat <= 0 {
-		return errors.New("max-concurrent-stat must be > 0")
+		errs = append(errs, errors.New("max-concurrent-stat must be > 0"))
 	}
 	if c.MaxConcurrentScan <= 0 {
-		return errors.New("max-concurrent-scan must be > 0")
+		errs = append(errs, errors.New("max-concurrent-scan must be > 0"))
 	}
 	if c.MaxConcurrentDelete <= 0 {
-		return errors.New("max-concurrent-delete must be > 0")
+		errs = append(errs, errors.New("max-concurrent-delete must be > 0"))
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (c *Cleaner) Clean(ctx context.Context) error {
