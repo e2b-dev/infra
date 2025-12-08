@@ -152,9 +152,9 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 
 	errCh := make(chan error)
 	defer close(errCh)
-	candidateCh := make(chan *Candidate, c.MaxConcurrentScan*2)
+	candidateCh := make(chan *Candidate)
 	defer close(candidateCh)
-	deleteCh := make(chan *Candidate, c.MaxConcurrentDelete*2)
+	deleteCh := make(chan *Candidate)
 	defer close(deleteCh)
 	c.statRequestCh = make(chan *statReq)
 	defer close(c.statRequestCh)
