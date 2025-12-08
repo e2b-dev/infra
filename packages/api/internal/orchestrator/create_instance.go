@@ -40,7 +40,10 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 
 	// Copy network configuration if provided
 	if network != nil && network.Egress != nil {
-		orchNetwork.Egress.AllowedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.AllowedAddresses)
+		// Split allowed addresses into CIDRs/IPs and domains for the orchestrator
+		allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(network.Egress.AllowedAddresses)
+		orchNetwork.Egress.AllowedCidrs = sandbox_network.AddressStringsToCIDRs(allowedAddresses)
+		orchNetwork.Egress.AllowedDomains = allowedDomains
 		orchNetwork.Egress.DeniedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.DeniedAddresses)
 	}
 

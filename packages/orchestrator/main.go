@@ -34,6 +34,7 @@ import (
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	hostnameproxy "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
@@ -363,6 +364,23 @@ func run(config cfg.Config) (success bool) {
 		return err
 	})
 	closers = append(closers, closer{"sandbox proxy", sandboxProxy.Close})
+
+	// hostname egress proxy - filters traffic based on TLS/HTTP hostnames
+	hostnameProxy := hostnameproxy.New(
+		ctx,
+		globalLogger,
+		config.NetworkConfig.SandboxFirewallRedirectPort,
+		sandboxes,
+	)
+	startService("hostname egress proxy", func() error {
+		err := hostnameProxy.Start(ctx)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+	closers = append(closers, closer{"hostname egress proxy", hostnameProxy.Close})
 
 	// device pool
 	devicePool, err := nbd.NewDevicePool()

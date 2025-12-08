@@ -5,22 +5,31 @@ import (
 	"net/netip"
 
 	"github.com/google/nftables"
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/ngrok/firewall_toolkit/pkg/expressions"
-	"github.com/ngrok/firewall_toolkit/pkg/rule"
 	"github.com/ngrok/firewall_toolkit/pkg/set"
+	"golang.org/x/sys/unix"
 
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
 	tableName = "slot-firewall"
+
+	// Mark value to signal "allowed" traffic (skip DNAT)
+	allowedMark = 0x1
 )
 
 type Firewall struct {
 	conn  *nftables.Conn
 	table *nftables.Table
-	chain *nftables.Chain
+
+	// Filter chain in PREROUTING (runs before NAT)
+	filterChain *nftables.Chain
+	// NAT chain in PREROUTING (for DNAT)
+	natChain *nftables.Chain
 
 	predefinedDenySet  set.Set
 	predefinedAllowSet set.Set
@@ -31,9 +40,11 @@ type Firewall struct {
 	tapInterface string
 
 	allowedRanges []string
+
+	deniedRedirectIP string
 }
 
-func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
+func NewFirewall(tapIf string, hyperloopIP string, deniedRedirectIP string) (*Firewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
@@ -43,14 +54,26 @@ func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 		Name:   tableName,
 		Family: nftables.TableFamilyINet,
 	})
-	acceptPolicy := nftables.ChainPolicyAccept
-	chain := conn.AddChain(&nftables.Chain{
-		Name:     "FORWARD",
+
+	// Filter chain in PREROUTING - runs BEFORE NAT (priority -150 < -100)
+	// This handles: allow/deny decisions and marking allowed traffic
+	filterChain := conn.AddChain(&nftables.Chain{
+		Name:     "PREROUTE_FILTER",
 		Table:    table,
 		Type:     nftables.ChainTypeFilter,
-		Hooknum:  nftables.ChainHookForward,
-		Priority: nftables.ChainPriorityFilter,
-		Policy:   &acceptPolicy,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityRef(-150), // Before NAT (-100)
+		Policy:   utils.ToPtr(nftables.ChainPolicyAccept),
+	})
+
+	// NAT chain in PREROUTING - for DNAT of user-denied traffic
+	natChain := conn.AddChain(&nftables.Chain{
+		Name:     "PREROUTE_NAT",
+		Table:    table,
+		Type:     nftables.ChainTypeNAT,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityNATDest, // -100
+		Policy:   utils.ToPtr(nftables.ChainPolicyAccept),
 	})
 
 	// Create deny-set and allow-set
@@ -75,13 +98,17 @@ func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 	fw := &Firewall{
 		conn:               conn,
 		table:              table,
-		chain:              chain,
 		predefinedDenySet:  alwaysDenySet,
 		predefinedAllowSet: alwaysAllowSet,
 		userDenySet:        denySet,
 		userAllowSet:       allowSet,
 		tapInterface:       tapIf,
 		allowedRanges:      []string{fmt.Sprintf("%s/32", hyperloopIP)},
+
+		filterChain: filterChain,
+		natChain:    natChain,
+
+		deniedRedirectIP: deniedRedirectIP,
 	}
 
 	// Add firewall rules to the chain
@@ -102,79 +129,164 @@ func (fw *Firewall) Close() error {
 	return fw.conn.CloseLasting()
 }
 
-func (fw *Firewall) installRules() error {
-	m := fw.tapInterface
-
-	// helper for the tap interface
-	ifaceMatch := []expr.Any{
+// tapIfaceMatch returns expressions that match packets from the tap interface.
+func (fw *Firewall) tapIfaceMatch() []expr.Any {
+	return []expr.Any{
 		&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
 		&expr.Cmp{
 			Register: 1,
 			Op:       expr.CmpOpEq,
-			Data:     append([]byte(m), 0), // null-terminated
+			Data:     append([]byte(fw.tapInterface), 0), // null-terminated interface name
 		},
 	}
+}
 
-	// Allow ESTABLISHED,RELATED
-	exprs, err := rule.Build(
-		expr.VerdictAccept,
-		rule.TransportProtocol(expressions.TCP),
-		rule.LoadConnectionTrackingState(expr.CtKeySTATE),
-		rule.ConnectionTrackingState(expr.CtStateBitRELATED|expr.CtStateBitESTABLISHED),
-	)
-	if err != nil {
-		return fmt.Errorf("build rule for established/related: %w", err)
+// markAndAccept returns expressions that set the allowed mark and accept the packet.
+func markAndAccept() []expr.Any {
+	return []expr.Any{
+		&expr.Immediate{
+			Register: 1,
+			Data:     binaryutil.NativeEndian.PutUint32(allowedMark),
+		},
+		&expr.Meta{
+			Key:            expr.MetaKeyMARK,
+			SourceRegister: true,
+			Register:       1,
+		},
+		&expr.Verdict{Kind: expr.VerdictAccept},
 	}
-	fw.conn.InsertRule(&nftables.Rule{
-		Table: fw.table, Chain: fw.chain,
-		Exprs: append(ifaceMatch,
-			exprs...,
-		),
-	})
+}
 
-	// The order should be
-	// 1. Allow anything in predefinedAllowSet
-	// 2. Deny anything in predefinedDenySet
-	// 3. Allow anything in userAllowSet
-	// 4. Deny anything in userDenySet
+// addSetFilterRule adds a filter rule that matches destination IPs in a set.
+// If drop is true, packets are dropped. Otherwise, they are marked as allowed and accepted.
+func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
+	var verdict []expr.Any
+	if drop {
+		verdict = []expr.Any{&expr.Verdict{Kind: expr.VerdictDrop}}
+	} else {
+		verdict = markAndAccept()
+	}
 
-	// Accept anything in predefinedAllowSet
 	fw.conn.AddRule(&nftables.Rule{
-		Table: fw.table, Chain: fw.chain,
-		Exprs: append(ifaceMatch,
+		Table: fw.table,
+		Chain: fw.filterChain,
+		Exprs: append(append(fw.tapIfaceMatch(),
 			expressions.IPv4DestinationAddress(1),
-			expressions.IPSetLookUp(fw.predefinedAllowSet.Set(), 1),
-			expressions.Accept(),
+			expressions.IPSetLookUp(ipSet, 1)),
+			verdict...,
 		),
 	})
+}
 
-	// Drop anything in predefinedDenySet
+// addNonTCPDropRule drops all non-TCP traffic to destinations in the given set.
+// This is needed because the proxy only handles TCP - other protocols (UDP, ICMP, etc.) must be blocked.
+func (fw *Firewall) addNonTCPDropRule(ipSet *nftables.Set) {
 	fw.conn.AddRule(&nftables.Rule{
-		Table: fw.table, Chain: fw.chain,
-		Exprs: append(ifaceMatch,
+		Table: fw.table,
+		Chain: fw.filterChain,
+		Exprs: append(fw.tapIfaceMatch(),
+			// Match non-TCP protocol (protocol != TCP)
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpNeq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+			// Check dest in set
 			expressions.IPv4DestinationAddress(1),
-			expressions.IPSetLookUp(fw.predefinedDenySet.Set(), 1),
-			expressions.Drop(),
+			expressions.IPSetLookUp(ipSet, 1),
+			// DROP
+			&expr.Verdict{Kind: expr.VerdictDrop},
+		),
+	})
+}
+
+func (fw *Firewall) installRules() error {
+	// ============================================================
+	// FILTER CHAIN (PREROUTING, priority -150)
+	// Order:
+	//   1. ESTABLISHED/RELATED → mark + accept
+	//   2. predefinedAllowSet → mark + accept
+	//   3. predefinedDenySet → DROP (hard block, no redirect)
+	//   4. userAllowSet → mark + accept
+	//   5. Default: continue (no mark) → will hit NAT chain
+	// ============================================================
+
+	// Rule 1: Allow ESTABLISHED/RELATED TCP connections (mark + accept)
+	fw.conn.AddRule(&nftables.Rule{
+		Table: fw.table,
+		Chain: fw.filterChain,
+		Exprs: append(append(fw.tapIfaceMatch(),
+			// Load CT state
+			&expr.Ct{Key: expr.CtKeySTATE, Register: 1},
+			// Check ESTABLISHED or RELATED
+			&expr.Bitwise{
+				SourceRegister: 1,
+				DestRegister:   1,
+				Len:            4,
+				Mask:           binaryutil.NativeEndian.PutUint32(expr.CtStateBitESTABLISHED | expr.CtStateBitRELATED),
+				Xor:            binaryutil.NativeEndian.PutUint32(0),
+			},
+			&expr.Cmp{
+				Op:       expr.CmpOpNeq,
+				Register: 1,
+				Data:     binaryutil.NativeEndian.PutUint32(0),
+			}),
+			markAndAccept()...,
 		),
 	})
 
-	// Allow anything in userAllowSet
-	fw.conn.AddRule(&nftables.Rule{
-		Table: fw.table, Chain: fw.chain,
-		Exprs: append(ifaceMatch,
-			expressions.IPv4DestinationAddress(1),
-			expressions.IPSetLookUp(fw.userAllowSet.Set(), 1),
-			expressions.Accept(),
-		),
-	})
+	// Rule 2: predefinedAllowSet → mark + accept
+	fw.addSetFilterRule(fw.predefinedAllowSet.Set(), false)
 
-	// Drop anything in userDenySet
+	// Rule 3: predefinedDenySet → DROP (hard block, NO redirect)
+	fw.addSetFilterRule(fw.predefinedDenySet.Set(), true)
+
+	// Rule 4: userAllowSet → mark + accept
+	fw.addSetFilterRule(fw.userAllowSet.Set(), false)
+
+	// Rule 5: DROP all non-TCP traffic to userDenySet destinations
+	// The proxy only handles TCP
+	fw.addNonTCPDropRule(fw.userDenySet.Set())
+
+	// Default policy: ACCEPT (unmarked TCP traffic continues to NAT chain)
+
+	// ============================================================
+	// NAT CHAIN (PREROUTING, priority -100)
+	// Only DNAT user-denied traffic that wasn't marked as allowed
+	// ============================================================
+
+	deniedRedirectAddr, err := netip.ParseAddr(fw.deniedRedirectIP)
+	if err != nil {
+		return fmt.Errorf("parse redirect IP: %w", err)
+	}
+	redirectIPBytes := deniedRedirectAddr.As4()
+
+	// Rule: If NOT marked AND in userDenySet → DNAT to proxy
 	fw.conn.AddRule(&nftables.Rule{
-		Table: fw.table, Chain: fw.chain,
-		Exprs: append(ifaceMatch,
+		Table: fw.table,
+		Chain: fw.natChain,
+		Exprs: append(fw.tapIfaceMatch(),
+			// Check mark is NOT set (mark == 0)
+			&expr.Meta{Key: expr.MetaKeyMARK, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     binaryutil.NativeEndian.PutUint32(0),
+			},
+			// Check dest in userDenySet
 			expressions.IPv4DestinationAddress(1),
 			expressions.IPSetLookUp(fw.userDenySet.Set(), 1),
-			expressions.Drop(),
+			// DNAT to redirect IP (preserves original port)
+			&expr.Immediate{
+				Register: 1,
+				Data:     redirectIPBytes[:],
+			},
+			&expr.NAT{
+				Type:       expr.NATTypeDestNAT,
+				Family:     uint32(nftables.TableFamilyIPv4),
+				RegAddrMin: 1,
+			},
 		),
 	})
 

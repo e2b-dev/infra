@@ -54,6 +54,10 @@ type Config struct {
 	HyperloopIPAddress       string `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
 	HyperloopProxyPort       uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
 	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
+
+	// SandboxFirewallRedirectIP is the IP address to redirect denied traffic to instead of dropping it
+	SandboxFirewallRedirectIP   string `env:"SANDBOX_FIREWALL_REDIRECT_IP"    envDefault:"192.0.2.2"`
+	SandboxFirewallRedirectPort uint16 `env:"SANDBOX_FIREWALL_REDIRECT_PORT"  envDefault:"3128"`
 }
 
 func ParseConfig() (Config, error) {

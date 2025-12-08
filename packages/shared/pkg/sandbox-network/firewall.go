@@ -1,6 +1,7 @@
 package sandbox_network
 
 import (
+	"net"
 	"strings"
 
 	"github.com/ngrok/firewall_toolkit/pkg/set"
@@ -41,4 +42,29 @@ func AddressStringsToCIDRs(addressStrings []string) []string {
 	}
 
 	return data
+}
+
+// IsIPOrCIDR checks if a string is a valid IP address or CIDR notation.
+func IsIPOrCIDR(s string) bool {
+	// Check if it's a valid IP address
+	if ip := net.ParseIP(s); ip != nil {
+		return true
+	}
+
+	// Check if it's a valid CIDR
+	_, _, err := net.ParseCIDR(s)
+	return err == nil
+}
+
+// ParseAddressesAndDomains separates a list of strings into IP addresses/CIDRs and domain names.
+func ParseAddressesAndDomains(entries []string) (addresses []string, domains []string) {
+	for _, entry := range entries {
+		if IsIPOrCIDR(entry) {
+			addresses = append(addresses, entry)
+		} else {
+			domains = append(domains, entry)
+		}
+	}
+
+	return addresses, domains
 }

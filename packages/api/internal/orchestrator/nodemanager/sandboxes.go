@@ -65,8 +65,10 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 
 			if egress := config.GetNetwork().GetEgress(); egress != nil {
+				// Combine allowed CIDRs and domains back into AllowedAddresses
+				allowedAddresses := append(egress.GetAllowedCidrs(), egress.GetAllowedDomains()...)
 				network.Egress = &types.SandboxNetworkEgressConfig{
-					AllowedAddresses: egress.GetAllowedCidrs(),
+					AllowedAddresses: allowedAddresses,
 					DeniedAddresses:  egress.GetDeniedCidrs(),
 				}
 			}

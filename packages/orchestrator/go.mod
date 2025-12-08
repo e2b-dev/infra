@@ -60,6 +60,7 @@ require (
 	golang.org/x/sys v0.38.0
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
+	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 )
 

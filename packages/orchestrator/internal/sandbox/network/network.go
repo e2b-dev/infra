@@ -227,6 +227,16 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
 	}
 
+	// Redirect traffic destined for hostname egress proxy (DNAT'd denied traffic)
+	err = tables.Append(
+		"nat", "PREROUTING", "-i", s.VethName(),
+		"-p", "tcp", "-d", s.FirewallRedirectIPString(),
+		"-j", "REDIRECT", "--to-port", s.firewallRedirectPort,
+	)
+	if err != nil {
+		return fmt.Errorf("error creating redirect rule to hostname egress proxy: %w", err)
+	}
+
 	return nil
 }
 
@@ -267,6 +277,16 @@ func (s *Slot) RemoveNetwork() error {
 		)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
+		}
+
+		// Delete hostname egress proxy redirect rule
+		err = tables.Delete(
+			"nat", "PREROUTING", "-i", s.VethName(),
+			"-p", "tcp", "-d", s.FirewallRedirectIPString(),
+			"-j", "REDIRECT", "--to-port", s.firewallRedirectPort,
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting hostname egress proxy redirect rule: %w", err))
 		}
 	}
 
