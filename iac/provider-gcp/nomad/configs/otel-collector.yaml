@@ -281,7 +281,7 @@ processors:
         host.name:
           enabled: true
 
-  transform/set-name:
+  transform/remove_unnecessary_attributes:
     metric_statements:
       - delete_key(datapoint.attributes, "instance")
       - delete_key(datapoint.attributes, "node_id")
@@ -289,8 +289,8 @@ processors:
       - delete_key(datapoint.attributes, "node_class")
       - delete_key(datapoint.attributes, "node_status")
       - delete_key(datapoint.attributes, "service_name")
-      - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
-      - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
+      - delete_key(datapoint.attributes, "host.name")
+      - delete_key(datapoint.attributes, "cloud.account.id")
 
   filter/rpc_duration_only:
     metrics:
@@ -362,7 +362,8 @@ service:
       processors:
         - filter/otlp
         - resourcedetection
-        - transform/set-name
+        - resource/promote_project_id
+        - transform/remove_unnecessary_attributes
         - batch
       exporters:
         - otlphttp/grafana_cloud
@@ -372,7 +373,8 @@ service:
       processors:
         - filter/only_client_allocs
         - resourcedetection
-        - transform/set-name
+        - resource/promote_project_id
+        - transform/remove_unnecessary_attributes
         - batch
       exporters:
         - otlphttp/grafana_cloud
@@ -383,7 +385,8 @@ service:
         - filter/rpc_duration_only
         - resource/remove_instance
         - resourcedetection
-        - transform/set-name
+        - resource/promote_project_id
+        - transform/remove_unnecessary_attributes
         - batch
       exporters:
         - otlphttp/grafana_cloud
