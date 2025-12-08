@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
@@ -15,8 +16,10 @@ import (
 )
 
 const (
-	templateBuildLogsLimit       = 1_000
-	templateBuildOldestLogsLimit = 24 * time.Hour // 1 day
+	templateBuildLogsLimit        = 1_000
+	templateBuildLogsDefaultRange = 24 * time.Hour // 7 days
+
+	defaultDirection = logproto.FORWARD
 )
 
 func apiLevelToLogLevel(level *api.LogLevel) *logs.LogLevel {
@@ -31,19 +34,28 @@ func apiLevelToLogLevel(level *api.LogLevel) *logs.LogLevel {
 
 func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params api.V1TemplateBuildLogsParams) {
 	ctx := c.Request.Context()
-
-	_, templateSpan := tracer.Start(c, "template-build-logs-handler")
+	ctx, templateSpan := tracer.Start(ctx, "template-build-logs-handler")
 	defer templateSpan.End()
-
-	end := time.Now()
-	start := end.Add(-templateBuildOldestLogsLimit)
 
 	offset := int32(0)
 	if params.Offset != nil {
 		offset = *params.Offset
 	}
 
-	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateID, buildID, start, end, templateBuildLogsLimit, offset, apiLevelToLogLevel(params.Level))
+	direction := defaultDirection
+	if params.Direction != nil && *params.Direction == api.Backward {
+		direction = logproto.BACKWARD
+	}
+
+	start, end := time.Now().Add(-templateBuildLogsDefaultRange), time.Now()
+	if params.Start != nil {
+		start = time.UnixMilli(*params.Start)
+	}
+	if params.End != nil {
+		end = time.UnixMilli(*params.End)
+	}
+
+	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateID, buildID, start, end, templateBuildLogsLimit, offset, apiLevelToLogLevel(params.Level), direction)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching template build logs")
 		telemetry.ReportCriticalError(ctx, "error when fetching template build logs", err)

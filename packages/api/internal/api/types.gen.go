@@ -43,6 +43,18 @@ const (
 	LogLevelWarn  LogLevel = "warn"
 )
 
+// Defines values for LogsDirection.
+const (
+	LogsDirectionBackward LogsDirection = "backward"
+	LogsDirectionForward  LogsDirection = "forward"
+)
+
+// Defines values for LogsSource.
+const (
+	LogsSourcePersistent LogsSource = "persistent"
+	LogsSourceTemporary  LogsSource = "temporary"
+)
+
 // Defines values for NodeStatus.
 const (
 	NodeStatusConnecting NodeStatus = "connecting"
@@ -293,6 +305,12 @@ type ListedSandbox struct {
 
 // LogLevel State of the sandbox
 type LogLevel string
+
+// LogsDirection Direction of the logs that should be returned
+type LogsDirection string
+
+// LogsSource Source of the logs that should be returned
+type LogsSource string
 
 // MachineInfo defines model for MachineInfo.
 type MachineInfo struct {
@@ -811,6 +829,12 @@ type TemplateBuildInfo struct {
 	TemplateID string `json:"templateID"`
 }
 
+// TemplateBuildLogsResponse defines model for TemplateBuildLogsResponse.
+type TemplateBuildLogsResponse struct {
+	// Logs Build logs structured
+	Logs []BuildLogEntry `json:"logs"`
+}
+
 // TemplateBuildRequest defines model for TemplateBuildRequest.
 type TemplateBuildRequest struct {
 	// Alias Alias of the template
@@ -1127,11 +1151,28 @@ type GetTemplatesTemplateIDParams struct {
 	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetTemplatesTemplateIDBuildsBuildIDLogsParams defines parameters for GetTemplatesTemplateIDBuildsBuildIDLogs.
+type GetTemplatesTemplateIDBuildsBuildIDLogsParams struct {
+	// Cursor Starting timestamp of the logs that should be returned in milliseconds
+	Cursor *int64 `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Maximum number of logs that should be returned
+	Limit     *int32         `form:"limit,omitempty" json:"limit,omitempty"`
+	Direction *LogsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+	Level     *LogLevel      `form:"level,omitempty" json:"level,omitempty"`
+
+	// Source Source of the logs that should be returned from
+	Source *LogsSource `form:"source,omitempty" json:"source,omitempty"`
+}
+
 // GetTemplatesTemplateIDBuildsBuildIDStatusParams defines parameters for GetTemplatesTemplateIDBuildsBuildIDStatus.
 type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	// LogsOffset Index of the starting build log that should be returned with the template
-	LogsOffset *int32    `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
-	Level      *LogLevel `form:"level,omitempty" json:"level,omitempty"`
+	LogsOffset *int32 `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
+
+	// Limit Maximum number of logs that should be returned
+	Limit *int32    `form:"limit,omitempty" json:"limit,omitempty"`
+	Level *LogLevel `form:"level,omitempty" json:"level,omitempty"`
 }
 
 // GetV2SandboxesParams defines parameters for GetV2Sandboxes.

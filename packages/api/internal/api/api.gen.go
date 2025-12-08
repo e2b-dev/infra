@@ -114,6 +114,9 @@ type ServerInterface interface {
 	// (POST /templates/{templateID}/builds/{buildID})
 	PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID TemplateID, buildID BuildID)
 
+	// (GET /templates/{templateID}/builds/{buildID}/logs)
+	GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templateID TemplateID, buildID BuildID, params GetTemplatesTemplateIDBuildsBuildIDLogsParams)
+
 	// (GET /templates/{templateID}/builds/{buildID}/status)
 	GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, templateID TemplateID, buildID BuildID, params GetTemplatesTemplateIDBuildsBuildIDStatusParams)
 
@@ -1141,6 +1144,88 @@ func (siw *ServerInterfaceWrapper) PostTemplatesTemplateIDBuildsBuildID(c *gin.C
 	siw.Handler.PostTemplatesTemplateIDBuildsBuildID(c, templateID, buildID)
 }
 
+// GetTemplatesTemplateIDBuildsBuildIDLogs operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "buildID" -------------
+	var buildID BuildID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "buildID", c.Param("buildID"), &buildID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter buildID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTemplatesTemplateIDBuildsBuildIDLogsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "direction" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "direction", c.Request.URL.Query(), &params.Direction)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter direction: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "level" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "level", c.Request.URL.Query(), &params.Level)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter level: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "source" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "source", c.Request.URL.Query(), &params.Source)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter source: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesTemplateIDBuildsBuildIDLogs(c, templateID, buildID, params)
+}
+
 // GetTemplatesTemplateIDBuildsBuildIDStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context) {
 
@@ -1178,6 +1263,14 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 	err = runtime.BindQueryParameter("form", true, false, "logsOffset", c.Request.URL.Query(), &params.LogsOffset)
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter logsOffset: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1425,6 +1518,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PATCH(options.BaseURL+"/templates/:templateID", wrapper.PatchTemplatesTemplateID)
 	router.POST(options.BaseURL+"/templates/:templateID", wrapper.PostTemplatesTemplateID)
 	router.POST(options.BaseURL+"/templates/:templateID/builds/:buildID", wrapper.PostTemplatesTemplateIDBuildsBuildID)
+	router.GET(options.BaseURL+"/templates/:templateID/builds/:buildID/logs", wrapper.GetTemplatesTemplateIDBuildsBuildIDLogs)
 	router.GET(options.BaseURL+"/templates/:templateID/builds/:buildID/status", wrapper.GetTemplatesTemplateIDBuildsBuildIDStatus)
 	router.GET(options.BaseURL+"/templates/:templateID/files/:hash", wrapper.GetTemplatesTemplateIDFilesHash)
 	router.GET(options.BaseURL+"/v2/sandboxes", wrapper.GetV2Sandboxes)

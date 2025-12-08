@@ -20,6 +20,8 @@ import (
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const maxLogEntriesPerRequest = int32(100)
+
 // GetTemplatesTemplateIDBuildsBuildIDStatus serves to get a template build status (e.g. to CLI)
 func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, templateID api.TemplateID, buildID api.BuildID, params api.GetTemplatesTemplateIDBuildsBuildIDStatusParams) {
 	ctx := c.Request.Context()
@@ -113,7 +115,12 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	logs := template_manager.GetBuildLogs(ctx, cluster, buildInfo.NodeID, templateID, buildID, offset, apiToLogLevel(params.Level))
+	limit := maxLogEntriesPerRequest
+	if params.Limit != nil && *params.Limit < maxLogEntriesPerRequest {
+		limit = *params.Limit
+	}
+
+	logs := template_manager.GetBuildLogs(ctx, cluster, buildInfo.NodeID, templateID, buildID, offset, limit, apiToLogLevel(params.Level), nil, api.LogsDirectionForward, nil)
 	for _, entry := range logs {
 		if legacyLogs {
 			lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
