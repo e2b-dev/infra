@@ -98,7 +98,7 @@ func GetClusterSandboxListMetrics(ctx context.Context, pool *Pool, teamID string
 		return nil, &api.APIError{
 			Code:      res.StatusCode(),
 			ClientMsg: "Error getting metrics for sandbox list",
-			Err:       fmt.Errorf("unexpected response for sandbox list - HTTP status '%d", res.StatusCode()),
+			Err:       fmt.Errorf("unexpected response for sandbox list - HTTP status '%d'", res.StatusCode()),
 		}
 	}
 
