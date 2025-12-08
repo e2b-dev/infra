@@ -283,6 +283,7 @@ processors:
 
   transform/remove_unnecessary_attributes:
     metric_statements:
+      - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
       - delete_key(datapoint.attributes, "instance")
       - delete_key(datapoint.attributes, "node_id")
       - delete_key(datapoint.attributes, "node_scheduling_eligibility")
