@@ -28,7 +28,7 @@ func (a *APIStore) getSandboxesMetrics(
 	teamID uuid.UUID,
 	clusterID *uuid.UUID,
 	sandboxIDs []string,
-) (map[string]api.SandboxMetric, error) {
+) (map[string]api.SandboxMetric, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "fetch-sandboxes-metrics")
 	defer span.End()
 
@@ -61,8 +61,9 @@ func (a *APIStore) getSandboxesMetrics(
 	}
 
 	var metrics map[string]api.SandboxMetric
+	var apiErr *api.APIError
 	if edgeProvidedMetrics {
-		metrics, err = edge.GetClusterSandboxListMetrics(
+		metrics, apiErr = edge.GetClusterSandboxListMetrics(
 			ctx,
 			a.clustersPool,
 			teamID.String(),
@@ -70,10 +71,10 @@ func (a *APIStore) getSandboxesMetrics(
 			sandboxIDs,
 		)
 	} else {
-		metrics, err = a.getApiProvidedSandboxListMetrics(ctx, teamID.String(), sandboxIDs)
+		metrics, apiErr = a.getApiProvidedSandboxListMetrics(ctx, teamID.String(), sandboxIDs)
 	}
-	if err != nil {
-		return nil, err
+	if apiErr != nil {
+		return nil, apiErr
 	}
 
 	return metrics, nil
@@ -138,10 +139,10 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 			Build(),
 	)
 
-	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, team.ClusterID, params.SandboxIds)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error fetching metrics for sandboxes", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandboxes for team '%s'", team.ID))
+	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, team.ClusterID, params.SandboxIds)
+	if apiErr != nil {
+		logger.L().Error(ctx, "error getting sandbox metrics", zap.Error(apiErr.Err))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
