@@ -7,17 +7,18 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseUtils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) {
@@ -28,10 +29,20 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
-	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName,
-		featureflags.SandboxContext(sandboxID))
+	// Build the context for feature flags
+	ctx = featureflags.SetContext(
+		ctx,
+		ldcontext.NewBuilder(sandboxID).
+			Kind(featureflags.SandboxKind).
+			Build(),
+		ldcontext.NewBuilder(team.ID.String()).
+			Kind(featureflags.TeamKind).
+			Build(),
+	)
+
+	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
 	if err != nil {
-		logger.L().Error(ctx, "error getting metrics read feature flag, soft failing", zap.Error(err))
+		logger.L().Warn(ctx, "error getting metrics read feature flag, soft failing", zap.Error(err))
 	}
 
 	if !metricsReadFlag {
@@ -44,19 +55,55 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
-	start, end, err := getSandboxStartEndTime(ctx, a.clickhouseStore, team.ID.String(), sandboxID, params)
+	// TODO: Remove in [ENG-3377], once edge is migrated
+	edgeProvidedMetrics, err := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlagName)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error when getting metrics time range: %s", err))
+		logger.L().Warn(ctx, "error getting edge provided metrics feature flag, soft failing", zap.Error(err))
+	}
+
+	var metrics []api.SandboxMetric
+	var apiErr *api.APIError
+	if edgeProvidedMetrics {
+		metrics, apiErr = edge.GetClusterSandboxMetrics(
+			ctx,
+			a.clustersPool,
+			sandboxID,
+			team.ID.String(),
+			utils.WithClusterFallback(team.ClusterID),
+			params.Start,
+			params.End,
+		)
+	} else {
+		metrics, apiErr = a.getApiProvidedMetrics(ctx, team, sandboxID, params)
+	}
+	if apiErr != nil {
+		logger.L().Error(ctx, "error getting sandbox metrics", zap.Error(apiErr.Err))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
 
+	c.JSON(http.StatusOK, metrics)
+}
+
+// TODO: Remove in [ENG-3377], once edge is migrated
+func (a *APIStore) getApiProvidedMetrics(ctx context.Context, team *types.Team, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) ([]api.SandboxMetric, *api.APIError) {
+	start, end, err := getSandboxStartEndTime(ctx, a.clickhouseStore, team.ID.String(), sandboxID, params)
+	if err != nil {
+		return nil, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "error getting metrics time range",
+			Err:       fmt.Errorf("error getting metrics time range: %w", err),
+		}
+	}
+
 	start, end, err = clickhouseUtils.ValidateRange(start, end)
 	if err != nil {
-		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
-
-		return
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: fmt.Sprintf("error validating time range: %s", err),
+			Err:       err,
+		}
 	}
 
 	// Calculate the step size
@@ -64,15 +111,11 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	metrics, err := a.clickhouseStore.QuerySandboxMetrics(ctx, sandboxID, team.ID.String(), start, end, step)
 	if err != nil {
-		logger.L().Error(ctx, "Error fetching sandbox metrics from ClickHouse",
-			logger.WithSandboxID(sandboxID),
-			logger.WithTeamID(team.ID.String()),
-			zap.Error(err),
-		)
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error querying sandbox metrics: %s", err))
-
-		return
+		return nil, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "error querying sandbox metrics",
+			Err:       fmt.Errorf("error querying sandbox metrics: %w", err),
+		}
 	}
 
 	apiMetrics := make([]api.SandboxMetric, len(metrics))
@@ -89,7 +132,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		}
 	}
 
-	c.JSON(http.StatusOK, apiMetrics)
+	return apiMetrics, nil
 }
 
 func getSandboxStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clickhouse, teamID, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) (time.Time, time.Time, error) {
