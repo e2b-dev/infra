@@ -150,11 +150,16 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 
 	errCh := make(chan error)
+	defer close(errCh)
 	candidateCh := make(chan *Candidate, c.MaxConcurrentScan*2)
+	defer close(candidateCh)
 	deleteCh := make(chan *Candidate, c.MaxConcurrentDelete*2)
-	drainedCh := make(chan struct{})
-	cleanShutdown := &sync.WaitGroup{}
+	defer close(deleteCh)
 	c.statRequestCh = make(chan *statReq)
+	defer close(c.statRequestCh)
+
+	drainedCh := make(chan struct{})
+	running := &sync.WaitGroup{}
 
 	batch := make([]*Candidate, 0, c.DeleteN)
 	n := 0
@@ -171,23 +176,23 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 		result = err
 
 		go func() {
-			// wait for scanners and deleters to finish
-			cleanShutdown.Wait()
+			// wait for the running goroutines to finish
+			running.Wait()
 			close(drainedCh)
 		}()
 	}
 
 	for range c.MaxConcurrentStat {
-		cleanShutdown.Add(1)
-		go c.Statter(ctx, cleanShutdown)
+		running.Add(1)
+		go c.Statter(ctx, running)
 	}
 	for range c.MaxConcurrentScan {
-		cleanShutdown.Add(1)
-		go c.Scanner(ctx, candidateCh, errCh, cleanShutdown)
+		running.Add(1)
+		go c.Scanner(ctx, candidateCh, errCh, running)
 	}
 	for range c.MaxConcurrentDelete {
-		cleanShutdown.Add(1)
-		go c.Deleter(ctx, deleteCh, cleanShutdown)
+		running.Add(1)
+		go c.Deleter(ctx, deleteCh, running)
 	}
 
 	for {

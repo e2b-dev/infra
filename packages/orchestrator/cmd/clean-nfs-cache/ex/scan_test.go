@@ -2,7 +2,6 @@ package ex
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -105,6 +104,5 @@ func TestRandomSubdirOrOldestFile(t *testing.T) {
 	// build an empty dir
 	d3 := &Dir{}
 	_, _, err = d3.randomSubdirOrOldestFile()
-	require.Error(t, err)
-	require.True(t, errors.Is(err, ErrNoFiles))
+	require.ErrorIs(t, err, ErrNoFiles)
 }
