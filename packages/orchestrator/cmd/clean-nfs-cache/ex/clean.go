@@ -232,10 +232,7 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 			)
 
 			// reinsert the "younger" candidates back into the directory tree
-			c.timeit(ctx,
-				fmt.Sprintf("reinsert %v candidates", len(batch[c.DeleteN:])), func() {
-					c.reinsertCandidates(batch[c.DeleteN:])
-				})
+			c.reinsertCandidates(batch[c.DeleteN:])
 
 			total := uint64(0)
 			for _, toDelete := range batch[:c.DeleteN] {

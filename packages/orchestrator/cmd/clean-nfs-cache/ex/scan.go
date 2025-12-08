@@ -21,11 +21,7 @@ func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, er
 		case <-ctx.Done():
 			return
 		default:
-			var candidate *Candidate
-			var err error
-			c.timeit(ctx, "find candidate", func() {
-				candidate, err = c.FindCandidate(ctx)
-			})
+			candidate, err := c.FindCandidate(ctx)
 
 			switch {
 			case err == nil:
