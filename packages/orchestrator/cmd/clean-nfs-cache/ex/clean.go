@@ -58,9 +58,9 @@ type Counters struct {
 }
 
 const (
-	initial = iota
-	scanning
-	scanned
+	dirStateInitial = iota
+	dirStateScanning
+	dirStatScanned
 )
 
 type Dir struct {
@@ -322,11 +322,11 @@ func (d *Dir) IsScanned() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	return d.state == scanned
+	return d.state == dirStatScanned
 }
 
 func (d *Dir) isEmpty() bool {
-	return d.state == scanned && len(d.Files) == 0 && len(d.Dirs) == 0
+	return d.state == dirStatScanned && len(d.Files) == 0 && len(d.Dirs) == 0
 }
 
 func (d *Dir) IsEmpty() bool {

@@ -14,12 +14,17 @@ import (
 )
 
 func TestCompare(t *testing.T) {
-	const (
+	var (
 		testFileSize = 7317
 		NDirs        = 500
 		NFiles       = 10000
 		PercentClean = 13
 	)
+
+	if testing.Short() {
+		NDirs = 5
+		NFiles = 100
+	}
 
 	ctx := context.Background()
 	targetBytesToDelete := uint64(NFiles*testFileSize*PercentClean/100) + 1
