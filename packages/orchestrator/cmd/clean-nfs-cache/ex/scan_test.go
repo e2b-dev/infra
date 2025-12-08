@@ -2,6 +2,7 @@ package ex
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -79,4 +80,31 @@ func TestRandomSubdirOrOldestFile(t *testing.T) {
 	require.NotNil(t, f)
 	require.Equal(t, "f9", f.Name)
 	require.Equal(t, int64(991), f.ATimeUnix)
+
+	// build a dir with no files, so we get a subdir for sure
+	d2 := &Dir{}
+	count = 5
+	d2.Dirs = make([]*Dir, count)
+	for i := range count {
+		name := "d" + strconv.Itoa(i)
+		d2.Dirs[i] = NewDir(name)
+	}
+	d2.sort()
+	f, sub, err = d2.randomSubdirOrOldestFile()
+	require.NoError(t, err)
+	require.Nil(t, f)
+	require.NotNil(t, sub)
+	require.Contains(t, map[string]bool{
+		"d0": true,
+		"d1": true,
+		"d2": true,
+		"d3": true,
+		"d4": true,
+	}, sub.Name)
+
+	// build an empty dir
+	d3 := &Dir{}
+	_, _, err = d3.randomSubdirOrOldestFile()
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrNoFiles))
 }

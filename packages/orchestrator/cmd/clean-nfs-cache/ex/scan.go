@@ -144,7 +144,6 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 		if err != nil {
 			// on error, mark dir as not scanned
 			d.mu.Lock()
-			fmt.Printf("state %v, ERRRR %v\n", d.state, err)
 			d.state = dirStateInitial
 			d.mu.Unlock()
 		}
