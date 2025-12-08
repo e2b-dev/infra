@@ -263,17 +263,21 @@ processors:
         cloud.platform:
           enabled: false
         cloud.account.id:
-          enabled: false
+          enabled: true
         cloud.availability_zone:
           enabled: false
         cloud.region:
           enabled: false
         host.type:
-          enabled: true
+          enabled: false
         host.id:
-          enabled: true
+          enabled: false
         gcp.gce.instance.name:
-          enabled: true
+          enabled: false
+        gcp.gce.instance_group_manager.region:
+          enabled: false
+        gcp.gce.instance_group_manager.name:
+          enabled: false
         host.name:
           enabled: true
 
@@ -285,7 +289,8 @@ processors:
       - delete_key(datapoint.attributes, "node_class")
       - delete_key(datapoint.attributes, "node_status")
       - delete_key(datapoint.attributes, "service_name")
-      - set(datapoint.attributes["service.instance.id"], resource.attributes["gcp.gce.instance.name"])
+      - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
+      - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
 
   filter/rpc_duration_only:
     metrics:
@@ -298,6 +303,14 @@ processors:
     attributes:
       - action: delete
         key: service.instance.id
+  resource/promote_project_id:
+    attributes:
+      - key: deployment.environment
+        from_attribute: cloud.account.id
+        action: insert
+      - key: cloud.account.id
+        action: delete
+
 extensions:
   basicauth/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/extension/basicauthextension
@@ -379,6 +392,8 @@ service:
         - hostmetrics
       processors:
         - attributes/host_metrics_node
+        - resourcedetection
+        - resource/promote_project_id
         - metricstransform/single_cpu
         - batch
       exporters:
@@ -395,6 +410,8 @@ service:
       receivers:
         - otlp
       processors:
+        - resourcedetection
+        - resource/promote_project_id
         - batch
       exporters:
         - otlphttp/grafana_cloud
@@ -402,6 +419,8 @@ service:
       receivers:
         - otlp
       processors:
+        - resourcedetection
+        - resource/promote_project_id
         - batch
       exporters:
         - otlphttp/grafana_cloud
