@@ -36,14 +36,6 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 		return
 	}
 
-	// requests was for this service instance
-	if body.ServiceInstanceID == a.info.ServiceInstanceID && body.ServiceType == api.ClusterNodeTypeEdge {
-		a.info.SetStatus(ctx, api.Draining)
-		c.Status(http.StatusOK)
-
-		return
-	}
-
 	reqTimeout, reqTimeoutCancel := context.WithTimeout(spanCtx, 5*time.Second)
 	defer reqTimeoutCancel()
 
