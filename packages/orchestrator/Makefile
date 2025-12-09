@@ -64,26 +64,29 @@ run-local:
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:
+	chmod +x ./bin/clean-nfs-cache
 ifeq ($(PROVIDER),aws)
-	./scripts/upload-aws.sh "$(AWS_BUCKET_PREFIX)" "$(AWS_PROFILE)" ./bin/clean-nfs-cache clean-nfs-cache
+	aws s3 cp ./bin/clean-nfs-cache "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	./scripts/upload-gcp.sh $(GCP_PROJECT_ID) ./bin/clean-nfs-cache clean-nfs-cache
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/clean-nfs-cache "gs://${GCP_PROJECT_ID}-fc-env-pipeline/clean-nfs-cache"
 endif
 
 .PHONY: upload/orchestrator
 upload/orchestrator:
+	chmod +x ./bin/orchestrator
 ifeq ($(PROVIDER),aws)
-	./scripts/upload-aws.sh "$(AWS_BUCKET_PREFIX)" "$(AWS_PROFILE)" ./bin/orchestrator orchestrator
+	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/orchestrator" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	./scripts/upload-gcp.sh $(GCP_PROJECT_ID) ./bin/orchestrator orchestrator
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_PROJECT_ID}-fc-env-pipeline/orchestrator"
 endif
 
 .PHONY: upload/template-manager
 upload/template-manager:
+	chmod +x ./bin/orchestrator
 ifeq ($(PROVIDER),aws)
-	./scripts/upload-aws.sh "$(AWS_BUCKET_PREFIX)" "$(AWS_PROFILE)" ./bin/orchestrator template-manager
+	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/template-manager" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	./scripts/upload-gcp.sh $(GCP_PROJECT_ID) ./bin/orchestrator template-manager
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_PROJECT_ID}-fc-env-pipeline/template-manager"
 endif
 
 .PHONY: build-and-upload/clean-nfs-cache

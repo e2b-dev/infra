@@ -9,4 +9,4 @@ BINARY_SOURCE=$3
 BINARY_TARGET=$4
 
 chmod +x "$BINARY_SOURCE"
-aws s3 cp "$BINARY_SOURCE" "s3://${BUCKET_PREFIX}fc-env-pipeline/${BINARY_TARGET}" --profile "$AWS_PROFILE" --cache-control "no-cache, max-age=0"
+aws s3 cp "$BINARY_SOURCE" "s3://${BUCKET_PREFIX}fc-env-pipeline/${BINARY_TARGET}" --cache-control "no-cache, max-age=0"
