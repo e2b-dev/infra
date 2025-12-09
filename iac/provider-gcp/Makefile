@@ -20,6 +20,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, CLIENT_CLUSTER_AUTOSCALING_CPU_TARGET) \
 	$(call tfvar, CLIENT_CLUSTER_AUTOSCALING_MEMORY_TARGET) \
 	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
+	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_COUNT) \
 	$(call tfvar, API_MACHINE_TYPE) \
 	$(call tfvar, API_CLUSTER_SIZE) \
 	$(call tfvar, API_USE_NAT) \
@@ -28,6 +29,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, BUILD_CLUSTER_SIZE) \
 	$(call tfvar, BUILD_CLUSTER_ROOT_DISK_SIZE_GB) \
 	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_SIZE_GB) \
+	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_COUNT) \
 	$(call tfvar, SERVER_MACHINE_TYPE) \
 	$(call tfvar, SERVER_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
