@@ -137,7 +137,7 @@ You can build your own kernel and Firecracker version from source by running `ma
 - `make build-and-upload` - builds and uploads the docker images, binaries, and cluster disk image
 - `make copy-public-builds` - copies the old envd binary, kernels, and firecracker versions from the public bucket to your bucket
 - `make migrate` - runs the migrations for your database
-- `make provider-login` - logs in to gcloud
+- `make provider-login` - logs in to cloud provider
 - `make switch-env ENV={prod,staging,dev}` - switches the environment
 - `make import TARGET={resource} ID={resource_id}` - imports the already created resources into the terraform state
 - `make setup-ssh` - sets up the ssh key for the environment (useful for remote-debugging)
