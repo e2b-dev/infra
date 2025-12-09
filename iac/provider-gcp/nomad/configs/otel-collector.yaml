@@ -321,8 +321,6 @@ processors:
       - key: service.instance.id
         from_attribute: host.name
         action: upsert
-      - key: host.id
-        action: delete
       - key: host.name
         action: delete
       - key: internal
