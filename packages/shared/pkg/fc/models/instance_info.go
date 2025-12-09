@@ -8,6 +8,7 @@ package models
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 
 	"github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
@@ -28,6 +29,9 @@ type InstanceInfo struct {
 	// Required: true
 	ID *string `json:"id"`
 
+	// The regions of the guest memory.
+	MemoryRegions []*GuestMemoryRegionMapping `json:"memory_regions"`
+
 	// The current detailed state (Not started, Running, Paused) of the Firecracker instance. This value is read-only for the control-plane.
 	// Required: true
 	// Enum: ["Not started","Running","Paused"]
@@ -47,6 +51,10 @@ func (m *InstanceInfo) Validate(formats strfmt.Registry) error {
 	}
 
 	if err := m.validateID(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateMemoryRegions(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -77,6 +85,32 @@ func (m *InstanceInfo) validateID(formats strfmt.Registry) error {
 
 	if err := validate.Required("id", "body", m.ID); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (m *InstanceInfo) validateMemoryRegions(formats strfmt.Registry) error {
+	if swag.IsZero(m.MemoryRegions) { // not required
+		return nil
+	}
+
+	for i := 0; i < len(m.MemoryRegions); i++ {
+		if swag.IsZero(m.MemoryRegions[i]) { // not required
+			continue
+		}
+
+		if m.MemoryRegions[i] != nil {
+			if err := m.MemoryRegions[i].Validate(formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("memory_regions" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("memory_regions" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
 	}
 
 	return nil
@@ -137,8 +171,42 @@ func (m *InstanceInfo) validateVmmVersion(formats strfmt.Registry) error {
 	return nil
 }
 
-// ContextValidate validates this instance info based on context it is used
+// ContextValidate validate this instance info based on the context it is used
 func (m *InstanceInfo) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
+	var res []error
+
+	if err := m.contextValidateMemoryRegions(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if len(res) > 0 {
+		return errors.CompositeValidationError(res...)
+	}
+	return nil
+}
+
+func (m *InstanceInfo) contextValidateMemoryRegions(ctx context.Context, formats strfmt.Registry) error {
+
+	for i := 0; i < len(m.MemoryRegions); i++ {
+
+		if m.MemoryRegions[i] != nil {
+
+			if swag.IsZero(m.MemoryRegions[i]) { // not required
+				return nil
+			}
+
+			if err := m.MemoryRegions[i].ContextValidate(ctx, formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("memory_regions" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("memory_regions" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
 	return nil
 }
 

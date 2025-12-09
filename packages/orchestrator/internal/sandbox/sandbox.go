@@ -673,10 +673,6 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if _, err := s.memory.Disable(ctx); err != nil {
-		return fmt.Errorf("failed to disable uffd: %w", err)
-	}
-
 	// This is required because the FC API doesn't support passing /dev/null
 	tf, err := storage.TemplateFiles{
 		BuildID:            uuid.New().String(),
@@ -688,30 +684,15 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	}
 	defer tf.Close()
 
-	// The snapfile is required only because the FC API doesn't support passing /dev/null
 	snapfile := template.NewLocalFileLink(tf.CacheSnapfilePath())
 	defer snapfile.Close()
-
-	// The memfile is required only because the FC API doesn't support passing /dev/null
-	memfile, err := storage.AcquireTmpMemfile(ctx, s.config, tf.BuildID)
-	if err != nil {
-		return fmt.Errorf("failed to acquire memfile snapshot: %w", err)
-	}
-	defer memfile.Close()
 
 	err = s.process.CreateSnapshot(
 		ctx,
 		snapfile.Path(),
-		memfile.Path(),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating snapshot: %w", err)
-	}
-
-	// Close the memfile right after the snapshot to release the lock.
-	err = memfile.Close()
-	if err != nil {
-		return fmt.Errorf("error closing memfile: %w", err)
 	}
 
 	// This should properly flush rootfs to the underlying device.
@@ -753,41 +734,16 @@ func (s *Sandbox) Pause(
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 
-	if err := s.process.Pause(ctx); err != nil {
-		return nil, fmt.Errorf("failed to pause VM: %w", err)
-	}
-
-	// This disables the uffd and returns the dirty pages.
-	// With FC async io engine, there can be some further writes to the memory during the actual create snapshot process,
-	// but as we are still including even read pages as dirty so this should not introduce more bugs right now.
-	dirty, err := s.memory.Disable(ctx)
+	err = s.process.Pause(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
+		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
 	cleanup.AddNoContext(ctx, snapfile.Close)
-	// Memfile is also closed on diff creation processing
-	/* The process of snapshotting memory is as follows:
-	1. Pause FC via API
-	2. Snapshot FC via API—memory dump to “file on disk” that is actually tmpfs, because it is too slow
-	3. Create the diff - copy the diff pages from tmpfs to normal disk file
-	4. Delete tmpfs file
-	5. Unlock so another snapshot can use tmpfs space
-	*/
-	memfile, err := storage.AcquireTmpMemfile(ctx, s.config, buildID.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
-	}
-	// Close the file even if an error occurs
-	defer memfile.Close()
 
-	err = s.process.CreateSnapshot(
-		ctx,
-		snapfile.Path(),
-		memfile.Path(),
-	)
+	err = s.process.CreateSnapshot(ctx, snapfile.Path())
 	if err != nil {
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
@@ -797,10 +753,22 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
+
 	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
+
+	dirty, err := s.memory.Dirty(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
+	}
+
+	memoryView, err := s.process.Memory(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memory view: %w", err)
+	}
+	defer memoryView.Close()
 
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
@@ -808,12 +776,9 @@ func (s *Sandbox) Pause(
 		buildID,
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
-			memfile:    memfile,
+			memory:     memoryView,
 			dirtyPages: dirty.BitSet(),
 			blockSize:  originalMemfile.BlockSize(),
-			doneHook: func(context.Context) error {
-				return memfile.Close()
-			},
 		},
 		s.config.DefaultCacheDir,
 	)

@@ -8,9 +8,10 @@ import (
 )
 
 type MemoryBackend interface {
-	// Disable unregisters the uffd from the memory mapping and returns the dirty pages.
-	// It must be called after FC pause finished and before FC snapshot is created.
-	Disable(ctx context.Context) (*block.Tracker, error)
+	// Dirty waits for the current requests to finish and returns the dirty pages.
+	//
+	// It *MUST* only be called after the sandbox was successfully paused and the snapshot create endpoint returned as these can still write to the memory.
+	Dirty(ctx context.Context) (*block.Tracker, error)
 
 	Start(ctx context.Context, sandboxId string) error
 	Stop() error
