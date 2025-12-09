@@ -17,7 +17,7 @@ import (
 
 const (
 	templateBuildLogsLimit        = 100
-	templateBuildLogsDefaultRange = 24 * time.Hour // 7 days
+	templateBuildLogsDefaultRange = 24 * time.Hour // 1 day
 
 	defaultDirection = logproto.FORWARD
 )
