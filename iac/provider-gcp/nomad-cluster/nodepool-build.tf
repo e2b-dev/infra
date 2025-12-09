@@ -91,7 +91,7 @@ resource "google_compute_instance_template" "build" {
   name_prefix = "${local.build_pool_name}-"
 
   instance_description = null
-  machine_type         = "c4-standard-8"
+  machine_type         = "n4-standard-8"
   min_cpu_platform     = "Intel Emerald Rapids"
 
   labels = merge(

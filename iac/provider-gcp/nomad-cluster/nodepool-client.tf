@@ -78,7 +78,7 @@ resource "google_compute_region_instance_group_manager" "client_pool" {
   name   = "${local.client_pool_name}-rig"
   region = var.gcp_region
 
-  target_size = var.client_cluster_size < var.client_cluster_size_max ? null : var.client_cluster_size
+  target_size = 0
 
   version {
     name              = google_compute_instance_template.client.id
