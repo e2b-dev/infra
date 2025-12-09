@@ -25,12 +25,6 @@ type ServerInterface interface {
 
 	// (GET /v1/info)
 	V1Info(c *gin.Context)
-	// Delete a sandbox catalog entry
-	// (DELETE /v1/sandboxes/catalog)
-	V1SandboxCatalogDelete(c *gin.Context)
-	// Create a sandbox catalog entry
-	// (POST /v1/sandboxes/catalog)
-	V1SandboxCatalogCreate(c *gin.Context)
 	// Get latest metrics for multiple sandboxes
 	// (GET /v1/sandboxes/metrics)
 	V1SandboxesMetrics(c *gin.Context, params V1SandboxesMetricsParams)
@@ -116,36 +110,6 @@ func (siw *ServerInterfaceWrapper) V1Info(c *gin.Context) {
 	}
 
 	siw.Handler.V1Info(c)
-}
-
-// V1SandboxCatalogDelete operation middleware
-func (siw *ServerInterfaceWrapper) V1SandboxCatalogDelete(c *gin.Context) {
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.V1SandboxCatalogDelete(c)
-}
-
-// V1SandboxCatalogCreate operation middleware
-func (siw *ServerInterfaceWrapper) V1SandboxCatalogCreate(c *gin.Context) {
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.V1SandboxCatalogCreate(c)
 }
 
 // V1SandboxesMetrics operation middleware
@@ -509,8 +473,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/health/machine", wrapper.HealthCheckMachine)
 	router.GET(options.BaseURL+"/health/traffic", wrapper.HealthCheckTraffic)
 	router.GET(options.BaseURL+"/v1/info", wrapper.V1Info)
-	router.DELETE(options.BaseURL+"/v1/sandboxes/catalog", wrapper.V1SandboxCatalogDelete)
-	router.POST(options.BaseURL+"/v1/sandboxes/catalog", wrapper.V1SandboxCatalogCreate)
 	router.GET(options.BaseURL+"/v1/sandboxes/metrics", wrapper.V1SandboxesMetrics)
 	router.GET(options.BaseURL+"/v1/sandboxes/:sandboxID/logs", wrapper.V1SandboxLogs)
 	router.GET(options.BaseURL+"/v1/sandboxes/:sandboxID/metrics", wrapper.V1SandboxMetrics)

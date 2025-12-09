@@ -255,40 +255,6 @@ components:
           items:
             $ref: "#/components/schemas/BuildLogEntry"
 
-    SandboxCreateCatalogRequest:
-      type: object
-      required:
-        - orchestratorID
-        - executionID
-        - sandboxID
-        - sandboxMaxLength
-        - sandboxStartTime
-      properties:
-        orchestratorID:
-          type: string
-          description: Orchestrator where the sandbox is placed
-        executionID:
-          type: string
-        sandboxID:
-          type: string
-        sandboxMaxLength:
-          type: integer
-          format: int64
-          description: Maximum duration in hours
-        sandboxStartTime:
-          $ref: "#/components/schemas/Timestamp"
-
-    SandboxDeleteCatalogRequest:
-      type: object
-      required:
-        - executionID
-        - sandboxID
-      properties:
-        executionID:
-          type: string
-        sandboxID:
-          type: string
-
     SandboxLogsResponse:
       required:
         - logs
@@ -511,51 +477,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ClusterOrchestratorNode"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /v1/sandboxes/catalog:
-    post:
-      operationId: v1SandboxCatalogCreate
-      summary: Create a sandbox catalog entry
-      security:
-        - ApiKeyAuth: []
-      tags: [sandboxes]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SandboxCreateCatalogRequest"
-      responses:
-        "200":
-          description: Successfully created the sandbox catalog entry
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-    delete:
-      operationId: v1SandboxCatalogDelete
-      summary: Delete a sandbox catalog entry
-      security:
-        - ApiKeyAuth: []
-      tags: [sandboxes]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SandboxDeleteCatalogRequest"
-      responses:
-        "200":
-          description: Successfully deleted the sandbox catalog entry
-        "400":
-          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "500":
