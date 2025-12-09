@@ -9,7 +9,12 @@ init:
 	brew install protobuf
 
 upload:
-	./upload.sh $(GCP_PROJECT_ID)
+ifeq ($(PROVIDER),aws)
+	AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+	./scripts/upload-aws.sh "$(AWS_BUCKET_PREFIX)" "$(AWS_PROFILE)"
+else
+	./scripts/upload-gcp.sh $(GCP_PROJECT_ID)
+endif
 
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o bin/envd ${LDFLAGS}

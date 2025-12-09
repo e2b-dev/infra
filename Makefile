@@ -94,8 +94,20 @@ build-and-upload/%:
 
 .PHONY: copy-public-builds
 copy-public-builds:
+ifeq ($(PROVIDER),aws)
+	AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+	mkdir -p ./.kernels
+	mkdir -p ./.firecrackers
+	gsutil -m cp -r gs://e2b-prod-public-builds/kernels/* ./.kernels/
+	gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* ./.firecrackers/
+	aws s3 cp ./.kernels/ s3://${AWS_BUCKET_PREFIX}fc-kernels/ --recursive --profile $(AWS_PROFILE)
+	aws s3 cp ./.firecrackers/ s3://${AWS_BUCKET_PREFIX}fc-versions/ --recursive --profile $(AWS_PROFILE)
+	rm -rf ./.kernels
+	rm -rf ./.firecrackers
+else
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
+endif
 
 .PHONY: download-public-kernels
 download-public-kernels:
