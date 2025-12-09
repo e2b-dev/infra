@@ -48,7 +48,7 @@ const (
 	shutdownDrainingWait  = 15 * time.Second
 	shutdownUnhealthyWait = 15 * time.Second
 
-	version = "1.0.0"
+	version = "1.1.0"
 )
 
 var commitSHA string
