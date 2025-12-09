@@ -449,8 +449,8 @@ resource "google_compute_firewall" "default-hc" {
   dynamic "allow" {
     # TODO: Revert to for_each = local.health_checked_backends in [ENG-3386]
     for_each = {
-      for k,v in local.health_checked_backends :
-      k => v if k != "consul"   # skip consul
+      for k, v in local.health_checked_backends :
+      k => v if k != "consul" # skip consul
     }
 
     content {
