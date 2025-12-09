@@ -51,8 +51,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 }
 
 func (a *APIStore) sendNodeRequest(ctx context.Context, serviceInstanceID string, serviceType api.ClusterNodeType, status api.ClusterNodeStatus) error {
-	switch serviceType {
-	case api.ClusterNodeTypeOrchestrator:
+	if serviceType == api.ClusterNodeTypeOrchestrator {
 		return a.sendOrchestratorRequest(ctx, serviceInstanceID, status)
 	}
 
