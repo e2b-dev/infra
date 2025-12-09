@@ -9,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	spec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process/processconnect"
@@ -16,21 +17,23 @@ import (
 )
 
 type Service struct {
-	processes *utils.Map[uint32, *handler.Handler]
-	logger    *zerolog.Logger
-	defaults  *execcontext.Defaults
+	processes     *utils.Map[uint32, *handler.Handler]
+	logger        *zerolog.Logger
+	defaults      *execcontext.Defaults
+	cgroupManager cgroups.Manager
 }
 
-func newService(l *zerolog.Logger, defaults *execcontext.Defaults) *Service {
+func newService(l *zerolog.Logger, cgroupManager cgroups.Manager, defaults *execcontext.Defaults) *Service {
 	return &Service{
-		logger:    l,
-		processes: utils.NewMap[uint32, *handler.Handler](),
-		defaults:  defaults,
+		logger:        l,
+		processes:     utils.NewMap[uint32, *handler.Handler](),
+		defaults:      defaults,
+		cgroupManager: cgroupManager,
 	}
 }
 
-func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults) *Service {
-	service := newService(l, defaults)
+func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults, cgroupManager cgroups.Manager) *Service {
+	service := newService(l, cgroupManager, defaults)
 
 	interceptors := connect.WithInterceptors(logs.NewUnaryLogInterceptor(l))
 

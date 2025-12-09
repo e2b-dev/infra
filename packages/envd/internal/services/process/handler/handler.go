@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
 
@@ -38,7 +39,8 @@ type ProcessExit struct {
 type Handler struct {
 	Config *rpc.ProcessConfig
 
-	logger *zerolog.Logger
+	cgroupManager cgroups.Manager
+	logger        *zerolog.Logger
 
 	Tag *string
 	cmd *exec.Cmd
@@ -66,6 +68,7 @@ func New(
 	req *rpc.StartRequest,
 	logger *zerolog.Logger,
 	defaults *execcontext.Defaults,
+	cgroupManager cgroups.Manager,
 	cancel context.CancelFunc,
 ) (*Handler, error) {
 	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
@@ -75,12 +78,17 @@ func New(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	cmd.SysProcAttr.Credential = &syscall.Credential{
-		Uid:         uid,
-		Gid:         gid,
-		Groups:      []uint32{gid},
-		NoSetGroups: true,
+	cgroupFD, ok := cgroupManager.GetFileDescriptor(getProcType(req))
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: ok,
+		CgroupFD:    cgroupFD,
+		Credential: &syscall.Credential{
+			Uid:         uid,
+			Gid:         gid,
+			Groups:      []uint32{gid},
+			NoSetGroups: true,
+		},
 	}
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
@@ -129,15 +137,16 @@ func New(
 	outCtx, outCancel := context.WithCancel(ctx)
 
 	h := &Handler{
-		Config:    req.GetProcess(),
-		cmd:       cmd,
-		Tag:       req.Tag,
-		DataEvent: outMultiplex,
-		cancel:    cancel,
-		outCtx:    outCtx,
-		outCancel: outCancel,
-		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:    logger,
+		Config:        req.GetProcess(),
+		cmd:           cmd,
+		Tag:           req.Tag,
+		DataEvent:     outMultiplex,
+		cancel:        cancel,
+		outCtx:        outCtx,
+		outCancel:     outCancel,
+		EndEvent:      NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		logger:        logger,
+		cgroupManager: cgroupManager,
 	}
 
 	if req.GetPty() != nil {
@@ -293,6 +302,14 @@ func New(
 	}()
 
 	return h, nil
+}
+
+func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
+	if req != nil && req.GetPty() != nil {
+		return cgroups.ProcessTypePTY
+	}
+
+	return cgroups.ProcessTypeUser
 }
 
 func (p *Handler) SendSignal(signal syscall.Signal) error {

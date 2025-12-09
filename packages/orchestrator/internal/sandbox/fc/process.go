@@ -260,6 +260,7 @@ func (p *Process) Create(
 
 		"reboot":           "k",
 		"pci":              "off",
+		"psi":              "1",
 		"i8042.nokbd":      "",
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",

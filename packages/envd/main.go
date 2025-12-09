@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
@@ -53,6 +54,7 @@ var (
 	versionFlag  bool
 	commitFlag   bool
 	startCmdFlag string
+	cgroupRoot   string
 )
 
 func parseFlags() {
@@ -89,6 +91,13 @@ func parseFlags() {
 		"cmd",
 		"",
 		"a command to run on the daemon start",
+	)
+
+	flag.StringVar(
+		&cgroupRoot,
+		"cgroup-root",
+		"/sys/fs/cgroup",
+		"cgroup root directory",
 	)
 
 	flag.Parse()
@@ -164,8 +173,16 @@ func main() {
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger, defaults)
 
+	cgroupManager := createCgroupManager()
+	defer func() {
+		err := cgroupManager.Close()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close cgroup manager: %v\n", err)
+		}
+	}()
+
 	processLogger := l.With().Str("logger", "process").Logger()
-	processService := processRpc.Handle(m, &processLogger, defaults)
+	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
@@ -211,7 +228,7 @@ func main() {
 	defer portScanner.Destroy()
 
 	portLogger := l.With().Str("logger", "port-forwarder").Logger()
-	portForwarder := publicport.NewForwarder(&portLogger, portScanner)
+	portForwarder := publicport.NewForwarder(&portLogger, portScanner, cgroupManager)
 	go portForwarder.StartForwarding(ctx)
 
 	go portScanner.ScanAndBroadcast()
@@ -220,4 +237,47 @@ func main() {
 	if err != nil {
 		log.Fatalf("error starting server: %v", err)
 	}
+}
+
+func createCgroupManager() (m cgroups.Manager) {
+	defer func() {
+		if m == nil {
+			fmt.Fprintf(os.Stderr, "falling back to no-op cgroup manager\n")
+			m = cgroups.NewNoopManager()
+		}
+	}()
+
+	metrics, err := host.GetMetrics()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to calculate host metrics: %v\n", err)
+
+		return nil
+	}
+
+	const cpuSecondUnits = 100_000
+	const userCPUMaxPercentage = .95
+	userCPUMax := int(float64(metrics.CPUCount) * cpuSecondUnits * userCPUMaxPercentage)
+	userMemoryMax := int(float64(metrics.MemTotal) * .95)
+	userCgroup2Props := map[string]string{
+		"memory.max": fmt.Sprintf("%d", userMemoryMax),
+		"cpu.max":    fmt.Sprintf("%d %d", userCPUMax, cpuSecondUnits),
+	}
+
+	mgr, err := cgroups.NewCgroup2Manager(
+		cgroups.WithCgroup2RootSysFSPath(cgroupRoot),
+		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypePTY, "ptys", map[string]string{
+			"cpu.weight": "200", // gets much preferred cpu access, to help keep these real time
+		}),
+		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeSocat, "socats", map[string]string{
+			"cpu.weight": "150", // gets slightly preferred cpu access
+		}),
+		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeUser, "user", userCgroup2Props),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create cgroup2 manager: %v\n", err)
+
+		return nil
+	}
+
+	return mgr
 }
