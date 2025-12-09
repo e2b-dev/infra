@@ -77,8 +77,8 @@ func TestIsNodeCPUCompatible_ModelMismatch(t *testing.T) {
 
 func TestIsNodeCPUCompatible_ModelMatch_DifferentGenerations(t *testing.T) {
 	// Test that different Intel generations (model numbers) are incompatible
-	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "85"))  // Skylake
-	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "143"} // Alder Lake
+	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "85")) // Skylake
+	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "143"}                   // Alder Lake
 
 	result := isNodeCPUCompatible(node, buildCPU)
 	assert.False(t, result, "Node should be incompatible when CPU models represent different processor generations")
