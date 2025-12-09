@@ -41,6 +41,9 @@ const (
 	// This is the default user used in the container if not specified otherwise.
 	// It should be always overridden by the user in /init when building the template.
 	defaultUser = "root"
+
+	kilobyte = 1024
+	megabyte = 1024 * kilobyte
 )
 
 var (
@@ -260,6 +263,8 @@ func createCgroupManager() (m cgroups.Manager) {
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeSocat, "socats", map[string]string{
 			"cpu.weight": "150", // gets slightly preferred cpu access
+			"memory.min": fmt.Sprintf("%d", 5*megabyte),
+			"memory.low": fmt.Sprintf("%d", 8*megabyte),
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeUser, "user", map[string]string{
 			"memory.high": fmt.Sprintf("%d", int(float64(metrics.MemTotal)*.875)),
