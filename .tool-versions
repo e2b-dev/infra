@@ -1,3 +1,4 @@
+python 3.13
 gcloud 534.0.0
 golang 1.25.4
 golangci-lint 2.4.0
