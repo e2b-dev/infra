@@ -4,9 +4,9 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 CLICKHOUSE_HOST ?= clickhouse
 
 ifeq ($(PROVIDER),aws)
-	IMAGE_REGISTRY ?= $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)orchestration/clickhouse-migrator
+	CLICKHOUSE_MIGRATOR_IMAGE ?= $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)orchestration/clickhouse-migrator
 else
-	IMAGE_REGISTRY ?= $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/e2b-orchestration/clickhouse-migrator
+	CLICKHOUSE_MIGRATOR_IMAGE ?= $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/e2b-orchestration/clickhouse-migrator
 endif
 
 .PHONY: migrate
@@ -21,16 +21,16 @@ migrate-without-build:
 		--name clickhouse-migrator \
 		-e GOOSE_DBSTRING="clickhouse://${CLICKHOUSE_USERNAME}:${CLICKHOUSE_PASSWORD}@${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/${CLICKHOUSE_DATABASE}" \
 		-v "$(shell pwd)/migrations:/app/migrations" \
-		$(IMAGE_REGISTRY)
+		$(CLICKHOUSE_MIGRATOR_IMAGE)
 	@echo "Done"
 
 .PHONY: build
 build:
-	@docker build --platform linux/amd64 --tag "$(IMAGE_REGISTRY)" .
+	@docker build --platform linux/amd64 --tag "$(CLICKHOUSE_MIGRATOR_IMAGE)" .
 
 .PHONY: build-and-upload
 build-and-upload:build
-	@docker push "$(IMAGE_REGISTRY)"
+	@docker push "$(CLICKHOUSE_MIGRATOR_IMAGE)"
 
 .PHONY: connect-clickhouse
 connect-clickhouse:
