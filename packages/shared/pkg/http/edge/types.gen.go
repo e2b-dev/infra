@@ -38,6 +38,12 @@ const (
 	LogLevelWarn  LogLevel = "warn"
 )
 
+// Defines values for V1TemplateBuildLogsParamsDirection.
+const (
+	Backward V1TemplateBuildLogsParamsDirection = "backward"
+	Forward  V1TemplateBuildLogsParamsDirection = "forward"
+)
+
 // BuildLogEntry defines model for BuildLogEntry.
 type BuildLogEntry struct {
 	Fields map[string]string `json:"fields"`
@@ -298,9 +304,22 @@ type V1TemplateBuildLogsParams struct {
 	TemplateID     string  `form:"templateID" json:"templateID"`
 
 	// Offset Index of the starting build log that should be returned with the template
-	Offset *int32    `form:"offset,omitempty" json:"offset,omitempty"`
-	Level  *LogLevel `form:"level,omitempty" json:"level,omitempty"`
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Start Starting timestamp of the logs that should be returned in milliseconds
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+
+	// End Ending timestamp of the logs that should be returned in milliseconds
+	End *int64 `form:"end,omitempty" json:"end,omitempty"`
+
+	// Limit Maximum number of logs that should be returned
+	Limit     *int32                              `form:"limit,omitempty" json:"limit,omitempty"`
+	Direction *V1TemplateBuildLogsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+	Level     *LogLevel                           `form:"level,omitempty" json:"level,omitempty"`
 }
+
+// V1TemplateBuildLogsParamsDirection defines parameters for V1TemplateBuildLogs.
+type V1TemplateBuildLogsParamsDirection string
 
 // V1SandboxCatalogDeleteJSONRequestBody defines body for V1SandboxCatalogDelete for application/json ContentType.
 type V1SandboxCatalogDeleteJSONRequestBody = SandboxDeleteCatalogRequest

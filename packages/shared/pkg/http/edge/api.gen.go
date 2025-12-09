@@ -428,6 +428,38 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildLogs(c *gin.Context) {
 		return
 	}
 
+	// ------------- Optional query parameter "start" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "start", c.Request.URL.Query(), &params.Start)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter start: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "end" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "end", c.Request.URL.Query(), &params.End)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter end: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "direction" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "direction", c.Request.URL.Query(), &params.Direction)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter direction: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	// ------------- Optional query parameter "level" -------------
 
 	err = runtime.BindQueryParameter("form", true, false, "level", c.Request.URL.Query(), &params.Level)
