@@ -27,7 +27,7 @@ type GuestMemoryRegionMapping struct {
 	// Required: true
 	Offset *int64 `json:"offset"`
 
-	// The page size of the region in pages.
+	// The page size in bytes.
 	// Required: true
 	PageSize *int64 `json:"page_size"`
 

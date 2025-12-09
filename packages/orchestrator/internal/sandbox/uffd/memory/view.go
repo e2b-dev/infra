@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"syscall"
+
+	"github.com/bits-and-blooms/bitset"
 )
 
 var (
@@ -33,6 +35,7 @@ type View struct {
 	m       *Mapping
 	procMem *os.File
 	fd      int
+	pid     int
 }
 
 func NewView(pid int, m *Mapping) (*View, error) {
@@ -45,6 +48,7 @@ func NewView(pid int, m *Mapping) (*View, error) {
 		procMem: fd,
 		fd:      int(fd.Fd()),
 		m:       m,
+		pid:     pid,
 	}, nil
 }
 
@@ -78,4 +82,8 @@ func (v *View) ReadAt(d []byte, off int64) (n int, err error) {
 
 func (v *View) Close() error {
 	return v.procMem.Close()
+}
+
+func (v *View) ResidentPages() (*bitset.BitSet, error) {
+	return ResidentPages(v.pid, v.m)
 }

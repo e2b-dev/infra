@@ -1014,7 +1014,7 @@ definitions:
         description: The offset of the region in bytes.
         type: integer
       page_size:
-        description: The page size of the region in pages.
+        description: The page size in bytes.
         type: integer
 
   Logger:

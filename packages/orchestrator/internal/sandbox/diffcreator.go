@@ -2,7 +2,6 @@ package sandbox
 
 import (
 	"context"
-	"errors"
 	"io"
 
 	"github.com/bits-and-blooms/bitset"
@@ -28,19 +27,9 @@ type MemoryDiffCreator struct {
 	memory     io.ReaderAt
 	dirtyPages *bitset.BitSet
 	blockSize  int64
-	doneHook   func(context.Context) error
 }
 
 func (r *MemoryDiffCreator) process(ctx context.Context, out io.Writer) (h *header.DiffMetadata, e error) {
-	defer func() {
-		if r.doneHook != nil {
-			err := r.doneHook(ctx)
-			if err != nil {
-				e = errors.Join(e, err)
-			}
-		}
-	}()
-
 	return header.WriteDiffWithTrace(
 		ctx,
 		r.memory,

@@ -743,6 +743,24 @@ func (s *Sandbox) Pause(
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
 	cleanup.AddNoContext(ctx, snapfile.Close)
 
+	missing, err := s.memory.Missing(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get missing pages: %w", err)
+	}
+
+	dirty, err := s.memory.Dirty(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
+	}
+
+	logger.L().Info(
+		ctx,
+		"BEFORE PAUSE",
+		zap.Uint("missing", missing.BitSet().Count()),
+		zap.String("type", s.memory.Type()),
+		zap.Uint("dirty", dirty.BitSet().Count()),
+	)
+
 	err = s.process.CreateSnapshot(ctx, snapfile.Path())
 	if err != nil {
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
@@ -759,9 +777,14 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	dirty, err := s.memory.Dirty(ctx)
+	dirty, err = s.memory.Dirty(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
+	}
+
+	missing, err = s.memory.Missing(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get missing pages: %w", err)
 	}
 
 	memoryView, err := s.process.Memory(ctx)
@@ -770,6 +793,21 @@ func (s *Sandbox) Pause(
 	}
 	defer memoryView.Close()
 
+	residentPages, err := memoryView.ResidentPages()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resident pages: %w", err)
+	}
+
+	actuallyDirtyPages := dirty.BitSet().Intersection(residentPages)
+
+	logger.L().Info(
+		ctx,
+		"AFTER PAUSE",
+		zap.Uint("missing", missing.BitSet().Count()),
+		zap.String("type", s.memory.Type()),
+		zap.Uint("dirty", dirty.BitSet().Count()),
+		zap.Uint("actually dirty", actuallyDirtyPages.Count()),
+	)
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
@@ -777,7 +815,7 @@ func (s *Sandbox) Pause(
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
 			memory:     memoryView,
-			dirtyPages: dirty.BitSet(),
+			dirtyPages: actuallyDirtyPages,
 			blockSize:  originalMemfile.BlockSize(),
 		},
 		s.config.DefaultCacheDir,

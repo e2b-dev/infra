@@ -17,4 +17,6 @@ type MemoryBackend interface {
 	Stop() error
 	Ready() chan struct{}
 	Exit() *utils.ErrorOnce
+	Type() string
+	Missing(ctx context.Context) (*block.Tracker, error)
 }

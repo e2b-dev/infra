@@ -57,3 +57,11 @@ func (m *NoopMemory) Ready() chan struct{} {
 func (m *NoopMemory) Exit() *utils.ErrorOnce {
 	return m.exit
 }
+
+func (m *NoopMemory) Missing(context.Context) (*block.Tracker, error) {
+	return block.NewTracker(m.blockSize), nil
+}
+
+func (m *NoopMemory) Type() string {
+	return "noop"
+}
