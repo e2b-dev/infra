@@ -3,6 +3,7 @@ package fc
 import (
 	"context"
 	"fmt"
+	"os/exec"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
