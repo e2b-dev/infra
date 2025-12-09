@@ -19,12 +19,11 @@ func NewEdgeAPIStore(
 	ctx context.Context,
 	l logger.Logger,
 	info *e2binfo.ServiceInfo,
-	edges *e2borchestrators.EdgePool,
 	orchestrators *e2borchestrators.OrchestratorsPool,
 	catalog catalog.SandboxesCatalog,
 	config cfg.Config,
 ) (*handlers.APIStore, error) {
-	store, err := handlers.NewStore(ctx, l, info, orchestrators, edges, catalog, config)
+	store, err := handlers.NewStore(ctx, l, info, orchestrators, catalog, config)
 	if err != nil {
 		return nil, err
 	}

@@ -36,14 +36,6 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 		return
 	}
 
-	// requests was for this service instance
-	if body.ServiceInstanceID == a.info.ServiceInstanceID && body.ServiceType == api.ClusterNodeTypeEdge {
-		a.info.SetStatus(ctx, api.Draining)
-		c.Status(http.StatusOK)
-
-		return
-	}
-
 	reqTimeout, reqTimeoutCancel := context.WithTimeout(spanCtx, 5*time.Second)
 	defer reqTimeoutCancel()
 
@@ -59,10 +51,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 }
 
 func (a *APIStore) sendNodeRequest(ctx context.Context, serviceInstanceID string, serviceType api.ClusterNodeType, status api.ClusterNodeStatus) error {
-	switch serviceType {
-	case api.ClusterNodeTypeEdge:
-		return a.sendEdgeRequest(ctx, serviceInstanceID, status)
-	case api.ClusterNodeTypeOrchestrator:
+	if serviceType == api.ClusterNodeTypeOrchestrator {
 		return a.sendOrchestratorRequest(ctx, serviceInstanceID, status)
 	}
 
@@ -91,42 +80,6 @@ func (a *APIStore) sendOrchestratorRequest(ctx context.Context, serviceInstanceI
 		logger.Error(ctx, "failed to request orchestrator status change", zap.Error(err))
 
 		return errors.New("failed to request orchestrator status change")
-	}
-
-	return nil
-}
-
-func (a *APIStore) sendEdgeRequest(ctx context.Context, serviceInstanceID string, status api.ClusterNodeStatus) error {
-	logger := a.logger.With(l.WithServiceInstanceID(serviceInstanceID))
-
-	// try to find edge node
-	e, err := a.edgePool.GetInstanceByID(serviceInstanceID)
-	if err != nil {
-		logger.Error(ctx, "failed to get service instance from edge pool", zap.Error(err))
-
-		return errors.New("failed to get edge service instance")
-	}
-
-	var rsp *http.Response
-	switch status {
-	case api.Draining:
-		req := api.V1ServiceDiscoveryNodeDrainJSONRequestBody{ServiceType: api.ClusterNodeTypeEdge, ServiceInstanceID: serviceInstanceID}
-		rsp, err = e.GetClient().V1ServiceDiscoveryNodeDrain(ctx, req)
-	case api.Unhealthy:
-		req := api.V1ServiceDiscoveryNodeKillJSONRequestBody{ServiceType: api.ClusterNodeTypeEdge, ServiceInstanceID: serviceInstanceID}
-		rsp, err = e.GetClient().V1ServiceDiscoveryNodeKill(ctx, req)
-	default:
-		return errors.New("failed to transform service instance status to api call")
-	}
-
-	if err != nil {
-		logger.Error(ctx, "failed to request edge service instance status change", zap.Error(err))
-
-		return errors.New("failed to request edge service instance status change")
-	}
-
-	if err = rsp.Body.Close(); err != nil {
-		logger.Error(ctx, "failed to close response body", zap.Error(err))
 	}
 
 	return nil
