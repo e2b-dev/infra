@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"go.uber.org/zap"
@@ -13,6 +14,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+)
+
+const (
+	// upstreamDialTimeout is the maximum time to wait for upstream connections.
+	// This prevents goroutine leaks from slow/unresponsive DNS or connections.
+	upstreamDialTimeout = 30 * time.Second
 )
 
 // OriginalDstConn is implemented by connections that know their original destination
@@ -243,7 +250,12 @@ func (t *allowlistTarget) HandleConn(conn net.Conn) {
 	)
 
 	// Delegate to tcpproxy's built-in proxying (handles dial + bidirectional copy)
-	tcpproxy.To(upstreamAddr).HandleConn(conn)
+	// Use a dial timeout to prevent goroutine leaks from slow/unresponsive upstreams
+	dp := &tcpproxy.DialProxy{
+		Addr:        upstreamAddr,
+		DialTimeout: upstreamDialTimeout,
+	}
+	dp.HandleConn(conn)
 }
 
 var _ tcpproxy.Target = &blockTarget{}
