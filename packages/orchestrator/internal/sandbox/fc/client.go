@@ -57,6 +57,12 @@ func (c *apiClient) loadSnapshot(
 
 	telemetry.ReportEvent(ctx, "got snapfile path")
 
+	// Run snapshot editor command before loading snapshot
+	err = c.runSnapshotEditor(ctx, snapfilePath)
+	if err != nil {
+		return fmt.Errorf("error running snapshot editor: %w", err)
+	}
+
 	snapshotConfig := operations.LoadSnapshotParams{
 		Context: ctx,
 		Body: &models.SnapshotLoadParams{
@@ -298,6 +304,25 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("error starting fc: %w", err)
 	}
+
+	return nil
+}
+
+func (c *apiClient) runSnapshotEditor(ctx context.Context, vmstatePath string) error {
+	ctx, span := tracer.Start(ctx, "run-snapshot-editor")
+	defer span.End()
+
+	telemetry.ReportEvent(ctx, "starting snapshot editor commands")
+
+	// First command: set TSC
+	cmd1 := exec.CommandContext(ctx, "/usr/local/bin/snapshot-editor", "tsc", "set", "--vmstate-path", vmstatePath)
+	output1, err := cmd1.CombinedOutput()
+	if err != nil {
+		telemetry.ReportEvent(ctx, "snapshot editor tsc set failed")
+		return fmt.Errorf("error running snapshot editor tsc set: %w, output: %s", err, string(output1))
+	}
+
+	telemetry.ReportEvent(ctx, "snapshot editor tsc set completed")
 
 	return nil
 }
