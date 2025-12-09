@@ -36,7 +36,7 @@ func TestCgroupRoundTrip(t *testing.T) {
 		t.Parallel()
 
 		// create manager
-		m, err := NewCgroup2Manager(nil)
+		m, err := NewCgroup2Manager()
 		require.NoError(t, err)
 
 		// create new child process
@@ -54,14 +54,11 @@ func TestCgroupRoundTrip(t *testing.T) {
 		cgroupPath := createCgroupPath(t, "real-one")
 
 		// create manager
-		m, err := NewCgroup2Manager(map[ProcessType]Cgroup2Config{
-			"real-one": {
-				Path: cgroupPath,
-				Properties: map[string]string{
-					"memory.max": strconv.Itoa(1 * megabyte),
-				},
-			},
-		})
+		m, err := NewCgroup2Manager(
+			WithCgroup2ProcessType(ProcessTypePTY, cgroupPath, map[string]string{
+				"memory.max": strconv.Itoa(1 * megabyte),
+			}),
+		)
 		require.NoError(t, err)
 
 		t.Cleanup(func() {
@@ -70,7 +67,7 @@ func TestCgroupRoundTrip(t *testing.T) {
 		})
 
 		// create new child process
-		cmd := startProcess(t, m, "real-one")
+		cmd := startProcess(t, m, ProcessTypePTY)
 
 		// wait for child process to die
 		err = waitForProcess(t, cmd, maxTimeout)
@@ -101,14 +98,11 @@ func TestCgroupRoundTrip(t *testing.T) {
 		cgroupPath := createCgroupPath(t, "real-one")
 
 		// create manager
-		m, err := NewCgroup2Manager(map[ProcessType]Cgroup2Config{
-			"real-one": {
-				Path: cgroupPath,
-				Properties: map[string]string{
-					"memory.max": strconv.Itoa(1 * kilobyte),
-				},
-			},
-		})
+		m, err := NewCgroup2Manager(
+			WithCgroup2ProcessType(ProcessTypeSocat, cgroupPath, map[string]string{
+				"memory.max": strconv.Itoa(1 * kilobyte),
+			}),
+		)
 		require.NoError(t, err)
 
 		t.Cleanup(func() {
@@ -117,7 +111,7 @@ func TestCgroupRoundTrip(t *testing.T) {
 		})
 
 		// create new child process
-		cmd := startProcess(t, m, "real-one")
+		cmd := startProcess(t, m, ProcessTypeSocat)
 
 		// wait for child process to die
 		err = waitForProcess(t, cmd, maxTimeout)
