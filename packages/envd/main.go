@@ -254,15 +254,6 @@ func createCgroupManager() (m cgroups.Manager) {
 		return nil
 	}
 
-	const cpuSecondUnits = 100_000
-	const userCPUMaxPercentage = .95
-	userCPUMax := int(float64(metrics.CPUCount) * cpuSecondUnits * userCPUMaxPercentage)
-	userMemoryMax := int(float64(metrics.MemTotal) * .95)
-	userCgroup2Props := map[string]string{
-		"memory.max": fmt.Sprintf("%d", userMemoryMax),
-		"cpu.max":    fmt.Sprintf("%d %d", userCPUMax, cpuSecondUnits),
-	}
-
 	mgr, err := cgroups.NewCgroup2Manager(
 		cgroups.WithCgroup2RootSysFSPath(cgroupRoot),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypePTY, "ptys", map[string]string{
@@ -271,7 +262,10 @@ func createCgroupManager() (m cgroups.Manager) {
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeSocat, "socats", map[string]string{
 			"cpu.weight": "150", // gets slightly preferred cpu access
 		}),
-		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeUser, "user", userCgroup2Props),
+		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeUser, "user", map[string]string{
+			"memory.high": fmt.Sprintf("%d", int(float64(metrics.MemTotal)*.875)),
+			"cpu.weight":  "50", // less than envd, and less than core processes that default to 100
+		}),
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create cgroup2 manager: %v\n", err)

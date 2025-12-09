@@ -21,7 +21,7 @@ Delegate=yes
 MemoryMin=50M
 MemoryLow=100M
 CPUAccounting=yes
-CPUWeight=200
+CPUWeight=1000
 
 [Install]
 WantedBy=multi-user.target
