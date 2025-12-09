@@ -30,7 +30,7 @@ func allowHandler(ctx context.Context, conn net.Conn, dstPort int, sbx *sandbox.
 	}
 
 	if hostname == "" {
-		logger.Debug(ctx, "No hostname found, blocking", zap.String("source_addr", sourceAddr))
+		logger.Debug(ctx, "No hostname found, denying sandbox egress hostname filter connection", zap.String("source_addr", sourceAddr))
 		conn.Close()
 
 		return
@@ -38,14 +38,14 @@ func allowHandler(ctx context.Context, conn net.Conn, dstPort int, sbx *sandbox.
 
 	allowed, err := isAllowed(sbx, hostname)
 	if err != nil {
-		logger.Error(ctx, "Allowed check failed", zap.Error(err))
+		logger.Error(ctx, "Allowed sandbox egress hostname filter check failed", zap.Error(err))
 		conn.Close()
 
 		return
 	}
 
 	if !allowed {
-		logger.Debug(ctx, "Denied connection",
+		logger.Debug(ctx, "Denied sandbox egress hostname filter connection",
 			zap.String("hostname", hostname),
 			zap.String("source_addr", sourceAddr),
 		)
@@ -56,7 +56,7 @@ func allowHandler(ctx context.Context, conn net.Conn, dstPort int, sbx *sandbox.
 
 	upstreamAddr := net.JoinHostPort(hostname, fmt.Sprintf("%d", dstPort))
 
-	logger.Debug(ctx, "Proxying connection",
+	logger.Debug(ctx, "Proxying sandbox egress hostname filter connection",
 		zap.String("source_addr", sourceAddr),
 		zap.String("upstream_addr", upstreamAddr),
 	)
@@ -72,7 +72,7 @@ func denyHandler(ctx context.Context, conn net.Conn, _ int, _ *sandbox.Sandbox, 
 	conn.Close()
 	remoteAddr := conn.RemoteAddr().String()
 
-	logger.Debug(ctx, "Denied unrecognized protocol",
+	logger.Debug(ctx, "Denied sandbox egress hostname filter connection",
 		zap.String("remote_addr", remoteAddr),
 	)
 }
