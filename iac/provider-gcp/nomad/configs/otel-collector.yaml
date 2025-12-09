@@ -315,7 +315,7 @@ processors:
     attributes:
       - key: deployment.environment
         from_attribute: cloud.account.id
-        action: insert
+        action: upsert
       - key: cloud.account.id
         action: delete
       - key: service.instance.id
