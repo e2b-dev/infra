@@ -3,14 +3,11 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 -include ${ENV_FILE}
 
-# Login for Packer and Docker (uses gcloud user creds)
-# Login for Terraform (uses application default creds)
-.PHONY: login-gcloud
-login-gcloud:
-	gcloud --quiet auth login
-	gcloud config set project "$(GCP_PROJECT_ID)"
-	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
-	gcloud --quiet auth application-default login
+AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+
+.PHONY: provider-login
+provider-login:
+	$(MAKE) -C iac/provider-$(PROVIDER) provider-login
 
 .PHONY: init
 init:
@@ -95,13 +92,12 @@ build-and-upload/%:
 .PHONY: copy-public-builds
 copy-public-builds:
 ifeq ($(PROVIDER),aws)
-	AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 	mkdir -p ./.kernels
 	mkdir -p ./.firecrackers
 	gsutil -m cp -r gs://e2b-prod-public-builds/kernels/* ./.kernels/
 	gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* ./.firecrackers/
-	aws s3 cp ./.kernels/ s3://${AWS_BUCKET_PREFIX}fc-kernels/ --recursive --profile $(AWS_PROFILE)
-	aws s3 cp ./.firecrackers/ s3://${AWS_BUCKET_PREFIX}fc-versions/ --recursive --profile $(AWS_PROFILE)
+	aws s3 cp ./.kernels/ s3://${AWS_BUCKET_PREFIX}fc-kernels/ --recursive --profile ${AWS_PROFILE}
+	aws s3 cp ./.firecrackers/ s3://${AWS_BUCKET_PREFIX}fc-versions/ --recursive --profile ${AWS_PROFILE}
 	rm -rf ./.kernels
 	rm -rf ./.firecrackers
 else

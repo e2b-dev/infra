@@ -153,3 +153,12 @@ apply:
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(tf_vars) $(TF) import "$(TARGET)" "$(ID)" -no-color
+
+# Login for Packer and Docker (uses gcloud user creds)
+# Login for Terraform (uses application default creds)
+.PHONY: provider-login
+provider-login:
+	gcloud --quiet auth login
+	gcloud config set project "$(GCP_PROJECT_ID)"
+	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
+	gcloud --quiet auth application-default login
