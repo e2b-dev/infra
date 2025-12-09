@@ -254,8 +254,7 @@ func createCgroupManager() (m cgroups.Manager) {
 		return nil
 	}
 
-	mgr, err := cgroups.NewCgroup2Manager(
-		cgroups.WithCgroup2RootSysFSPath(cgroupRoot),
+	opts := []cgroups.Cgroup2ManagerOption{
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypePTY, "ptys", map[string]string{
 			"cpu.weight": "200", // gets much preferred cpu access, to help keep these real time
 		}),
@@ -266,7 +265,12 @@ func createCgroupManager() (m cgroups.Manager) {
 			"memory.high": fmt.Sprintf("%d", int(float64(metrics.MemTotal)*.875)),
 			"cpu.weight":  "50", // less than envd, and less than core processes that default to 100
 		}),
-	)
+	}
+	if cgroupRoot != "" {
+		opts = append(opts, cgroups.WithCgroup2RootSysFSPath(cgroupRoot))
+	}
+
+	mgr, err := cgroups.NewCgroup2Manager(opts...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create cgroup2 manager: %v\n", err)
 
