@@ -30,3 +30,24 @@ udevadm trigger
 ```bash
 ./cmd/mount-rootfs/start.sh <bucket> <build-id> <mount-path>
 ```
+
+### Inspect Header
+
+Inspect the header of a build.
+
+```bash
+TEMPLATE_BUCKET_NAME=<template-bucket-name> go run cmd/inspect-header/main.go -build <build-id> -kind <kind>
+```
+
+> Kind can be `memfile` or `rootfs`.
+
+### Inspect Data
+
+Inspect the data of a build.
+
+```bash
+TEMPLATE_BUCKET_NAME=<template-bucket-name> go run cmd/inspect-data/main.go -build <build-id> -kind <kind> -start [start-block] -end [end-block]
+```
+
+> Kind can be `memfile` or `rootfs`.
+> Start and end block are optional. If not provided, the entire data will be inspected.
