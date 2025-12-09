@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
@@ -300,16 +302,29 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	return nil
 }
 
-// vmInfo retrieves general information about an instance from the Firecracker API.
-func (c *apiClient) instanceInfo(ctx context.Context) (*models.InstanceInfo, error) {
-	req := operations.DescribeInstanceParams{
+// mappings retrieves the memory mappings from the Firecracker API.
+func (c *apiClient) mappings(ctx context.Context) (*memory.Mapping, error) {
+	req := operations.GetMemoryMappingsParams{
 		Context: ctx,
 	}
 
-	resp, err := c.client.Operations.DescribeInstance(&req)
+	resp, err := c.client.Operations.GetMemoryMappings(&req)
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving vm info: %w", err)
+		return nil, fmt.Errorf("error retrieving memory mappings: %w", err)
 	}
 
-	return resp.Payload, nil
+	return memory.NewMappingFromFCInfo(resp.Payload.Mappings)
+}
+
+func (c *apiClient) softDirtyPages(ctx context.Context) (*bitset.BitSet, error) {
+	req := operations.GetMemoryDirtyParams{
+		Context: ctx,
+	}
+
+	resp, err := c.client.Operations.GetMemoryDirty(&req)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving soft dirty pages: %w", err)
+	}
+
+	return bitset.From(resp.Payload.Dirty), nil
 }
