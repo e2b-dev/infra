@@ -271,7 +271,7 @@ processors:
         host.type:
           enabled: false
         host.id:
-          enabled: true
+          enabled: false
         host.name:
           enabled: true
         gcp.gce.instance.name:
@@ -321,6 +321,14 @@ processors:
       - key: host.id
         action: delete
       - key: host.name
+        action: delete
+      - key: internal
+        action: delete
+      - key: telemetry.sdk.language
+        action: delete
+      - key: telemetry.sdk.name
+        action: delete
+      - key: scope.name
         action: delete
 
 extensions:
