@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	templateBuildLogsLimit        = 1_000
+	templateBuildLogsLimit        = 100
 	templateBuildLogsDefaultRange = 24 * time.Hour // 7 days
 
 	defaultDirection = logproto.FORWARD
@@ -55,7 +55,12 @@ func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params ap
 		end = time.UnixMilli(*params.End)
 	}
 
-	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateID, buildID, start, end, templateBuildLogsLimit, offset, apiLevelToLogLevel(params.Level), direction)
+	limit := templateBuildLogsLimit
+	if params.Limit != nil && *params.Limit < templateBuildLogsLimit {
+		limit = int(*params.Limit)
+	}
+
+	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateID, buildID, start, end, limit, offset, apiLevelToLogLevel(params.Level), direction)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching template build logs")
 		telemetry.ReportCriticalError(ctx, "error when fetching template build logs", err)

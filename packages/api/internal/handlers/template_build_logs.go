@@ -63,7 +63,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templ
 	// early return if still waiting for build start
 	if buildInfo.BuildStatus == types.BuildStatusWaiting {
 		c.JSON(http.StatusOK, api.TemplateBuildLogsResponse{
-			Logs: nil,
+			Logs: []api.BuildLogEntry{},
 		})
 
 		return
