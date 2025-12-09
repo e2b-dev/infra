@@ -290,13 +290,13 @@ processors:
       # We have to set the service instance here as it's necessary to set it as a datapoint attribute
       - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
       - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
+      - delete_key(datapoint.attributes, "datacenter")
       - delete_key(datapoint.attributes, "instance")
       - delete_key(datapoint.attributes, "node_id")
       - delete_key(datapoint.attributes, "node_scheduling_eligibility")
       - delete_key(datapoint.attributes, "node_class")
       - delete_key(datapoint.attributes, "node_status")
       - delete_key(datapoint.attributes, "service_name")
-      - delete_key(datapoint.attributes, "host.name")
 
   filter/rpc_duration_only:
     metrics:
