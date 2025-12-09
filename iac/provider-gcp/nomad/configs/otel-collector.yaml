@@ -415,9 +415,9 @@ service:
         - hostmetrics
       processors:
         - attributes/host_metrics_node
+        - metricstransform/single_cpu
         - resourcedetection
         - transform/set-name
-        - metricstransform/single_cpu
         - batch
       exporters:
         - otlphttp/grafana_cloud
