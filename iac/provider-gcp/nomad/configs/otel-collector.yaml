@@ -283,7 +283,9 @@ processors:
         gcp.gce.instance_group_manager.name:
           enabled: false
 
-  transform/set_metric_labels:
+  # For some reason, the metrics require us to set datapoint.attribute and won't accept the resource.attribute
+  # That is why we can't use the resource/set_attributes processor
+  transform/set-name:
     metric_statements:
       # We have to set the service instance here as it's necessary to set it as a datapoint attribute
       - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
@@ -382,7 +384,7 @@ service:
       processors:
         - filter/otlp
         - resourcedetection
-        - transform/set_metric_labels
+        - transform/set-name
         - batch
       exporters:
         - otlphttp/grafana_cloud
@@ -392,7 +394,7 @@ service:
       processors:
         - filter/only_client_allocs
         - resourcedetection
-        - transform/set_metric_labels
+        - transform/set-name
         - batch
       exporters:
         - otlphttp/grafana_cloud
@@ -403,7 +405,7 @@ service:
         - filter/rpc_duration_only
         - resource/remove_instance
         - resourcedetection
-        - transform/set_metric_labels
+        - transform/set-name
         - batch
       exporters:
         - otlphttp/grafana_cloud
@@ -413,7 +415,7 @@ service:
       processors:
         - attributes/host_metrics_node
         - resourcedetection
-        - transform/set_metric_labels
+        - transform/set-name
         - metricstransform/single_cpu
         - batch
       exporters:
