@@ -20,7 +20,6 @@ const (
 
 // Defines values for ClusterNodeType.
 const (
-	ClusterNodeTypeEdge         ClusterNodeType = "edge"
 	ClusterNodeTypeOrchestrator ClusterNodeType = "orchestrator"
 )
 

@@ -119,7 +119,6 @@ components:
       description: Cluster node type
       enum:
         - orchestrator
-        - edge
 
     ClusterOrchestratorRole:
       type: string

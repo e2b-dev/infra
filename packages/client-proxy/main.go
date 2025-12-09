@@ -106,13 +106,6 @@ func run() int {
 
 	l.Info(ctx, "Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
-	edgeSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.EdgeServiceDiscovery, config.EdgePort, l)
-	if err != nil {
-		l.Error(ctx, "Failed to build edge discovery config", zap.Error(err))
-
-		return 1
-	}
-
 	orchestratorsSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.OrchestratorServiceDiscovery, config.OrchestratorPort, l)
 	if err != nil {
 		l.Error(ctx, "Failed to build orchestrator discovery config", zap.Error(err))
@@ -181,12 +174,11 @@ func run() int {
 	}
 
 	authorizationManager := authorization.NewStaticTokenAuthorizationService(config.EdgeSecret)
-	edges := e2borchestrators.NewEdgePool(ctx, l, edgeSD, info.Host, authorizationManager)
 
 	var closers []Closeable
-	closers = append(closers, orchestrators, edges, featureFlagsClient, catalog)
+	closers = append(closers, orchestrators, featureFlagsClient, catalog)
 
-	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, l, info, edges, orchestrators, catalog, config)
+	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, l, info, orchestrators, catalog, config)
 	if err != nil {
 		l.Error(ctx, "failed to create edge api store", zap.Error(err))
 
