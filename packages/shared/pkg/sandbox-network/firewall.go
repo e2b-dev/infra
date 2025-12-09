@@ -53,6 +53,7 @@ func IsIPOrCIDR(s string) bool {
 
 	// Check if it's a valid CIDR
 	_, _, err := net.ParseCIDR(s)
+
 	return err == nil
 }
 

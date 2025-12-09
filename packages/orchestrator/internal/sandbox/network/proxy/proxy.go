@@ -22,19 +22,17 @@ const (
 	upstreamDialTimeout = 30 * time.Second
 )
 
-// OriginalDstConn is implemented by connections that know their original destination
-type OriginalDstConn interface {
-	OriginalDstPort() int
-}
-
-// origDstConn wraps a connection with its original destination port
-type origDstConn struct {
+// connMeta holds per-connection metadata (context for tracing, original destination port)
+type connMeta struct {
 	net.Conn
 
 	port int
+	ctx  context.Context //nolint:containedctx // intentional: carries per-connection context for request tracing
 }
 
-func (c *origDstConn) OriginalDstPort() int { return c.port }
+func (c *connMeta) OriginalDstPort() int { return c.port }
+
+func (c *connMeta) Context() context.Context { return c.ctx }
 
 type Proxy struct {
 	logger    logger.Logger
@@ -46,7 +44,7 @@ type Proxy struct {
 	cancel context.CancelFunc
 }
 
-func New(ctx context.Context, logger logger.Logger, port uint16, sandboxes *sandbox.Map) *Proxy {
+func New(logger logger.Logger, port uint16, sandboxes *sandbox.Map) *Proxy {
 	return &Proxy{
 		listenPort: port,
 		logger:     logger,
@@ -63,28 +61,23 @@ func (p *Proxy) Start(ctx context.Context) error {
 
 	// Custom listener that wraps connections with their original destination
 	p.proxy.ListenFunc = func(network, laddr string) (net.Listener, error) {
-		ln, err := net.Listen(network, laddr)
+		var lc net.ListenConfig
+		ln, err := lc.Listen(ctx, network, laddr)
 		if err != nil {
 			return nil, err
 		}
 
-		return &origDstListener{Listener: ln, logger: p.logger, ctx: ctx}, nil
+		return &origDstListener{Listener: ln, ctx: ctx}, nil
 	}
 
-	// TLS target for SNI-based routing
-	tlsTarget := &allowlistTarget{proxy: p, logger: p.logger, ctx: ctx}
+	// Route all TLS traffic through allowlist (SNI-based routing)
+	p.proxy.AddSNIMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(p.allowlistHandler))
 
-	// HTTP target for Host header-based routing
-	httpTarget := &allowlistTarget{proxy: p, logger: p.logger, ctx: ctx}
-
-	// Route all TLS traffic through our allowlist target
-	p.proxy.AddSNIMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, tlsTarget)
-
-	// Route all HTTP traffic through our allowlist target
-	p.proxy.AddHTTPHostMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, httpTarget)
+	// Route all HTTP traffic through allowlist (Host header-based routing)
+	p.proxy.AddHTTPHostMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(p.allowlistHandler))
 
 	// Block unrecognized protocols
-	p.proxy.AddRoute(addr, &blockTarget{logger: p.logger, ctx: ctx})
+	p.proxy.AddRoute(addr, targetFunc(p.blockHandler))
 
 	p.logger.Info(ctx, "Proxy started", zap.String("address", addr))
 
@@ -96,7 +89,7 @@ func (p *Proxy) Start(ctx context.Context) error {
 	return p.proxy.Run()
 }
 
-func (p *Proxy) Close(ctx context.Context) error {
+func (p *Proxy) Close(_ context.Context) error {
 	if p.cancel != nil {
 		p.cancel()
 	}
@@ -104,12 +97,11 @@ func (p *Proxy) Close(ctx context.Context) error {
 	return nil
 }
 
-// origDstListener wraps accepted connections with their original destination port
+// origDstListener wraps accepted connections with metadata (original destination port + context)
 type origDstListener struct {
 	net.Listener
 
-	logger logger.Logger
-	ctx    context.Context
+	ctx context.Context //nolint:containedctx // propagated to connections for request tracing
 }
 
 func (l *origDstListener) Accept() (net.Conn, error) {
@@ -118,12 +110,14 @@ func (l *origDstListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	port := 0
-	if p, err := getOriginalDstPort(conn); err == nil {
-		port = p
+	port, err := getOriginalDstPort(conn)
+	if err != nil {
+		conn.Close()
+
+		return nil, err
 	}
 
-	return &origDstConn{Conn: conn, port: port}, nil
+	return &connMeta{Conn: conn, port: port, ctx: l.ctx}, nil
 }
 
 // getOriginalDstPort retrieves the original destination port before DNAT was applied.
@@ -171,12 +165,11 @@ func getOriginalDstPort(conn net.Conn) (int, error) {
 	return port, sockErr
 }
 
-// getOrigDstPort extracts the original port from a (possibly wrapped) connection
-func getOrigDstPort(conn net.Conn) (int, error) {
-	// Walk the wrapper chain looking for OriginalDstConn
+// unwrapConnMeta extracts our connection metadata from a (possibly wrapped) connection.
+func unwrapConnMeta(conn net.Conn) (*connMeta, bool) {
 	for c := conn; c != nil; {
-		if oc, ok := c.(OriginalDstConn); ok && oc.OriginalDstPort() != 0 {
-			return oc.OriginalDstPort(), nil
+		if cm, ok := c.(*connMeta); ok {
+			return cm, true
 		}
 
 		// Try to unwrap - tcpproxy.Conn has Conn as a public field
@@ -187,44 +180,50 @@ func getOrigDstPort(conn net.Conn) (int, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("original destination port not found")
+	return nil, false
 }
 
-var _ tcpproxy.Target = &allowlistTarget{}
+// targetFunc adapts a handler function to tcpproxy.Target interface.
+// It extracts connection metadata and passes it to the handler with a clean signature.
+type targetFunc func(ctx context.Context, conn net.Conn, dstPort int)
 
-type allowlistTarget struct {
-	proxy  *Proxy
-	logger logger.Logger
-	ctx    context.Context
-}
-
-func (t *allowlistTarget) HandleConn(conn net.Conn) {
-	sourceAddr := conn.RemoteAddr().String()
-
-	// Get hostname from tcpproxy's wrapped connection
-	var hostname string
-	if tc, ok := conn.(*tcpproxy.Conn); ok {
-		hostname = tc.HostName // tcpproxy.Conn has HostName as a public field
-	}
-
-	if hostname == "" {
-		t.logger.Debug(t.ctx, "No hostname found, blocking", zap.String("source_addr", sourceAddr))
+func (f targetFunc) HandleConn(conn net.Conn) {
+	meta, ok := unwrapConnMeta(conn)
+	if !ok {
 		conn.Close()
 
 		return
 	}
 
-	// Check allowlist
-	allowed, err := t.proxy.isAllowed(sourceAddr, hostname)
+	f(meta.Context(), conn, meta.OriginalDstPort())
+}
+
+func (p *Proxy) allowlistHandler(ctx context.Context, conn net.Conn, dstPort int) {
+	sourceAddr := conn.RemoteAddr().String()
+
+	// Get hostname from tcpproxy's wrapped connection
+	var hostname string
+	if tc, ok := conn.(*tcpproxy.Conn); ok {
+		hostname = tc.HostName
+	}
+
+	if hostname == "" {
+		p.logger.Debug(ctx, "No hostname found, blocking", zap.String("source_addr", sourceAddr))
+		conn.Close()
+
+		return
+	}
+
+	allowed, err := p.isAllowed(sourceAddr, hostname)
 	if err != nil {
-		t.logger.Error(t.ctx, "Allowlist check failed", zap.Error(err))
+		p.logger.Error(ctx, "Allowlist check failed", zap.Error(err))
 		conn.Close()
 
 		return
 	}
 
 	if !allowed {
-		t.logger.Debug(t.ctx, "Blocked connection",
+		p.logger.Debug(ctx, "Blocked connection",
 			zap.String("hostname", hostname),
 			zap.String("source_addr", sourceAddr),
 		)
@@ -233,24 +232,13 @@ func (t *allowlistTarget) HandleConn(conn net.Conn) {
 		return
 	}
 
-	// Get original destination port from wrapped connection
-	dstPort, err := getOrigDstPort(conn)
-	if err != nil {
-		t.logger.Error(t.ctx, "Failed to get original destination port", zap.Error(err))
-		conn.Close()
-
-		return
-	}
-
 	upstreamAddr := net.JoinHostPort(hostname, fmt.Sprintf("%d", dstPort))
 
-	t.logger.Debug(t.ctx, "Proxying connection",
+	p.logger.Debug(ctx, "Proxying connection",
 		zap.String("source_addr", sourceAddr),
 		zap.String("upstream_addr", upstreamAddr),
 	)
 
-	// Delegate to tcpproxy's built-in proxying (handles dial + bidirectional copy)
-	// Use a dial timeout to prevent goroutine leaks from slow/unresponsive upstreams
 	dp := &tcpproxy.DialProxy{
 		Addr:        upstreamAddr,
 		DialTimeout: upstreamDialTimeout,
@@ -258,17 +246,12 @@ func (t *allowlistTarget) HandleConn(conn net.Conn) {
 	dp.HandleConn(conn)
 }
 
-var _ tcpproxy.Target = &blockTarget{}
-
-type blockTarget struct {
-	logger logger.Logger
-	ctx    context.Context
-}
-
-func (t *blockTarget) HandleConn(conn net.Conn) {
+func (p *Proxy) blockHandler(ctx context.Context, conn net.Conn, _ int) {
 	conn.Close()
-	t.logger.Debug(t.ctx, "Blocked unrecognized protocol",
-		zap.String("remote_addr", conn.RemoteAddr().String()),
+	remoteAddr := conn.RemoteAddr().String()
+
+	p.logger.Debug(ctx, "Blocked unrecognized protocol",
+		zap.String("remote_addr", remoteAddr),
 	)
 }
 

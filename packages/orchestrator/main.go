@@ -367,7 +367,6 @@ func run(config cfg.Config) (success bool) {
 
 	// hostname egress proxy - filters traffic based on TLS/HTTP hostnames
 	hostnameProxy := hostnameproxy.New(
-		ctx,
 		globalLogger,
 		config.NetworkConfig.SandboxFirewallRedirectPort,
 		sandboxes,

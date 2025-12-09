@@ -56,8 +56,8 @@ type Config struct {
 	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
 
 	// SandboxFirewallRedirectIP is the IP address to redirect denied traffic to instead of dropping it
-	SandboxFirewallRedirectIP   string `env:"SANDBOX_FIREWALL_REDIRECT_IP"    envDefault:"192.0.2.2"`
-	SandboxFirewallRedirectPort uint16 `env:"SANDBOX_FIREWALL_REDIRECT_PORT"  envDefault:"3128"`
+	SandboxFirewallRedirectIP   string `env:"SANDBOX_FIREWALL_REDIRECT_IP"   envDefault:"192.0.2.2"`
+	SandboxFirewallRedirectPort uint16 `env:"SANDBOX_FIREWALL_REDIRECT_PORT" envDefault:"3128"`
 }
 
 func ParseConfig() (Config, error) {
