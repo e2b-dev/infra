@@ -265,11 +265,6 @@ resource "google_compute_url_map" "orch_map" {
   }
 
   host_rule {
-    hosts        = concat(["consul.${var.domain_name}"], [for d in var.additional_domains : "consul.${d}"])
-    path_matcher = "consul-paths"
-  }
-
-  host_rule {
     hosts        = concat(["*.${var.domain_name}"], [for d in var.additional_domains : "*.${d}"])
     path_matcher = "session-paths"
   }
@@ -312,11 +307,6 @@ resource "google_compute_url_map" "orch_map" {
         }
       }
     }
-  }
-
-  path_matcher {
-    name            = "consul-paths"
-    default_service = google_compute_backend_service.default["consul"].self_link
   }
 }
 
@@ -456,7 +446,11 @@ resource "google_compute_firewall" "default-hc" {
   priority = 999
 
   dynamic "allow" {
-    for_each = local.health_checked_backends
+    for_each = {
+      for k,v in local.health_checked_backends :
+      k => v if k != "consul"   # skip consul
+    }
+
     content {
       protocol = "tcp"
       ports    = [allow.value["http_health_check"].port]
