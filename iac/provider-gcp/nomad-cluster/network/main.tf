@@ -82,6 +82,7 @@ locals {
       }
       groups = [{ group = var.server_instance_group }]
     }
+    # TODO: Remove in [ENG-3386]
     consul = {
       protocol                        = "HTTP"
       port                            = 80
@@ -446,6 +447,7 @@ resource "google_compute_firewall" "default-hc" {
   priority = 999
 
   dynamic "allow" {
+    # TODO: Revert to for_each = local.health_checked_backends in [ENG-3386]
     for_each = {
       for k,v in local.health_checked_backends :
       k => v if k != "consul"   # skip consul
