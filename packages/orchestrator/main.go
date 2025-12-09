@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/hostfilter"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -34,7 +35,6 @@ import (
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-	hostnameproxy "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
@@ -365,21 +365,21 @@ func run(config cfg.Config) (success bool) {
 	})
 	closers = append(closers, closer{"sandbox proxy", sandboxProxy.Close})
 
-	// hostname egress proxy - filters traffic based on TLS/HTTP hostnames
-	hostnameProxy := hostnameproxy.New(
+	// hostname egress filter proxy
+	hostFilter := hostfilter.New(
 		globalLogger,
 		config.NetworkConfig.SandboxFirewallRedirectPort,
 		sandboxes,
 	)
 	startService("hostname egress proxy", func() error {
-		err := hostnameProxy.Start(ctx)
+		err := hostFilter.Start(ctx)
 		if err != nil {
 			return err
 		}
 
 		return nil
 	})
-	closers = append(closers, closer{"hostname egress proxy", hostnameProxy.Close})
+	closers = append(closers, closer{"hostname egress proxy", hostFilter.Close})
 
 	// device pool
 	devicePool, err := nbd.NewDevicePool()
