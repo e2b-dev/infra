@@ -5,19 +5,20 @@ import (
 	"net"
 
 	"inet.af/tcpproxy"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // connMeta holds per-connection metadata (context for tracing, original destination port)
 type connMeta struct {
 	net.Conn
 
-	port int
-	ctx  context.Context //nolint:containedctx // intentional: carries per-connection context for request tracing
+	port   int
+	ctx    context.Context //nolint:containedctx // intentional: carries per-connection context for request tracing
+	sbx    *sandbox.Sandbox
+	logger logger.Logger
 }
-
-func (c *connMeta) OriginalDstPort() int { return c.port }
-
-func (c *connMeta) Context() context.Context { return c.ctx }
 
 // unwrapConnMeta extracts our connection metadata from a (possibly wrapped) connection.
 func unwrapConnMeta(conn net.Conn) (*connMeta, bool) {

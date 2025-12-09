@@ -9,6 +9,9 @@ import (
 
 	"go.uber.org/zap"
 	"inet.af/tcpproxy"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -17,7 +20,7 @@ const (
 	upstreamDialTimeout = 30 * time.Second
 )
 
-func (p *Proxy) allowlistHandler(ctx context.Context, conn net.Conn, dstPort int) {
+func allowHandler(ctx context.Context, conn net.Conn, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger) {
 	sourceAddr := conn.RemoteAddr().String()
 
 	// Get hostname from tcpproxy's wrapped connection
@@ -27,22 +30,22 @@ func (p *Proxy) allowlistHandler(ctx context.Context, conn net.Conn, dstPort int
 	}
 
 	if hostname == "" {
-		p.logger.Debug(ctx, "No hostname found, blocking", zap.String("source_addr", sourceAddr))
+		logger.Debug(ctx, "No hostname found, blocking", zap.String("source_addr", sourceAddr))
 		conn.Close()
 
 		return
 	}
 
-	allowed, err := p.isAllowed(sourceAddr, hostname)
+	allowed, err := isAllowed(sbx, hostname)
 	if err != nil {
-		p.logger.Error(ctx, "Allowlist check failed", zap.Error(err))
+		logger.Error(ctx, "Allowed check failed", zap.Error(err))
 		conn.Close()
 
 		return
 	}
 
 	if !allowed {
-		p.logger.Debug(ctx, "Blocked connection",
+		logger.Debug(ctx, "Denied connection",
 			zap.String("hostname", hostname),
 			zap.String("source_addr", sourceAddr),
 		)
@@ -53,7 +56,7 @@ func (p *Proxy) allowlistHandler(ctx context.Context, conn net.Conn, dstPort int
 
 	upstreamAddr := net.JoinHostPort(hostname, fmt.Sprintf("%d", dstPort))
 
-	p.logger.Debug(ctx, "Proxying connection",
+	logger.Debug(ctx, "Proxying connection",
 		zap.String("source_addr", sourceAddr),
 		zap.String("upstream_addr", upstreamAddr),
 	)
@@ -65,21 +68,16 @@ func (p *Proxy) allowlistHandler(ctx context.Context, conn net.Conn, dstPort int
 	dp.HandleConn(conn)
 }
 
-func (p *Proxy) blockHandler(ctx context.Context, conn net.Conn, _ int) {
+func denyHandler(ctx context.Context, conn net.Conn, _ int, _ *sandbox.Sandbox, logger logger.Logger) {
 	conn.Close()
 	remoteAddr := conn.RemoteAddr().String()
 
-	p.logger.Debug(ctx, "Blocked unrecognized protocol",
+	logger.Debug(ctx, "Denied unrecognized protocol",
 		zap.String("remote_addr", remoteAddr),
 	)
 }
 
-func (p *Proxy) isAllowed(sourceAddr string, hostname string) (bool, error) {
-	sbx, err := p.sandboxes.GetByHostPort(sourceAddr)
-	if err != nil {
-		return false, err
-	}
-
+func isAllowed(sbx *sandbox.Sandbox, hostname string) (bool, error) {
 	if net := sbx.Config.Network; net != nil {
 		for _, domain := range net.GetEgress().GetAllowedDomains() {
 			if strings.EqualFold(domain, hostname) {

@@ -45,17 +45,17 @@ func (p *Proxy) Start(ctx context.Context) error {
 			return nil, err
 		}
 
-		return &origDstListener{Listener: ln, ctx: ctx}, nil
+		return newOrigDstListener(ctx, ln, p.sandboxes, p.logger), nil
 	}
 
 	// Route all TLS traffic through allowlist (SNI-based routing)
-	p.proxy.AddSNIMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(p.allowlistHandler))
+	p.proxy.AddSNIMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(allowHandler))
 
 	// Route all HTTP traffic through allowlist (Host header-based routing)
-	p.proxy.AddHTTPHostMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(p.allowlistHandler))
+	p.proxy.AddHTTPHostMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(allowHandler))
 
 	// Block unrecognized protocols
-	p.proxy.AddRoute(addr, targetFunc(p.blockHandler))
+	p.proxy.AddRoute(addr, targetFunc(denyHandler))
 
 	p.logger.Info(ctx, "Host filter proxy started", zap.String("address", addr))
 
@@ -77,7 +77,7 @@ func (p *Proxy) Close(_ context.Context) error {
 
 // targetFunc adapts a handler function to tcpproxy.Target interface.
 // It extracts connection metadata and passes it to the handler with a clean signature.
-type targetFunc func(ctx context.Context, conn net.Conn, dstPort int)
+type targetFunc func(ctx context.Context, conn net.Conn, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger)
 
 func (f targetFunc) HandleConn(conn net.Conn) {
 	meta, ok := unwrapConnMeta(conn)
@@ -87,14 +87,21 @@ func (f targetFunc) HandleConn(conn net.Conn) {
 		return
 	}
 
-	f(meta.Context(), conn, meta.OriginalDstPort())
+	f(meta.ctx, conn, meta.port, meta.sbx, meta.logger)
 }
 
-// origDstListener wraps accepted connections with metadata (original destination port + context)
+// origDstListener wraps accepted connections with metadata
 type origDstListener struct {
 	net.Listener
 
+	sandboxes *sandbox.Map
+	logger    logger.Logger
+
 	ctx context.Context //nolint:containedctx // propagated to connections for request tracing
+}
+
+func newOrigDstListener(ctx context.Context, listener net.Listener, sandboxes *sandbox.Map, logger logger.Logger) *origDstListener {
+	return &origDstListener{Listener: listener, ctx: ctx, sandboxes: sandboxes, logger: logger}
 }
 
 func (l *origDstListener) Accept() (net.Conn, error) {
@@ -110,5 +117,15 @@ func (l *origDstListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	return &connMeta{Conn: conn, port: port, ctx: l.ctx}, nil
+	sourceAddr := conn.RemoteAddr().String()
+	sbx, err := l.sandboxes.GetByHostPort(sourceAddr)
+	if err != nil {
+		conn.Close()
+
+		return nil, err
+	}
+
+	logger := l.logger.With(logger.WithSandboxID(sbx.Runtime.SandboxID))
+
+	return &connMeta{Conn: conn, port: port, ctx: l.ctx, sbx: sbx, logger: logger}, nil
 }
