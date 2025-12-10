@@ -97,7 +97,7 @@ func TestProcessFile(t *testing.T) {
 		httpStatus, err := processFile(request, tempFile2, buffer, realUser, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusInsufficientStorage, httpStatus)
-		assert.ErrorContains(t, err, "not enough disk space on")
+		assert.ErrorContains(t, err, "attempted to write 2048 bytes: not enough disk space")
 	})
 
 	t.Run("happy path", func(t *testing.T) {

@@ -21,19 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
-func freeDiskSpace(path string) (free uint64, err error) {
-	var stat syscall.Statfs_t
-
-	err = syscall.Statfs(path, &stat)
-	if err != nil {
-		return 0, fmt.Errorf("error getting free disk space: %w", err)
-	}
-
-	// Available blocks * size per block = available space in bytes
-	freeSpace := stat.Bavail * uint64(stat.Bsize)
-
-	return freeSpace, nil
-}
+var ErrNoDiskSpace = fmt.Errorf("not enough disk space available")
 
 func processFile(r *http.Request, path string, part io.Reader, user *user.User, logger zerolog.Logger) (int, error) {
 	logger.Debug().
@@ -53,7 +41,7 @@ func processFile(r *http.Request, path string, part io.Reader, user *user.User, 
 
 		return http.StatusInternalServerError, err
 	}
-
+	
 	stat, err := os.Stat(path)
 	if err != nil && !os.IsNotExist(err) {
 		errMsg := fmt.Errorf("error getting file info: %w", err)
@@ -69,6 +57,18 @@ func processFile(r *http.Request, path string, part io.Reader, user *user.User, 
 		}
 	}
 
+	hasBeenChowned := false
+	err = os.Chown(path, int(uid), int(gid))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			err = fmt.Errorf("error changing file ownership: %w", err)
+
+			return http.StatusInternalServerError, err
+		}
+	} else {
+		hasBeenChowned = true
+	}
+
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
 		err := fmt.Errorf("error opening file: %w", err)
@@ -78,22 +78,24 @@ func processFile(r *http.Request, path string, part io.Reader, user *user.User, 
 
 	defer file.Close()
 
-	err = os.Chown(path, int(uid), int(gid))
-	if err != nil {
-		err = fmt.Errorf("error changing file ownership: %w", err)
+	if !hasBeenChowned {
+		err = os.Chown(path, int(uid), int(gid))
+		if err != nil {
+			err := fmt.Errorf("error changing file ownership: %w", err)
 
-		return http.StatusInternalServerError, err
+			return http.StatusInternalServerError, err
+		}
 	}
 
 	_, err = file.ReadFrom(part)
 	if err != nil {
 		if errors.Is(err, syscall.ENOSPC) {
-			freeSpace, err := freeDiskSpace(filepath.Dir(path))
-			if err == nil {
-				err := fmt.Errorf("not enough disk space on '%s': %d bytes required, %d bytes free", filepath.Dir(path), r.ContentLength, freeSpace)
-
-				return http.StatusInsufficientStorage, err
+			err = ErrNoDiskSpace
+			if r.ContentLength > 0 {
+				err = fmt.Errorf("attempted to write %d bytes: %w", r.ContentLength, err)
 			}
+
+			return http.StatusInsufficientStorage, err
 		}
 
 		err = fmt.Errorf("error writing file: %w", err)
