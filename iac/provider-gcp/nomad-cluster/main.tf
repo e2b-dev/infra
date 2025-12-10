@@ -165,8 +165,8 @@ module "client_cluster" {
   cache_disks      = each.value.cache_disks
   machine_type     = each.value.machine.type
   min_cpu_platform = each.value.machine.min_cpu_platform
-  boot_disk        = try(each.value.boot_disk, null)
-  autoscaler       = try(each.value.autoscaler, null)
+  boot_disk        = each.value.boot_disk
+  autoscaler       = each.value.autoscaler
   // This is here for backwards compatibility
   client_cluster_name                    = each.key == "0" ? var.client_cluster_name : "${var.client_cluster_name}-${split("-", each.value.machine.type)[0]}"
   client_image_family                    = var.client_image_family
