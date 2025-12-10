@@ -109,14 +109,7 @@ func (l *origDstListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	ip, err := getOriginalDstIP(conn)
-	if err != nil {
-		conn.Close()
-
-		return nil, err
-	}
-
-	port, err := getOriginalDstPort(conn)
+	ip, port, err := getOriginalDst(conn)
 	if err != nil {
 		conn.Close()
 
