@@ -77,7 +77,7 @@ func copyProcessMemory(
 	ctx context.Context,
 	pid int,
 	ranges []block.Range,
-	local *block.Cache,
+	cache *block.Cache,
 ) error {
 	var start uint64
 
@@ -99,7 +99,7 @@ func copyProcessMemory(
 
 		local := []unix.Iovec{
 			{
-				Base: local.Address(start),
+				Base: cache.Address(start),
 				// We could keep this as full cache length, but we might as well be exact here.
 				Len: segmentSize,
 			},
