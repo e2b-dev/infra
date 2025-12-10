@@ -214,9 +214,9 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 
 	uid, gid, err := permissions.GetUserIdInts(u)
 	if err != nil {
-		err := fmt.Errorf("error getting user ids: %w", err)
+		errMsg = fmt.Errorf("error getting user ids: %w", err)
 
-		jsonError(w, http.StatusInternalServerError, err)
+		jsonError(w, http.StatusInternalServerError, errMsg)
 
 		return
 	}
@@ -247,10 +247,15 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 				return
 			}
 
-			status, processErr := processFile(r, filePath, part, uid, gid, a.logger.With().Str(string(logs.OperationIDKey), operationID).Str("event_type", "file_processing").Logger())
-			if processErr != nil {
+			logger := a.logger.
+				With().
+				Str(string(logs.OperationIDKey), operationID).
+				Str("event_type", "file_processing").
+				Logger()
+			status, err := processFile(r, filePath, part, uid, gid, logger)
+			if err != nil {
 				errorCode = status
-				errMsg = processErr
+				errMsg = err
 				jsonError(w, errorCode, errMsg)
 
 				return
