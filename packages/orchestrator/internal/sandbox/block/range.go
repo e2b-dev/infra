@@ -49,19 +49,19 @@ func NewRangeFromBlocks(startIdx, numberOfBlocks, blockSize int64) Range {
 }
 
 // bitsetRanges returns a sequence of the ranges of the set bits of the bitset.
-func BitsetRanges(b *bitset.BitSet) iter.Seq[Range] {
+func BitsetRanges(b *bitset.BitSet, blockSize int64) iter.Seq[Range] {
 	return func(yield func(Range) bool) {
 		start, ok := b.NextSet(0)
 
 		for ok {
 			end, endOk := b.NextClear(start)
 			if !endOk {
-				yield(NewRange(int64(start), uint64(b.Len()-start)))
+				yield(NewRangeFromBlocks(int64(start), int64(b.Len()-start), blockSize))
 
 				return
 			}
 
-			if !yield(NewRange(int64(start), uint64(end-start))) {
+			if !yield(NewRangeFromBlocks(int64(start), int64(end-start), blockSize)) {
 				return
 			}
 

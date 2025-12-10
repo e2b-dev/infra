@@ -44,7 +44,7 @@ func (p *Process) ExportMemory(
 
 	var remoteRanges []block.Range
 
-	for r := range block.BitsetRanges(include) {
+	for r := range block.BitsetRanges(include, blockSize) {
 		hostVirtRanges, err := m.GetHostVirtRanges(r.Start, int64(r.Size))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get host virt ranges: %w", err)
