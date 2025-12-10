@@ -32,10 +32,8 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 	}
 
 	if hostname == "" {
-		logger.Debug(ctx, "No hostname found, denying sandbox egress hostname filter connection", zap.String("source_addr", sourceAddr))
-		conn.Close()
-
-		return
+		// No hostname found, this is the case e.g. for https://1.1.1.1 like requests
+		logger.Debug(ctx, "No hostname found, ignoring hostname based filter", zap.String("source_addr", sourceAddr))
 	}
 
 	allowed, err := isEgressAllowed(sbx, hostname, dstIP)
