@@ -20,34 +20,6 @@ variable "server_machine_type" {
   type = string
 }
 
-variable "client_cluster_size" {
-  type    = number
-  default = 0
-}
-
-variable "client_cluster_size_max" {
-  type    = number
-  default = 0
-}
-
-variable "client_cluster_autoscaling_cpu_target" {
-  description = "Target CPU utilization for client autoscaling (0.0-1.0)"
-  type        = number
-  default     = 0.6
-}
-
-variable "client_cluster_autoscaling_memory_target" {
-  # Note: This must be higher than orchestrator_base_hugepages_percentage (default 80%)
-  # because preallocated hugepages are counted as used memory in monitoring.
-  description = "Target memory utilization percentage for client autoscaling"
-  type        = number
-  default     = 85
-}
-
-variable "client_machine_type" {
-  type = string
-}
-
 variable "api_cluster_size" {
   type = number
 }
@@ -295,18 +267,6 @@ variable "allow_sandbox_internet" {
   default = true
 }
 
-variable "client_cluster_cache_disk_size_gb" {
-  type        = number
-  description = "The size of the cache disk for the orchestrator machines in GB"
-  default     = 500
-}
-
-variable "client_cluster_cache_disk_type" {
-  description = "The cache disk type for the client machines."
-  type        = string
-  default     = "pd-ssd"
-}
-
 variable "orchestrator_node_pool" {
   type    = string
   default = "default"
@@ -506,44 +466,41 @@ variable "build_cluster_cache_disk_count" {
   default     = 1
 }
 
-variable "client_cluster_cache_disk_count" {
-  type        = number
-  description = "The number of disks to for storing sandbox files."
-  default     = 1
-}
-
 variable "client_clusters_config_json" {
   type        = string
   description = <<EOT
 JSON configuration for the client clusters. This will override individual client_cluster_* variables.
-Format: [{
-  "size": 1,
-  "size_max": 2,
-  "autoscaling_cpu_target": 0.6,
-  "autoscaling_memory_target": 85,
-  "machine_type": "n1-standard-8",
-  "min_cpu_platform": "Intel Skylake",
-  "cache_disk_size_gb": 500,
-  "cache_disk_type": "local-ssd",
-  "cache_disk_count": 3,
-  "boot_disk_type": "pd-ssd"
-}]
+Format: [
+  {
+    "autoscaler": {
+      "size_min": 1,
+      "size_max": 2,
+      "cpu_target": 0.7,
+      "memory_target": 85
+    },
+    "machine": {
+      "type": "n1-standard-8",
+      "min_cpu_platform": "Intel Skylake"
+    },
+    "boot_disk": {
+      "disk_type": "pd-ssd",
+      "size_gb": 100
+    },
+    "cache_disk": {
+      "disk_type": "local-ssd",
+      "size_gb": 375,
+      "count": 3
+    }
+  }
+]
 EOT
-  default     = ""
-
   validation {
-    condition     = var.client_clusters_config_json == "" || can(jsondecode(var.client_clusters_config_json))
+    condition     = can(jsondecode(var.client_clusters_config_json))
     error_message = "client_cluster_config_json must be empty or valid JSON"
   }
 }
 
 # Boot disk type variables
-variable "client_boot_disk_type" {
-  description = "The GCE boot disk type for the client (orchestrator) machines."
-  type        = string
-  default     = "pd-ssd"
-}
-
 variable "build_boot_disk_type" {
   description = "The GCE boot disk type for the build machines."
   type        = string
@@ -572,9 +529,4 @@ variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string
   default     = "pd-ssd"
-}
-
-
-output "json" {
-  value = local.client_clusters_config
 }

@@ -1,31 +1,48 @@
-variable "client_cluster_config" {
-  description = "Client cluster configuration object containing all cluster settings"
+variable "autoscaler" {
   type = object({
-    size                      = number
-    size_max                  = number
-    autoscaling_cpu_target    = number
-    autoscaling_memory_target = number
-    machine_type              = string
-    min_cpu_platform          = string
-    cache_disk_size_gb        = number
-    cache_disk_type           = string
-    cache_disk_count          = number
-    boot_disk_type            = string
+    size_min      = number
+    size_max      = number
+    cpu_target    = number
+    memory_target = number
   })
 
   validation {
-    condition     = var.client_cluster_config.cache_disk_count == 1 && var.client_cluster_config.cache_disk_type != "local-ssd" || var.client_cluster_config.cache_disk_count > 0 && var.client_cluster_config.cache_disk_type == "local-ssd"
-    error_message = "If cache_disk_type is 'local-ssd', cache_disk_count must be greater than 0. If cache_disk_type is not 'local-ssd', cache_disk_count must be 1."
-  }
-
-  validation {
-    condition     = var.client_cluster_config.autoscaling_cpu_target >= 0 && var.client_cluster_config.autoscaling_cpu_target <= 1
+    condition     = var.autoscaler.cpu_target >= 0 && var.autoscaler.cpu_target <= 1
     error_message = "autoscaling_cpu_target must be between 0 and 1."
   }
 
+
   validation {
-    condition     = var.client_cluster_config.autoscaling_memory_target >= 0 && var.client_cluster_config.autoscaling_memory_target <= 100
+    condition     = var.autoscaler.memory_target >= 0 && var.autoscaler.memory_target <= 100
     error_message = "autoscaling_memory_target must be between 0 and 100."
+  }
+}
+
+variable "machine_type" {
+  type = string
+}
+
+variable "min_cpu_platform" {
+  type = string
+}
+
+variable "boot_disk" {
+  type = object({
+    disk_type = string
+    size_gb   = number
+  })
+}
+
+variable "cache_disks" {
+  type = object({
+    disk_type = string
+    size_gb   = number
+    count     = number
+  })
+
+  validation {
+    condition     = var.cache_disks.count == 1 && var.cache_disks.disk_type != "local-ssd" || var.cache_disks.count > 0 && var.cache_disks.disk_type == "local-ssd"
+    error_message = "If cache_disk_type is 'local-ssd', cache_disk_count must be greater than 0. If cache_disk_type is not 'local-ssd', cache_disk_count must be 1."
   }
 }
 

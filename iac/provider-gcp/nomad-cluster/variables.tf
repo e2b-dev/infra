@@ -121,16 +121,25 @@ variable "client_cluster_name" {
 variable "client_clusters_config" {
   description = "List of client cluster configuration object"
   type = list(object({
-    size                      = number
-    size_max                  = number
-    autoscaling_cpu_target    = number
-    autoscaling_memory_target = number
-    machine_type              = string
-    min_cpu_platform          = string
-    cache_disk_size_gb        = number
-    cache_disk_type           = string
-    cache_disk_count          = number
-    boot_disk_type            = string
+    autoscaler = object({
+      size_min      = number
+      size_max      = number
+      cpu_target    = number
+      memory_target = number
+    })
+    machine = object({
+      type             = string
+      min_cpu_platform = string
+    })
+    boot_disk = object({
+      disk_type = string
+      size_gb   = number
+    })
+    cache_disks = object({
+      disk_type = string
+      size_gb   = number
+      count     = number
+    })
   }))
 }
 

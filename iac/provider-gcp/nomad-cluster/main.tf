@@ -162,8 +162,13 @@ module "client_cluster" {
   google_service_account_email = var.google_service_account_email
   google_service_account_key   = var.google_service_account_key
 
-  client_cluster_config                  = each.value
-  client_cluster_name                    = each.key == "0" ? var.client_cluster_name : "${var.client_cluster_name}-${split("-", each.value.machine_type)[0]}"
+  cache_disks      = each.value.cache_disks
+  machine_type     = each.value.machine.type
+  min_cpu_platform = each.value.machine.min_cpu_platform
+  boot_disk        = try(each.value.boot_disk, null)
+  autoscaler       = try(each.value.autoscaler, null)
+  // This is here for backwards compatibility
+  client_cluster_name                    = each.key == "0" ? var.client_cluster_name : "${var.client_cluster_name}-${split("-", each.value.machine.type)[0]}"
   client_image_family                    = var.client_image_family
   network_name                           = var.network_name
   orchestrator_base_hugepages_percentage = var.orchestrator_base_hugepages_percentage

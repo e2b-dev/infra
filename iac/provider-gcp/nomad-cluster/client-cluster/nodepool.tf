@@ -22,8 +22,8 @@ locals {
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
     NODE_POOL                    = var.orchestrator_node_pool
     BASE_HUGEPAGES_PERCENTAGE    = var.orchestrator_base_hugepages_percentage
-    CACHE_DISK_COUNT             = var.client_cluster_config.cache_disk_count
-    LOCAL_SSD                    = var.client_cluster_config.cache_disk_type == "local-ssd" ? "true" : "false"
+    CACHE_DISK_COUNT             = var.cache_disks.count
+    LOCAL_SSD                    = var.cache_disks.disk_type == "local-ssd" ? "true" : "false"
   })
 }
 
@@ -46,30 +46,30 @@ resource "google_compute_health_check" "client_nomad_check" {
 }
 
 resource "google_compute_region_autoscaler" "client" {
-  count = var.client_cluster_config.size < var.client_cluster_config.size_max ? 1 : 0
+  count = var.autoscaler.size_min < var.autoscaler.size_max ? 1 : 0
 
   name   = "${local.client_pool_name}-client-autoscaler"
   region = var.gcp_region
   target = google_compute_region_instance_group_manager.client_pool.id
 
   autoscaling_policy {
-    max_replicas    = var.client_cluster_config.size_max
-    min_replicas    = var.client_cluster_config.size
+    max_replicas    = var.autoscaler.size_max
+    min_replicas    = var.autoscaler.size_min
     cooldown_period = 240
     # Turn off autoscaling when the cluster size is equal to the maximum size.
     mode = "ONLY_SCALE_OUT"
 
     cpu_utilization {
-      target = var.client_cluster_config.autoscaling_cpu_target
+      target = var.autoscaler.cpu_target
     }
 
     dynamic "metric" {
-      for_each = var.client_cluster_config.autoscaling_memory_target < 100 ? [1] : []
+      for_each = var.autoscaler.memory_target < 100 ? [1] : []
       content {
         name   = "agent.googleapis.com/memory/percent_used"
         type   = "GAUGE"
         filter = "resource.type = \"gce_instance\" AND metric.labels.state = \"used\""
-        target = var.client_cluster_config.autoscaling_memory_target
+        target = var.autoscaler.memory_target
       }
     }
   }
@@ -79,7 +79,7 @@ resource "google_compute_region_instance_group_manager" "client_pool" {
   name   = "${local.client_pool_name}-rig"
   region = var.gcp_region
 
-  target_size = var.client_cluster_config.size < var.client_cluster_config.size_max ? null : var.client_cluster_config.size
+  target_size = var.autoscaler.size_min < var.autoscaler.size_max ? null : var.autoscaler.size_min
 
   version {
     name              = google_compute_instance_template.client.id
@@ -122,8 +122,8 @@ resource "google_compute_instance_template" "client" {
   name_prefix = "${local.client_pool_name}-"
 
   instance_description = null
-  machine_type         = var.client_cluster_config.machine_type
-  min_cpu_platform     = var.client_cluster_config.min_cpu_platform
+  machine_type         = var.machine_type
+  min_cpu_platform     = var.min_cpu_platform
 
   labels = merge(
     var.labels,
@@ -146,14 +146,14 @@ resource "google_compute_instance_template" "client" {
     auto_delete  = true
     boot         = true
     source_image = data.google_compute_image.client_source_image.id
-    disk_size_gb = 300
-    disk_type    = var.client_cluster_config.boot_disk_type
+    disk_size_gb = var.boot_disk.size_gb
+    disk_type    = var.boot_disk.disk_type
   }
 
   # Cache disks - Local SSDs
   dynamic "disk" {
     for_each = [
-      for _ in range(var.client_cluster_config.cache_disk_type == "local-ssd" ? var.client_cluster_config.cache_disk_count : 0) : {}
+      for _ in range(var.cache_disks.disk_type == "local-ssd" ? var.cache_disks.count : 0) : {}
     ]
 
     content {
@@ -161,20 +161,20 @@ resource "google_compute_instance_template" "client" {
       boot         = false
       disk_size_gb = 375
       interface    = "NVME"
-      disk_type    = var.client_cluster_config.cache_disk_type
+      disk_type    = var.cache_disks.disk_type
       type         = "SCRATCH"
     }
   }
 
   # Cache Disk - Persistent Disk
   dynamic "disk" {
-    for_each = [for n in range(var.client_cluster_config.cache_disk_type != "local-ssd" ? 1 : 0) : {}]
+    for_each = [for n in range(var.cache_disks.disk_type != "local-ssd" ? 1 : 0) : {}]
     content {
       auto_delete  = true
       boot         = false
       type         = "PERSISTENT"
-      disk_size_gb = var.client_cluster_config.cache_disk_size_gb
-      disk_type    = var.client_cluster_config.cache_disk_type
+      disk_size_gb = var.cache_disks.size_gb
+      disk_type    = var.cache_disks.disk_type
     }
   }
 

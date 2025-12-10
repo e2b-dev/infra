@@ -40,20 +40,6 @@ data "google_secret_manager_secret_version" "routing_domains" {
 
 locals {
   additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
-
-  # Construct client cluster config object from JSON or individual variables
-  client_clusters_config = var.client_clusters_config_json != "" ? jsondecode(var.client_clusters_config_json) : [{
-    size                      = var.client_cluster_size
-    size_max                  = var.client_cluster_size_max
-    autoscaling_cpu_target    = var.client_cluster_autoscaling_cpu_target
-    autoscaling_memory_target = var.client_cluster_autoscaling_memory_target
-    machine_type              = var.client_machine_type
-    min_cpu_platform          = var.min_cpu_platform
-    cache_disk_size_gb        = var.client_cluster_cache_disk_size_gb
-    cache_disk_type           = var.client_cluster_cache_disk_type
-    cache_disk_count          = var.client_cluster_cache_disk_count
-    boot_disk_type            = var.client_boot_disk_type
-  }]
 }
 
 module "init" {
@@ -80,7 +66,7 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  client_clusters_config          = local.client_clusters_config
+  client_clusters_config          = jsondecode(var.client_clusters_config_json)
   build_cluster_root_disk_size_gb = var.build_cluster_root_disk_size_gb
 
   api_cluster_size        = var.api_cluster_size
