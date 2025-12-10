@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 
 	"go.uber.org/zap"
 	"inet.af/tcpproxy"
@@ -19,8 +20,7 @@ type Proxy struct {
 
 	listenPort uint16
 
-	proxy  *tcpproxy.Proxy
-	cancel context.CancelFunc
+	proxy *tcpproxy.Proxy
 }
 
 func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map) *Proxy {
@@ -34,9 +34,6 @@ func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.
 }
 
 func (p *Proxy) Start(ctx context.Context) error {
-	ctx, cancel := context.WithCancel(ctx)
-	p.cancel = cancel
-
 	p.proxy = &tcpproxy.Proxy{}
 	addr := fmt.Sprintf("0.0.0.0:%d", p.listenPort)
 
@@ -67,12 +64,18 @@ func (p *Proxy) Start(ctx context.Context) error {
 		p.proxy.Close()
 	}()
 
-	return p.proxy.Run()
+	err := p.proxy.Run()
+	if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
+		// This is expected when the proxy is closed.
+		return nil
+	}
+
+	return err
 }
 
 func (p *Proxy) Close(_ context.Context) error {
-	if p.cancel != nil {
-		p.cancel()
+	if p.proxy != nil {
+		return p.proxy.Close()
 	}
 
 	return nil

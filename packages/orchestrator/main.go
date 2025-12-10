@@ -372,12 +372,7 @@ func run(config cfg.Config) (success bool) {
 		sandboxes,
 	)
 	startService("tcp egress firewall", func() error {
-		err := tcpFirewall.Start(ctx)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return tcpFirewall.Start(ctx)
 	})
 	closers = append(closers, closer{"tcp egress firewall", tcpFirewall.Close})
 
