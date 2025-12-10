@@ -7,6 +7,11 @@ variable "autoscaler" {
   })
 
   validation {
+    condition     = var.autoscaler.size_max >= var.autoscaler.size_min
+    error_message = "autoscaling_size_max must be >= autoscaling_size_min."
+  }
+
+  validation {
     condition     = var.autoscaler.cpu_target >= 0 && var.autoscaler.cpu_target <= 1
     error_message = "autoscaling_cpu_target must be between 0 and 1."
   }
@@ -39,6 +44,11 @@ variable "cache_disks" {
     size_gb   = number
     count     = number
   })
+
+  validation {
+    condition     = var.cache_disks.disk_type != "local-ssd" || var.cache_disks.size_gb == 375 && var.cache_disks.disk_type == "local-ssd"
+    error_message = "If cache_disk_type is 'local-ssd', cache_disk_size_gb must be 375."
+  }
 
   validation {
     condition     = var.cache_disks.count == 1 && var.cache_disks.disk_type != "local-ssd" || var.cache_disks.count > 0 && var.cache_disks.disk_type == "local-ssd"
