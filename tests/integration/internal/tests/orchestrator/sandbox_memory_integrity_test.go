@@ -50,7 +50,6 @@ echo "Total memory: ${TOTAL_MEM_MB} MB"
 echo "Used memory before tmpfs mount: ${USED_MEM_MB} MB"
 echo "Free memory before tmpfs mount: ${FREE_MEM_MB} MB"
 echo "Memory to use in integrity test (%d%% of free, min 64MB): ${MEM_MB} MB"
-swapoff -a
 mount -t tmpfs -o size=${MEM_MB}M tmpfs /mnt
 /usr/bin/time -v dd if=/dev/urandom of="%s" bs=1M count=${MEM_MB}
 USED_MEM_MB_AFTER=$(free -m | awk '/^Mem:/ {print $3}')
@@ -104,10 +103,6 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 
 		installCmd := `apt-get update && apt-get install -y stress-ng time`
 		err := utils.ExecCommandAsRoot(t, t.Context(), sbx, envdClient, "bash", "-c", installCmd)
-		require.NoError(t, err)
-
-		disableSwapCmd := `swapoff -a`
-		err = utils.ExecCommandAsRoot(t, t.Context(), sbx, envdClient, "bash", "-c", disableSwapCmd)
 		require.NoError(t, err)
 
 		// get 80% size of the free memory and use it as the vm-bytes

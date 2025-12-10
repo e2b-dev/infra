@@ -69,12 +69,6 @@ PermitEmptyPasswords yes
 PasswordAuthentication yes
 EOF
 
-echo "Configuring swap to 128 MiB"
-mkdir -p /swap
-fallocate -l 128M /swap/swapfile
-chmod 600 /swap/swapfile
-mkswap /swap/swapfile
-
 echo "Increasing inotify watch limit"
 echo 'fs.inotify.max_user_watches=65536' | tee -a /etc/sysctl.conf
 
