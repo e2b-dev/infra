@@ -18,7 +18,7 @@ import (
 const (
 	tableName = "slot-firewall"
 
-	// Mark value to signal "allowed" traffic (skip DNAT)
+	// allowedMark is the mark value to signal "allowed" traffic (skip DNAT)
 	allowedMark = 0x1
 )
 

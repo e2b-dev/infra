@@ -228,11 +228,11 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 	}
 
 	// Redirect unmarked TCP traffic to the egress proxy.
-	// Allowed traffic is marked (0x1) by nftables and bypasses this rule.
+	// Allowed traffic is marked by nftables and bypasses this rule.
 	// This preserves the original destination IP for SO_ORIGINAL_DST.
 	err = tables.Append(
 		"nat", "PREROUTING", "-i", s.VethName(),
-		"-p", "tcp", "-m", "mark", "!", "--mark", "0x1",
+		"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
 		"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
 	)
 	if err != nil {
@@ -284,7 +284,7 @@ func (s *Slot) RemoveNetwork() error {
 		// Delete egress proxy redirect rule
 		err = tables.Delete(
 			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-m", "mark", "!", "--mark", "0x1",
+			"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
 			"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
 		)
 		if err != nil {
