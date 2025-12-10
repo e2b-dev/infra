@@ -86,7 +86,7 @@ var _ Diff = (*localDiff)(nil)
 func NewLocalDiffFromCache(
 	cacheKey DiffStoreKey,
 	cache *block.Cache,
-) (*localDiff, error) {
+) (Diff, error) {
 	return &localDiff{
 		cache:    cache,
 		cacheKey: cacheKey,
@@ -99,7 +99,7 @@ func newLocalDiff(
 	size,
 	blockSize int64,
 	dirty bool,
-) (*localDiff, error) {
+) (Diff, error) {
 	cache, err := block.NewCache(size, blockSize, cachePath, dirty)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache: %w", err)

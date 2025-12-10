@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// IOV_MAX is the limit of the vectors that can be passed in a single ioctl call.
 var IOV_MAX = utils.Must(getIOVMax())
 
 const (
@@ -23,6 +24,9 @@ const (
 	oomMaxJitter  = 100 * time.Millisecond
 )
 
+// MemoryInfo returns the memory info for the sandbox.
+// The dirty field represents mincore resident pages—essentially pages that were faulted in.
+// The empty field represents pages that are *resident*, but also completely empty.
 func (p *Process) MemoryInfo(ctx context.Context, blockSize int64) (*header.DiffMetadata, error) {
 	return p.client.memoryInfo(ctx, blockSize)
 }

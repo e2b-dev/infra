@@ -23,7 +23,7 @@ const maxRequestsInProgress = 4096
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
 type Userfaultfd struct {
-	fd uffdFd
+	fd Fd
 
 	src block.Slicer
 	ma  *memory.Mapping
@@ -50,7 +50,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	}
 
 	u := &Userfaultfd{
-		fd:              uffdFd(fd),
+		fd:              Fd(fd),
 		src:             src,
 		missingRequests: block.NewTracker(blockSize),
 		ma:              m,
@@ -187,7 +187,7 @@ outerLoop:
 		// If the event has WRITE flag, it was a write to a missing page.
 		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset)
 			if err != nil {
 				return fmt.Errorf("failed to handle missing write: %w", err)
 			}
@@ -198,7 +198,7 @@ outerLoop:
 		// Handle read to missing page ("MISSING" flag)
 		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset)
 			if err != nil {
 				return fmt.Errorf("failed to handle missing: %w", err)
 			}
@@ -214,9 +214,9 @@ outerLoop:
 func (u *Userfaultfd) handleMissing(
 	ctx context.Context,
 	onFailure func() error,
-	addr uintptr,
+	addr,
+	pagesize uintptr,
 	offset int64,
-	pagesize uint64,
 ) error {
 	u.wg.Go(func() error {
 		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
@@ -245,7 +245,7 @@ func (u *Userfaultfd) handleMissing(
 
 		var copyMode CULong
 
-		copyErr := u.fd.copy(addr, b, pagesize, copyMode)
+		copyErr := u.fd.copy(addr, pagesize, b, copyMode)
 		if errors.Is(copyErr, unix.EEXIST) {
 			// Page is already mapped
 
