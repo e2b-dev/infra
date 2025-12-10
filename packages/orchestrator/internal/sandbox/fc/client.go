@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -126,13 +129,11 @@ func (c *apiClient) pauseVM(ctx context.Context) error {
 func (c *apiClient) createSnapshot(
 	ctx context.Context,
 	snapfilePath string,
-	memfilePath string,
 ) error {
 	snapshotConfig := operations.CreateSnapshotParams{
 		Context: ctx,
 		Body: &models.SnapshotCreateParams{
 			SnapshotType: models.SnapshotCreateParamsSnapshotTypeFull,
-			MemFilePath:  &memfilePath,
 			SnapshotPath: &snapfilePath,
 		},
 	}
@@ -300,4 +301,34 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *apiClient) memoryMappings(ctx context.Context) (*memory.Mapping, error) {
+	memoryMappingsParams := operations.GetMemoryMappingsParams{
+		Context: ctx,
+	}
+
+	memoryMappings, err := c.client.Operations.GetMemoryMappings(&memoryMappingsParams)
+	if err != nil {
+		return nil, fmt.Errorf("error getting memory mappings: %w", err)
+	}
+
+	return memory.NewMappingFromFc(memoryMappings.Payload.Mappings)
+}
+
+func (c *apiClient) memoryInfo(ctx context.Context, blockSize int64) (*header.DiffMetadata, error) {
+	memoryParams := operations.GetMemoryParams{
+		Context: ctx,
+	}
+
+	memoryInfo, err := c.client.Operations.GetMemory(&memoryParams)
+	if err != nil {
+		return nil, fmt.Errorf("error getting memory: %w", err)
+	}
+
+	return &header.DiffMetadata{
+		Dirty:     bitset.From(memoryInfo.Payload.Resident),
+		Empty:     bitset.From(memoryInfo.Payload.Empty),
+		BlockSize: blockSize,
+	}, nil
 }

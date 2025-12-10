@@ -271,3 +271,15 @@ func (m *Cache) FileSize() (int64, error) {
 
 	return stat.Blocks * fsStat.Bsize, nil
 }
+
+func (m *Cache) Address(off uint64) *byte {
+	return &(*m.mmap)[off]
+}
+
+func (m *Cache) BlockSize() int64 {
+	return m.blockSize
+}
+
+func (m *Cache) Path() string {
+	return m.filePath
+}

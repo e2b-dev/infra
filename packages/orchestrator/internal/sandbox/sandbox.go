@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
@@ -93,6 +94,16 @@ type Resources struct {
 	Slot   *network.Slot
 	rootfs rootfs.Provider
 	memory uffd.MemoryBackend
+	// Filter to apply to the dirty bitset before creating the diff metadata.
+	memoryDiffFilter func(ctx context.Context) (*header.DiffMetadata, error)
+}
+
+func (r *Resources) Dirty(ctx context.Context) (*header.DiffMetadata, error) {
+	if r.memoryDiffFilter == nil {
+		return nil, fmt.Errorf("memory diff filter is not set")
+	}
+
+	return r.memoryDiffFilter(ctx)
 }
 
 type internalConfig struct {
@@ -291,6 +302,27 @@ func (f *Factory) CreateSandbox(
 		Slot:   ips.slot,
 		rootfs: rootfsProvider,
 		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
+		memoryDiffFilter: func(ctx context.Context) (*header.DiffMetadata, error) {
+			diffInfo, err := fcHandle.MemoryInfo(ctx, memfile.BlockSize())
+			if err != nil {
+				return nil, err
+			}
+
+			dirty := diffInfo.Dirty.Difference(diffInfo.Empty)
+
+			numberOfPages := header.BlockOffset(memfileSize, memfile.BlockSize())
+
+			empty := bitset.New(uint(numberOfPages))
+			empty.FlipRange(0, uint(numberOfPages))
+
+			empty = empty.Difference(dirty)
+
+			return &header.DiffMetadata{
+				Dirty:     dirty,
+				Empty:     empty,
+				BlockSize: memfile.BlockSize(),
+			}, nil
+		},
 	}
 
 	metadata := &Metadata{
@@ -525,6 +557,19 @@ func (f *Factory) ResumeSandbox(
 		Slot:   ips.slot,
 		rootfs: rootfsOverlay,
 		memory: fcUffd,
+		memoryDiffFilter: func(ctx context.Context) (*header.DiffMetadata, error) {
+			dirty, err := fcUffd.Dirty(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			return &header.DiffMetadata{
+				Dirty: dirty,
+				// We don't track and filter empty pages for subsequent sandbox pauses as pages should usually not be empty.
+				Empty:     bitset.New(0),
+				BlockSize: memfile.BlockSize(),
+			}, nil
+		},
 	}
 
 	metadata := &Metadata{
@@ -673,10 +718,6 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if _, err := s.memory.Disable(ctx); err != nil {
-		return fmt.Errorf("failed to disable uffd: %w", err)
-	}
-
 	// This is required because the FC API doesn't support passing /dev/null
 	tf, err := storage.TemplateFiles{
 		BuildID:            uuid.New().String(),
@@ -692,26 +733,9 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	snapfile := template.NewLocalFileLink(tf.CacheSnapfilePath())
 	defer snapfile.Close()
 
-	// The memfile is required only because the FC API doesn't support passing /dev/null
-	memfile, err := storage.AcquireTmpMemfile(ctx, s.config, tf.BuildID)
-	if err != nil {
-		return fmt.Errorf("failed to acquire memfile snapshot: %w", err)
-	}
-	defer memfile.Close()
-
-	err = s.process.CreateSnapshot(
-		ctx,
-		snapfile.Path(),
-		memfile.Path(),
-	)
+	err = s.process.CreateSnapshot(ctx, snapfile.Path())
 	if err != nil {
 		return fmt.Errorf("error creating snapshot: %w", err)
-	}
-
-	// Close the memfile right after the snapshot to release the lock.
-	err = memfile.Close()
-	if err != nil {
-		return fmt.Errorf("error closing memfile: %w", err)
 	}
 
 	// This should properly flush rootfs to the underlying device.
@@ -757,37 +781,11 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	// This disables the uffd and returns the dirty pages.
-	// With FC async io engine, there can be some further writes to the memory during the actual create snapshot process,
-	// but as we are still including even read pages as dirty so this should not introduce more bugs right now.
-	dirty, err := s.memory.Disable(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
-	}
-
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
 	cleanup.AddNoContext(ctx, snapfile.Close)
-	// Memfile is also closed on diff creation processing
-	/* The process of snapshotting memory is as follows:
-	1. Pause FC via API
-	2. Snapshot FC via API—memory dump to “file on disk” that is actually tmpfs, because it is too slow
-	3. Create the diff - copy the diff pages from tmpfs to normal disk file
-	4. Delete tmpfs file
-	5. Unlock so another snapshot can use tmpfs space
-	*/
-	memfile, err := storage.AcquireTmpMemfile(ctx, s.config, buildID.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
-	}
-	// Close the file even if an error occurs
-	defer memfile.Close()
 
-	err = s.process.CreateSnapshot(
-		ctx,
-		snapfile.Path(),
-		memfile.Path(),
-	)
+	err = s.process.CreateSnapshot(ctx, snapfile.Path())
 	if err != nil {
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
@@ -797,9 +795,15 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
+
 	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
+	}
+
+	diffMetadata, err := s.Resources.Dirty(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dirty memory: %w", err)
 	}
 
 	// Start POSTPROCESSING
@@ -807,15 +811,9 @@ func (s *Sandbox) Pause(
 		ctx,
 		buildID,
 		originalMemfile.Header(),
-		&MemoryDiffCreator{
-			memfile:    memfile,
-			dirtyPages: dirty.BitSet(),
-			blockSize:  originalMemfile.BlockSize(),
-			doneHook: func(context.Context) error {
-				return memfile.Close()
-			},
-		},
+		diffMetadata,
 		s.config.DefaultCacheDir,
+		s.process,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -859,45 +857,41 @@ func (s *Sandbox) Pause(
 
 func pauseProcessMemory(
 	ctx context.Context,
-	buildId uuid.UUID,
+	buildID uuid.UUID,
 	originalHeader *header.Header,
-	diffCreator DiffCreator,
+	diffMetadata *header.DiffMetadata,
 	cacheDir string,
+	fc *fc.Process,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	memfileDiffFile, err := build.NewLocalDiffFile(
-		cacheDir,
-		buildId.String(),
-		build.Memfile,
+	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
+
+	cache, err := fc.ExportMemory(
+		ctx,
+		diffMetadata.Dirty,
+		memfileDiffPath,
+		diffMetadata.BlockSize,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile diff file: %w", err)
+		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
 	}
 
-	m, err := diffCreator.process(ctx, memfileDiffFile)
+	diff, err := build.NewLocalDiffFromCache(
+		build.GetDiffStoreKey(buildID.String(), build.Memfile),
+		cache,
+	)
 	if err != nil {
-		err = errors.Join(err, memfileDiffFile.Close())
-
-		return nil, nil, fmt.Errorf("error creating diff: %w", err)
+		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", err)
 	}
-	telemetry.ReportEvent(ctx, "created diff")
 
-	memfileDiff, err := memfileDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
+	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
-	}
-	telemetry.ReportEvent(ctx, "converted memfile diff file to local diff")
-
-	memfileHeader, err := m.ToDiffHeader(ctx, originalHeader, buildId)
-	if err != nil {
-		err = errors.Join(err, memfileDiff.Close())
-
 		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
 	}
 
-	return memfileDiff, memfileHeader, nil
+	return diff, header, nil
 }
 
 func pauseProcessRootfs(

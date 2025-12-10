@@ -271,16 +271,6 @@ func (u *Userfaultfd) handleMissing(
 	return nil
 }
 
-func (u *Userfaultfd) Unregister() error {
-	for _, r := range u.ma.Regions {
-		if err := u.fd.unregister(r.BaseHostVirtAddr, uint64(r.Size)); err != nil {
-			return fmt.Errorf("failed to unregister: %w", err)
-		}
-	}
-
-	return nil
-}
-
 func (u *Userfaultfd) Dirty() *block.Tracker {
 	// This will be at worst cancelled when the uffd is closed.
 	u.settleRequests.Lock()

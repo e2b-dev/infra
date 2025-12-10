@@ -1,5 +1,7 @@
 package memory
 
+import "iter"
+
 // Region is a mapping of a region of memory of the guest to a region of memory on the host.
 // The serialization is based on the Firecracker UFFD protocol communication.
 // https://github.com/firecracker-microvm/firecracker/blob/ceeca6a14284537ae0b2a192cd2ffef10d3a81e2/src/vmm/src/persist.rs#L96
@@ -11,6 +13,12 @@ type Region struct {
 	PageSize uintptr `json:"page_size_kib"` // This is actually in bytes in the deprecated version.
 }
 
+// endOffset returns the end offset of the region in bytes.
+// The end offset is exclusive.
+func (r *Region) endOffset() int64 {
+	return int64(r.Offset + r.Size)
+}
+
 // endHostVirtAddr returns the end address of the region in host virtual address.
 // The end address is exclusive.
 func (r *Region) endHostVirtAddr() uintptr {
@@ -20,4 +28,19 @@ func (r *Region) endHostVirtAddr() uintptr {
 // shiftedOffset returns the offset of the given address in the region.
 func (r *Region) shiftedOffset(addr uintptr) int64 {
 	return int64(addr - r.BaseHostVirtAddr + r.Offset)
+}
+
+// shiftedHostVirtAddr returns the host virtual address of the given offset in the region.
+func (r *Region) shiftedHostVirtAddr(off int64) uintptr {
+	return uintptr(off) + r.BaseHostVirtAddr - r.Offset
+}
+
+func (r *Region) Offsets() iter.Seq[int64] {
+	return func(yield func(offset int64) bool) {
+		for i := int64(r.Offset); i < r.endOffset(); i += int64(r.PageSize) {
+			if !yield(i) {
+				return
+			}
+		}
+	}
 }
