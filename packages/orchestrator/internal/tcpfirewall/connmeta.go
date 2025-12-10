@@ -1,4 +1,4 @@
-package hostfilter
+package tcpfirewall
 
 import (
 	"context"

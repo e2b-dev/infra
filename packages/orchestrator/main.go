@@ -27,7 +27,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/hostfilter"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -39,6 +38,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -366,20 +366,20 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"sandbox proxy", sandboxProxy.Close})
 
 	// hostname egress filter proxy
-	hostFilter := hostfilter.New(
+	tcpFirewall := tcpfirewall.New(
 		globalLogger,
 		config.NetworkConfig.SandboxTCPFirewallPort,
 		sandboxes,
 	)
-	startService("hostname egress proxy", func() error {
-		err := hostFilter.Start(ctx)
+	startService("tcp egress firewall", func() error {
+		err := tcpFirewall.Start(ctx)
 		if err != nil {
 			return err
 		}
 
 		return nil
 	})
-	closers = append(closers, closer{"hostname egress proxy", hostFilter.Close})
+	closers = append(closers, closer{"tcp egress firewall", tcpFirewall.Close})
 
 	// device pool
 	devicePool, err := nbd.NewDevicePool()
