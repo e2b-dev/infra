@@ -70,6 +70,10 @@ type ClientService interface {
 
 	GetMachineConfiguration(params *GetMachineConfigurationParams, opts ...ClientOption) (*GetMachineConfigurationOK, error)
 
+	GetMemory(params *GetMemoryParams, opts ...ClientOption) (*GetMemoryOK, error)
+
+	GetMemoryMappings(params *GetMemoryMappingsParams, opts ...ClientOption) (*GetMemoryMappingsOK, error)
+
 	GetMmds(params *GetMmdsParams, opts ...ClientOption) (*GetMmdsOK, error)
 
 	LoadSnapshot(params *LoadSnapshotParams, opts ...ClientOption) (*LoadSnapshotNoContent, error)
@@ -414,6 +418,82 @@ func (a *Client) GetMachineConfiguration(params *GetMachineConfigurationParams, 
 	}
 	// unexpected success response
 	unexpectedSuccess := result.(*GetMachineConfigurationDefault)
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+GetMemory gets the memory info resident and empty pages
+
+Returns an object with resident and empty bitmaps. The resident bitmap marks all pages that are resident. The empty bitmap marks zero pages (subset of resident pages). This is checked at the pageSize of each region. All regions must have the same page size.
+*/
+func (a *Client) GetMemory(params *GetMemoryParams, opts ...ClientOption) (*GetMemoryOK, error) {
+	// TODO: Validate the params before sending
+	if params == nil {
+		params = NewGetMemoryParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "getMemory",
+		Method:             "GET",
+		PathPattern:        "/memory",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &GetMemoryReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+	success, ok := result.(*GetMemoryOK)
+	if ok {
+		return success, nil
+	}
+	// unexpected success response
+	unexpectedSuccess := result.(*GetMemoryDefault)
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+GetMemoryMappings gets the memory mappings with skippable pages bitmap
+*/
+func (a *Client) GetMemoryMappings(params *GetMemoryMappingsParams, opts ...ClientOption) (*GetMemoryMappingsOK, error) {
+	// TODO: Validate the params before sending
+	if params == nil {
+		params = NewGetMemoryMappingsParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "getMemoryMappings",
+		Method:             "GET",
+		PathPattern:        "/memory/mappings",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &GetMemoryMappingsReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+	success, ok := result.(*GetMemoryMappingsOK)
+	if ok {
+		return success, nil
+	}
+	// unexpected success response
+	unexpectedSuccess := result.(*GetMemoryMappingsDefault)
 	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }
 

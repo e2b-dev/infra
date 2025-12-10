@@ -50,7 +50,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		uffdFd.close()
 	})
 
-	err = uffdFd.configureApi(tt.pagesize)
+	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
 	err = uffdFd.register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)

@@ -8,26 +8,55 @@ package models
 import (
 	"context"
 
-	"github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
+	"github.com/go-openapi/swag"
 )
 
 // CPUConfig The CPU configuration template defines a set of bit maps as modifiers of flags accessed by register to be disabled/enabled for the microvm.
 //
 // swagger:model CpuConfig
-type CPUConfig string
+type CPUConfig struct {
+
+	// A collection of CPUIDs to be modified. (x86_64)
+	CpuidModifiers interface{} `json:"cpuid_modifiers,omitempty"`
+
+	// A collection of kvm capabilities to be modified. (aarch64)
+	KvmCapabilities interface{} `json:"kvm_capabilities,omitempty"`
+
+	// A collection of model specific registers to be modified. (x86_64)
+	MsrModifiers interface{} `json:"msr_modifiers,omitempty"`
+
+	// A collection of registers to be modified. (aarch64)
+	RegModifiers interface{} `json:"reg_modifiers,omitempty"`
+
+	// A collection of vcpu features to be modified. (aarch64)
+	VcpuFeatures interface{} `json:"vcpu_features,omitempty"`
+}
 
 // Validate validates this Cpu config
-func (m CPUConfig) Validate(formats strfmt.Registry) error {
-	var res []error
-
-	if len(res) > 0 {
-		return errors.CompositeValidationError(res...)
-	}
+func (m *CPUConfig) Validate(formats strfmt.Registry) error {
 	return nil
 }
 
 // ContextValidate validates this Cpu config based on context it is used
-func (m CPUConfig) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
+func (m *CPUConfig) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
+	return nil
+}
+
+// MarshalBinary interface implementation
+func (m *CPUConfig) MarshalBinary() ([]byte, error) {
+	if m == nil {
+		return nil, nil
+	}
+	return swag.WriteJSON(m)
+}
+
+// UnmarshalBinary interface implementation
+func (m *CPUConfig) UnmarshalBinary(b []byte) error {
+	var res CPUConfig
+	if err := swag.ReadJSON(b, &res); err != nil {
+		return err
+	}
+	*m = res
 	return nil
 }

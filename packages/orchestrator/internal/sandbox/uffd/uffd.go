@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -181,36 +182,14 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-// Disable unregisters the uffd from the memory mapping,
-// allowing us to create a "diff" snapshot via FC API without dirty tracking enabled,
-// and without pagefaulting all remaining missing pages.
-//
-// It should be called *after* Dirty().
-//
-// After calling Disable(), this uffd is no longer usable—we won't be able to resume the sandbox via API.
-// The uffd itself is not closed though, as that should be done by the sandbox cleanup.
-func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
-	uffd, err := u.handler.WaitWithContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get uffd: %w", err)
-	}
-
-	err = uffd.Unregister()
-	if err != nil {
-		return nil, fmt.Errorf("failed to unregister uffd: %w", err)
-	}
-
-	return u.dirty(ctx)
-}
-
 // Dirty waits for the current requests to finish and returns the dirty pages.
 //
-// It *MUST* be only called after the sandbox was successfully paused via API.
-func (u *Uffd) dirty(ctx context.Context) (*block.Tracker, error) {
+// It *MUST* be only called after the sandbox was successfully paused via API and after the snapshot endpoint was called.
+func (u *Uffd) Dirty(ctx context.Context) (*bitset.BitSet, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	return uffd.Dirty(), nil
+	return uffd.Dirty().BitSet(), nil
 }
