@@ -24,8 +24,8 @@ func (r *Range) End() int64 {
 // This assumes the Range.Start is a multiple of the blockSize.
 func (r *Range) Offsets(blockSize int64) iter.Seq[int64] {
 	return func(yield func(offset int64) bool) {
-		for i := r.Start; i < r.End(); i += blockSize {
-			if !yield(i) {
+		for off := r.Start; off < r.End(); off += blockSize {
+			if !yield(off) {
 				return
 			}
 		}
@@ -51,9 +51,9 @@ func NewRangeFromBlocks(startIdx, numberOfBlocks, blockSize int64) Range {
 // bitsetRanges returns a sequence of the ranges of the set bits of the bitset.
 func BitsetRanges(b *bitset.BitSet, blockSize int64) iter.Seq[Range] {
 	return func(yield func(Range) bool) {
-		start, ok := b.NextSet(0)
+		start, found := b.NextSet(0)
 
-		for ok {
+		for found {
 			end, endOk := b.NextClear(start)
 			if !endOk {
 				yield(NewRangeFromBlocks(int64(start), int64(b.Len()-start), blockSize))
@@ -65,7 +65,7 @@ func BitsetRanges(b *bitset.BitSet, blockSize int64) iter.Seq[Range] {
 				return
 			}
 
-			start, ok = b.NextSet(end + 1)
+			start, found = b.NextSet(end + 1)
 		}
 	}
 }

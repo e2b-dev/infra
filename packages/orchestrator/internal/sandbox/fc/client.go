@@ -304,31 +304,31 @@ func (c *apiClient) startVM(ctx context.Context) error {
 }
 
 func (c *apiClient) memoryMappings(ctx context.Context) (*memory.Mapping, error) {
-	memoryMappingsParams := operations.GetMemoryMappingsParams{
+	params := operations.GetMemoryMappingsParams{
 		Context: ctx,
 	}
 
-	memoryMappings, err := c.client.Operations.GetMemoryMappings(&memoryMappingsParams)
+	res, err := c.client.Operations.GetMemoryMappings(&params)
 	if err != nil {
 		return nil, fmt.Errorf("error getting memory mappings: %w", err)
 	}
 
-	return memory.NewMappingFromFc(memoryMappings.Payload.Mappings)
+	return memory.NewMappingFromFc(res.Payload.Mappings)
 }
 
 func (c *apiClient) memoryInfo(ctx context.Context, blockSize int64) (*header.DiffMetadata, error) {
-	memoryParams := operations.GetMemoryParams{
+	params := operations.GetMemoryParams{
 		Context: ctx,
 	}
 
-	memoryInfo, err := c.client.Operations.GetMemory(&memoryParams)
+	res, err := c.client.Operations.GetMemory(&params)
 	if err != nil {
 		return nil, fmt.Errorf("error getting memory: %w", err)
 	}
 
 	return &header.DiffMetadata{
-		Dirty:     bitset.From(memoryInfo.Payload.Resident),
-		Empty:     bitset.From(memoryInfo.Payload.Empty),
+		Dirty:     bitset.From(res.Payload.Resident),
+		Empty:     bitset.From(res.Payload.Empty),
 		BlockSize: blockSize,
 	}, nil
 }
