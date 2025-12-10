@@ -72,7 +72,6 @@ func (f *LocalDiffFile) CloseToDiff(
 		f.cachePath,
 		size.Size(),
 		blockSize,
-		true,
 	)
 }
 
@@ -98,9 +97,8 @@ func newLocalDiff(
 	cachePath string,
 	size,
 	blockSize int64,
-	dirty bool,
 ) (Diff, error) {
-	cache, err := block.NewCache(size, blockSize, cachePath, dirty)
+	cache, err := block.NewCache(size, blockSize, cachePath, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache: %w", err)
 	}
