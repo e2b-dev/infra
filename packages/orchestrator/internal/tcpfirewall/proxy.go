@@ -104,27 +104,31 @@ func newOrigDstListener(ctx context.Context, listener net.Listener, sandboxes *s
 }
 
 func (l *origDstListener) Accept() (net.Conn, error) {
-	conn, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
+	for {
+		conn, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
+
+		ip, port, err := getOriginalDst(conn)
+		if err != nil {
+			l.logger.Error(l.ctx, "failed to get original destination", zap.Error(err))
+			conn.Close()
+
+			continue
+		}
+
+		sourceAddr := conn.RemoteAddr().String()
+		sbx, err := l.sandboxes.GetByHostPort(sourceAddr)
+		if err != nil {
+			l.logger.Error(l.ctx, "failed to find sandbox for connection", zap.String("source", sourceAddr), zap.Error(err))
+			conn.Close()
+
+			continue
+		}
+
+		logger := l.logger.With(logger.WithSandboxID(sbx.Runtime.SandboxID))
+
+		return &connMeta{Conn: conn, ip: ip, port: port, ctx: l.ctx, sbx: sbx, logger: logger}, nil
 	}
-
-	ip, port, err := getOriginalDst(conn)
-	if err != nil {
-		conn.Close()
-
-		return nil, err
-	}
-
-	sourceAddr := conn.RemoteAddr().String()
-	sbx, err := l.sandboxes.GetByHostPort(sourceAddr)
-	if err != nil {
-		conn.Close()
-
-		return nil, err
-	}
-
-	logger := l.logger.With(logger.WithSandboxID(sbx.Runtime.SandboxID))
-
-	return &connMeta{Conn: conn, ip: ip, port: port, ctx: l.ctx, sbx: sbx, logger: logger}, nil
 }
