@@ -303,7 +303,7 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	return nil
 }
 
-func (c *apiClient) memoryMappings(ctx context.Context) (*memory.Mapping, error) {
+func (c *apiClient) memoryMapping(ctx context.Context) (*memory.Mapping, error) {
 	params := operations.GetMemoryMappingsParams{
 		Context: ctx,
 	}

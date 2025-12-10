@@ -24,7 +24,7 @@ func (p *Process) ExportMemory(
 	cachePath string,
 	blockSize int64,
 ) (*block.Cache, error) {
-	m, err := p.client.memoryMappings(ctx)
+	m, err := p.client.memoryMapping(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memory mappings: %w", err)
 	}
@@ -40,12 +40,12 @@ func (p *Process) ExportMemory(
 		remoteRanges = append(remoteRanges, hostVirtRanges...)
 	}
 
-	size := block.GetSize(remoteRanges)
-
 	pid, err := p.Pid()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pid: %w", err)
 	}
+
+	size := block.GetSize(remoteRanges)
 
 	cache, err := block.NewCache(int64(size), blockSize, cachePath, false)
 	if err != nil {
