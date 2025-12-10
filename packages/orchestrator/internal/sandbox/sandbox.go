@@ -310,7 +310,7 @@ func (f *Factory) CreateSandbox(
 
 			dirty := diffInfo.Dirty.Difference(diffInfo.Empty)
 
-			numberOfPages := header.BlockOffset(memfileSize, memfile.BlockSize())
+			numberOfPages := header.TotalBlocks(memfileSize, memfile.BlockSize())
 
 			empty := bitset.New(uint(numberOfPages))
 			empty.FlipRange(0, uint(numberOfPages))
