@@ -135,6 +135,8 @@ func copyProcessMemory(
 			}
 
 			start += segmentSize
+
+			break
 		}
 	}
 
