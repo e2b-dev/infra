@@ -113,7 +113,7 @@ func copyProcessMemory(
 			}
 
 			// We could retry only on the remaining segment size, but for simplicity we retry the whole segment.
-			_, err := unix.ProcessVMReadv(pid,
+			n, err := unix.ProcessVMReadv(pid,
 				local,
 				remote,
 				0,
@@ -132,6 +132,10 @@ func copyProcessMemory(
 
 			if err != nil {
 				return fmt.Errorf("failed to read memory: %w", err)
+			}
+
+			if uint64(n) != segmentSize {
+				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
 			start += segmentSize
