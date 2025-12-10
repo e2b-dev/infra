@@ -9,6 +9,7 @@ import (
 	"inet.af/tcpproxy"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -22,7 +23,9 @@ type Proxy struct {
 	cancel context.CancelFunc
 }
 
-func New(logger logger.Logger, port uint16, sandboxes *sandbox.Map) *Proxy {
+func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map) *Proxy {
+	port := networkConfig.SandboxTCPFirewallPort
+
 	return &Proxy{
 		listenPort: port,
 		logger:     logger,

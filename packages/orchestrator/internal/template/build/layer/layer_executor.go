@@ -80,7 +80,7 @@ func (lb *LayerExecutor) BuildLayer(
 	}
 	defer sbx.Close(ctx)
 
-	// Add to proxy so we can call envd commands
+	// Add to proxy so we can call envd and route traffic from the sandbox
 	lb.sandboxes.Insert(sbx)
 	defer func() {
 		lb.sandboxes.Remove(sbx.Runtime.SandboxID)

@@ -36,8 +36,7 @@ import (
 const (
 	baseImage = "e2bdev/base:latest"
 
-	proxyPort       = 5007
-	tcpFirewallPort = 3128
+	proxyPort = 5007
 )
 
 func main() {
@@ -117,7 +116,7 @@ func buildTemplate(
 	// hostname egress filter proxy
 	tcpFirewall := tcpfirewall.New(
 		log,
-		tcpFirewallPort,
+		networkConfig,
 		sandboxes,
 	)
 	go func() {
