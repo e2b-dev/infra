@@ -496,7 +496,7 @@ Format: [
 EOT
   validation {
     condition     = can(jsondecode(var.client_clusters_config_json))
-    error_message = "client_cluster_config_json must be empty or valid JSON"
+    error_message = "client_cluster_config_json must be a valid JSON"
   }
 }
 
