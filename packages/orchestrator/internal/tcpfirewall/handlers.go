@@ -114,44 +114,52 @@ func proxy(conn net.Conn, upstreamAddr string) {
 //  2. Deny domain / Deny CIDR (if either matches → deny)
 //  3. Default: allow
 func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, error) {
-	if networkConfig := sbx.Config.Network; networkConfig != nil {
-		egress := networkConfig.GetEgress()
+	networkConfig := sbx.Config.Network
+	if networkConfig == nil {
+		// No network configuration, allow all traffic.
+		return true, nil
+	}
 
-		// Priority 1: Check allowed domains
-		if hostname != noHostnameValue {
-			for _, domain := range egress.GetAllowedDomains() {
-				if matchDomain(hostname, domain) {
-					return true, nil // Explicitly allowed by domain
-				}
-			}
-		}
+	egress := networkConfig.GetEgress()
+	if egress == nil {
+		// No egress configuration, allow all traffic.
+		return true, nil
+	}
 
-		// Priority 1: Check allowed CIDRs
-		for _, cidr := range egress.GetAllowedCidrs() {
-			_, ipNet, err := net.ParseCIDR(cidr)
-			if err != nil {
-				return false, fmt.Errorf("invalid allowed CIDR %q: %w", cidr, err)
-			}
-
-			if ipNet.Contains(ip) {
-				return true, nil // Explicitly allowed by CIDR
-			}
-		}
-
-		// Priority 2: Check denied CIDRs
-		for _, cidr := range egress.GetDeniedCidrs() {
-			_, ipNet, err := net.ParseCIDR(cidr)
-			if err != nil {
-				return false, fmt.Errorf("invalid denied CIDR %q: %w", cidr, err)
-			}
-
-			if ipNet.Contains(ip) {
-				return false, nil // Blocked by CIDR
+	// Priority 1: Check allowed domains
+	if hostname != noHostnameValue {
+		for _, domain := range egress.GetAllowedDomains() {
+			if matchDomain(hostname, domain) {
+				return true, nil // Explicitly allowed by domain
 			}
 		}
 	}
 
-	// Default: allow
+	// Priority 1: Check allowed CIDRs
+	for _, cidr := range egress.GetAllowedCidrs() {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return false, fmt.Errorf("invalid allowed CIDR %q: %w", cidr, err)
+		}
+
+		if ipNet.Contains(ip) {
+			return true, nil // Explicitly allowed by CIDR
+		}
+	}
+
+	// Priority 2: Check denied CIDRs
+	for _, cidr := range egress.GetDeniedCidrs() {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return false, fmt.Errorf("invalid denied CIDR %q: %w", cidr, err)
+		}
+
+		if ipNet.Contains(ip) {
+			return false, nil // Blocked by CIDR
+		}
+	}
+
+	// Default: allow all traffic.
 	return true, nil
 }
 
