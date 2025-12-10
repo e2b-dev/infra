@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -23,19 +24,12 @@ import (
 
 var ErrNoDiskSpace = fmt.Errorf("not enough disk space available")
 
-func processFile(r *http.Request, path string, part io.Reader, user *user.User, logger zerolog.Logger) (int, error) {
+func processFile(r *http.Request, path string, part io.Reader, uid, gid int, logger zerolog.Logger) (int, error) {
 	logger.Debug().
 		Str("path", path).
 		Msg("File processing")
 
-	uid, gid, err := permissions.GetUserIds(user)
-	if err != nil {
-		err := fmt.Errorf("error getting user ids: %w", err)
-
-		return http.StatusInternalServerError, err
-	}
-
-	err = permissions.EnsureDirs(filepath.Dir(path), int(uid), int(gid))
+	err := permissions.EnsureDirs(filepath.Dir(path), uid, gid)
 	if err != nil {
 		err := fmt.Errorf("error ensuring directories: %w", err)
 
@@ -58,7 +52,7 @@ func processFile(r *http.Request, path string, part io.Reader, user *user.User, 
 	}
 
 	hasBeenChowned := false
-	err = os.Chown(path, int(uid), int(gid))
+	err = os.Chown(path, uid, gid)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			err = fmt.Errorf("error changing file ownership: %w", err)
@@ -71,6 +65,12 @@ func processFile(r *http.Request, path string, part io.Reader, user *user.User, 
 
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
+		if errors.Is(err, syscall.ENOSPC) {
+			err = fmt.Errorf("not enough inodes available: %w", err)
+
+			return http.StatusInsufficientStorage, err
+		}
+
 		err := fmt.Errorf("error opening file: %w", err)
 
 		return http.StatusInternalServerError, err
@@ -79,7 +79,7 @@ func processFile(r *http.Request, path string, part io.Reader, user *user.User, 
 	defer file.Close()
 
 	if !hasBeenChowned {
-		err = os.Chown(path, int(uid), int(gid))
+		err = os.Chown(path, uid, gid)
 		if err != nil {
 			err := fmt.Errorf("error changing file ownership: %w", err)
 
@@ -147,6 +147,32 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 	return filePath, nil
 }
 
+func convertID(id uint32) (int, bool) {
+	if int64(id) > math.MaxInt {
+		return -1, false
+	}
+
+	return int(id), true
+}
+
+func lookupUserIDs(u *user.User) (int, int, error) {
+	uid32, gid32, err := permissions.GetUserIds(u)
+	if err != nil {
+		return -1, -1, fmt.Errorf("error getting user ids: %w", err)
+	}
+
+	uid, ok := convertID(uid32)
+	if !ok {
+		return -1, -1, fmt.Errorf("user id %d is too large", uid32)
+	}
+	gid, ok := convertID(gid32)
+	if !ok {
+		return -1, -1, fmt.Errorf("group id %d is too large", gid32)
+	}
+
+	return uid, gid, nil
+}
+
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
 	defer r.Body.Close()
 
@@ -211,6 +237,15 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
+	uid, gid, err := lookupUserIDs(u)
+	if err != nil {
+		err := fmt.Errorf("error getting user ids: %w", err)
+
+		jsonError(w, http.StatusInternalServerError, err)
+
+		return
+	}
+
 	paths := UploadSuccess{}
 
 	for {
@@ -237,7 +272,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 				return
 			}
 
-			status, processErr := processFile(r, filePath, part, u, a.logger.With().Str(string(logs.OperationIDKey), operationID).Str("event_type", "file_processing").Logger())
+			status, processErr := processFile(r, filePath, part, uid, gid, a.logger.With().Str(string(logs.OperationIDKey), operationID).Str("event_type", "file_processing").Logger())
 			if processErr != nil {
 				errorCode = status
 				errMsg = processErr
