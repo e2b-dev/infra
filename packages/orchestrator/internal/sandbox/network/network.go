@@ -227,14 +227,16 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
 	}
 
-	// Redirect traffic destined for hostname egress proxy (DNAT'd denied traffic)
+	// Redirect unmarked TCP traffic to the egress proxy.
+	// Allowed traffic is marked (0x1) by nftables and bypasses this rule.
+	// This preserves the original destination IP for SO_ORIGINAL_DST.
 	err = tables.Append(
 		"nat", "PREROUTING", "-i", s.VethName(),
-		"-p", "tcp", "-d", s.FirewallRedirectIPString(),
-		"-j", "REDIRECT", "--to-port", s.firewallRedirectPort,
+		"-p", "tcp", "-m", "mark", "!", "--mark", "0x1",
+		"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
 	)
 	if err != nil {
-		return fmt.Errorf("error creating redirect rule to hostname egress proxy: %w", err)
+		return fmt.Errorf("error creating redirect rule to egress proxy: %w", err)
 	}
 
 	return nil
@@ -279,14 +281,14 @@ func (s *Slot) RemoveNetwork() error {
 			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
 		}
 
-		// Delete hostname egress proxy redirect rule
+		// Delete egress proxy redirect rule
 		err = tables.Delete(
 			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-d", s.FirewallRedirectIPString(),
-			"-j", "REDIRECT", "--to-port", s.firewallRedirectPort,
+			"-p", "tcp", "-m", "mark", "!", "--mark", "0x1",
+			"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
 		)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting hostname egress proxy redirect rule: %w", err))
+			errs = append(errs, fmt.Errorf("error deleting egress proxy redirect rule: %w", err))
 		}
 	}
 

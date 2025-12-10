@@ -14,6 +14,7 @@ import (
 type connMeta struct {
 	net.Conn
 
+	ip     net.IP
 	port   int
 	ctx    context.Context //nolint:containedctx // intentional: carries per-connection context for request tracing
 	sbx    *sandbox.Sandbox

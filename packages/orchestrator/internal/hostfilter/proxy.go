@@ -49,13 +49,13 @@ func (p *Proxy) Start(ctx context.Context) error {
 	}
 
 	// Route all TLS traffic through allowlist (SNI-based routing)
-	p.proxy.AddSNIMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(allowHandler))
+	p.proxy.AddSNIMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(domainHandler))
 
 	// Route all HTTP traffic through allowlist (Host header-based routing)
-	p.proxy.AddHTTPHostMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(allowHandler))
+	p.proxy.AddHTTPHostMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(domainHandler))
 
 	// Block unrecognized protocols
-	p.proxy.AddRoute(addr, targetFunc(denyHandler))
+	p.proxy.AddRoute(addr, targetFunc(cidrOnlyHandler))
 
 	p.logger.Info(ctx, "Host filter proxy started", zap.String("address", addr))
 
@@ -76,8 +76,7 @@ func (p *Proxy) Close(_ context.Context) error {
 }
 
 // targetFunc adapts a handler function to tcpproxy.Target interface.
-// It extracts connection metadata and passes it to the handler with a clean signature.
-type targetFunc func(ctx context.Context, conn net.Conn, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger)
+type targetFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger)
 
 func (f targetFunc) HandleConn(conn net.Conn) {
 	meta, ok := unwrapConnMeta(conn)
@@ -87,7 +86,7 @@ func (f targetFunc) HandleConn(conn net.Conn) {
 		return
 	}
 
-	f(meta.ctx, conn, meta.port, meta.sbx, meta.logger)
+	f(meta.ctx, conn, meta.ip, meta.port, meta.sbx, meta.logger)
 }
 
 // origDstListener wraps accepted connections with metadata
@@ -110,6 +109,13 @@ func (l *origDstListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
+	ip, err := getOriginalDstIP(conn)
+	if err != nil {
+		conn.Close()
+
+		return nil, err
+	}
+
 	port, err := getOriginalDstPort(conn)
 	if err != nil {
 		conn.Close()
@@ -127,5 +133,5 @@ func (l *origDstListener) Accept() (net.Conn, error) {
 
 	logger := l.logger.With(logger.WithSandboxID(sbx.Runtime.SandboxID))
 
-	return &connMeta{Conn: conn, port: port, ctx: l.ctx, sbx: sbx, logger: logger}, nil
+	return &connMeta{Conn: conn, ip: ip, port: port, ctx: l.ctx, sbx: sbx, logger: logger}, nil
 }

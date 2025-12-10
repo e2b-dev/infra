@@ -368,7 +368,7 @@ func run(config cfg.Config) (success bool) {
 	// hostname egress filter proxy
 	hostFilter := hostfilter.New(
 		globalLogger,
-		config.NetworkConfig.SandboxFirewallRedirectPort,
+		config.NetworkConfig.SandboxTCPFirewallPort,
 		sandboxes,
 	)
 	startService("hostname egress proxy", func() error {

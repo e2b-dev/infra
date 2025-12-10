@@ -79,7 +79,7 @@ type Slot struct {
 
 	hyperloopIP, hyperloopPort string
 
-	firewallRedirectIP, firewallRedirectPort string
+	tcpFirewallPort string
 }
 
 func NewSlot(key string, idx int, config Config) (*Slot, error) {
@@ -138,8 +138,7 @@ func NewSlot(key string, idx int, config Config) (*Slot, error) {
 		hyperloopIP:   config.HyperloopIPAddress,
 		hyperloopPort: strconv.FormatUint(uint64(config.HyperloopProxyPort), 10),
 
-		firewallRedirectIP:   config.SandboxFirewallRedirectIP,
-		firewallRedirectPort: strconv.FormatUint(uint64(config.SandboxFirewallRedirectPort), 10),
+		tcpFirewallPort: strconv.FormatUint(uint64(config.SandboxTCPFirewallPort), 10),
 	}
 
 	return slot, nil
@@ -175,10 +174,6 @@ func (s *Slot) HostIPString() string {
 
 func (s *Slot) HyperloopIPString() string {
 	return s.hyperloopIP
-}
-
-func (s *Slot) FirewallRedirectIPString() string {
-	return s.firewallRedirectIP
 }
 
 func (s *Slot) HostMask() net.IPMask {
@@ -236,7 +231,7 @@ func (s *Slot) InitializeFirewall() error {
 		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
 	}
 
-	fw, err := NewFirewall(s.TapName(), s.HyperloopIPString(), s.firewallRedirectIP)
+	fw, err := NewFirewall(s.TapName(), s.HyperloopIPString())
 	if err != nil {
 		return fmt.Errorf("error initializing firewall: %w", err)
 	}

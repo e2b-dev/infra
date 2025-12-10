@@ -44,7 +44,10 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 		allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(network.Egress.AllowedAddresses)
 		orchNetwork.Egress.AllowedCidrs = sandbox_network.AddressStringsToCIDRs(allowedAddresses)
 		orchNetwork.Egress.AllowedDomains = allowedDomains
-		orchNetwork.Egress.DeniedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.DeniedAddresses)
+
+		deniedAddresses, deniedDomains := sandbox_network.ParseAddressesAndDomains(network.Egress.DeniedAddresses)
+		orchNetwork.Egress.DeniedCidrs = sandbox_network.AddressStringsToCIDRs(deniedAddresses)
+		orchNetwork.Egress.DeniedDomains = deniedDomains
 	}
 
 	if network != nil && network.Ingress != nil {

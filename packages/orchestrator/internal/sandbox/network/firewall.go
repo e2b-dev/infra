@@ -40,11 +40,9 @@ type Firewall struct {
 	tapInterface string
 
 	allowedRanges []string
-
-	deniedRedirectIP string
 }
 
-func NewFirewall(tapIf string, hyperloopIP string, deniedRedirectIP string) (*Firewall, error) {
+func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
@@ -66,7 +64,9 @@ func NewFirewall(tapIf string, hyperloopIP string, deniedRedirectIP string) (*Fi
 		Policy:   utils.ToPtr(nftables.ChainPolicyAccept),
 	})
 
-	// NAT chain in PREROUTING - for DNAT of user-denied traffic
+	// NAT chain in PREROUTING - kept for future use but currently empty
+	// Unmarked TCP traffic continues with original destination preserved.
+	// iptables REDIRECT handles proxy redirect based on the mark.
 	natChain := conn.AddChain(&nftables.Chain{
 		Name:     "PREROUTE_NAT",
 		Table:    table,
@@ -107,8 +107,6 @@ func NewFirewall(tapIf string, hyperloopIP string, deniedRedirectIP string) (*Fi
 
 		filterChain: filterChain,
 		natChain:    natChain,
-
-		deniedRedirectIP: deniedRedirectIP,
 	}
 
 	// Add firewall rules to the chain
@@ -159,6 +157,7 @@ func markAndAccept() []expr.Any {
 
 // addSetFilterRule adds a filter rule that matches destination IPs in a set.
 // If drop is true, packets are dropped. Otherwise, they are marked as allowed and accepted.
+// This applies to ALL protocols.
 func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
 	var verdict []expr.Any
 	if drop {
@@ -178,13 +177,21 @@ func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
 	})
 }
 
-// addNonTCPDropRule drops all non-TCP traffic to destinations in the given set.
-// This is needed because the proxy only handles TCP - other protocols (UDP, ICMP, etc.) must be blocked.
-func (fw *Firewall) addNonTCPDropRule(ipSet *nftables.Set) {
+// addNonTCPSetFilterRule adds a filter rule that matches ONLY non-TCP traffic to destinations in a set.
+// If drop is true, packets are dropped. Otherwise, they are marked as allowed and accepted.
+// TCP traffic is NOT affected by this rule (it will continue to the NAT chain for proxy DNAT).
+func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
+	var verdict []expr.Any
+	if drop {
+		verdict = []expr.Any{&expr.Verdict{Kind: expr.VerdictDrop}}
+	} else {
+		verdict = markAndAccept()
+	}
+
 	fw.conn.AddRule(&nftables.Rule{
 		Table: fw.table,
 		Chain: fw.filterChain,
-		Exprs: append(fw.tapIfaceMatch(),
+		Exprs: append(append(fw.tapIfaceMatch(),
 			// Match non-TCP protocol (protocol != TCP)
 			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
 			&expr.Cmp{
@@ -194,9 +201,8 @@ func (fw *Firewall) addNonTCPDropRule(ipSet *nftables.Set) {
 			},
 			// Check dest in set
 			expressions.IPv4DestinationAddress(1),
-			expressions.IPSetLookUp(ipSet, 1),
-			// DROP
-			&expr.Verdict{Kind: expr.VerdictDrop},
+			expressions.IPSetLookUp(ipSet, 1)),
+			verdict...,
 		),
 	})
 }
@@ -205,14 +211,15 @@ func (fw *Firewall) installRules() error {
 	// ============================================================
 	// FILTER CHAIN (PREROUTING, priority -150)
 	// Order:
-	//   1. ESTABLISHED/RELATED → mark + accept
-	//   2. predefinedAllowSet → mark + accept
-	//   3. predefinedDenySet → DROP (hard block, no redirect)
-	//   4. userAllowSet → mark + accept
-	//   5. Default: continue (no mark) → will hit NAT chain
+	//   1. ESTABLISHED/RELATED → mark + accept (all protocols)
+	//   2. predefinedAllowSet → mark + accept (all protocols)
+	//   3. predefinedDenySet → DROP (all protocols, hard block)
+	//   4. Non-TCP: userAllowSet → mark + accept
+	//   5. Non-TCP: userDenySet → DROP
+	//   6. TCP: continues unmarked to NAT chain for DNAT to proxy
 	// ============================================================
 
-	// Rule 1: Allow ESTABLISHED/RELATED TCP connections (mark + accept)
+	// Rule 1: Allow ESTABLISHED/RELATED connections (mark + accept) - all protocols
 	fw.conn.AddRule(&nftables.Rule{
 		Table: fw.table,
 		Chain: fw.filterChain,
@@ -236,59 +243,30 @@ func (fw *Firewall) installRules() error {
 		),
 	})
 
-	// Rule 2: predefinedAllowSet → mark + accept
+	// Rule 2: predefinedAllowSet → mark + accept (all protocols)
 	fw.addSetFilterRule(fw.predefinedAllowSet.Set(), false)
 
-	// Rule 3: predefinedDenySet → DROP (hard block, NO redirect)
+	// Rule 3: predefinedDenySet → DROP (all protocols, hard block, NO redirect)
 	fw.addSetFilterRule(fw.predefinedDenySet.Set(), true)
 
-	// Rule 4: userAllowSet → mark + accept
-	fw.addSetFilterRule(fw.userAllowSet.Set(), false)
+	// Rule 4: Non-TCP + userAllowSet → mark + accept
+	// Only non-TCP traffic is affected; TCP continues to proxy
+	fw.addNonTCPSetFilterRule(fw.userAllowSet.Set(), false)
 
-	// Rule 5: DROP all non-TCP traffic to userDenySet destinations
-	// The proxy only handles TCP
-	fw.addNonTCPDropRule(fw.userDenySet.Set())
+	// Rule 5: Non-TCP + userDenySet → DROP
+	// Only non-TCP traffic is affected; TCP continues to proxy
+	fw.addNonTCPSetFilterRule(fw.userDenySet.Set(), true)
 
-	// Default policy: ACCEPT (unmarked TCP traffic continues to NAT chain)
+	// Default policy: ACCEPT
+	// - Non-TCP not in user sets: allowed (default policy)
+	// - TCP: continues unmarked to NAT chain for DNAT to proxy
 
 	// ============================================================
 	// NAT CHAIN (PREROUTING, priority -100)
-	// Only DNAT user-denied traffic that wasn't marked as allowed
+	// No DNAT rules - unmarked TCP traffic continues with original
+	// destination preserved. iptables REDIRECT will handle the proxy
+	// redirect based on the mark, preserving SO_ORIGINAL_DST.
 	// ============================================================
-
-	deniedRedirectAddr, err := netip.ParseAddr(fw.deniedRedirectIP)
-	if err != nil {
-		return fmt.Errorf("parse redirect IP: %w", err)
-	}
-	redirectIPBytes := deniedRedirectAddr.As4()
-
-	// Rule: If NOT marked AND in userDenySet → DNAT to proxy
-	fw.conn.AddRule(&nftables.Rule{
-		Table: fw.table,
-		Chain: fw.natChain,
-		Exprs: append(fw.tapIfaceMatch(),
-			// Check mark is NOT set (mark == 0)
-			&expr.Meta{Key: expr.MetaKeyMARK, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     binaryutil.NativeEndian.PutUint32(0),
-			},
-			// Check dest in userDenySet
-			expressions.IPv4DestinationAddress(1),
-			expressions.IPSetLookUp(fw.userDenySet.Set(), 1),
-			// DNAT to redirect IP (preserves original port)
-			&expr.Immediate{
-				Register: 1,
-				Data:     redirectIPBytes[:],
-			},
-			&expr.NAT{
-				Type:       expr.NATTypeDestNAT,
-				Family:     uint32(nftables.TableFamilyIPv4),
-				RegAddrMin: 1,
-			},
-		),
-	})
 
 	if err := fw.conn.Flush(); err != nil {
 		return fmt.Errorf("flush nftables changes: %w", err)
