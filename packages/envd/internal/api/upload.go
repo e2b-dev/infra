@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -147,32 +146,6 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 	return filePath, nil
 }
 
-func convertID(id uint32) (int, bool) {
-	if int64(id) > math.MaxInt {
-		return -1, false
-	}
-
-	return int(id), true
-}
-
-func lookupUserIDs(u *user.User) (int, int, error) {
-	uid32, gid32, err := permissions.GetUserIds(u)
-	if err != nil {
-		return -1, -1, fmt.Errorf("error getting user ids: %w", err)
-	}
-
-	uid, ok := convertID(uid32)
-	if !ok {
-		return -1, -1, fmt.Errorf("user id %d is too large", uid32)
-	}
-	gid, ok := convertID(gid32)
-	if !ok {
-		return -1, -1, fmt.Errorf("group id %d is too large", gid32)
-	}
-
-	return uid, gid, nil
-}
-
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
 	defer r.Body.Close()
 
@@ -237,7 +210,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
-	uid, gid, err := lookupUserIDs(u)
+	uid, gid, err := permissions.GetUserIdInts(u)
 	if err != nil {
 		err := fmt.Errorf("error getting user ids: %w", err)
 
