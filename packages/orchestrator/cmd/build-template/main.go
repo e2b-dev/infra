@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
@@ -35,7 +36,8 @@ import (
 const (
 	baseImage = "e2bdev/base:latest"
 
-	proxyPort = 5007
+	proxyPort       = 5007
+	tcpFirewallPort = 3128
 )
 
 func main() {
@@ -109,6 +111,25 @@ func buildTemplate(
 		err := sandboxProxy.Close(parentCtx)
 		if err != nil {
 			log.Error(ctx, "error closing sandbox proxy", zap.Error(err))
+		}
+	}()
+
+	// hostname egress filter proxy
+	tcpFirewall := tcpfirewall.New(
+		log,
+		tcpFirewallPort,
+		sandboxes,
+	)
+	go func() {
+		err := tcpFirewall.Start(ctx)
+		if err != nil {
+			log.Error(ctx, "error starting tcp egress firewall", zap.Error(err))
+		}
+	}()
+	defer func() {
+		err := tcpFirewall.Close(parentCtx)
+		if err != nil {
+			log.Error(ctx, "error closing tcp egress firewall", zap.Error(err))
 		}
 	}()
 
