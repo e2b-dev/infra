@@ -41,7 +41,7 @@ func processFile(r *http.Request, path string, part io.Reader, user *user.User, 
 
 		return http.StatusInternalServerError, err
 	}
-	
+
 	stat, err := os.Stat(path)
 	if err != nil && !os.IsNotExist(err) {
 		errMsg := fmt.Errorf("error getting file info: %w", err)
