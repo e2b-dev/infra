@@ -11,6 +11,8 @@ import (
 
 const (
 	AllInternetTrafficCIDR = "0.0.0.0/0"
+
+	DefaultNameserver = "8.8.8.8"
 )
 
 var DeniedSandboxCIDRs = []string{

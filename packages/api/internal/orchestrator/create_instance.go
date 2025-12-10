@@ -42,6 +42,13 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	if network != nil && network.Egress != nil {
 		// Split allowed addresses into CIDRs/IPs and domains for the orchestrator
 		allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(network.Egress.AllowedAddresses)
+
+		// If allowed domain is provided, add the default nameserver to the allowed addresses
+		// This is to ensure that the sandbox can resolve the domain name to the IP address
+		if len(allowedDomains) > 0 {
+			allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
+		}
+
 		orchNetwork.Egress.AllowedCidrs = sandbox_network.AddressStringsToCIDRs(allowedAddresses)
 		orchNetwork.Egress.AllowedDomains = allowedDomains
 
