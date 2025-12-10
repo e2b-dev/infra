@@ -868,6 +868,11 @@ func pauseProcessMemory(
 
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 
+	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
+	}
+
 	cache, err := fc.ExportMemory(
 		ctx,
 		diffMetadata.Dirty,
@@ -883,12 +888,8 @@ func pauseProcessMemory(
 		cache,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", err)
-	}
-
-	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
+		// Close the cache even if the diff creation fails.
+		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
 	return diff, header, nil

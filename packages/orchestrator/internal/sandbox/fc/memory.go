@@ -55,19 +55,20 @@ func (p *Process) ExportMemory(
 
 	size := block.GetSize(remoteRanges)
 
-	cache, err := block.NewCache(int64(size), blockSize, cachePath, false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cache: %w", err)
-	}
-
 	pid, err := p.Pid()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pid: %w", err)
 	}
 
+	cache, err := block.NewCache(int64(size), blockSize, cachePath, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache: %w", err)
+	}
+
 	err = copyProcessMemory(ctx, pid, remoteRanges, cache)
 	if err != nil {
-		return nil, fmt.Errorf("failed to copy process memory: %w", err)
+		// Close the cache even if the copy fails.
+		return nil, fmt.Errorf("failed to copy process memory: %w", errors.Join(err, cache.Close()))
 	}
 
 	return cache, nil
