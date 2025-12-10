@@ -343,3 +343,34 @@ variable "client_cluster_cache_disk_count" {
     error_message = "Must include at least 1 client cluster cache disk"
   }
 }
+
+# Boot disk type variables
+variable "client_boot_disk_type" {
+  description = "The GCE boot disk type for the client (orchestrator) machines."
+  type        = string
+}
+
+variable "build_boot_disk_type" {
+  description = "The GCE boot disk type for the build machines."
+  type        = string
+}
+
+variable "api_boot_disk_type" {
+  description = "The GCE boot disk type for the API machines."
+  type        = string
+}
+
+variable "server_boot_disk_type" {
+  description = "The GCE boot disk type for the control server machines."
+  type        = string
+}
+
+variable "clickhouse_boot_disk_type" {
+  description = "The GCE boot disk type for the ClickHouse machines."
+  type        = string
+}
+
+variable "loki_boot_disk_type" {
+  description = "The GCE boot disk type for the Loki machines."
+  type        = string
+}

@@ -146,7 +146,7 @@ resource "google_compute_instance_template" "client" {
     boot         = true
     source_image = data.google_compute_image.client_source_image.id
     disk_size_gb = 300
-    disk_type    = "pd-ssd"
+    disk_type    = var.client_boot_disk_type
   }
 
   dynamic "disk" {
