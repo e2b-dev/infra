@@ -58,7 +58,6 @@ message SandboxNetworkEgressConfig {
   repeated string denied_cidrs = 2;
   
   repeated string allowed_domains = 3;
-  repeated string denied_domains = 4;
 }
 
 message SandboxNetworkIngressConfig {

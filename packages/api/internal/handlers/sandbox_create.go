@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -320,6 +321,17 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("mask request host is not ASCII (%s)!=(%s)", host, hostname),
 				ClientMsg: fmt.Sprintf("mask request host '%s' is not ASCII. Please use ASCII characters only.", hostname),
+			}
+		}
+	}
+
+	denyOut := sharedUtils.DerefOrDefault(network.DenyOut, nil)
+	for _, cidr := range denyOut {
+		if !sandbox_network.IsIPOrCIDR(cidr) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid denied CIDR %s", cidr),
+				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", cidr),
 			}
 		}
 	}

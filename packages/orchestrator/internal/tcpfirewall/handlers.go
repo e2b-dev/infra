@@ -140,15 +140,6 @@ func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, er
 			}
 		}
 
-		// Priority 2: Check denied domains
-		if hostname != noHostnameValue {
-			for _, domain := range egress.GetDeniedDomains() {
-				if matchDomain(hostname, domain) {
-					return false, nil // Blocked by domain
-				}
-			}
-		}
-
 		// Priority 2: Check denied CIDRs
 		for _, cidr := range egress.GetDeniedCidrs() {
 			_, ipNet, err := net.ParseCIDR(cidr)
