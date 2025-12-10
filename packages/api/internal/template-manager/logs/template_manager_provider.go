@@ -2,22 +2,26 @@ package logs
 
 import (
 	"context"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type TemplateManagerProvider struct {
 	GRPC *edge.ClusterGRPC
 }
 
-func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
+func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) ([]logs.LogEntry, error) {
 	reqCtx := metadata.NewOutgoingContext(ctx, t.GRPC.Metadata)
 
 	var lvlReq *templatemanagergrpc.LogLevel
@@ -29,7 +33,11 @@ func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string
 			TemplateID: templateID,
 			BuildID:    buildID,
 			Offset:     &offset,
+			Limit:      utils.ToPtr(uint32(limit)),
 			Level:      lvlReq,
+			Start:      timestamppb.New(start),
+			End:        timestamppb.New(end),
+			Direction:  utils.ToPtr(logDirectionToTemplateManagerDirection(direction)),
 		},
 	)
 	if err != nil {
@@ -51,4 +59,15 @@ func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string
 	}
 
 	return l, nil
+}
+
+func logDirectionToTemplateManagerDirection(direction api.LogsDirection) templatemanagergrpc.LogsDirection {
+	switch direction {
+	case api.LogsDirectionForward:
+		return templatemanagergrpc.LogsDirection_Forward
+	case api.LogsDirectionBackward:
+		return templatemanagergrpc.LogsDirection_Backward
+	default:
+		return templatemanagergrpc.LogsDirection_Forward
+	}
 }

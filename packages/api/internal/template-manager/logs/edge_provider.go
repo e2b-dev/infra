@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -28,14 +30,18 @@ func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {
 	return &value
 }
 
-func (c *EdgeProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
+func (c *EdgeProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) ([]logs.LogEntry, error) {
 	res, err := c.HTTP.Client.V1TemplateBuildLogsWithResponse(
 		ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{
 			TemplateID: templateID,
 			Offset:     &offset,
+			Limit:      &limit,
 			Level:      logToEdgeLevel(level),
 			// TODO: remove this once the API spec is not required to have orchestratorID (https://linear.app/e2b/issue/ENG-3352)
 			OrchestratorID: utils.ToPtr("unused"),
+			Start:          utils.ToPtr(start.UnixMilli()),
+			End:            utils.ToPtr(end.UnixMilli()),
+			Direction:      utils.ToPtr(edgeapi.V1TemplateBuildLogsParamsDirection(direction)),
 		},
 	)
 	if err != nil {

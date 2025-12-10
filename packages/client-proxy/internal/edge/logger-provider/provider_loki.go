@@ -31,7 +31,7 @@ func NewLokiQueryProvider(config cfg.Config) (*LokiQueryProvider, error) {
 	return &LokiQueryProvider{client: lokiClient}, nil
 }
 
-func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
+func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int32, level *logs.LogLevel, direction logproto.Direction) ([]logs.LogEntry, error) {
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIDSanitized := strings.ReplaceAll(templateID, "`", "")
 	buildIDSanitized := strings.ReplaceAll(buildID, "`", "")
@@ -39,7 +39,7 @@ func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID strin
 	// todo: service name is different here (because new merged orchestrator)
 	query := fmt.Sprintf("{service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildIDSanitized, templateIDSanitized)
 
-	res, err := l.client.QueryRange(query, limit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
+	res, err := l.client.QueryRange(query, limit, start, end, direction, time.Duration(0), time.Duration(0), true)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for template build", err)
 		logger.L().Error(ctx, "error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))

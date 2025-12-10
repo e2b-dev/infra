@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -74,8 +75,13 @@ func (b *BuildInfo) SetFail(reason *template_manager.TemplateBuildStatusReason) 
 	})
 }
 
-func (b *BuildInfo) GetLogs() []*template_manager.TemplateBuildLogEntry {
-	return b.logs.Lines()
+func (b *BuildInfo) GetLogs(direction template_manager.LogsDirection) []*template_manager.TemplateBuildLogEntry {
+	lines := b.logs.Lines()
+	if direction == template_manager.LogsDirection_Backward {
+		slices.Reverse(lines)
+	}
+
+	return lines
 }
 
 type BuildCache struct {

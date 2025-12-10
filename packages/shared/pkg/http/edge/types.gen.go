@@ -20,7 +20,6 @@ const (
 
 // Defines values for ClusterNodeType.
 const (
-	ClusterNodeTypeEdge         ClusterNodeType = "edge"
 	ClusterNodeTypeOrchestrator ClusterNodeType = "orchestrator"
 )
 
@@ -36,6 +35,12 @@ const (
 	LogLevelError LogLevel = "error"
 	LogLevelInfo  LogLevel = "info"
 	LogLevelWarn  LogLevel = "warn"
+)
+
+// Defines values for V1TemplateBuildLogsParamsDirection.
+const (
+	Backward V1TemplateBuildLogsParamsDirection = "backward"
+	Forward  V1TemplateBuildLogsParamsDirection = "forward"
 )
 
 // BuildLogEntry defines model for BuildLogEntry.
@@ -146,25 +151,6 @@ type Error struct {
 // LogLevel State of the sandbox
 type LogLevel string
 
-// SandboxCreateCatalogRequest defines model for SandboxCreateCatalogRequest.
-type SandboxCreateCatalogRequest struct {
-	ExecutionID string `json:"executionID"`
-
-	// OrchestratorID Orchestrator where the sandbox is placed
-	OrchestratorID string `json:"orchestratorID"`
-	SandboxID      string `json:"sandboxID"`
-
-	// SandboxMaxLength Maximum duration in hours
-	SandboxMaxLength int64     `json:"sandboxMaxLength"`
-	SandboxStartTime Timestamp `json:"sandboxStartTime"`
-}
-
-// SandboxDeleteCatalogRequest defines model for SandboxDeleteCatalogRequest.
-type SandboxDeleteCatalogRequest struct {
-	ExecutionID string `json:"executionID"`
-	SandboxID   string `json:"sandboxID"`
-}
-
 // SandboxLog Log entry with timestamp and line
 type SandboxLog struct {
 	// Line Log line content
@@ -245,9 +231,6 @@ type TemplateBuildLogsResponse struct {
 	LogEntries []BuildLogEntry `json:"logEntries"`
 }
 
-// Timestamp defines model for Timestamp.
-type Timestamp = time.Time
-
 // N400 defines model for 400.
 type N400 = Error
 
@@ -298,15 +281,22 @@ type V1TemplateBuildLogsParams struct {
 	TemplateID     string  `form:"templateID" json:"templateID"`
 
 	// Offset Index of the starting build log that should be returned with the template
-	Offset *int32    `form:"offset,omitempty" json:"offset,omitempty"`
-	Level  *LogLevel `form:"level,omitempty" json:"level,omitempty"`
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Start Starting timestamp of the logs that should be returned in milliseconds
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+
+	// End Ending timestamp of the logs that should be returned in milliseconds
+	End *int64 `form:"end,omitempty" json:"end,omitempty"`
+
+	// Limit Maximum number of logs that should be returned
+	Limit     *int32                              `form:"limit,omitempty" json:"limit,omitempty"`
+	Direction *V1TemplateBuildLogsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+	Level     *LogLevel                           `form:"level,omitempty" json:"level,omitempty"`
 }
 
-// V1SandboxCatalogDeleteJSONRequestBody defines body for V1SandboxCatalogDelete for application/json ContentType.
-type V1SandboxCatalogDeleteJSONRequestBody = SandboxDeleteCatalogRequest
-
-// V1SandboxCatalogCreateJSONRequestBody defines body for V1SandboxCatalogCreate for application/json ContentType.
-type V1SandboxCatalogCreateJSONRequestBody = SandboxCreateCatalogRequest
+// V1TemplateBuildLogsParamsDirection defines parameters for V1TemplateBuildLogs.
+type V1TemplateBuildLogsParamsDirection string
 
 // V1ServiceDiscoveryNodeDrainJSONRequestBody defines body for V1ServiceDiscoveryNodeDrain for application/json ContentType.
 type V1ServiceDiscoveryNodeDrainJSONRequestBody = ServiceDiscoveryNodeStatusRequest

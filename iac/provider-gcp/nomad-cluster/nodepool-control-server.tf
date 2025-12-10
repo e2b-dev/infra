@@ -103,7 +103,7 @@ resource "google_compute_instance_template" "server" {
     boot         = true
     source_image = data.google_compute_image.server_source_image.self_link
     disk_size_gb = 20
-    disk_type    = "pd-ssd"
+    disk_type    = var.server_boot_disk_type
   }
 
   network_interface {

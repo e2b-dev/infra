@@ -2,13 +2,19 @@ package server
 
 import (
 	"context"
+	"time"
 
 	"github.com/pkg/errors"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
-const maxLogEntriesPerRequest = uint32(100)
+const (
+	maxLogEntriesPerRequest = uint32(100)
+	defaultTimeRange        = 24 * time.Hour
+
+	defaultDirection = template_manager.LogsDirection_Forward
+)
 
 func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest) (*template_manager.TemplateBuildStatusResponse, error) {
 	_, span := tracer.Start(ctx, "template-build-status-request")
@@ -24,11 +30,32 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		limit = in.GetLimit()
 	}
 
+	direction := defaultDirection
+	if in.GetDirection() == template_manager.LogsDirection_Backward {
+		direction = template_manager.LogsDirection_Backward
+	}
+
+	start, end := time.Now().Add(-defaultTimeRange), time.Now()
+	if s := in.GetStart(); s != nil {
+		start = s.AsTime()
+	}
+	if e := in.GetEnd(); e != nil {
+		end = e.AsTime()
+	}
+
 	logEntries := make([]*template_manager.TemplateBuildLogEntry, 0)
 	logsCrawled := int32(0)
-	for _, entry := range buildInfo.GetLogs() {
+	for _, entry := range buildInfo.GetLogs(direction) {
 		// Skip entries that are below the specified level
 		if entry.GetLevel().Number() < in.GetLevel().Number() {
+			continue
+		}
+
+		if entry.GetTimestamp().AsTime().Before(start) {
+			continue
+		}
+
+		if entry.GetTimestamp().AsTime().After(end) {
 			continue
 		}
 

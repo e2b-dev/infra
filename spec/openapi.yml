@@ -1096,6 +1096,37 @@ components:
         reason:
           $ref: "#/components/schemas/BuildStatusReason"
 
+    TemplateBuildLogsResponse:
+      required:
+        - logs
+      properties:
+        logs:
+          default: []
+          description: Build logs structured
+          type: array
+          items:
+            $ref: "#/components/schemas/BuildLogEntry"
+
+    LogsDirection:
+      type: string
+      description: Direction of the logs that should be returned
+      enum:
+        - forward
+        - backward
+      x-enum-varnames:
+        - LogsDirectionForward
+        - LogsDirectionBackward
+
+    LogsSource:
+      type: string
+      description: Source of the logs that should be returned
+      enum:
+        - temporary
+        - persistent
+      x-enum-varnames:
+        - LogsSourceTemporary
+        - LogsSourcePersistent
+
     NodeStatus:
       type: string
       description: Status of the node
@@ -2317,6 +2348,15 @@ paths:
             minimum: 0
           description: Index of the starting build log that should be returned with the template
         - in: query
+          name: limit
+          schema:
+            default: 100
+            type: integer
+            format: int32
+            minimum: 0
+            maximum: 100
+          description: Maximum number of logs that should be returned
+        - in: query
           name: level
           schema:
             $ref: "#/components/schemas/LogLevel"
@@ -2327,6 +2367,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TemplateBuildInfo"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/builds/{buildID}/logs:
+    get:
+      description: Get template build logs
+      tags: [templates]
+      security:
+        - AccessTokenAuth: []
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/buildID"
+        - in: query
+          name: cursor
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Starting timestamp of the logs that should be returned in milliseconds
+        - in: query
+          name: limit
+          schema:
+            default: 100
+            type: integer
+            format: int32
+            minimum: 0
+            maximum: 100
+          description: Maximum number of logs that should be returned
+        - in: query
+          name: direction
+          schema:
+            $ref: "#/components/schemas/LogsDirection"
+        - in: query
+          name: level
+          schema:
+            $ref: "#/components/schemas/LogLevel"
+        - in: query
+          name: source
+          schema:
+            $ref: "#/components/schemas/LogsSource"
+          description: Source of the logs that should be returned from
+      responses:
+        "200":
+          description: Successfully returned the template build logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateBuildLogsResponse"
         "401":
           $ref: "#/components/responses/401"
         "404":

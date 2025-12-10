@@ -29,6 +29,29 @@ const (
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
 
+type JSONFlag struct {
+	name     string
+	fallback ldvalue.Value
+}
+
+func (f JSONFlag) String() string {
+	return f.name
+}
+
+func (f JSONFlag) Fallback() *ldvalue.Value {
+	return &f.fallback
+}
+
+func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
+	flag := JSONFlag{name: name, fallback: fallback}
+	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(fallback)
+	LaunchDarklyOfflineStore.Update(builder)
+
+	return flag
+}
+
+var CleanNFSCacheExperimental = newJSONFlag("clean-nfs-cache-experimental", ldvalue.Null())
+
 type BoolFlag struct {
 	name     string
 	fallback bool

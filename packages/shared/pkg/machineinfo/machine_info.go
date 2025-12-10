@@ -15,7 +15,7 @@ type MachineInfo struct {
 }
 
 func (m MachineInfo) IsCompatibleWith(other MachineInfo) bool {
-	return m.CPUArchitecture == other.CPUArchitecture && m.CPUFamily == other.CPUFamily
+	return m.CPUArchitecture == other.CPUArchitecture && m.CPUFamily == other.CPUFamily && m.CPUModel == other.CPUModel
 }
 
 func FromGRPCInfo(info *infogrpc.MachineInfo) MachineInfo {

@@ -511,3 +511,40 @@ variable "client_cluster_cache_disk_count" {
   description = "The number of 375 GB NVME disks to raid together for storing sandbox files."
   default     = 3
 }
+
+# Boot disk type variables
+variable "client_boot_disk_type" {
+  description = "The GCE boot disk type for the client (orchestrator) machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "build_boot_disk_type" {
+  description = "The GCE boot disk type for the build machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "api_boot_disk_type" {
+  description = "The GCE boot disk type for the API machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "server_boot_disk_type" {
+  description = "The GCE boot disk type for the control server machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "clickhouse_boot_disk_type" {
+  description = "The GCE boot disk type for the ClickHouse machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "loki_boot_disk_type" {
+  description = "The GCE boot disk type for the Loki machines."
+  type        = string
+  default     = "pd-ssd"
+}

@@ -28,7 +28,6 @@ type APIStore struct {
 	logger                      logger.Logger
 	info                        *info.ServiceInfo
 	orchestratorPool            *e2borchestrators.OrchestratorsPool
-	edgePool                    *e2borchestrators.EdgePool
 	sandboxes                   catalog.SandboxesCatalog
 	queryLogsProvider           loggerprovider.LogsQueryProvider
 	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider
@@ -43,7 +42,6 @@ func NewStore(
 	l logger.Logger,
 	info *info.ServiceInfo,
 	orchestratorsPool *e2borchestrators.OrchestratorsPool,
-	edgePool *e2borchestrators.EdgePool,
 	catalog catalog.SandboxesCatalog,
 	config cfg.Config,
 ) (*APIStore, error) {
@@ -59,7 +57,6 @@ func NewStore(
 
 	store := &APIStore{
 		orchestratorPool:            orchestratorsPool,
-		edgePool:                    edgePool,
 		queryLogsProvider:           queryLogsProvider,
 		querySandboxMetricsProvider: querySandboxMetricsProvider,
 

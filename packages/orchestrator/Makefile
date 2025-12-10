@@ -1,6 +1,8 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
+AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+
 .PHONY: init
 init:
 	brew install protobuf
@@ -62,15 +64,30 @@ run-local:
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:
-	./upload-clean-nfs-cache.sh $(GCP_PROJECT_ID)
+	chmod +x ./bin/clean-nfs-cache
+ifeq ($(PROVIDER),aws)
+	aws s3 cp ./bin/clean-nfs-cache "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/clean-nfs-cache "gs://${GCP_PROJECT_ID}-fc-env-pipeline/clean-nfs-cache"
+endif
 
 .PHONY: upload/orchestrator
 upload/orchestrator:
-	./upload-orchestrator.sh $(GCP_PROJECT_ID)
+	chmod +x ./bin/orchestrator
+ifeq ($(PROVIDER),aws)
+	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/orchestrator" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_PROJECT_ID}-fc-env-pipeline/orchestrator"
+endif
 
 .PHONY: upload/template-manager
 upload/template-manager:
-	./upload-template-manager.sh $(GCP_PROJECT_ID)
+	chmod +x ./bin/orchestrator
+ifeq ($(PROVIDER),aws)
+	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/template-manager" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_PROJECT_ID}-fc-env-pipeline/template-manager"
+endif
 
 .PHONY: build-and-upload/clean-nfs-cache
 build-and-upload/clean-nfs-cache: build upload/clean-nfs-cache
@@ -122,4 +139,4 @@ build-template:
 
 .PHONY: migrate
 migrate:
-	./upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)
+	./scripts/upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)

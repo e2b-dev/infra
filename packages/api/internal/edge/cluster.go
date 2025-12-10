@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -14,7 +13,6 @@ import (
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -181,38 +179,4 @@ func (c *Cluster) GetOrchestrators() []*ClusterInstance {
 
 func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
 	return c.httpClient
-}
-
-func (c *Cluster) RegisterSandboxInCatalog(ctx context.Context, serviceInstanceID string, sandboxStartTime time.Time, sandboxConfig *orchestratorgrpc.SandboxConfig) error {
-	body := api.V1SandboxCatalogCreateJSONRequestBody{
-		OrchestratorID: serviceInstanceID,
-
-		ExecutionID:      sandboxConfig.GetExecutionId(),
-		SandboxID:        sandboxConfig.GetSandboxId(),
-		SandboxMaxLength: sandboxConfig.GetMaxSandboxLength(),
-		SandboxStartTime: sandboxStartTime,
-	}
-
-	rsp, err := c.httpClient.V1SandboxCatalogCreate(ctx, body)
-	if err != nil {
-		return fmt.Errorf("failed to register sandbox in catalog: %w", err)
-	}
-	defer rsp.Body.Close()
-
-	return nil
-}
-
-func (c *Cluster) RemoveSandboxFromCatalog(ctx context.Context, sandboxID string, executionID string) error {
-	body := api.V1SandboxCatalogDeleteJSONRequestBody{
-		SandboxID:   sandboxID,
-		ExecutionID: executionID,
-	}
-
-	rsp, err := c.httpClient.V1SandboxCatalogDelete(ctx, body)
-	if err != nil {
-		return fmt.Errorf("failed to remove sandbox from catalog: %w", err)
-	}
-	defer rsp.Body.Close()
-
-	return nil
 }

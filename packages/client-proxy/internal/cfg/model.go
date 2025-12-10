@@ -11,7 +11,6 @@ type Config struct {
 	OrchestratorPort                      uint16                 `env:"ORCHESTRATOR_PORT"                         envDefault:"5008"`
 	ProxyPort                             uint16                 `env:"PROXY_PORT"                                envDefault:"3002"`
 	SkipInitialOrchestratorReadinessCheck bool                   `env:"SKIP_INITIAL_ORCHESTRATOR_READINESS_CHECK"`
-	EdgeServiceDiscovery                  ServiceDiscoveryConfig `envPrefix:"SD_EDGE_"`
 	OrchestratorServiceDiscovery          ServiceDiscoveryConfig `envPrefix:"SD_ORCHESTRATOR_"`
 
 	RedisURL         string `env:"REDIS_URL"`

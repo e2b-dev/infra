@@ -80,10 +80,11 @@ func WithSandboxSleepingClient(baseSandboxCreateTime time.Duration) TestOptions 
 	}
 }
 
-func WithCPUInfo(cpuArch, cpuFamily string) TestOptions {
+func WithCPUInfo(cpuArch, cpuFamily, cpuModel string) TestOptions {
 	return func(node *TestNode) {
 		node.machineInfo.CPUArchitecture = cpuArch
 		node.machineInfo.CPUFamily = cpuFamily
+		node.machineInfo.CPUModel = cpuModel
 	}
 }
 

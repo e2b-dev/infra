@@ -135,6 +135,14 @@ module "cluster" {
   prefix = var.prefix
 
   min_cpu_platform = var.min_cpu_platform
+
+  # Boot disk types
+  client_boot_disk_type     = var.client_boot_disk_type
+  build_boot_disk_type      = var.build_boot_disk_type
+  api_boot_disk_type        = var.api_boot_disk_type
+  server_boot_disk_type     = var.server_boot_disk_type
+  clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
+  loki_boot_disk_type       = var.loki_boot_disk_type
 }
 
 module "nomad" {

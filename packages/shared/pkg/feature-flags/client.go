@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
@@ -63,6 +64,19 @@ func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcont
 	}
 
 	return enabled, nil
+}
+
+func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) (ldvalue.Value, error) {
+	if c.ld == nil {
+		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
+	}
+
+	v, err := c.ld.JSONVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
+	if err != nil {
+		return v, fmt.Errorf("error evaluating %s: %w", flag, err)
+	}
+
+	return v, nil
 }
 
 func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) (int, error) {
