@@ -69,7 +69,13 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_TYPE) \
 	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_TYPE) \
 	$(call tfvar, MIN_CPU_PLATFORM) \
-	$(call tfvar, REMOTE_REPOSITORY_ENABLED)
+	$(call tfvar, REMOTE_REPOSITORY_ENABLED) \
+	$(call tfvar, CLIENT_BOOT_DISK_TYPE) \
+	$(call tfvar, BUILD_BOOT_DISK_TYPE) \
+	$(call tfvar, API_BOOT_DISK_TYPE) \
+	$(call tfvar, SERVER_BOOT_DISK_TYPE) \
+	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
+	$(call tfvar, LOKI_BOOT_DISK_TYPE)
 
 .PHONY: init
 init:
