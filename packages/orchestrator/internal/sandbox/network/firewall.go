@@ -26,10 +26,8 @@ type Firewall struct {
 	conn  *nftables.Conn
 	table *nftables.Table
 
-	// Filter chain in PREROUTING (runs before NAT)
+	// Filter chain in PREROUTING
 	filterChain *nftables.Chain
-	// NAT chain in PREROUTING (for DNAT)
-	natChain *nftables.Chain
 
 	predefinedDenySet  set.Set
 	predefinedAllowSet set.Set
@@ -53,26 +51,14 @@ func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 		Family: nftables.TableFamilyINet,
 	})
 
-	// Filter chain in PREROUTING - runs BEFORE NAT (priority -150 < -100)
+	// Filter chain in PREROUTING
 	// This handles: allow/deny decisions and marking allowed traffic
 	filterChain := conn.AddChain(&nftables.Chain{
 		Name:     "PREROUTE_FILTER",
 		Table:    table,
 		Type:     nftables.ChainTypeFilter,
 		Hooknum:  nftables.ChainHookPrerouting,
-		Priority: nftables.ChainPriorityRef(-150), // Before NAT (-100)
-		Policy:   utils.ToPtr(nftables.ChainPolicyAccept),
-	})
-
-	// NAT chain in PREROUTING - kept for future use but currently empty
-	// Unmarked TCP traffic continues with original destination preserved.
-	// iptables REDIRECT handles proxy redirect based on the mark.
-	natChain := conn.AddChain(&nftables.Chain{
-		Name:     "PREROUTE_NAT",
-		Table:    table,
-		Type:     nftables.ChainTypeNAT,
-		Hooknum:  nftables.ChainHookPrerouting,
-		Priority: nftables.ChainPriorityNATDest, // -100
+		Priority: nftables.ChainPriorityRef(-150),
 		Policy:   utils.ToPtr(nftables.ChainPolicyAccept),
 	})
 
@@ -104,9 +90,7 @@ func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 		userAllowSet:       allowSet,
 		tapInterface:       tapIf,
 		allowedRanges:      []string{fmt.Sprintf("%s/32", hyperloopIP)},
-
-		filterChain: filterChain,
-		natChain:    natChain,
+		filterChain:        filterChain,
 	}
 
 	// Add firewall rules to the chain
@@ -179,7 +163,7 @@ func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
 
 // addNonTCPSetFilterRule adds a filter rule that matches ONLY non-TCP traffic to destinations in a set.
 // If drop is true, packets are dropped. Otherwise, they are marked as allowed and accepted.
-// TCP traffic is NOT affected by this rule (it will continue to the NAT chain for proxy DNAT).
+// TCP traffic is NOT affected by this rule (iptables REDIRECT handles proxy redirect).
 func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
 	var verdict []expr.Any
 	if drop {
@@ -216,7 +200,7 @@ func (fw *Firewall) installRules() error {
 	//   3. predefinedDenySet → DROP (all protocols, hard block)
 	//   4. Non-TCP: userAllowSet → mark + accept
 	//   5. Non-TCP: userDenySet → DROP
-	//   6. TCP: continues unmarked to NAT chain for DNAT to proxy
+	//   6. TCP: continues unmarked, iptables REDIRECT handles proxy
 	// ============================================================
 
 	// Rule 1: Allow ESTABLISHED/RELATED connections (mark + accept) - all protocols
@@ -259,14 +243,7 @@ func (fw *Firewall) installRules() error {
 
 	// Default policy: ACCEPT
 	// - Non-TCP not in user sets: allowed (default policy)
-	// - TCP: continues unmarked to NAT chain for DNAT to proxy
-
-	// ============================================================
-	// NAT CHAIN (PREROUTING, priority -100)
-	// No DNAT rules - unmarked TCP traffic continues with original
-	// destination preserved. iptables REDIRECT will handle the proxy
-	// redirect based on the mark, preserving SO_ORIGINAL_DST.
-	// ============================================================
+	// - TCP: continues unmarked, iptables REDIRECT handles proxy redirect
 
 	if err := fw.conn.Flush(); err != nil {
 		return fmt.Errorf("flush nftables changes: %w", err)

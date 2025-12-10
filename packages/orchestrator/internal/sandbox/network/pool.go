@@ -56,7 +56,7 @@ type Config struct {
 	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
 
 	// SandboxTCPFirewallPort is the port to redirect TCP traffic to for egress filtering
-	SandboxTCPFirewallPort uint16 `env:"SANDBOX_TCP_FIREWALL_PORT" envDefault:"3128"`
+	SandboxTCPFirewallPort uint16 `env:"SANDBOX_TCP_FIREWALL_PORT" envDefault:"5016"`
 }
 
 func ParseConfig() (Config, error) {
