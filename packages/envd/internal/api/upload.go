@@ -35,31 +35,33 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, log
 		return http.StatusInternalServerError, err
 	}
 
+	canBePreChowned := false
 	stat, err := os.Stat(path)
 	if err != nil && !os.IsNotExist(err) {
 		errMsg := fmt.Errorf("error getting file info: %w", err)
 
 		return http.StatusInternalServerError, errMsg
-	}
-
-	if err == nil {
+	} else if err == nil {
 		if stat.IsDir() {
 			err := fmt.Errorf("path is a directory: %s", path)
 
 			return http.StatusBadRequest, err
 		}
+		canBePreChowned = true
 	}
 
 	hasBeenChowned := false
-	err = os.Chown(path, uid, gid)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			err = fmt.Errorf("error changing file ownership: %w", err)
+	if canBePreChowned {
+		err = os.Chown(path, uid, gid)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				err = fmt.Errorf("error changing file ownership: %w", err)
 
-			return http.StatusInternalServerError, err
+				return http.StatusInternalServerError, err
+			}
+		} else {
+			hasBeenChowned = true
 		}
-	} else {
-		hasBeenChowned = true
 	}
 
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
