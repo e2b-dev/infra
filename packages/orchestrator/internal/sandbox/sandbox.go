@@ -98,7 +98,7 @@ type Resources struct {
 	memoryDiffFilter func(ctx context.Context) (*header.DiffMetadata, error)
 }
 
-func (r *Resources) Dirty(ctx context.Context) (*header.DiffMetadata, error) {
+func (r *Resources) MemfileDiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
 	if r.memoryDiffFilter == nil {
 		return nil, fmt.Errorf("memory diff filter is not set")
 	}
@@ -801,9 +801,9 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	diffMetadata, err := s.Resources.Dirty(ctx)
+	memfileDiffMetadata, err := s.Resources.MemfileDiffMetadata(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get dirty memory: %w", err)
+		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}
 
 	// Start POSTPROCESSING
@@ -811,7 +811,7 @@ func (s *Sandbox) Pause(
 		ctx,
 		buildID,
 		originalMemfile.Header(),
-		diffMetadata,
+		memfileDiffMetadata,
 		s.config.DefaultCacheDir,
 		s.process,
 	)
