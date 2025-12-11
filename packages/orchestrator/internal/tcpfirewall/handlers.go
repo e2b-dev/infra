@@ -31,7 +31,7 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 		hostname = tc.HostName
 	}
 
-	if hostname == "" {
+	if hostname == noHostnameValue {
 		// No hostname found, this is the case e.g. for https://1.1.1.1 like requests
 		logger.Debug(ctx, "No hostname found, ignoring hostname based filter", zap.String("source_addr", sourceAddr))
 	}
