@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -21,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
@@ -67,6 +69,31 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	return orchNetwork
+}
+
+func getFirecrackerVersion(ctx context.Context, featureFlags *feature_flags.Client, version semver.Version) (string, error) {
+	if version.Major() != 1 {
+		return "", fmt.Errorf("unsupported firecracker major version: %d", version.Major())
+	}
+
+	switch version.Minor() {
+	case 10:
+		firecrackerVersion, err := featureFlags.StringFlag(ctx, feature_flags.FirecrackerV1_10Version)
+		if err != nil {
+			logger.L().Warn(ctx, "failed to get firecracker v1.10 version flag", zap.Error(err))
+		}
+
+		return firecrackerVersion, nil
+	case 12:
+		firecrackerVersion, err := featureFlags.StringFlag(ctx, feature_flags.FirecrackerV1_12Version)
+		if err != nil {
+			logger.L().Warn(ctx, "failed to get firecracker v1.12 version flag", zap.Error(err))
+		}
+
+		return firecrackerVersion, nil
+	default:
+		return "", fmt.Errorf("unsupported firecracker version: %s", version.String())
+	}
 }
 
 func (o *Orchestrator) CreateSandbox(
@@ -167,6 +194,14 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	telemetry.ReportEvent(ctx, "Got FC version info")
+	firecrackerVersion, err := getFirecrackerVersion(ctx, o.featureFlagsClient, features.Version())
+	if err != nil {
+		return sandbox.Sandbox{}, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Failed to get firecracker version",
+			Err:       fmt.Errorf("failed to get firecracker version: %w", err),
+		}
+	}
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
@@ -207,7 +242,7 @@ func (o *Orchestrator) CreateSandbox(
 			SandboxId:           sandboxID,
 			ExecutionId:         executionID,
 			KernelVersion:       build.KernelVersion,
-			FirecrackerVersion:  build.FirecrackerVersion,
+			FirecrackerVersion:  firecrackerVersion,
 			EnvdVersion:         *build.EnvdVersion,
 			Metadata:            metadata,
 			EnvVars:             envVars,
