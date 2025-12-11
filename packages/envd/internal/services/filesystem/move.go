@@ -28,12 +28,12 @@ func (s Service) Move(ctx context.Context, req *connect.Request[rpc.MoveRequest]
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	uid, gid, userErr := permissions.GetUserIds(u)
+	uid, gid, userErr := permissions.GetUserIdInts(u)
 	if userErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, userErr)
 	}
 
-	userErr = permissions.EnsureDirs(filepath.Dir(destination), int(uid), int(gid))
+	userErr = permissions.EnsureDirs(filepath.Dir(destination), uid, gid)
 	if userErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, userErr)
 	}

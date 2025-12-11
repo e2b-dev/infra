@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -20,90 +21,87 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
-func freeDiskSpace(path string) (free uint64, err error) {
-	var stat syscall.Statfs_t
+var ErrNoDiskSpace = fmt.Errorf("not enough disk space available")
 
-	err = syscall.Statfs(path, &stat)
-	if err != nil {
-		return 0, fmt.Errorf("error getting free disk space: %w", err)
-	}
-
-	// Available blocks * size per block = available space in bytes
-	freeSpace := stat.Bavail * uint64(stat.Bsize)
-
-	return freeSpace, nil
-}
-
-func processFile(r *http.Request, path string, part *multipart.Part, user *user.User, logger zerolog.Logger) (int, error) {
+func processFile(r *http.Request, path string, part io.Reader, uid, gid int, logger zerolog.Logger) (int, error) {
 	logger.Debug().
 		Str("path", path).
 		Msg("File processing")
 
-	uid, gid, err := permissions.GetUserIds(user)
+	err := permissions.EnsureDirs(filepath.Dir(path), uid, gid)
 	if err != nil {
-		errMsg := fmt.Errorf("error getting user ids: %w", err)
+		err := fmt.Errorf("error ensuring directories: %w", err)
 
-		return http.StatusInternalServerError, errMsg
+		return http.StatusInternalServerError, err
 	}
 
-	err = permissions.EnsureDirs(filepath.Dir(path), int(uid), int(gid))
-	if err != nil {
-		errMsg := fmt.Errorf("error ensuring directories: %w", err)
-
-		return http.StatusInternalServerError, errMsg
-	}
-
-	freeSpace, err := freeDiskSpace(filepath.Dir(path))
-	if err != nil {
-		errMsg := fmt.Errorf("error checking free disk space: %w", err)
-
-		return http.StatusInternalServerError, errMsg
-	}
-
-	// Sometimes the size can be unknown resulting in ContentLength being -1 or 0.
-	// We are still comparing these values — this condition will just always evaluate false for them.
-	if r.ContentLength > 0 && freeSpace < uint64(r.ContentLength) {
-		errMsg := fmt.Errorf("not enough disk space on '%s': %d bytes required, %d bytes free", filepath.Dir(path), r.ContentLength, freeSpace)
-
-		return http.StatusInsufficientStorage, errMsg
-	}
-
+	canBePreChowned := false
 	stat, err := os.Stat(path)
 	if err != nil && !os.IsNotExist(err) {
 		errMsg := fmt.Errorf("error getting file info: %w", err)
 
 		return http.StatusInternalServerError, errMsg
+	} else if err == nil {
+		if stat.IsDir() {
+			err := fmt.Errorf("path is a directory: %s", path)
+
+			return http.StatusBadRequest, err
+		}
+		canBePreChowned = true
 	}
 
-	if err == nil {
-		if stat.IsDir() {
-			errMsg := fmt.Errorf("path is a directory: %s", path)
+	hasBeenChowned := false
+	if canBePreChowned {
+		err = os.Chown(path, uid, gid)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				err = fmt.Errorf("error changing file ownership: %w", err)
 
-			return http.StatusBadRequest, errMsg
+				return http.StatusInternalServerError, err
+			}
+		} else {
+			hasBeenChowned = true
 		}
 	}
 
-	file, err := os.Create(path)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
-		errMsg := fmt.Errorf("error creating file: %w", err)
+		if errors.Is(err, syscall.ENOSPC) {
+			err = fmt.Errorf("not enough inodes available: %w", err)
 
-		return http.StatusInternalServerError, errMsg
+			return http.StatusInsufficientStorage, err
+		}
+
+		err := fmt.Errorf("error opening file: %w", err)
+
+		return http.StatusInternalServerError, err
 	}
 
 	defer file.Close()
 
-	err = os.Chown(path, int(uid), int(gid))
-	if err != nil {
-		errMsg := fmt.Errorf("error changing file ownership: %w", err)
+	if !hasBeenChowned {
+		err = os.Chown(path, uid, gid)
+		if err != nil {
+			err := fmt.Errorf("error changing file ownership: %w", err)
 
-		return http.StatusInternalServerError, errMsg
+			return http.StatusInternalServerError, err
+		}
 	}
 
-	_, readErr := file.ReadFrom(part)
-	if readErr != nil {
-		errMsg := fmt.Errorf("error reading file: %w", readErr)
+	_, err = file.ReadFrom(part)
+	if err != nil {
+		if errors.Is(err, syscall.ENOSPC) {
+			err = ErrNoDiskSpace
+			if r.ContentLength > 0 {
+				err = fmt.Errorf("attempted to write %d bytes: %w", r.ContentLength, err)
+			}
 
-		return http.StatusInternalServerError, errMsg
+			return http.StatusInsufficientStorage, err
+		}
+
+		err = fmt.Errorf("error writing file: %w", err)
+
+		return http.StatusInternalServerError, err
 	}
 
 	return http.StatusNoContent, nil
@@ -214,6 +212,15 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
+	uid, gid, err := permissions.GetUserIdInts(u)
+	if err != nil {
+		errMsg = fmt.Errorf("error getting user ids: %w", err)
+
+		jsonError(w, http.StatusInternalServerError, errMsg)
+
+		return
+	}
+
 	paths := UploadSuccess{}
 
 	for {
@@ -240,10 +247,15 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 				return
 			}
 
-			status, processErr := processFile(r, filePath, part, u, a.logger.With().Str(string(logs.OperationIDKey), operationID).Str("event_type", "file_processing").Logger())
-			if processErr != nil {
+			logger := a.logger.
+				With().
+				Str(string(logs.OperationIDKey), operationID).
+				Str("event_type", "file_processing").
+				Logger()
+			status, err := processFile(r, filePath, part, uid, gid, logger)
+			if err != nil {
 				errorCode = status
-				errMsg = processErr
+				errMsg = err
 				jsonError(w, errorCode, errMsg)
 
 				return

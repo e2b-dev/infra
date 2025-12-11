@@ -70,7 +70,7 @@ func New(
 ) (*Handler, error) {
 	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
 
-	uid, gid, err := permissions.GetUserIds(user)
+	uid, gid, err := permissions.GetUserIdUints(user)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
