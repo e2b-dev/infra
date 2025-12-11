@@ -39,8 +39,7 @@ type ProcessExit struct {
 type Handler struct {
 	Config *rpc.ProcessConfig
 
-	cgroupManager cgroups.Manager
-	logger        *zerolog.Logger
+	logger *zerolog.Logger
 
 	Tag *string
 	cmd *exec.Cmd
@@ -137,16 +136,15 @@ func New(
 	outCtx, outCancel := context.WithCancel(ctx)
 
 	h := &Handler{
-		Config:        req.GetProcess(),
-		cmd:           cmd,
-		Tag:           req.Tag,
-		DataEvent:     outMultiplex,
-		cancel:        cancel,
-		outCtx:        outCtx,
-		outCancel:     outCancel,
-		EndEvent:      NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:        logger,
-		cgroupManager: cgroupManager,
+		Config:    req.GetProcess(),
+		cmd:       cmd,
+		Tag:       req.Tag,
+		DataEvent: outMultiplex,
+		cancel:    cancel,
+		outCtx:    outCtx,
+		outCancel: outCancel,
+		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		logger:    logger,
 	}
 
 	if req.GetPty() != nil {

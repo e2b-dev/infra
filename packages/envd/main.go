@@ -257,6 +257,8 @@ func createCgroupManager() (m cgroups.Manager) {
 		return nil
 	}
 
+	maxMemoryReserved := 128 * megabyte
+
 	opts := []cgroups.Cgroup2ManagerOption{
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypePTY, "ptys", map[string]string{
 			"cpu.weight": "200", // gets much preferred cpu access, to help keep these real time
@@ -267,7 +269,7 @@ func createCgroupManager() (m cgroups.Manager) {
 			"memory.low": fmt.Sprintf("%d", 8*megabyte),
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeUser, "user", map[string]string{
-			"memory.high": fmt.Sprintf("%d", int(float64(metrics.MemTotal)*.875)),
+			"memory.high": fmt.Sprintf("%d", min(int(float64(metrics.MemTotal)*.875), maxMemoryReserved)),
 			"cpu.weight":  "50", // less than envd, and less than core processes that default to 100
 		}),
 	}

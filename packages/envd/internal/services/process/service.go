@@ -23,7 +23,7 @@ type Service struct {
 	cgroupManager cgroups.Manager
 }
 
-func newService(l *zerolog.Logger, cgroupManager cgroups.Manager, defaults *execcontext.Defaults) *Service {
+func newService(l *zerolog.Logger, defaults *execcontext.Defaults, cgroupManager cgroups.Manager) *Service {
 	return &Service{
 		logger:        l,
 		processes:     utils.NewMap[uint32, *handler.Handler](),
@@ -33,7 +33,7 @@ func newService(l *zerolog.Logger, cgroupManager cgroups.Manager, defaults *exec
 }
 
 func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults, cgroupManager cgroups.Manager) *Service {
-	service := newService(l, cgroupManager, defaults)
+	service := newService(l, defaults, cgroupManager)
 
 	interceptors := connect.WithInterceptors(logs.NewUnaryLogInterceptor(l))
 
