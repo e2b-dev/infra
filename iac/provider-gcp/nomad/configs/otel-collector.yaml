@@ -221,6 +221,7 @@ processors:
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
+          - "otelcol.*"
           - "pgxpool.*"
 
   filter/only_client_allocs:
