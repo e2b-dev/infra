@@ -35,7 +35,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           install-only: true
-          version: ${{ env.GOLANGCI_LINT }}
+          version: "v${{ env.GOLANGCI_LINT }}"
 
       - name: Format code
         run: make fmt
