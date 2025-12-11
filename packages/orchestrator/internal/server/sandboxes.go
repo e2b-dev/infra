@@ -442,6 +442,8 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 			return
 		}
+
+		logger.L().Info(ctx, "Sandbox snapshot uploaded successfully", logger.WithSandboxID(in.GetSandboxId()))
 	}(context.WithoutCancel(ctx))
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
