@@ -166,7 +166,7 @@ func startProcess(t *testing.T, m *Cgroup2Manager, pt ProcessType) *exec.Cmd {
 func waitForProcess(t *testing.T, cmd *exec.Cmd, timeout time.Duration) error {
 	t.Helper()
 
-	done := make(chan error)
+	done := make(chan error, 1)
 
 	go func() {
 		defer close(done)
