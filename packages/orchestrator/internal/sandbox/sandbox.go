@@ -166,8 +166,13 @@ func NewFactory(
 }
 
 // Wait for all sandboxes to exit
-func (f *Factory) Wait(context.Context) error {
+func (f *Factory) Wait(ctx context.Context) error {
+	l := logger.L()
+	l.Info(ctx, "Waiting for all sandboxes to exit")
+	defer l.Info(ctx, "All sandboxes exited")
+
 	f.wg.Wait()
+
 	return nil
 }
 
