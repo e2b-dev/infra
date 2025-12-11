@@ -59,31 +59,33 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 // Test helper functions for network egress assertions
 // =============================================================================
 
-// assertHTTPRequest asserts that an HTTP/HTTPS request to the given URL succeeds or fails based on expectSuccess
-func assertHTTPRequest(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url string, expectSuccess bool, msg string) {
+// assertSuccessfulHTTPRequest asserts that an HTTP/HTTPS request to the given URL succeeds
+func assertSuccessfulHTTPRequest(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url string, msg string) {
 	t.Helper()
-	connectTimeout, maxTime := "3", "5"
-	if expectSuccess {
-		connectTimeout, maxTime = "5", "10"
-	}
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", connectTimeout, "--max-time", maxTime, "-Iks", url)
-	if expectSuccess {
-		require.NoError(t, err, msg)
-	} else {
-		require.Error(t, err, msg)
-		require.Contains(t, err.Error(), "failed with exit code", "Expected connection failure message")
-	}
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
+	require.NoError(t, err, msg)
 }
 
-// assertDNSQuery asserts that a DNS query to the given server succeeds or fails based on expectSuccess
-func assertDNSQuery(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, dnsServer, domain string, expectSuccess bool, msg string) {
+// assertBlockedHTTPRequest asserts that an HTTP/HTTPS request to the given URL is blocked
+func assertBlockedHTTPRequest(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url string, msg string) {
+	t.Helper()
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", url)
+	require.Error(t, err, msg)
+	require.Contains(t, err.Error(), "failed with exit code", "Expected connection failure message")
+}
+
+// assertSuccessfulDNSQuery asserts that a DNS query to the given server succeeds
+func assertSuccessfulDNSQuery(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, dnsServer, domain string, msg string) {
 	t.Helper()
 	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=3", fmt.Sprintf("@%s", dnsServer), domain)
-	if expectSuccess {
-		require.NoError(t, err, msg)
-	} else {
-		require.Error(t, err, msg)
-	}
+	require.NoError(t, err, msg)
+}
+
+// assertBlockedDNSQuery asserts that a DNS query to the given server is blocked
+func assertBlockedDNSQuery(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, dnsServer, domain string, msg string) {
+	t.Helper()
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=3", fmt.Sprintf("@%s", dnsServer), domain)
+	require.Error(t, err, msg)
 }
 
 // =============================================================================
@@ -110,8 +112,8 @@ func TestEgressFirewallAllowSpecificIP(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to allowed IP 8.8.8.8 to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", false, "Expected curl to non-allowed IP 1.1.1.1 to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to allowed IP 8.8.8.8 to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP 1.1.1.1 to fail")
 }
 
 // TestEgressFirewallBlockSpecificIP tests that blocked IPs cannot be accessed
@@ -133,8 +135,8 @@ func TestEgressFirewallBlockSpecificIP(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", false, "Expected curl to blocked IP 1.1.1.1 to fail")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to non-blocked IP 8.8.8.8 to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to blocked IP 1.1.1.1 to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to non-blocked IP 8.8.8.8 to succeed")
 }
 
 // TestEgressFirewallAllowCIDRRange tests that CIDR ranges work for allowing IPs
@@ -157,8 +159,8 @@ func TestEgressFirewallAllowCIDRRange(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", true, "Expected curl to IP within allowed CIDR range (1.1.1.1) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", false, "Expected curl to IP outside allowed CIDR range (8.8.8.8) to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to IP within allowed CIDR range (1.1.1.1) to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to IP outside allowed CIDR range (8.8.8.8) to fail")
 }
 
 // TestEgressFirewallBlockCIDRRange tests that CIDR ranges work for blocking IPs
@@ -180,9 +182,9 @@ func TestEgressFirewallBlockCIDRRange(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", false, "Expected curl to IP within blocked CIDR range (1.1.1.1) to fail")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.2", false, "Expected curl to IP within blocked CIDR range (1.1.1.2) to fail")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to IP outside blocked CIDR range (8.8.8.8) to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to IP within blocked CIDR range (1.1.1.1) to fail")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.2", "Expected curl to IP within blocked CIDR range (1.1.1.2) to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to IP outside blocked CIDR range (8.8.8.8) to succeed")
 }
 
 // TestEgressFirewallAllowAndBlockCombination tests that allowOut takes precedence over blockOut
@@ -206,8 +208,8 @@ func TestEgressFirewallAllowAndBlockCombination(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to explicitly allowed IP (8.8.8.8) to succeed even though 0.0.0.0/0 is blocked")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", false, "Expected curl to non-allowed IP (1.1.1.1) to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to explicitly allowed IP (8.8.8.8) to succeed even though 0.0.0.0/0 is blocked")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP (1.1.1.1) to fail")
 }
 
 // TestEgressFirewallPersistsAfterResume tests that network config persists after pause/resume
@@ -232,8 +234,8 @@ func TestEgressFirewallPersistsAfterResume(t *testing.T) {
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Test before pause
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to allowed IP (8.8.8.8) to succeed before pause")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", false, "Expected curl to non-allowed IP (1.1.1.1) to fail before pause")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to allowed IP (8.8.8.8) to succeed before pause")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP (1.1.1.1) to fail before pause")
 
 	// Pause the sandbox
 	respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
@@ -248,8 +250,8 @@ func TestEgressFirewallPersistsAfterResume(t *testing.T) {
 	require.Equal(t, http.StatusCreated, respResume.StatusCode(), "Expected status code 201 Created, got %d", respResume.StatusCode())
 
 	// Test after resume
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to allowed IP (8.8.8.8) to succeed after resume")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", false, "Expected curl to non-allowed IP (1.1.1.1) to fail after resume")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to allowed IP (8.8.8.8) to succeed after resume")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP (1.1.1.1) to fail after resume")
 }
 
 // TestEgressFirewallEmptyConfig tests that empty allowOut list is treated as no restriction
@@ -271,7 +273,7 @@ func TestEgressFirewallEmptyConfig(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to succeed with empty allowOut list")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to succeed with empty allowOut list")
 }
 
 // TestEgressFirewallAllowAll tests that 0.0.0.0/0 allows all traffic
@@ -294,8 +296,8 @@ func TestEgressFirewallAllowAll(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to 8.8.8.8 to succeed with 0.0.0.0/0 allow")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", true, "Expected curl to 1.1.1.1 to succeed with 0.0.0.0/0 allow")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to 8.8.8.8 to succeed with 0.0.0.0/0 allow")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to 1.1.1.1 to succeed with 0.0.0.0/0 allow")
 }
 
 // TestEgressFirewallAllowOverridesBlock tests that allowOut takes precedence over blockOut
@@ -319,8 +321,8 @@ func TestEgressFirewallAllowOverridesBlock(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", true, "Expected curl to allowed IP (1.1.1.1) to succeed since allow takes precedence over block")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to other IP (8.8.8.8) to succeed")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to allowed IP (1.1.1.1) to succeed since allow takes precedence over block")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to other IP (8.8.8.8) to succeed")
 }
 
 // TestEgressFirewallMultipleAllowedIPs tests multiple allowed IPs
@@ -343,10 +345,10 @@ func TestEgressFirewallMultipleAllowedIPs(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to allowed IP (8.8.8.8) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.4.4", true, "Expected curl to allowed IP (8.8.4.4) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", true, "Expected curl to allowed IP (1.1.1.1) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://9.9.9.9", false, "Expected curl to non-allowed IP (9.9.9.9) to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to allowed IP (8.8.8.8) to succeed")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.4.4", "Expected curl to allowed IP (8.8.4.4) to succeed")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to allowed IP (1.1.1.1) to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://9.9.9.9", "Expected curl to non-allowed IP (9.9.9.9) to fail")
 }
 
 // TestEgressFirewallWithInternetAccessFalse tests that network config takes precedence over allow_internet_access
@@ -370,8 +372,8 @@ func TestEgressFirewallWithInternetAccessFalse(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to succeed for allowed IP even with allow_internet_access=false (network config takes precedence)")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", false, "Expected curl to non-allowed IP to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to succeed for allowed IP even with allow_internet_access=false (network config takes precedence)")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP to fail")
 }
 
 // TestEgressFirewallPrivateIPRangesAlwaysBlocked tests that private IP ranges cannot be allowed
@@ -431,7 +433,7 @@ func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
 
 			envdClient := setup.GetEnvdClient(t, ctx)
 
-			assertHTTPRequest(t, ctx, sbx, envdClient, tc.testIP, false, fmt.Sprintf("Expected curl to private IP %s to fail", tc.testIP))
+			assertBlockedHTTPRequest(t, ctx, sbx, envdClient, tc.testIP, fmt.Sprintf("Expected curl to private IP %s to fail", tc.testIP))
 		})
 	}
 }
@@ -456,8 +458,8 @@ func TestEgressFirewallAllowAllDuplicate(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to 8.8.8.8 to succeed with duplicate 0.0.0.0/0 allow")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", true, "Expected curl to 1.1.1.1 to succeed with duplicate 0.0.0.0/0 allow")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to 8.8.8.8 to succeed with duplicate 0.0.0.0/0 allow")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to 1.1.1.1 to succeed with duplicate 0.0.0.0/0 allow")
 }
 
 // TestEgressFirewallRegularIPThenAllowAll tests that adding a regular IP and then 0.0.0.0/0 works correctly
@@ -480,8 +482,8 @@ func TestEgressFirewallRegularIPThenAllowAll(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", true, "Expected curl to 8.8.8.8 to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", true, "Expected curl to 1.1.1.1 to succeed (0.0.0.0/0 allows all)")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to 8.8.8.8 to succeed")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to 1.1.1.1 to succeed (0.0.0.0/0 allows all)")
 }
 
 // TestEgressFirewallAllowDomainThroughBlockedInternet tests that a specific domain can be allowed
@@ -506,8 +508,8 @@ func TestEgressFirewallAllowDomainThroughBlockedInternet(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", true, "Expected curl to allowed domain (google.com) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", false, "Expected curl to non-allowed domain (cloudflare.com) to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail")
 }
 
 // TestEgressFirewallAllowWildcardDomainThroughBlockedInternet tests that wildcard domain patterns work
@@ -531,9 +533,9 @@ func TestEgressFirewallAllowWildcardDomainThroughBlockedInternet(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://www.google.com", true, "Expected curl to subdomain (www.google.com) matching wildcard (*.google.com) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://maps.google.com", true, "Expected curl to subdomain (maps.google.com) matching wildcard (*.google.com) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", false, "Expected curl to non-matching domain (cloudflare.com) to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://www.google.com", "Expected curl to subdomain (www.google.com) matching wildcard (*.google.com) to succeed")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://maps.google.com", "Expected curl to subdomain (maps.google.com) matching wildcard (*.google.com) to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-matching domain (cloudflare.com) to fail")
 }
 
 // TestEgressFirewallExactDomainMatchVsSubdomain tests that exact domain match does not include subdomains
@@ -557,8 +559,8 @@ func TestEgressFirewallExactDomainMatchVsSubdomain(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", true, "Expected curl to exact domain (google.com) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://www.google.com", false, "Expected curl to subdomain (www.google.com) to fail when only exact domain (google.com) is allowed")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to exact domain (google.com) to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://www.google.com", "Expected curl to subdomain (www.google.com) to fail when only exact domain (google.com) is allowed")
 }
 
 // TestEgressFirewallAllowAllDomainsWildcard tests that "*" wildcard allows all domains
@@ -582,9 +584,9 @@ func TestEgressFirewallAllowAllDomainsWildcard(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", true, "Expected curl to google.com to succeed with '*' wildcard")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", true, "Expected curl to cloudflare.com to succeed with '*' wildcard")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://github.com", true, "Expected curl to github.com to succeed with '*' wildcard")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to google.com to succeed with '*' wildcard")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to cloudflare.com to succeed with '*' wildcard")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://github.com", "Expected curl to github.com to succeed with '*' wildcard")
 }
 
 // TestEgressFirewallDomainCaseInsensitive tests that domain matching is case-insensitive
@@ -608,8 +610,8 @@ func TestEgressFirewallDomainCaseInsensitive(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", true, "Expected curl to google.com to succeed when Google.COM is allowed (case-insensitive)")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", false, "Expected curl to non-allowed domain (cloudflare.com) to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to google.com to succeed when Google.COM is allowed (case-insensitive)")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail")
 }
 
 // TestEgressFirewallAllowDomainAndIP tests mixed domain and IP allowlist
@@ -633,10 +635,10 @@ func TestEgressFirewallAllowDomainAndIP(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", true, "Expected curl to allowed domain (google.com) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", true, "Expected curl to allowed IP (1.1.1.1) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", false, "Expected curl to non-allowed domain (cloudflare.com) to fail")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.4.4", false, "Expected curl to non-allowed IP (8.8.4.4) to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to allowed IP (1.1.1.1) to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.4.4", "Expected curl to non-allowed IP (8.8.4.4) to fail")
 }
 
 // TestEgressFirewallHTTPSByIPNoHostname tests that HTTPS requests by IP (no SNI hostname)
@@ -661,9 +663,9 @@ func TestEgressFirewallHTTPSByIPNoHostname(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", true, "Expected curl to allowed domain (cloudflare.com) to succeed")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to allowed domain (cloudflare.com) to succeed")
 	// HTTPS request by IP (1.1.1.1 is Cloudflare's IP) is blocked because there's no hostname/SNI to match
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", false, "Expected curl to IP (https://1.1.1.1) to fail when only domain is allowed (no SNI hostname)")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to IP (https://1.1.1.1) to fail when only domain is allowed (no SNI hostname)")
 }
 
 // TestEgressFirewallDomainPersistsAfterResume tests that domain-based network config persists after pause/resume
@@ -689,8 +691,8 @@ func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Test before pause
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", true, "Expected curl to allowed domain (google.com) to succeed before pause")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", false, "Expected curl to non-allowed domain (cloudflare.com) to fail before pause")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed before pause")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail before pause")
 
 	// Pause the sandbox
 	respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
@@ -705,8 +707,8 @@ func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
 	require.Equal(t, http.StatusCreated, respResume.StatusCode(), "Expected status code 201 Created, got %d", respResume.StatusCode())
 
 	// Test after resume
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", true, "Expected curl to allowed domain (google.com) to succeed after resume")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", false, "Expected curl to non-allowed domain (cloudflare.com) to fail after resume")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed after resume")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail after resume")
 }
 
 // =============================================================================
@@ -734,8 +736,8 @@ func TestEgressFirewallHTTPDomainFiltering(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertHTTPRequest(t, ctx, sbx, envdClient, "http://postman-echo.com/get", true, "Expected HTTP curl to allowed domain (httpbin.org) to succeed")
-	assertHTTPRequest(t, ctx, sbx, envdClient, "http://example.com", false, "Expected HTTP curl to non-allowed domain (example.com) to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "http://postman-echo.com/get", "Expected HTTP curl to allowed domain (httpbin.org) to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "http://example.com", "Expected HTTP curl to non-allowed domain (example.com) to fail")
 }
 
 // =============================================================================
@@ -763,8 +765,8 @@ func TestEgressFirewallUDPAllowedIP(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertDNSQuery(t, ctx, sbx, envdClient, "8.8.8.8", "google.com", true, "Expected DNS query (UDP) to allowed IP (8.8.8.8) to succeed")
-	assertDNSQuery(t, ctx, sbx, envdClient, "1.1.1.1", "google.com", false, "Expected DNS query (UDP) to non-allowed IP (1.1.1.1) to fail")
+	assertSuccessfulDNSQuery(t, ctx, sbx, envdClient, "8.8.8.8", "google.com", "Expected DNS query (UDP) to allowed IP (8.8.8.8) to succeed")
+	assertBlockedDNSQuery(t, ctx, sbx, envdClient, "1.1.1.1", "google.com", "Expected DNS query (UDP) to non-allowed IP (1.1.1.1) to fail")
 }
 
 // TestEgressFirewallUDPAllowedCIDR tests that UDP traffic to allowed CIDR range works
@@ -788,6 +790,6 @@ func TestEgressFirewallUDPAllowedCIDR(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	assertDNSQuery(t, ctx, sbx, envdClient, "8.8.8.8", "google.com", true, "Expected DNS query (UDP) to IP within allowed CIDR (8.8.8.0/24) to succeed")
-	assertDNSQuery(t, ctx, sbx, envdClient, "1.1.1.1", "google.com", false, "Expected DNS query (UDP) to IP outside allowed CIDR to fail")
+	assertSuccessfulDNSQuery(t, ctx, sbx, envdClient, "8.8.8.8", "google.com", "Expected DNS query (UDP) to IP within allowed CIDR (8.8.8.0/24) to succeed")
+	assertBlockedDNSQuery(t, ctx, sbx, envdClient, "1.1.1.1", "google.com", "Expected DNS query (UDP) to IP outside allowed CIDR to fail")
 }
