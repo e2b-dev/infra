@@ -62,14 +62,14 @@ func startSandboxProxy(lc fx.Lifecycle, s fx.Shutdowner, proxy *proxy.SandboxPro
 					return nil
 				}
 
-				return nil
+				return err
 			})
 
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
-			logger.Info(ctx, "closing network pool")
-			defer logger.Info(ctx, "network pool closed")
+			logger.Info(ctx, "closing sandbox proxy")
+			defer logger.Info(ctx, "sandbox proxy closed")
 
 			return proxy.Close(ctx)
 		},
