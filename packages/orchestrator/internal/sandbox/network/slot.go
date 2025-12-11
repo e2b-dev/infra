@@ -259,7 +259,8 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	))
 	defer span.End()
 
-	if e := network.GetEgress(); len(e.GetAllowedCidrs()) == 0 && len(e.GetDeniedCidrs()) == 0 {
+	egress := network.GetEgress()
+	if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
 		// Internet access is allowed by default.
 		return nil
 	}
@@ -273,6 +274,8 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
+		s.Firewall.SetTCPFirewall(true)
+
 		for _, cidr := range network.GetEgress().GetAllowedCidrs() {
 			err = s.Firewall.AddAllowedCIDR(cidr)
 			if err != nil {
@@ -313,7 +316,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		err := s.Firewall.ResetAllSets()
+		err := s.Firewall.Reset()
 		if err != nil {
 			return fmt.Errorf("error cleaning firewall rules: %w", err)
 		}

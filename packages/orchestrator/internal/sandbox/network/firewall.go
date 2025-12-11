@@ -20,6 +20,8 @@ const (
 
 	// allowedMark is the mark value to signal "allowed" traffic (skip DNAT)
 	allowedMark = 0x1
+
+	defaultUseTCPFirewall = false
 )
 
 type Firewall struct {
@@ -34,6 +36,12 @@ type Firewall struct {
 
 	userDenySet  set.Set
 	userAllowSet set.Set
+
+	// useTCPFirewall controls whether TCP traffic is redirected to the proxy.
+	// When false, all TCP packets are marked to skip the proxy redirect.
+	useTCPFirewall bool
+	// tcpFirewallSkipRule allows us to add/remove the rule dynamically by marking all TCP packets.
+	tcpFirewallSkipRule *nftables.Rule
 
 	tapInterface string
 
@@ -99,7 +107,7 @@ func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 	}
 
 	// Populate the sets with initial data
-	err = fw.ResetAllSets()
+	err = fw.Reset()
 	if err != nil {
 		return nil, fmt.Errorf("error while configuring initial data: %w", err)
 	}
@@ -243,10 +251,14 @@ func (fw *Firewall) installRules() error {
 
 	// Default policy: ACCEPT
 	// - Non-TCP not in user sets: allowed (default policy)
-	// - TCP: continues unmarked, iptables REDIRECT handles proxy redirect
+	// - TCP marking rule is added/removed dynamically
 
 	if err := fw.conn.Flush(); err != nil {
 		return fmt.Errorf("flush nftables changes: %w", err)
+	}
+
+	if err := fw.SetTCPFirewall(defaultUseTCPFirewall); err != nil {
+		return fmt.Errorf("set default TCP firewall: %w", err)
 	}
 
 	return nil
@@ -282,7 +294,10 @@ func (fw *Firewall) AddAllowedCIDR(cidr string) error {
 	return nil
 }
 
-func (fw *Firewall) ResetAllSets() error {
+func (fw *Firewall) Reset() error {
+	if err := fw.SetTCPFirewall(defaultUseTCPFirewall); err != nil {
+		return fmt.Errorf("clear TCP firewall: %w", err)
+	}
 	if err := fw.ResetDeniedSets(); err != nil {
 		return fmt.Errorf("clear denied set: %w", err)
 	}
@@ -325,6 +340,45 @@ func (fw *Firewall) ResetAllowedSets() error {
 	}
 
 	return fw.conn.Flush()
+}
+
+// SetTCPFirewall controls whether TCP traffic is redirected to the proxy.
+func (fw *Firewall) SetTCPFirewall(useTCPFirewall bool) error {
+	if useTCPFirewall {
+		// Enable TCP rerouting: remove the TCP mark rule if it exists
+		if fw.tcpFirewallSkipRule != nil {
+			if err := fw.conn.DelRule(fw.tcpFirewallSkipRule); err != nil {
+				return fmt.Errorf("delete TCP mark rule: %w", err)
+			}
+			if err := fw.conn.Flush(); err != nil {
+				return fmt.Errorf("flush delete TCP mark rule: %w", err)
+			}
+			fw.tcpFirewallSkipRule = nil
+		}
+	} else {
+		// Disable TCP rerouting: add a rule to mark all TCP packets as allowed
+		fw.tcpFirewallSkipRule = fw.conn.AddRule(&nftables.Rule{
+			Table: fw.table,
+			Chain: fw.filterChain,
+			Exprs: append(append(fw.tapIfaceMatch(),
+				// Match TCP protocol
+				&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     []byte{unix.IPPROTO_TCP},
+				}),
+				markAndAccept()...,
+			),
+		})
+		if err := fw.conn.Flush(); err != nil {
+			return fmt.Errorf("flush add TCP mark rule: %w", err)
+		}
+	}
+
+	fw.useTCPFirewall = useTCPFirewall
+
+	return nil
 }
 
 func addCIDRToSet(conn *nftables.Conn, ipset set.Set, cidr string) error {
