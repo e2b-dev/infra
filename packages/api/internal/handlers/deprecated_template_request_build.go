@@ -8,13 +8,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/dberrors"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
@@ -153,6 +156,11 @@ func (a *APIStore) buildTemplate(
 	templateID api.TemplateID,
 	body api.TemplateBuildRequest,
 ) (*template.RegisterBuildResponse, *api.APIError) {
+	firecrackerVersion, err := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
+	if err != nil {
+		logger.L().Warn(ctx, "error getting build firecracker version feature flag, using default", zap.Error(err))
+	}
+
 	// Create the build
 	data := template.RegisterBuildData{
 		ClusterID:          utils.WithClusterFallback(team.ClusterID),
@@ -167,7 +175,7 @@ func (a *APIStore) buildTemplate(
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV1Version,
 		KernelVersion:      a.config.DefaultKernelVersion,
-		FirecrackerVersion: a.config.DefaultFirecrackerVersion,
+		FirecrackerVersion: firecrackerVersion,
 	}
 
 	return template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, data)
