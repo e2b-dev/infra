@@ -48,6 +48,9 @@ type Options struct {
 }
 
 type Counters struct {
+	FileC atomic.Int64
+	DirC  atomic.Int64
+
 	DeleteSubmittedC   atomic.Int64
 	DeleteAttemptC     atomic.Int64
 	DeleteErrC         atomic.Int64
@@ -265,7 +268,9 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 			runtime.ReadMemStats(&mem)
 			c.Info(ctx, "memory usage",
 				zap.Int("batch", batchNumber),
-				zap.Uint64("total_alloc_bytes", mem.TotalAlloc),
+				zap.Int64("files", c.FileC.Load()),
+				zap.Int64("dirs", c.DirC.Load()),
+				zap.Uint64("total_alloc", mem.TotalAlloc),
 				zap.Uint64("num_gc", uint64(mem.NumGC)),
 				zap.Uint64("sys_bytes", mem.Sys-baseMem.Sys),
 				zap.Uint64("alloc_bytes", mem.Alloc-baseMem.Alloc),
@@ -298,6 +303,7 @@ func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
 		if newParent {
 			if prevParent != nil {
 				prevParent.reinsertFiles(files)
+				c.FileC.Add(int64(len(files)))
 			}
 			prevParent = parent
 			files = files[:0]
@@ -312,6 +318,7 @@ func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
 	}
 	if prevParent != nil {
 		prevParent.reinsertFiles(files)
+		c.FileC.Add(int64(len(files)))
 	}
 }
 
