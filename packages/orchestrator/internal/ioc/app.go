@@ -63,7 +63,6 @@ func build(deps StaticDeps) []fx.Option {
 			startHyperloopServer,
 			startNetworkPool,
 			startSandboxProxy,
-			startServiceInfo,
 			withCMUXWaitBeforeShutdown(
 				startCMUXServer,
 			),

@@ -95,7 +95,7 @@ func startCMUXServer(
 
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
-			stopCMUXServerMockable(
+			stopCMUXServer(
 				ctx, logger,
 				grpcListener, grpcServer,
 				httpListener, healthHTTPServer.Server,
@@ -128,7 +128,7 @@ const (
 	httpShutdownTimeout = 24 * time.Hour
 )
 
-func stopCMUXServerMockable(
+func stopCMUXServer(
 	ctx context.Context,
 	logger logger.Logger,
 	grpcListener net.Listener,
@@ -142,6 +142,9 @@ func stopCMUXServerMockable(
 	logger.Info(ctx, "marking service as 'draining'")
 	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
 		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
+
+		// Wait for draining state to propagate to all consumers
+		time.Sleep(15 * time.Second)
 	}
 
 	for _, preShutdown := range preCMUXShutdowns {
