@@ -107,10 +107,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 			dispatch := NewDispatch(serverc, d.Backend)
 			// Start reading commands on the socket and dispatching them to our provider
-			d.handlersWg.Add(1)
-			go func() {
-				defer d.handlersWg.Done()
-
+			d.handlersWg.Go(func() {
 				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
 				logger.L().Info(ctx, "closing handler for NBD commands",
@@ -118,7 +115,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 					zap.Uint32("device_index", deviceIndex),
 					zap.Int("socket_index", i),
 				)
-			}()
+			})
 
 			d.socksServer = append(d.socksServer, serverc)
 			d.socksClient = append(d.socksClient, client)

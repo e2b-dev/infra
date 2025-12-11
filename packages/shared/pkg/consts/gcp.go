@@ -15,4 +15,4 @@ var (
 	GCPRegion                  = os.Getenv("GCP_REGION")
 )
 
-var EncodedDockerCredentials = base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("_json_key_base64:%s", GoogleServiceAccountSecret)))
+var EncodedDockerCredentials = base64.StdEncoding.EncodeToString(fmt.Appendf(nil, "_json_key_base64:%s", GoogleServiceAccountSecret))

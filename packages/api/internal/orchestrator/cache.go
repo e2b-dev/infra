@@ -69,17 +69,13 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 		nomadNodes = nomadSD
 	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		o.syncLocalDiscoveredNodes(spanCtx, nomadNodes)
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		o.syncClusterDiscoveredNodes(spanCtx)
-	}()
+	})
 
 	// Wait for nodes discovery to finish
 	wg.Wait()
@@ -90,10 +86,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 
 	defer wg.Wait()
 	for _, n := range o.nodes.Items() {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			// cluster and local nodes needs to by synced differently,
 			// because each of them is taken from different source pool
 			var err error
@@ -111,7 +104,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 
 				o.deregisterNode(n)
 			}
-		}()
+		})
 	}
 }
 
@@ -126,14 +119,12 @@ func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered 
 	for _, n := range discovered {
 		// If the node is not in the list, connect to it
 		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				err := o.connectToNode(connectLocalSpanCtx, n)
 				if err != nil {
 					logger.L().Error(ctx, "Error connecting to node", zap.Error(err))
 				}
-			}()
+			})
 		}
 	}
 }
@@ -151,11 +142,9 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 		for _, n := range cluster.GetOrchestrators() {
 			// If the node is not in the list, connect to it
 			if o.GetNode(cluster.ID, n.NodeID) == nil {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					o.connectToClusterNode(ctx, cluster, n)
-				}()
+				})
 			}
 		}
 	}
