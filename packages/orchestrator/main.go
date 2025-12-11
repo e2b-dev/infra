@@ -5,16 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
-	"os/signal"
 	"slices"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/soheilhy/cmux"
+	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -28,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/ioc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -143,9 +141,6 @@ func run(config cfg.Config) (success bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
-	defer sigCancel()
-
 	nodeID := env.GetNodeID()
 	serviceName := cfg.GetServiceName(services)
 	serviceInstanceID := uuid.NewString()
@@ -159,9 +154,6 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	serviceInfo := service.NewInfoContainer(ctx, nodeID, version, commitSHA, serviceInstanceID, machineInfo, config)
-
-	serviceError := make(chan error)
-	defer close(serviceError)
 
 	var g errgroup.Group
 	// defer waiting on the group so that this runs even when
@@ -215,7 +207,7 @@ func run(config cfg.Config) (success bool) {
 	defer func(l logger.Logger) {
 		err := l.Sync()
 		if err != nil {
-			log.Printf("error while shutting down sandbox logger: %v", err)
+			log.Printf("error while shutting down external sandbox logger: %v", err)
 			success = false
 		}
 	}(sbxLoggerExternal)
@@ -233,34 +225,13 @@ func run(config cfg.Config) (success bool) {
 	defer func(l logger.Logger) {
 		err := l.Sync()
 		if err != nil {
-			log.Printf("error while shutting down sandbox logger: %v", err)
+			log.Printf("error while shutting down internal sandbox logger: %v", err)
 			success = false
 		}
 	}(sbxLoggerInternal)
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
 	globalLogger.Info(ctx, "Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
-
-	startService := func(name string, f func() error) {
-		g.Go(func() error {
-			l := globalLogger.With(zap.String("service", name))
-			l.Info(ctx, "starting service")
-
-			err := f()
-			if err != nil {
-				l.Error(ctx, "service returned an error", zap.Error(err))
-			}
-
-			select {
-			case serviceError <- err:
-			default:
-				// Don't block if the serviceError channel is already closed
-				// or if the error is already sent
-			}
-
-			return serviceDoneError{name: name}
-		})
-	}
 
 	var closers []closer
 
@@ -354,27 +325,12 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create sandbox proxy", zap.Error(err))
 	}
-	startService("sandbox proxy", func() error {
-		err := sandboxProxy.Start(ctx)
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-
-		return err
-	})
-	closers = append(closers, closer{"sandbox proxy", sandboxProxy.Close})
 
 	// device pool
 	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create device pool", zap.Error(err))
 	}
-	startService("nbd device pool", func() error {
-		devicePool.Populate(ctx)
-
-		return nil
-	})
-	closers = append(closers, closer{"device pool", devicePool.Close})
 
 	// network pool
 	slotStorage, err := newStorage(ctx, nodeID, config.NetworkConfig)
@@ -382,12 +338,6 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create network pool", zap.Error(err))
 	}
 	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
-	startService("network pool", func() error {
-		networkPool.Populate(ctx)
-
-		return nil
-	})
-	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
@@ -433,15 +383,6 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create hyperloop server", zap.Error(err))
 	}
-	startService("hyperloop server", func() error {
-		err := hyperloopSrv.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-
-		return err
-	})
-	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
 
 	grpcServer := factories.NewGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
@@ -479,30 +420,7 @@ func run(config cfg.Config) (success bool) {
 	grpcHealth := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
 
-	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
-	cmuxServer, err := factories.NewCMUXServer(ctx, config.GRPCPort)
-	if err != nil {
-		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
-	}
-	startService("cmux server", func() error {
-		logger.L().Info(ctx, "Starting network server", zap.Uint16("port", config.GRPCPort))
-		err := cmuxServer.Serve()
-		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
-			return nil
-		}
-
-		return err
-	})
-	closers = append(closers, closer{"cmux server", func(context.Context) error {
-		logger.L().Info(ctx, "Shutting down cmux server")
-		cmuxServer.Close()
-
-		return nil
-	}})
-
-	// http server
-	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
-
+	// health check server
 	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create healthcheck", zap.Error(err))
@@ -511,63 +429,37 @@ func run(config cfg.Config) (success bool) {
 	httpServer := factories.NewHTTPServer()
 	httpServer.Handler = healthcheck.CreateHandler()
 
-	startService("http server", func() error {
-		err := httpServer.Serve(httpListener)
-		switch {
-		case errors.Is(err, cmux.ErrServerClosed):
-			return nil
-		case errors.Is(err, http.ErrServerClosed):
-			return nil
-		default:
-			return err
-		}
-	})
-	closers = append(closers, closer{"http server", httpServer.Shutdown})
+	// ---- ioc container, for lifecycle management ----
 
-	// grpc server
-	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
-	startService("grpc server", func() error {
-		return grpcServer.Serve(grpcListener)
-	})
-	closers = append(closers, closer{"grpc server", func(context.Context) error {
-		logger.L().Info(ctx, "Shutting down grpc server")
-		grpcServer.GracefulStop()
-
-		return nil
-	}})
-
-	// Wait for the shutdown signal or if some service fails
-	select {
-	case <-sig.Done():
-		logger.L().Info(ctx, "Shutdown signal received")
-	case serviceErr := <-serviceError:
-		logger.L().Error(ctx, "Service error", zap.Error(serviceErr))
+	// collect deps created here
+	deps := ioc.StaticDeps{
+		Config:           config,
+		DevicePool:       devicePool,
+		GRPCServer:       grpcServer,
+		HealthHTTPServer: httpServer,
+		HyperloopServer:  hyperloopSrv,
+		NetworkPool:      networkPool,
+		SandboxFactory:   sandboxFactory,
+		SandboxProxy:     sandboxProxy,
+		ServiceInfo:      serviceInfo,
+		TemplateManager:  tmpl,
+		TracedLogger:     globalLogger,
+		VersionInfo: ioc.VersionInfo{
+			Version: version,
+			Commit:  commitSHA,
+		},
 	}
+
+	// create the ioc app
+	app := ioc.New(deps, fx.StopTimeout(time.Hour*24))
+
+	// run the ioc app
+	app.Run()
 
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 	defer cancelCloseCtx()
 	if config.ForceStop {
 		cancelCloseCtx()
-	}
-
-	// Mark service draining if not already.
-	// If service stats was previously changed via API, we don't want to override it.
-	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
-		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
-
-		// Wait for draining state to propagate to all consumers
-		if !env.IsLocal() {
-			time.Sleep(15 * time.Second)
-		}
-	}
-
-	// Wait for services to be drained before closing them
-	if tmpl != nil {
-		err := tmpl.Wait(closeCtx)
-		if err != nil {
-			logger.L().Error(ctx, "error while waiting for template manager to drain", zap.Error(err))
-			success = false
-		}
 	}
 
 	slices.Reverse(closers)

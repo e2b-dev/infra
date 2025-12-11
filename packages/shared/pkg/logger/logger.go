@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -159,7 +160,17 @@ func (t *TracedLogger) WithOptions(opts ...zap.Option) Logger {
 }
 
 func (t *TracedLogger) Sync() error {
-	return t.innerLogger.Sync()
+	err := t.innerLogger.Sync()
+
+	return ignoreInvalidArgument(err)
+}
+
+func ignoreInvalidArgument(err error) error {
+	if errors.Is(err, os.ErrInvalid) {
+		return nil
+	}
+
+	return err
 }
 
 func (t *TracedLogger) Detach(ctx context.Context) *zap.Logger {
