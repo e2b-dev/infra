@@ -6,6 +6,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 func TestMatchDomain(t *testing.T) {
@@ -160,18 +161,6 @@ func TestIsEgressAllowed(t *testing.T) {
 			ip:       net.ParseIP("1.2.3.4"),
 			want:     true,
 		},
-		{
-			// No denied CIDRs configured, so traffic is allowed by default.
-			name: "default allow: no denied CIDRs means all traffic allowed",
-			network: &orchestrator.SandboxNetworkConfig{
-				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedDomains: []string{"other.com"},
-				},
-			},
-			hostname: "unrelated.com",
-			ip:       net.ParseIP("8.8.8.8"),
-			want:     true,
-		},
 
 		// ---------------------------------------------------------------------
 		// Denied CIDRs (The Only Blocking Mechanism)
@@ -285,25 +274,24 @@ func TestIsEgressAllowed(t *testing.T) {
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
 					AllowedDomains: []string{"example.com"},
-					DeniedCidrs:    []string{"1.2.3.4/32"},
+					DeniedCidrs:    []string{sandbox_network.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "example.com",
-			ip:       net.ParseIP("1.2.3.4"), // This IP is in denied list
-			want:     true,                   // But domain bypass was checked first
+			ip:       net.ParseIP("1.2.3.4"),
+			want:     true,
 		},
 		{
-			// When bypass doesn't match, denied CIDR blocks traffic
 			name: "no bypass match: denied CIDR blocks traffic",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
 					AllowedDomains: []string{"allowed.com"},
 					AllowedCidrs:   []string{"192.168.0.0/16"},
-					DeniedCidrs:    []string{"10.0.0.0/8"},
+					DeniedCidrs:    []string{sandbox_network.AllInternetTrafficCIDR},
 				},
 			},
-			hostname: "other.com",             // Doesn't match allowed domain
-			ip:       net.ParseIP("10.1.2.3"), // Doesn't match allowed CIDR, but matches denied
+			hostname: "other.com",
+			ip:       net.ParseIP("10.1.2.3"),
 			want:     false,
 		},
 
@@ -315,6 +303,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
 					AllowedDomains: []string{"first.com", "second.com", "third.com"},
+					DeniedCidrs:    []string{sandbox_network.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "second.com",
@@ -326,6 +315,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
 					AllowedCidrs: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
+					DeniedCidrs:  []string{sandbox_network.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "",

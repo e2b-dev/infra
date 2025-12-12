@@ -33,6 +33,10 @@ const (
 	InstanceIDPrefix            = "i"
 	metricTemplateAlias         = metrics.MetricPrefix + "template.alias"
 	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
+
+	// Network validation error messages
+	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+	ErrMsgCIDRsRequireDenyOut    = "When specifying allowed CIDRs in allow out, you must include intersecting denied CIDRs."
 )
 
 // mostUsedTemplates is a map of the most used template aliases.
@@ -336,5 +340,83 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 		}
 	}
 
+	// Validate that AllowOut rules are meaningful (require corresponding DenyOut)
+	allowOut := sharedUtils.DerefOrDefault(network.AllowOut, nil)
+	if len(allowOut) > 0 {
+		allowedCIDRs, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
+
+		// Check if DenyOut contains block-all CIDR
+		hasBlockAll := false
+		for _, cidr := range denyOut {
+			if cidr == sandbox_network.AllInternetTrafficCIDR {
+				hasBlockAll = true
+
+				break
+			}
+		}
+
+		// When specifying domains, require block-all CIDR in DenyOut
+		// Without this, domain filtering is meaningless (traffic is allowed by default)
+		if len(allowedDomains) > 0 && !hasBlockAll {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0"),
+				ClientMsg: ErrMsgDomainsRequireBlockAll,
+			}
+		}
+
+		// When specifying CIDRs in AllowOut, require that each allowed CIDR is covered by denied CIDRs
+		// Without denied CIDRs that cover the allowed range, allowlist is meaningless
+		if len(allowedCIDRs) > 0 {
+			if len(denyOut) == 0 {
+				return &api.APIError{
+					Code:      http.StatusBadRequest,
+					Err:       fmt.Errorf("allow out contains CIDRs but deny_out is empty"),
+					ClientMsg: ErrMsgCIDRsRequireDenyOut,
+				}
+			}
+
+			// If block-all is present, all allowed CIDRs are covered
+			if !hasBlockAll {
+				// Check each allowed CIDR has intersection with denied CIDRs
+				for _, allowedCIDR := range allowedCIDRs {
+					if !cidrIntersectsAny(allowedCIDR, denyOut) {
+						return &api.APIError{
+							Code:      http.StatusBadRequest,
+							Err:       fmt.Errorf("allowed CIDR %s has no intersection with any denied CIDR", allowedCIDR),
+							ClientMsg: fmt.Sprintf("Allowed CIDR '%s' is not covered by any denied CIDR. The allowed CIDR must intersect with at least one denied CIDR to be meaningful.", allowedCIDR),
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return nil
+}
+
+// cidrIntersectsAny checks if a CIDR (or IP) intersects with any CIDR in the list.
+// Two CIDRs intersect if one contains the network address of the other.
+func cidrIntersectsAny(cidr string, cidrList []string) bool {
+	// Parse the CIDR we're checking (convert IP to /32 CIDR if needed)
+	cidrStr := sandbox_network.AddressStringToCIDR(cidr)
+	_, cidrNet, err := net.ParseCIDR(cidrStr)
+	if err != nil {
+		return false
+	}
+
+	for _, deniedCIDR := range cidrList {
+		deniedStr := sandbox_network.AddressStringToCIDR(deniedCIDR)
+		_, deniedNet, err := net.ParseCIDR(deniedStr)
+		if err != nil {
+			continue
+		}
+
+		// Check if either CIDR contains the other's network address
+		if deniedNet.Contains(cidrNet.IP) || cidrNet.Contains(deniedNet.IP) {
+			return true
+		}
+	}
+
+	return false
 }
