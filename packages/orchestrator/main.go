@@ -373,9 +373,7 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create device pool", zap.Error(err))
 	}
 	startService("nbd device pool", func(ctx context.Context) error {
-		devicePool.Populate(ctx)
-
-		return nil
+		return devicePool.Populate(ctx)
 	})
 	closers = append(closers, closer{"device pool", devicePool.Close})
 
@@ -386,9 +384,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
 	startService("network pool", func(ctx context.Context) error {
-		networkPool.Populate(ctx)
-
-		return nil
+		return networkPool.Populate(ctx)
 	})
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
