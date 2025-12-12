@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"os"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -66,7 +67,7 @@ func recordCacheWrite(ctx context.Context, bytesWritten int64, t cacheType, op c
 
 func recordCacheReadError[T ~string](ctx context.Context, t cacheType, op T, err error) {
 	// don't record "we haven't cached this yet" as an error
-	if os.IsNotExist(err) {
+	if errors.Is(err, os.ErrNotExist) {
 		return
 	}
 
