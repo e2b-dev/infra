@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -92,12 +93,12 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 	}
 
 	if len(output.Errors) > 0 {
-		var errStr string
+		var errStr strings.Builder
 		for _, delErr := range output.Errors {
-			errStr += fmt.Sprintf("Key: %s, Code: %s, Message: %s; ", aws.ToString(delErr.Key), aws.ToString(delErr.Code), aws.ToString(delErr.Message))
+			errStr.WriteString(fmt.Sprintf("Key: %s, Code: %s, Message: %s; ", aws.ToString(delErr.Key), aws.ToString(delErr.Code), aws.ToString(delErr.Message)))
 		}
 
-		return errors.New("errors occurred during deletion: " + errStr)
+		return errors.New("errors occurred during deletion: " + errStr.String())
 	}
 
 	if len(output.Deleted) != len(objects) {

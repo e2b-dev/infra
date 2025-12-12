@@ -7,7 +7,7 @@ import (
 	"io"
 	"math"
 	"os"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -192,10 +192,7 @@ func (m *Cache) Slice(off, length int64) ([]byte, error) {
 	}
 
 	if m.dirtyFile || m.isCached(off, length) {
-		end := off + length
-		if end > m.size {
-			end = m.size
-		}
+		end := min(off+length, m.size)
 
 		return (*m.mmap)[off:end], nil
 	}
@@ -226,10 +223,7 @@ func (m *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 		return 0, NewErrCacheClosed(m.filePath)
 	}
 
-	end := off + int64(len(b))
-	if end > m.size {
-		end = m.size
-	}
+	end := min(off+int64(len(b)), m.size)
 
 	n := copy((*m.mmap)[off:end], b)
 
@@ -247,9 +241,7 @@ func (m *Cache) dirtySortedKeys() []int64 {
 
 		return true
 	})
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i] < keys[j]
-	})
+	slices.Sort(keys)
 
 	return keys
 }

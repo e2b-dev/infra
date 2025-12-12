@@ -213,7 +213,7 @@ func logStream(ctx context.Context, logger logger.Logger, lvl zapcore.Level, id 
 	if content == "" {
 		return
 	}
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

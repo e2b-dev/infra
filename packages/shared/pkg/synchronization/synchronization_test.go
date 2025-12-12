@@ -2,6 +2,7 @@ package synchronization
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"testing"
 
@@ -32,13 +33,7 @@ func (s *testStore) SourceList(context.Context) ([]string, error) {
 }
 
 func (s *testStore) SourceExists(_ context.Context, source []string, p string) bool {
-	for _, v := range source {
-		if v == p {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(source, p)
 }
 
 func (s *testStore) PoolList(context.Context) []string {

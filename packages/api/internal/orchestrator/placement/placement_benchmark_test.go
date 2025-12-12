@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -262,9 +262,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 	var wg sync.WaitGroup
 	stopGeneration := make(chan struct{})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ticker := time.NewTicker(time.Second / time.Duration(config.SandboxStartRate))
 		defer ticker.Stop()
 
@@ -275,16 +273,10 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 				sandboxID := atomic.AddInt64(&sandboxIDCounter, 1)
 
 				cpuVariance := (rand.Float64()*2 - 1) * config.CPUVariance
-				requestedCPU := int64(float64(config.AvgSandboxCPU) * (1 + cpuVariance))
-				if requestedCPU < 1 {
-					requestedCPU = 1
-				}
+				requestedCPU := max(int64(float64(config.AvgSandboxCPU)*(1+cpuVariance)), 1)
 
 				memVariance := (rand.Float64()*2 - 1) * config.MemoryVariance
-				requestedMem := int64(float64(config.AvgSandboxMemory) * (1 + memVariance))
-				if requestedMem < 1 {
-					requestedMem = 1
-				}
+				requestedMem := max(int64(float64(config.AvgSandboxMemory)*(1+memVariance)), 1)
 
 				// Calculate actual usage with variance
 				actualUsageRatio := config.ActualUsageRatio + (rand.Float64()*2-1)*config.ActualUsageVariance
@@ -310,51 +302,50 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 				}
 
 				// Try to place the sandbox
-				wg.Add(1)
-				go func(sbx *LiveSandbox) {
-					defer wg.Done()
+				wg.Go(func(sbx *LiveSandbox) func() {
+					return func() {
+						placementStart := time.Now()
+						node, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
+							Vcpu:  sbx.RequestedCPU,
+							RamMb: sbx.RequestedMemory,
+						}}, machineinfo.MachineInfo{})
 
-					placementStart := time.Now()
-					node, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
-						Vcpu:  sbx.RequestedCPU,
-						RamMb: sbx.RequestedMemory,
-					}}, machineinfo.MachineInfo{})
+						placementTime := time.Since(placementStart)
+						sbx.PlacementLatency = placementTime
 
-					placementTime := time.Since(placementStart)
-					sbx.PlacementLatency = placementTime
+						mu.Lock()
+						placementTimes = append(placementTimes, placementTime)
+						recentPlacements = append(recentPlacements, placementTime)
+						metrics.TotalPlacements++
 
-					mu.Lock()
-					placementTimes = append(placementTimes, placementTime)
-					recentPlacements = append(recentPlacements, placementTime)
-					metrics.TotalPlacements++
+						if placementTime < metrics.MinPlacementTime {
+							metrics.MinPlacementTime = placementTime
+						}
+						if placementTime > metrics.MaxPlacementTime {
+							metrics.MaxPlacementTime = placementTime
+						}
 
-					if placementTime < metrics.MinPlacementTime {
-						metrics.MinPlacementTime = placementTime
-					}
-					if placementTime > metrics.MaxPlacementTime {
-						metrics.MaxPlacementTime = placementTime
-					}
-
-					success := false
-					if err == nil && node != nil {
-						// Find the simulated node and place the sandbox
-						if simNode, exists := nodeMap[node.ID]; exists {
-							sbx.NodeID = node.ID
-							if simNode.placeSandbox(sbx) {
-								activeSandboxes.Store(sbx.ID, sbx)
-								metrics.SuccessfulPlacements++
-								atomic.AddInt64(&recentSuccesses, 1)
-								success = true
+						success := false
+						if err == nil && node != nil {
+							// Find the simulated node and place the sandbox
+							if simNode, exists := nodeMap[node.ID]; exists {
+								sbx.NodeID = node.ID
+								if simNode.placeSandbox(sbx) {
+									activeSandboxes.Store(sbx.ID, sbx)
+									metrics.SuccessfulPlacements++
+									atomic.AddInt64(&recentSuccesses, 1)
+									success = true
+								}
 							}
 						}
-					}
 
-					if !success {
-						metrics.FailedPlacements++
-						atomic.AddInt64(&recentFailures, 1)
+						if !success {
+							metrics.FailedPlacements++
+							atomic.AddInt64(&recentFailures, 1)
+						}
+						mu.Unlock()
 					}
-					mu.Unlock()
-				}(sandbox)
+				}(sandbox))
 
 			case <-stopGeneration:
 				return
@@ -362,7 +353,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 				return
 			}
 		}
-	}()
+	})
 
 	// Wait for benchmark duration
 	<-ctx.Done()
@@ -387,9 +378,7 @@ func calculateFinalMetrics(metrics *BenchmarkMetrics, nodes []*SimulatedNode, pl
 		metrics.AvgPlacementTime = totalTime / time.Duration(len(placementTimes))
 
 		// Sort for percentiles
-		sort.Slice(placementTimes, func(i, j int) bool {
-			return placementTimes[i] < placementTimes[j]
-		})
+		slices.Sort(placementTimes)
 
 		metrics.P50PlacementTime = placementTimes[len(placementTimes)*50/100]
 		metrics.P95PlacementTime = placementTimes[len(placementTimes)*95/100]
@@ -479,7 +468,7 @@ func BenchmarkPlacementComparison(t *testing.B) {
 
 	for _, alg := range algorithms {
 		t.Run(alg.name, func(t *testing.B) {
-			metrics := runBenchmark(&testing.B{}, alg.algo, config)
+			metrics := runBenchmark(t, alg.algo, config)
 
 			t.Logf("\n=== %s Results ===", alg.name)
 			t.Logf("Placement Performance:")

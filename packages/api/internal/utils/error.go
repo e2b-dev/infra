@@ -48,12 +48,12 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	c.Error(errMsg)
 
 	// Handle forbidden errors
-	if strings.HasPrefix(message, forbiddenErrPrefix) {
+	if after, ok := strings.CutPrefix(message, forbiddenErrPrefix); ok {
 		c.AbortWithStatusJSON(
 			http.StatusForbidden,
 			gin.H{
 				"code":    http.StatusForbidden,
-				"message": strings.TrimPrefix(message, forbiddenErrPrefix),
+				"message": after,
 			},
 		)
 
@@ -61,12 +61,12 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	}
 
 	// Handle blocked errors
-	if strings.HasPrefix(message, blockedErrPrefix) {
+	if after, ok := strings.CutPrefix(message, blockedErrPrefix); ok {
 		c.AbortWithStatusJSON(
 			http.StatusForbidden,
 			gin.H{
 				"code":    http.StatusForbidden,
-				"message": strings.TrimPrefix(message, blockedErrPrefix),
+				"message": after,
 			},
 		)
 
@@ -74,12 +74,12 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	}
 
 	// Handle security requirements errors from the openapi3filter
-	if strings.HasPrefix(message, securityErrPrefix) {
+	if after, ok := strings.CutPrefix(message, securityErrPrefix); ok {
 		c.AbortWithStatusJSON(
 			http.StatusUnauthorized,
 			gin.H{
 				"code":    http.StatusUnauthorized,
-				"message": strings.TrimPrefix(message, securityErrPrefix),
+				"message": after,
 			},
 		)
 

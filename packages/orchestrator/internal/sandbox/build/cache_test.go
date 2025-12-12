@@ -396,15 +396,13 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 
 	// Additional goroutine that continuously tries to delete oldest items
 	// to increase race condition probability
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for range numIterations * 2 {
 			_, err = store.deleteOldestFromCache(t.Context())
-			assert.NoError(t, err)
+			assert.NoError(t, err) //nolint:testifylint
 			time.Sleep(time.Microsecond * 50)
 		}
-	}()
+	})
 
 	// Wait for all goroutines to complete
 	wg.Wait()

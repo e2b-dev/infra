@@ -15,33 +15,39 @@ set -x
 # Inspired by https://alestic.com/2010/12/ec2-user-data-output/
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
-# Add cache disk for orchestrator and swapfile
-for i in {0..${ LOCAL_CACHE_DISK_COUNT - 1 }}; do
-  dev_path="/dev/disk/by-id/google-local-nvme-ssd-$i"
-  echo "partitioning drive #$i"
-  parted --script $dev_path \
-      mklabel gpt \
-      mkpart primary 0% 100% \
-      set 1 raid on
-done
+%{ if LOCAL_SSD == "true" }
+  # Add cache disk for orchestrator and swapfile
+  for i in {0..${ CACHE_DISK_COUNT - 1 }}; do
+    dev_path="/dev/disk/by-id/google-local-nvme-ssd-$i"
+    echo "partitioning drive #$i"
+    parted --script $dev_path \
+        mklabel gpt \
+        mkpart primary 0% 100% \
+        set 1 raid on
+  done
 
-%{ if LOCAL_CACHE_DISK_COUNT > 1 }
-DISK="/dev/md0"
+  %{ if CACHE_DISK_COUNT > 1 }
+    DISK="/dev/md0"
 
-echo "creating the array"
-until mdadm --create --verbose \
-  $DISK \
-  --raid-devices=${ LOCAL_CACHE_DISK_COUNT } \
-  %{ for i in range(LOCAL_CACHE_DISK_COUNT) ~}/dev/disk/by-id/google-local-nvme-ssd-${ i }-part1 %{ endfor }\
-  --level=0; do
-    echo "failed to create array, trying again ... "
-    sleep 1
-done
+    echo "creating the array"
+    until mdadm --create --verbose \
+      $DISK \
+      --raid-devices=${ CACHE_DISK_COUNT } \
+      %{ for i in range(CACHE_DISK_COUNT) ~}/dev/disk/by-id/google-local-nvme-ssd-${ i }-part1 %{ endfor }\
+      --level=0; do
+        echo "failed to create array, trying again ... "
+        sleep 1
+    done
 
-echo "persisting array configuration"
-mdadm --detail --scan --verbose | tee -a /etc/mdadm/mdadm.conf
+    echo "persisting array configuration"
+    mdadm --detail --scan --verbose | tee -a /etc/mdadm/mdadm.conf
+  %{ else }
+    DISK="/dev/disk/by-id/google-local-nvme-ssd-0-part1"
+  %{ endif }
 %{ else }
-DISK="/dev/disk/by-id/google-local-nvme-ssd-0-part1"
+  # Add cache disk for orchestrator and swapfile
+  # TODO: Parametrize this
+  DISK="/dev/disk/by-id/google-persistent-disk-1"
 %{ endif }
 
 MOUNT_POINT="/orchestrator"

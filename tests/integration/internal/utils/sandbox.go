@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"testing"
 
@@ -25,9 +26,7 @@ type SandboxOption func(config *SandboxConfig)
 
 func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
 	return func(config *SandboxConfig) {
-		for key, value := range metadata {
-			config.metadata[key] = value
-		}
+		maps.Copy(config.metadata, metadata)
 	}
 }
 
