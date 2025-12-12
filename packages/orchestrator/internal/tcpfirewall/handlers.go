@@ -49,8 +49,12 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
 
-	// Proxy to IP directly (hostname already resolved by the client)
-	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
+	// We can't trust the client resolved the hostname correctly (can be spoofed), so we proxy to the hostname (if provided)
+	dstIPOrHostname := dstIP.String()
+	if hostname != noHostnameValue {
+		dstIPOrHostname = hostname
+	}
+	upstreamAddr := net.JoinHostPort(dstIPOrHostname, fmt.Sprintf("%d", dstPort))
 
 	proxy(ctx, conn, upstreamAddr, metrics, protocol)
 }
