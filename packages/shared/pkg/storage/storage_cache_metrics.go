@@ -6,7 +6,9 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -39,26 +41,26 @@ const (
 func recordCacheRead(ctx context.Context, isHit bool, bytesRead int64, t cacheType, op cacheOp) {
 	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("cache_type", string(t)),
+		attribute.String("op_type", string(op)),
 		attribute.Bool("cache_hit", isHit),
-		attribute.String("operation", string(op)),
 	))
 
 	cacheBytesCounter.Add(ctx, bytesRead, metric.WithAttributes(
 		attribute.String("cache_type", string(t)),
+		attribute.String("op_type", string(op)),
 		attribute.Bool("cache_hit", isHit),
-		attribute.String("operation", string(op)),
 	))
 }
 
 func recordCacheWrite(ctx context.Context, bytesWritten int64, t cacheType, op cacheOp) {
 	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("cache_type", string(t)),
-		attribute.String("operation", string(op)),
+		attribute.String("op_type", string(op)),
 	))
 
 	cacheBytesCounter.Add(ctx, bytesWritten, metric.WithAttributes(
 		attribute.String("cache_type", string(t)),
-		attribute.String("operation", string(op)),
+		attribute.String("op_type", string(op)),
 	))
 }
 
@@ -68,19 +70,29 @@ func recordCacheReadError[T ~string](ctx context.Context, t cacheType, op T, err
 		return
 	}
 
+	logger.L().Warn(ctx, "failed to read from cache",
+		zap.Error(err),
+		zap.String("cache_type", string(t)),
+		zap.String("op_type", string(op)),
+	)
+
 	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("cache_type", string(t)),
-		attribute.String("error", err.Error()),
+		attribute.String("op_type", string(op)),
 		attribute.String("error_type", "read"),
-		attribute.String("operation", string(op)),
 	))
 }
 
 func recordCacheWriteError[T ~string](ctx context.Context, t cacheType, op T, err error) {
+	logger.L().Warn(ctx, "failed to write to cache",
+		zap.Error(err),
+		zap.String("cache_type", string(t)),
+		zap.String("op_type", string(op)),
+	)
+
 	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("cache_type", string(t)),
-		attribute.String("error", err.Error()),
+		attribute.String("op_type", string(op)),
 		attribute.String("error_type", "write"),
-		attribute.String("operation", string(op)),
 	))
 }
