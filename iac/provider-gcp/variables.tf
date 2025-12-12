@@ -295,6 +295,12 @@ variable "allow_sandbox_internet" {
   default = true
 }
 
+variable "client_cluster_root_disk_size_gb" {
+  type        = number
+  description = "The size of the root disk for the build machines in GB"
+  default     = 200
+}
+
 variable "client_cluster_cache_disk_size_gb" {
   type        = number
   description = "The size of the cache disk for the orchestrator machines in GB"
