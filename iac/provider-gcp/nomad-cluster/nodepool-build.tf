@@ -181,7 +181,7 @@ resource "google_compute_instance_template" "build" {
     }
 
     precondition {
-      condition = var.build_cluster_cache_disk_type != "local-ssd" || var.build_cluster_cache_disk_size_gb == 375
+      condition     = var.build_cluster_cache_disk_type != "local-ssd" || var.build_cluster_cache_disk_size_gb == 375
       error_message = "When using local-ssd for the build cluster cache, each disk must be exactly 375 GB."
     }
 

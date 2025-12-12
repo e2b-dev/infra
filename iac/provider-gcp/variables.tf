@@ -111,13 +111,13 @@ variable "build_cluster_root_disk_size_gb" {
 variable "build_cluster_cache_disk_size_gb" {
   type        = number
   description = "The size of the cache disk for the build machines in GB"
-  default     = 200
+  default     = 375
 }
 
 variable "build_cluster_cache_disk_type" {
   description = "The GCE cache disk type for the build machines."
   type        = string
-  default     = "pd-ssd"
+  default     = "local-ssd"
 }
 
 variable "clickhouse_cluster_size" {
@@ -298,7 +298,7 @@ variable "allow_sandbox_internet" {
 variable "client_cluster_root_disk_size_gb" {
   type        = number
   description = "The size of the root disk for the build machines in GB"
-  default     = 200
+  default     = 300
 }
 
 variable "orchestrator_node_pool" {
