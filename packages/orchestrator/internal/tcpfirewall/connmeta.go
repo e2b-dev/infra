@@ -27,11 +27,12 @@ func unwrapConnMeta(conn net.Conn) (*connMeta, bool) {
 		}
 
 		// Try to unwrap - tcpproxy.Conn has Conn as a public field
-		if tc, ok := c.(*tcpproxy.Conn); ok {
-			c = tc.Conn
-		} else {
+		tc, ok := c.(*tcpproxy.Conn)
+		if !ok {
 			break
 		}
+
+		c = tc.Conn
 	}
 
 	return nil, false
