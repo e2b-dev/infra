@@ -25,7 +25,7 @@ func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenObject(ctx, filepath.Join("sub", "file.txt"), MetadataObjectType)
+	obj, err := p.OpenObject(ctx, filepath.Join("sub", "file.txt"), MetadataObjectType, CompressionNone)
 	require.NoError(t, err)
 
 	contents := []byte("hello world")
@@ -56,9 +56,9 @@ func TestWriteFromFileSystem(t *testing.T) {
 	const payload = "copy me please"
 	require.NoError(t, os.WriteFile(srcPath, []byte(payload), 0o600))
 
-	obj, err := p.OpenObject(ctx, "copy/dst.txt", UnknownObjectType)
+	obj, err := p.OpenObject(ctx, "copy/dst.txt", UnknownObjectType, CompressionNone)
 	require.NoError(t, err)
-	require.NoError(t, obj.WriteFromFileSystem(t.Context(), srcPath))
+	require.NoError(t, obj.WriteFromFileSystem(t.Context(), srcPath, CompressionNone))
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(t.Context(), &buf)
@@ -70,7 +70,7 @@ func TestDelete(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenObject(ctx, "to/delete.txt", 0)
+	obj, err := p.OpenObject(ctx, "to/delete.txt", UnknownObjectType, CompressionNone)
 	require.NoError(t, err)
 
 	_, err = obj.Write(t.Context(), []byte("bye"))
@@ -99,7 +99,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 		"data/sub/c.txt",
 	}
 	for _, pth := range paths {
-		obj, err := p.OpenObject(ctx, pth, UnknownObjectType)
+		obj, err := p.OpenObject(ctx, pth, UnknownObjectType, CompressionNone)
 		require.NoError(t, err)
 		_, err = obj.Write(t.Context(), []byte("x"))
 		require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestWriteToNonExistentObject(t *testing.T) {
 	p := newTempProvider(t)
 
 	ctx := t.Context()
-	obj, err := p.OpenObject(ctx, "missing/file.txt", UnknownObjectType)
+	obj, err := p.OpenObject(ctx, "missing/file.txt", UnknownObjectType, CompressionNone)
 	require.NoError(t, err)
 
 	var sink bytes.Buffer

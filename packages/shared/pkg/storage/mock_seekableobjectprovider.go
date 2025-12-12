@@ -2,7 +2,7 @@
 // github.com/vektra/mockery
 // template: testify
 
-package storagemocks
+package storage
 
 import (
 	"context"
@@ -170,16 +170,16 @@ func (_c *MockSeekableObjectProvider_Size_Call) RunAndReturn(run func(ctx contex
 }
 
 // WriteFromFileSystem provides a mock function for the type MockSeekableObjectProvider
-func (_mock *MockSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
-	ret := _mock.Called(ctx, path)
+func (_mock *MockSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) error {
+	ret := _mock.Called(ctx, path, compression)
 
 	if len(ret) == 0 {
 		panic("no return value specified for WriteFromFileSystem")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, path)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, CompressionType) error); ok {
+		r0 = returnFunc(ctx, path, compression)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -194,11 +194,12 @@ type MockSeekableObjectProvider_WriteFromFileSystem_Call struct {
 // WriteFromFileSystem is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-func (_e *MockSeekableObjectProvider_Expecter) WriteFromFileSystem(ctx interface{}, path interface{}) *MockSeekableObjectProvider_WriteFromFileSystem_Call {
-	return &MockSeekableObjectProvider_WriteFromFileSystem_Call{Call: _e.mock.On("WriteFromFileSystem", ctx, path)}
+//   - compression CompressionType
+func (_e *MockSeekableObjectProvider_Expecter) WriteFromFileSystem(ctx interface{}, path interface{}, compression interface{}) *MockSeekableObjectProvider_WriteFromFileSystem_Call {
+	return &MockSeekableObjectProvider_WriteFromFileSystem_Call{Call: _e.mock.On("WriteFromFileSystem", ctx, path, compression)}
 }
 
-func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) Run(run func(ctx context.Context, path string)) *MockSeekableObjectProvider_WriteFromFileSystem_Call {
+func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) Run(run func(ctx context.Context, path string, compression CompressionType)) *MockSeekableObjectProvider_WriteFromFileSystem_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -208,9 +209,14 @@ func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) Run(run func(ctx 
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 CompressionType
+		if args[2] != nil {
+			arg2 = args[2].(CompressionType)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -221,7 +227,7 @@ func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) Return(err error)
 	return _c
 }
 
-func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) RunAndReturn(run func(ctx context.Context, path string) error) *MockSeekableObjectProvider_WriteFromFileSystem_Call {
+func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) RunAndReturn(run func(ctx context.Context, path string, compression CompressionType) error) *MockSeekableObjectProvider_WriteFromFileSystem_Call {
 	_c.Call.Return(run)
 	return _c
 }

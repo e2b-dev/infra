@@ -18,8 +18,6 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Test constants
@@ -113,7 +111,7 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 }
 
 func TestMultipartUploader_UploadPart_MissingETag(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Don't set ETag header
 		w.WriteHeader(http.StatusOK)
 	})
@@ -201,7 +199,7 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	err = uploader.UploadFileInParallel(t.Context(), testFile, 2)
+	err = uploader.UploadFileInParallel(t.Context(), testFile, 2, CompressionNone)
 	require.NoError(t, err)
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCount))
@@ -220,11 +218,10 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 	var requestCount int32
 	expectedUploadID := "retry-upload-id"
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		count := atomic.AddInt32(&requestCount, 1)
 		if count < 2 {
 			w.WriteHeader(http.StatusInternalServerError)
-
 			return
 		}
 
@@ -288,8 +285,8 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 
 			// Update max concurrent parts
 			for {
-				maxConcurrent := atomic.LoadInt32(&maxConcurrentParts)
-				if current <= maxConcurrent || atomic.CompareAndSwapInt32(&maxConcurrentParts, maxConcurrent, current) {
+				max := atomic.LoadInt32(&maxConcurrentParts)
+				if current <= max || atomic.CompareAndSwapInt32(&maxConcurrentParts, max, current) {
 					break
 				}
 			}
@@ -313,7 +310,7 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 	uploader := createTestMultipartUploader(t, handler)
 
 	// Use high concurrency to stress test
-	err = uploader.UploadFileInParallel(t.Context(), testFile, 50)
+	err = uploader.UploadFileInParallel(t.Context(), testFile, 50, CompressionNone)
 	require.NoError(t, err)
 
 	// Verify all calls were made
@@ -360,7 +357,6 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 			// Randomly fail some requests
 			if rand.Float64() < failureRate {
 				w.WriteHeader(http.StatusInternalServerError)
-
 				return
 			}
 
@@ -383,7 +379,7 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 	}
 
 	uploader := createTestMultipartUploader(t, handler, config)
-	err = uploader.UploadFileInParallel(t.Context(), testFile, 10)
+	err = uploader.UploadFileInParallel(t.Context(), testFile, 10, CompressionNone)
 	require.NoError(t, err)
 
 	t.Logf("Chaos test: %d total attempts, %d successes",
@@ -419,7 +415,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 			partNumStr := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 
 			// Track attempts per part
-			val, _ := partAttempts.LoadOrStore(partNumStr, utils.ToPtr(int32(0)))
+			val, _ := partAttempts.LoadOrStore(partNumStr, new(int32))
 			attempts := val.(*int32)
 			currentAttempts := atomic.AddInt32(attempts, 1)
 
@@ -427,7 +423,6 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 			if currentAttempts < int32(maxAttempts-1) {
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte("simulated failure"))
-
 				return
 			}
 
@@ -447,7 +442,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 	}
 
 	uploader := createTestMultipartUploader(t, handler, config)
-	err = uploader.UploadFileInParallel(t.Context(), testFile, 5)
+	err = uploader.UploadFileInParallel(t.Context(), testFile, 5, CompressionNone)
 	require.NoError(t, err)
 
 	// Verify that all parts eventually succeeded after retries
@@ -495,7 +490,7 @@ func TestMultipartUploader_EdgeCases_EmptyFile(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	err = uploader.UploadFileInParallel(t.Context(), emptyFile, 5)
+	err = uploader.UploadFileInParallel(t.Context(), emptyFile, 5, CompressionNone)
 	require.NoError(t, err)
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCalls))
@@ -537,7 +532,7 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	err = uploader.UploadFileInParallel(t.Context(), smallFile, 10) // High concurrency for small file
+	err = uploader.UploadFileInParallel(t.Context(), smallFile, 10, CompressionNone) // High concurrency for small file
 	require.NoError(t, err)
 	require.Equal(t, smallContent, receivedData)
 }
@@ -570,8 +565,8 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 
 			// Track max observed concurrency
 			for {
-				maxObserved := atomic.LoadInt32(&maxObservedConcurrency)
-				if current <= maxObserved || atomic.CompareAndSwapInt32(&maxObservedConcurrency, maxObserved, current) {
+				max := atomic.LoadInt32(&maxObservedConcurrency)
+				if current <= max || atomic.CompareAndSwapInt32(&maxObservedConcurrency, max, current) {
 					break
 				}
 			}
@@ -591,7 +586,7 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 	uploader := createTestMultipartUploader(t, handler)
 
 	// Try with extremely high concurrency
-	err = uploader.UploadFileInParallel(t.Context(), testFile, 1000)
+	err = uploader.UploadFileInParallel(t.Context(), testFile, 1000, CompressionNone)
 	require.NoError(t, err)
 
 	// Should have observed significant concurrency but not necessarily 1000
@@ -636,7 +631,7 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	err = uploader.UploadFileInParallel(t.Context(), testFile, 5)
+	err = uploader.UploadFileInParallel(t.Context(), testFile, 5, CompressionNone)
 	require.NoError(t, err)
 
 	// Should have exactly 2 parts, each of ChunkSize
@@ -646,11 +641,11 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 }
 
 func TestMultipartUploader_FileNotFound_Error(t *testing.T) {
-	uploader := createTestMultipartUploader(t, func(http.ResponseWriter, *http.Request) {
+	uploader := createTestMultipartUploader(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("Should not make any HTTP requests for missing file")
-	})
+	}))
 
-	err := uploader.UploadFileInParallel(t.Context(), "/nonexistent/file.txt", 5)
+	err := uploader.UploadFileInParallel(t.Context(), "/nonexistent/file.txt", 5, CompressionNone)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to open file")
 }
@@ -683,7 +678,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 			partNumStr := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 
 			// Track retry attempts per part with race-safe operations
-			val, _ := retryAttempts.LoadOrStore(partNumStr, utils.ToPtr(int32(0)))
+			val, _ := retryAttempts.LoadOrStore(partNumStr, new(int32))
 			attempts := val.(*int32)
 			currentAttempt := atomic.AddInt32(attempts, 1)
 
@@ -692,7 +687,6 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 				// Add random delay to increase race condition probability
 				time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 				w.WriteHeader(http.StatusInternalServerError)
-
 				return
 			}
 
@@ -712,7 +706,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	}
 
 	uploader := createTestMultipartUploader(t, handler, config)
-	err = uploader.UploadFileInParallel(t.Context(), testFile, 20) // High concurrency
+	err = uploader.UploadFileInParallel(t.Context(), testFile, 20, CompressionNone) // High concurrency
 	require.NoError(t, err)
 
 	t.Logf("Total HTTP requests made: %d", atomic.LoadInt32(&totalRequests))
@@ -721,7 +715,6 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	retryAttempts.Range(func(key, value any) bool {
 		attempts := atomic.LoadInt32(value.(*int32))
 		require.GreaterOrEqual(t, attempts, int32(3), "Part %s should have at least 3 attempts", key)
-
 		return true
 	})
 }
@@ -849,7 +842,7 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 	var retryDelays []time.Duration
 	var retryTimes []time.Time
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		count := atomic.AddInt32(&requestCount, 1)
 		retryTimes = append(retryTimes, time.Now())
 

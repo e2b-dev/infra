@@ -92,8 +92,8 @@ func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 	return size, nil
 }
 
-func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
-	return c.inner.WriteFromFileSystem(ctx, path)
+func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) error {
+	return c.inner.WriteFromFileSystem(ctx, path, compression)
 }
 
 func (c CachedSeekableObjectProvider) makeChunkFilename(offset int64) string {

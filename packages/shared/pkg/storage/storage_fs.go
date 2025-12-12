@@ -46,7 +46,7 @@ func (fs *FileSystemStorageProvider) UploadSignedURL(_ context.Context, _ string
 	return "", fmt.Errorf("file system storage does not support signed URLs")
 }
 
-func (fs *FileSystemStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
+func (fs *FileSystemStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType, _ CompressionType) (SeekableObjectProvider, error) {
 	dir := filepath.Dir(fs.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (fs *FileSystemStorageProvider) OpenSeekableObject(_ context.Context, path 
 	}, nil
 }
 
-func (fs *FileSystemStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
+func (fs *FileSystemStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType, _ CompressionType) (ObjectProvider, error) {
 	dir := filepath.Dir(fs.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -83,7 +83,7 @@ func (f *FileSystemStorageObjectProvider) WriteTo(_ context.Context, dst io.Writ
 	return io.Copy(dst, handle)
 }
 
-func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(_ context.Context, path string) error {
+func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(_ context.Context, path string, compression CompressionType) error {
 	handle, err := f.getHandle(false)
 	if err != nil {
 		return err

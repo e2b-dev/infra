@@ -50,6 +50,28 @@ var (
 	))
 )
 
+// type readerAtWithoutContext struct {
+// 	obj *GCPBucketStorageObjectProvider
+// 	ctx context.Context
+// }
+
+// var _ io.ReaderAt = (*readerAtWithoutContext)(nil)
+
+// func newReaderAtWithoutContext(obj *GCPBucketStorageObjectProvider, ctx context.Context) *readerAtWithoutContext {
+// 	return &readerAtWithoutContext{
+// 		obj: obj,
+// 		ctx: ctx,
+// 	}
+// }
+
+// func (r *readerAtWithoutContext) ReadAt(p []byte, off int64) (n int, err error) {
+// 	return r.obj.readAt(r.ctx, p, off)
+// }
+
+// func (r *readerAtWithoutContext) newReaderSeeker(size int64) io.ReadSeeker {
+// 	return io.NewSectionReader(r, 0, size)
+// }
+
 type GCPBucketStorageProvider struct {
 	client *storage.Client
 	bucket *storage.BucketHandle
@@ -60,9 +82,10 @@ type GCPBucketStorageProvider struct {
 var _ StorageProvider = (*GCPBucketStorageProvider)(nil)
 
 type GCPBucketStorageObjectProvider struct {
-	storage *GCPBucketStorageProvider
-	path    string
-	handle  *storage.ObjectHandle
+	storage     *GCPBucketStorageProvider
+	path        string
+	handle      *storage.ObjectHandle
+	compression CompressionType
 
 	limiter *limit.Limiter
 }
@@ -132,7 +155,7 @@ func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path strin
 	return url, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
+func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType, compressionType CompressionType) (SeekableObjectProvider, error) {
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -154,7 +177,7 @@ func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path st
 	}, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
+func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string, _ ObjectType, compression CompressionType) (ObjectProvider, error) {
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -167,13 +190,28 @@ func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string, _ 
 		),
 	)
 
-	return &GCPBucketStorageObjectProvider{
-		storage: g,
-		path:    path,
-		handle:  handle,
+	obj := &GCPBucketStorageObjectProvider{
+		storage:     g,
+		path:        path,
+		handle:      handle,
+		limiter:     g.limiter,
+		compression: compression,
+	}
 
-		limiter: g.limiter,
-	}, nil
+	if compression == CompressionZstd {
+		// TODO
+		// dec, err := zstd.NewReader(nil)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("failed to create zstd reader: %w", err)
+		// }
+
+		// size, err := obj.size(ctx)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("failed to get object size: %w", err)
+		// }
+	}
+
+	return obj, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
@@ -194,6 +232,14 @@ func (g *GCPBucketStorageObjectProvider) Exists(ctx context.Context) (bool, erro
 }
 
 func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+	// if g.compressed {
+	// 	return g.seekableReader.Seek(0, io.SeekEnd)
+	// }
+
+	return g.size(ctx)
+}
+
+func (g *GCPBucketStorageObjectProvider) size(ctx context.Context) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -211,6 +257,18 @@ func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 }
 
 func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+	// if g.compressed {
+	// 	if g.seekableReader == nil {
+	// 		return 0, fmt.Errorf("seekable reader is nil for compressed object")
+	// 	}
+
+	// 	return g.seekableReader.ReadAt(buff, off)
+	// }
+
+	return g.readAt(ctx, buff, off)
+}
+
+func (g *GCPBucketStorageObjectProvider) readAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	timer := googleReadTimerFactory.Begin()
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
@@ -240,7 +298,6 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	}
 
 	timer.End(ctx, int64(n))
-
 	return n, nil
 }
 
@@ -295,7 +352,7 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) error {
 	timer := googleWriteTimerFactory.Begin()
 
 	bucketName := g.storage.bucket.BucketName()
@@ -309,20 +366,19 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
-	if fileInfo.Size() < gcpMultipartUploadChunkSize {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("failed to read file: %w", err)
-		}
+	// if fileInfo.Size() < gcpMultipartUploadChunkSize {
+	// 	data, err := os.ReadFile(path)
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed to read file: %w", err)
+	// 	}
 
-		if _, err = g.Write(ctx, data); err != nil {
-			return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
-		}
+	// 	if _, err = g.Write(ctx, data); err != nil {
+	// 		return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
+	// 	}
 
-		timer.End(ctx, int64(len(data)), attribute.String("method", "one-shot"))
-
-		return nil
-	}
+	// 	timer.End(ctx, int64(len(data)), attribute.String("method", "one-shot"))
+	// 	return nil
+	// }
 
 	maxConcurrency := gcloudDefaultUploadConcurrency
 	if g.limiter != nil {
@@ -349,7 +405,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	}
 
 	start := time.Now()
-	if err := uploader.UploadFileInParallel(ctx, filePath, maxConcurrency); err != nil {
+	if err := uploader.UploadFileInParallel(ctx, filePath, maxConcurrency, compression); err != nil {
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 

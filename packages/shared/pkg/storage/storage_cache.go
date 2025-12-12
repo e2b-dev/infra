@@ -61,8 +61,8 @@ func (c CachedProvider) UploadSignedURL(ctx context.Context, path string, ttl ti
 	return c.inner.UploadSignedURL(ctx, path, ttl)
 }
 
-func (c CachedProvider) OpenObject(ctx context.Context, path string, objectType ObjectType) (ObjectProvider, error) {
-	innerObject, err := c.inner.OpenObject(ctx, path, objectType)
+func (c CachedProvider) OpenObject(ctx context.Context, path string, objectType ObjectType, compression CompressionType) (ObjectProvider, error) {
+	innerObject, err := c.inner.OpenObject(ctx, path, objectType, compression)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -75,8 +75,8 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string, objectType 
 	return &CachedObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
 }
 
-func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, objectType SeekableObjectType) (SeekableObjectProvider, error) {
-	innerObject, err := c.inner.OpenSeekableObject(ctx, path, objectType)
+func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, objectType SeekableObjectType, compression CompressionType) (SeekableObjectProvider, error) {
+	innerObject, err := c.inner.OpenSeekableObject(ctx, path, objectType, compression)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}

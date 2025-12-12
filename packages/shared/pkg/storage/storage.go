@@ -56,11 +56,19 @@ const (
 	LayerMetadataObjectType
 )
 
+const (
+	CompressionNone = iota
+	CompressionZstd
+	CompressionLZ4
+)
+
+type CompressionType byte
+
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
-	OpenObject(ctx context.Context, path string, objectType ObjectType) (ObjectProvider, error)
-	OpenSeekableObject(ctx context.Context, path string, seekableObjectType SeekableObjectType) (SeekableObjectProvider, error)
+	OpenObject(ctx context.Context, path string, objectType ObjectType, compression CompressionType) (ObjectProvider, error)
+	OpenSeekableObject(ctx context.Context, path string, seekableObjectType SeekableObjectType, compression CompressionType) (SeekableObjectProvider, error)
 	GetDetails() string
 }
 
@@ -79,7 +87,7 @@ type ReaderAtCtx interface {
 type ObjectProvider interface {
 	// write
 	WriterCtx
-	WriteFromFileSystem(ctx context.Context, path string) error
+	WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) error
 
 	// read
 	WriterToCtx
@@ -90,7 +98,7 @@ type ObjectProvider interface {
 
 type SeekableObjectProvider interface {
 	// write
-	WriteFromFileSystem(ctx context.Context, path string) error
+	WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) error
 
 	// read
 	ReaderAtCtx

@@ -47,8 +47,8 @@ func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, err e
 	return c.inner.Write(ctx, p)
 }
 
-func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
-	return c.inner.WriteFromFileSystem(ctx, path)
+func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) error {
+	return c.inner.WriteFromFileSystem(ctx, path, compression)
 }
 
 func (c CachedObjectProvider) fullFilename() string {

@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-
-	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
 )
 
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
@@ -26,7 +24,7 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 	t.Run("can be cached successfully", func(t *testing.T) {
 		const expectedSize int64 = 1024
 
-		inner := storagemocks.NewMockSeekableObjectProvider(t)
+		inner := NewMockSeekableObjectProvider(t)
 		inner.EXPECT().Size(mock.Anything).Return(expectedSize, nil)
 
 		c := CachedSeekableObjectProvider{path: t.TempDir(), inner: inner}
@@ -72,7 +70,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		fakeStorageObjectProvider := storagemocks.NewMockSeekableObjectProvider(t)
+		fakeStorageObjectProvider := NewMockSeekableObjectProvider(t)
 
 		fakeStorageObjectProvider.EXPECT().
 			ReadAt(mock.Anything, mock.Anything, mock.Anything).
@@ -114,7 +112,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 	t.Run("WriteTo calls should read from cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3}
 
-		fakeStorageObjectProvider := storagemocks.NewMockObjectProvider(t)
+		fakeStorageObjectProvider := NewMockObjectProvider(t)
 		fakeStorageObjectProvider.EXPECT().
 			WriteTo(mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
