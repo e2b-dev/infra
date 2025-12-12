@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -71,7 +73,9 @@ func TestAdditionalOCILayers(t *testing.T) {
 			actualFiles[filename] = buffer.String()
 		}
 
-		assert.Len(t, actualFiles, 13)
+		keysIter := maps.Keys(actualFiles)
+		keys := slices.Collect(keysIter)
+		assert.Len(t, keys, 13)
 		assert.Equal(t, "e2b.local", actualFiles["etc/hostname"])
 		assert.Equal(t, "nameserver 8.8.8.8", actualFiles["etc/resolv.conf"])
 
