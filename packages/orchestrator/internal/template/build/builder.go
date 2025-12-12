@@ -221,7 +221,7 @@ func (b *Builder) useNFSCache(ctx context.Context) (string, bool) {
 
 	flag, err := b.featureFlags.BoolFlag(ctx, featureflags.BuildingFeatureFlagName)
 	if err != nil {
-		zap.L().Error("failed to get nfs cache feature flag", zap.Error(err))
+		logger.L().Error(ctx, "failed to get nfs cache feature flag", zap.Error(err))
 	}
 
 	return b.config.SharedChunkCacheDir, flag
