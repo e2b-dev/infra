@@ -326,6 +326,16 @@ variable "api_nat_min_ports_per_vm" {
   type = number
 }
 
+variable "build_cluster_cache_disk_type" {
+  description = "The cache disk type for the build machines."
+  type        = string
+}
+
+variable "build_cluster_cache_disk_size_gb" {
+  description = "The size in GB of each cache disk for the build machines."
+  type        = number
+}
+
 variable "build_cluster_cache_disk_count" {
   type = number
 
@@ -334,6 +344,23 @@ variable "build_cluster_cache_disk_count" {
     error_message = "Must include at least 1 build cluster cache disk"
   }
 }
+
+variable "client_cluster_root_disk_size_gb" {
+  description = "The size in GB of the root disk for the client machines."
+  type        = number
+}
+
+
+variable "client_cluster_cache_disk_type" {
+  description = "The cache disk type for the client machines."
+  type        = string
+}
+
+variable "client_cluster_cache_disk_size_gb" {
+  description = "The size in GB of each cache disk for the client machines."
+  type        = number
+}
+
 
 variable "client_cluster_cache_disk_count" {
   type = number
