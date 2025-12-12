@@ -20,34 +20,6 @@ variable "server_machine_type" {
   type = string
 }
 
-variable "client_cluster_size" {
-  type    = number
-  default = 0
-}
-
-variable "client_cluster_size_max" {
-  type    = number
-  default = 0
-}
-
-variable "client_cluster_autoscaling_cpu_target" {
-  description = "Target CPU utilization for client autoscaling (0.0-1.0)"
-  type        = number
-  default     = 0.6
-}
-
-variable "client_cluster_autoscaling_memory_target" {
-  # Note: This must be higher than orchestrator_base_hugepages_percentage (default 80%)
-  # because preallocated hugepages are counted as used memory in monitoring.
-  description = "Target memory utilization percentage for client autoscaling"
-  type        = number
-  default     = 85
-}
-
-variable "client_machine_type" {
-  type = string
-}
-
 variable "api_cluster_size" {
   type = number
 }
@@ -89,35 +61,9 @@ variable "api_resources_memory_mb" {
   default = 2048
 }
 
-variable "build_cluster_size" {
-  type = number
-}
-
-variable "build_machine_type" {
-  type = string
-}
-
 variable "build_node_pool" {
   type    = string
   default = "build"
-}
-
-variable "build_cluster_root_disk_size_gb" {
-  type        = number
-  description = "The size of the root disk for the build machines in GB"
-  default     = 200
-}
-
-variable "build_cluster_cache_disk_size_gb" {
-  type        = number
-  description = "The size of the cache disk for the build machines in GB"
-  default     = 375
-}
-
-variable "build_cluster_cache_disk_type" {
-  description = "The GCE cache disk type for the build machines."
-  type        = string
-  default     = "local-ssd"
 }
 
 variable "clickhouse_cluster_size" {
@@ -293,12 +239,6 @@ variable "nomad_port" {
 variable "allow_sandbox_internet" {
   type    = bool
   default = true
-}
-
-variable "client_cluster_root_disk_size_gb" {
-  type        = number
-  description = "The size of the root disk for the build machines in GB"
-  default     = 300
 }
 
 variable "orchestrator_node_pool" {
@@ -494,43 +434,68 @@ variable "remote_repository_enabled" {
   default     = false
 }
 
-variable "build_cluster_cache_disk_count" {
-  type        = number
-  description = "The number of 375 GB NVME disks to raid together for storing build files."
-  default     = 3
-}
-
-variable "client_cluster_cache_disk_size_gb" {
-  type        = number
-  description = "The size of the cache disk for the orchestrator machines in GB"
-  default     = 375
-}
-
-variable "client_cluster_cache_disk_type" {
-  description = "The GCE cache disk type for the client machines."
+variable "client_clusters_config_json" {
   type        = string
-  default     = "local-ssd"
+  description = <<EOT
+JSON configuration for the client clusters.
+Format: [
+  {
+    "autoscaler": {
+      "size_min": 1,
+      "size_max": 2,
+      "cpu_target": 0.7,
+      "memory_target": 85
+    },
+    "machine": {
+      "type": "n1-standard-8",
+      "min_cpu_platform": "Intel Skylake"
+    },
+    "boot_disk": {
+      "disk_type": "pd-ssd",
+      "size_gb": 100
+    },
+    "cache_disk": {
+      "disk_type": "pd-ssd",
+      "size_gb": 200,
+      "count": 1
+    }
+  }
+]
+EOT
+  validation {
+    condition     = can(jsondecode(var.client_clusters_config_json))
+    error_message = "client_cluster_config_json must be a valid JSON"
+  }
 }
 
-variable "client_cluster_cache_disk_count" {
-  type        = number
-  description = "The number of 375 GB NVME disks to raid together for storing sandbox files."
-  default     = 3
+variable "build_cluster_config_json" {
+  type        = string
+  description = <<EOT
+JSON configuration for the build cluster.
+Format:
+{
+  "machine": {
+    "type": "n1-standard-8",
+    "min_cpu_platform": "Intel Skylake"
+  },
+  "boot_disk": {
+    "disk_type": "pd-ssd",
+    "size_gb": 100
+  },
+  "cache_disk": {
+    "disk_type": "pd-ssd",
+    "size_gb": 200,
+    "count": 1
+  }
+}
+EOT
+  validation {
+    condition     = can(jsondecode(var.build_cluster_config_json))
+    error_message = "client_cluster_config_json must be a valid JSON"
+  }
 }
 
 # Boot disk type variables
-variable "client_boot_disk_type" {
-  description = "The GCE boot disk type for the client (orchestrator) machines."
-  type        = string
-  default     = "pd-ssd"
-}
-
-variable "build_boot_disk_type" {
-  description = "The GCE boot disk type for the build machines."
-  type        = string
-  default     = "pd-ssd"
-}
-
 variable "api_boot_disk_type" {
   description = "The GCE boot disk type for the API machines."
   type        = string

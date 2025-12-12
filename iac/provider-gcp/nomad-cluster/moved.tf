@@ -1,0 +1,24 @@
+moved {
+  from = google_compute_region_instance_group_manager.client_pool
+  to   = module.client_cluster["0"].google_compute_region_instance_group_manager.pool
+}
+
+moved {
+  from = google_compute_instance_template.client
+  to   = module.client_cluster["0"].google_compute_instance_template.template
+}
+
+moved {
+  from = google_compute_region_autoscaler.client
+  to   = module.client_cluster["0"].google_compute_region_autoscaler.autoscaler
+}
+
+moved {
+  from = google_compute_instance_template.build
+  to   = module.build_cluster.google_compute_instance_template.template
+}
+
+moved {
+  from = google_compute_region_autoscaler.build
+  to   = module.build_cluster.google_compute_region_autoscaler.autoscaler
+}

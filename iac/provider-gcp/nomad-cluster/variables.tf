@@ -57,18 +57,6 @@ variable "build_image_family" {
   default = "e2b-orch"
 }
 
-variable "build_cluster_size" {
-  type = number
-}
-
-variable "build_machine_type" {
-  type = string
-}
-
-variable "build_cluster_root_disk_size_gb" {
-  type = number
-}
-
 variable "edge_api_port" {
   type = object({
     name = string
@@ -118,26 +106,54 @@ variable "client_cluster_name" {
   default = "orch-client"
 }
 
-variable "client_cluster_size" {
-  type = number
+variable "client_clusters_config" {
+  description = "List of client cluster configuration object"
+  type = list(object({
+    autoscaler = optional(object({
+      size_min      = number
+      size_max      = optional(number)
+      cpu_target    = optional(number)
+      memory_target = optional(number)
+    }))
+    machine = object({
+      type             = string
+      min_cpu_platform = string
+    })
+    boot_disk = object({
+      disk_type = string
+      size_gb   = number
+    })
+    cache_disks = object({
+      disk_type = string
+      size_gb   = number
+      count     = number
+    })
+  }))
 }
 
-variable "client_cluster_size_max" {
-  type = number
-}
-
-variable "client_cluster_autoscaling_cpu_target" {
-  description = "Target CPU utilization for client cluster autoscaling (0.0-1.0)"
-  type        = number
-}
-
-variable "client_cluster_autoscaling_memory_target" {
-  description = "Target memory utilization percentage for client cluster autoscaling (0-100)"
-  type        = number
-}
-
-variable "client_machine_type" {
-  type = string
+variable "build_cluster_config" {
+  description = "Build cluster configuration object"
+  type = object({
+    autoscaler = object({
+      size_min      = number
+      size_max      = optional(number)
+      cpu_target    = optional(number)
+      memory_target = optional(number)
+    })
+    machine = object({
+      type             = string
+      min_cpu_platform = string
+    })
+    boot_disk = object({
+      disk_type = string
+      size_gb   = number
+    })
+    cache_disks = object({
+      disk_type = string
+      size_gb   = number
+      count     = number
+    })
+  })
 }
 
 variable "gcp_project_id" {
@@ -307,7 +323,7 @@ variable "build_base_hugepages_percentage" {
   type        = number
 }
 
-variable "orchestrator_base_hugepages_percentage" {
+variable "client_base_hugepages_percentage" {
   description = "The percentage of memory to use for preallocated hugepages."
   type        = number
 }
@@ -326,62 +342,7 @@ variable "api_nat_min_ports_per_vm" {
   type = number
 }
 
-variable "build_cluster_cache_disk_type" {
-  description = "The cache disk type for the build machines."
-  type        = string
-}
-
-variable "build_cluster_cache_disk_size_gb" {
-  description = "The size in GB of each cache disk for the build machines."
-  type        = number
-}
-
-variable "build_cluster_cache_disk_count" {
-  type = number
-
-  validation {
-    condition     = var.build_cluster_cache_disk_count > 0
-    error_message = "Must include at least 1 build cluster cache disk"
-  }
-}
-
-variable "client_cluster_root_disk_size_gb" {
-  description = "The size in GB of the root disk for the client machines."
-  type        = number
-}
-
-
-variable "client_cluster_cache_disk_type" {
-  description = "The cache disk type for the client machines."
-  type        = string
-}
-
-variable "client_cluster_cache_disk_size_gb" {
-  description = "The size in GB of each cache disk for the client machines."
-  type        = number
-}
-
-
-variable "client_cluster_cache_disk_count" {
-  type = number
-
-  validation {
-    condition     = var.client_cluster_cache_disk_count > 0
-    error_message = "Must include at least 1 client cluster cache disk"
-  }
-}
-
 # Boot disk type variables
-variable "client_boot_disk_type" {
-  description = "The GCE boot disk type for the client (orchestrator) machines."
-  type        = string
-}
-
-variable "build_boot_disk_type" {
-  description = "The GCE boot disk type for the build machines."
-  type        = string
-}
-
 variable "api_boot_disk_type" {
   description = "The GCE boot disk type for the API machines."
   type        = string

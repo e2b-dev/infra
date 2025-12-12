@@ -1,7 +1,6 @@
 locals {
-  client_pool_name     = "${var.prefix}${var.client_cluster_name}"
-  client_has_local_ssd = var.client_cluster_cache_disk_type == "local-ssd"
-  client_startup_script = templatefile("${path.module}/scripts/start-client.sh", {
+  has_local_ssd = var.cache_disks.disk_type == "local-ssd"
+  startup_script = templatefile("${path.module}/../scripts/start-client.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
     SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
     FC_KERNELS_BUCKET_NAME       = var.fc_kernels_bucket_name
@@ -12,25 +11,25 @@ locals {
     GOOGLE_SERVICE_ACCOUNT_KEY   = var.google_service_account_key
     NOMAD_TOKEN                  = var.nomad_acl_token_secret
     CONSUL_TOKEN                 = var.consul_acl_token_secret
-    RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
-    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
-    CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
-    CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-    NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
-    NFS_MOUNT_PATH               = local.nfs_mount_path
-    NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
-    NFS_MOUNT_OPTS               = local.nfs_mount_opts
+    RUN_CONSUL_FILE_HASH         = var.file_hash["scripts/run-consul.sh"]
+    RUN_NOMAD_FILE_HASH          = var.file_hash["scripts/run-nomad.sh"]
+    CONSUL_GOSSIP_ENCRYPTION_KEY = var.consul_gossip_encryption_key_secret_data
+    CONSUL_DNS_REQUEST_TOKEN     = var.consul_dns_request_token_secret_data
+    NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", var.nfs_ip_addresses) : ""
+    NFS_MOUNT_PATH               = var.nfs_mount_path
+    NFS_MOUNT_SUBDIR             = var.nfs_mount_subdir
+    NFS_MOUNT_OPTS               = var.nfs_mount_opts
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
-    NODE_POOL                    = var.orchestrator_node_pool
-    BASE_HUGEPAGES_PERCENTAGE    = var.orchestrator_base_hugepages_percentage
-    CACHE_DISK_COUNT             = var.client_cluster_cache_disk_count
-    LOCAL_SSD                    = local.client_has_local_ssd ? "true" : "false"
+    NODE_POOL                    = var.node_pool
+    BASE_HUGEPAGES_PERCENTAGE    = var.base_hugepages_percentage
+    CACHE_DISK_COUNT             = var.cache_disks.count
+    LOCAL_SSD                    = local.has_local_ssd ? "true" : "false"
   })
 }
 
 
-resource "google_compute_health_check" "client_nomad_check" {
-  name                = "${local.client_pool_name}-nomad-client-check"
+resource "google_compute_health_check" "nomad_check" {
+  name                = "${var.cluster_name}-nomad-check"
   check_interval_sec  = 15
   timeout_sec         = 10
   healthy_threshold   = 2
@@ -46,49 +45,56 @@ resource "google_compute_health_check" "client_nomad_check" {
   }
 }
 
-resource "google_compute_region_autoscaler" "client" {
-  count = var.client_cluster_size < var.client_cluster_size_max ? 1 : 0
+resource "google_compute_region_autoscaler" "autoscaler" {
+  count = var.autoscaler.size_max == null || var.autoscaler.size_min == var.autoscaler.size_max ? 0 : 1
 
-  name   = "${local.client_pool_name}-client-autoscaler"
+  name   = "${var.cluster_name}-autoscaler"
   region = var.gcp_region
-  target = google_compute_region_instance_group_manager.client_pool.id
+  target = google_compute_region_instance_group_manager.pool.id
 
   autoscaling_policy {
-    max_replicas    = var.client_cluster_size_max
-    min_replicas    = var.client_cluster_size
+    max_replicas    = var.autoscaler.size_max
+    min_replicas    = var.autoscaler.size_min
     cooldown_period = 240
     # Turn off autoscaling when the cluster size is equal to the maximum size.
     mode = "ONLY_SCALE_OUT"
 
     cpu_utilization {
-      target = var.client_cluster_autoscaling_cpu_target
+      target = var.autoscaler.cpu_target
     }
 
     dynamic "metric" {
-      for_each = var.client_cluster_autoscaling_memory_target < 100 ? [1] : []
+      for_each = var.autoscaler.memory_target != null && var.autoscaler.memory_target < 100 ? [1] : []
       content {
         name   = "agent.googleapis.com/memory/percent_used"
         type   = "GAUGE"
         filter = "resource.type = \"gce_instance\" AND metric.labels.state = \"used\""
-        target = var.client_cluster_autoscaling_memory_target
+        target = var.autoscaler.memory_target
       }
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.autoscaler.memory_target == null || var.autoscaler.memory_target > var.base_hugepages_percentage
+      error_message = "Autoscaler memory target must be higher than ${var.base_hugepages_percentage} (preallocated hugepages), because those are counted as used memory in monitoring."
     }
   }
 }
 
-resource "google_compute_region_instance_group_manager" "client_pool" {
-  name   = "${local.client_pool_name}-rig"
+resource "google_compute_region_instance_group_manager" "pool" {
+  name   = "${var.cluster_name}-rig"
   region = var.gcp_region
 
-  target_size = var.client_cluster_size < var.client_cluster_size_max ? null : var.client_cluster_size
+  target_size = var.autoscaler.size_max == null || var.autoscaler.size_min == var.autoscaler.size_max ? null : var.autoscaler.size_min
 
   version {
-    name              = google_compute_instance_template.client.id
-    instance_template = google_compute_instance_template.client.id
+    name              = google_compute_instance_template.template.id
+    instance_template = google_compute_instance_template.template.id
   }
 
   auto_healing_policies {
-    health_check      = google_compute_health_check.client_nomad_check.id
+    health_check      = google_compute_health_check.nomad_check.id
     initial_delay_sec = 600
   }
 
@@ -107,23 +113,23 @@ resource "google_compute_region_instance_group_manager" "client_pool" {
     instance_redistribution_type = "NONE"
   }
 
-  base_instance_name = local.client_pool_name
+  base_instance_name = var.cluster_name
   target_pools       = []
 
   depends_on = [
-    google_compute_instance_template.client,
+    google_compute_instance_template.template,
   ]
 }
 
-data "google_compute_image" "client_source_image" {
-  family = var.client_image_family
+data "google_compute_image" "source_image" {
+  family = var.image_family
 }
 
-resource "google_compute_instance_template" "client" {
-  name_prefix = "${local.client_pool_name}-"
+resource "google_compute_instance_template" "template" {
+  name_prefix = "${var.cluster_name}-"
 
   instance_description = null
-  machine_type         = var.client_machine_type
+  machine_type         = var.machine_type
   min_cpu_platform     = var.min_cpu_platform
 
   labels = merge(
@@ -133,7 +139,7 @@ resource "google_compute_instance_template" "client" {
     } : {})
   )
   tags                    = [var.cluster_tag_name]
-  metadata_startup_script = local.client_startup_script
+  metadata_startup_script = local.startup_script
   metadata = {
     enable-osconfig         = "TRUE",
     enable-guest-attributes = "TRUE",
@@ -146,36 +152,36 @@ resource "google_compute_instance_template" "client" {
   disk {
     auto_delete  = true
     boot         = true
-    source_image = data.google_compute_image.client_source_image.id
-    disk_size_gb = var.client_cluster_root_disk_size_gb
-    disk_type    = var.client_boot_disk_type
+    source_image = data.google_compute_image.source_image.id
+    disk_size_gb = var.boot_disk.size_gb
+    disk_type    = var.boot_disk.disk_type
   }
 
   # Cache disks - Local SSDs
   dynamic "disk" {
     for_each = [
-      for _ in range(local.client_has_local_ssd ? var.client_cluster_cache_disk_count : 0) : {}
+      for _ in range(local.has_local_ssd ? var.cache_disks.count : 0) : {}
     ]
 
     content {
       auto_delete  = true
       boot         = false
-      disk_size_gb = var.client_cluster_cache_disk_size_gb
+      disk_size_gb = var.cache_disks.size_gb
       interface    = "NVME"
-      disk_type    = var.client_cluster_cache_disk_type
+      disk_type    = var.cache_disks.disk_type
       type         = "SCRATCH"
     }
   }
 
   # Cache Disk - Persistent Disk
   dynamic "disk" {
-    for_each = [for n in range(!local.client_has_local_ssd ? 1 : 0) : {}]
+    for_each = [for n in range(!local.has_local_ssd ? 1 : 0) : {}]
     content {
       auto_delete  = true
       boot         = false
       type         = "PERSISTENT"
-      disk_size_gb = var.client_cluster_cache_disk_size_gb
-      disk_type    = var.client_cluster_cache_disk_type
+      disk_size_gb = var.cache_disks.size_gb
+      disk_type    = var.cache_disks.disk_type
     }
   }
 
@@ -206,18 +212,15 @@ resource "google_compute_instance_template" "client" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     precondition {
-      condition     = local.client_has_local_ssd || var.client_cluster_cache_disk_count == 1
-      error_message = "When using persistent disks for the client cluster cache, only 1 disk is supported."
+      condition     = local.has_local_ssd || var.cache_disks.count == 1
+      error_message = "When using persistent disks for the cluster cache, only 1 disk is supported."
     }
+
     precondition {
-      condition     = !local.client_has_local_ssd || var.client_cluster_cache_disk_size_gb == 375
-      error_message = "When using local-ssd for the client cluster cache, each disk must be exactly 375 GB."
+      condition     = !local.has_local_ssd || var.cache_disks.size_gb == 375
+      error_message = "When using local-ssd for the cluster cache, each disk must be exactly 375 GB."
     }
+
     create_before_destroy = true
   }
-
-  depends_on = [
-    google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
-    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
-  ]
 }

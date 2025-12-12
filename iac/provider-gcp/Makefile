@@ -14,23 +14,12 @@ $(if $(value $(strip $(1))), TF_VAR_$(shell echo $(strip $(1)) | tr A-Z a-z)=$($
 endef
 
 tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
-	$(call tfvar, CLIENT_MACHINE_TYPE) \
-	$(call tfvar, CLIENT_CLUSTER_SIZE) \
-	$(call tfvar, CLIENT_CLUSTER_SIZE_MAX) \
-	$(call tfvar, CLIENT_CLUSTER_AUTOSCALING_CPU_TARGET) \
-	$(call tfvar, CLIENT_CLUSTER_AUTOSCALING_MEMORY_TARGET) \
-	$(call tfvar, CLIENT_CLUSTER_ROOT_DISK_SIZE_GB) \
-	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
-	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_COUNT) \
+	$(call tfvar, BUILD_CLUSTER_CONFIG_JSON) \
+	$(call tfvar, CLIENT_CLUSTERS_CONFIG_JSON) \
 	$(call tfvar, API_MACHINE_TYPE) \
 	$(call tfvar, API_CLUSTER_SIZE) \
 	$(call tfvar, API_USE_NAT) \
 	$(call tfvar, API_NAT_IPS) \
-	$(call tfvar, BUILD_MACHINE_TYPE) \
-	$(call tfvar, BUILD_CLUSTER_SIZE) \
-	$(call tfvar, BUILD_CLUSTER_ROOT_DISK_SIZE_GB) \
-	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_SIZE_GB) \
-	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_COUNT) \
 	$(call tfvar, SERVER_MACHINE_TYPE) \
 	$(call tfvar, SERVER_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
@@ -67,12 +56,8 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, FILESTORE_CACHE_TIER) \
 	$(call tfvar, FILESTORE_CACHE_CAPACITY_GB) \
 	$(call tfvar, FILESTORE_MAX_DISK_USAGE_TARGET) \
-	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_TYPE) \
-	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_TYPE) \
 	$(call tfvar, MIN_CPU_PLATFORM) \
 	$(call tfvar, REMOTE_REPOSITORY_ENABLED) \
-	$(call tfvar, CLIENT_BOOT_DISK_TYPE) \
-	$(call tfvar, BUILD_BOOT_DISK_TYPE) \
 	$(call tfvar, API_BOOT_DISK_TYPE) \
 	$(call tfvar, SERVER_BOOT_DISK_TYPE) \
 	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
