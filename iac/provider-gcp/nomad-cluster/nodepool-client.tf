@@ -22,8 +22,8 @@ locals {
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
     NODE_POOL                    = var.orchestrator_node_pool
     BASE_HUGEPAGES_PERCENTAGE    = var.orchestrator_base_hugepages_percentage
-    CACHE_DISK_COUNT             = var.build_cluster_cache_disk_count
-    LOCAL_SSD                    = var.build_cluster_cache_disk_type == "local-ssd" ? "true" : "false"
+    CACHE_DISK_COUNT             = var.client_cluster_cache_disk_count
+    LOCAL_SSD                    = var.client_cluster_cache_disk_type == "local-ssd" ? "true" : "false"
   })
 }
 
@@ -205,7 +205,7 @@ resource "google_compute_instance_template" "client" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     precondition {
-      condition     = var.build_cluster_cache_disk_type != "local-ssd" || var.build_cluster_cache_disk_count != 1
+      condition     = var.client_cluster_cache_disk_type != "local-ssd" || var.client_cluster_cache_disk_count != 1
       error_message = "When using local-ssd cache disks, only 1 cache disk is supported per client machine."
     }
     create_before_destroy = true
