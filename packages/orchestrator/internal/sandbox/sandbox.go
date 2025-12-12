@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -147,6 +148,7 @@ type Factory struct {
 	networkPool  *network.Pool
 	devicePool   *nbd.DevicePool
 	featureFlags *featureflags.Client
+	wg           sync.WaitGroup
 }
 
 func NewFactory(
@@ -163,6 +165,17 @@ func NewFactory(
 	}
 }
 
+// Wait for all sandboxes to exit
+func (f *Factory) Wait(ctx context.Context) error {
+	l := logger.L()
+	l.Info(ctx, "Waiting for all sandboxes to exit")
+	defer l.Info(ctx, "All sandboxes exited")
+
+	f.wg.Wait()
+
+	return nil
+}
+
 // CreateSandbox creates the sandbox.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) CreateSandbox(
@@ -176,6 +189,13 @@ func (f *Factory) CreateSandbox(
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
+	f.addSandbox()
+	defer func() {
+		if e != nil {
+			f.subtractSandbox()
+		}
+	}()
+
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
@@ -327,6 +347,7 @@ func (f *Factory) CreateSandbox(
 	cleanup.AddPriority(ctx, sbx.Stop)
 
 	go func() {
+		defer f.subtractSandbox()
 		defer execSpan.End()
 
 		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
@@ -362,6 +383,13 @@ func (f *Factory) ResumeSandbox(
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
+	f.addSandbox()
+	defer func() {
+		if e != nil {
+			f.subtractSandbox()
+		}
+	}()
+
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
@@ -584,6 +612,7 @@ func (f *Factory) ResumeSandbox(
 	go sbx.Checks.Start(execCtx)
 
 	go func() {
+		defer f.subtractSandbox()
 		defer execSpan.End()
 
 		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
@@ -603,6 +632,14 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	return sbx, nil
+}
+
+func (f *Factory) addSandbox() {
+	f.wg.Add(1)
+}
+
+func (f *Factory) subtractSandbox() {
+	f.wg.Done()
 }
 
 func startExecutionSpan(ctx context.Context) (context.Context, trace.Span) {

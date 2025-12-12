@@ -20,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
@@ -153,20 +152,13 @@ func (s *ServerStore) Close(ctx context.Context) error {
 }
 
 func (s *ServerStore) Wait(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
-	default:
-		s.logger.Info(ctx, "Waiting for all build jobs to finish")
-		s.wg.Wait()
+	s.logger.Info(ctx, "Waiting for all build jobs to finish")
+	s.wg.Wait()
 
-		if !env.IsLocal() {
-			s.logger.Info(ctx, "Waiting for consumers to check build status")
-			time.Sleep(15 * time.Second)
-		}
+	s.logger.Info(ctx, "Waiting for consumers to check build status")
+	time.Sleep(15 * time.Second)
 
-		s.logger.Info(ctx, "Template build queue cleaned")
+	s.logger.Info(ctx, "Template build queue cleaned")
 
-		return nil
-	}
+	return nil
 }

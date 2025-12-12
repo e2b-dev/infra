@@ -168,7 +168,7 @@ func run(config cfg.Config) (success bool) {
 	// there's a panic.
 	defer func(g *errgroup.Group) {
 		err := g.Wait()
-		if err != nil {
+		if ignoreServiceDoneError(err) != nil {
 			log.Printf("error while shutting down: %v", err)
 			success = false
 		}
@@ -196,7 +196,7 @@ func run(config cfg.Config) (success bool) {
 	}))
 	defer func(l logger.Logger) {
 		err := l.Sync()
-		if err != nil {
+		if ignoreInvalidArg(err) != nil {
 			log.Printf("error while shutting down logger: %v", err)
 			success = false
 		}
@@ -214,7 +214,7 @@ func run(config cfg.Config) (success bool) {
 	)
 	defer func(l logger.Logger) {
 		err := l.Sync()
-		if err != nil {
+		if ignoreInvalidArg(err) != nil {
 			log.Printf("error while shutting down sandbox logger: %v", err)
 			success = false
 		}
@@ -232,7 +232,7 @@ func run(config cfg.Config) (success bool) {
 	)
 	defer func(l logger.Logger) {
 		err := l.Sync()
-		if err != nil {
+		if ignoreInvalidArg(err) != nil {
 			log.Printf("error while shutting down sandbox logger: %v", err)
 			success = false
 		}
@@ -487,11 +487,14 @@ func run(config cfg.Config) (success bool) {
 	startService("cmux server", func() error {
 		logger.L().Info(ctx, "Starting network server", zap.Uint16("port", config.GRPCPort))
 		err := cmuxServer.Serve()
-		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
-			return nil
+		if err != nil {
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				return nil
+			}
+			return err
 		}
 
-		return err
+		return nil
 	})
 	closers = append(closers, closer{"cmux server", func(context.Context) error {
 		logger.L().Info(ctx, "Shutting down cmux server")
@@ -544,7 +547,7 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Error(ctx, "Service error", zap.Error(serviceErr))
 	}
 
-	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
+	closeCtx, cancelCloseCtx := context.WithTimeout(context.Background(), 24*time.Hour)
 	defer cancelCloseCtx()
 	if config.ForceStop {
 		cancelCloseCtx()
@@ -555,10 +558,12 @@ func run(config cfg.Config) (success bool) {
 	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
 		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
 
-		// Wait for draining state to propagate to all consumers
-		if !env.IsLocal() {
-			time.Sleep(15 * time.Second)
-		}
+		time.Sleep(15 * time.Second)
+	}
+
+	if err := sandboxFactory.Wait(ctx); err != nil {
+		logger.L().Error(ctx, "error while waiting for sandbox factory to drain", zap.Error(err))
+		success = false
 	}
 
 	// Wait for services to be drained before closing them
@@ -588,6 +593,23 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	return success
+}
+
+func ignoreInvalidArg(err error) error {
+	if errors.Is(err, syscall.EINVAL) {
+		return nil
+	}
+
+	return err
+}
+
+func ignoreServiceDoneError(err error) error {
+	var sde serviceDoneError
+	if errors.As(err, &sde) {
+		return nil
+	}
+
+	return err
 }
 
 type serviceDoneError struct {
