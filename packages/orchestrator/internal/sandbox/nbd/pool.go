@@ -135,7 +135,7 @@ func (d *DevicePool) Populate(ctx context.Context) error {
 		default:
 		}
 
-		device, err := d.getFreeDeviceSlot()
+		device, cleanup, err := d.getFreeDeviceSlot()
 		if err != nil {
 			if failedCount%100 == 0 {
 				logger.L().Error(ctx, "[nbd pool]: failed to create network",
@@ -156,8 +156,12 @@ func (d *DevicePool) Populate(ctx context.Context) error {
 		// Use select to avoid panic if context is canceled before writing
 		select {
 		case <-ctx.Done():
+			cleanup()
+
 			return ctx.Err()
 		case <-d.done:
+			cleanup()
+
 			return ErrClosed
 		case d.slots <- *device:
 			// sent successfully
@@ -226,7 +230,7 @@ func (d *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bo
 }
 
 // Get a free device slot.
-func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
+func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, func(), error) {
 	start := uint32(0)
 
 	for {
@@ -235,14 +239,14 @@ func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 		if !ok {
 			cleanup()
 
-			return nil, NoFreeSlotsError{}
+			return nil, nil, NoFreeSlotsError{}
 		}
 
 		free, err := d.isDeviceFree(slot)
 		if err != nil {
 			cleanup()
 
-			return nil, fmt.Errorf("failed to check if device is free: %w", err)
+			return nil, nil, fmt.Errorf("failed to check if device is free: %w", err)
 		}
 
 		if !free {
@@ -255,7 +259,7 @@ func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 			continue
 		}
 
-		return &slot, nil
+		return &slot, cleanup, nil
 	}
 }
 
