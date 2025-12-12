@@ -95,6 +95,7 @@ func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path stri
 
 			return
 		}
+		defer cleanup(ctx, "failed to close file", input.Close)
 
 		c.writeFileToCache(ctx, input, cacheOpWriteFromFileSystem)
 	}(context.WithoutCancel(ctx))

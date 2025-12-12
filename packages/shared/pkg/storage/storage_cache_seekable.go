@@ -122,8 +122,8 @@ func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, p
 	// write the file to the disk and the remote system at the same time.
 	// this opens the file twice, but the API makes it difficult to use a MultiWriter
 
-	go func() {
-		size, err := c.createCacheBlocksFromFile(context.WithoutCancel(ctx), path)
+	go func(ctx context.Context) {
+		size, err := c.createCacheBlocksFromFile(ctx, path)
 		if err != nil {
 			recordCacheError(ctx, cacheOpWriteFromFileSystem, fmt.Errorf("failed to create cache blocks: %w", err))
 
@@ -135,7 +135,7 @@ func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, p
 		if err := c.writeLocalSize(ctx, size); err != nil {
 			recordCacheError(ctx, cacheOpWriteFromFileSystem, fmt.Errorf("failed to write local file size: %w", err))
 		}
-	}()
+	}(context.WithoutCancel(ctx))
 
 	if err := c.inner.WriteFromFileSystem(ctx, path); err != nil {
 		return fmt.Errorf("failed to write to remote storage: %w", err)

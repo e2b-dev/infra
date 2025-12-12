@@ -37,7 +37,8 @@ func OpenFile(ctx context.Context, filename string) (*AtomicFile, error) {
 	tempFilename := fmt.Sprintf("%s.temp.%s", filename, uuid.NewString())
 	tempFile, err := os.OpenFile(tempFilename, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
-		cleanup(ctx, "failed to close lock file", lockFile.Close)
+		cleanup(ctx, "failed to release lock",
+			func() error { return ReleaseLock(ctx, lockFile) })
 
 		return nil, fmt.Errorf("failed to open temp file: %w", err)
 	}

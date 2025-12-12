@@ -246,7 +246,7 @@ func runBuild(
 		builder.templateCache,
 		builder.proxy,
 		builder.sandboxes,
-		builder.templateStorage,
+		templateStorage,
 		builder.buildStorage,
 		index,
 	)
@@ -256,7 +256,7 @@ func runBuild(
 		builder.featureFlags,
 		builder.logger,
 		builder.proxy,
-		builder.templateStorage,
+		templateStorage,
 		builder.artifactRegistry,
 		builder.dockerhubRepository,
 		layerExecutor,
@@ -298,7 +298,7 @@ func runBuild(
 	postProcessingBuilder := finalize.New(
 		bc,
 		builder.sandboxFactory,
-		builder.templateStorage,
+		templateStorage,
 		builder.proxy,
 		layerExecutor,
 		builder.featureFlags,
