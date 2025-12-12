@@ -436,7 +436,7 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create hyperloop server", zap.Error(err))
 	}
-	startService("hyperloop server", func(ctx context.Context) error {
+	startService("hyperloop server", func(context.Context) error {
 		err := hyperloopSrv.ListenAndServe()
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
@@ -518,7 +518,7 @@ func run(config cfg.Config) (success bool) {
 	httpServer := factories.NewHTTPServer()
 	httpServer.Handler = healthcheck.CreateHandler()
 
-	startService("http server", func(ctx context.Context) error {
+	startService("http server", func(context.Context) error {
 		err := httpServer.Serve(httpListener)
 		switch {
 		case errors.Is(err, cmux.ErrServerClosed):
@@ -533,7 +533,7 @@ func run(config cfg.Config) (success bool) {
 
 	// grpc server
 	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
-	startService("grpc server", func(ctx context.Context) error {
+	startService("grpc server", func(context.Context) error {
 		return grpcServer.Serve(grpcListener)
 	})
 	closers = append(closers, closer{"grpc server", func(context.Context) error {
