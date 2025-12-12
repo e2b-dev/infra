@@ -358,7 +358,7 @@ func (fw *Firewall) SetTCPFirewall(useTCPFirewall bool) error {
 	} else {
 		// Disable TCP rerouting: add a rule to mark all TCP packets as allowed
 		if fw.tcpFirewallSkipRule == nil {
-			rule := fw.conn.AddRule(&nftables.Rule{
+			fw.conn.AddRule(&nftables.Rule{
 				Table: fw.table,
 				Chain: fw.filterChain,
 				Exprs: append(append(fw.tapIfaceMatch(),
@@ -375,8 +375,17 @@ func (fw *Firewall) SetTCPFirewall(useTCPFirewall bool) error {
 			if err := fw.conn.Flush(); err != nil {
 				return fmt.Errorf("flush add TCP mark rule: %w", err)
 			}
-			// Only assign after successful flush to avoid inconsistent state
-			fw.tcpFirewallSkipRule = rule
+			// Retrieve the rule from the kernel to get its Handle (required for DelRule)
+			// AddRule returns a rule without the Handle set; it's only assigned by the kernel after Flush.
+			rules, err := fw.conn.GetRules(fw.table, fw.filterChain)
+			if err != nil {
+				return fmt.Errorf("get rules after adding TCP mark rule: %w", err)
+			}
+			if len(rules) == 0 {
+				return fmt.Errorf("no rules found after adding TCP mark rule")
+			}
+			// The rule we just added is the last one in the chain
+			fw.tcpFirewallSkipRule = rules[len(rules)-1]
 		}
 	}
 
