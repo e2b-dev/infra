@@ -208,6 +208,10 @@ resource "google_compute_instance_template" "client" {
       condition     = var.client_cluster_cache_disk_type == "local-ssd" || var.client_cluster_cache_disk_count == 1
       error_message = "When using persistent disks for the client cluster cache, only 1 disk is supported."
     }
+    precondition {
+      condition = var.client_cluster_cache_disk_type != "local-ssd" || var.client_cluster_cache_disk_size_gb == 375
+      error_message = "When using local-ssd for the client cluster cache, each disk must be exactly 375 GB."
+    }
     create_before_destroy = true
   }
 }

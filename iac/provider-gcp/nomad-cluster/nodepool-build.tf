@@ -179,6 +179,12 @@ resource "google_compute_instance_template" "build" {
       condition     = var.build_cluster_cache_disk_type == "local-ssd" || var.build_cluster_cache_disk_count == 1
       error_message = "When using persistent disks for the build cluster cache, only 1 disk is supported."
     }
+
+    precondition {
+      condition = var.build_cluster_cache_disk_type != "local-ssd" || var.build_cluster_cache_disk_size_gb == 375
+      error_message = "When using local-ssd for the build cluster cache, each disk must be exactly 375 GB."
+    }
+
     create_before_destroy = true
   }
 
