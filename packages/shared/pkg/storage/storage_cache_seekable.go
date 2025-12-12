@@ -363,7 +363,7 @@ func (c CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, of
 		return fmt.Errorf("failed to copy chunk: %w", err)
 	}
 
-	return err // in case err == io.EOF
+	return nil
 }
 
 func safelyRemoveFile(ctx context.Context, path string) {

@@ -82,6 +82,7 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(data)), size)
 
+		// verify that the size has been cached
 		buff := make([]byte, len(data))
 		bytesRead, err := c.ReadAt(t.Context(), buff, 0)
 		require.NoError(t, err)

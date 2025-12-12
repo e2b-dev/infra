@@ -67,6 +67,10 @@ func (f *AtomicFile) Close(ctx context.Context) error {
 		if err = moveWithoutReplace(ctx, f.tempFile.Name(), f.filename); err != nil {
 			err = fmt.Errorf("failed to commit file: %w", err)
 
+			if rmErr := os.Remove(f.tempFile.Name()); rmErr != nil {
+				err = errors.Join(err, fmt.Errorf("failed to remove temp file: %w", rmErr))
+			}
+
 			return
 		}
 	})
@@ -81,7 +85,7 @@ func cleanup(ctx context.Context, msg string, fn func() error) {
 }
 
 // moveWithoutReplace tries to rename a file but will not replace the target if it already exists.
-// If the file already exists, the file will be deleted.
+// The old file is deleted if it can't be moved for any reason.
 func moveWithoutReplace(ctx context.Context, oldPath, newPath string) error {
 	defer func() {
 		if err := os.Remove(oldPath); err != nil {
