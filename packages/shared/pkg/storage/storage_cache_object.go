@@ -8,6 +8,7 @@ import (
 	"os"
 	"sync"
 
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -23,6 +24,7 @@ type CachedObjectProvider struct {
 	path      string
 	chunkSize int64
 	inner     ObjectProvider
+	flags     *featureflags.Client
 }
 
 var _ ObjectProvider = CachedObjectProvider{}
@@ -86,6 +88,10 @@ func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e err
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
+		if !c.flags.BoolFlag(ctx, featureflags.WriteToCacheOnWrites) {
+			return
+		}
+
 		count, err := c.writeFileToCache(
 			context.WithoutCancel(ctx),
 			bytes.NewReader(p),
