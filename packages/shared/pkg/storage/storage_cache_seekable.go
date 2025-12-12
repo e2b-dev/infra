@@ -253,7 +253,7 @@ func (c CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size i
 
 	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
 
-	if err := os.WriteFile(tempFilename, []byte(fmt.Sprintf("%d", size)), cacheFilePermissions); err != nil {
+	if err := os.WriteFile(tempFilename, fmt.Appendf(nil, "%d", size), cacheFilePermissions); err != nil {
 		logger.L().Warn(ctx, "failed to write to temp file",
 			zap.String("path", tempFilename),
 			zap.Error(err))

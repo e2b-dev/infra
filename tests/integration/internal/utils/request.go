@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"testing"
@@ -34,9 +35,7 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 	}
 
 	if extraHeaders != nil {
-		for key, values := range *extraHeaders {
-			header[key] = values
-		}
+		maps.Copy(header, *extraHeaders)
 	}
 
 	return &http.Request{

@@ -145,7 +145,7 @@ func parseFilters(query string) (map[string]string, error) {
 	// Parse filters, both key and value are also unescaped
 	filters := make(map[string]string)
 
-	for _, filter := range strings.Split(query, "&") {
+	for filter := range strings.SplitSeq(query, "&") {
 		parts := strings.Split(filter, "=")
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid key value pair in query")

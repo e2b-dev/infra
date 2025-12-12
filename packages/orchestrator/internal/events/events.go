@@ -43,13 +43,11 @@ func (e *EventsService) Publish(ctx context.Context, teamID uuid.UUID, event eve
 
 	wg := sync.WaitGroup{}
 	for _, target := range e.deliveryTargets {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := target.Publish(ctx, deliveryKey, event); err != nil {
 				logger.L().Error(ctx, "Failed to publish sandbox event", zap.Error(err), zap.Any("event", event))
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }
