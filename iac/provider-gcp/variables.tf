@@ -301,18 +301,6 @@ variable "client_cluster_root_disk_size_gb" {
   default     = 200
 }
 
-variable "client_cluster_cache_disk_size_gb" {
-  type        = number
-  description = "The size of the cache disk for the orchestrator machines in GB"
-  default     = 500
-}
-
-variable "client_cluster_cache_disk_type" {
-  description = "The GCE cache disk type for the client machines."
-  type        = string
-  default     = "pd-ssd"
-}
-
 variable "orchestrator_node_pool" {
   type    = string
   default = "default"
@@ -510,6 +498,18 @@ variable "build_cluster_cache_disk_count" {
   type        = number
   description = "The number of 375 GB NVME disks to raid together for storing build files."
   default     = 3
+}
+
+variable "client_cluster_cache_disk_size_gb" {
+  type        = number
+  description = "The size of the cache disk for the orchestrator machines in GB"
+  default     = 375
+}
+
+variable "client_cluster_cache_disk_type" {
+  description = "The GCE cache disk type for the client machines."
+  type        = string
+  default     = "local-ssd"
 }
 
 variable "client_cluster_cache_disk_count" {
