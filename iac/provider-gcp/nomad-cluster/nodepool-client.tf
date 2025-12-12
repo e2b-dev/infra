@@ -214,4 +214,9 @@ resource "google_compute_instance_template" "client" {
     }
     create_before_destroy = true
   }
+
+  depends_on = [
+    google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+  ]
 }
