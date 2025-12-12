@@ -152,6 +152,10 @@ func (s *ServerStore) Close(ctx context.Context) error {
 }
 
 func (s *ServerStore) Wait(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	s.logger.Info(ctx, "Waiting for all build jobs to finish")
 	s.wg.Wait()
 

@@ -171,6 +171,10 @@ func (f *Factory) Wait(ctx context.Context) error {
 	l.Info(ctx, "Waiting for all sandboxes to exit")
 	defer l.Info(ctx, "All sandboxes exited")
 
+	if err := ctx.Err(); err != nil {
+		return ctx.Err()
+	}
+
 	f.wg.Wait()
 
 	return nil

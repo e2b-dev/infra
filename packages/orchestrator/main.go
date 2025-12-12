@@ -562,7 +562,7 @@ func run(config cfg.Config) (success bool) {
 		time.Sleep(15 * time.Second)
 	}
 
-	if err := sandboxFactory.Wait(ctx); err != nil {
+	if err := sandboxFactory.Wait(closeCtx); err != nil {
 		logger.L().Error(ctx, "error while waiting for sandbox factory to drain", zap.Error(err))
 		success = false
 	}
