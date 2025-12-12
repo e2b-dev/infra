@@ -1,5 +1,6 @@
 locals {
-  client_pool_name = "${var.prefix}${var.client_cluster_name}"
+  client_pool_name     = "${var.prefix}${var.client_cluster_name}"
+  client_has_local_ssd = var.client_cluster_cache_disk_type == "local-ssd"
   client_startup_script = templatefile("${path.module}/scripts/start-client.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
     SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
@@ -23,7 +24,7 @@ locals {
     NODE_POOL                    = var.orchestrator_node_pool
     BASE_HUGEPAGES_PERCENTAGE    = var.orchestrator_base_hugepages_percentage
     CACHE_DISK_COUNT             = var.client_cluster_cache_disk_count
-    LOCAL_SSD                    = var.client_cluster_cache_disk_type == "local-ssd" ? "true" : "false"
+    LOCAL_SSD                    = local.client_has_local_ssd ? "true" : "false"
   })
 }
 
@@ -153,7 +154,7 @@ resource "google_compute_instance_template" "client" {
   # Cache disks - Local SSDs
   dynamic "disk" {
     for_each = [
-      for _ in range(var.client_cluster_cache_disk_type == "local-ssd" ? var.client_cluster_cache_disk_count : 0) : {}
+      for _ in range(local.client_has_local_ssd ? var.client_cluster_cache_disk_count : 0) : {}
     ]
 
     content {
@@ -168,7 +169,7 @@ resource "google_compute_instance_template" "client" {
 
   # Cache Disk - Persistent Disk
   dynamic "disk" {
-    for_each = [for n in range(var.client_cluster_cache_disk_type != "local-ssd" ? 1 : 0) : {}]
+    for_each = [for n in range(!local.client_has_local_ssd ? 1 : 0) : {}]
     content {
       auto_delete  = true
       boot         = false
@@ -205,11 +206,11 @@ resource "google_compute_instance_template" "client" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     precondition {
-      condition     = var.client_cluster_cache_disk_type == "local-ssd" || var.client_cluster_cache_disk_count == 1
+      condition     = local.client_has_local_ssd || var.client_cluster_cache_disk_count == 1
       error_message = "When using persistent disks for the client cluster cache, only 1 disk is supported."
     }
     precondition {
-      condition     = var.client_cluster_cache_disk_type != "local-ssd" || var.client_cluster_cache_disk_size_gb == 375
+      condition     = !local.client_has_local_ssd || var.client_cluster_cache_disk_size_gb == 375
       error_message = "When using local-ssd for the client cluster cache, each disk must be exactly 375 GB."
     }
     create_before_destroy = true

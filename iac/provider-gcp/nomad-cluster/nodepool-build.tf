@@ -1,5 +1,6 @@
 locals {
-  build_pool_name = "${var.prefix}orch-build"
+  build_pool_name     = "${var.prefix}orch-build"
+  build_has_local_ssd = var.build_cluster_cache_disk_type == "local-ssd"
   build_startup_script = templatefile("${path.module}/scripts/start-client.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
     SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
@@ -23,7 +24,7 @@ locals {
     NODE_POOL                    = var.build_node_pool
     BASE_HUGEPAGES_PERCENTAGE    = var.build_base_hugepages_percentage
     CACHE_DISK_COUNT             = var.build_cluster_cache_disk_count
-    LOCAL_SSD                    = var.build_cluster_cache_disk_type == "local-ssd" ? "true" : "false"
+    LOCAL_SSD                    = local.build_has_local_ssd ? "true" : "false"
   })
 }
 
@@ -125,7 +126,7 @@ resource "google_compute_instance_template" "build" {
   # Cache disks - Local SSDs
   dynamic "disk" {
     for_each = [
-      for _ in range(var.build_cluster_cache_disk_type == "local-ssd" ? var.build_cluster_cache_disk_count : 0) : {}
+      for _ in range(local.build_has_local_ssd ? var.build_cluster_cache_disk_count : 0) : {}
     ]
     content {
       auto_delete  = true
@@ -139,7 +140,7 @@ resource "google_compute_instance_template" "build" {
 
   # Cache Disk - Persistent Disk
   dynamic "disk" {
-    for_each = [for n in range(var.build_cluster_cache_disk_type != "local-ssd" ? 1 : 0) : {}]
+    for_each = [for n in range(!local.build_has_local_ssd ? 1 : 0) : {}]
     content {
       auto_delete  = true
       boot         = false
@@ -176,12 +177,12 @@ resource "google_compute_instance_template" "build" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     precondition {
-      condition     = var.build_cluster_cache_disk_type == "local-ssd" || var.build_cluster_cache_disk_count == 1
+      condition     = local.build_has_local_ssd || var.build_cluster_cache_disk_count == 1
       error_message = "When using persistent disks for the build cluster cache, only 1 disk is supported."
     }
 
     precondition {
-      condition     = var.build_cluster_cache_disk_type != "local-ssd" || var.build_cluster_cache_disk_size_gb == 375
+      condition     = !local.build_has_local_ssd || var.build_cluster_cache_disk_size_gb == 375
       error_message = "When using local-ssd for the build cluster cache, each disk must be exactly 375 GB."
     }
 
