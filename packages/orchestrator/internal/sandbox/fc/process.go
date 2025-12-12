@@ -437,7 +437,7 @@ func (p *Process) Stop(ctx context.Context) error {
 		return fmt.Errorf("fc process not started")
 	}
 
-	if p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited() {
+	if hasProcessExited(p.cmd) {
 		logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
 
 		return nil
@@ -455,6 +455,12 @@ func (p *Process) Stop(ctx context.Context) error {
 
 	err = p.cmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {
+		if errors.Is(err, os.ErrProcessDone) {
+			logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
+
+			return nil
+		}
+
 		logger.L().Warn(ctx, "failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
 
@@ -483,6 +489,10 @@ func (p *Process) Stop(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+func hasProcessExited(cmd *exec.Cmd) bool {
+	return cmd == nil || cmd.ProcessState != nil
 }
 
 func (p *Process) Pause(ctx context.Context) error {
