@@ -224,10 +224,8 @@ func TestValidateNetworkConfig(t *testing.T) {
 				if err.ClientMsg != tt.wantErrMsg {
 					t.Errorf("validateNetworkConfig() error message = %q, want %q", err.ClientMsg, tt.wantErrMsg)
 				}
-			} else {
-				if err != nil {
-					t.Errorf("validateNetworkConfig() unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Errorf("validateNetworkConfig() unexpected error: %v", err)
 			}
 		})
 	}
