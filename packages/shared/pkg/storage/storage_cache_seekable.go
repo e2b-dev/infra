@@ -76,8 +76,11 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 		return 0, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
+	shadowBuff := make([]byte, readCount)
+	copy(shadowBuff, buff[:readCount])
+
 	go func(ctx context.Context) {
-		if err := c.writeChunkToCache(ctx, offset, chunkPath, buff[:readCount]); err != nil {
+		if err := c.writeChunkToCache(ctx, offset, chunkPath, shadowBuff); err != nil {
 			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
 		}
 	}(context.WithoutCancel(ctx))
