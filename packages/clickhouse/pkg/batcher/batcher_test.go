@@ -141,15 +141,13 @@ func TestBatcherConcurrentPush(t *testing.T) {
 	var wg sync.WaitGroup
 	ss := uint32(0)
 	for range 10 {
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			for i := range 100 {
 				b.Push(uint32(i))
 				time.Sleep(time.Millisecond)
 				atomic.AddUint32(&ss, uint32(i))
 			}
-			wg.Done()
-		}()
+		})
 	}
 	wg.Wait()
 	if err := b.Stop(); err != nil {

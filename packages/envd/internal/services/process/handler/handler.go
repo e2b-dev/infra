@@ -158,10 +158,7 @@ func New(
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", cmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err))
 		}
 
-		outWg.Add(1)
-		go func() {
-			defer outWg.Done()
-
+		outWg.Go(func() {
 			for {
 				buf := make([]byte, ptyChunkSize)
 
@@ -187,7 +184,7 @@ func New(
 					break
 				}
 			}
-		}()
+		})
 
 		h.tty = tty
 	} else {
@@ -196,9 +193,7 @@ func New(
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdout pipe for command '%s': %w", cmd, err))
 		}
 
-		outWg.Add(1)
-		go func() {
-			defer outWg.Done()
+		outWg.Go(func() {
 			stdoutLogs := make(chan []byte, outputBufferSize)
 			defer close(stdoutLogs)
 
@@ -233,16 +228,14 @@ func New(
 					break
 				}
 			}
-		}()
+		})
 
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stderr pipe for command '%s': %w", cmd, err))
 		}
 
-		outWg.Add(1)
-		go func() {
-			defer outWg.Done()
+		outWg.Go(func() {
 			stderrLogs := make(chan []byte, outputBufferSize)
 			defer close(stderrLogs)
 
@@ -277,7 +270,7 @@ func New(
 					break
 				}
 			}
-		}()
+		})
 
 		// For backwards compatibility we still set the stdin if not explicitly disabled
 		// If stdin is disabled, the process will use /dev/null as stdin
