@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"inet.af/tcpproxy"
 
@@ -17,19 +18,21 @@ import (
 type Proxy struct {
 	logger    logger.Logger
 	sandboxes *sandbox.Map
+	metrics   *Metrics
 
 	listenPort uint16
 
 	proxy *tcpproxy.Proxy
 }
 
-func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map) *Proxy {
+func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider) *Proxy {
 	port := networkConfig.SandboxTCPFirewallPort
 
 	return &Proxy{
 		listenPort: port,
 		logger:     logger,
 		sandboxes:  sandboxes,
+		metrics:    NewMetrics(meterProvider),
 	}
 }
 
@@ -45,17 +48,17 @@ func (p *Proxy) Start(ctx context.Context) error {
 			return nil, err
 		}
 
-		return newOrigDstListener(ctx, ln, p.sandboxes, p.logger), nil
+		return newOrigDstListener(ctx, ln, p.sandboxes, p.logger, p.metrics), nil
 	}
 
 	// Route all TLS traffic through allowlist (SNI-based routing)
-	p.proxy.AddSNIMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(domainHandler))
+	p.proxy.AddSNIMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(domainHandler, ProtocolTLS, p.metrics, p.logger))
 
 	// Route all HTTP traffic through allowlist (Host header-based routing)
-	p.proxy.AddHTTPHostMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, targetFunc(domainHandler))
+	p.proxy.AddHTTPHostMatchRoute(addr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(domainHandler, ProtocolHTTP, p.metrics, p.logger))
 
 	// Block unrecognized protocols
-	p.proxy.AddRoute(addr, targetFunc(cidrOnlyHandler))
+	p.proxy.AddRoute(addr, newConnectionHandler(cidrOnlyHandler, ProtocolOther, p.metrics, p.logger))
 
 	p.logger.Info(ctx, "Host filter proxy started", zap.String("address", addr))
 
@@ -81,18 +84,41 @@ func (p *Proxy) Close(_ context.Context) error {
 	return nil
 }
 
-// targetFunc adapts a handler function to tcpproxy.Target interface.
-type targetFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger)
+// handlerFunc is the signature for connection handlers.
+type handlerFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol)
 
-func (f targetFunc) HandleConn(conn net.Conn) {
+var _ tcpproxy.Target = (*connectionHandler)(nil)
+
+// connectionHandler adapts a handler function to tcpproxy.Target interface.
+type connectionHandler struct {
+	handler  handlerFunc
+	protocol Protocol
+	metrics  *Metrics
+	logger   logger.Logger
+}
+
+func newConnectionHandler(handler handlerFunc, protocol Protocol, metrics *Metrics, logger logger.Logger) *connectionHandler {
+	return &connectionHandler{
+		handler:  handler,
+		protocol: protocol,
+		metrics:  metrics,
+		logger:   logger,
+	}
+}
+
+func (t *connectionHandler) HandleConn(conn net.Conn) {
 	meta, ok := unwrapConnMeta(conn)
 	if !ok {
+		t.metrics.RecordError(context.Background(), ErrorTypeConnectionMeta, t.protocol)
 		conn.Close()
 
 		return
 	}
 
-	f(meta.ctx, conn, meta.ip, meta.port, meta.sbx, meta.logger)
+	logger := t.logger.With(logger.WithSandboxID(meta.sbx.Runtime.SandboxID))
+	t.metrics.RecordConnection(meta.ctx, t.protocol)
+
+	t.handler(meta.ctx, conn, meta.ip, meta.port, meta.sbx, logger, t.metrics, t.protocol)
 }
 
 // origDstListener wraps accepted connections with metadata
@@ -101,12 +127,13 @@ type origDstListener struct {
 
 	sandboxes *sandbox.Map
 	logger    logger.Logger
+	metrics   *Metrics
 
 	ctx context.Context //nolint:containedctx // propagated to connections for request tracing
 }
 
-func newOrigDstListener(ctx context.Context, listener net.Listener, sandboxes *sandbox.Map, logger logger.Logger) *origDstListener {
-	return &origDstListener{Listener: listener, ctx: ctx, sandboxes: sandboxes, logger: logger}
+func newOrigDstListener(ctx context.Context, listener net.Listener, sandboxes *sandbox.Map, logger logger.Logger, metrics *Metrics) *origDstListener {
+	return &origDstListener{Listener: listener, ctx: ctx, sandboxes: sandboxes, logger: logger, metrics: metrics}
 }
 
 func (l *origDstListener) Accept() (net.Conn, error) {
@@ -116,25 +143,25 @@ func (l *origDstListener) Accept() (net.Conn, error) {
 			return nil, err
 		}
 
-		ip, port, err := getOriginalDst(conn)
-		if err != nil {
-			l.logger.Error(l.ctx, "failed to get original destination", zap.Error(err))
-			conn.Close()
-
-			continue
-		}
-
 		sourceAddr := conn.RemoteAddr().String()
 		sbx, err := l.sandboxes.GetByHostPort(sourceAddr)
 		if err != nil {
 			l.logger.Error(l.ctx, "failed to find sandbox for connection", zap.String("source", sourceAddr), zap.Error(err))
+			l.metrics.RecordError(l.ctx, ErrorTypeSandboxLookup, ProtocolOther)
 			conn.Close()
 
 			continue
 		}
 
-		logger := l.logger.With(logger.WithSandboxID(sbx.Runtime.SandboxID))
+		ip, port, err := getOriginalDst(conn)
+		if err != nil {
+			l.logger.Error(l.ctx, "failed to get original destination", zap.Error(err))
+			l.metrics.RecordError(l.ctx, ErrorTypeOrigDst, ProtocolOther)
+			conn.Close()
 
-		return &connMeta{Conn: conn, ip: ip, port: port, ctx: l.ctx, sbx: sbx, logger: logger}, nil
+			continue
+		}
+
+		return &connMeta{Conn: conn, ip: ip, port: port, ctx: l.ctx, sbx: sbx}, nil
 	}
 }

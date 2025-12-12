@@ -118,6 +118,7 @@ func buildTemplate(
 		log,
 		networkConfig,
 		sandboxes,
+		noop.NewMeterProvider(),
 	)
 	go func() {
 		err := tcpFirewall.Start(ctx)

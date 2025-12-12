@@ -396,7 +396,7 @@ func TestIsEgressAllowed(t *testing.T) {
 				},
 			}
 
-			got, err := isEgressAllowed(sbx, tt.hostname, tt.ip)
+			got, _, err := isEgressAllowed(sbx, tt.hostname, tt.ip)
 
 			if tt.wantError {
 				if err == nil {
