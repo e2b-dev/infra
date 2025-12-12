@@ -32,13 +32,13 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 	}
 
 	provisionVersion := provisionScriptFile
-	if val, err := bb.featureFlags.IntFlag(
+	if val := bb.featureFlags.IntFlag(
 		ctx,
 		featureflags.BuildProvisionVersion,
 		featureflags.TemplateContext(bb.Config.TemplateID),
 		featureflags.TeamContext(bb.Config.TeamID),
-	// for dev environments (fallback value), use the provision script hash
-	); val != featureflags.BuildProvisionVersion.Fallback() && err == nil {
+		// for dev environments (fallback value), use the provision script hash
+	); val != 0 {
 		provisionVersion = strconv.FormatInt(int64(val), 10)
 	}
 

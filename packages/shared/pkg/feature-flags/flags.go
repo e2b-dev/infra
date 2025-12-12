@@ -104,9 +104,9 @@ var (
 	MaxSandboxesPerNode           = newIntFlag("max-sandboxes-per-node", 200)
 	GcloudConcurrentUploadLimit   = newIntFlag("gcloud-concurrent-upload-limit", 8)
 	GcloudMaxTasks                = newIntFlag("gcloud-max-tasks", 16)
-	ClickhouseBatcherMaxBatchSize = newIntFlag("clickhouse-batcher-max-batch-size", 64*1024) // 65536
-	ClickhouseBatcherMaxDelay     = newIntFlag("clickhouse-batcher-max-delay", 100)          // 100ms in milliseconds
-	ClickhouseBatcherQueueSize    = newIntFlag("clickhouse-batcher-queue-size", 8*1024)      // 8192
+	ClickhouseBatcherMaxBatchSize = newIntFlag("clickhouse-batcher-max-batch-size", 100)
+	ClickhouseBatcherMaxDelay     = newIntFlag("clickhouse-batcher-max-delay", 1000) // 1s in milliseconds
+	ClickhouseBatcherQueueSize    = newIntFlag("clickhouse-batcher-queue-size", 1000)
 	BestOfKSampleSize             = newIntFlag("best-of-k-sample-size", 3)                   // Default K=3
 	BestOfKMaxOvercommit          = newIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
 	BestOfKAlpha                  = newIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)

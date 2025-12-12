@@ -79,17 +79,19 @@ func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcont
 	return v, nil
 }
 
-func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) (int, error) {
+func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) int {
 	if c.ld == nil {
-		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
+		logger.L().Info(ctx, "LaunchDarkly client is not initialized, returning fallback")
+
+		return flag.fallback
 	}
 
 	value, err := c.ld.IntVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
 	if err != nil {
-		return value, fmt.Errorf("error evaluating %s: %w", flag, err)
+		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.name))
 	}
 
-	return value, nil
+	return value
 }
 
 func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ldcontext.Context) (string, error) {
