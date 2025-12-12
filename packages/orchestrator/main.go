@@ -559,9 +559,8 @@ func run(config cfg.Config) (success bool) {
 
 	// if a signal is received again, cancel the context and force quit
 	go func() {
-		println("----- waiting for second signal -----")
 		<-sigs
-		println("----- received a second signal, force quitting -----")
+		logger.L().Info(ctx, "Force shutdown signal received")
 		cancel()
 		cancelCloseCtx()
 		config.ForceStop = true
