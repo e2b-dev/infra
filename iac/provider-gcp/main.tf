@@ -66,23 +66,20 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  client_cluster_size_max                  = var.client_cluster_size_max
-  client_cluster_autoscaling_cpu_target    = var.client_cluster_autoscaling_cpu_target
-  client_cluster_autoscaling_memory_target = var.client_cluster_autoscaling_memory_target
-  build_cluster_root_disk_size_gb          = var.build_cluster_root_disk_size_gb
+  client_clusters_config          = jsondecode(var.client_clusters_config_json)
+  build_cluster_root_disk_size_gb = var.build_cluster_root_disk_size_gb
 
   api_cluster_size        = var.api_cluster_size
   build_cluster_size      = var.build_cluster_size
   clickhouse_cluster_size = var.clickhouse_cluster_size
-  client_cluster_size     = var.client_cluster_size
   server_cluster_size     = var.server_cluster_size
   loki_cluster_size       = var.loki_cluster_size
 
-  build_cluster_cache_disk_count  = var.build_cluster_cache_disk_count
-  client_cluster_cache_disk_count = var.client_cluster_cache_disk_count
+  build_cluster_cache_disk_type    = var.build_cluster_cache_disk_type
+  build_cluster_cache_disk_size_gb = var.build_cluster_cache_disk_size_gb
+  build_cluster_cache_disk_count   = var.build_cluster_cache_disk_count
 
   server_machine_type     = var.server_machine_type
-  client_machine_type     = var.client_machine_type
   api_machine_type        = var.api_machine_type
   build_machine_type      = var.build_machine_type
   clickhouse_machine_type = var.clickhouse_machine_type
@@ -137,7 +134,6 @@ module "cluster" {
   min_cpu_platform = var.min_cpu_platform
 
   # Boot disk types
-  client_boot_disk_type     = var.client_boot_disk_type
   build_boot_disk_type      = var.build_boot_disk_type
   api_boot_disk_type        = var.api_boot_disk_type
   server_boot_disk_type     = var.server_boot_disk_type
@@ -148,11 +144,10 @@ module "cluster" {
 module "nomad" {
   source = "./nomad"
 
-  prefix              = var.prefix
-  gcp_project_id      = var.gcp_project_id
-  gcp_region          = var.gcp_region
-  gcp_zone            = var.gcp_zone
-  client_machine_type = var.client_machine_type
+  prefix         = var.prefix
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+  gcp_zone       = var.gcp_zone
 
   consul_acl_token_secret       = module.init.consul_acl_token_secret
   nomad_acl_token_secret        = module.init.nomad_acl_token_secret
