@@ -357,22 +357,24 @@ func (fw *Firewall) SetTCPFirewall(useTCPFirewall bool) error {
 		}
 	} else {
 		// Disable TCP rerouting: add a rule to mark all TCP packets as allowed
-		fw.tcpFirewallSkipRule = fw.conn.AddRule(&nftables.Rule{
-			Table: fw.table,
-			Chain: fw.filterChain,
-			Exprs: append(append(fw.tapIfaceMatch(),
-				// Match TCP protocol
-				&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
-				&expr.Cmp{
-					Op:       expr.CmpOpEq,
-					Register: 1,
-					Data:     []byte{unix.IPPROTO_TCP},
-				}),
-				markAndAccept()...,
-			),
-		})
-		if err := fw.conn.Flush(); err != nil {
-			return fmt.Errorf("flush add TCP mark rule: %w", err)
+		if fw.tcpFirewallSkipRule == nil {
+			fw.tcpFirewallSkipRule = fw.conn.AddRule(&nftables.Rule{
+				Table: fw.table,
+				Chain: fw.filterChain,
+				Exprs: append(append(fw.tapIfaceMatch(),
+					// Match TCP protocol
+					&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte{unix.IPPROTO_TCP},
+					}),
+					markAndAccept()...,
+				),
+			})
+			if err := fw.conn.Flush(); err != nil {
+				return fmt.Errorf("flush add TCP mark rule: %w", err)
+			}
 		}
 	}
 
