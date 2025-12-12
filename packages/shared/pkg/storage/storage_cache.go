@@ -51,7 +51,9 @@ func NewCachedProvider(rootPath string, inner StorageProvider) *CachedProvider {
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
-	go c.deleteObjectsWithPrefix(ctx, prefix)
+	go func(ctx context.Context) {
+		c.deleteObjectsWithPrefix(ctx, prefix)
+	}(context.WithoutCancel(ctx))
 
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
 }
