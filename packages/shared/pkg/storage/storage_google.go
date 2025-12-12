@@ -394,7 +394,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		maxConcurrency = g.limiter.GCloudMaxTasks(ctx)
 	}
 
-	uploader, err := NewMultipartUploaderWithRetryConfig(
+	uploader, err := NewGCPUploaderWithRetryConfig(
 		ctx,
 		bucketName,
 		objectName,
@@ -405,7 +405,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	}
 
 	start := time.Now()
-	if err := uploader.UploadFileInParallel(ctx, filePath, maxConcurrency, compression); err != nil {
+	if err := MultipartUploadFile(ctx, filePath, uploader, maxConcurrency, compression); err != nil {
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
