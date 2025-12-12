@@ -51,7 +51,7 @@ func NewCachedProvider(rootPath string, inner StorageProvider) *CachedProvider {
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
-	go c.deleteObjectsWithPrefix(prefix)
+	go c.deleteObjectsWithPrefix(ctx, prefix)
 
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
 }
@@ -93,10 +93,10 @@ func (c CachedProvider) GetDetails() string {
 		c.rootPath, c.inner.GetDetails())
 }
 
-func (c CachedProvider) deleteObjectsWithPrefix(prefix string) {
+func (c CachedProvider) deleteObjectsWithPrefix(ctx context.Context, prefix string) {
 	fullPrefix := filepath.Join(c.rootPath, prefix)
 	if err := os.RemoveAll(fullPrefix); err != nil {
-		zap.L().Error("failed to remove object with prefix",
+		logger.L().Error(ctx, "failed to remove object with prefix",
 			zap.String("prefix", prefix),
 			zap.String("path", fullPrefix),
 			zap.Error(err))

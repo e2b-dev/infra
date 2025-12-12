@@ -174,7 +174,7 @@ func (c CachedSeekableObjectProvider) sizeFilename() string {
 	return filepath.Join(c.path, "size.txt")
 }
 
-func (c CachedSeekableObjectProvider) readLocalSize(ctx context.Context) (int64, error) {
+func (c CachedSeekableObjectProvider) readLocalSize(context.Context) (int64, error) {
 	filename := c.sizeFilename()
 	content, err := os.ReadFile(filename)
 	if err != nil {
@@ -263,7 +263,7 @@ func (c CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size i
 
 	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
 
-	if err := os.WriteFile(tempFilename, []byte(fmt.Sprintf("%d", size)), cacheFilePermissions); err != nil {
+	if err := os.WriteFile(tempFilename, fmt.Appendf(nil, "%d", size), cacheFilePermissions); err != nil {
 		return fmt.Errorf("failed to write temp local size file: %w", err)
 	}
 
@@ -306,7 +306,7 @@ func (c CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Cont
 			defer func() { <-workers }()
 
 			if err := c.writeChunkFromFile(ctx, offset, input); err != nil {
-				zap.L().Error("failed to write chunk file",
+				logger.L().Error(ctx, "failed to write chunk file",
 					zap.String("path", inputPath),
 					zap.Int64("offset", offset),
 					zap.Error(err))
@@ -358,7 +358,7 @@ func (c CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, of
 
 	offsetReader := newOffsetReader(input, offset)
 	if _, err := io.CopyN(output, offsetReader, c.chunkSize); ignoreEOF(err) != nil {
-		safelyRemoveFile(chunkPath)
+		safelyRemoveFile(ctx, chunkPath)
 
 		return fmt.Errorf("failed to copy chunk: %w", err)
 	}
@@ -366,9 +366,9 @@ func (c CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, of
 	return err // in case err == io.EOF
 }
 
-func safelyRemoveFile(path string) {
+func safelyRemoveFile(ctx context.Context, path string) {
 	if err := os.Remove(path); ignoreFileMissingError(err) != nil {
-		zap.L().Warn("failed to remove file",
+		logger.L().Warn(ctx, "failed to remove file",
 			zap.String("path", path),
 			zap.Error(err))
 	}

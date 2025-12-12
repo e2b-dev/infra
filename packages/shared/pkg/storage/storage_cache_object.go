@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 )
 
@@ -64,24 +65,20 @@ func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e err
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		c.writeFileToCache(
 			context.WithoutCancel(ctx),
 			bytes.NewReader(p),
 			cacheOpWrite,
 		)
-	}()
+	})
 
 	var count int
 	var err error
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		count, err = c.inner.Write(ctx, p)
-	}()
+	})
 
 	wg.Wait()
 
@@ -92,7 +89,7 @@ func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path stri
 	go func(ctx context.Context) {
 		input, err := os.Open(path)
 		if err != nil {
-			zap.L().Error("failed to open file",
+			logger.L().Error(ctx, "failed to open file",
 				zap.String("path", path),
 				zap.Error(err))
 
@@ -165,6 +162,7 @@ func (c CachedObjectProvider) writeFileToCache(ctx context.Context, input io.Rea
 	count, err := io.Copy(output, input)
 	if ignoreEOF(err) != nil {
 		recordCacheError(ctx, op, err)
+
 		return
 	}
 

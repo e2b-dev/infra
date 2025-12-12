@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type AtomicFile struct {
@@ -35,7 +37,7 @@ func OpenFile(ctx context.Context, filename string) (*AtomicFile, error) {
 	tempFilename := fmt.Sprintf("%s.temp.%s", filename, uuid.NewString())
 	tempFile, err := os.OpenFile(tempFilename, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
-		cleanup("failed to close lock file", lockFile.Close)
+		cleanup(ctx, "failed to close lock file", lockFile.Close)
 
 		return nil, fmt.Errorf("failed to open temp file: %w", err)
 	}
@@ -51,7 +53,7 @@ func (f *AtomicFile) Close(ctx context.Context) error {
 	var err error
 
 	f.closeOnce.Do(func() {
-		defer cleanup("failed to unlock file", func() error {
+		defer cleanup(ctx, "failed to unlock file", func() error {
 			return ReleaseLock(ctx, f.lockFile)
 		})
 
@@ -61,7 +63,7 @@ func (f *AtomicFile) Close(ctx context.Context) error {
 			return
 		}
 
-		if err = moveWithoutReplace(f.tempFile.Name(), f.filename); err != nil {
+		if err = moveWithoutReplace(ctx, f.tempFile.Name(), f.filename); err != nil {
 			err = fmt.Errorf("failed to commit file: %w", err)
 
 			return
@@ -71,18 +73,18 @@ func (f *AtomicFile) Close(ctx context.Context) error {
 	return err
 }
 
-func cleanup(msg string, fn func() error) {
+func cleanup(ctx context.Context, msg string, fn func() error) {
 	if err := fn(); err != nil {
-		zap.L().Warn(msg, zap.Error(err))
+		logger.L().Warn(ctx, msg, zap.Error(err))
 	}
 }
 
 // moveWithoutReplace tries to rename a file but will not replace the target if it already exists.
 // If the file already exists, the file will be deleted.
-func moveWithoutReplace(oldPath, newPath string) error {
+func moveWithoutReplace(ctx context.Context, oldPath, newPath string) error {
 	defer func() {
 		if err := os.Remove(oldPath); err != nil {
-			zap.L().Warn("failed to remove existing file", zap.Error(err))
+			logger.L().Warn(ctx, "failed to remove existing file", zap.Error(err))
 		}
 	}()
 
