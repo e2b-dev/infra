@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -125,10 +124,10 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	telemetry.ReportEvent(ctx, "deleted template from db")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "deleted environment", properties.Set("environment", templateID))
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "deleted environment", properties.Set("environment", templateID))
 
-	zap.L().Info("Deleted template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
+	logger.L().Info(ctx, "Deleted template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }

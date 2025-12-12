@@ -62,7 +62,6 @@ job "otel-collector" {
         ]
         args = [
           "--config=local/config/otel-collector-config.yaml",
-          "--feature-gates=pkg.translator.prometheus.NormalizeName",
         ]
 
         ports = [

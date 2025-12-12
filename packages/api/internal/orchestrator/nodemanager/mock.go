@@ -80,6 +80,14 @@ func WithSandboxSleepingClient(baseSandboxCreateTime time.Duration) TestOptions 
 	}
 }
 
+func WithCPUInfo(cpuArch, cpuFamily, cpuModel string) TestOptions {
+	return func(node *TestNode) {
+		node.machineInfo.CPUArchitecture = cpuArch
+		node.machineInfo.CPUFamily = cpuFamily
+		node.machineInfo.CPUModel = cpuModel
+	}
+}
+
 // NewTestNode creates a properly initialized Node for testing purposes
 // It uses a mock gRPC client and has simplified Status() method behavior
 func NewTestNode(id string, status api.NodeStatus, cpuAllocated int64, cpuCount uint32, options ...TestOptions) *TestNode {

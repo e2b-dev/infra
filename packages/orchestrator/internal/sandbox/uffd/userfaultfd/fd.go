@@ -35,9 +35,10 @@ const (
 
 	UFFDIO_REGISTER_MODE_MISSING = C.UFFDIO_REGISTER_MODE_MISSING
 
-	UFFDIO_API      = C.UFFDIO_API
-	UFFDIO_REGISTER = C.UFFDIO_REGISTER
-	UFFDIO_COPY     = C.UFFDIO_COPY
+	UFFDIO_API        = C.UFFDIO_API
+	UFFDIO_REGISTER   = C.UFFDIO_REGISTER
+	UFFDIO_UNREGISTER = C.UFFDIO_UNREGISTER
+	UFFDIO_COPY       = C.UFFDIO_COPY
 
 	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
 
@@ -66,13 +67,17 @@ func newUffdioAPI(api, features CULong) UffdioAPI {
 	}
 }
 
+func newUffdioRange(start, length CULong) UffdioRange {
+	return UffdioRange{
+		start: start,
+		len:   length,
+	}
+}
+
 func newUffdioRegister(start, length, mode CULong) UffdioRegister {
 	return UffdioRegister{
-		_range: UffdioRange{
-			start: start,
-			len:   length,
-		},
-		mode: mode,
+		_range: newUffdioRange(start, length),
+		mode:   mode,
 	}
 }
 
@@ -139,6 +144,17 @@ func (u uffdFd) register(addr uintptr, size uint64, mode CULong) error {
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(u), UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %w (ret=%d)", errno, ret)
+	}
+
+	return nil
+}
+
+func (u uffdFd) unregister(addr uintptr, size uint64) error {
+	r := newUffdioRange(CULong(addr), CULong(size))
+
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(u), UFFDIO_UNREGISTER, uintptr(unsafe.Pointer(&r)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_UNREGISTER ioctl failed: %w (ret=%d)", errno, ret)
 	}
 
 	return nil

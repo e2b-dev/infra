@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -24,11 +25,11 @@ var errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the 
 // Implementations should choose an optimal node based on available resources
 // and current load distribution.
 type Algorithm interface {
-	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources) (*nodemanager.Node, error)
+	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo) (*nodemanager.Node, error)
 	excludeNode(err error) bool
 }
 
-func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*nodemanager.Node, preferredNode *nodemanager.Node, sbxRequest *orchestrator.SandboxCreateRequest) (*nodemanager.Node, error) {
+func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*nodemanager.Node, preferredNode *nodemanager.Node, sbxRequest *orchestrator.SandboxCreateRequest, buildMachineInfo machineinfo.MachineInfo) (*nodemanager.Node, error) {
 	ctx, span := tracer.Start(ctx, "place-sandbox")
 	defer span.End()
 
@@ -56,7 +57,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 				return nil, fmt.Errorf("no nodes available")
 			}
 
-			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()})
+			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo)
 			if err != nil {
 				return nil, err
 			}
@@ -78,18 +79,18 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		span.End()
 		if err != nil {
 			if algorithm.excludeNode(err) {
-				zap.L().Warn("Excluding node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
+				logger.L().Warn(ctx, "Excluding node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
 				nodesExcluded[node.ID] = struct{}{}
 			}
 
 			st, ok := status.FromError(err)
 			if !ok || st.Code() != codes.ResourceExhausted {
 				node.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
-				zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+				logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
 				attempt++
 			} else {
 				node.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
-				zap.L().Warn("Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
+				logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
 			}
 
 			node = nil

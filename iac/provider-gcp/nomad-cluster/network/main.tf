@@ -82,6 +82,7 @@ locals {
       }
       groups = [{ group = var.server_instance_group }]
     }
+    # TODO: Remove in [ENG-3386]
     consul = {
       protocol                        = "HTTP"
       port                            = 80
@@ -265,11 +266,6 @@ resource "google_compute_url_map" "orch_map" {
   }
 
   host_rule {
-    hosts        = concat(["consul.${var.domain_name}"], [for d in var.additional_domains : "consul.${d}"])
-    path_matcher = "consul-paths"
-  }
-
-  host_rule {
     hosts        = concat(["*.${var.domain_name}"], [for d in var.additional_domains : "*.${d}"])
     path_matcher = "session-paths"
   }
@@ -312,11 +308,6 @@ resource "google_compute_url_map" "orch_map" {
         }
       }
     }
-  }
-
-  path_matcher {
-    name            = "consul-paths"
-    default_service = google_compute_backend_service.default["consul"].self_link
   }
 }
 
@@ -456,7 +447,12 @@ resource "google_compute_firewall" "default-hc" {
   priority = 999
 
   dynamic "allow" {
-    for_each = local.health_checked_backends
+    # TODO: Revert to for_each = local.health_checked_backends in [ENG-3386]
+    for_each = {
+      for k, v in local.health_checked_backends :
+      k => v if k != "consul" # skip consul
+    }
+
     content {
       protocol = "tcp"
       ports    = [allow.value["http_health_check"].port]
@@ -604,7 +600,7 @@ resource "google_compute_security_policy_rule" "api-throttling-ip" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 20000 : 20000
+      count        = 20000
       interval_sec = 30
     }
   }
@@ -662,7 +658,7 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 40000 : 40000
+      count        = 60000
       interval_sec = 60
     }
   }

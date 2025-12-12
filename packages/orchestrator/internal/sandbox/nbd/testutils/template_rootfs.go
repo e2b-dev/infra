@@ -82,7 +82,6 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 	}
 
 	store, err := build.NewDiffStore(
-		ctx,
 		cfg.Config{},
 		flags,
 		diffCacheDir,
@@ -92,6 +91,8 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 	if err != nil {
 		return nil, &cleaner, fmt.Errorf("failed to create diff store: %w", err)
 	}
+
+	store.Start(ctx)
 
 	cleaner.Add(func(context.Context) error {
 		store.RemoveCache()

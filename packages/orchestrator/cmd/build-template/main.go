@@ -26,7 +26,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -76,7 +76,7 @@ func buildTemplate(
 	defer cancel()
 
 	clientID := "build-template-cmd"
-	logger, err := l.NewLogger(ctx, l.LoggerConfig{
+	log, err := logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   clientID,
 		IsInternal:    true,
 		IsDebug:       true,
@@ -85,11 +85,11 @@ func buildTemplate(
 	if err != nil {
 		return fmt.Errorf("could not create logger: %w", err)
 	}
-	zap.ReplaceGlobals(logger)
-	sbxlogger.SetSandboxLoggerExternal(logger)
-	sbxlogger.SetSandboxLoggerInternal(logger)
+	logger.ReplaceGlobals(ctx, log)
+	sbxlogger.SetSandboxLoggerExternal(log)
+	sbxlogger.SetSandboxLoggerInternal(log)
 
-	logger.Info("building template", l.WithTemplateID(templateID), l.WithBuildID(buildID))
+	log.Info(ctx, "building template", logger.WithTemplateID(templateID), logger.WithBuildID(buildID))
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
@@ -97,18 +97,18 @@ func buildTemplate(
 
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
 	if err != nil {
-		logger.Fatal("failed to create sandbox proxy", zap.Error(err))
+		return fmt.Errorf("failed to create sandbox proxy: %w", err)
 	}
 	go func() {
 		err := sandboxProxy.Start(parentCtx)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("failed to start sandbox proxy", zap.Error(err))
+			log.Error(ctx, "failed to start sandbox proxy", zap.Error(err))
 		}
 	}()
 	defer func() {
 		err := sandboxProxy.Close(parentCtx)
 		if err != nil {
-			logger.Error("error closing sandbox proxy", zap.Error(err))
+			log.Error(ctx, "error closing sandbox proxy", zap.Error(err))
 		}
 	}()
 
@@ -128,27 +128,27 @@ func buildTemplate(
 	}
 	go func() {
 		devicePool.Populate(ctx)
-		logger.Info("device pool done populating")
+		log.Info(ctx, "device pool done populating")
 	}()
 	defer func() {
 		if err := devicePool.Close(parentCtx); err != nil {
-			logger.Error("error closing device pool", zap.Error(err))
+			log.Error(ctx, "error closing device pool", zap.Error(err))
 		}
 	}()
 
-	slotStorage, err := network.NewStorageLocal(networkConfig)
+	slotStorage, err := network.NewStorageLocal(ctx, networkConfig)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
 	networkPool := network.NewPool(8, 8, slotStorage, networkConfig)
 	go func() {
 		networkPool.Populate(ctx)
-		logger.Info("network pool done populating")
+		log.Info(ctx, "network pool done populating")
 	}()
 	defer func() {
 		err := networkPool.Close(parentCtx)
 		if err != nil {
-			logger.Error("error closing network pool", zap.Error(err))
+			log.Error(ctx, "error closing network pool", zap.Error(err))
 		}
 	}()
 
@@ -164,7 +164,7 @@ func buildTemplate(
 	defer func() {
 		err := dockerhubRepository.Close()
 		if err != nil {
-			logger.Error("error closing dockerhub repository", zap.Error(err))
+			log.Error(ctx, "error closing dockerhub repository", zap.Error(err))
 		}
 	}()
 
@@ -183,21 +183,23 @@ func buildTemplate(
 		return fmt.Errorf("error parsing config: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(ctx, c, featureFlags, persistenceTemplate, blockMetrics)
+	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics)
 	if err != nil {
-		zap.L().Fatal("failed to create template cache", zap.Error(err))
+		return fmt.Errorf("failed to create template cache: %w", err)
 	}
+	templateCache.Start(ctx)
+	defer templateCache.Stop()
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
 	if err != nil {
-		zap.L().Fatal("failed to create build metrics", zap.Error(err))
+		return fmt.Errorf("failed to create build metrics: %w", err)
 	}
 
 	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags)
 
 	builder := build.NewBuilder(
 		builderConfig,
-		logger,
+		log,
 		featureFlags,
 		sandboxFactory,
 		persistenceTemplate,
@@ -210,7 +212,7 @@ func buildTemplate(
 		buildMetrics,
 	)
 
-	logger = logger.
+	log = log.
 		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
 		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID})
 
@@ -233,7 +235,7 @@ func buildTemplate(
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: fcVersion,
 	}
-	_, err = builder.Build(ctx, metadata, template, logger.Core())
+	_, err = builder.Build(ctx, metadata, template, log.Detach(ctx).Core())
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}

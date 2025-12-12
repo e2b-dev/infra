@@ -59,7 +59,17 @@ resource "google_compute_region_autoscaler" "client" {
     mode = "ONLY_SCALE_OUT"
 
     cpu_utilization {
-      target = 0.6
+      target = var.client_cluster_autoscaling_cpu_target
+    }
+
+    dynamic "metric" {
+      for_each = var.client_cluster_autoscaling_memory_target < 100 ? [1] : []
+      content {
+        name   = "agent.googleapis.com/memory/percent_used"
+        type   = "GAUGE"
+        filter = "resource.type = \"gce_instance\" AND metric.labels.state = \"used\""
+        target = var.client_cluster_autoscaling_memory_target
+      }
     }
   }
 }
@@ -136,7 +146,7 @@ resource "google_compute_instance_template" "client" {
     boot         = true
     source_image = data.google_compute_image.client_source_image.id
     disk_size_gb = 300
-    disk_type    = "pd-ssd"
+    disk_type    = var.client_boot_disk_type
   }
 
   dynamic "disk" {

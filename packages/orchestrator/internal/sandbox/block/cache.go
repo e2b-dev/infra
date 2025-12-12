@@ -1,6 +1,7 @@
 package block
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,13 +12,14 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block")
 
 type CacheClosedError struct {
 	filePath string
@@ -81,7 +83,26 @@ func (m *Cache) isClosed() bool {
 	return m.closed.Load()
 }
 
-func (m *Cache) ExportToDiff(out io.Writer) (*header.DiffMetadata, error) {
+func (m *Cache) Sync() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.isClosed() {
+		return NewErrCacheClosed(m.filePath)
+	}
+
+	err := m.mmap.Flush()
+	if err != nil {
+		return fmt.Errorf("error syncing cache: %w", err)
+	}
+
+	return nil
+}
+
+func (m *Cache) ExportToDiff(ctx context.Context, out io.Writer) (*header.DiffMetadata, error) {
+	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
+	defer childSpan.End()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -94,42 +115,18 @@ func (m *Cache) ExportToDiff(out io.Writer) (*header.DiffMetadata, error) {
 		return nil, fmt.Errorf("error flushing mmap: %w", err)
 	}
 
-	dirty := bitset.New(uint(header.TotalBlocks(m.size, m.blockSize)))
-	empty := bitset.New(0)
+	builder := header.NewDiffMetadataBuilder(m.size, m.blockSize)
 
-	for _, key := range m.dirtySortedKeys() {
-		blockIdx := header.BlockIdx(key, m.blockSize)
+	for _, offset := range m.dirtySortedKeys() {
+		block := (*m.mmap)[offset : offset+m.blockSize]
 
-		block := (*m.mmap)[key : key+m.blockSize]
-		isEmpty, err := header.IsEmptyBlock(block, m.blockSize)
+		err := builder.Process(ctx, block, out, offset)
 		if err != nil {
-			return nil, fmt.Errorf("error checking empty block: %w", err)
-		}
-		if isEmpty {
-			empty.Set(uint(blockIdx))
-
-			continue
-		}
-
-		dirty.Set(uint(blockIdx))
-		n, err := out.Write(block)
-		if err != nil {
-			zap.L().Error("error writing to out", zap.Error(err))
-
-			return nil, err
-		}
-
-		if int64(n) != m.blockSize {
-			return nil, fmt.Errorf("short write: %d != %d", int64(n), m.blockSize)
+			return nil, fmt.Errorf("error processing block %d: %w", offset, err)
 		}
 	}
 
-	return &header.DiffMetadata{
-		Dirty: dirty,
-		Empty: empty,
-
-		BlockSize: m.blockSize,
-	}, nil
+	return builder.Build(), nil
 }
 
 func (m *Cache) ReadAt(b []byte, off int64) (int, error) {
@@ -255,10 +252,6 @@ func (m *Cache) dirtySortedKeys() []int64 {
 	})
 
 	return keys
-}
-
-func (m *Cache) MarkAllAsDirty() {
-	m.setIsCached(0, m.size)
 }
 
 // FileSize returns the size of the cache on disk.

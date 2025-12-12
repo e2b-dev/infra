@@ -6,6 +6,13 @@ on:
     types:
       - opened
       - ready_for_review
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to test with'
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -33,16 +40,16 @@ jobs:
           node-version: 24
 
       - name: Install deps
-        run: |
-          npm init -y
-          npm i @octokit/rest
+        run: npm install
+        working-directory: .github/actions/auto-request-same-site
 
       - name: Run same-site override
         env:
           APP_TOKEN: ${{ steps.app.outputs.token }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ORG: e2b-dev
           SF_TEAM_SLUG: eng-sf
           PRG_TEAM_SLUG: eng-prg
           REVIEWERS_TO_REQUEST: "1"
-          TEAM_MODE: "false"
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: node .github/actions/auto-request-same-site/script.js

@@ -15,7 +15,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+const maxRequestsInProgress = 4096
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
@@ -25,22 +28,41 @@ type Userfaultfd struct {
 	src block.Slicer
 	ma  *memory.Mapping
 
-	missingRequests sync.Map
+	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
+	// For hugepages this should not be a problem, but might theoretically happen to normal pages with swap
+	missingRequests *block.Tracker
+	// We use the settleRequests to guard the missingRequests so we can access a consistent state of the missingRequests after the requests are finished.
+	settleRequests sync.RWMutex
 
 	wg errgroup.Group
 
-	logger *zap.Logger
+	logger logger.Logger
 }
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
-	return &Userfaultfd{
+func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
+	blockSize := src.BlockSize()
+
+	for _, region := range m.Regions {
+		if region.PageSize != uintptr(blockSize) {
+			return nil, fmt.Errorf("block size mismatch: %d != %d for region %d", region.PageSize, blockSize, region.BaseHostVirtAddr)
+		}
+	}
+
+	u := &Userfaultfd{
 		fd:              uffdFd(fd),
 		src:             src,
-		missingRequests: sync.Map{},
+		missingRequests: block.NewTracker(blockSize),
 		ma:              m,
 		logger:          logger,
-	}, nil
+	}
+
+	// By default this was unlimited.
+	// Now that we don't skip previously faulted pages we add at least some boundaries to the concurrency.
+	// Also, in some brief tests, adding a limit actually improved the handling at high concurrency.
+	u.wg.SetLimit(maxRequestsInProgress)
+
+	return u, nil
 }
 
 func (u *Userfaultfd) Close() error {
@@ -57,7 +79,7 @@ func (u *Userfaultfd) Serve(
 	}
 
 	eagainCounter := newEagainCounter(u.logger, "uffd: eagain during fd read (accumulated)")
-	defer eagainCounter.Close()
+	defer eagainCounter.Close(ctx)
 
 outerLoop:
 	for {
@@ -66,18 +88,18 @@ outerLoop:
 			-1,
 		); err != nil {
 			if err == unix.EINTR {
-				u.logger.Debug("uffd: interrupted polling, going back to polling")
+				u.logger.Debug(ctx, "uffd: interrupted polling, going back to polling")
 
 				continue
 			}
 
 			if err == unix.EAGAIN {
-				u.logger.Debug("uffd: eagain during polling, going back to polling")
+				u.logger.Debug(ctx, "uffd: eagain during polling, going back to polling")
 
 				continue
 			}
 
-			u.logger.Error("UFFD serve polling error", zap.Error(err))
+			u.logger.Error(ctx, "UFFD serve polling error", zap.Error(err))
 
 			return fmt.Errorf("failed polling: %w", err)
 		}
@@ -86,7 +108,7 @@ outerLoop:
 		if exitFd.Revents&unix.POLLIN != 0 {
 			errMsg := u.wg.Wait()
 			if errMsg != nil {
-				u.logger.Warn("UFFD fd exit error while waiting for goroutines to finish", zap.Error(errMsg))
+				u.logger.Warn(ctx, "UFFD fd exit error while waiting for goroutines to finish", zap.Error(errMsg))
 
 				return fmt.Errorf("failed to handle uffd: %w", errMsg)
 			}
@@ -105,7 +127,7 @@ outerLoop:
 			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
 			// It might be possible to just check for data != 0 in the syscall.Read loop
 			// but I don't feel confident about doing that.
-			u.logger.Debug("uffd: no data in fd, going back to polling")
+			u.logger.Debug(ctx, "uffd: no data in fd, going back to polling")
 
 			continue
 		}
@@ -115,7 +137,7 @@ outerLoop:
 		for {
 			_, err := syscall.Read(int(u.fd), buf)
 			if err == syscall.EINTR {
-				u.logger.Debug("uffd: interrupted read, reading again")
+				u.logger.Debug(ctx, "uffd: interrupted read, reading again")
 
 				continue
 			}
@@ -123,7 +145,7 @@ outerLoop:
 			if err == nil {
 				// There is no error so we can proceed.
 
-				eagainCounter.Log()
+				eagainCounter.Log(ctx)
 
 				break
 			}
@@ -135,7 +157,7 @@ outerLoop:
 				continue outerLoop
 			}
 
-			u.logger.Error("uffd: read error", zap.Error(err))
+			u.logger.Error(ctx, "uffd: read error", zap.Error(err))
 
 			return fmt.Errorf("failed to read: %w", err)
 		}
@@ -143,7 +165,7 @@ outerLoop:
 		msg := *(*UffdMsg)(unsafe.Pointer(&buf[0]))
 
 		if msgEvent := getMsgEvent(&msg); msgEvent != UFFD_EVENT_PAGEFAULT {
-			u.logger.Error("UFFD serve unexpected event type", zap.Any("event_type", msgEvent))
+			u.logger.Error(ctx, "UFFD serve unexpected event type", zap.Any("event_type", msgEvent))
 
 			return ErrUnexpectedEventType
 		}
@@ -156,7 +178,7 @@ outerLoop:
 
 		offset, pagesize, err := u.ma.GetOffset(addr)
 		if err != nil {
-			u.logger.Error("UFFD serve get mapping error", zap.Error(err))
+			u.logger.Error(ctx, "UFFD serve get mapping error", zap.Error(err))
 
 			return fmt.Errorf("failed to map: %w", err)
 		}
@@ -196,16 +218,17 @@ func (u *Userfaultfd) handleMissing(
 	offset int64,
 	pagesize uint64,
 ) error {
-	if _, ok := u.missingRequests.Load(offset); ok {
-		return nil
-	}
-
-	u.missingRequests.Store(offset, struct{}{})
-
 	u.wg.Go(func() error {
+		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
+		// even if the errgroup is cancelled or the goroutine returns early.
+		// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
+		// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
+		u.settleRequests.RLock()
+		defer u.settleRequests.RUnlock()
+
 		defer func() {
 			if r := recover(); r != nil {
-				u.logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
+				u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
 			}
 		}()
 
@@ -215,7 +238,7 @@ func (u *Userfaultfd) handleMissing(
 
 			joinedErr := errors.Join(sliceErr, signalErr)
 
-			u.logger.Error("UFFD serve slice error", zap.Error(joinedErr))
+			u.logger.Error(ctx, "UFFD serve slice error", zap.Error(joinedErr))
 
 			return fmt.Errorf("failed to read from source: %w", joinedErr)
 		}
@@ -234,13 +257,36 @@ func (u *Userfaultfd) handleMissing(
 
 			joinedErr := errors.Join(copyErr, signalErr)
 
-			u.logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
+			u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
 
 			return fmt.Errorf("failed uffdio copy %w", joinedErr)
 		}
+
+		// Add the offset to the missing requests tracker.
+		u.missingRequests.Add(offset)
 
 		return nil
 	})
 
 	return nil
+}
+
+func (u *Userfaultfd) Unregister() error {
+	for _, r := range u.ma.Regions {
+		if err := u.fd.unregister(r.BaseHostVirtAddr, uint64(r.Size)); err != nil {
+			return fmt.Errorf("failed to unregister: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (u *Userfaultfd) Dirty() *block.Tracker {
+	// This will be at worst cancelled when the uffd is closed.
+	u.settleRequests.Lock()
+	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
+	// so it is consistent even if there is a another uffd call after.
+	defer u.settleRequests.Unlock()
+
+	return u.missingRequests.Clone()
 }

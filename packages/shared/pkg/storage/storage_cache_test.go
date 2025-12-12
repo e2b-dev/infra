@@ -10,13 +10,14 @@ import (
 )
 
 func TestMoveWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
+	ctx := t.Context()
 	td := t.TempDir()
 	content := []byte("alpha")
 	src := filepath.Join(td, "src")
 	dst := filepath.Join(td, "dst")
 
 	require.NoError(t, os.WriteFile(src, content, 0o644))
-	err := moveWithoutReplace(src, dst)
+	err := moveWithoutReplace(ctx, src, dst)
 	require.NoError(t, err)
 
 	// Dest has original content.
@@ -29,6 +30,7 @@ func TestMoveWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
 }
 
 func TestMoveWithoutReplace_FailWhenExists(t *testing.T) {
+	ctx := t.Context()
 	td := t.TempDir()
 	content := []byte("alpha")
 	secondContent := []byte("beta")
@@ -37,7 +39,7 @@ func TestMoveWithoutReplace_FailWhenExists(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(src, content, 0o644))
 	require.NoError(t, os.WriteFile(dst, secondContent, 0o644))
-	err := moveWithoutReplace(src, dst)
+	err := moveWithoutReplace(ctx, src, dst)
 	require.NoError(t, err)
 
 	// Dest has original content.

@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -100,7 +101,7 @@ func (o *Orchestrator) CreateSandbox(
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
 			}
 		default:
-			zap.L().Error("failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
+			logger.L().Error(ctx, "failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
 
 			return sandbox.Sandbox{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
@@ -111,11 +112,11 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	if waitForStart != nil {
-		zap.L().Info("sandbox is already being started, waiting for it to be ready", logger.WithSandboxID(sandboxID))
+		logger.L().Info(ctx, "sandbox is already being started, waiting for it to be ready", logger.WithSandboxID(sandboxID))
 
 		sbx, err = waitForStart(ctx)
 		if err != nil {
-			zap.L().Warn("Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
+			logger.L().Warn(ctx, "Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 			var apiErr *api.APIError
 			if errors.As(err, &apiErr) {
@@ -229,8 +230,7 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := utils.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	algorithm := o.getPlacementAlgorithm(ctx)
-	node, err = placement.PlaceSandbox(ctx, algorithm, clusterNodes, node, sbxRequest)
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, machineinfo.FromDB(build))
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to place sandbox", err)
 
@@ -299,7 +299,7 @@ func (o *Orchestrator) CreateSandbox(
 		go func() {
 			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.StateActionKill)
 			if killErr != nil {
-				zap.L().Error("Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
+				logger.L().Error(ctx, "Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
 			}
 		}()
 

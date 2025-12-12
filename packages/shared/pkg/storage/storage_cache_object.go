@@ -120,7 +120,7 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 		return 0, fmt.Errorf("failed to open cached file %s: %w", path, err)
 	}
 
-	defer cleanup("failed to close full cached file", fp.Close)
+	defer cleanup(ctx, "failed to close full cached file", fp.Close)
 
 	count, err := io.Copy(dst, fp)
 	if ignoreEOF(err) != nil {
@@ -154,18 +154,17 @@ func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, ds
 func (c CachedObjectProvider) writeFileToCache(ctx context.Context, input io.Reader, op cacheOp) {
 	path := c.fullFilename()
 
-	output, err := lock.OpenFile(path)
+	output, err := lock.OpenFile(ctx, path)
 	if err != nil {
 		recordCacheError(ctx, op, err)
 
 		return
 	}
-	defer cleanup("failed to unlock file", output.Close)
+	defer cleanupCtx(ctx, "failed to unlock file", output.Close)
 
 	count, err := io.Copy(output, input)
 	if ignoreEOF(err) != nil {
 		recordCacheError(ctx, op, err)
-
 		return
 	}
 

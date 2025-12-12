@@ -17,7 +17,7 @@ func TestOpenFile(t *testing.T) {
 		tempDir := t.TempDir()
 		filename := filepath.Join(tempDir, "test.bin")
 
-		f, err := OpenFile(filename)
+		f, err := OpenFile(t.Context(), filename)
 		require.NoError(t, err)
 		require.NotNil(t, f)
 
@@ -29,7 +29,7 @@ func TestOpenFile(t *testing.T) {
 		require.Error(t, err)
 		assert.True(t, os.IsNotExist(err))
 
-		err = f.Close()
+		err = f.Close(t.Context())
 		require.NoError(t, err)
 
 		data, err := os.ReadFile(filename)
@@ -41,24 +41,24 @@ func TestOpenFile(t *testing.T) {
 		tempDir := t.TempDir()
 		filename := filepath.Join(tempDir, "test.bin")
 
-		f1, err := OpenFile(filename)
+		f1, err := OpenFile(t.Context(), filename)
 		require.NoError(t, err)
 		t.Cleanup(func() {
-			err := f1.Close()
+			err := f1.Close(t.Context())
 			assert.NoError(t, err)
 		})
 
-		f2, err := OpenFile(filename)
+		f2, err := OpenFile(t.Context(), filename)
 		require.ErrorIs(t, err, ErrLockAlreadyHeld)
 		assert.Nil(t, f2)
 
-		err = f1.Close()
+		err = f1.Close(t.Context())
 		require.NoError(t, err)
 
-		f2, err = OpenFile(filename)
+		f2, err = OpenFile(t.Context(), filename)
 		require.NoError(t, err)
 		t.Cleanup(func() {
-			err := f2.Close()
+			err := f2.Close(t.Context())
 			assert.NoError(t, err)
 		})
 	})
@@ -67,7 +67,7 @@ func TestOpenFile(t *testing.T) {
 		tempDir := t.TempDir()
 		filename := filepath.Join(tempDir, "a", "b", "test.bin")
 
-		_, err := OpenFile(filename)
+		_, err := OpenFile(t.Context(), filename)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, fs.ErrNotExist)
 	})

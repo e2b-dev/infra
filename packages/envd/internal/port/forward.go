@@ -14,6 +14,8 @@ import (
 	"syscall"
 
 	"github.com/rs/zerolog"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 )
 
 type PortState string
@@ -36,7 +38,8 @@ type PortToForward struct {
 }
 
 type Forwarder struct {
-	logger *zerolog.Logger
+	logger        *zerolog.Logger
+	cgroupManager cgroups.Manager
 	// Map of ports that are being currently forwarded.
 	ports             map[string]*PortToForward
 	scannerSubscriber *ScannerSubscriber
@@ -46,6 +49,7 @@ type Forwarder struct {
 func NewForwarder(
 	logger *zerolog.Logger,
 	scanner *Scanner,
+	cgroupManager cgroups.Manager,
 ) *Forwarder {
 	scannerSub := scanner.AddSubscriber(
 		logger,
@@ -62,6 +66,7 @@ func NewForwarder(
 		sourceIP:          defaultGatewayIP,
 		ports:             make(map[string]*PortToForward),
 		scannerSubscriber: scannerSub,
+		cgroupManager:     cgroupManager,
 	}
 }
 
@@ -135,8 +140,13 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 		fmt.Sprintf("TCP4-LISTEN:%v,bind=%s,reuseaddr,fork", p.port, f.sourceIP.To4()),
 		fmt.Sprintf("TCP%d:localhost:%v", p.family, p.port),
 	)
+
+	cgroupFD, ok := f.cgroupManager.GetFileDescriptor(cgroups.ProcessTypeSocat)
+
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
+		Setpgid:     true,
+		CgroupFD:    cgroupFD,
+		UseCgroupFD: ok,
 	}
 
 	f.logger.Debug().

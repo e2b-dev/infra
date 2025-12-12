@@ -92,9 +92,14 @@ type EnvBuild struct {
 	EnvID              string
 	EnvdVersion        *string
 	ReadyCmd           *string
-	ClusterNodeID      string
+	ClusterNodeID      *string
 	Reason             types.BuildReason
 	Version            *string
+	CpuArchitecture    *string
+	CpuFamily          *string
+	CpuModel           *string
+	CpuModelName       *string
+	CpuFlags           []string
 }
 
 type Snapshot struct {

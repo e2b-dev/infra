@@ -16,11 +16,11 @@ import (
 const upsertSnapshot = `-- name: UpsertSnapshot :one
 WITH new_template AS (
     INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
-    SELECT $10, FALSE, NULL, $11, now()
+    SELECT $15, FALSE, NULL, $16, now()
     WHERE NOT EXISTS (
         SELECT id
         FROM "public"."snapshots" s
-        WHERE s.sandbox_id = $12
+        WHERE s.sandbox_id = $17
     ) RETURNING id
 ),
 
@@ -39,18 +39,18 @@ snapshot as (
        config
     )
     VALUES (
-            $12,
-            $13,
-            $11,
+            $17,
+            $18,
+            $16,
             -- If snapshot already exists, new_template id will be null, env_id can't be null, so use placeholder ''
             COALESCE((SELECT id FROM new_template), ''),
-            $14,
-            $15,
-            $16,
-            $17,
+            $19,
+            $20,
+            $21,
+            $22,
             $8,
-            $18,
-            $19
+            $23,
+            $24
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,
@@ -72,7 +72,12 @@ INSERT INTO "public"."env_builds" (
     status,
     cluster_node_id,
     total_disk_size_mb,
-    updated_at
+    updated_at,
+    cpu_architecture,
+    cpu_family,
+    cpu_model,
+    cpu_model_name,
+    cpu_flags
 ) VALUES (
     (SELECT template_id FROM snapshot),
     $1,
@@ -84,7 +89,12 @@ INSERT INTO "public"."env_builds" (
     $7,
     $8,
     $9,
-    now()
+    now(),
+    $10,
+    $11,
+    $12,
+    $13,
+    $14
 ) RETURNING id as build_id, env_id as template_id
 `
 
@@ -96,8 +106,13 @@ type UpsertSnapshotParams struct {
 	FirecrackerVersion  string
 	EnvdVersion         *string
 	Status              string
-	OriginNodeID        string
+	OriginNodeID        *string
 	TotalDiskSizeMb     *int64
+	CpuArchitecture     *string
+	CpuFamily           *string
+	CpuModel            *string
+	CpuModelName        *string
+	CpuFlags            []string
 	TemplateID          string
 	TeamID              uuid.UUID
 	SandboxID           string
@@ -128,6 +143,11 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 		arg.Status,
 		arg.OriginNodeID,
 		arg.TotalDiskSizeMb,
+		arg.CpuArchitecture,
+		arg.CpuFamily,
+		arg.CpuModel,
+		arg.CpuModelName,
+		arg.CpuFlags,
 		arg.TemplateID,
 		arg.TeamID,
 		arg.SandboxID,

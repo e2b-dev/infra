@@ -1,9 +1,6 @@
 package placement
 
-import "time"
-
 const (
-	leastBusyNodeTimeout = 60 * time.Second
-
+	maxRetries                  = 3
 	maxStartingInstancesPerNode = 3
 )

@@ -119,7 +119,6 @@ components:
       description: Cluster node type
       enum:
         - orchestrator
-        - edge
 
     ClusterOrchestratorRole:
       type: string
@@ -247,55 +246,14 @@ components:
 
     TemplateBuildLogsResponse:
       required:
-        - logs
         - logEntries
       properties:
-        logs:
-          default: []
-          description: Build logs
-          type: array
-          items:
-            type: string
         logEntries:
           default: []
           description: Build logs structured
           type: array
           items:
             $ref: "#/components/schemas/BuildLogEntry"
-
-    SandboxCreateCatalogRequest:
-      type: object
-      required:
-        - orchestratorID
-        - executionID
-        - sandboxID
-        - sandboxMaxLength
-        - sandboxStartTime
-      properties:
-        orchestratorID:
-          type: string
-          description: Orchestrator where the sandbox is placed
-        executionID:
-          type: string
-        sandboxID:
-          type: string
-        sandboxMaxLength:
-          type: integer
-          format: int64
-          description: Maximum duration in hours
-        sandboxStartTime:
-          $ref: "#/components/schemas/Timestamp"
-
-    SandboxDeleteCatalogRequest:
-      type: object
-      required:
-        - executionID
-        - sandboxID
-      properties:
-        executionID:
-          type: string
-        sandboxID:
-          type: string
 
     SandboxLogsResponse:
       required:
@@ -329,6 +287,62 @@ components:
     Timestamp:
       type: string
       format: date-time
+
+    SandboxMetric:
+      type: object
+      required:
+        - timestamp
+        - timestamp_unix
+        - cpu_used_pct
+        - cpu_count
+        - mem_total
+        - mem_used
+        - disk_total
+        - disk_used
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the metric
+        timestamp_unix:
+          type: integer
+          format: int64
+          description: Unix timestamp in seconds
+        cpu_used_pct:
+          type: number
+          format: float
+          description: CPU usage percentage
+        cpu_count:
+          type: integer
+          format: int32
+          description: Number of CPUs
+        mem_total:
+          type: integer
+          format: int64
+          description: Total memory in bytes
+        mem_used:
+          type: integer
+          format: int64
+          description: Used memory in bytes
+        disk_total:
+          type: integer
+          format: int64
+          description: Total disk space in bytes
+        disk_used:
+          type: integer
+          format: int64
+          description: Used disk space in bytes
+
+    SandboxesWithMetrics:
+      type: object
+      required:
+        - sandboxes
+      properties:
+        sandboxes:
+          type: object
+          description: Map of sandbox IDs to their latest metrics
+          additionalProperties:
+            $ref: "#/components/schemas/SandboxMetric"
 
 tags:
   - name: service-discovery
@@ -468,51 +482,6 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/sandboxes/catalog:
-    post:
-      operationId: v1SandboxCatalogCreate
-      summary: Create a sandbox catalog entry
-      security:
-        - ApiKeyAuth: []
-      tags: [sandboxes]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SandboxCreateCatalogRequest"
-      responses:
-        "200":
-          description: Successfully created the sandbox catalog entry
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-    delete:
-      operationId: v1SandboxCatalogDelete
-      summary: Delete a sandbox catalog entry
-      security:
-        - ApiKeyAuth: []
-      tags: [sandboxes]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SandboxDeleteCatalogRequest"
-      responses:
-        "200":
-          description: Successfully deleted the sandbox catalog entry
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
   /v1/sandboxes/{sandboxID}/logs:
     get:
       operationId: v1SandboxLogs
@@ -560,6 +529,92 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /v1/sandboxes/{sandboxID}/metrics:
+    get:
+      operationId: v1SandboxMetrics
+      summary: Get time-series metrics for a sandbox
+      security:
+        - ApiKeyAuth: []
+      tags: [sandboxes]
+      parameters:
+        - name: sandboxID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Sandbox ID
+        - name: teamID
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Team ID that owns the sandbox
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: Start time in Unix seconds
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: End time in Unix seconds
+      responses:
+        "200":
+          description: Successfully returned sandbox metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SandboxMetric"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/sandboxes/metrics:
+    get:
+      operationId: v1SandboxesMetrics
+      summary: Get latest metrics for multiple sandboxes
+      security:
+        - ApiKeyAuth: []
+      tags: [sandboxes]
+      parameters:
+        - name: teamID
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Team ID that owns the sandboxes
+        - name: sandbox_ids
+          in: query
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+          description: List of sandbox IDs (max 100)
+      responses:
+        "200":
+          description: Successfully returned sandboxes with metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxesWithMetrics"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
   /v1/templates/builds/{buildID}/logs:
     get:
       operationId: v1TemplateBuildLogs
@@ -575,7 +630,8 @@ paths:
             type: string
         - in: query
           name: orchestratorID
-          required: true
+          required: false
+          deprecated: true
           schema:
             type: string
         - in: query
@@ -591,6 +647,37 @@ paths:
             format: int32
             minimum: 0
           description: Index of the starting build log that should be returned with the template
+        - in: query
+          name: start
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Starting timestamp of the logs that should be returned in milliseconds
+        - in: query
+          name: end
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Ending timestamp of the logs that should be returned in milliseconds
+        - in: query
+          name: limit
+          schema:
+            default: 100
+            type: integer
+            format: int32
+            minimum: 0
+            maximum: 100
+          description: Maximum number of logs that should be returned
+        - in: query
+          name: direction
+          schema:
+            type: string
+            enum:
+              - forward
+              - backward
+            description: Direction of the logs that should be returned
         - in: query
           name: level
           schema:

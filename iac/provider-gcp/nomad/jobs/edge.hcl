@@ -115,20 +115,15 @@ job "client-proxy" {
         SD_ORCHESTRATOR_NOMAD_TOKEN      = "${nomad_token}"
         SD_ORCHESTRATOR_NOMAD_JOB_PREFIX = "template-manager"
 
-        SD_EDGE_PROVIDER             = "NOMAD"
-        SD_EDGE_NOMAD_ENDPOINT       = "${nomad_endpoint}"
-        SD_EDGE_NOMAD_TOKEN          = "${nomad_token}"
-        SD_EDGE_NOMAD_JOB_PREFIX     = "client-proxy"
-
         ENVIRONMENT = "${environment}"
 
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
         REDIS_URL                     = "${redis_url}"
         REDIS_CLUSTER_URL             = "${redis_cluster_url}"
-        REDIS_SECURE_CLUSTER_URL      = "${redis_secure_cluster_url}"
         REDIS_TLS_CA_BASE64           = "${redis_tls_ca_base64}"
         LOKI_URL                      = "${loki_url}"
+        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
 
         %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"

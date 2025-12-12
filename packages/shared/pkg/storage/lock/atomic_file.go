@@ -1,6 +1,7 @@
 package lock
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -25,8 +26,8 @@ func (f *AtomicFile) Write(p []byte) (n int, err error) {
 
 var _ io.Writer = (*AtomicFile)(nil)
 
-func OpenFile(filename string) (*AtomicFile, error) {
-	lockFile, err := TryAcquireLock(filename)
+func OpenFile(ctx context.Context, filename string) (*AtomicFile, error) {
+	lockFile, err := TryAcquireLock(ctx, filename)
 	if err != nil {
 		return nil, err
 	}
@@ -46,12 +47,12 @@ func OpenFile(filename string) (*AtomicFile, error) {
 	}, nil
 }
 
-func (f *AtomicFile) Close() error {
+func (f *AtomicFile) Close(ctx context.Context) error {
 	var err error
 
 	f.closeOnce.Do(func() {
 		defer cleanup("failed to unlock file", func() error {
-			return ReleaseLock(f.lockFile)
+			return ReleaseLock(ctx, f.lockFile)
 		})
 
 		if err = f.tempFile.Close(); err != nil {

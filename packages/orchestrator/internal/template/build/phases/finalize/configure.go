@@ -8,13 +8,13 @@ import (
 	tt "text/template"
 	"time"
 
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const configurationTimeout = 5 * time.Minute
@@ -31,7 +31,7 @@ type ConfigurationParams struct {
 
 func runConfiguration(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	bc buildcontext.BuildContext,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,

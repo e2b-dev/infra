@@ -7,9 +7,12 @@ import (
 	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // LaunchDarklyOfflineStore is a test fixture that provides dynamically updatable feature flag state
@@ -63,6 +66,19 @@ func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcont
 	return enabled, nil
 }
 
+func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) (ldvalue.Value, error) {
+	if c.ld == nil {
+		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
+	}
+
+	v, err := c.ld.JSONVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
+	if err != nil {
+		return v, fmt.Errorf("error evaluating %s: %w", flag, err)
+	}
+
+	return v, nil
+}
+
 func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) (int, error) {
 	if c.ld == nil {
 		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
@@ -76,14 +92,27 @@ func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontex
 	return value, nil
 }
 
-func (c *Client) Close(context.Context) error {
+func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ldcontext.Context) (string, error) {
+	if c.ld == nil {
+		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
+	}
+
+	value, err := c.ld.StringVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
+	if err != nil {
+		return value, fmt.Errorf("error evaluating %s: %w", flag, err)
+	}
+
+	return value, nil
+}
+
+func (c *Client) Close(ctx context.Context) error {
 	if c.ld == nil {
 		return nil
 	}
 
 	err := c.ld.Close()
 	if err != nil {
-		zap.L().Error("Error during launch-darkly client shutdown", zap.Error(err))
+		logger.L().Error(ctx, "Error during launch-darkly client shutdown", zap.Error(err))
 
 		return err
 	}

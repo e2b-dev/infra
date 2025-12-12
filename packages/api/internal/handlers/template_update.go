@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -101,10 +100,10 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	telemetry.ReportEvent(ctx, "updated template")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "updated environment", properties.Set("environment", template.ID))
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "updated environment", properties.Set("environment", template.ID))
 
-	zap.L().Info("Updated template", logger.WithTemplateID(template.ID), logger.WithTeamID(team.ID.String()))
+	logger.L().Info(ctx, "Updated template", logger.WithTemplateID(template.ID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }

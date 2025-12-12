@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -36,18 +35,13 @@ type Uffd struct {
 	fdExit     *fdexit.FdExit
 	lis        *net.UnixListener
 	socketPath string
-	memfile    *block.TrackedSliceDevice
+	memfile    block.ReadonlyDevice
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
 
-func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
-	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
-	}
-
+func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 	fdExit, err := fdexit.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create fd exit: %w", err)
@@ -58,7 +52,7 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		readyCh:    make(chan struct{}, 1),
 		fdExit:     fdExit,
 		socketPath: socketPath,
-		memfile:    trackedMemfile,
+		memfile:    memfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 	}, nil
 }
@@ -147,7 +141,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		uintptr(fds[0]),
 		u.memfile,
 		m,
-		zap.L().With(logger.WithSandboxID(sandboxId)),
+		logger.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create uffd: %w", err)
@@ -158,7 +152,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	defer func() {
 		closeErr := uffd.Close()
 		if closeErr != nil {
-			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
+			logger.L().Error(ctx, "failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
 
@@ -187,10 +181,36 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-func (u *Uffd) Disable() error {
-	return u.memfile.Disable()
+// Disable unregisters the uffd from the memory mapping,
+// allowing us to create a "diff" snapshot via FC API without dirty tracking enabled,
+// and without pagefaulting all remaining missing pages.
+//
+// It should be called *after* Dirty().
+//
+// After calling Disable(), this uffd is no longer usable—we won't be able to resume the sandbox via API.
+// The uffd itself is not closed though, as that should be done by the sandbox cleanup.
+func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
+	uffd, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	err = uffd.Unregister()
+	if err != nil {
+		return nil, fmt.Errorf("failed to unregister uffd: %w", err)
+	}
+
+	return u.dirty(ctx)
 }
 
-func (u *Uffd) Dirty() *bitset.BitSet {
-	return u.memfile.Dirty()
+// Dirty waits for the current requests to finish and returns the dirty pages.
+//
+// It *MUST* be only called after the sandbox was successfully paused via API.
+func (u *Uffd) dirty(ctx context.Context) (*block.Tracker, error) {
+	uffd, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	return uffd.Dirty(), nil
 }

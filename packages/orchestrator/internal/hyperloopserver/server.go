@@ -9,17 +9,17 @@ import (
 	limits "github.com/gin-contrib/size"
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver/handlers"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/hyperloop"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const maxUploadLimit = 1 << 28 // 256 MiB
 
-func NewHyperloopServer(ctx context.Context, port uint16, logger *zap.Logger, sandboxes *sandbox.Map) (*http.Server, error) {
+func NewHyperloopServer(ctx context.Context, port uint16, logger logger.Logger, sandboxes *sandbox.Map) (*http.Server, error) {
 	sandboxCollectorAddr := env.LogsCollectorAddress()
 	store := handlers.NewHyperloopStore(logger, sandboxes, sandboxCollectorAddr)
 	swagger, err := api.GetSwagger()

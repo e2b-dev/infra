@@ -184,7 +184,7 @@ func TestSandboxListPausing(t *testing.T) {
 	require.Eventually(t, func() bool {
 		// List paused sandboxes
 		listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
-			State:    &[]api.SandboxState{api.Paused},
+			State:    &[]api.SandboxState{api.Running, api.Paused},
 			Metadata: &metadataString,
 		}, setup.WithAPIKey())
 		require.NoError(t, err)

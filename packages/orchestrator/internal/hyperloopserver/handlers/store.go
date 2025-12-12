@@ -8,23 +8,23 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/hyperloop"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const CollectorExporterTimeout = 10 * time.Second
 
 type APIStore struct {
-	logger    *zap.Logger
+	logger    logger.Logger
 	sandboxes *sandbox.Map
 
 	collectorClient http.Client
 	collectorAddr   string
 }
 
-func NewHyperloopStore(logger *zap.Logger, sandboxes *sandbox.Map, sandboxCollectorAddr string) *APIStore {
+func NewHyperloopStore(logger logger.Logger, sandboxes *sandbox.Map, sandboxCollectorAddr string) *APIStore {
 	return &APIStore{
 		logger:    logger,
 		sandboxes: sandboxes,

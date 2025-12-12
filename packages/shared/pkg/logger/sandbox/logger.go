@@ -20,7 +20,7 @@ type SandboxLoggerConfig struct {
 	CollectorAddress string
 }
 
-func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config SandboxLoggerConfig) *zap.Logger {
+func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config SandboxLoggerConfig) logger.Logger {
 	level := zap.NewAtomicLevelAt(zap.DebugLevel)
 
 	enableConsole := false

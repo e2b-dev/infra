@@ -17,18 +17,17 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // Main process, FC in our case
@@ -236,12 +235,12 @@ func crossProcessServe() error {
 	exitUffd := make(chan struct{}, 1)
 	defer close(exitUffd)
 
-	logger, err := zap.NewDevelopment()
+	l, err := logger.NewDevelopmentLogger()
 	if err != nil {
 		return fmt.Errorf("exit creating logger: %w", err)
 	}
 
-	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, logger)
+	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, l)
 	if err != nil {
 		return fmt.Errorf("exit creating uffd: %w", err)
 	}
@@ -260,18 +259,7 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				offsets, err := getAccessedOffsets(&uffd.missingRequests)
-				if err != nil {
-					msg := fmt.Errorf("error getting accessed offsets from cross process: %w", err)
-
-					fmt.Fprint(os.Stderr, msg.Error())
-
-					cancel(msg)
-
-					return
-				}
-
-				for _, offset := range offsets {
+				for offset := range uffd.Dirty().Offsets() {
 					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
 					if writeErr != nil {
 						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
@@ -346,16 +334,4 @@ func crossProcessServe() error {
 	case <-exitSignal:
 		return nil
 	}
-}
-
-func getAccessedOffsets(missingRequests *sync.Map) ([]uint, error) {
-	var offsets []uint
-
-	missingRequests.Range(func(key, _ any) bool {
-		offsets = append(offsets, uint(key.(int64)))
-
-		return true
-	})
-
-	return offsets, nil
 }

@@ -6,11 +6,6 @@ terraform {
   }
 
   required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "3.0.2"
-    }
-
     google = {
       source  = "hashicorp/google"
       version = "6.50.0"
@@ -30,21 +25,6 @@ terraform {
       source  = "hashicorp/random"
       version = "3.5.1"
     }
-
-    grafana = {
-      source  = "grafana/grafana"
-      version = "3.18.3"
-    }
-  }
-}
-
-data "google_client_config" "default" {}
-
-provider "docker" {
-  registry_auth {
-    address  = "${var.gcp_region}-docker.pkg.dev"
-    username = "oauth2accesstoken"
-    password = data.google_client_config.default.access_token
   }
 }
 
@@ -86,8 +66,10 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  client_cluster_size_max         = var.client_cluster_size_max
-  build_cluster_root_disk_size_gb = var.build_cluster_root_disk_size_gb
+  client_cluster_size_max                  = var.client_cluster_size_max
+  client_cluster_autoscaling_cpu_target    = var.client_cluster_autoscaling_cpu_target
+  client_cluster_autoscaling_memory_target = var.client_cluster_autoscaling_memory_target
+  build_cluster_root_disk_size_gb          = var.build_cluster_root_disk_size_gb
 
   api_cluster_size        = var.api_cluster_size
   build_cluster_size      = var.build_cluster_size
@@ -153,6 +135,14 @@ module "cluster" {
   prefix = var.prefix
 
   min_cpu_platform = var.min_cpu_platform
+
+  # Boot disk types
+  client_boot_disk_type     = var.client_boot_disk_type
+  build_boot_disk_type      = var.build_boot_disk_type
+  api_boot_disk_type        = var.api_boot_disk_type
+  server_boot_disk_type     = var.server_boot_disk_type
+  clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
+  loki_boot_disk_type       = var.loki_boot_disk_type
 }
 
 module "nomad" {
@@ -200,8 +190,7 @@ module "nomad" {
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
   api_admin_token                           = random_password.api_admin_secret.result
-  redis_url_secret_version                  = google_secret_manager_secret_version.redis_url
-  redis_secure_cluster_url_secret_version   = module.init.redis_secure_cluster_url_secret_version
+  redis_cluster_url_secret_version          = google_secret_manager_secret_version.redis_cluster_url
   redis_tls_ca_base64_secret_version        = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed            = random_password.sandbox_access_token_hash_seed.result
 
@@ -272,8 +261,8 @@ module "redis" {
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
-  redis_secure_cluster_url_secret_version = module.init.redis_secure_cluster_url_secret_version
-  redis_tls_ca_base64_secret_version      = module.init.redis_tls_ca_base64_secret_version
+  redis_cluster_url_secret_version   = google_secret_manager_secret_version.redis_cluster_url
+  redis_tls_ca_base64_secret_version = module.init.redis_tls_ca_base64_secret_version
 
   prefix = var.prefix
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 func TestBestOfK_Score(t *testing.T) {
@@ -110,7 +111,7 @@ func TestBestOfK_ChooseNode(t *testing.T) {
 	}
 
 	// Test selection - should work with proper config
-	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources)
+	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{})
 	require.NoError(t, err)
 	assert.NotNil(t, selected)
 	assert.Contains(t, []string{"node1", "node2", "node3"}, selected.ID)
@@ -142,7 +143,7 @@ func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
 		MiBMemory: 512,
 	}
 
-	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources)
+	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{})
 	require.NoError(t, err)
 	// Should not select excluded node
 	assert.NotEqual(t, "node2", selected.ID)
@@ -165,7 +166,7 @@ func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 		MiBMemory: 1024,
 	}
 
-	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources)
+	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{})
 	require.Error(t, err)
 	assert.Nil(t, selected)
 	assert.Contains(t, err.Error(), "no node available")
@@ -189,7 +190,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	}
 
 	// Test sampling fewer nodes than available
-	sampled := algo.sample(nodes, config, excludedNodes, resources)
+	sampled := algo.sample(nodes, config, excludedNodes, resources, machineinfo.MachineInfo{})
 	assert.LessOrEqual(t, len(sampled), 3)
 
 	// Check all sampled nodes are unique
@@ -202,7 +203,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	// Test sampling with exclusions
 	excludedNodes["a"] = struct{}{}
 	excludedNodes["b"] = struct{}{}
-	sampled = algo.sample(nodes, config, excludedNodes, resources)
+	sampled = algo.sample(nodes, config, excludedNodes, resources, machineinfo.MachineInfo{})
 
 	for _, n := range sampled {
 		assert.NotEqual(t, "a", n.ID)
@@ -236,7 +237,7 @@ func TestBestOfK_PowerOfKChoices(t *testing.T) {
 	selectedCounts := make(map[string]int)
 	successCount := 0
 	for range 100 {
-		selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources)
+		selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{})
 		if err == nil && selected != nil {
 			selectedCounts[selected.ID]++
 			successCount++
