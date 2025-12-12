@@ -14,6 +14,8 @@ import (
 )
 
 var (
+	cacheErrorsCounter = utils.Must(meter.Int64Counter("orchestrator.storage.cache.errors",
+		metric.WithDescription("failed cache operations")))
 	cacheOpCounter = utils.Must(meter.Int64Counter("orchestrator.storage.cache.ops",
 		metric.WithDescription("total cache operations")))
 	cacheBytesCounter = utils.Must(meter.Int64Counter("orchestrator.storage.cache.bytes",
@@ -77,7 +79,7 @@ func recordCacheReadError[T ~string](ctx context.Context, t cacheType, op T, err
 		zap.String("op_type", string(op)),
 	)
 
-	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
+	cacheErrorsCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("cache_type", string(t)),
 		attribute.String("op_type", string(op)),
 		attribute.String("error_type", "read"),
@@ -91,7 +93,7 @@ func recordCacheWriteError[T ~string](ctx context.Context, t cacheType, op T, er
 		zap.String("op_type", string(op)),
 	)
 
-	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
+	cacheErrorsCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("cache_type", string(t)),
 		attribute.String("op_type", string(op)),
 		attribute.String("error_type", "write"),
