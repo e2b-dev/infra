@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"os"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -28,31 +29,58 @@ const (
 	cacheOpWriteFromFileSystem cacheOp = "write_from_filesystem"
 )
 
-func recordCacheRead(ctx context.Context, isHit bool, bytesRead int64, op cacheOp) {
+type cacheType string
+
+const (
+	cacheTypeObject   cacheType = "object"
+	cacheTypeSeekable cacheType = "seekable"
+)
+
+func recordCacheRead(ctx context.Context, isHit bool, bytesRead int64, t cacheType, op cacheOp) {
 	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("cache_type", string(t)),
 		attribute.Bool("cache_hit", isHit),
 		attribute.String("operation", string(op)),
 	))
 
 	cacheBytesCounter.Add(ctx, bytesRead, metric.WithAttributes(
+		attribute.String("cache_type", string(t)),
 		attribute.Bool("cache_hit", isHit),
 		attribute.String("operation", string(op)),
 	))
 }
 
-func recordCacheWrite(ctx context.Context, bytesWritten int64, op cacheOp) {
+func recordCacheWrite(ctx context.Context, bytesWritten int64, t cacheType, op cacheOp) {
 	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("cache_type", string(t)),
 		attribute.String("operation", string(op)),
 	))
 
 	cacheBytesCounter.Add(ctx, bytesWritten, metric.WithAttributes(
+		attribute.String("cache_type", string(t)),
 		attribute.String("operation", string(op)),
 	))
 }
 
-func recordCacheError[T ~string](ctx context.Context, op T, err error) {
+func recordCacheReadError[T ~string](ctx context.Context, t cacheType, op T, err error) {
+	// don't record "we haven't cached this yet" as an error
+	if os.IsNotExist(err) {
+		return
+	}
+
 	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("cache_type", string(t)),
 		attribute.String("error", err.Error()),
+		attribute.String("error_type", "read"),
+		attribute.String("operation", string(op)),
+	))
+}
+
+func recordCacheWriteError[T ~string](ctx context.Context, t cacheType, op T, err error) {
+	cacheOpCounter.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("cache_type", string(t)),
+		attribute.String("error", err.Error()),
+		attribute.String("error_type", "write"),
 		attribute.String("operation", string(op)),
 	))
 }

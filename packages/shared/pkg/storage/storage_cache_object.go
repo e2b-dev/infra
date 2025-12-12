@@ -10,9 +10,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 )
 
@@ -39,21 +37,43 @@ func (c CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int
 
 	bytesRead, err := c.copyFullFileFromCache(ctx, dst)
 	if err == nil {
-		recordCacheRead(ctx, true, bytesRead, cacheOpWriteTo)
+		recordCacheRead(ctx, true, bytesRead, cacheTypeObject, cacheOpWriteTo)
 
 		return bytesRead, nil
 	}
 
-	recordCacheError(ctx, cacheOpWriteTo, err)
+	recordCacheReadError(ctx, cacheTypeObject, cacheOpWriteTo, err)
 
-	bytesRead, err = c.readAndCacheFullRemoteFile(ctx, dst, cacheOpWriteTo)
-	if ignoreEOF(err) != nil {
-		return 0, fmt.Errorf("failed to read and cache object: %w", err)
+	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
+	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
+	// file is larger than 2 MB, the buffer will grow, it just won't be as efficient WRT memory allocations.
+	const writeToInitialBufferSize = 2 * megabyte
+
+	buffer := bytes.NewBuffer(make([]byte, 0, writeToInitialBufferSize))
+
+	if _, err := c.inner.WriteTo(ctx, buffer); ignoreEOF(err) != nil {
+		return 0, err
 	}
 
-	recordCacheRead(ctx, false, bytesRead, cacheOpWriteTo)
+	written, err := dst.Write(buffer.Bytes())
+	if ignoreEOF(err) != nil {
+		return 0, fmt.Errorf("failed to write object: %w", err)
+	}
 
-	return bytesRead, err // in case  err == EOF
+	go func(ctx context.Context) {
+		count, err := c.writeFileToCache(ctx, buffer)
+		if err != nil {
+			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteTo, err)
+
+			return
+		}
+
+		recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWriteTo)
+	}(context.WithoutCancel(ctx))
+
+	recordCacheRead(ctx, false, int64(written), cacheTypeObject, cacheOpWriteTo)
+
+	return int64(written), err // in case  err == EOF
 }
 
 func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e error) {
@@ -66,11 +86,15 @@ func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e err
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
-		c.writeFileToCache(
+		count, err := c.writeFileToCache(
 			context.WithoutCancel(ctx),
 			bytes.NewReader(p),
-			cacheOpWrite,
 		)
+		if err != nil {
+			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWrite, err)
+		} else {
+			recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWrite)
+		}
 	})
 
 	var count int
@@ -89,15 +113,20 @@ func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path stri
 	go func(ctx context.Context) {
 		input, err := os.Open(path)
 		if err != nil {
-			logger.L().Error(ctx, "failed to open file",
-				zap.String("path", path),
-				zap.Error(err))
+			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteFromFileSystem, err)
 
 			return
 		}
 		defer cleanup(ctx, "failed to close file", input.Close)
 
-		c.writeFileToCache(ctx, input, cacheOpWriteFromFileSystem)
+		count, err := c.writeFileToCache(ctx, input)
+		if err != nil {
+			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteFromFileSystem, err)
+
+			return
+		}
+
+		recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWriteFromFileSystem)
 	}(context.WithoutCancel(ctx))
 
 	return c.inner.WriteFromFileSystem(ctx, path)
@@ -130,42 +159,19 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 	return count, nil
 }
 
-func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, dst io.Writer, op cacheOp) (int64, error) {
-	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
-	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
-	// file is larger than 2 MB, the buffer will grow, it just won't be as efficient WRT memory allocations.
-	const writeToInitialBufferSize = 2 * megabyte
-
-	buffer := bytes.NewBuffer(make([]byte, 0, writeToInitialBufferSize))
-
-	if _, err := c.inner.WriteTo(ctx, buffer); ignoreEOF(err) != nil {
-		return 0, err
-	}
-
-	written, err := dst.Write(buffer.Bytes())
-
-	go c.writeFileToCache(context.WithoutCancel(ctx), buffer, op)
-
-	return int64(written), err
-}
-
-func (c CachedObjectProvider) writeFileToCache(ctx context.Context, input io.Reader, op cacheOp) {
+func (c CachedObjectProvider) writeFileToCache(ctx context.Context, input io.Reader) (int64, error) {
 	path := c.fullFilename()
 
 	output, err := lock.OpenFile(ctx, path)
 	if err != nil {
-		recordCacheError(ctx, op, err)
-
-		return
+		return 0, fmt.Errorf("failed to acquire lock on file %s: %w", path, err)
 	}
 	defer cleanupCtx(ctx, "failed to unlock file", output.Close)
 
 	count, err := io.Copy(output, input)
 	if ignoreEOF(err) != nil {
-		recordCacheError(ctx, op, err)
-
-		return
+		return 0, fmt.Errorf("failed to write to cache file %s: %w", path, err)
 	}
 
-	recordCacheWrite(ctx, count, op)
+	return count, nil
 }

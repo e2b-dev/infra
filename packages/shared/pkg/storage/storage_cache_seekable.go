@@ -55,13 +55,15 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 	readTimer := cacheReadTimerFactory.Begin()
 	count, err := c.readAtFromCache(ctx, chunkPath, buff)
 	if ignoreEOF(err) == nil {
-		recordCacheRead(ctx, true, int64(count), cacheOpReadAt)
+		recordCacheRead(ctx, true, int64(count), cacheTypeSeekable, cacheOpReadAt)
 		readTimer.End(ctx, int64(count))
 
 		return count, err // return `err` in case it's io.EOF
 	}
 
-	recordCacheError(ctx, cacheOpReadAt, err)
+	if !os.IsNotExist(err) {
+		recordCacheReadError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
+	}
 
 	logger.L().Debug(ctx, "failed to read cached chunk, falling back to remote read",
 		zap.String("chunk_path", chunkPath),
@@ -76,11 +78,11 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 
 	go func(ctx context.Context) {
 		if err := c.writeChunkToCache(ctx, offset, chunkPath, buff[:readCount]); err != nil {
-			recordCacheError(ctx, cacheOpReadAt, fmt.Errorf("failed to write uncached chunk: %w", err))
+			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
 		}
 	}(context.WithoutCancel(ctx))
 
-	recordCacheRead(ctx, false, int64(readCount), cacheOpReadAt)
+	recordCacheRead(ctx, false, int64(readCount), cacheTypeSeekable, cacheOpReadAt)
 
 	return readCount, nil
 }
@@ -88,12 +90,12 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 	size, err := c.readLocalSize(ctx)
 	if err == nil {
-		recordCacheRead(ctx, true, 8, cacheOpSize)
+		recordCacheRead(ctx, true, 8, cacheTypeSeekable, cacheOpSize)
 
 		return size, nil
 	}
 
-	recordCacheError(ctx, cacheOpSize, err)
+	recordCacheReadError(ctx, cacheTypeSeekable, cacheOpSize, err)
 
 	size, err = c.inner.Size(ctx)
 	if err != nil {
@@ -102,11 +104,11 @@ func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 
 	go func(ctx context.Context) {
 		if err := c.writeLocalSize(ctx, size); err != nil {
-			recordCacheError(ctx, cacheOpSize, err)
+			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpSize, err)
 		}
 	}(context.WithoutCancel(ctx))
 
-	recordCacheRead(ctx, false, 8, cacheOpSize)
+	recordCacheRead(ctx, false, 8, cacheTypeSeekable, cacheOpSize)
 
 	return size, nil
 }
@@ -125,15 +127,15 @@ func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, p
 	go func(ctx context.Context) {
 		size, err := c.createCacheBlocksFromFile(ctx, path)
 		if err != nil {
-			recordCacheError(ctx, cacheOpWriteFromFileSystem, fmt.Errorf("failed to create cache blocks: %w", err))
+			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to create cache blocks: %w", err))
 
 			return
 		}
 
-		recordCacheWrite(ctx, size, cacheOpWriteFromFileSystem)
+		recordCacheWrite(ctx, size, cacheTypeSeekable, cacheOpWriteFromFileSystem)
 
 		if err := c.writeLocalSize(ctx, size); err != nil {
-			recordCacheError(ctx, cacheOpWriteFromFileSystem, fmt.Errorf("failed to write local file size: %w", err))
+			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to write local file size: %w", err))
 		}
 	}(context.WithoutCancel(ctx))
 
