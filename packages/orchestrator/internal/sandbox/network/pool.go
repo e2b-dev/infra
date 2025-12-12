@@ -97,7 +97,7 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 
 	err = ips.CreateNetwork(ctx)
 	if err != nil {
-		releaseErr := p.slotStorage.Release(ips)
+		releaseErr := p.slotStorage.Release(ctx, ips)
 		err = errors.Join(err, releaseErr)
 
 		return nil, fmt.Errorf("failed to create network: %w", err)
@@ -221,7 +221,7 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}
 
-	err = p.slotStorage.Release(slot)
+	err = p.slotStorage.Release(ctx, slot)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
 	}
@@ -232,10 +232,6 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 }
 
 func (p *Pool) Close(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
 	logger.L().Info(ctx, "Closing network pool")
 
 	p.doneOnce.Do(func() {

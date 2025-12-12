@@ -133,20 +133,15 @@ func New(
 func (s *ServerStore) Close(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
+		return ctx.Err()
 	default:
-		var closersErr error
+		var errs []error
 		for _, closer := range s.closers {
 			err := closer.Close()
-			if err != nil {
-				closersErr = errors.Join(closersErr, err)
-			}
-		}
-		if closersErr != nil {
-			return fmt.Errorf("failed to close services: %w", closersErr)
+			errs = append(errs, err)
 		}
 
-		return nil
+		return errors.Join(errs...)
 	}
 }
 

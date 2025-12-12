@@ -22,6 +22,8 @@ type StorageLocal struct {
 	acquiredNsMu sync.Mutex
 }
 
+var _ Storage = (*StorageLocal)(nil)
+
 const netNamespacesDir = "/var/run/netns"
 
 func NewStorageLocal(ctx context.Context, config Config) (*StorageLocal, error) {
@@ -104,7 +106,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 	}
 }
 
-func (s *StorageLocal) Release(ips *Slot) error {
+func (s *StorageLocal) Release(_ context.Context, ips *Slot) error {
 	s.acquiredNsMu.Lock()
 	defer s.acquiredNsMu.Unlock()
 

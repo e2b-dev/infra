@@ -6,5 +6,5 @@ import (
 
 type Storage interface {
 	Acquire(ctx context.Context) (*Slot, error)
-	Release(s *Slot) error
+	Release(ctx context.Context, s *Slot) error
 }

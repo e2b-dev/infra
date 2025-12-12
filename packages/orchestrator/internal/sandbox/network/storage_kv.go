@@ -18,6 +18,8 @@ type StorageKV struct {
 	nodeID       string
 }
 
+var _ Storage = (*StorageKV)(nil)
+
 func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
@@ -59,7 +61,7 @@ func (s *StorageKV) Acquire(ctx context.Context) (*Slot, error) {
 		status, _, err := kv.CAS(&consulApi.KVPair{
 			Key:         key,
 			ModifyIndex: 0,
-		}, nil)
+		}, (&consulApi.WriteOptions{}).WithContext(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("failed to write to Consul KV: %w", err)
 		}
@@ -95,7 +97,7 @@ func (s *StorageKV) Acquire(ctx context.Context) (*Slot, error) {
 		// This is a fallback for the case when all slots are taken.
 		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
-		reservedKeys, _, keysErr := kv.Keys(s.nodeID+"/", "", nil)
+		reservedKeys, _, keysErr := kv.Keys(s.nodeID+"/", "", (&consulApi.QueryOptions{}).WithContext(ctx))
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
@@ -131,10 +133,10 @@ func (s *StorageKV) Acquire(ctx context.Context) (*Slot, error) {
 	return slot, nil
 }
 
-func (s *StorageKV) Release(ips *Slot) error {
+func (s *StorageKV) Release(ctx context.Context, ips *Slot) error {
 	kv := s.consulClient.KV()
 
-	pair, _, err := kv.Get(ips.Key, nil)
+	pair, _, err := kv.Get(ips.Key, (&consulApi.QueryOptions{}).WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to read Consul KV: %w", err)
 	}
@@ -146,7 +148,7 @@ func (s *StorageKV) Release(ips *Slot) error {
 	status, _, err := kv.DeleteCAS(&consulApi.KVPair{
 		Key:         ips.Key,
 		ModifyIndex: pair.ModifyIndex,
-	}, nil)
+	}, (&consulApi.WriteOptions{}).WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to delete slot from Consul KV: %w", err)
 	}

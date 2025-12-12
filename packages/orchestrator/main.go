@@ -182,7 +182,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)
-		if err != nil {
+		if ignoreCancelled(err) != nil {
 			log.Printf("error while shutting down telemetry: %v", err)
 			success = false
 		}
@@ -248,7 +248,7 @@ func run(config cfg.Config) (success bool) {
 			l.Info(ctx, "starting service")
 
 			err := f(ctx)
-			if err != nil {
+			if ignoreCancelled(err) != nil {
 				l.Error(ctx, "service returned an error", zap.Error(err))
 			}
 
@@ -547,7 +547,7 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Error(ctx, "Service error", zap.Error(serviceErr))
 	}
 
-	closeCtx, cancelCloseCtx := context.WithTimeout(context.Background(), 24*time.Hour)
+	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 	defer cancelCloseCtx()
 	if config.ForceStop {
 		cancelCloseCtx()
@@ -605,7 +605,7 @@ func run(config cfg.Config) (success bool) {
 	for _, closer := range closers {
 		clog := globalLogger.With(zap.String("service", closer.name), zap.Bool("forced", config.ForceStop))
 		clog.Info(ctx, "closing")
-		if err := closer.close(closeCtx); err != nil {
+		if err := closer.close(closeCtx); ignoreCancelled(err) != nil {
 			clog.Error(ctx, "error during shutdown", zap.Error(err))
 			success = false
 		}
@@ -641,6 +641,14 @@ func ignoreInvalidArg(err error) error {
 func ignoreServiceDoneError(err error) error {
 	var sde serviceDoneError
 	if errors.As(err, &sde) {
+		return nil
+	}
+
+	return err
+}
+
+func ignoreCancelled(err error) error {
+	if errors.Is(err, context.Canceled) {
 		return nil
 	}
 

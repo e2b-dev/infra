@@ -45,7 +45,7 @@ func (s *StorageMemory) Acquire(ctx context.Context) (*Slot, error) {
 	return nil, fmt.Errorf("failed to acquire IP slot: no empty slots found")
 }
 
-func (s *StorageMemory) Release(ips *Slot) error {
+func (s *StorageMemory) Release(_ context.Context, ips *Slot) error {
 	s.freeSlotsMu.Lock()
 	defer s.freeSlotsMu.Unlock()
 
