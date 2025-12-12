@@ -153,6 +153,9 @@ func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, Ma
 // Patterns can be exact matches, wildcards (*), or suffix wildcards (*.example.com).
 func matchDomain(hostname, pattern string) bool {
 	switch {
+	case pattern == "":
+		// Empty pattern should never match
+		return false
 	case strings.EqualFold(pattern, hostname):
 		return true
 	case strings.EqualFold(pattern, "*"):

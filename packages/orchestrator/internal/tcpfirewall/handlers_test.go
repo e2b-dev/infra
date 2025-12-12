@@ -107,10 +107,10 @@ func TestMatchDomain(t *testing.T) {
 			want:     false,
 		},
 		{
-			name:     "both empty",
+			name:     "both empty - empty pattern never matches",
 			hostname: "",
 			pattern:  "",
-			want:     true,
+			want:     false,
 		},
 	}
 
