@@ -437,6 +437,12 @@ func (p *Process) Stop(ctx context.Context) error {
 		return fmt.Errorf("fc process not started")
 	}
 
+	if p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited() {
+		logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
+
+		return nil
+	}
+
 	// this function should never fail b/c a previous context was canceled.
 	ctx = context.WithoutCancel(ctx)
 
