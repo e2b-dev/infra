@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -59,11 +60,14 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 		err := os.MkdirAll(cacheDir, 0o777)
 		require.NoError(t, err)
 
+		const dataSize = 10 * megabyte
+		actualData := generateData(dataSize)
+
 		inner := storagemocks.NewMockObjectProvider(t)
 		inner.EXPECT().
 			WriteTo(mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, w io.Writer) (int64, error) {
-				num, err := w.Write([]byte("hello world"))
+				num, err := w.Write(actualData)
 
 				return int64(num), err
 			})
@@ -73,8 +77,8 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 		buff := bytes.NewBuffer(nil)
 		bytesRead, err := c.WriteTo(t.Context(), buff)
 		require.NoError(t, err)
-		assert.Equal(t, int64(11), bytesRead)
-		assert.Equal(t, "hello world", buff.String())
+		assert.Equal(t, int64(dataSize), bytesRead)
+		assert.Equal(t, actualData, buff.Bytes())
 
 		time.Sleep(20 * time.Millisecond)
 
@@ -83,7 +87,16 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 		buff = bytes.NewBuffer(nil)
 		bytesRead, err = c.WriteTo(t.Context(), buff)
 		require.NoError(t, err)
-		assert.Equal(t, int64(11), bytesRead)
-		assert.Equal(t, "hello world", buff.String())
+		assert.Equal(t, int64(dataSize), bytesRead)
+		assert.Equal(t, actualData, buff.Bytes())
 	})
+}
+
+func generateData(count int) []byte {
+	data := make([]byte, count)
+	for i := range count {
+		data[i] = byte(rand.Intn(256))
+	}
+
+	return data
 }

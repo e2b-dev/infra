@@ -142,9 +142,9 @@ func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, ds
 		return 0, err
 	}
 
-	go c.writeFileToCache(context.WithoutCancel(ctx), buffer, op)
-
 	written, err := dst.Write(buffer.Bytes())
+
+	go c.writeFileToCache(context.WithoutCancel(ctx), buffer, op)
 
 	return int64(written), err
 }
