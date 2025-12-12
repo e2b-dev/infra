@@ -205,8 +205,8 @@ resource "google_compute_instance_template" "client" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     precondition {
-      condition     = var.client_cluster_cache_disk_type != "local-ssd" || var.client_cluster_cache_disk_count != 1
-      error_message = "When using local-ssd cache disks, only 1 cache disk is supported per client machine."
+      condition     = var.client_cluster_cache_disk_type == "local-ssd" || var.client_cluster_cache_disk_count == 1
+      error_message = "When using persistent disks for the client cluster cache, only 1 disk is supported."
     }
     create_before_destroy = true
   }

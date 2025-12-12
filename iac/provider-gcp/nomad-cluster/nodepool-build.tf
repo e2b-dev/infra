@@ -130,7 +130,7 @@ resource "google_compute_instance_template" "build" {
     content {
       auto_delete  = true
       boot         = false
-      disk_size_gb = 375
+      disk_size_gb = var.build_cluster_cache_disk_size_gb
       interface    = "NVME"
       disk_type    = var.build_cluster_cache_disk_type
       type         = "SCRATCH"
@@ -176,8 +176,8 @@ resource "google_compute_instance_template" "build" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     precondition {
-      condition     = var.build_cluster_cache_disk_type != "local-ssd" || var.build_cluster_cache_disk_count != 1
-      error_message = "When using local-ssd cache disks, only 1 cache disk is supported per client machine."
+      condition     = var.build_cluster_cache_disk_type == "local-ssd" || var.build_cluster_cache_disk_count == 1
+      error_message = "When using persistent disks for the build cluster cache, only 1 disk is supported."
     }
     create_before_destroy = true
   }
