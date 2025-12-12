@@ -106,15 +106,15 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 	return ips, nil
 }
 
-func (p *Pool) Populate(ctx context.Context) {
+func (p *Pool) Populate(ctx context.Context) error {
 	defer close(p.newSlots)
 
 	for {
 		select {
 		case <-p.done:
-			return
+			return ErrClosed
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		default:
 			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {
@@ -124,7 +124,12 @@ func (p *Pool) Populate(ctx context.Context) {
 			}
 
 			newSlotsAvailableCounter.Add(ctx, 1)
-			p.newSlots <- slot
+
+			select {
+			case p.newSlots <- slot:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 }
@@ -227,6 +232,10 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 }
 
 func (p *Pool) Close(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	logger.L().Info(ctx, "Closing network pool")
 
 	p.doneOnce.Do(func() {

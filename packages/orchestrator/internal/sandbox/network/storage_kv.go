@@ -50,7 +50,7 @@ func newConsulClient(token string) (*consulApi.Client, error) {
 	return consulClient, nil
 }
 
-func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
+func (s *StorageKV) Acquire(ctx context.Context) (*Slot, error) {
 	kv := s.consulClient.KV()
 
 	var slot *Slot
@@ -72,6 +72,10 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 	}
 
 	for randomTry := 1; randomTry <= 10; randomTry++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		slotIdx := rand.Intn(s.slotsSize)
 		key := s.getKVKey(slotIdx)
 
@@ -97,6 +101,10 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		}
 
 		for slotIdx := range s.slotsSize {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+
 			key := s.getKVKey(slotIdx)
 
 			if slices.Contains(reservedKeys, key) {

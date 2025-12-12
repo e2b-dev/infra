@@ -23,13 +23,17 @@ func NewStorageMemory(slotsSize int, config Config) (*StorageMemory, error) {
 	}, nil
 }
 
-func (s *StorageMemory) Acquire(_ context.Context) (*Slot, error) {
+func (s *StorageMemory) Acquire(ctx context.Context) (*Slot, error) {
 	s.freeSlotsMu.Lock()
 	defer s.freeSlotsMu.Unlock()
 
 	// Simple slot tracking in memory
 	// We skip the first slot because it's the host slot
 	for slotIdx := 1; slotIdx < s.slotsSize; slotIdx++ {
+		if err := ctx.Err(); err != nil {
+			return nil, ctx.Err()
+		}
+
 		key := getMemoryKey(slotIdx)
 		if !s.freeSlots[slotIdx] {
 			s.freeSlots[slotIdx] = true

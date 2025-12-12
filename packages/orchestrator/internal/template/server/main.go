@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -158,10 +157,6 @@ func (s *ServerStore) Wait(ctx context.Context) error {
 
 	s.logger.Info(ctx, "Waiting for all build jobs to finish")
 	s.wg.Wait()
-
-	s.logger.Info(ctx, "Waiting for consumers to check build status")
-	time.Sleep(15 * time.Second)
-
 	s.logger.Info(ctx, "Template build queue cleaned")
 
 	return nil

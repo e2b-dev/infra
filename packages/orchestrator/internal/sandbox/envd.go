@@ -80,7 +80,7 @@ func doRequestWithInfiniteRetries(
 			return response, requestCount, nil
 		}
 
-		logger.L().Warn(ctx, "failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
+		// logger.L().Warn(ctx, "failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
 
 		select {
 		case <-ctx.Done():

@@ -168,16 +168,27 @@ func NewFactory(
 // Wait for all sandboxes to exit
 func (f *Factory) Wait(ctx context.Context) error {
 	l := logger.L()
-	l.Info(ctx, "Waiting for all sandboxes to exit")
-	defer l.Info(ctx, "All sandboxes exited")
 
 	if err := ctx.Err(); err != nil {
 		return ctx.Err()
 	}
 
-	f.wg.Wait()
+	l.Info(ctx, "Waiting for all sandboxes to exit")
+	defer l.Info(ctx, "All sandboxes exited")
 
-	return nil
+	done := make(chan struct{}, 1)
+
+	go func() {
+		f.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+		return nil
+	}
 }
 
 // CreateSandbox creates the sandbox.
