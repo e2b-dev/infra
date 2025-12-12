@@ -8,6 +8,7 @@ import (
 	"io"
 	"sync"
 
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -132,7 +133,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 	for {
 		n, err := d.fp.Read(buffer[wp:])
 		if err != nil {
-			return err
+			return fmt.Errorf("nbd fp read error: %w", err)
 		}
 		wp += n
 
@@ -142,7 +143,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 			// Check if there is a fatal error from an async read/write to return
 			select {
 			case err := <-d.fatal:
-				return err
+				return fmt.Errorf("nbd fatal error: %w", err)
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
@@ -150,7 +151,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 			// Make sure we have a complete header
 			if wp-rp >= 28 {
-				// We can read the neader...
+				// We can read the header...
 
 				header := buffer[rp : rp+28]
 				request.Magic = binary.BigEndian.Uint32(header)
@@ -163,6 +164,26 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					return fmt.Errorf("received invalid MAGIC")
 				}
 
+				// Validate request parameters
+				deviceSize, err := d.prov.Size()
+				if err != nil {
+					return fmt.Errorf("failed to get device size: %w", err)
+				}
+
+				// Check for overflow: From + Length must not overflow uint64
+				if request.Length > 0 {
+					if request.From > uint64(deviceSize) {
+						return fmt.Errorf("request offset %d exceeds device size %d", request.From, deviceSize)
+					}
+					// Check if From + Length would overflow or exceed device size
+					if request.From+uint64(request.Length) < request.From { // overflow check
+						return fmt.Errorf("request offset + length overflows: offset=%d length=%d", request.From, request.Length)
+					}
+					if request.From+uint64(request.Length) > uint64(deviceSize) {
+						return fmt.Errorf("request exceeds device bounds: offset=%d length=%d device_size=%d", request.From, request.Length, deviceSize)
+					}
+				}
+
 				switch request.Type {
 				case NBDCmdDisconnect:
 					return nil // All done
@@ -170,9 +191,13 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					return fmt.Errorf("not supported: Flush")
 				case NBDCmdRead:
 					rp += 28
-					err := d.cmdRead(ctx, request.Handle, request.From, request.Length)
+					// Validate read length
+					if request.Length > dispatchMaxWriteBufferSize {
+						return fmt.Errorf("nbd read request length %d exceeds maximum %d", request.Length, dispatchMaxWriteBufferSize)
+					}
+					err := d.cmdRead(context.WithoutCancel(ctx), request.Handle, request.From, request.Length)
 					if err != nil {
-						return err
+						return fmt.Errorf("nbd read error: %w", err)
 					}
 				case NBDCmdWrite:
 					rp += 28
@@ -183,9 +208,19 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 					data := make([]byte, request.Length)
 
+					// Validate buffer boundaries before copy
+					if rp > wp {
+						return fmt.Errorf("buffer read pointer %d exceeds write pointer %d", rp, wp)
+					}
+
 					dataCopied := copy(data, buffer[rp:wp])
 
 					rp += dataCopied
+
+					// Validate that rp hasn't exceeded wp after copy
+					if rp > wp {
+						return fmt.Errorf("buffer read pointer %d exceeds write pointer %d after copy", rp, wp)
+					}
 
 					// We need to wait for more data here, otherwise we will deadlock if the buffer is Xmb and the length is Xmb because of the header's extra 28 bytes needed.
 					// At the same time we don't want to increase the default buffer size as the max would be 32mb which is too large for hundreds of sandbox connections.
@@ -200,22 +235,22 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 						select {
 						case err := <-d.fatal:
-							return err
+							return fmt.Errorf("nbd fatal error: %w", err)
 						case <-ctx.Done():
 							return ctx.Err()
 						default:
 						}
 					}
 
-					err := d.cmdWrite(ctx, request.Handle, request.From, data)
+					err := d.cmdWrite(context.WithoutCancel(ctx), request.Handle, request.From, data)
 					if err != nil {
-						return err
+						return fmt.Errorf("nbd write error: %w", err)
 					}
 				case NBDCmdTrim:
 					rp += 28
 					err := d.cmdTrim(request.Handle, request.From, request.Length)
 					if err != nil {
-						return err
+						return fmt.Errorf("nbd trim error: %w", err)
 					}
 				default:
 					return fmt.Errorf("nbd not implemented %d", request.Type)
@@ -232,7 +267,16 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 	}
 }
 
-func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
+func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) (e error) {
+	ctx, span := tracer.Start(ctx, "cmd read")
+	defer func() {
+		span.End()
+		if e != nil {
+			span.RecordError(e)
+			span.SetStatus(codes.Error, e.Error())
+		}
+	}()
+
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
@@ -282,7 +326,16 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	return nil
 }
 
-func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) (e error) {
+	ctx, span := tracer.Start(ctx, "cmd write")
+	defer func() {
+		span.End()
+		if e != nil {
+			span.RecordError(e)
+			span.SetStatus(codes.Error, e.Error())
+		}
+	}()
+
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
