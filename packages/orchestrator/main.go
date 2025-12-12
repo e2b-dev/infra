@@ -491,6 +491,7 @@ func run(config cfg.Config) (success bool) {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return nil
 			}
+
 			return err
 		}
 
