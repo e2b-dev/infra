@@ -82,21 +82,6 @@ locals {
       }
       groups = [{ group = var.server_instance_group }]
     }
-    # TODO: Remove in [ENG-3386]
-    consul = {
-      protocol                        = "HTTP"
-      port                            = 80
-      port_name                       = "consul"
-      timeout_sec                     = 10
-      connection_draining_timeout_sec = 1
-      http_health_check = {
-        request_path = "/v1/status/peers"
-        port         = 8500
-      }
-      groups = [
-        { group = var.server_instance_group }
-      ]
-    }
   }
   health_checked_backends = { for backend_index, backend_value in local.backends : backend_index => backend_value }
 }
@@ -447,11 +432,7 @@ resource "google_compute_firewall" "default-hc" {
   priority = 999
 
   dynamic "allow" {
-    # TODO: Revert to for_each = local.health_checked_backends in [ENG-3386]
-    for_each = {
-      for k, v in local.health_checked_backends :
-      k => v if k != "consul" # skip consul
-    }
+    for_each = local.health_checked_backends
 
     content {
       protocol = "tcp"
@@ -664,19 +645,6 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
   }
 
   description = "Requests to sandboxes from IP address"
-}
-
-resource "google_compute_security_policy_rule" "disable-consul" {
-  security_policy = google_compute_security_policy.default["consul"].name
-  action          = "deny(403)"
-  priority        = "1"
-  description     = "Disable all requests to Consul"
-  match {
-    versioned_expr = "SRC_IPS_V1"
-    config {
-      src_ip_ranges = ["*"]
-    }
-  }
 }
 
 resource "google_compute_security_policy" "disable-bots-log-collector" {
