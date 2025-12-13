@@ -291,15 +291,9 @@ func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Clie
 		logger.L().Error(ctx, "Failed to get BestOfKAlpha flag", zap.Error(err))
 	}
 
-	canFit, err := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFit)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to get BestOfKCanFit flag", zap.Error(err))
-	}
+	canFit := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFit)
 
-	tooManyStarting, err := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStarting)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to get BestOfKTooManyStarting flag", zap.Error(err))
-	}
+	tooManyStarting := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStarting)
 
 	// Convert percentage to decimal
 	alpha := float64(alphaPercent) / 100.0

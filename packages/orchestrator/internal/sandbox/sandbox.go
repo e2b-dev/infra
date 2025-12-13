@@ -555,10 +555,7 @@ func (f *Factory) ResumeSandbox(
 		exit: exit,
 	}
 
-	useClickhouseMetrics, flagErr := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
-	if flagErr != nil {
-		logger.L().Error(ctx, "soft failing during metrics write feature flag receive", zap.Error(flagErr))
-	}
+	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
