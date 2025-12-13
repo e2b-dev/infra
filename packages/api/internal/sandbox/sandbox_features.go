@@ -34,6 +34,10 @@ func NewVersionInfo(fcVersion string) (info VersionInfo, err error) {
 	return info, nil
 }
 
+func (v *VersionInfo) Version() semver.Version {
+	return v.lastReleaseVersion
+}
+
 func (v *VersionInfo) HasHugePages() bool {
 	if v.lastReleaseVersion.Major() >= 1 && v.lastReleaseVersion.Minor() >= 7 {
 		return true

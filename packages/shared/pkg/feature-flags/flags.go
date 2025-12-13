@@ -140,5 +140,18 @@ func newStringFlag(name string, fallback string) StringFlag {
 	return flag
 }
 
+// The Firecracker version the last tag + the short SHA (so we can build our dev previews)
+// TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
+const (
+	DefaultFirecackerV1_10Version = "v1.10.1_1fcdaec"
+	DefaultFirecackerV1_12Version = "v1.12.1_d990331"
+	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
+)
+
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
-var BuildIoEngine = newStringFlag("build-io-engine", "Sync")
+var (
+	BuildFirecrackerVersion = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildIoEngine           = newStringFlag("build-io-engine", "Sync")
+	FirecrackerV1_10Version = newStringFlag("firecracker-v1-10-version", DefaultFirecackerV1_10Version)
+	FirecrackerV1_12Version = newStringFlag("firecracker-v1-12-version", DefaultFirecackerV1_12Version)
+)

@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -39,6 +40,8 @@ type TemplateManager struct {
 	buildCache    *templatecache.TemplatesBuildCache
 	templateCache *templatecache.TemplateCache
 	sqlcDB        *sqlcdb.Client
+
+	featureFlags *featureflags.Client
 }
 
 type DeleteBuild struct {
@@ -58,12 +61,14 @@ func New(
 	edgePool *edge.Pool,
 	buildCache *templatecache.TemplatesBuildCache,
 	templateCache *templatecache.TemplateCache,
+	featureFlags *featureflags.Client,
 ) (*TemplateManager, error) {
 	tm := &TemplateManager{
 		sqlcDB:        sqlcDB,
 		buildCache:    buildCache,
 		templateCache: templateCache,
 		edgePool:      edgePool,
+		featureFlags:  featureFlags,
 
 		lock:       sync.Mutex{},
 		processing: make(map[uuid.UUID]processingBuilds),
