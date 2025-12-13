@@ -48,20 +48,11 @@ type ClickhouseDelivery struct {
 }
 
 func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.Conn, featureFlags *flags.Client) (*ClickhouseDelivery, error) {
-	maxBatchSize := 100
-	if val, err := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherMaxBatchSize); err == nil {
-		maxBatchSize = val
-	}
+	maxBatchSize := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherMaxBatchSize)
 
-	maxDelay := 1 * time.Second
-	if val, err := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherMaxDelay); err == nil {
-		maxDelay = time.Duration(val) * time.Millisecond
-	}
+	maxDelay := time.Duration(featureFlags.IntFlag(ctx, flags.ClickhouseBatcherMaxDelay)) * time.Millisecond
 
-	batcherQueueSize := 1000
-	if val, err := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherQueueSize, flags.SandboxContext("clickhouse-batcher")); err == nil {
-		batcherQueueSize = val
-	}
+	batcherQueueSize := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherQueueSize, flags.SandboxContext("clickhouse-batcher"))
 
 	return NewClickhouseSandboxEventsDelivery(
 		ctx, conn, batcher.BatcherOptions{
