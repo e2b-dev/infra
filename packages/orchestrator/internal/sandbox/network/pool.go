@@ -97,7 +97,7 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 
 	err = ips.CreateNetwork(ctx)
 	if err != nil {
-		releaseErr := p.slotStorage.Release(ips)
+		releaseErr := p.slotStorage.Release(ctx, ips)
 		err = errors.Join(err, releaseErr)
 
 		return nil, fmt.Errorf("failed to create network: %w", err)
@@ -106,15 +106,15 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 	return ips, nil
 }
 
-func (p *Pool) Populate(ctx context.Context) {
+func (p *Pool) Populate(ctx context.Context) error {
 	defer close(p.newSlots)
 
 	for {
 		select {
 		case <-p.done:
-			return
+			return ErrClosed
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		default:
 			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {
@@ -124,7 +124,12 @@ func (p *Pool) Populate(ctx context.Context) {
 			}
 
 			newSlotsAvailableCounter.Add(ctx, 1)
-			p.newSlots <- slot
+
+			select {
+			case p.newSlots <- slot:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 }
@@ -216,7 +221,7 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}
 
-	err = p.slotStorage.Release(slot)
+	err = p.slotStorage.Release(ctx, slot)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
 	}

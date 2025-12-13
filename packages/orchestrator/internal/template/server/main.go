@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -20,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
@@ -135,38 +133,26 @@ func New(
 func (s *ServerStore) Close(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
+		return ctx.Err()
 	default:
-		var closersErr error
+		var errs []error
 		for _, closer := range s.closers {
 			err := closer.Close()
-			if err != nil {
-				closersErr = errors.Join(closersErr, err)
-			}
-		}
-		if closersErr != nil {
-			return fmt.Errorf("failed to close services: %w", closersErr)
+			errs = append(errs, err)
 		}
 
-		return nil
+		return errors.Join(errs...)
 	}
 }
 
 func (s *ServerStore) Wait(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
-	default:
-		s.logger.Info(ctx, "Waiting for all build jobs to finish")
-		s.wg.Wait()
-
-		if !env.IsLocal() {
-			s.logger.Info(ctx, "Waiting for consumers to check build status")
-			time.Sleep(15 * time.Second)
-		}
-
-		s.logger.Info(ctx, "Template build queue cleaned")
-
-		return nil
+	if err := ctx.Err(); err != nil {
+		return err
 	}
+
+	s.logger.Info(ctx, "Waiting for all build jobs to finish")
+	s.wg.Wait()
+	s.logger.Info(ctx, "Template build queue cleaned")
+
+	return nil
 }
