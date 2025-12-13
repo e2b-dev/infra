@@ -165,7 +165,7 @@ func (s *DiffStore) startDiskSpaceEviction(
 			used := int64(dUsed) - pUsed
 			percentage := float64(used) / float64(dTotal) * 100
 
-			threshold := 100 // max value, won't ever be used
+			threshold := featureflags.BuildCacheMaxUsagePercentage.Fallback()
 			// When multiple services (template manager, orchestrator) are defined, take the lowest threshold
 			// to ensure we don't exceed any of the set limits
 			for _, s := range services {

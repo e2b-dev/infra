@@ -81,7 +81,7 @@ func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcont
 
 func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) int {
 	if c.ld == nil {
-		logger.L().Info(ctx, "LaunchDarkly client is not initialized, returning fallback")
+		logger.L().Warn(ctx, "LaunchDarkly client is not initialized, returning fallback")
 
 		return flag.fallback
 	}
