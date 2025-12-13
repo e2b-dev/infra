@@ -3,6 +3,7 @@ package nodemanager
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -65,8 +66,10 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 
 			if egress := config.GetNetwork().GetEgress(); egress != nil {
+				// Combine allowed CIDRs and domains back into AllowedAddresses
+				allowedAddresses := slices.Concat(egress.GetAllowedCidrs(), egress.GetAllowedDomains())
 				network.Egress = &types.SandboxNetworkEgressConfig{
-					AllowedAddresses: egress.GetAllowedCidrs(),
+					AllowedAddresses: allowedAddresses,
 					DeniedAddresses:  egress.GetDeniedCidrs(),
 				}
 			}

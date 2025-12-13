@@ -146,6 +146,25 @@ func (bb *BaseBuilder) provisionSandbox(
 	}
 	defer sbx.Close(ctx)
 
+	// Add to proxy so we can call envd and route traffic from the sandbox
+	bb.sandboxes.Insert(sbx)
+	defer func() {
+		bb.sandboxes.Remove(sbx.Runtime.SandboxID)
+
+		closeErr := bb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		if closeErr != nil {
+			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
+			bb.logger.Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
+		} else {
+			bb.logger.Debug(
+				ctx,
+				"removed proxy from pool",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithExecutionID(sbx.Runtime.ExecutionID),
+			)
+		}
+	}()
+
 	if err := done.WaitWithContext(ctx); err != nil {
 		return fmt.Errorf("error waiting for provisioning sandbox: %w", err)
 	}

@@ -49,6 +49,8 @@ const (
 	OrchestratorProxyPoolSizeMeterCounterName          ObservableUpDownCounterType = "orchestrator.proxy.pool.size"
 
 	BuildCounterMeterName ObservableUpDownCounterType = "api.env.build.running"
+
+	TCPFirewallActiveConnections ObservableUpDownCounterType = "orchestrator.tcpfirewall.connections.active"
 )
 
 const (
@@ -63,12 +65,20 @@ const (
 
 	// Sandbox timing histograms
 	WaitForEnvdDurationHistogramName HistogramType = "orchestrator.sandbox.envd.init.duration"
+
+	// TCP Firewall histograms
+	TCPFirewallConnectionDurationHistogramName HistogramType = "orchestrator.tcpfirewall.connection.duration"
 )
 
 const (
 	// Build result counters
 	BuildResultCounterName      CounterType = "template.build.result"
 	BuildCacheResultCounterName CounterType = "template.build.cache.result"
+
+	// TCP Firewall counters
+	TCPFirewallConnectionsTotal CounterType = "orchestrator.tcpfirewall.connections.total"
+	TCPFirewallErrorsTotal      CounterType = "orchestrator.tcpfirewall.errors.total"
+	TCPFirewallDecisionsTotal   CounterType = "orchestrator.tcpfirewall.decisions.total"
 )
 
 const (
@@ -95,6 +105,10 @@ var counterDesc = map[CounterType]string{
 	BuildCacheResultCounterName:     "Number of build cache results",
 	TeamSandboxCreated:              "Counter of started sandboxes for the team in the interval",
 	EnvdInitCalls:                   "Number of envd initialization calls",
+
+	TCPFirewallConnectionsTotal: "Total number of TCP firewall connections processed",
+	TCPFirewallErrorsTotal:      "Total number of TCP firewall errors",
+	TCPFirewallDecisionsTotal:   "Total number of TCP firewall allow/block decisions",
 }
 
 var counterUnits = map[CounterType]string{
@@ -104,6 +118,10 @@ var counterUnits = map[CounterType]string{
 	BuildCacheResultCounterName:     "{layer}",
 	TeamSandboxCreated:              "{sandbox}",
 	EnvdInitCalls:                   "1",
+
+	TCPFirewallConnectionsTotal: "{connection}",
+	TCPFirewallErrorsTotal:      "{error}",
+	TCPFirewallDecisionsTotal:   "{decision}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -133,6 +151,8 @@ var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "Open connections from the orchestrator proxy to sandboxes.",
 	OrchestratorProxyPoolSizeMeterCounterName:          "Size of the orchestrator proxy pool.",
 	BuildCounterMeterName:                              "Counter of running builds.",
+
+	TCPFirewallActiveConnections: "Number of currently active TCP firewall connections.",
 }
 
 var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
@@ -144,6 +164,8 @@ var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "{connection}",
 	OrchestratorProxyPoolSizeMeterCounterName:          "{transport}",
 	BuildCounterMeterName:                              "{build}",
+
+	TCPFirewallActiveConnections: "{connection}",
 }
 
 var gaugeFloatDesc = map[GaugeFloatType]string{
@@ -242,14 +264,17 @@ var histogramDesc = map[HistogramType]string{
 	BuildStepDurationHistogramName:   "Time taken to build each step of a template",
 	BuildRootfsSizeHistogramName:     "Size of the built template rootfs in bytes",
 	WaitForEnvdDurationHistogramName: "Time taken for Envd to initialize successfully",
+
+	TCPFirewallConnectionDurationHistogramName: "Duration of TCP firewall proxied connections",
 }
 
 var histogramUnits = map[HistogramType]string{
-	BuildDurationHistogramName:       "ms",
-	BuildPhaseDurationHistogramName:  "ms",
-	BuildStepDurationHistogramName:   "ms",
-	BuildRootfsSizeHistogramName:     "{By}",
-	WaitForEnvdDurationHistogramName: "ms",
+	BuildDurationHistogramName:                 "ms",
+	BuildPhaseDurationHistogramName:            "ms",
+	BuildStepDurationHistogramName:             "ms",
+	BuildRootfsSizeHistogramName:               "{By}",
+	WaitForEnvdDurationHistogramName:           "ms",
+	TCPFirewallConnectionDurationHistogramName: "ms",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {

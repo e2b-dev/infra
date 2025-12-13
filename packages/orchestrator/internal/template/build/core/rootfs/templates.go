@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 func generateFile(t *template.Template, model *templateModel) ([]byte, error) {
@@ -31,6 +32,7 @@ type templateModel struct {
 	ProvisionLogPrefix  string
 	ProvisionResultPath string
 	ProvisionExitPrefix string
+	Nameserver          string
 
 	paths []struct {
 		path string
@@ -45,6 +47,7 @@ func newTemplateModel(buildContext buildcontext.BuildContext, provisionLogPrefix
 		ProvisionLogPrefix:  provisionLogPrefix,
 		ProvisionExitPrefix: ProvisioningExitPrefix,
 		ProvisionResultPath: provisionResultPath,
+		Nameserver:          sandbox_network.DefaultNameserver,
 	}
 }
 
