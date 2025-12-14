@@ -16,10 +16,6 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-const (
-	gcpMultipartUploadPartSize = 50 * 1024 * 1024 // 50Mb parts
-)
-
 type InitiateMultipartUploadResult struct {
 	Bucket   string `xml:"Bucket"`
 	Key      string `xml:"Key"`
@@ -115,7 +111,7 @@ func (m *multipartUploaderGCP) UploadPart(uploadID string, partNumber int, dataL
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
-	req, err := retryablehttp.NewRequest("PUT", url, newMultiReader(dataList))
+	req, err := retryablehttp.NewRequest("PUT", url, newVectorReader(dataList))
 	if err != nil {
 		return err
 	}

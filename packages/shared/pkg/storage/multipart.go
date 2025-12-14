@@ -15,6 +15,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+const (
+	gcpMultipartUploadPartSize = 50 * 1024 * 1024 // 50Mb parts
+)
+
 type MultipartUploader interface {
 	InitiateUpload() (id string, err error)
 	UploadPart(id string, partNumber int, data ...[]byte) (err error)
