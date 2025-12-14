@@ -21,16 +21,22 @@ const (
 	zstdDefaultConcurrency    = 0 // use default concurrency settings
 )
 
+type FrameInfo struct {
+	Offset       int64
+	Uncompressed int
+	Compressed   int
+}
+
 // MultipartCompressUploadFile compresses the given file and uploads it using multipart upload.
-func MultipartCompressUploadFile(ctx context.Context, file *os.File, u MultipartUploader, maxConcurrency int, compression CompressionType) error {
+func MultipartCompressUploadFile(ctx context.Context, file *os.File, u MultipartUploader, maxConcurrency int, compression CompressionType) ([]FrameInfo, error) {
 	fu, err := newFrameUploader(ctx, u, gcpMultipartUploadPartSize, maxConcurrency)
 	if err != nil {
-		return fmt.Errorf("failed to create frame handler: %w", err)
+		return nil, fmt.Errorf("failed to create frame handler: %w", err)
 	}
 
 	fe, err := newFrameEncoder(compression, zstdCompressionLevel, zstdDefaultConcurrency, chunkUncompressedSize, targetFrameCompressedSize, fu.handleFrame)
 	if err != nil {
-		return fmt.Errorf("failed to create framed encoder: %w", err)
+		return nil, fmt.Errorf("failed to create framed encoder: %w", err)
 	}
 
 	return multipartCompressUploadFile(file, fe, fu, 32*1024)
@@ -38,7 +44,7 @@ func MultipartCompressUploadFile(ctx context.Context, file *os.File, u Multipart
 
 // multipartCompressUploadFile is the testable version, used internally by
 // MultipartCompressUploadFile.
-func multipartCompressUploadFile(file io.Reader, fe *frameEncoder, fu *frameUploader, bufSize int) error {
+func multipartCompressUploadFile(file io.Reader, fe *frameEncoder, fu *frameUploader, bufSize int) ([]FrameInfo, error) {
 	var err error
 	if bufSize > 0 {
 		_, err = io.CopyBuffer(fe, file, make([]byte, bufSize))
@@ -46,12 +52,12 @@ func multipartCompressUploadFile(file io.Reader, fe *frameEncoder, fu *frameUplo
 		_, err = io.Copy(fe, file)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to copy file to framed encoder: %w", err)
+		return nil, fmt.Errorf("failed to copy file to framed encoder: %w", err)
 	}
 
-	err = fe.Close()
+	fi, err := fe.Close()
 	if err != nil {
-		return fmt.Errorf("failed to close framed encoder: %w", err)
+		return nil, fmt.Errorf("failed to close framed encoder: %w", err)
 	}
 
 	// TODO: what happens to incomplete uploads if this fails?
@@ -60,11 +66,10 @@ func multipartCompressUploadFile(file io.Reader, fe *frameEncoder, fu *frameUplo
 	// goroutines will exit when the context is cancelled?
 	err = fu.complete()
 	if err != nil {
-		return fmt.Errorf("failed to upload frames: %w", err)
+		return nil, fmt.Errorf("failed to upload frames: %w", err)
 	}
 
-	// TODO: <>/<> fu accumulated the seek table during frame uploads
-	return nil
+	return fi, nil
 }
 
 type frameEncoder struct {
@@ -75,10 +80,12 @@ type frameEncoder struct {
 	targetFrameSize  int
 	handleFrame      func(frame []byte, last bool) error
 
-	origSize         int64
-	bytesInChunk     int
-	enc              io.WriteCloser
-	compressedBuffer *syncBuffer
+	off                   int64 // TODO plausibly useless
+	frameUncompressedSize int64
+	bytesInChunk          int
+	enc                   io.WriteCloser
+	compressedBuffer      *syncBuffer
+	fi                    []FrameInfo
 }
 
 type frameUploader struct {
@@ -113,6 +120,7 @@ func (fe *frameEncoder) startFrame() (*frameEncoder, error) {
 	var enc io.WriteCloser
 	var err error
 	fe.bytesInChunk = 0
+	fe.frameUncompressedSize = 0
 
 	// Can't reset and reuse because we hand off the bytes to another goroutine.
 	fe.compressedBuffer = newSyncBuffer(fe.targetFrameSize + fe.chunkSize)
@@ -152,7 +160,16 @@ func newZstdEncoder(out io.Writer, concurrency int, windowSize int, compressionL
 	}
 }
 
-func (fe *frameEncoder) Close() error {
+func (fe *frameEncoder) Close() (frameInfos []FrameInfo, err error) {
+	err = fe.closeFrame(true)
+	if err != nil {
+		return nil, err
+	}
+
+	return fe.fi, nil
+}
+
+func (fe *frameEncoder) closeFrame(last bool) error {
 	if fe.enc != nil {
 		if err := fe.enc.Close(); err != nil {
 			return fmt.Errorf("failed to close encoder: %w", err)
@@ -160,11 +177,25 @@ func (fe *frameEncoder) Close() error {
 		fe.enc = nil
 	}
 
-	// Final frame
-	if fe.handleFrame != nil && fe.compressedBuffer.Len() > 0 {
-		bb := fe.compressedBuffer.Bytes()
-		if err := fe.handleFrame(bb, true); err != nil {
-			return fmt.Errorf("failed to handle final frame: %w", err)
+	bb := fe.compressedBuffer.Bytes()
+	if len(bb) > 0 {
+		if fe.handleFrame != nil {
+			if err := fe.handleFrame(bb, last); err != nil {
+				return fmt.Errorf("failed to handle frame: %w", err)
+			}
+		}
+
+		fe.fi = append(fe.fi, FrameInfo{
+			Offset:       fe.off,
+			Uncompressed: int(fe.frameUncompressedSize),
+			Compressed:   len(bb),
+		})
+		fe.off += int64(len(bb))
+	}
+
+	if !last {
+		if _, err := fe.startFrame(); err != nil {
+			return fmt.Errorf("failed to start new frame: %w", err)
 		}
 	}
 
@@ -182,25 +213,14 @@ func (fe *frameEncoder) Write(data []byte) (n int, err error) {
 			return n, err
 		}
 		fe.bytesInChunk += written
-		data = data[writeNow:]
+		fe.frameUncompressedSize += int64(written)
+		data = data[written:]
+
 		// See if we reached the end of the chunk
 		if fe.bytesInChunk >= fe.chunkSize {
 			// See if the chunk puts us over the target encoded frame size
 			if fe.compressedBuffer.Len() >= fe.targetFrameSize {
-				err := fe.enc.Close()
-				if err != nil {
-					return n, fmt.Errorf("failed to close encoder: %w", err)
-				}
-				fe.enc = nil
-
-				if fe.handleFrame != nil {
-					err = fe.handleFrame(fe.compressedBuffer.Bytes(), false)
-					if err != nil {
-						return n, err
-					}
-				}
-
-				if _, err := fe.startFrame(); err != nil {
+				if err := fe.closeFrame(false); err != nil {
 					return n, err
 				}
 			}

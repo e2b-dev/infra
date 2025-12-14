@@ -122,7 +122,9 @@ func MultipartUploadFile(ctx context.Context, filePath string, u MultipartUpload
 	}
 
 	// Use compressed implementation
-	return MultipartCompressUploadFile(ctx, file, u, maxConcurrency, compression)
+	_, err = MultipartCompressUploadFile(ctx, file, u, maxConcurrency, compression)
+
+	return err
 }
 
 // uploadFileUncompressed uploads the file without compression (original implementation)
