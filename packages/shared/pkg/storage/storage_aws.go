@@ -162,13 +162,13 @@ func (a *AWSBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	return io.Copy(dst, resp.Body)
 }
 
-func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string, _ CompressionType) error {
+func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string, _ CompressionType) ([]FrameInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
 	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer file.Close()
 
@@ -189,7 +189,7 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		},
 	)
 
-	return err
+	return nil, err
 }
 
 func (a *AWSBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {

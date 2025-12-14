@@ -16,6 +16,10 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
+const (
+	gcpMultipartUploadChunkSize = 50 * 1024 * 1024 // 50MB chunks
+)
+
 type InitiateMultipartUploadResult struct {
 	Bucket   string `xml:"Bucket"`
 	Key      string `xml:"Key"`

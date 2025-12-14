@@ -58,7 +58,8 @@ func TestWriteFromFileSystem(t *testing.T) {
 
 	obj, err := p.OpenObject(ctx, "copy/dst.txt", UnknownObjectType, CompressionNone)
 	require.NoError(t, err)
-	require.NoError(t, obj.WriteFromFileSystem(t.Context(), srcPath, CompressionNone))
+	_, err = obj.WriteFromFileSystem(t.Context(), srcPath, CompressionNone)
+	require.NoError(t, err)
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(t.Context(), &buf)

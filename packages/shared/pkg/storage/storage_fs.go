@@ -83,25 +83,25 @@ func (f *FileSystemStorageObjectProvider) WriteTo(_ context.Context, dst io.Writ
 	return io.Copy(dst, handle)
 }
 
-func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(_ context.Context, path string, compression CompressionType) error {
+func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(_ context.Context, path string, compression CompressionType) ([]FrameInfo, error) {
 	handle, err := f.getHandle(false)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer handle.Close()
 
 	src, err := os.Open(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer src.Close()
 
 	_, err = io.Copy(handle, src)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return nil, nil
 }
 
 func (f *FileSystemStorageObjectProvider) Write(_ context.Context, data []byte) (int, error) {

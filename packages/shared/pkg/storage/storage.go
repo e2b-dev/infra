@@ -87,7 +87,7 @@ type ReaderAtCtx interface {
 type ObjectProvider interface {
 	// write
 	WriterCtx
-	WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) error
+	WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error)
 
 	// read
 	WriterToCtx
@@ -98,7 +98,7 @@ type ObjectProvider interface {
 
 type SeekableObjectProvider interface {
 	// write
-	WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) error
+	WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error)
 
 	// read
 	ReaderAtCtx

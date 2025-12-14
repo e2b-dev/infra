@@ -50,28 +50,6 @@ var (
 	))
 )
 
-// type readerAtWithoutContext struct {
-// 	obj *GCPBucketStorageObjectProvider
-// 	ctx context.Context
-// }
-
-// var _ io.ReaderAt = (*readerAtWithoutContext)(nil)
-
-// func newReaderAtWithoutContext(obj *GCPBucketStorageObjectProvider, ctx context.Context) *readerAtWithoutContext {
-// 	return &readerAtWithoutContext{
-// 		obj: obj,
-// 		ctx: ctx,
-// 	}
-// }
-
-// func (r *readerAtWithoutContext) ReadAt(p []byte, off int64) (n int, err error) {
-// 	return r.obj.readAt(r.ctx, p, off)
-// }
-
-// func (r *readerAtWithoutContext) newReaderSeeker(size int64) io.ReadSeeker {
-// 	return io.NewSectionReader(r, 0, size)
-// }
-
 type GCPBucketStorageProvider struct {
 	client *storage.Client
 	bucket *storage.BucketHandle
@@ -352,7 +330,7 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) error {
+func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error) {
 	timer := googleWriteTimerFactory.Begin()
 
 	bucketName := g.storage.bucket.BucketName()
@@ -361,24 +339,25 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to get file size: %w", err)
+		return nil, fmt.Errorf("failed to get file size: %w", err)
 	}
 
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
-	// if fileInfo.Size() < gcpMultipartUploadChunkSize {
-	// 	data, err := os.ReadFile(path)
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to read file: %w", err)
-	// 	}
+	if fileInfo.Size() < gcpMultipartUploadChunkSize {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read file: %w", err)
+		}
 
-	// 	if _, err = g.Write(ctx, data); err != nil {
-	// 		return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
-	// 	}
+		if _, err = g.Write(ctx, data); err != nil {
+			return nil, fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
+		}
 
-	// 	timer.End(ctx, int64(len(data)), attribute.String("method", "one-shot"))
-	// 	return nil
-	// }
+		timer.End(ctx, int64(len(data)), attribute.String("method", "one-shot"))
+
+		return nil, nil
+	}
 
 	maxConcurrency := gcloudDefaultUploadConcurrency
 	if g.limiter != nil {
@@ -386,7 +365,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		if uploadLimiter != nil {
 			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
 			if semaphoreErr != nil {
-				return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+				return nil, fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
 			}
 			defer uploadLimiter.Release(1)
 		}
@@ -401,12 +380,13 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		DefaultRetryConfig(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create multipart uploader: %w", err)
+		return nil, fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
 	start := time.Now()
-	if err := MultipartUploadFile(ctx, filePath, uploader, maxConcurrency, compression); err != nil {
-		return fmt.Errorf("failed to upload file in parallel: %w", err)
+	fi, err := MultipartUploadFile(ctx, filePath, uploader, maxConcurrency, compression)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
 	logger.L().Debug(ctx, "Uploaded file in parallel",
@@ -420,7 +400,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 
 	timer.End(ctx, fileInfo.Size(), attribute.String("method", "multipart"))
 
-	return nil
+	return fi, nil
 }
 
 type gcpServiceToken struct {

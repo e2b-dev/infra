@@ -108,23 +108,23 @@ func (z *leveledLogger) Warn(msg string, keysAndValues ...any) {
 	z.logger.Warn(msg, zap.Any("details", keysAndValues))
 }
 
-func MultipartUploadFile(ctx context.Context, filePath string, u MultipartUploader, maxConcurrency int, compression CompressionType) error {
+func MultipartUploadFile(ctx context.Context, filePath string, u MultipartUploader, maxConcurrency int, compression CompressionType) ([]FrameInfo, error) {
 	// Open input file
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	if compression == CompressionNone {
 		// Use original simple implementation - upload file as-is
-		return uploadFileUncompressed(ctx, file, u, maxConcurrency)
+		err = uploadFileUncompressed(ctx, file, u, maxConcurrency)
+
+		return nil, err
 	}
 
 	// Use compressed implementation
-	_, err = MultipartCompressUploadFile(ctx, file, u, maxConcurrency, compression)
-
-	return err
+	return MultipartCompressUploadFile(ctx, file, u, maxConcurrency, compression)
 }
 
 // uploadFileUncompressed uploads the file without compression (original implementation)

@@ -170,20 +170,31 @@ func (_c *MockSeekableObjectProvider_Size_Call) RunAndReturn(run func(ctx contex
 }
 
 // WriteFromFileSystem provides a mock function for the type MockSeekableObjectProvider
-func (_mock *MockSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) error {
+func (_mock *MockSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error) {
 	ret := _mock.Called(ctx, path, compression)
 
 	if len(ret) == 0 {
 		panic("no return value specified for WriteFromFileSystem")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, CompressionType) error); ok {
+	var r0 []FrameInfo
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, CompressionType) ([]FrameInfo, error)); ok {
+		return returnFunc(ctx, path, compression)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, CompressionType) []FrameInfo); ok {
 		r0 = returnFunc(ctx, path, compression)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]FrameInfo)
+		}
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, CompressionType) error); ok {
+		r1 = returnFunc(ctx, path, compression)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // MockSeekableObjectProvider_WriteFromFileSystem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WriteFromFileSystem'
@@ -222,12 +233,12 @@ func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) Run(run func(ctx 
 	return _c
 }
 
-func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) Return(err error) *MockSeekableObjectProvider_WriteFromFileSystem_Call {
-	_c.Call.Return(err)
+func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) Return(frameInfos []FrameInfo, err error) *MockSeekableObjectProvider_WriteFromFileSystem_Call {
+	_c.Call.Return(frameInfos, err)
 	return _c
 }
 
-func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) RunAndReturn(run func(ctx context.Context, path string, compression CompressionType) error) *MockSeekableObjectProvider_WriteFromFileSystem_Call {
+func (_c *MockSeekableObjectProvider_WriteFromFileSystem_Call) RunAndReturn(run func(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error)) *MockSeekableObjectProvider_WriteFromFileSystem_Call {
 	_c.Call.Return(run)
 	return _c
 }
