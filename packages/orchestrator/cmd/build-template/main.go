@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
@@ -109,6 +110,26 @@ func buildTemplate(
 		err := sandboxProxy.Close(parentCtx)
 		if err != nil {
 			log.Error(ctx, "error closing sandbox proxy", zap.Error(err))
+		}
+	}()
+
+	// hostname egress filter proxy
+	tcpFirewall := tcpfirewall.New(
+		log,
+		networkConfig,
+		sandboxes,
+		noop.NewMeterProvider(),
+	)
+	go func() {
+		err := tcpFirewall.Start(ctx)
+		if err != nil {
+			log.Error(ctx, "error starting tcp egress firewall", zap.Error(err))
+		}
+	}()
+	defer func() {
+		err := tcpFirewall.Close(parentCtx)
+		if err != nil {
+			log.Error(ctx, "error closing tcp egress firewall", zap.Error(err))
 		}
 	}()
 
