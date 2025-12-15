@@ -92,8 +92,12 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 
 					// We tried non-preferred node and the data aren't uploaded yet, try to use the preferred again
 					// This should prevent spamming the preferred node, yet still try to place the sandbox there as it will be faster
-					if preferredNode != nil && preferredNode.ID != failedNode.ID {
-						node = preferredNode
+					if preferredNode != nil &&
+						preferredNode.ID != failedNode.ID {
+						// Use the preferred node only if it wasn't excluded
+						if _, excluded := nodesExcluded[preferredNode.ID]; !excluded {
+							node = preferredNode
+						}
 					}
 				default:
 					nodesExcluded[failedNode.ID] = struct{}{}
