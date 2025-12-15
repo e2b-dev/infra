@@ -183,7 +183,7 @@ receivers:
           process.signals_pending:
             enabled: false
           process.threads:
-            enabled: false
+            enabled: true
           process.uptime:
             enabled: false
 
@@ -268,6 +268,15 @@ processors:
         match_type: strict
         action: update
         new_name: "system.context_switches"
+        operations:
+          - action: aggregate_labels
+            label_set:
+              - node.id
+            aggregation_type: sum
+      - include: "process.threads"
+        match_type: strict
+        action: update
+        new_name: "system.threads"
         operations:
           - action: aggregate_labels
             label_set:
