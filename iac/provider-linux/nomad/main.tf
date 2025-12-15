@@ -59,7 +59,7 @@ resource "nomad_job" "api" {
     environment                    = var.environment
     analytics_collector_host       = var.analytics_collector_host
     analytics_collector_api_token  = var.analytics_collector_api_token
-    otel_tracing_print             = false
+    otel_tracing_print             = var.otel_tracing_print
     nomad_acl_token                = var.nomad_acl_token
     admin_token                    = var.api_admin_token
     redis_url                      = var.redis_url == "redis.service.consul" ? "" : var.redis_url
@@ -210,7 +210,7 @@ resource "nomad_job" "template_manager" {
     envd_artifact_url                    = var.envd_artifact_url
     should_download_envd                 = contains(var.fc_artifact_node_pools, var.builder_node_pool)
     template_manager_checksum            = ""
-    otel_tracing_print                   = false
+    otel_tracing_print                   = var.otel_tracing_print
     template_bucket_name                 = var.template_bucket_name
     build_cache_bucket_name              = var.build_cache_bucket_name
     otel_collector_grpc_endpoint         = "localhost:${var.otel_collector_grpc_port}"
@@ -241,7 +241,7 @@ resource "nomad_job" "orchestrator" {
     proxy_port                           = var.orchestrator_proxy_port
     environment                          = var.environment
     consul_acl_token                     = var.consul_acl_token
-    otel_tracing_print                   = false
+    otel_tracing_print                   = var.otel_tracing_print
     logs_collector_address               = "http://localhost:${var.logs_proxy_port.port}"
     envd_timeout                         = var.envd_timeout
     template_bucket_name                 = var.template_bucket_name

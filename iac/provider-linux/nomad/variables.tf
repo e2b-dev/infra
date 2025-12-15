@@ -72,6 +72,11 @@ variable "otel_collector_grpc_port" {
   default = 4317
 }
 
+variable "otel_tracing_print" {
+  type    = bool
+  default = false
+}
+
 variable "api_image" { type = string }
 variable "db_migrator_image" { type = string }
 variable "client_proxy_image" { type = string }
