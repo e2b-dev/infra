@@ -89,13 +89,11 @@ func TestValidateNetworkConfig(t *testing.T) {
 		},
 		// CIDR validation tests
 		{
-			name: "allow_out with CIDR requires deny_out",
+			name: "allow_out with CIDR without deny_out is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"10.0.0.0/8"},
 			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: ErrMsgCIDRsRequireDenyOut,
+			wantErr: false,
 		},
 		{
 			name: "allow_out with CIDR and deny_out block-all is valid",
@@ -106,13 +104,11 @@ func TestValidateNetworkConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "allow_out with IP requires deny_out",
+			name: "allow_out with IP without deny_out is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"8.8.8.8"},
 			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: ErrMsgCIDRsRequireDenyOut,
+			wantErr: false,
 		},
 		{
 			name: "allow_out with IP and deny_out block-all is valid",
@@ -124,14 +120,12 @@ func TestValidateNetworkConfig(t *testing.T) {
 		},
 		// CIDR intersection validation tests
 		{
-			name: "allow_out CIDR not covered by deny_out CIDR is invalid",
+			name: "allow_out CIDR not covered by deny_out CIDR is valid (no intersection check)",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"10.0.0.0/8"},
-				DenyOut:  &[]string{"192.168.0.0/16"}, // No intersection
+				DenyOut:  &[]string{"192.168.0.0/16"}, // No intersection, but still valid
 			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "Allowed CIDR '10.0.0.0/8' is not covered by any denied CIDR. The allowed CIDR must intersect with at least one denied CIDR to be meaningful.",
+			wantErr: false,
 		},
 		{
 			name: "allow_out CIDR covered by intersecting deny_out CIDR is valid",
@@ -158,24 +152,20 @@ func TestValidateNetworkConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "allow_out IP not covered by deny_out CIDR is invalid",
+			name: "allow_out IP not covered by deny_out CIDR is valid (no intersection check)",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"8.8.8.8"},
 				DenyOut:  &[]string{"10.0.0.0/8"},
 			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "Allowed CIDR '8.8.8.8' is not covered by any denied CIDR. The allowed CIDR must intersect with at least one denied CIDR to be meaningful.",
+			wantErr: false,
 		},
 		{
-			name: "multiple allow_out CIDRs all need coverage",
+			name: "multiple allow_out CIDRs partial deny_out coverage is valid (no intersection check)",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"10.0.0.0/8", "192.168.0.0/16"},
-				DenyOut:  &[]string{"10.0.0.0/8"}, // Only covers first
+				DenyOut:  &[]string{"10.0.0.0/8"}, // Only covers first, but still valid
 			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "Allowed CIDR '192.168.0.0/16' is not covered by any denied CIDR. The allowed CIDR must intersect with at least one denied CIDR to be meaningful.",
+			wantErr: false,
 		},
 		{
 			name: "multiple allow_out CIDRs covered by multiple deny_out CIDRs is valid",
