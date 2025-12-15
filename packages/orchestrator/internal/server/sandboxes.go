@@ -152,6 +152,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
+			// Snapshot data not found, let the API know the data aren't probably upload yet
 			return nil, status.Errorf(codes.NotFound, "sandbox files for '%s' not found", req.GetSandbox().GetSandboxId())
 		}
 
