@@ -40,6 +40,20 @@ job "client-proxy" {
       name = "proxy"
       port = "${proxy_port_name}"
 
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.edge-proxy.rule=HostRegexp(`{subdomain:.+}.${domain_name}`)",
+        "traefik.http.routers.edge-proxy.entrypoints=websecure",
+        "traefik.http.routers.edge-proxy.tls=true",
+        "traefik.http.routers.edge-proxy.service=edge-proxy",
+        "traefik.http.services.edge-proxy.loadbalancer.server.port=${proxy_port}",
+        "traefik.http.routers.edge-execute.rule=PathPrefix(`/execute`)",
+        "traefik.http.routers.edge-execute.entrypoints=websecure",
+        "traefik.http.routers.edge-execute.tls=true",
+        "traefik.http.routers.edge-execute.service=edge-proxy",
+        "traefik.http.services.edge-execute.loadbalancer.server.port=${proxy_port}"
+      ]
+
       check {
         type     = "http"
         name     = "health"
@@ -127,6 +141,7 @@ job "client-proxy" {
         %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
         %{ endif }
+        E2B_DEBUG="true"
       }
 
       config {
