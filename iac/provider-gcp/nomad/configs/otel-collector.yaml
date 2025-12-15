@@ -253,7 +253,7 @@ processors:
               - state
             aggregation_type: sum
 
-  metricstransform/aggregate_fd:
+  metricstransform/aggregate_process_metrics:
     transforms:
       - include: "process.open_file_descriptors"
         match_type: strict
@@ -445,7 +445,7 @@ service:
       processors:
         - attributes/host_metrics_node
         - metricstransform/single_cpu
-        - metricstransform/aggregate_fd
+        - metricstransform/aggregate_process_metrics
         - resourcedetection
         - transform/set-name
         - batch
