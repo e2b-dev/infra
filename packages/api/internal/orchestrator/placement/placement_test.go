@@ -208,10 +208,10 @@ func TestPlaceSandbox_ResourceExhausted(t *testing.T) {
 	algorithm.AssertNumberOfCalls(t, "chooseNode", 2)
 }
 
-func TestPlaceSandbox_NotFoundWithPreferredNode(t *testing.T) {
+func TestPlaceSandbox_FailedPreconditionWithPreferredNode(t *testing.T) {
 	ctx := t.Context()
 
-	// Scenario: Preferred node is exhausted, we try another node which returns NotFound,
+	// Scenario: Preferred node is exhausted, we try another node which returns FailedPrecondition,
 	// then we should retry on the preferred node
 
 	// Create a mock client that returns ResourceExhausted first, then succeeds on retry
@@ -230,7 +230,7 @@ func TestPlaceSandbox_NotFoundWithPreferredNode(t *testing.T) {
 	})
 
 	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4,
-		nodemanager.WithSandboxCreateError(status.Error(codes.NotFound, "sandbox files not found")))
+		nodemanager.WithSandboxCreateError(status.Error(codes.FailedPrecondition, "sandbox files not found")))
 	nodes := []*nodemanager.Node{preferredNode, node1}
 
 	// Algorithm should be called once to select node1 after preferred node is exhausted
@@ -246,24 +246,24 @@ func TestPlaceSandbox_NotFoundWithPreferredNode(t *testing.T) {
 		},
 	}
 
-	// Start with preferred node (exhausted) -> try node1 (NotFound) -> retry preferred node (succeeds)
+	// Start with preferred node (exhausted) -> try node1 (FailedPrecondition) -> retry preferred node (succeeds)
 	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, preferredNode, sbxRequest, machineinfo.MachineInfo{})
 
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
-	assert.Equal(t, preferredNode, resultNode, "should retry on preferred node after NotFound on different node")
+	assert.Equal(t, preferredNode, resultNode, "should retry on preferred node after FailedPrecondition on different node")
 
 	// Algorithm should be called once (for node1), then preferred node is retried
 	algorithm.AssertNumberOfCalls(t, "chooseNode", 1)
 	assert.Equal(t, 2, callCount, "preferred node should be tried twice")
 }
 
-func TestPlaceSandbox_NotFoundWithoutPreferredNode(t *testing.T) {
+func TestPlaceSandbox_FailedPreconditionWithoutPreferredNode(t *testing.T) {
 	ctx := t.Context()
 
-	// Create test nodes - both return NotFound initially, node2 succeeds on retry
+	// Create test nodes - both return FailedPrecondition initially, node2 succeeds on retry
 	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4,
-		nodemanager.WithSandboxCreateError(status.Error(codes.NotFound, "sandbox files not found")))
+		nodemanager.WithSandboxCreateError(status.Error(codes.FailedPrecondition, "sandbox files not found")))
 	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 5, 4)
 	nodes := []*nodemanager.Node{node1, node2}
 
@@ -286,16 +286,16 @@ func TestPlaceSandbox_NotFoundWithoutPreferredNode(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
-	assert.Equal(t, node2, resultNode, "should succeed on node2 after NotFound on node1")
+	assert.Equal(t, node2, resultNode, "should succeed on node2 after FailedPrecondition on node1")
 	algorithm.AssertNumberOfCalls(t, "chooseNode", 2)
 }
 
-func TestPlaceSandbox_NotFoundOnPreferredNode(t *testing.T) {
+func TestPlaceSandbox_FailedPreconditionOnPreferredNode(t *testing.T) {
 	ctx := t.Context()
 
-	// Create test nodes - preferred node returns NotFound, node1 succeeds
+	// Create test nodes - preferred node returns FailedPrecondition, node1 succeeds
 	preferredNode := nodemanager.NewTestNode("preferred-node", api.NodeStatusReady, 5, 4,
-		nodemanager.WithSandboxCreateError(status.Error(codes.NotFound, "sandbox files not found")))
+		nodemanager.WithSandboxCreateError(status.Error(codes.FailedPrecondition, "sandbox files not found")))
 	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4)
 	nodes := []*nodemanager.Node{preferredNode, node1}
 
@@ -311,11 +311,11 @@ func TestPlaceSandbox_NotFoundOnPreferredNode(t *testing.T) {
 		},
 	}
 
-	// Start with preferred node that returns NotFound
+	// Start with preferred node that returns FailedPrecondition
 	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, preferredNode, sbxRequest, machineinfo.MachineInfo{})
 
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
-	assert.Equal(t, node1, resultNode, "should succeed on node1 after NotFound on preferred node")
+	assert.Equal(t, node1, resultNode, "should succeed on node1 after FailedPrecondition on preferred node")
 	algorithm.AssertNumberOfCalls(t, "chooseNode", 1)
 }
