@@ -76,51 +76,43 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		)
 		err = node.SandboxCreate(ctx, sbxRequest)
 		span.End()
-		if err != nil {
-			failedNode := node
-			node = nil
+		if err == nil {
+			node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
 
-			st, ok := status.FromError(err)
-			if ok {
-				switch st.Code() {
-				case codes.ResourceExhausted:
-					failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
-					logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
-				case codes.FailedPrecondition:
-					failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
-					logger.L().Warn(ctx, "Build not found, retrying", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
+			return node, nil
+		}
+		failedNode := node
+		node = nil
 
-					// We tried non-preferred node and the data aren't uploaded yet, try to use the preferred again
-					// This should prevent spamming the preferred node, yet still try to place the sandbox there as it will be faster
-					if preferredNode != nil &&
-						preferredNode.ID != failedNode.ID {
-						// Use the preferred node only if it wasn't excluded
-						if _, excluded := nodesExcluded[preferredNode.ID]; !excluded {
-							node = preferredNode
-						}
-					}
-				default:
-					nodesExcluded[failedNode.ID] = struct{}{}
-					failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
-					logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
-					attempt++
-				}
-
-				continue
-			}
-
-			// Unexpected error
-			nodesExcluded[failedNode.ID] = struct{}{}
-			failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
-			logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), zap.Int("attempt", attempt+1), zap.Error(err))
-			attempt++
-
-			continue
+		st, ok := status.FromError(err)
+		statusCode := codes.Internal
+		if ok {
+			statusCode = st.Code()
 		}
 
-		node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
+		switch statusCode {
+		case codes.ResourceExhausted:
+			failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
+			logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
+		case codes.FailedPrecondition:
+			failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
+			logger.L().Warn(ctx, "Build not found, retrying", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
 
-		return node, nil
+			// We tried non-preferred node and the data aren't uploaded yet, try to use the preferred again
+			// This should prevent spamming the preferred node, yet still try to place the sandbox there as it will be faster
+			if preferredNode != nil &&
+				preferredNode.ID != failedNode.ID {
+				// Use the preferred node only if it wasn't excluded
+				if _, excluded := nodesExcluded[preferredNode.ID]; !excluded {
+					node = preferredNode
+				}
+			}
+		default:
+			nodesExcluded[failedNode.ID] = struct{}{}
+			failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
+			logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+			attempt++
+		}
 	}
 
 	return nil, errSandboxCreateFailed
