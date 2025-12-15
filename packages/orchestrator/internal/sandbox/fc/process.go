@@ -379,8 +379,6 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
-	telemetry.ReportEvent(ctx, "loaded snapshot")
-
 	err = p.client.resumeVM(ctx)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
