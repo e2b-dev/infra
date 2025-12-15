@@ -72,6 +72,7 @@ tf_vars := \
 	$(call tfvar, BUILDER_NODE_POOL) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, BUILD_CACHE_BUCKET_NAME) \
+	$(call tfvar, OTEL_TRACING_PRINT) \
 	$(call tfvar, ENVD_TIMEOUT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, SHARED_CHUNK_CACHE_PATH) \
