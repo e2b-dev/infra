@@ -157,6 +157,7 @@ receivers:
 
       # entirely disabled, so we omit the module
       process:
+        mute_process_all_errors: true
         metrics:
           process.cpu.time:
             enabled: false
