@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -51,5 +52,5 @@ func TestSandboxObjectNotFound(t *testing.T) {
 
 	st, ok := status.FromError(err)
 	require.True(t, ok, "err should be a status error")
-	require.Equal(t, st.Code(), codes.NotFound, "status code should be NotFound")
+	assert.Equal(t, codes.NotFound, st.Code(), "status code should be NotFound")
 }
