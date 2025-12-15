@@ -151,6 +151,10 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		req.GetSandbox(),
 	)
 	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, status.Errorf(codes.NotFound, "sandbox files for '%s' not found", req.GetSandbox().GetSandboxId())
+		}
+
 		err := errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
 

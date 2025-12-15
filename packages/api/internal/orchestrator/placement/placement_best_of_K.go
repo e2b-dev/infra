@@ -7,9 +7,6 @@ import (
 	"math/rand"
 	"sync"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
@@ -103,16 +100,6 @@ func (b *BestOfK) UpdateConfig(config BestOfKConfig) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.config = config
-}
-
-func (b *BestOfK) excludeNode(err error) bool {
-	st, ok := status.FromError(err)
-	// If the node is just exhausted, keep it
-	if ok && st.Code() == codes.ResourceExhausted {
-		return false
-	}
-
-	return true
 }
 
 // chooseNode selects the best node for placing a VM with the given quota

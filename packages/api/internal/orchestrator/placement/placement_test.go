@@ -21,12 +21,6 @@ type mockAlgorithm struct {
 	mock.Mock
 }
 
-func (m *mockAlgorithm) excludeNode(err error) bool {
-	args := m.Called(err)
-
-	return args.Bool(0)
-}
-
 func (m *mockAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, buildCPUInfo machineinfo.MachineInfo) (*nodemanager.Node, error) {
 	args := m.Called(ctx, nodes, nodesExcluded, requested, buildCPUInfo)
 	if args.Get(0) == nil {

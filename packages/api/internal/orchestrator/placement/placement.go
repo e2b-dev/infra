@@ -26,7 +26,6 @@ var errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the 
 // and current load distribution.
 type Algorithm interface {
 	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo) (*nodemanager.Node, error)
-	excludeNode(err error) bool
 }
 
 func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*nodemanager.Node, preferredNode *nodemanager.Node, sbxRequest *orchestrator.SandboxCreateRequest, buildMachineInfo machineinfo.MachineInfo) (*nodemanager.Node, error) {
@@ -78,24 +77,35 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		err = node.SandboxCreate(ctx, sbxRequest)
 		span.End()
 		if err != nil {
-			if algorithm.excludeNode(err) {
-				logger.L().Warn(ctx, "Excluding node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
-				nodesExcluded[node.ID] = struct{}{}
-			}
-
-			st, ok := status.FromError(err)
-			if !ok || st.Code() != codes.ResourceExhausted {
-				node.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
-				logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
-				attempt++
-			} else {
-				node.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
-				logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
-			}
-
+			failedNode := node
 			node = nil
 
-			continue
+			st, ok := status.FromError(err)
+			if ok {
+				switch st.Code() {
+				case codes.ResourceExhausted:
+					failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
+					logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
+				case codes.NotFound:
+					failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
+					logger.L().Warn(ctx, "Build not found, retrying", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
+
+					// We tried non-preferred node and the data aren't uploaded yet, try to use the preferred again
+					// This should prevent spamming the preferred node, yet still try to place the sandbox there as it will be faster
+					if preferredNode != nil && preferredNode.ID != failedNode.ID {
+						node = preferredNode
+					}
+				default:
+					nodesExcluded[failedNode.ID] = struct{}{}
+					failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
+					logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+					attempt++
+				}
+
+				continue
+			}
+
+			return nil, fmt.Errorf("unexpected error during sandbox creation on node %s (attempt %d): %w", failedNode.ID, attempt+1, err)
 		}
 
 		node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
