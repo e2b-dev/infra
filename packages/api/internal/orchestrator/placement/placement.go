@@ -81,6 +81,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 
 			return node, nil
 		}
+
 		failedNode := node
 		node = nil
 
@@ -94,19 +95,6 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		case codes.ResourceExhausted:
 			failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
 			logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
-		case codes.FailedPrecondition:
-			failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
-			logger.L().Warn(ctx, "Build not found, retrying", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
-
-			// We tried non-preferred node and the data aren't uploaded yet, try to use the preferred again
-			// This should prevent spamming the preferred node, yet still try to place the sandbox there as it will be faster
-			if preferredNode != nil &&
-				preferredNode.ID != failedNode.ID {
-				// Use the preferred node only if it wasn't excluded
-				if _, excluded := nodesExcluded[preferredNode.ID]; !excluded {
-					node = preferredNode
-				}
-			}
 		default:
 			nodesExcluded[failedNode.ID] = struct{}{}
 			failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
