@@ -86,7 +86,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 				case codes.ResourceExhausted:
 					failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
 					logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
-				case codes.NotFound:
+				case codes.FailedPrecondition:
 					failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
 					logger.L().Warn(ctx, "Build not found, retrying", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
 
@@ -109,7 +109,13 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 				continue
 			}
 
-			return nil, fmt.Errorf("unexpected error during sandbox creation on node %s (attempt %d): %w", failedNode.ID, attempt+1, err)
+			// Unexpected error
+			nodesExcluded[failedNode.ID] = struct{}{}
+			failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
+			logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), zap.Int("attempt", attempt+1), zap.Error(err))
+			attempt++
+
+			continue
 		}
 
 		node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())

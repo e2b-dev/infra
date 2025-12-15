@@ -52,5 +52,5 @@ func TestSandboxObjectNotFound(t *testing.T) {
 
 	st, ok := status.FromError(err)
 	require.True(t, ok, "err should be a status error")
-	assert.Equal(t, codes.NotFound, st.Code(), "status code should be NotFound")
+	assert.Equal(t, codes.FailedPrecondition, st.Code(), "status code should be FailedPrecondition")
 }
