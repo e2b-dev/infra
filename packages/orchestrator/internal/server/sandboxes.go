@@ -153,10 +153,12 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			// Snapshot data not found, let the API know the data aren't probably upload yet
+			telemetry.ReportError(ctx, "sandbox files not found", err, telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()))
+
 			return nil, status.Errorf(codes.NotFound, "sandbox files for '%s' not found", req.GetSandbox().GetSandboxId())
 		}
 
-		err := errors.Join(err, context.Cause(ctx))
+		err = errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
 
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
