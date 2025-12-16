@@ -39,6 +39,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -366,6 +367,18 @@ func run(config cfg.Config) (success bool) {
 		return err
 	})
 	closers = append(closers, closer{"sandbox proxy", sandboxProxy.Close})
+
+	// hostname egress filter proxy
+	tcpFirewall := tcpfirewall.New(
+		globalLogger,
+		config.NetworkConfig,
+		sandboxes,
+		tel.MeterProvider,
+	)
+	startService("tcp egress firewall", func() error {
+		return tcpFirewall.Start(ctx)
+	})
+	closers = append(closers, closer{"tcp egress firewall", tcpFirewall.Close})
 
 	// device pool
 	devicePool, err := nbd.NewDevicePool()

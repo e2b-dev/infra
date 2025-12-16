@@ -1,6 +1,8 @@
 package sandbox
 
 import (
+	"fmt"
+	"net"
 	"sync"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -44,6 +46,21 @@ func (m *Map) Count() int {
 
 func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 	return m.sandboxes.Get(sandboxID)
+}
+
+func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
+	reqIP, _, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing remote address %s: %w", hostPort, err)
+	}
+
+	for _, sbx := range m.sandboxes.Items() {
+		if sbx.Slot.HostIPString() == reqIP {
+			return sbx, nil
+		}
+	}
+
+	return nil, fmt.Errorf("sandbox with address %s not found", hostPort)
 }
 
 func (m *Map) Insert(sbx *Sandbox) {
