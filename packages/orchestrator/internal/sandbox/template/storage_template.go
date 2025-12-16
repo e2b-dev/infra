@@ -52,7 +52,7 @@ func newTemplateFromStorage(
 		BuildID:            buildId,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
-	}.CacheFiles(config)
+	}.CacheFiles(config.StorageConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
 	}
