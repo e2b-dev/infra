@@ -36,7 +36,7 @@ func (n *Node) Metadata() NodeMetadata {
 // Generates Metadata with the current service instance ID
 // to ensure we always use the latest ID (e.g. after orchestrator restarts)
 func (n *Node) getClientMetadata() metadata.MD {
-	return metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: n.Metadata().ServiceInstanceID})
+	return metadata.New(map[string]string{consts.EdgeRpcProxyServiceInstanceIDHeader: n.Metadata().ServiceInstanceID})
 }
 
 func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) context.Context {

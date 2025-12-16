@@ -25,7 +25,6 @@ message DiskMetrics {
   uint64 total_bytes = 5;
 }
 
-
 message MachineInfo {
   string cpu_architecture = 1;
   string cpu_family = 2;
@@ -39,6 +38,7 @@ message ServiceInfoResponse {
   string service_id = 2;
   string service_version = 3;
   string service_commit = 4;
+  uint32 service_proxy_port = 6;
 
   ServiceInfoStatus service_status = 51;
   repeated ServiceInfoRole service_roles = 52;

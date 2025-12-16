@@ -64,16 +64,17 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 	}
 
 	return &orchestratorinfo.ServiceInfoResponse{
-		NodeId:        info.ClientId,
-		ServiceId:     info.ServiceId,
-		ServiceStatus: info.GetStatus(),
+		NodeId: info.ClientId,
 
-		ServiceVersion: info.SourceVersion,
-		ServiceCommit:  info.SourceCommit,
+		ServiceId:        info.ServiceId,
+		ServiceStatus:    info.GetStatus(),
+		ServiceProxyPort: uint32(info.ProxyPort),
+		ServiceStartup:   timestamppb.New(info.Startup),
+		ServiceVersion:   info.SourceVersion,
+		ServiceCommit:    info.SourceCommit,
+		ServiceRoles:     info.Roles,
 
-		ServiceStartup: timestamppb.New(info.Startup),
-		ServiceRoles:   info.Roles,
-		MachineInfo:    convertMachineInfo(info.MachineInfo),
+		MachineInfo: convertMachineInfo(info.MachineInfo),
 
 		// Allocated resources to sandboxes
 		MetricCpuAllocated:         sandboxVCpuAllocated,

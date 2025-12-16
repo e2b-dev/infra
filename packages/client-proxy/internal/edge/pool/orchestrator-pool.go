@@ -61,10 +61,8 @@ func NewOrchestratorsPool(
 	pool.synchronization = synchronization.NewSynchronize("orchestrator-instances", "Orchestrator instances", store)
 
 	// Background synchronization of orchestrators pool
-	go func() {
-		pool.synchronization.Start(ctx, orchestratorsPoolInterval, orchestratorsPoolRoundTimeout, true)
-	}()
-	go func() { pool.statusLogSync(ctx) }()
+	go pool.synchronization.Start(ctx, orchestratorsPoolInterval, orchestratorsPoolRoundTimeout, true)
+	go pool.statusLogSync(ctx)
 
 	return pool
 }
@@ -76,7 +74,7 @@ func (p *OrchestratorsPool) GetOrchestrators() map[string]*OrchestratorInstance 
 func (p *OrchestratorsPool) GetOrchestrator(instanceID string) (i *OrchestratorInstance, ok bool) {
 	orchestrators := p.GetOrchestrators()
 	for _, i = range orchestrators {
-		if i.GetInfo().ServiceInstanceID == instanceID {
+		if i.GetInfo().InstanceID == instanceID {
 			return i, true
 		}
 	}
@@ -134,14 +132,15 @@ func (e *orchestratorInstancesSyncStore) getHost(ip string, port uint16) string 
 }
 
 func (e *orchestratorInstancesSyncStore) SourceList(ctx context.Context) ([]sd.ServiceDiscoveryItem, error) {
-	return e.pool.discovery.ListNodes(ctx)
+	return e.pool.discovery.ListInstances(ctx)
 }
 
 func (e *orchestratorInstancesSyncStore) SourceExists(_ context.Context, s []sd.ServiceDiscoveryItem, p *OrchestratorInstance) bool {
 	itself := p.GetInfo()
 	for _, item := range s {
-		itemHost := e.getHost(item.NodeIP, item.NodePort)
-		if itemHost == itself.Host {
+		itemHost := e.getHost(item.InstanceIPAddress, item.InstancePort)
+		itselfHost := e.getHost(itself.IPAddress, itself.ApiPort)
+		if itemHost == itselfHost {
 			return true
 		}
 	}
@@ -159,15 +158,15 @@ func (e *orchestratorInstancesSyncStore) PoolList(_ context.Context) []*Orchestr
 }
 
 func (e *orchestratorInstancesSyncStore) PoolExists(_ context.Context, source sd.ServiceDiscoveryItem) bool {
-	host := e.getHost(source.NodeIP, source.NodePort)
+	host := e.getHost(source.InstanceIPAddress, source.InstancePort)
 	_, found := e.pool.instances.Get(host)
 
 	return found
 }
 
 func (e *orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source sd.ServiceDiscoveryItem) {
-	host := e.getHost(source.NodeIP, source.NodePort)
-	o, err := NewOrchestratorInstance(e.pool.tracerProvider, e.pool.metricProvider, source.NodeIP, source.NodePort)
+	host := e.getHost(source.InstanceIPAddress, source.InstancePort)
+	o, err := newOrchestratorInstance(e.pool.tracerProvider, e.pool.metricProvider, source.InstanceIPAddress, source.InstancePort)
 	if err != nil {
 		logger.L().Error(ctx, "failed to register new orchestrator instance", zap.String("host", host), zap.Error(err))
 
@@ -208,6 +207,7 @@ func (e *orchestratorInstancesSyncStore) PoolRemove(ctx context.Context, item *O
 		logger.L().Error(ctx, "Error closing connection to orchestrator instance", zap.Error(err), logger.WithNodeID(info.NodeID))
 	}
 
-	e.pool.instances.Remove(info.Host)
+	key := e.getHost(info.IPAddress, info.ApiPort)
+	e.pool.instances.Remove(key)
 	logger.L().Info(ctx, "Orchestrator instance connection has been deregistered.", logger.WithNodeID(info.NodeID))
 }

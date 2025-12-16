@@ -20,6 +20,7 @@ type ServiceInfo struct {
 	SourceVersion string
 	SourceCommit  string
 
+	ProxyPort   uint16
 	Startup     time.Time
 	Roles       []orchestratorinfo.ServiceInfoRole
 	MachineInfo machineinfo.MachineInfo
@@ -61,14 +62,16 @@ func NewInfoContainer(ctx context.Context, clientId string, version string, comm
 	}
 
 	serviceInfo := &ServiceInfo{
-		ClientId:    clientId,
-		ServiceId:   instanceID,
-		Startup:     time.Now(),
-		Roles:       serviceRoles,
-		MachineInfo: machineInfo,
+		ClientId:  clientId,
+		ServiceId: instanceID,
 
 		SourceVersion: version,
 		SourceCommit:  commit,
+
+		ProxyPort:   config.ProxyPort,
+		Startup:     time.Now(),
+		Roles:       serviceRoles,
+		MachineInfo: machineInfo,
 	}
 
 	serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Healthy)

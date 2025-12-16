@@ -48,7 +48,7 @@ func NewNomadServiceDiscovery(ctx context.Context, logger logger.Logger, port ui
 	return sd, nil
 }
 
-func (sd *NomadServiceDiscovery) ListNodes(_ context.Context) ([]ServiceDiscoveryItem, error) {
+func (sd *NomadServiceDiscovery) ListInstances(_ context.Context) ([]ServiceDiscoveryItem, error) {
 	entries := sd.entries.Items()
 	items := make([]ServiceDiscoveryItem, 0)
 
@@ -115,8 +115,8 @@ func (sd *NomadServiceDiscovery) sync(ctx context.Context) {
 		net := nets[0]
 		key := fmt.Sprintf("%s:%d", net.IP, sd.port)
 		item := ServiceDiscoveryItem{
-			NodeIP:   net.IP,
-			NodePort: sd.port,
+			InstanceIPAddress: net.IP,
+			InstancePort:      sd.port,
 		}
 
 		sd.entries.Insert(key, item)

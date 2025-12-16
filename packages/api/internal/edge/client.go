@@ -26,7 +26,7 @@ type clientAuthorization struct {
 }
 
 func (a clientAuthorization) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
-	return map[string]string{consts.EdgeRpcAuthHeader: a.secret}, nil
+	return map[string]string{consts.EdgeApiAuthHeader: a.secret}, nil
 }
 
 func (a clientAuthorization) RequireTransportSecurity() bool {

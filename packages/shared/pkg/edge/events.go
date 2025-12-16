@@ -40,6 +40,7 @@ type SandboxCatalogCreateEvent struct {
 	SandboxID               string
 	ExecutionID             string
 	OrchestratorID          string
+	OrchestratorProxyPort   int
 	SandboxMaxLengthInHours int64
 	SandboxStartTime        time.Time // Formatted as RFC3339 (ISO 8601)
 }

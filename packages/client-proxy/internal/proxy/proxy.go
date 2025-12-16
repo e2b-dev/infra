@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
@@ -20,8 +21,6 @@ import (
 )
 
 const (
-	orchestratorProxyPort = 5007 // orchestrator proxy port
-
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// Also it's a good practice to set it to a value higher than the idle timeout of the backend service
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
@@ -30,19 +29,17 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (catalog.SandboxInfo, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			return "", ErrNodeNotFound
+			return catalog.SandboxInfo{}, ErrNodeNotFound
 		}
 
-		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
+		return catalog.SandboxInfo{}, fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
-	// todo: when we will use edge for orchestrators discovery we can stop sending IP in the catalog
-	//  and just resolve node from pool to get the IP of the node
-	return s.OrchestratorIP, nil
+	return s, nil
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
@@ -71,7 +68,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog)
+			entry, err := catalogResolution(r.Context(), sandboxId, catalog)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
@@ -80,14 +77,21 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
-			url := &url.URL{
+			// During migration period orchestrator proxy port is not set in some sandboxes
+			// https://linear.app/e2b/issue/ENG-3398
+			proxyPort := entry.OrchestratorProxyPort
+			if proxyPort == 0 {
+				proxyPort = uint16(consts.OrchestratorProxyPort)
+			}
+
+			proxyUrl := &url.URL{
 				Scheme: "http",
-				Host:   fmt.Sprintf("%s:%d", nodeIP, orchestratorProxyPort),
+				Host:   fmt.Sprintf("%s:%d", entry.OrchestratorIP, proxyPort),
 			}
 
 			l = l.With(
-				zap.String("target_hostname", url.Hostname()),
-				zap.String("target_port", url.Port()),
+				zap.String("target_hostname", proxyUrl.Hostname()),
+				zap.String("target_port", proxyUrl.Port()),
 			)
 
 			return &pool.Destination{
@@ -95,7 +99,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				RequestLogger: l,
 				SandboxPort:   port,
 				ConnectionKey: pool.ClientProxyConnectionKey,
-				Url:           url,
+				Url:           proxyUrl,
 			}, nil
 		},
 		false,

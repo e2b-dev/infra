@@ -159,7 +159,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 }
 
 func (c *Cluster) GetGRPC(serviceInstanceID string) *ClusterGRPC {
-	return &ClusterGRPC{c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: serviceInstanceID})}
+	return &ClusterGRPC{c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcProxyServiceInstanceIDHeader: serviceInstanceID})}
 }
 
 func (c *Cluster) GetHTTP() *ClusterHTTP {

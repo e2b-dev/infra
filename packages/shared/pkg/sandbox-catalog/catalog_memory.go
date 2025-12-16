@@ -9,7 +9,7 @@ import (
 )
 
 type MemorySandboxCatalog struct {
-	cache *ttlcache.Cache[string, *SandboxInfo]
+	cache *ttlcache.Cache[string, SandboxInfo]
 	mtx   sync.RWMutex
 }
 
@@ -18,7 +18,7 @@ const (
 )
 
 func NewMemorySandboxesCatalog() SandboxesCatalog {
-	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogMemoryLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
+	cache := ttlcache.New(ttlcache.WithTTL[string, SandboxInfo](catalogMemoryLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, SandboxInfo]())
 	go cache.Start()
 
 	return &MemorySandboxCatalog{
@@ -26,7 +26,7 @@ func NewMemorySandboxesCatalog() SandboxesCatalog {
 	}
 }
 
-func (c *MemorySandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error) {
+func (c *MemorySandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (SandboxInfo, error) {
 	_, span := tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
@@ -38,10 +38,10 @@ func (c *MemorySandboxCatalog) GetSandbox(ctx context.Context, sandboxID string)
 		return sandboxInfo.Value(), nil
 	}
 
-	return nil, ErrSandboxNotFound
+	return SandboxInfo{}, ErrSandboxNotFound
 }
 
-func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
+func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo SandboxInfo, expiration time.Duration) error {
 	_, span := tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
 
@@ -65,13 +65,8 @@ func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID stri
 		return nil
 	}
 
-	// No need for removal here
-	if item.IsExpired() || item.Value() == nil {
-		return nil
-	}
-
 	// Different execution is stored in the cache, we don't want to remove it
-	if item.Value().ExecutionID != executionID {
+	if item.Value().SandboxExecutionID != executionID {
 		return nil
 	}
 
