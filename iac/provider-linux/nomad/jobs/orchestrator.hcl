@@ -37,6 +37,11 @@ job "orchestrator" {
         attempts = 0
       }
 
+      resources {
+        memory = 1024
+        cpu    = 512
+      }
+
       env {
         NODE_ID                      = "$${node.unique.name}"
         CONSUL_TOKEN                 = "${consul_acl_token}"

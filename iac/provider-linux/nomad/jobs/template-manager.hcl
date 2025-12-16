@@ -50,7 +50,7 @@ job "template-manager-system" {
 
       resources {
         memory = 1024
-        cpu    = 256
+        cpu    = 512
       }
 
       env {
