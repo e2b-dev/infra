@@ -92,7 +92,7 @@ job "template-manager-system" {
 %{ if use_nfs_share_storage }
         NFS_SERVER_IP                     = "${nfs_server_ip}"
 %{ endif }
-        E2B_DEBUG=false
+        E2B_DEBUG="true"
       }
 
       template {
