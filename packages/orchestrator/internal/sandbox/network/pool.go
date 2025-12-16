@@ -129,6 +129,8 @@ func (p *Pool) Populate(ctx context.Context) error {
 			newSlotsAvailableCounter.Add(ctx, 1)
 
 			select {
+			case <-p.done:
+				return ErrClosed
 			case p.newSlots <- slot:
 			case <-ctx.Done():
 				return ctx.Err()
