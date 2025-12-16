@@ -48,17 +48,25 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
+	alias, tag, err := id.ParseTemplateIDOrAliasWithTag(body.Alias)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", err))
+		telemetry.ReportCriticalError(ctx, "invalid alias", err)
+
+		return nil
+	}
+
 	// Create the build, find the template ID by alias or generate a new one
 	findTemplateCtx, span := tracer.Start(ctx, "find-template-alias")
 	defer span.End()
 	templateID := id.Generate()
 	public := false
-	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(findTemplateCtx, body.Alias)
+	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(findTemplateCtx, alias)
 	switch {
 	case err == nil:
 		if templateAlias.TeamID != team.ID {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", body.Alias))
-			telemetry.ReportError(findTemplateCtx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", body.Alias))
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", alias))
+			telemetry.ReportError(findTemplateCtx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", alias))
 
 			return nil
 		}
@@ -82,7 +90,8 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		TemplateID:         templateID,
 		UserID:             nil,
 		Team:               team,
-		Alias:              &body.Alias,
+		Alias:              &alias,
+		Tag:                tag,
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV2LatestVersion,
@@ -105,7 +114,8 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	a.posthog.CreateAnalyticsTeamEvent(posthogCtx, team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
-		Set("alias", body.Alias),
+		Set("alias", alias).
+		Set("tag", tag),
 	)
 	span.End()
 

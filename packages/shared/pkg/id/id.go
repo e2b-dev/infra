@@ -69,5 +69,9 @@ func ParseTemplateIDOrAliasWithTag(input string) (templateIDOrAlias string, tag 
 		tag = &tagValue
 	}
 
+	if tag != nil && strings.EqualFold(*tag, DefaultTag) {
+		tag = nil
+	}
+
 	return templateIDOrAlias, tag, nil
 }

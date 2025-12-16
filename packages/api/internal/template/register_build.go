@@ -18,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	gutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -33,6 +32,7 @@ type RegisterBuildData struct {
 	Team               *types.Team
 	Dockerfile         string
 	Alias              *string
+	Tag                *string
 	StartCmd           *string
 	ReadyCmd           *string
 	CpuCount           *int32
@@ -103,6 +103,9 @@ func RegisterBuild(
 	if data.Alias != nil {
 		telemetry.SetAttributes(ctx, attribute.String("env.alias", *data.Alias))
 	}
+	if data.Tag != nil {
+		telemetry.SetAttributes(ctx, attribute.String("env.tag", *data.Tag))
+	}
 	if data.StartCmd != nil {
 		telemetry.SetAttributes(ctx, attribute.String("env.start_cmd", *data.StartCmd))
 	}
@@ -124,20 +127,6 @@ func RegisterBuild(
 		telemetry.ReportCriticalError(ctx, "error when getting CPU and RAM", apiError.Err)
 
 		return nil, apiError
-	}
-
-	var alias string
-	if data.Alias != nil {
-		alias, _, err = id.ParseTemplateIDOrAliasWithTag(*data.Alias)
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, "invalid alias", err)
-
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Invalid alias: %s", *data.Alias),
-				Code:      http.StatusBadRequest,
-			}
-		}
 	}
 
 	// Start a transaction to prevent partial updates
@@ -220,7 +209,11 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "inserted new build")
 
 	// Check if the alias is available and claim it
-	if alias != "" {
+	var aliases []string
+	if data.Alias != nil {
+		alias := *data.Alias
+		aliases = append(aliases, alias)
+
 		exists, err := client.CheckAliasConflictsWithTemplateID(ctx, alias)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
@@ -301,6 +294,25 @@ func RegisterBuild(
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
 	}
 
+	// Add custom tag to the build if present
+	if data.Tag != nil {
+		tag := *data.Tag
+		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+			TemplateID: data.TemplateID,
+			BuildID:    buildID,
+			Tag:        tag,
+		})
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error when adding custom tag to build", err, attribute.String("tag", tag))
+
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Error when adding custom tag to build: %s", err),
+				Code:      http.StatusInternalServerError,
+			}
+		}
+	}
+
 	// Commit the transaction
 	err = tx.Commit(ctx)
 	if err != nil {
@@ -315,16 +327,10 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "committed transaction")
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("env.alias", alias),
 		attribute.Int64("build.cpu_count", cpuCount),
 		attribute.Int64("build.ram_mb", ramMB),
 	)
 	telemetry.ReportEvent(ctx, "started updating environment")
-
-	var aliases []string
-	if alias != "" {
-		aliases = append(aliases, alias)
-	}
 
 	logger.L().Info(ctx, "template build requested", logger.WithTemplateID(data.TemplateID), logger.WithBuildID(buildID.String()))
 

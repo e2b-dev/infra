@@ -156,6 +156,21 @@ func (a *APIStore) buildTemplate(
 ) (*template.RegisterBuildResponse, *api.APIError) {
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 
+	var alias string
+	var tag *string
+
+	if body.Alias != nil {
+		var err error
+		alias, tag, err = id.ParseTemplateIDOrAliasWithTag(*body.Alias)
+		if err != nil {
+			return nil, &api.APIError{
+				Code:      http.StatusBadRequest,
+				ClientMsg: fmt.Sprintf("Invalid alias: %s", err),
+				Err:       err,
+			}
+		}
+	}
+
 	// Create the build
 	data := template.RegisterBuildData{
 		ClusterID:          utils.WithClusterFallback(team.ClusterID),
@@ -163,7 +178,8 @@ func (a *APIStore) buildTemplate(
 		UserID:             &userID,
 		Team:               team,
 		Dockerfile:         body.Dockerfile,
-		Alias:              body.Alias,
+		Alias:              &alias,
+		Tag:                tag,
 		StartCmd:           body.StartCmd,
 		ReadyCmd:           body.ReadyCmd,
 		CpuCount:           body.CpuCount,
