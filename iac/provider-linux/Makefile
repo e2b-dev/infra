@@ -47,6 +47,10 @@ tf_vars := \
 	$(call tfvar, GRAFANA_SERVICE_PORT) \
 	$(call tfvar, GRAFANA_RESOURCES_MEMORY_MB) \
 	$(call tfvar, GRAFANA_RESOURCES_CPU_COUNT) \
+	$(call tfvar, ENABLE_NODES_UNINSTALL) \
+	$(call tfvar, UNINSTALL_VERSION) \
+	$(call tfvar, UNINSTALL_CONFIRM_PHRASE) \
+	$(call tfvar, ENABLE_NOMAD_JOBS) \
 	$(call tfvar, LOGS_HEALTH_PROXY_PORT) \
 	$(call tfvar, EDGE_API_SECRET) \
 	$(call tfvar, API_ADMIN_TOKEN) \
@@ -98,7 +102,9 @@ tf_vars := \
 	$(call tfvar, USE_NFS_SHARE_STORAGE) \
 	$(call tfvar, NFS_SERVER_IP) \
 	$(call tfvar, ENABLE_NETWORK_POLICY_JOB) \
-	$(call tfvar, NETWORK_OPEN_PORTS)
+	$(call tfvar, NETWORK_OPEN_PORTS) \
+	$(call tfvar, KERNEL_SOURCE_BASE_URL) \
+	$(call tfvar, FIRECRACKER_SOURCE_BASE_URL)
 
 # Pass-through for Docker image prefix and artifact HTTP server
 tf_vars += \
@@ -111,6 +117,8 @@ tf_vars += \
 	$(call tfvar, ARTIFACT_SCP_DIR) \
 	$(call tfvar, ARTIFACT_SCP_SSH_KEY) \
 	$(call tfvar, ARTIFACT_SCP_PORT)
+tf_vars += \
+	$(call tfvar, ENABLE_ARTIFACT_SCP_SERVER)
 
 .PHONY: init
 init:
@@ -149,11 +157,5 @@ plan-only-jobs/%:
 .PHONY: plan-without-jobs
 plan-without-jobs:
 	@ printf "Planning Terraform (without jobs) for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
-	$(eval TARGET := $(TARGET) -target=null_resource.artifact_scp_server)
-	$(tf_vars) \
-	$(TF) plan \
-	-out=.tfplan.$(ENV) \
-	-input=false \
-	-compact-warnings \
-	$(TARGET)
+	$(TF) fmt -recursive
+	@ $(tf_vars) TF_VAR_enable_nomad_jobs=false $(TF) plan -out=.tfplan.$(ENV) -input=false -compact-warnings -refresh=false
