@@ -79,3 +79,9 @@ func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID stri
 
 	return nil
 }
+
+func (c *MemorySandboxCatalog) Close(_ context.Context) error {
+	c.cache.Stop()
+
+	return nil
+}

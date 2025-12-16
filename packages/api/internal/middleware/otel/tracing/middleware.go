@@ -17,7 +17,9 @@
 package tracing // import "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -32,6 +34,21 @@ const (
 	tracerKey  = "otel-go-contrib-tracer"
 	tracerName = "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
+
+type requestStartTimeKey struct{}
+
+// WithRequestStartTime stores the request start time in the context.
+func WithRequestStartTime(ctx context.Context, startTime time.Time) context.Context {
+	return context.WithValue(ctx, requestStartTimeKey{}, startTime)
+}
+
+// GetRequestStartTime retrieves the request start time from the context.
+// Returns the start time and true if found, or zero time and false if not found.
+func GetRequestStartTime(ctx context.Context) (time.Time, bool) {
+	startTime, ok := ctx.Value(requestStartTimeKey{}).(time.Time)
+
+	return startTime, ok
+}
 
 type config struct {
 	TracerProvider oteltrace.TracerProvider
@@ -57,6 +74,11 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 	return func(c *gin.Context) {
 		c.Set(tracerKey, tracer)
 		ctx := c.Request.Context()
+
+		// Store the server receive time as the request start time
+		// This allows us to calculate the whole request duration from server receive to completion
+		ctx = WithRequestStartTime(ctx, time.Now())
+
 		defer func() {
 			c.Request = c.Request.WithContext(ctx)
 		}()

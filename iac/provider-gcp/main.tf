@@ -6,14 +6,9 @@ terraform {
   }
 
   required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "3.0.2"
-    }
-
     google = {
       source  = "hashicorp/google"
-      version = "6.49.3"
+      version = "6.50.0"
     }
 
     cloudflare = {
@@ -30,21 +25,6 @@ terraform {
       source  = "hashicorp/random"
       version = "3.5.1"
     }
-
-    grafana = {
-      source  = "grafana/grafana"
-      version = "3.18.3"
-    }
-  }
-}
-
-data "google_client_config" "default" {}
-
-provider "docker" {
-  registry_auth {
-    address  = "${var.gcp_region}-docker.pkg.dev"
-    username = "oauth2accesstoken"
-    password = data.google_client_config.default.access_token
   }
 }
 
@@ -59,12 +39,7 @@ data "google_secret_manager_secret_version" "routing_domains" {
 }
 
 locals {
-  // Taking additional domains from local env is there just for backward compatibility
-  additional_domains_from_secret = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
-  additional_domains_from_env = (var.additional_domains != "" ?
-  [for item in split(",", var.additional_domains) : trimspace(item)] : [])
-
-  additional_domains = distinct(concat(local.additional_domains_from_env, local.additional_domains_from_secret))
+  additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
 }
 
 module "init" {
@@ -91,12 +66,11 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  client_cluster_size_max           = var.client_cluster_size_max
-  client_cluster_cache_disk_size_gb = var.client_cluster_cache_disk_size_gb
-  client_cluster_cache_disk_type    = var.client_cluster_cache_disk_type
-  build_cluster_root_disk_size_gb   = var.build_cluster_root_disk_size_gb
-  build_cluster_cache_disk_size_gb  = var.build_cluster_cache_disk_size_gb
-  build_cluster_cache_disk_type     = var.build_cluster_cache_disk_type
+  client_cluster_size_max                  = var.client_cluster_size_max
+  client_cluster_autoscaling_cpu_target    = var.client_cluster_autoscaling_cpu_target
+  client_cluster_autoscaling_memory_target = var.client_cluster_autoscaling_memory_target
+  build_cluster_root_disk_size_gb          = var.build_cluster_root_disk_size_gb
+  client_cluster_root_disk_size_gb         = var.client_cluster_root_disk_size_gb
 
   api_cluster_size        = var.api_cluster_size
   build_cluster_size      = var.build_cluster_size
@@ -104,6 +78,15 @@ module "cluster" {
   client_cluster_size     = var.client_cluster_size
   server_cluster_size     = var.server_cluster_size
   loki_cluster_size       = var.loki_cluster_size
+
+  build_cluster_cache_disk_count   = var.build_cluster_cache_disk_count
+  build_cluster_cache_disk_size_gb = var.build_cluster_cache_disk_size_gb
+  build_cluster_cache_disk_type    = var.build_cluster_cache_disk_type
+
+  client_cluster_cache_disk_count   = var.client_cluster_cache_disk_count
+  client_cluster_cache_disk_size_gb = var.client_cluster_cache_disk_size_gb
+  client_cluster_cache_disk_type    = var.client_cluster_cache_disk_type
+
 
   server_machine_type     = var.server_machine_type
   client_machine_type     = var.client_machine_type
@@ -159,6 +142,14 @@ module "cluster" {
   prefix = var.prefix
 
   min_cpu_platform = var.min_cpu_platform
+
+  # Boot disk types
+  client_boot_disk_type     = var.client_boot_disk_type
+  build_boot_disk_type      = var.build_boot_disk_type
+  api_boot_disk_type        = var.api_boot_disk_type
+  server_boot_disk_type     = var.server_boot_disk_type
+  clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
+  loki_boot_disk_type       = var.loki_boot_disk_type
 }
 
 module "nomad" {
@@ -206,7 +197,8 @@ module "nomad" {
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
   api_admin_token                           = random_password.api_admin_secret.result
-  redis_url_secret_version                  = google_secret_manager_secret_version.redis_url
+  redis_cluster_url_secret_version          = google_secret_manager_secret_version.redis_cluster_url
+  redis_tls_ca_base64_secret_version        = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed            = random_password.sandbox_access_token_hash_seed.result
 
   # Click Proxy
@@ -275,6 +267,9 @@ module "redis" {
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
+
+  redis_cluster_url_secret_version   = google_secret_manager_secret_version.redis_cluster_url
+  redis_tls_ca_base64_secret_version = module.init.redis_tls_ca_base64_secret_version
 
   prefix = var.prefix
 }

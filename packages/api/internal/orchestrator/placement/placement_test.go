@@ -3,30 +3,28 @@ package placement
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 type mockAlgorithm struct {
 	mock.Mock
 }
 
-func (m *mockAlgorithm) excludeNode(err error) bool {
-	args := m.Called(err)
-
-	return args.Bool(0)
-}
-
-func (m *mockAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources) (*nodemanager.Node, error) {
-	args := m.Called(ctx, nodes, nodesExcluded, requested)
+func (m *mockAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, buildCPUInfo machineinfo.MachineInfo) (*nodemanager.Node, error) {
+	args := m.Called(ctx, nodes, nodesExcluded, requested, buildCPUInfo)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -45,7 +43,7 @@ func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {
 
 	// Create a mock algorithm that returns node2
 	algorithm := &mockAlgorithm{}
-	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything).
+	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything, mock.Anything).
 		Return(node2, nil)
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
@@ -56,7 +54,7 @@ func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest)
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{})
 
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
@@ -83,17 +81,17 @@ func TestPlaceSandbox_WithPreferredNode(t *testing.T) {
 
 	// Test without preferred node - algorithm should be called
 	algorithm := &mockAlgorithm{}
-	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything).
+	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything, mock.Anything).
 		Return(node1, nil).Once()
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest)
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{})
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
 	assert.Equal(t, node1, resultNode)
 	algorithm.AssertExpectations(t)
 
 	// Test with preferred node - should use the preferred node directly without calling algorithm
-	resultNode, err = PlaceSandbox(ctx, algorithm, nodes, node2, sbxRequest)
+	resultNode, err = PlaceSandbox(ctx, algorithm, nodes, node2, sbxRequest, machineinfo.MachineInfo{})
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
 	assert.Equal(t, node2, resultNode)
@@ -106,7 +104,7 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 	defer cancel()
 
 	algorithm := &mockAlgorithm{}
-	algorithm.On("chooseNode", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	algorithm.On("chooseNode", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(_ mock.Arguments) {
 			// Simulate slow node selection
 			time.Sleep(10 * time.Millisecond)
@@ -123,12 +121,12 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{
 		nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4),
-	}, nil, sbxRequest)
+	}, nil, sbxRequest, machineinfo.MachineInfo{})
 
 	require.Error(t, err)
 	assert.Nil(t, resultNode)
 	// The error could be either "timeout" from the algorithm or "request timed out" from ctx.Done()
-	assert.True(t, err.Error() == "timeout" || errors.Is(err, context.DeadlineExceeded))
+	assert.True(t, err.Error() == "timeout" || strings.Contains(err.Error(), "request timed out"))
 }
 
 func TestPlaceSandbox_NoNodes(t *testing.T) {
@@ -143,7 +141,7 @@ func TestPlaceSandbox_NoNodes(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{}, nil, sbxRequest)
+	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{}, nil, sbxRequest, machineinfo.MachineInfo{})
 
 	require.Error(t, err)
 	assert.Nil(t, resultNode)
@@ -154,7 +152,7 @@ func TestPlaceSandbox_AllNodesExcluded(t *testing.T) {
 	ctx := t.Context()
 
 	algorithm := &mockAlgorithm{}
-	algorithm.On("chooseNode", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	algorithm.On("chooseNode", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, errors.New("no nodes available"))
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
@@ -167,10 +165,45 @@ func TestPlaceSandbox_AllNodesExcluded(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{
 		nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4),
-	}, nil, sbxRequest)
+	}, nil, sbxRequest, machineinfo.MachineInfo{})
 
 	require.Error(t, err)
 	assert.Nil(t, resultNode)
 	assert.Contains(t, err.Error(), "no nodes available")
 	algorithm.AssertExpectations(t)
+}
+
+func TestPlaceSandbox_ResourceExhausted(t *testing.T) {
+	ctx := t.Context()
+
+	// Create test nodes - node1 will return ResourceExhausted, node2 will succeed
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4,
+		nodemanager.WithSandboxCreateError(status.Error(codes.ResourceExhausted, "node exhausted")))
+	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 5, 4)
+	nodes := []*nodemanager.Node{node1, node2}
+
+	// Algorithm should be called twice - first returns node1 (exhausted), then node2 (succeeds)
+	algorithm := &mockAlgorithm{}
+	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything, mock.Anything).
+		Return(node1, nil).Once()
+	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything, mock.Anything).
+		Return(node2, nil).Once()
+
+	sbxRequest := &orchestrator.SandboxCreateRequest{
+		Sandbox: &orchestrator.SandboxConfig{
+			SandboxId: "test-sandbox",
+			Vcpu:      2,
+			RamMb:     1024,
+		},
+	}
+
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{})
+
+	require.NoError(t, err)
+	assert.NotNil(t, resultNode)
+	assert.Equal(t, node2, resultNode, "should succeed on node2 after node1 was exhausted")
+	algorithm.AssertExpectations(t)
+
+	// Verify node1 was NOT excluded (ResourceExhausted nodes should be retried)
+	algorithm.AssertNumberOfCalls(t, "chooseNode", 2)
 }

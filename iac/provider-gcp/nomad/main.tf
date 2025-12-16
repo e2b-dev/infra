@@ -1,14 +1,7 @@
-terraform {
-  required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "3.0.2"
-    }
-  }
-}
-
 locals {
   clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
 }
 
 # API
@@ -43,30 +36,14 @@ provider "nomad" {
   consul_token = var.consul_acl_token_secret
 }
 
-data "google_secret_manager_secret_version" "redis_url" {
-  secret = var.redis_url_secret_version.secret
+data "google_secret_manager_secret_version" "redis_cluster_url" {
+  secret = var.redis_cluster_url_secret_version.secret
 }
 
-
-data "docker_registry_image" "api_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/api:latest"
+data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
+  secret = var.redis_tls_ca_base64_secret_version.secret
 }
 
-resource "docker_image" "api_image" {
-  name          = data.docker_registry_image.api_image.name
-  pull_triggers = [data.docker_registry_image.api_image.sha256_digest]
-  platform      = "linux/amd64/v8"
-}
-
-data "docker_registry_image" "db_migrator_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/db-migrator:latest"
-}
-
-resource "docker_image" "db_migrator_image" {
-  name          = data.docker_registry_image.db_migrator_image.name
-  pull_triggers = [data.docker_registry_image.db_migrator_image.sha256_digest]
-  platform      = "linux/amd64/v8"
-}
 
 resource "nomad_job" "ingress" {
   jobspec = templatefile("${path.module}/jobs/ingress.hcl",
@@ -102,13 +79,12 @@ resource "nomad_job" "api" {
     cpu_count = var.api_resources_cpu_count
 
     orchestrator_port              = var.orchestrator_port
-    template_manager_host          = "template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address         = "http://localhost:${var.logs_proxy_port.port}"
     gcp_zone                       = var.gcp_zone
     port_name                      = var.api_port.name
     port_number                    = var.api_port.port
-    api_docker_image               = docker_image.api_image.repo_digest
+    api_docker_image               = data.google_artifact_registry_docker_image.api_image.self_link
     postgres_connection_string     = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
     supabase_jwt_secrets           = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
     posthog_api_key                = data.google_secret_manager_secret_version.posthog_api_key.secret_data
@@ -118,12 +94,12 @@ resource "nomad_job" "api" {
     otel_tracing_print             = var.otel_tracing_print
     nomad_acl_token                = var.nomad_acl_token_secret
     admin_token                    = var.api_admin_token
-    redis_url                      = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
-    redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
-    dns_port_number                = var.api_dns_port_number
+    redis_url                      = local.redis_url
+    redis_cluster_url              = local.redis_cluster_url
+    redis_tls_ca_base64            = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
     clickhouse_connection_string   = local.clickhouse_connection_string
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
-    db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
+    db_migrator_docker_image       = data.google_artifact_registry_docker_image.db_migrator_image.self_link
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 
     local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
@@ -144,23 +120,12 @@ resource "nomad_job" "redis" {
   )
 }
 
-data "docker_registry_image" "docker_reverse_proxy_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/docker-reverse-proxy"
-}
-
-resource "docker_image" "docker_reverse_proxy_image" {
-  name          = data.docker_registry_image.docker_reverse_proxy_image.name
-  pull_triggers = [data.docker_registry_image.docker_reverse_proxy_image.sha256_digest]
-  platform      = "linux/amd64/v8"
-}
-
-
 resource "nomad_job" "docker_reverse_proxy" {
   jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
     {
       gcp_zone                      = var.gcp_zone
       node_pool                     = var.api_node_pool
-      image_name                    = docker_image.docker_reverse_proxy_image.repo_digest
+      image_name                    = data.google_artifact_registry_docker_image.docker_reverse_proxy_image.self_link
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
       google_service_account_secret = var.docker_reverse_proxy_service_account_key
       port_number                   = var.docker_reverse_proxy_port.port
@@ -172,16 +137,6 @@ resource "nomad_job" "docker_reverse_proxy" {
       docker_registry               = var.custom_envs_repository_name
     }
   )
-}
-
-data "docker_registry_image" "proxy_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/client-proxy"
-}
-
-resource "docker_image" "client_proxy_image" {
-  name          = data.docker_registry_image.proxy_image.name
-  pull_triggers = [data.docker_registry_image.proxy_image.sha256_digest]
-  platform      = "linux/amd64/v8"
 }
 
 resource "nomad_job" "client_proxy" {
@@ -198,10 +153,12 @@ resource "nomad_job" "client_proxy" {
       gcp_zone    = var.gcp_zone
       environment = var.environment
 
-      redis_url         = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
-      redis_cluster_url = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+      redis_url           = local.redis_url
+      redis_cluster_url   = local.redis_cluster_url
+      redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
-      loki_url = "http://loki.service.consul:${var.loki_service_port.port}"
+      loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
+      clickhouse_connection_string = local.clickhouse_connection_string
 
       proxy_port_name   = var.edge_proxy_port.name
       proxy_port        = var.edge_proxy_port.port
@@ -211,7 +168,7 @@ resource "nomad_job" "client_proxy" {
       orchestrator_port = var.orchestrator_port
 
       environment = var.environment
-      image_name  = docker_image.client_proxy_image.repo_digest
+      image_name  = data.google_artifact_registry_docker_image.client_proxy_image.self_link
 
       nomad_endpoint = "http://localhost:4646"
       nomad_token    = var.nomad_acl_token_secret
@@ -442,8 +399,9 @@ locals {
     allow_sandbox_internet       = var.allow_sandbox_internet
     launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
     clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-    redis_url                    = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
-    redis_cluster_url            = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+    redis_url                    = local.redis_url
+    redis_cluster_url            = local.redis_cluster_url
+    redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
     shared_chunk_cache_path      = var.shared_chunk_cache_path
   }
 
@@ -527,7 +485,6 @@ resource "nomad_job" "template_manager" {
     otel_collector_grpc_endpoint    = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address          = "http://localhost:${var.logs_proxy_port.port}"
     orchestrator_services           = "template-manager"
-    allow_sandbox_internet          = var.allow_sandbox_internet
     clickhouse_connection_string    = local.clickhouse_connection_string
     dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
     launch_darkly_api_key           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
@@ -689,22 +646,10 @@ resource "nomad_job" "clickhouse_backup_restore" {
   })
 }
 
-
-data "docker_registry_image" "clickhouse_migrator_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/clickhouse-migrator:latest"
-}
-
-resource "docker_image" "clickhouse_migrator_image" {
-  name          = data.docker_registry_image.clickhouse_migrator_image.name
-  pull_triggers = [data.docker_registry_image.clickhouse_migrator_image.sha256_digest]
-  platform      = "linux/amd64/v8"
-}
-
-
 resource "nomad_job" "clickhouse_migrator" {
   count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/clickhouse-migrator.hcl", {
-    clickhouse_migrator_version = docker_image.clickhouse_migrator_image.repo_digest
+    clickhouse_migrator_version = data.google_artifact_registry_docker_image.clickhouse_migrator_image.self_link
 
     server_count          = var.clickhouse_server_count
     job_constraint_prefix = var.clickhouse_job_constraint_prefix

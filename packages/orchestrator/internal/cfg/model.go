@@ -1,6 +1,8 @@
 package cfg
 
 import (
+	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -12,12 +14,58 @@ type BuilderConfig struct {
 	AllowSandboxInternet   bool          `env:"ALLOW_SANDBOX_INTERNET"   envDefault:"true"`
 	EnvdTimeout            time.Duration `env:"ENVD_TIMEOUT"             envDefault:"10s"`
 	FirecrackerVersionsDir string        `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`
+	HostEnvdPath           string        `env:"HOST_ENVD_PATH"           envDefault:"/fc-envd/envd"`
 	HostKernelsDir         string        `env:"HOST_KERNELS_DIR"         envDefault:"/fc-kernels"`
-	OrchestratorBasePath   string        `env:"ORCHESTRATOR_BASE_PATH"   envDefault:"/orchestrator"`
+	OrchestratorBaseDir    string        `env:"ORCHESTRATOR_BASE_PATH"   envDefault:"/orchestrator"`
 	SandboxDir             string        `env:"SANDBOX_DIR"              envDefault:"/fc-vm"`
-	SharedChunkCachePath   string        `env:"SHARED_CHUNK_CACHE_PATH"`
+	SharedChunkCacheDir    string        `env:"SHARED_CHUNK_CACHE_PATH"`
+	TemplatesDir           string        `env:"TEMPLATES_DIR,expand"     envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
+
+	DefaultCacheDir  string `env:"DEFAULT_CACHE_DIR,expand"  envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
+	SandboxCacheDir  string `env:"SANDBOX_CACHE_DIR,expand"  envDefault:"${ORCHESTRATOR_BASE_PATH}/sandbox"`
+	SnapshotCacheDir string `env:"SNAPSHOT_CACHE_DIR,expand" envDefault:"/mnt/snapshot-cache"`
+	TemplateCacheDir string `env:"TEMPLATE_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/template"`
 
 	NetworkConfig network.Config
+}
+
+func (bc BuilderConfig) GetSandboxCacheDir() string  { return bc.SandboxCacheDir }
+func (bc BuilderConfig) GetSnapshotCacheDir() string { return bc.SnapshotCacheDir }
+func (bc BuilderConfig) GetTemplateCacheDir() string { return bc.TemplateCacheDir }
+
+func makePathsAbsolute(c *BuilderConfig) error {
+	for _, item := range []*string{
+		&c.DefaultCacheDir,
+		&c.FirecrackerVersionsDir,
+		&c.HostEnvdPath,
+		&c.HostKernelsDir,
+		&c.OrchestratorBaseDir,
+		&c.SandboxCacheDir,
+		&c.SandboxDir,
+		&c.SharedChunkCacheDir,
+		&c.SnapshotCacheDir,
+		&c.TemplateCacheDir,
+		&c.TemplatesDir,
+	} {
+		dir := *item
+
+		if dir == "" {
+			continue
+		}
+
+		if filepath.IsAbs(dir) {
+			continue
+		}
+
+		dir, err := filepath.Abs(dir)
+		if err != nil {
+			return fmt.Errorf("failed to resolve %q to absolute path: %w", *item, err)
+		}
+
+		*item = dir
+	}
+
+	return nil
 }
 
 type Config struct {
@@ -35,12 +83,34 @@ type Config struct {
 	SharedStateDirectory       string        `env:"SHARED_STATE_DIRECTORY"       envDefault:"/orchestrator/state"`
 	SharedStateWriteInterval   time.Duration `env:"SHARED_STATE_WRITE_INTERVAL"  envDefault:"1m"`
 	MaxStartingInstances       int64         `env:"MAX_STARTING_INSTANCES"       envDefault:"3"`
+	RedisTLSCABase64           string        `env:"REDIS_TLS_CA_BASE64"`
 }
 
 func Parse() (Config, error) {
-	return env.ParseAs[Config]()
+	config, err := env.ParseAs[Config]()
+	if err != nil {
+		return config, err
+	}
+
+	bc := config.BuilderConfig
+	if err = makePathsAbsolute(&bc); err != nil {
+		return config, err
+	}
+
+	config.BuilderConfig = bc
+
+	return config, nil
 }
 
 func ParseBuilder() (BuilderConfig, error) {
-	return env.ParseAs[BuilderConfig]()
+	model, err := env.ParseAs[BuilderConfig]()
+	if err != nil {
+		return BuilderConfig{}, err
+	}
+
+	if err = makePathsAbsolute(&model); err != nil {
+		return BuilderConfig{}, err
+	}
+
+	return model, nil
 }

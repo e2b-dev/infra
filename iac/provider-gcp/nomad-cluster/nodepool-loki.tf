@@ -106,7 +106,7 @@ resource "google_compute_instance_template" "loki" {
     boot         = true
     source_image = data.google_compute_image.loki_source_image.id
     disk_size_gb = 200
-    disk_type    = "pd-ssd"
+    disk_type    = var.loki_boot_disk_type
   }
 
   network_interface {

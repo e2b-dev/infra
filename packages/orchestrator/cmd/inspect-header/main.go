@@ -22,14 +22,19 @@ func main() {
 	}
 
 	var storagePath string
+	var objectType storage.ObjectType
 
 	switch *kind {
 	case "memfile":
 		storagePath = template.StorageMemfileHeaderPath()
+		objectType = storage.MemfileHeaderObjectType
 	case "rootfs":
 		storagePath = template.StorageRootfsHeaderPath()
+		objectType = storage.RootFSHeaderObjectType
 	default:
 		log.Fatalf("invalid kind: %s", *kind)
+
+		return
 	}
 
 	ctx := context.Background()
@@ -38,7 +43,7 @@ func main() {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	obj, err := storage.OpenObject(ctx, storagePath)
+	obj, err := storage.OpenObject(ctx, storagePath, objectType)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}
@@ -46,6 +51,12 @@ func main() {
 	h, err := header.Deserialize(ctx, obj)
 	if err != nil {
 		log.Fatalf("failed to deserialize header: %s", err)
+	}
+
+	// Validate mappings
+	err = header.ValidateMappings(h.Mapping, h.Metadata.Size, h.Metadata.BlockSize)
+	if err != nil {
+		fmt.Printf("\n⚠️  WARNING: Mapping validation failed!\n%s\n\n", err)
 	}
 
 	fmt.Printf("\nMETADATA\n")

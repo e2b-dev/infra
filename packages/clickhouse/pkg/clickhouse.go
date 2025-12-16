@@ -7,21 +7,18 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/google/uuid"
 )
 
-type Clickhouse interface {
-	Close(ctx context.Context) error
-
-	// Sandbox metrics queries
+type SandboxQueriesProvider interface {
 	QuerySandboxTimeRange(ctx context.Context, sandboxID, teamID string) (start time.Time, end time.Time, err error)
 	QuerySandboxMetrics(ctx context.Context, sandboxID, teamID string, start time.Time, end time.Time, step time.Duration) ([]Metrics, error)
 	QueryLatestMetrics(ctx context.Context, sandboxIDs []string, teamID string) ([]Metrics, error)
+}
 
-	// Events queries
-	ExistsSandboxId(ctx context.Context, sandboxID string) (bool, error)
-	SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID string, offset, limit int, orderAsc bool) ([]SandboxEvent, error)
-	SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, offset, limit int, orderAsc bool) ([]SandboxEvent, error)
+type Clickhouse interface {
+	SandboxQueriesProvider
+
+	Close(ctx context.Context) error
 
 	// Team metrics queries
 	QueryTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) ([]TeamMetrics, error)

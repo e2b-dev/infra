@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,6 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -37,7 +40,10 @@ type AWSBucketStorageObjectProvider struct {
 	bucketName string
 }
 
-var _ StorageObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
+var (
+	_ SeekableObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
+	_ ObjectProvider         = (*AWSBucketStorageObjectProvider)(nil)
+)
 
 func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -71,7 +77,7 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 
 	// AWS S3 delete operation requires at least one object to delete.
 	if len(objects) == 0 {
-		zap.L().Warn("No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", a.bucketName))
+		logger.L().Warn(ctx, "No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", a.bucketName))
 
 		return nil
 	}
@@ -87,12 +93,12 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 	}
 
 	if len(output.Errors) > 0 {
-		var errStr string
+		var errStr strings.Builder
 		for _, delErr := range output.Errors {
-			errStr += fmt.Sprintf("Key: %s, Code: %s, Message: %s; ", aws.ToString(delErr.Key), aws.ToString(delErr.Code), aws.ToString(delErr.Message))
+			errStr.WriteString(fmt.Sprintf("Key: %s, Code: %s, Message: %s; ", aws.ToString(delErr.Key), aws.ToString(delErr.Code), aws.ToString(delErr.Message)))
 		}
 
-		return errors.New("errors occurred during deletion: " + errStr)
+		return errors.New("errors occurred during deletion: " + errStr.String())
 	}
 
 	if len(output.Deleted) != len(objects) {
@@ -121,7 +127,15 @@ func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path str
 	return resp.URL, nil
 }
 
-func (a *AWSBucketStorageProvider) OpenObject(_ context.Context, path string) (StorageObjectProvider, error) {
+func (a *AWSBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
+	return &AWSBucketStorageObjectProvider{
+		client:     a.client,
+		bucketName: a.bucketName,
+		path:       path,
+	}, nil
+}
+
+func (a *AWSBucketStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
 	return &AWSBucketStorageObjectProvider{
 		client:     a.client,
 		bucketName: a.bucketName,
@@ -249,6 +263,12 @@ func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 	return *resp.ContentLength, nil
 }
 
+func (a *AWSBucketStorageObjectProvider) Exists(ctx context.Context) (bool, error) {
+	_, err := a.Size(ctx)
+
+	return err == nil, ignoreNotExists(err)
+}
+
 func (a *AWSBucketStorageObjectProvider) Delete(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
@@ -259,6 +279,14 @@ func (a *AWSBucketStorageObjectProvider) Delete(ctx context.Context) error {
 			Key:    aws.String(a.path),
 		},
 	)
+
+	return err
+}
+
+func ignoreNotExists(err error) error {
+	if errors.Is(err, ErrObjectNotExist) {
+		return nil
+	}
 
 	return err
 }

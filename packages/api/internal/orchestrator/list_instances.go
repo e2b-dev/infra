@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"context"
-	_ "embed"
 
 	"github.com/google/uuid"
 

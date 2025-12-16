@@ -30,6 +30,20 @@ variable "client_cluster_size_max" {
   default = 0
 }
 
+variable "client_cluster_autoscaling_cpu_target" {
+  description = "Target CPU utilization for client autoscaling (0.0-1.0)"
+  type        = number
+  default     = 0.6
+}
+
+variable "client_cluster_autoscaling_memory_target" {
+  # Note: This must be higher than orchestrator_base_hugepages_percentage (default 80%)
+  # because preallocated hugepages are counted as used memory in monitoring.
+  description = "Target memory utilization percentage for client autoscaling"
+  type        = number
+  default     = 85
+}
+
 variable "client_machine_type" {
   type = string
 }
@@ -97,13 +111,13 @@ variable "build_cluster_root_disk_size_gb" {
 variable "build_cluster_cache_disk_size_gb" {
   type        = number
   description = "The size of the cache disk for the build machines in GB"
-  default     = 200
+  default     = 375
 }
 
 variable "build_cluster_cache_disk_type" {
   description = "The GCE cache disk type for the build machines."
   type        = string
-  default     = "pd-ssd"
+  default     = "local-ssd"
 }
 
 variable "clickhouse_cluster_size" {
@@ -281,16 +295,10 @@ variable "allow_sandbox_internet" {
   default = true
 }
 
-variable "client_cluster_cache_disk_size_gb" {
+variable "client_cluster_root_disk_size_gb" {
   type        = number
-  description = "The size of the cache disk for the orchestrator machines in GB"
-  default     = 500
-}
-
-variable "client_cluster_cache_disk_type" {
-  description = "The GCE cache disk type for the client machines."
-  type        = string
-  default     = "pd-ssd"
+  description = "The size of the root disk for the build machines in GB"
+  default     = 300
 }
 
 variable "orchestrator_node_pool" {
@@ -352,12 +360,6 @@ variable "otel_tracing_print" {
 variable "domain_name" {
   type        = string
   description = "The domain name where e2b will run"
-}
-
-variable "additional_domains" {
-  type        = string
-  description = "Additional domains which can be used to access the e2b cluster, separated by commas"
-  default     = ""
 }
 
 variable "additional_api_services_json" {
@@ -490,4 +492,65 @@ variable "remote_repository_enabled" {
   type        = bool
   description = "Set to true to enable remote repository cache. Can be set via TF_VAR_remote_repository_enabled or REMOTE_REPOSITORY_ENABLED env var."
   default     = false
+}
+
+variable "build_cluster_cache_disk_count" {
+  type        = number
+  description = "The number of 375 GB NVME disks to raid together for storing build files."
+  default     = 3
+}
+
+variable "client_cluster_cache_disk_size_gb" {
+  type        = number
+  description = "The size of the cache disk for the orchestrator machines in GB"
+  default     = 375
+}
+
+variable "client_cluster_cache_disk_type" {
+  description = "The GCE cache disk type for the client machines."
+  type        = string
+  default     = "local-ssd"
+}
+
+variable "client_cluster_cache_disk_count" {
+  type        = number
+  description = "The number of 375 GB NVME disks to raid together for storing sandbox files."
+  default     = 3
+}
+
+# Boot disk type variables
+variable "client_boot_disk_type" {
+  description = "The GCE boot disk type for the client (orchestrator) machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "build_boot_disk_type" {
+  description = "The GCE boot disk type for the build machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "api_boot_disk_type" {
+  description = "The GCE boot disk type for the API machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "server_boot_disk_type" {
+  description = "The GCE boot disk type for the control server machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "clickhouse_boot_disk_type" {
+  description = "The GCE boot disk type for the ClickHouse machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "loki_boot_disk_type" {
+  description = "The GCE boot disk type for the Loki machines."
+  type        = string
+  default     = "pd-ssd"
 }

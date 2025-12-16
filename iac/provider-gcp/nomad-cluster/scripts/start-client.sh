@@ -15,56 +15,92 @@ set -x
 # Inspired by https://alestic.com/2010/12/ec2-user-data-output/
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
-# Add cache disk for orchestrator and swapfile
-# TODO: Parametrize this
-DISK="/dev/disk/by-id/google-persistent-disk-1"
+%{ if LOCAL_SSD == "true" }
+  # Add cache disk for orchestrator and swapfile
+  for i in {0..${ CACHE_DISK_COUNT - 1 }}; do
+    dev_path="/dev/disk/by-id/google-local-nvme-ssd-$i"
+    echo "partitioning drive #$i"
+    parted --script $dev_path \
+        mklabel gpt \
+        mkpart primary 0% 100% \
+        set 1 raid on
+  done
+
+  %{ if CACHE_DISK_COUNT > 1 }
+    DISK="/dev/md0"
+
+    echo "creating the array"
+    until mdadm --create --verbose \
+      $DISK \
+      --raid-devices=${ CACHE_DISK_COUNT } \
+      %{ for i in range(CACHE_DISK_COUNT) ~}/dev/disk/by-id/google-local-nvme-ssd-${ i }-part1 %{ endfor }\
+      --level=0; do
+        echo "failed to create array, trying again ... "
+        sleep 1
+    done
+
+    echo "persisting array configuration"
+    mdadm --detail --scan --verbose | tee -a /etc/mdadm/mdadm.conf
+  %{ else }
+    DISK="/dev/disk/by-id/google-local-nvme-ssd-0-part1"
+  %{ endif }
+%{ else }
+  # Add cache disk for orchestrator and swapfile
+  # TODO: Parametrize this
+  DISK="/dev/disk/by-id/google-persistent-disk-1"
+%{ endif }
+
 MOUNT_POINT="/orchestrator"
 
 # Step 1: Format the disk with XFS and 65K block size
-sudo mkfs.xfs -f -b size=4096 $DISK
+until mkfs.xfs -f -b size=4096 $DISK; do
+  echo "failed to make file system, trying again ... "
+  sleep 1
+done
 
 # Step 2: Create the mount point
-sudo mkdir -p $MOUNT_POINT
+mkdir -p $MOUNT_POINT
 
 # Step 3: Mount the disk with
-sudo mount -o noatime $DISK $MOUNT_POINT
+echo "$DISK    $MOUNT_POINT    xfs noatime 0 0" | tee -a /etc/fstab
+mount "$MOUNT_POINT"
 
-sudo mkdir -p /orchestrator/sandbox
-sudo mkdir -p /orchestrator/template
-sudo mkdir -p /orchestrator/build
+mkdir -p /orchestrator/sandbox
+mkdir -p /orchestrator/template
+mkdir -p /orchestrator/build
 
 # Add swapfile
 SWAPFILE="/swapfile"
-sudo fallocate -l 100G $SWAPFILE
-sudo chmod 600 $SWAPFILE
-sudo mkswap $SWAPFILE
-sudo swapon $SWAPFILE
+fallocate -l 100G $SWAPFILE
+chmod 600 $SWAPFILE
+mkswap $SWAPFILE
+swapon $SWAPFILE
 
 # Make swapfile persistent
-echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+echo "$SWAPFILE none swap sw 0 0" | tee -a /etc/fstab
 
 # Set swap settings
-sudo sysctl vm.swappiness=10
-sudo sysctl vm.vfs_cache_pressure=50
+sysctl vm.swappiness=10
+sysctl vm.vfs_cache_pressure=50
 
 # TODO: Optimize the mount more according to https://cloud.google.com/filestore/docs/mounting-fileshares
 %{ if USE_FILESTORE_CACHE }
 # Mount NFS
-sudo mkdir -p "${NFS_MOUNT_PATH}"
-echo "${NFS_IP_ADDRESS}:/store ${NFS_MOUNT_PATH} nfs ${NFS_MOUNT_OPTS} 0 0" | sudo tee -a /etc/fstab
-sudo mount "${NFS_MOUNT_PATH}"
-sudo mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
+mkdir -p "${NFS_MOUNT_PATH}"
+echo "${NFS_IP_ADDRESS}:/store ${NFS_MOUNT_PATH} nfs ${NFS_MOUNT_OPTS} 0 0" | tee -a /etc/fstab
+mount "${NFS_MOUNT_PATH}"
+mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
 %{ endif }
 
 # Add tmpfs for snapshotting
 # TODO: Parametrize this
-sudo mkdir -p /mnt/snapshot-cache
-sudo mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
+mkdir -p /mnt/snapshot-cache
+mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
 
 ulimit -n 1048576
 export GOMAXPROCS='nproc'
 
-sudo tee -a /etc/sysctl.conf <<EOF
+tee -a /etc/sysctl.conf <<EOF
 # Increase the maximum number of socket connections
 net.core.somaxconn = 65535
 
@@ -78,7 +114,7 @@ net.ipv4.tcp_max_syn_backlog = 65535
 vm.max_map_count=1048576
 
 EOF
-sudo sysctl -p
+sysctl -p
 
 echo "Disabling inotify for NBD devices"
 # https://lore.kernel.org/lkml/20220422054224.19527-1-matthew.ruffell@canonical.com/
@@ -87,11 +123,11 @@ cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
 ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
 EOH
 
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+udevadm control --reload-rules
+udevadm trigger
 
 # Load the nbd module with 4096 devices
-sudo modprobe nbd nbds_max=4096
+modprobe nbd nbds_max=4096
 
 # Create the directory for the fc mounts
 mkdir -p /fc-vm
@@ -154,16 +190,23 @@ cat <<EOF >/etc/systemd/resolved.conf.d/consul.conf
 [Resolve]
 DNS=127.0.0.1:8600
 DNSSEC=false
-Domains=~consul
 EOF
-systemctl restart systemd-resolved
+sync  # Ensure file is written to disk
+
+# Remove GCE's DNS config to prevent it from competing with Consul DNS (GCP-specific fix)
+# We don't need routing domains since Consul handles ALL DNS:
+#   - .consul queries: served directly by Consul
+#   - other queries: forwarded to GCE DNS via Consul's recursor config
+if [ -f /etc/systemd/resolved.conf.d/gce-resolved.conf ]; then
+  mv /etc/systemd/resolved.conf.d/gce-resolved.conf /etc/systemd/resolved.conf.d/gce-resolved.conf.disabled
+fi
 
 # Set up huge pages
 # We are not enabling Transparent Huge Pages for now, as they are not swappable and may result in slowdowns + we are not using swap right now.
 # The THP are by default set to madvise
 # We are allocating the hugepages at the start when the memory is not fragmented yet
 echo "[Setting up huge pages]"
-sudo mkdir -p /mnt/hugepages
+mkdir -p /mnt/hugepages
 mount -t hugetlbfs none /mnt/hugepages
 # Increase proactive compaction to reduce memory fragmentation for using overcomitted huge pages
 
@@ -230,13 +273,59 @@ overcommitment_hugepages=$(remove_decimal $overcommitment_hugepages)
 echo "- Allocating $overcommitment_hugepages huge pages ($overcommitment_hugepages_percentage%) for overcommitment"
 echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 
+# Get GCE DNS server dynamically from metadata for Consul recursors
+# This ensures we can resolve internet domains through Consul
+GCE_DNS=$(curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/dns-servers || echo "169.254.169.254")
+
+# Start Consul first (in background) with GCE DNS as recursor
+# This allows Consul to handle both .consul queries AND forward internet queries
 # These variables are passed in via Terraform template interpolation
 /opt/consul/bin/run-consul.sh --client \
     --consul-token "${CONSUL_TOKEN}" \
     --cluster-tag-name "${CLUSTER_TAG_NAME}" \
     --enable-gossip-encryption \
     --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" \
-    --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" &
+    --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" \
+    --recursor "$${GCE_DNS}" &
+
+# Give Consul a moment to start its DNS server on port 8600
+echo "- Waiting for Consul DNS to start on port 8600..."
+for i in {1..10}; do
+  if nc -z 127.0.0.1 8600 2>/dev/null; then
+    echo "- Consul DNS is ready (attempt $i/10)"
+    break
+  fi
+  if [ $i -eq 10 ]; then
+    echo "- ERROR: Consul DNS not responding after 10 seconds, exiting..."
+    exit 1
+  fi
+  sleep 1
+done
+
+# Now restart systemd-resolved to apply Consul DNS configuration
+# This must happen AFTER Consul starts, otherwise systemd-resolved marks 127.0.0.1:8600 as unreachable
+# Consul DNS (127.0.0.1:8600) is the ONLY DNS server configured in systemd-resolved
+# Consul handles ALL queries: .consul directly, everything else via recursor to GCE DNS
+echo "[Configuring systemd-resolved for Consul DNS]"
+echo "- Restarting systemd-resolved to apply Consul DNS config"
+systemctl restart systemd-resolved
+echo "- Waiting for systemd-resolved to settle"
+
+# Give Consul a moment to start its DNS server on port 8600
+echo "- Waiting for Systemd-resolved to start..."
+for i in {1..10}; do
+  if host google.com 2>/dev/null; then
+    echo "- DNS resolving is ready (attempt $i/10)"
+    break
+  fi
+  if [ $i -eq 10 ]; then
+    echo "- ERROR: Systemd-resolved not responding after 10 seconds, exiting..."
+    exit 1
+  fi
+  sleep 1
+done
+echo "- Flushing DNS caches"
+resolvectl flush-caches
 
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
 

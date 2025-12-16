@@ -27,13 +27,11 @@ import (
 )
 
 const (
-	maxSandboxListLimit     int32 = 100
-	defaultSandboxListLimit int32 = 100
+	sandboxesDefaultLimit = int32(100)
+	sandboxesMaxLimit     = int32(100)
 )
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
-	// Apply limit + 1 to check if there are more results
-	queryLimit := limit + 1
+func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, queryLimit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
 	queryMetadata := dbtypes.JSONBStringMap{}
 	if metadataFilter != nil {
 		queryMetadata = *metadataFilter
@@ -53,7 +51,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 		return nil, fmt.Errorf("error getting team snapshots: %w", err)
 	}
 
-	sandboxes := snapshotsToPaginatedSandboxes(snapshots)
+	sandboxes := snapshotsToPaginatedSandboxes(ctx, snapshots)
 
 	return sandboxes, nil
 }
@@ -75,13 +73,13 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
 	team := teamInfo.Team
 
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed sandboxes", properties)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "listed sandboxes", properties)
 
-	metadataFilter, err := utils.ParseMetadata(params.Metadata)
+	metadataFilter, err := utils.ParseMetadata(ctx, params.Metadata)
 	if err != nil {
-		zap.L().Error("Error parsing metadata", zap.Error(err))
+		logger.L().Error(ctx, "Error parsing metadata", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err))
 
 		return
@@ -103,9 +101,9 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
 	team := teamInfo.Team
 
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed sandboxes", properties)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "listed sandboxes", properties)
 
 	// If no state is provided we want to return both running and paused sandboxes
 	states := make([]api.SandboxState, 0)
@@ -115,19 +113,28 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		states = append(states, *params.State...)
 	}
 
-	limit := defaultSandboxListLimit
-	if params.Limit != nil {
-		limit = *params.Limit
-	}
-
-	// Clip limit to max
-	if limit > maxSandboxListLimit {
-		limit = maxSandboxListLimit
-	}
-
-	metadataFilter, err := utils.ParseMetadata(params.Metadata)
+	// Initialize pagination
+	pagination, err := utils.NewPagination[utils.PaginatedSandbox](
+		utils.PaginationParams{
+			Limit:     params.Limit,
+			NextToken: params.NextToken,
+		},
+		utils.PaginationConfig{
+			DefaultLimit: sandboxesDefaultLimit,
+			MaxLimit:     sandboxesMaxLimit,
+			DefaultID:    utils.MaxSandboxID,
+		},
+	)
 	if err != nil {
-		zap.L().Error("Error parsing metadata", zap.Error(err))
+		telemetry.ReportError(ctx, "error parsing pagination cursor", err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid next token")
+
+		return
+	}
+
+	metadataFilter, err := utils.ParseMetadata(ctx, params.Metadata)
+	if err != nil {
+		logger.L().Error(ctx, "Error parsing metadata", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Error parsing metadata")
 
 		return
@@ -135,15 +142,6 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 	// Get sandboxes with pagination
 	sandboxes := make([]utils.PaginatedSandbox, 0)
-
-	// Parse the next token to offset sandboxes for pagination
-	cursorTime, cursorID, err := utils.ParseNextToken(params.NextToken)
-	if err != nil {
-		zap.L().Error("Error parsing cursor", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid next token")
-
-		return
-	}
 
 	allSandboxes := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning, sandbox.StatePausing})
 	runningSandboxes := sharedUtils.Filter(allSandboxes, func(sbx sandbox.Sandbox) bool {
@@ -163,7 +161,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxList)))
 
 		// Filter based on cursor
-		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID)
+		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, pagination.CursorTime(), pagination.CursorID())
 
 		sandboxes = append(sandboxes, runningSandboxList...)
 	}
@@ -178,9 +176,9 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 		}
 
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, limit, cursorTime, cursorID)
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())
 		if err != nil {
-			zap.L().Error("Error getting paused sandboxes", zap.Error(err))
+			logger.L().Error(ctx, "Error getting paused sandboxes", zap.Error(err))
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting paused sandboxes")
 
 			return
@@ -188,7 +186,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 		pausingSandboxList := instanceInfoToPaginatedSandboxes(pausingSandboxes)
 		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
-		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, cursorTime, cursorID)
+		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, pagination.CursorTime(), pagination.CursorID())
 
 		sandboxes = append(sandboxes, pausedSandboxList...)
 		sandboxes = append(sandboxes, pausingSandboxList...)
@@ -197,26 +195,14 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	// We need to sort again after merging running and paused sandboxes
 	utils.SortPaginatedSandboxesDesc(sandboxes)
 
-	var nextToken *string
-	if len(sandboxes) > int(limit) {
-		// We have more results than the limit, so we need to set the nextToken
-		lastSandbox := sandboxes[limit-1]
-		cursor := lastSandbox.GenerateCursor()
-		nextToken = &cursor
-
-		// Trim to the requested limit
-		sandboxes = sandboxes[:limit]
-	}
-
-	// Add pagination info to headers
-	if nextToken != nil {
-		c.Header("X-Next-Token", *nextToken)
-	}
+	sandboxes = pagination.ProcessResultsWithHeader(c, sandboxes, func(s utils.PaginatedSandbox) (time.Time, string) {
+		return s.PaginationTimestamp, s.SandboxID
+	})
 
 	c.JSON(http.StatusOK, sandboxes)
 }
 
-func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow) []utils.PaginatedSandbox {
+func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetSnapshotsWithCursorRow) []utils.PaginatedSandbox {
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
 	// Add snapshots to results
@@ -233,14 +219,14 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 		if build.TotalDiskSizeMb != nil {
 			diskSize = int32(*build.TotalDiskSizeMb)
 		} else {
-			zap.L().Error("disk size is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
+			logger.L().Error(ctx, "disk size is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
 		}
 
 		envdVersion := ""
 		if build.EnvdVersion != nil {
 			envdVersion = *build.EnvdVersion
 		} else {
-			zap.L().Error("envd version is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
+			logger.L().Error(ctx, "envd version is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
 		}
 
 		sandbox := utils.PaginatedSandbox{

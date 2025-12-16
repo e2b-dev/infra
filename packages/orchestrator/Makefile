@@ -1,6 +1,8 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
+AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+
 .PHONY: init
 init:
 	brew install protobuf
@@ -58,19 +60,34 @@ endef
 .PHONY: run-local
 run-local:
 	$(call setup_local_env)
-	NODE_ID=$$(hostname) ./bin/orchestrator --port 3000
+	NODE_ID=$$(hostname) ./bin/orchestrator
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:
-	./upload-clean-nfs-cache.sh $(GCP_PROJECT_ID)
+	chmod +x ./bin/clean-nfs-cache
+ifeq ($(PROVIDER),aws)
+	aws s3 cp ./bin/clean-nfs-cache "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/clean-nfs-cache "gs://${GCP_PROJECT_ID}-fc-env-pipeline/clean-nfs-cache"
+endif
 
 .PHONY: upload/orchestrator
 upload/orchestrator:
-	./upload-orchestrator.sh $(GCP_PROJECT_ID)
+	chmod +x ./bin/orchestrator
+ifeq ($(PROVIDER),aws)
+	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/orchestrator" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_PROJECT_ID}-fc-env-pipeline/orchestrator"
+endif
 
 .PHONY: upload/template-manager
 upload/template-manager:
-	./upload-template-manager.sh $(GCP_PROJECT_ID)
+	chmod +x ./bin/orchestrator
+ifeq ($(PROVIDER),aws)
+	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/template-manager" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_PROJECT_ID}-fc-env-pipeline/template-manager"
+endif
 
 .PHONY: build-and-upload/clean-nfs-cache
 build-and-upload/clean-nfs-cache: build upload/clean-nfs-cache
@@ -84,10 +101,6 @@ build-and-upload/template-manager: build upload/template-manager
 .PHONY: mock
 mock:
 	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="testclient" go run cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -build "f0370054-b669-eeee-b33b-573d5287c6ef" -alive 1 -count 2
-
-.PHONY: mock-nbd
-mock-nbd:
-	sudo go run -gcflags=all="-N -l" cmd/mock-nbd/mock.go
 
 .PHONY: mock-snapshot
 mock-snapshot:
@@ -126,4 +139,4 @@ build-template:
 
 .PHONY: migrate
 migrate:
-	./upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)
+	./scripts/upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)

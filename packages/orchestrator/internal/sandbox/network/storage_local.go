@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type StorageLocal struct {
@@ -22,7 +24,7 @@ type StorageLocal struct {
 
 const netNamespacesDir = "/var/run/netns"
 
-func NewStorageLocal(slotsSize int, config Config) (*StorageLocal, error) {
+func NewStorageLocal(ctx context.Context, config Config) (*StorageLocal, error) {
 	// get namespaces that we want to always skip
 	foreignNs, err := getForeignNamespaces()
 	if err != nil {
@@ -32,14 +34,14 @@ func NewStorageLocal(slotsSize int, config Config) (*StorageLocal, error) {
 	foreignNsMap := make(map[string]struct{})
 	for _, ns := range foreignNs {
 		foreignNsMap[ns] = struct{}{}
-		zap.L().Info(fmt.Sprintf("Found foreign namespace: %s", ns))
+		logger.L().Info(ctx, fmt.Sprintf("Found foreign namespace: %s", ns))
 	}
 
 	return &StorageLocal{
 		config:       config,
 		foreignNs:    foreignNsMap,
-		slotsSize:    slotsSize,
-		acquiredNs:   make(map[string]struct{}, slotsSize),
+		slotsSize:    vrtSlotsSize,
+		acquiredNs:   make(map[string]struct{}, vrtSlotsSize),
 		acquiredNsMu: sync.Mutex{},
 	}, nil
 }
@@ -87,7 +89,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 
 			if !available {
 				s.foreignNs[slotName] = struct{}{}
-				zap.L().Debug("Skipping slot because not available", zap.String("slot", slotName))
+				logger.L().Debug(ctx, "Skipping slot because not available", zap.String("slot", slotName))
 
 				continue
 			}

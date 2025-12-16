@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type apiClient struct {
@@ -138,7 +139,7 @@ func (c *apiClient) createSnapshot(
 
 	_, err := c.client.Operations.CreateSnapshot(&snapshotConfig)
 	if err != nil {
-		return fmt.Errorf("error loading snapshot: %w", err)
+		return fmt.Errorf("error creating snapshot: %w", err)
 	}
 
 	return nil
@@ -175,9 +176,9 @@ func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernel
 	return err
 }
 
-func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error {
+func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEngine *string) error {
 	rootfs := "rootfs"
-	ioEngine := "Async"
+
 	isRootDevice := true
 	driversConfig := operations.PutGuestDriveByIDParams{
 		Context: ctx,
@@ -187,7 +188,7 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error
 			PathOnHost:   rootfsPath,
 			IsRootDevice: &isRootDevice,
 			IsReadOnly:   false,
-			IoEngine:     &ioEngine,
+			IoEngine:     ioEngine,
 		},
 	}
 
@@ -253,10 +254,32 @@ func (c *apiClient) setMachineConfig(
 		Context: ctx,
 		Body:    machineConfig,
 	}
-
 	_, err := c.client.Operations.PutMachineConfiguration(&machineConfigParams)
 	if err != nil {
 		return fmt.Errorf("error setting fc machine config: %w", err)
+	}
+
+	return nil
+}
+
+// https://github.com/firecracker-microvm/firecracker/blob/main/docs/entropy.md#firecracker-implementation
+func (c *apiClient) setEntropyDevice(ctx context.Context) error {
+	entropyConfig := operations.PutEntropyDeviceParams{
+		Context: ctx,
+		Body: &models.EntropyDevice{
+			RateLimiter: &models.RateLimiter{
+				Bandwidth: &models.TokenBucket{
+					OneTimeBurst: utils.ToPtr(entropyOneTimeBurst),
+					Size:         utils.ToPtr(entropyBytesSize),
+					RefillTime:   utils.ToPtr(entropyRefillTime),
+				},
+			},
+		},
+	}
+
+	_, err := c.client.Operations.PutEntropyDevice(&entropyConfig)
+	if err != nil {
+		return fmt.Errorf("error setting fc entropy config: %w", err)
 	}
 
 	return nil

@@ -1,4 +1,4 @@
-ARG GOLANG_VERSION=1.24.7
+ARG GOLANG_VERSION=1.25.4
 ARG ALPINE_VERSION=3.22
 
 FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
@@ -10,6 +10,10 @@ WORKDIR /build/shared
 COPY ./shared/go.mod ./shared/go.sum ./
 RUN go mod download
 
+WORKDIR /build/db
+COPY ./db/go.mod ./db/go.sum ./
+RUN go mod download
+
 WORKDIR /build/docker-reverse-proxy
 COPY ./docker-reverse-proxy/go.mod ./docker-reverse-proxy/go.sum ./
 RUN go mod download
@@ -18,6 +22,10 @@ RUN go mod download
 WORKDIR /build
 
 COPY ./shared/pkg ./shared/pkg
+COPY ./db/client ./db/client
+COPY ./db/dberrors ./db/dberrors
+COPY ./db/queries ./db/queries
+COPY ./db/types ./db/types
 
 COPY ./docker-reverse-proxy/internal ./docker-reverse-proxy/internal
 COPY ./docker-reverse-proxy/main.go ./docker-reverse-proxy/main.go

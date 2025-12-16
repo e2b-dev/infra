@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -35,10 +36,10 @@ func New(selfWriteInterval time.Duration) (*Manager, error) {
 	}, nil
 }
 
-func (t *Manager) OnInsert(sandbox *sandbox.Sandbox) {
+func (t *Manager) OnInsert(ctx context.Context, sandbox *sandbox.Sandbox) {
 	metadata := sandbox.Metadata
 	if metadata == nil {
-		zap.L().Warn("Ignoring sandbox without metadata")
+		logger.L().Warn(ctx, "Ignoring sandbox without metadata")
 
 		return
 	}
@@ -46,7 +47,7 @@ func (t *Manager) OnInsert(sandbox *sandbox.Sandbox) {
 	t.selfSandboxResources.Insert(metadata.Runtime.SandboxID, metadata.Config)
 }
 
-func (t *Manager) OnRemove(sandboxID string) {
+func (t *Manager) OnRemove(_ context.Context, sandboxID string) {
 	t.selfSandboxResources.Remove(sandboxID)
 }
 
@@ -74,9 +75,9 @@ func (t *Manager) getSelfAllocated() Allocations {
 	return allocated
 }
 
-func (t *Manager) removeSelfFile(path string) {
+func (t *Manager) removeSelfFile(ctx context.Context, path string) {
 	if err := os.Remove(path); err != nil {
-		zap.L().Error("Failed to remove self file", zap.Error(err), zap.String("path", path))
+		logger.L().Error(ctx, "Failed to remove self file", zap.Error(err), zap.String("path", path))
 	}
 }
 
@@ -94,7 +95,7 @@ func (t *Manager) Run(ctx context.Context, directory string) error {
 
 	// set up the self file
 	selfPath := t.makeSelfPath(directory)
-	defer t.removeSelfFile(selfPath)
+	defer t.removeSelfFile(ctx, selfPath)
 	writeTicks := time.Tick(t.selfWriteInterval)
 
 	// set up the file watcher
@@ -117,8 +118,8 @@ func (t *Manager) Run(ctx context.Context, directory string) error {
 	}
 	for _, fullPath := range fullPaths {
 		// fullPath := filepath.Join(directory, fullPath)
-		if err = t.handleOtherWrite(fullPath); err != nil {
-			zap.L().Error("Failed to handle other write",
+		if err = t.handleOtherWrite(ctx, fullPath); err != nil {
+			logger.L().Error(ctx, "Failed to handle other write",
 				zap.Error(err),
 				zap.String("path", fullPath))
 		}
@@ -132,7 +133,7 @@ func (t *Manager) Run(ctx context.Context, directory string) error {
 		select {
 		case <-writeTicks:
 			if err := t.handleWriteSelf(selfPath); err != nil {
-				zap.L().Error("Failed to write allocations",
+				logger.L().Error(ctx, "Failed to write allocations",
 					zap.Error(err),
 					zap.String("path", selfPath))
 			}
@@ -146,18 +147,18 @@ func (t *Manager) Run(ctx context.Context, directory string) error {
 		case event := <-watcher.Events:
 			switch {
 			default:
-				zap.L().Warn("Unknown event", zap.Any("event", event))
+				logger.L().Warn(ctx, "Unknown event", zap.Any("event", event))
 			case event.Name == selfPath:
 				// ignore our writes
 			case event.Has(fsnotify.Write), event.Has(fsnotify.Create):
-				if err := t.handleOtherWrite(event.Name); err != nil {
-					zap.L().Error("Failed to handle other write",
+				if err := t.handleOtherWrite(ctx, event.Name); err != nil {
+					logger.L().Error(ctx, "Failed to handle other write",
 						zap.Error(err),
 						zap.String("path", event.Name))
 				}
 			case event.Has(fsnotify.Remove):
-				if err := t.handleOtherRemove(event.Name); err != nil {
-					zap.L().Error("Failed to handle other remove",
+				if err := t.handleOtherRemove(ctx, event.Name); err != nil {
+					logger.L().Error(ctx, "Failed to handle other remove",
 						zap.Error(err),
 						zap.String("path", event.Name))
 				}
@@ -166,11 +167,11 @@ func (t *Manager) Run(ctx context.Context, directory string) error {
 	}
 }
 
-func getPIDFromFilename(path string) (int, bool) {
+func getPIDFromFilename(ctx context.Context, path string) (int, bool) {
 	basePath := filepath.Base(path)
 	dotIndex := strings.Index(basePath, ".")
 	if dotIndex == -1 {
-		zap.L().Warn("Ignoring file without extension", zap.String("file", path))
+		logger.L().Warn(ctx, "Ignoring file without extension", zap.String("file", path))
 
 		return 0, false
 	}
@@ -178,7 +179,7 @@ func getPIDFromFilename(path string) (int, bool) {
 	pidStr := basePath[:dotIndex]
 	pid, err := strconv.Atoi(pidStr)
 	if err != nil {
-		zap.L().Error("Filename is not a number", zap.String("path", path), zap.Error(err))
+		logger.L().Error(ctx, "Filename is not a number", zap.String("path", path), zap.Error(err))
 
 		return 0, false
 	}
@@ -186,8 +187,8 @@ func getPIDFromFilename(path string) (int, bool) {
 	return pid, true
 }
 
-func (t *Manager) handleOtherRemove(name string) error {
-	pid, ok := getPIDFromFilename(name)
+func (t *Manager) handleOtherRemove(ctx context.Context, name string) error {
+	pid, ok := getPIDFromFilename(ctx, name)
 	if !ok {
 		return errInvalidMetricsFilename
 	}
@@ -202,8 +203,8 @@ func (t *Manager) handleOtherRemove(name string) error {
 
 var errInvalidMetricsFilename = errors.New("invalid metrics filename")
 
-func (t *Manager) handleOtherWrite(name string) error {
-	pid, ok := getPIDFromFilename(name)
+func (t *Manager) handleOtherWrite(ctx context.Context, name string) error {
+	pid, ok := getPIDFromFilename(ctx, name)
 	if !ok {
 		return errInvalidMetricsFilename
 	}

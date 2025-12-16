@@ -6,12 +6,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
 func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 	_, templateSpan := tracer.Start(c, "service-discovery-list-nodes-handler")
 	defer templateSpan.End()
+
+	ctx := c.Request.Context()
 
 	response := make([]api.ClusterNode, 0)
 
@@ -23,7 +25,7 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 			api.ClusterNode{
 				NodeID:               info.NodeID,
 				ServiceInstanceID:    info.ServiceInstanceID,
-				ServiceStatus:        getOrchestratorStatusResolved(info.ServiceStatus),
+				ServiceStatus:        getOrchestratorStatusResolved(ctx, info.ServiceStatus),
 				ServiceType:          api.ClusterNodeTypeOrchestrator,
 				ServiceVersion:       info.ServiceVersion,
 				ServiceVersionCommit: info.ServiceVersionCommit,
@@ -32,39 +34,6 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 			},
 		)
 	}
-
-	// iterate edge apis
-	for _, edge := range a.edgePool.GetInstances() {
-		info := edge.GetInfo()
-		response = append(
-			response,
-			api.ClusterNode{
-				NodeID:               info.NodeID,
-				ServiceInstanceID:    info.ServiceInstanceID,
-				ServiceStatus:        info.ServiceStatus,
-				ServiceType:          api.ClusterNodeTypeEdge,
-				ServiceVersion:       info.ServiceVersion,
-				ServiceVersionCommit: info.ServiceVersionCommit,
-				ServiceHost:          info.Host,
-				ServiceStartedAt:     info.ServiceStartup,
-			},
-		)
-	}
-
-	// append itself
-	response = append(
-		response,
-		api.ClusterNode{
-			NodeID:               a.info.NodeID,
-			ServiceInstanceID:    a.info.ServiceInstanceID,
-			ServiceStatus:        a.info.GetStatus(),
-			ServiceType:          api.ClusterNodeTypeEdge,
-			ServiceVersion:       a.info.ServiceVersion,
-			ServiceVersionCommit: a.info.ServiceVersionCommit,
-			ServiceHost:          a.info.Host,
-			ServiceStartedAt:     a.info.ServiceStartup,
-		},
-	)
 
 	sort.Slice(
 		response,

@@ -7,12 +7,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -24,8 +26,9 @@ const maxSandboxMetricsCount = 100
 func (a *APIStore) getSandboxesMetrics(
 	ctx context.Context,
 	teamID uuid.UUID,
+	clusterID *uuid.UUID,
 	sandboxIDs []string,
-) (map[string]api.SandboxMetric, error) {
+) (map[string]api.SandboxMetric, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "fetch-sandboxes-metrics")
 	defer span.End()
 
@@ -38,27 +41,53 @@ func (a *APIStore) getSandboxesMetrics(
 		attribute.Int("sandboxes.count", len(sandboxIDs)),
 	)
 
-	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
-	if err != nil {
-		zap.L().Error("error getting metrics read feature flag, soft failing", zap.Error(err))
-	}
+	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
 
 	// Get metrics for all sandboxes
 	if !metricsReadFlag {
-		zap.L().Debug("sandbox metrics read feature flag is disabled")
+		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
 		// If we are not reading from ClickHouse, we can return an empty map
 		// This is here just to have the possibility to turn off ClickHouse metrics reading
 		return make(map[string]api.SandboxMetric), nil
 	}
 
-	metrics, err := a.clickhouseStore.QueryLatestMetrics(ctx, sandboxIDs, teamID.String())
+	// TODO: Remove in [ENG-3377], once edge is migrated
+	edgeProvidedMetrics := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlagName)
+
+	var metrics map[string]api.SandboxMetric
+	var apiErr *api.APIError
+	if edgeProvidedMetrics {
+		metrics, apiErr = edge.GetClusterSandboxListMetrics(
+			ctx,
+			a.clustersPool,
+			teamID.String(),
+			utils.WithClusterFallback(clusterID),
+			sandboxIDs,
+		)
+	} else {
+		metrics, apiErr = a.getApiProvidedSandboxListMetrics(ctx, teamID.String(), sandboxIDs)
+	}
+	if apiErr != nil {
+		return nil, apiErr
+	}
+
+	return metrics, nil
+}
+
+// TODO: Remove in [ENG-3377], once edge is migrated
+func (a *APIStore) getApiProvidedSandboxListMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, *api.APIError) {
+	metrics, err := a.clickhouseStore.QueryLatestMetrics(ctx, sandboxIDs, teamID)
 	if err != nil {
-		zap.L().Error("Error fetching sandbox metrics from ClickHouse",
-			logger.WithTeamID(teamID.String()),
+		logger.L().Error(ctx, "Error fetching sandbox metrics from ClickHouse",
+			logger.WithTeamID(teamID),
 			zap.Error(err),
 		)
 
-		return nil, fmt.Errorf("error querying metrics: %w", err)
+		return nil, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Error fetching sandbox metrics",
+			Err:       err,
+		}
 	}
 
 	apiMetrics := make(map[string]api.SandboxMetric)
@@ -85,21 +114,29 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	if len(params.SandboxIds) > maxSandboxMetricsCount {
-		zap.L().Error("Too many sandboxes requested", zap.Int("requested_count", len(params.SandboxIds)), zap.Int("max_count", maxSandboxMetricsCount), logger.WithTeamID(team.ID.String()))
+		logger.L().Error(ctx, "Too many sandboxes requested", zap.Int("requested_count", len(params.SandboxIds)), zap.Int("max_count", maxSandboxMetricsCount), logger.WithTeamID(team.ID.String()))
 		telemetry.ReportError(ctx, "too many sandboxes requested", fmt.Errorf("requested %d, max %d", len(params.SandboxIds), maxSandboxMetricsCount), telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Too many sandboxes requested, maximum is %d", maxSandboxMetricsCount))
 
 		return
 	}
 
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "listed running instances with metrics", properties)
 
-	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, params.SandboxIds)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error fetching metrics for sandboxes", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandboxes for team '%s'", team.ID))
+	// Build the context for feature flags
+	ctx = featureflags.SetContext(
+		ctx,
+		ldcontext.NewBuilder(team.ID.String()).
+			Kind(featureflags.TeamKind).
+			Build(),
+	)
+
+	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, team.ClusterID, params.SandboxIds)
+	if apiErr != nil {
+		logger.L().Error(ctx, "error getting sandbox metrics", zap.Error(apiErr.Err))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}

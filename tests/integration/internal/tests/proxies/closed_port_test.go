@@ -16,40 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
-	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
-
-func waitForStatus(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int) *http.Response {
-	t.Helper()
-
-	for range 10 {
-		req := utils.NewRequest(sbx, url, port, headers)
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Logf("Error: %v", err)
-
-			continue
-		}
-
-		if resp.StatusCode == expectedStatus {
-			return resp
-		}
-
-		x, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Logf("[Status code: %d] Error reading response body: %v", resp.StatusCode, err)
-		} else {
-			t.Logf("[Status code: %d] Response body: %s", resp.StatusCode, string(x))
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	t.Fail()
-
-	return nil
-}
 
 func TestSandboxProxyWorkingPort(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
@@ -90,7 +59,7 @@ func TestSandboxProxyWorkingPort(t *testing.T) {
 	url, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
 
-	resp := waitForStatus(t, client, sbx, url, port, nil, http.StatusOK)
+	resp := utils.WaitForStatus(t, client, sbx, url, port, nil, http.StatusOK)
 	require.NotNil(t, resp)
 	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -110,7 +79,7 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 		Timeout: 1000 * time.Second,
 	}
 
-	resp := waitForStatus(t, client, sbx, url, port, nil, http.StatusBadGateway)
+	resp := utils.WaitForStatus(t, client, sbx, url, port, nil, http.StatusBadGateway)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
@@ -131,7 +100,7 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 
 	// Pretend to be a browser
 	headers := &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}}
-	resp = waitForStatus(t, client, sbx, url, port, headers, http.StatusBadGateway)
+	resp = utils.WaitForStatus(t, client, sbx, url, port, headers, http.StatusBadGateway)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusBadGateway, resp.StatusCode)

@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
@@ -97,6 +98,9 @@ type ClientInterface interface {
 	// DeleteAccessTokensAccessTokenID request
 	DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostAdminTeamsTeamIDSandboxesKill request
+	PostAdminTeamsTeamIDSandboxesKill(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetApiKeys request
 	GetApiKeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -144,6 +148,11 @@ type ClientInterface interface {
 	// GetSandboxesSandboxID request
 	GetSandboxesSandboxID(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostSandboxesSandboxIDConnectWithBody request with any body
+	PostSandboxesSandboxIDConnectWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostSandboxesSandboxIDConnect(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDConnectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetSandboxesSandboxIDLogs request
 	GetSandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -188,6 +197,9 @@ type ClientInterface interface {
 	// DeleteTemplatesTemplateID request
 	DeleteTemplatesTemplateID(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetTemplatesTemplateID request
+	GetTemplatesTemplateID(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PatchTemplatesTemplateIDWithBody request with any body
 	PatchTemplatesTemplateIDWithBody(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -200,6 +212,9 @@ type ClientInterface interface {
 
 	// PostTemplatesTemplateIDBuildsBuildID request
 	PostTemplatesTemplateIDBuildsBuildID(ctx context.Context, templateID TemplateID, buildID BuildID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTemplatesTemplateIDBuildsBuildIDLogs request
+	GetTemplatesTemplateIDBuildsBuildIDLogs(ctx context.Context, templateID TemplateID, buildID BuildID, params *GetTemplatesTemplateIDBuildsBuildIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTemplatesTemplateIDBuildsBuildIDStatus request
 	GetTemplatesTemplateIDBuildsBuildIDStatus(ctx context.Context, templateID TemplateID, buildID BuildID, params *GetTemplatesTemplateIDBuildsBuildIDStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -219,6 +234,11 @@ type ClientInterface interface {
 	PostV2TemplatesTemplateIDBuildsBuildIDWithBody(ctx context.Context, templateID TemplateID, buildID BuildID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PostV2TemplatesTemplateIDBuildsBuildID(ctx context.Context, templateID TemplateID, buildID BuildID, body PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostV3TemplatesWithBody request with any body
+	PostV3TemplatesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostV3Templates(ctx context.Context, body PostV3TemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) PostAccessTokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -247,6 +267,18 @@ func (c *Client) PostAccessTokens(ctx context.Context, body PostAccessTokensJSON
 
 func (c *Client) DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteAccessTokensAccessTokenIDRequest(c.Server, accessTokenID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostAdminTeamsTeamIDSandboxesKill(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostAdminTeamsTeamIDSandboxesKillRequest(c.Server, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -461,6 +493,30 @@ func (c *Client) GetSandboxesSandboxID(ctx context.Context, sandboxID SandboxID,
 	return c.Client.Do(req)
 }
 
+func (c *Client) PostSandboxesSandboxIDConnectWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDConnectRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDConnect(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDConnectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDConnectRequest(c.Server, sandboxID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetSandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSandboxesSandboxIDLogsRequest(c.Server, sandboxID, params)
 	if err != nil {
@@ -653,6 +709,18 @@ func (c *Client) DeleteTemplatesTemplateID(ctx context.Context, templateID Templ
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetTemplatesTemplateID(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesTemplateIDRequest(c.Server, templateID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) PatchTemplatesTemplateIDWithBody(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPatchTemplatesTemplateIDRequestWithBody(c.Server, templateID, contentType, body)
 	if err != nil {
@@ -703,6 +771,18 @@ func (c *Client) PostTemplatesTemplateID(ctx context.Context, templateID Templat
 
 func (c *Client) PostTemplatesTemplateIDBuildsBuildID(ctx context.Context, templateID TemplateID, buildID BuildID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostTemplatesTemplateIDBuildsBuildIDRequest(c.Server, templateID, buildID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetTemplatesTemplateIDBuildsBuildIDLogs(ctx context.Context, templateID TemplateID, buildID BuildID, params *GetTemplatesTemplateIDBuildsBuildIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesTemplateIDBuildsBuildIDLogsRequest(c.Server, templateID, buildID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -797,6 +877,30 @@ func (c *Client) PostV2TemplatesTemplateIDBuildsBuildID(ctx context.Context, tem
 	return c.Client.Do(req)
 }
 
+func (c *Client) PostV3TemplatesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostV3TemplatesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostV3Templates(ctx context.Context, body PostV3TemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostV3TemplatesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // NewPostAccessTokensRequest calls the generic PostAccessTokens builder with application/json body
 func NewPostAccessTokensRequest(server string, body PostAccessTokensJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -864,6 +968,40 @@ func NewDeleteAccessTokensAccessTokenIDRequest(server string, accessTokenID Acce
 	}
 
 	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostAdminTeamsTeamIDSandboxesKillRequest generates requests for PostAdminTeamsTeamIDSandboxesKill
+func NewPostAdminTeamsTeamIDSandboxesKillRequest(server string, teamID openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "teamID", runtime.ParamLocationPath, teamID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/teams/%s/sandboxes/kill", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1374,6 +1512,53 @@ func NewGetSandboxesSandboxIDRequest(server string, sandboxID SandboxID) (*http.
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewPostSandboxesSandboxIDConnectRequest calls the generic PostSandboxesSandboxIDConnect builder with application/json body
+func NewPostSandboxesSandboxIDConnectRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDConnectJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSandboxesSandboxIDConnectRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPostSandboxesSandboxIDConnectRequestWithBody generates requests for PostSandboxesSandboxIDConnect with any type of body
+func NewPostSandboxesSandboxIDConnectRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sandboxID", runtime.ParamLocationPath, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/connect", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -2003,6 +2188,78 @@ func NewDeleteTemplatesTemplateIDRequest(server string, templateID TemplateID) (
 	return req, nil
 }
 
+// NewGetTemplatesTemplateIDRequest generates requests for GetTemplatesTemplateID
+func NewGetTemplatesTemplateIDRequest(server string, templateID TemplateID, params *GetTemplatesTemplateIDParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "templateID", runtime.ParamLocationPath, templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.NextToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "nextToken", runtime.ParamLocationQuery, *params.NextToken); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewPatchTemplatesTemplateIDRequest calls the generic PatchTemplatesTemplateID builder with application/json body
 func NewPatchTemplatesTemplateIDRequest(server string, templateID TemplateID, body PatchTemplatesTemplateIDJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -2138,6 +2395,133 @@ func NewPostTemplatesTemplateIDBuildsBuildIDRequest(server string, templateID Te
 	return req, nil
 }
 
+// NewGetTemplatesTemplateIDBuildsBuildIDLogsRequest generates requests for GetTemplatesTemplateIDBuildsBuildIDLogs
+func NewGetTemplatesTemplateIDBuildsBuildIDLogsRequest(server string, templateID TemplateID, buildID BuildID, params *GetTemplatesTemplateIDBuildsBuildIDLogsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "templateID", runtime.ParamLocationPath, templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "buildID", runtime.ParamLocationPath, buildID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/%s/builds/%s/logs", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Direction != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "direction", runtime.ParamLocationQuery, *params.Direction); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Level != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "level", runtime.ParamLocationQuery, *params.Level); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Source != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "source", runtime.ParamLocationQuery, *params.Source); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetTemplatesTemplateIDBuildsBuildIDStatusRequest generates requests for GetTemplatesTemplateIDBuildsBuildIDStatus
 func NewGetTemplatesTemplateIDBuildsBuildIDStatusRequest(server string, templateID TemplateID, buildID BuildID, params *GetTemplatesTemplateIDBuildsBuildIDStatusParams) (*http.Request, error) {
 	var err error
@@ -2177,6 +2561,22 @@ func NewGetTemplatesTemplateIDBuildsBuildIDStatusRequest(server string, template
 		if params.LogsOffset != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "logsOffset", runtime.ParamLocationQuery, *params.LogsOffset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -2449,6 +2849,46 @@ func NewPostV2TemplatesTemplateIDBuildsBuildIDRequestWithBody(server string, tem
 	return req, nil
 }
 
+// NewPostV3TemplatesRequest calls the generic PostV3Templates builder with application/json body
+func NewPostV3TemplatesRequest(server string, body PostV3TemplatesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostV3TemplatesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostV3TemplatesRequestWithBody generates requests for PostV3Templates with any type of body
+func NewPostV3TemplatesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v3/templates")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -2500,6 +2940,9 @@ type ClientWithResponsesInterface interface {
 	// DeleteAccessTokensAccessTokenIDWithResponse request
 	DeleteAccessTokensAccessTokenIDWithResponse(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*DeleteAccessTokensAccessTokenIDResponse, error)
 
+	// PostAdminTeamsTeamIDSandboxesKillWithResponse request
+	PostAdminTeamsTeamIDSandboxesKillWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*PostAdminTeamsTeamIDSandboxesKillResponse, error)
+
 	// GetApiKeysWithResponse request
 	GetApiKeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiKeysResponse, error)
 
@@ -2547,6 +2990,11 @@ type ClientWithResponsesInterface interface {
 	// GetSandboxesSandboxIDWithResponse request
 	GetSandboxesSandboxIDWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDResponse, error)
 
+	// PostSandboxesSandboxIDConnectWithBodyWithResponse request with any body
+	PostSandboxesSandboxIDConnectWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDConnectResponse, error)
+
+	PostSandboxesSandboxIDConnectWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDConnectJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDConnectResponse, error)
+
 	// GetSandboxesSandboxIDLogsWithResponse request
 	GetSandboxesSandboxIDLogsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDLogsResponse, error)
 
@@ -2591,6 +3039,9 @@ type ClientWithResponsesInterface interface {
 	// DeleteTemplatesTemplateIDWithResponse request
 	DeleteTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*DeleteTemplatesTemplateIDResponse, error)
 
+	// GetTemplatesTemplateIDWithResponse request
+	GetTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDResponse, error)
+
 	// PatchTemplatesTemplateIDWithBodyWithResponse request with any body
 	PatchTemplatesTemplateIDWithBodyWithResponse(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchTemplatesTemplateIDResponse, error)
 
@@ -2603,6 +3054,9 @@ type ClientWithResponsesInterface interface {
 
 	// PostTemplatesTemplateIDBuildsBuildIDWithResponse request
 	PostTemplatesTemplateIDBuildsBuildIDWithResponse(ctx context.Context, templateID TemplateID, buildID BuildID, reqEditors ...RequestEditorFn) (*PostTemplatesTemplateIDBuildsBuildIDResponse, error)
+
+	// GetTemplatesTemplateIDBuildsBuildIDLogsWithResponse request
+	GetTemplatesTemplateIDBuildsBuildIDLogsWithResponse(ctx context.Context, templateID TemplateID, buildID BuildID, params *GetTemplatesTemplateIDBuildsBuildIDLogsParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDBuildsBuildIDLogsResponse, error)
 
 	// GetTemplatesTemplateIDBuildsBuildIDStatusWithResponse request
 	GetTemplatesTemplateIDBuildsBuildIDStatusWithResponse(ctx context.Context, templateID TemplateID, buildID BuildID, params *GetTemplatesTemplateIDBuildsBuildIDStatusParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDBuildsBuildIDStatusResponse, error)
@@ -2622,6 +3076,11 @@ type ClientWithResponsesInterface interface {
 	PostV2TemplatesTemplateIDBuildsBuildIDWithBodyWithResponse(ctx context.Context, templateID TemplateID, buildID BuildID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV2TemplatesTemplateIDBuildsBuildIDResponse, error)
 
 	PostV2TemplatesTemplateIDBuildsBuildIDWithResponse(ctx context.Context, templateID TemplateID, buildID BuildID, body PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PostV2TemplatesTemplateIDBuildsBuildIDResponse, error)
+
+	// PostV3TemplatesWithBodyWithResponse request with any body
+	PostV3TemplatesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV3TemplatesResponse, error)
+
+	PostV3TemplatesWithResponse(ctx context.Context, body PostV3TemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostV3TemplatesResponse, error)
 }
 
 type PostAccessTokensResponse struct {
@@ -2666,6 +3125,31 @@ func (r DeleteAccessTokensAccessTokenIDResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r DeleteAccessTokensAccessTokenIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostAdminTeamsTeamIDSandboxesKillResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AdminSandboxKillResult
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostAdminTeamsTeamIDSandboxesKillResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostAdminTeamsTeamIDSandboxesKillResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2987,6 +3471,33 @@ func (r GetSandboxesSandboxIDResponse) StatusCode() int {
 	return 0
 }
 
+type PostSandboxesSandboxIDConnectResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Sandbox
+	JSON201      *Sandbox
+	JSON400      *N400
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostSandboxesSandboxIDConnectResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostSandboxesSandboxIDConnectResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetSandboxesSandboxIDLogsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3239,7 +3750,7 @@ func (r GetTemplatesResponse) StatusCode() int {
 type PostTemplatesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON202      *Template
+	JSON202      *TemplateLegacy
 	JSON400      *N400
 	JSON401      *N401
 	JSON500      *N500
@@ -3284,6 +3795,30 @@ func (r DeleteTemplatesTemplateIDResponse) StatusCode() int {
 	return 0
 }
 
+type GetTemplatesTemplateIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *TemplateWithBuilds
+	JSON401      *N401
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesTemplateIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesTemplateIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type PatchTemplatesTemplateIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3311,7 +3846,7 @@ func (r PatchTemplatesTemplateIDResponse) StatusCode() int {
 type PostTemplatesTemplateIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON202      *Template
+	JSON202      *TemplateLegacy
 	JSON401      *N401
 	JSON500      *N500
 }
@@ -3355,10 +3890,35 @@ func (r PostTemplatesTemplateIDBuildsBuildIDResponse) StatusCode() int {
 	return 0
 }
 
+type GetTemplatesTemplateIDBuildsBuildIDLogsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *TemplateBuildLogsResponse
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesTemplateIDBuildsBuildIDLogsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesTemplateIDBuildsBuildIDLogsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetTemplatesTemplateIDBuildsBuildIDStatusResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *TemplateBuild
+	JSON200      *TemplateBuildInfo
 	JSON401      *N401
 	JSON404      *N404
 	JSON500      *N500
@@ -3434,7 +3994,7 @@ func (r GetV2SandboxesResponse) StatusCode() int {
 type PostV2TemplatesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON202      *Template
+	JSON202      *TemplateLegacy
 	JSON400      *N400
 	JSON401      *N401
 	JSON500      *N500
@@ -3479,6 +4039,31 @@ func (r PostV2TemplatesTemplateIDBuildsBuildIDResponse) StatusCode() int {
 	return 0
 }
 
+type PostV3TemplatesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *TemplateRequestResponseV3
+	JSON400      *N400
+	JSON401      *N401
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostV3TemplatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostV3TemplatesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // PostAccessTokensWithBodyWithResponse request with arbitrary body returning *PostAccessTokensResponse
 func (c *ClientWithResponses) PostAccessTokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error) {
 	rsp, err := c.PostAccessTokensWithBody(ctx, contentType, body, reqEditors...)
@@ -3503,6 +4088,15 @@ func (c *ClientWithResponses) DeleteAccessTokensAccessTokenIDWithResponse(ctx co
 		return nil, err
 	}
 	return ParseDeleteAccessTokensAccessTokenIDResponse(rsp)
+}
+
+// PostAdminTeamsTeamIDSandboxesKillWithResponse request returning *PostAdminTeamsTeamIDSandboxesKillResponse
+func (c *ClientWithResponses) PostAdminTeamsTeamIDSandboxesKillWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*PostAdminTeamsTeamIDSandboxesKillResponse, error) {
+	rsp, err := c.PostAdminTeamsTeamIDSandboxesKill(ctx, teamID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostAdminTeamsTeamIDSandboxesKillResponse(rsp)
 }
 
 // GetApiKeysWithResponse request returning *GetApiKeysResponse
@@ -3654,6 +4248,23 @@ func (c *ClientWithResponses) GetSandboxesSandboxIDWithResponse(ctx context.Cont
 	return ParseGetSandboxesSandboxIDResponse(rsp)
 }
 
+// PostSandboxesSandboxIDConnectWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDConnectResponse
+func (c *ClientWithResponses) PostSandboxesSandboxIDConnectWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDConnectResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDConnectWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDConnectResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostSandboxesSandboxIDConnectWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDConnectJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDConnectResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDConnect(ctx, sandboxID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDConnectResponse(rsp)
+}
+
 // GetSandboxesSandboxIDLogsWithResponse request returning *GetSandboxesSandboxIDLogsResponse
 func (c *ClientWithResponses) GetSandboxesSandboxIDLogsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDLogsResponse, error) {
 	rsp, err := c.GetSandboxesSandboxIDLogs(ctx, sandboxID, params, reqEditors...)
@@ -3794,6 +4405,15 @@ func (c *ClientWithResponses) DeleteTemplatesTemplateIDWithResponse(ctx context.
 	return ParseDeleteTemplatesTemplateIDResponse(rsp)
 }
 
+// GetTemplatesTemplateIDWithResponse request returning *GetTemplatesTemplateIDResponse
+func (c *ClientWithResponses) GetTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDResponse, error) {
+	rsp, err := c.GetTemplatesTemplateID(ctx, templateID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesTemplateIDResponse(rsp)
+}
+
 // PatchTemplatesTemplateIDWithBodyWithResponse request with arbitrary body returning *PatchTemplatesTemplateIDResponse
 func (c *ClientWithResponses) PatchTemplatesTemplateIDWithBodyWithResponse(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchTemplatesTemplateIDResponse, error) {
 	rsp, err := c.PatchTemplatesTemplateIDWithBody(ctx, templateID, contentType, body, reqEditors...)
@@ -3835,6 +4455,15 @@ func (c *ClientWithResponses) PostTemplatesTemplateIDBuildsBuildIDWithResponse(c
 		return nil, err
 	}
 	return ParsePostTemplatesTemplateIDBuildsBuildIDResponse(rsp)
+}
+
+// GetTemplatesTemplateIDBuildsBuildIDLogsWithResponse request returning *GetTemplatesTemplateIDBuildsBuildIDLogsResponse
+func (c *ClientWithResponses) GetTemplatesTemplateIDBuildsBuildIDLogsWithResponse(ctx context.Context, templateID TemplateID, buildID BuildID, params *GetTemplatesTemplateIDBuildsBuildIDLogsParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDBuildsBuildIDLogsResponse, error) {
+	rsp, err := c.GetTemplatesTemplateIDBuildsBuildIDLogs(ctx, templateID, buildID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesTemplateIDBuildsBuildIDLogsResponse(rsp)
 }
 
 // GetTemplatesTemplateIDBuildsBuildIDStatusWithResponse request returning *GetTemplatesTemplateIDBuildsBuildIDStatusResponse
@@ -3898,6 +4527,23 @@ func (c *ClientWithResponses) PostV2TemplatesTemplateIDBuildsBuildIDWithResponse
 	return ParsePostV2TemplatesTemplateIDBuildsBuildIDResponse(rsp)
 }
 
+// PostV3TemplatesWithBodyWithResponse request with arbitrary body returning *PostV3TemplatesResponse
+func (c *ClientWithResponses) PostV3TemplatesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV3TemplatesResponse, error) {
+	rsp, err := c.PostV3TemplatesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostV3TemplatesResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostV3TemplatesWithResponse(ctx context.Context, body PostV3TemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostV3TemplatesResponse, error) {
+	rsp, err := c.PostV3Templates(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostV3TemplatesResponse(rsp)
+}
+
 // ParsePostAccessTokensResponse parses an HTTP response from a PostAccessTokensWithResponse call
 func ParsePostAccessTokensResponse(rsp *http.Response) (*PostAccessTokensResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3952,6 +4598,53 @@ func ParseDeleteAccessTokensAccessTokenIDResponse(rsp *http.Response) (*DeleteAc
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostAdminTeamsTeamIDSandboxesKillResponse parses an HTTP response from a PostAdminTeamsTeamIDSandboxesKillWithResponse call
+func ParsePostAdminTeamsTeamIDSandboxesKillResponse(rsp *http.Response) (*PostAdminTeamsTeamIDSandboxesKillResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostAdminTeamsTeamIDSandboxesKillResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminSandboxKillResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -4519,6 +5212,67 @@ func ParseGetSandboxesSandboxIDResponse(rsp *http.Response) (*GetSandboxesSandbo
 	return response, nil
 }
 
+// ParsePostSandboxesSandboxIDConnectResponse parses an HTTP response from a PostSandboxesSandboxIDConnectWithResponse call
+func ParsePostSandboxesSandboxIDConnectResponse(rsp *http.Response) (*PostSandboxesSandboxIDConnectResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostSandboxesSandboxIDConnectResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Sandbox
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Sandbox
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetSandboxesSandboxIDLogsResponse parses an HTTP response from a GetSandboxesSandboxIDLogsWithResponse call
 func ParseGetSandboxesSandboxIDLogsResponse(rsp *http.Response) (*GetSandboxesSandboxIDLogsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4997,7 +5751,7 @@ func ParsePostTemplatesResponse(rsp *http.Response) (*PostTemplatesResponse, err
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
-		var dest Template
+		var dest TemplateLegacy
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -5043,6 +5797,46 @@ func ParseDeleteTemplatesTemplateIDResponse(rsp *http.Response) (*DeleteTemplate
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTemplatesTemplateIDResponse parses an HTTP response from a GetTemplatesTemplateIDWithResponse call
+func ParseGetTemplatesTemplateIDResponse(rsp *http.Response) (*GetTemplatesTemplateIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesTemplateIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TemplateWithBuilds
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -5117,7 +5911,7 @@ func ParsePostTemplatesTemplateIDResponse(rsp *http.Response) (*PostTemplatesTem
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
-		var dest Template
+		var dest TemplateLegacy
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -5175,6 +5969,53 @@ func ParsePostTemplatesTemplateIDBuildsBuildIDResponse(rsp *http.Response) (*Pos
 	return response, nil
 }
 
+// ParseGetTemplatesTemplateIDBuildsBuildIDLogsResponse parses an HTTP response from a GetTemplatesTemplateIDBuildsBuildIDLogsWithResponse call
+func ParseGetTemplatesTemplateIDBuildsBuildIDLogsResponse(rsp *http.Response) (*GetTemplatesTemplateIDBuildsBuildIDLogsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesTemplateIDBuildsBuildIDLogsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TemplateBuildLogsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetTemplatesTemplateIDBuildsBuildIDStatusResponse parses an HTTP response from a GetTemplatesTemplateIDBuildsBuildIDStatusWithResponse call
 func ParseGetTemplatesTemplateIDBuildsBuildIDStatusResponse(rsp *http.Response) (*GetTemplatesTemplateIDBuildsBuildIDStatusResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -5190,7 +6031,7 @@ func ParseGetTemplatesTemplateIDBuildsBuildIDStatusResponse(rsp *http.Response) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest TemplateBuild
+		var dest TemplateBuildInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -5338,7 +6179,7 @@ func ParsePostV2TemplatesResponse(rsp *http.Response) (*PostV2TemplatesResponse,
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
-		var dest Template
+		var dest TemplateLegacy
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -5384,6 +6225,53 @@ func ParsePostV2TemplatesTemplateIDBuildsBuildIDResponse(rsp *http.Response) (*P
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostV3TemplatesResponse parses an HTTP response from a PostV3TemplatesWithResponse call
+func ParsePostV3TemplatesResponse(rsp *http.Response) (*PostV3TemplatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostV3TemplatesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest TemplateRequestResponseV3
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

@@ -31,6 +31,9 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
 
 type ProcessOptions struct {
+	// IoEngine is the io engine to use for the rootfs drive.
+	IoEngine *string
+
 	// InitScriptPath is the path to the init script that will be executed inside the VM on kernel start.
 	InitScriptPath string
 
@@ -56,6 +59,7 @@ type Process struct {
 
 	cmd *exec.Cmd
 
+	config                cfg.BuilderConfig
 	firecrackerSocketPath string
 
 	slot               *network.Slot
@@ -123,6 +127,7 @@ func NewProcess(
 		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
+		config:                config,
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		providerRootfsPath:    rootfsProviderPath,
 		files:                 files,
@@ -142,21 +147,21 @@ func (p *Process) configure(
 	ctx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
 
-	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.InfoLevel}
+	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger.Detach(ctx), Level: zap.InfoLevel}
 	stdoutWriters := []io.Writer{stdoutWriter}
 	if stdoutExternal != nil {
 		stdoutWriters = append(stdoutWriters, stdoutExternal)
 	}
 	p.cmd.Stdout = io.MultiWriter(stdoutWriters...)
 
-	stderrWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.ErrorLevel}
+	stderrWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger.Detach(ctx), Level: zap.ErrorLevel}
 	stderrWriters := []io.Writer{stderrWriter}
 	if stderrExternal != nil {
 		stderrWriters = append(stderrWriters, stderrExternal)
 	}
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
-	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -185,7 +190,7 @@ func (p *Process) configure(
 				}
 			}
 
-			zap.L().Error("error waiting for fc process", zap.Error(waitErr))
+			logger.L().Error(ctx, "error waiting for fc process", zap.Error(waitErr))
 
 			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
 			p.Exit.SetError(errMsg)
@@ -285,12 +290,12 @@ func (p *Process) Create(
 	telemetry.ReportEvent(ctx, "set fc boot source config")
 
 	// Rootfs
-	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
-	err = p.client.setRootfsDrive(ctx, p.rootfsPath)
+	err = p.client.setRootfsDrive(ctx, p.rootfsPath, options.IoEngine)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -314,6 +319,14 @@ func (p *Process) Create(
 		return errors.Join(fmt.Errorf("error setting fc machine config: %w", err), fcStopErr)
 	}
 	telemetry.ReportEvent(ctx, "set fc machine config")
+
+	err = p.client.setEntropyDevice(ctx)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting fc entropy config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc entropy config")
 
 	err = p.client.startVM(ctx)
 	if err != nil {
@@ -350,7 +363,7 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
 
-	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -424,19 +437,31 @@ func (p *Process) Stop(ctx context.Context) error {
 		return fmt.Errorf("fc process not started")
 	}
 
+	if hasProcessExited(p.cmd) {
+		logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
+
+		return nil
+	}
+
 	// this function should never fail b/c a previous context was canceled.
 	ctx = context.WithoutCancel(ctx)
 
 	state, err := getProcessState(ctx, p.cmd.Process.Pid)
 	if err != nil {
-		zap.L().Warn("failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+		logger.L().Warn(ctx, "failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	} else if state == "D" {
-		zap.L().Info("fc process is in the D state before we call SIGTERM", logger.WithSandboxID(p.files.SandboxID))
+		logger.L().Info(ctx, "fc process is in the D state before we call SIGTERM", logger.WithSandboxID(p.files.SandboxID))
 	}
 
 	err = p.cmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {
-		zap.L().Warn("failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+		if errors.Is(err, os.ErrProcessDone) {
+			logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
+
+			return nil
+		}
+
+		logger.L().Warn(ctx, "failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
 
 	go func() {
@@ -445,16 +470,16 @@ func (p *Process) Stop(ctx context.Context) error {
 		case <-time.After(10 * time.Second):
 			err := p.cmd.Process.Kill()
 			if err != nil {
-				zap.L().Warn("failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+				logger.L().Warn(ctx, "failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 			} else {
-				zap.L().Info("sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
+				logger.L().Info(ctx, "sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
 			}
 
 			state, err := getProcessState(ctx, p.cmd.Process.Pid)
 			if err != nil {
-				zap.L().Warn("failed to get fc process state after sending SIGKILL", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+				logger.L().Warn(ctx, "failed to get fc process state after sending SIGKILL", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 			} else if state == "D" {
-				zap.L().Info("fc process is in the D state after we call SIGKILL", logger.WithSandboxID(p.files.SandboxID))
+				logger.L().Info(ctx, "fc process is in the D state after we call SIGKILL", logger.WithSandboxID(p.files.SandboxID))
 			}
 
 		// If the FC process exited, we can return.
@@ -464,6 +489,10 @@ func (p *Process) Stop(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+func hasProcessExited(cmd *exec.Cmd) bool {
+	return cmd == nil || cmd.ProcessState != nil
 }
 
 func (p *Process) Pause(ctx context.Context) error {

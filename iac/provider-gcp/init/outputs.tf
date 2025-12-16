@@ -46,6 +46,10 @@ output "notification_email_secret_version" {
   value = google_secret_manager_secret_version.notification_email_value
 }
 
+output "redis_tls_ca_base64_secret_version" {
+  value = google_secret_manager_secret_version.redis_tls_ca_base64
+}
+
 output "loki_bucket_name" {
   value = google_storage_bucket.loki_storage_bucket.name
 }

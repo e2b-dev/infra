@@ -135,7 +135,7 @@ resource "google_compute_instance_template" "clickhouse" {
     boot         = true
     source_image = data.google_compute_image.clickhouse_source_image.id
     disk_size_gb = 200
-    disk_type    = "pd-ssd"
+    disk_type    = var.clickhouse_boot_disk_type
   }
 
   network_interface {

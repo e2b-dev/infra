@@ -1,38 +1,24 @@
 import { Sandbox } from "@e2b/code-interpreter";
-import { log } from "./utils.ts";
+import { DEBUG_TIMEOUT_MS, log, runTestWithSandbox } from "./utils.ts";
 
-let sandbox: Sandbox | null = null;
+// Create a E2B Code Interpreter with JavaScript kernel
+log("creating sandbox");
+const sandbox = await Sandbox.create({ timeoutMs: DEBUG_TIMEOUT_MS });
+log("ℹ️ sandbox created", sandbox.sandboxId);
 
-try {
-  // Create a E2B Code Interpreter with JavaScript kernel
-  log("creating sandbox");
-  sandbox = await Sandbox.create();
-  log("ℹ️ sandbox created", sandbox.sandboxId);
-} catch (error) {
-  log("Test failed:", error);
-  throw new Error("error creating sandbox", {
-    cause: error,
-  });
-}
-
-try {
+await runTestWithSandbox(sandbox, "run-code", async () => {
   // Execute JavaScript cells
   log("running code");
-  await sandbox.runCode("x = 1");
+  await sandbox.runCode("x = 1", {
+    requestTimeoutMs: 10000,
+  });
   log("first code executed");
-  const execution = await sandbox.runCode("x+=1; x");
+  const execution = await sandbox.runCode("x+=1; x", {
+    requestTimeoutMs: 10000,
+  });
   log("second code executed");
   // Output result
   log(execution.text);
-} catch (error) {
-  log("Test failed:", error);
-  throw new Error("error running code", {
-    cause: error,
-  });
-} finally {
-  log("killing sandbox");
-  await sandbox?.kill();
-  log("sandbox killed");
-}
+});
 
 log("done");

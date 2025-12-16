@@ -3,14 +3,11 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 -include ${ENV_FILE}
 
-# Login for Packer and Docker (uses gcloud user creds)
-# Login for Terraform (uses application default creds)
-.PHONY: login-gcloud
-login-gcloud:
-	gcloud --quiet auth login
-	gcloud config set project "$(GCP_PROJECT_ID)"
-	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
-	gcloud --quiet auth application-default login
+AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+
+.PHONY: provider-login
+provider-login:
+	$(MAKE) -C iac/provider-$(PROVIDER) provider-login
 
 .PHONY: init
 init:
@@ -94,8 +91,24 @@ build-and-upload/%:
 
 .PHONY: copy-public-builds
 copy-public-builds:
+ifeq ($(PROVIDER),aws)
+	mkdir -p ./.kernels
+	mkdir -p ./.firecrackers
+	gsutil -m cp -r gs://e2b-prod-public-builds/kernels/* ./.kernels/
+	gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* ./.firecrackers/
+	aws s3 cp ./.kernels/ s3://${AWS_BUCKET_PREFIX}fc-kernels/ --recursive --profile ${AWS_PROFILE}
+	aws s3 cp ./.firecrackers/ s3://${AWS_BUCKET_PREFIX}fc-versions/ --recursive --profile ${AWS_PROFILE}
+	rm -rf ./.kernels
+	rm -rf ./.firecrackers
+else
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
+endif
+
+.PHONY: download-public-kernels
+download-public-kernels:
+	mkdir -p ./packages/fc-kernels
+	gsutil cp -r gs://e2b-prod-public-builds/kernels/* ./packages/fc-kernels/
 
 .PHONY: generate
 generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate/shared generate-tests generate-mocks
@@ -115,12 +128,16 @@ generate-tests/%:
 migrate:
 	$(MAKE) -C packages/db migrate
 
-.PHONY: switch-env
-switch-env:
+.PHONY: set-env
+set-env:
 	@ touch .last_used_env
-	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ echo $(ENV) > .last_used_env
 	@ . ${ENV_FILE}
+
+.PHONY: switch-env
+switch-env:
+	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(MAKE) set-env ENV=$(ENV)
 	make -C iac/provider-gcp switch
 
 .PHONY: setup-ssh
@@ -146,14 +163,12 @@ connect-orchestrator:
 
 .PHONY: fmt
 fmt:
-	@./scripts/golangci-lint-install.sh "2.4.0"
 	golangci-lint fmt
 	terraform fmt -recursive
 
 .PHONY: lint
 lint:
-	@./scripts/golangci-lint-install.sh "2.4.0"
-	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/... --fix
+	go work edit -json | jq -r '.Use[].DiskPath' | xargs -P 10 -I{} golangci-lint run {}/... --fix
 
 .PHONY: generate-mocks
 generate-mocks:

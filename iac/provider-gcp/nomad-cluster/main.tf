@@ -4,12 +4,22 @@ locals {
   nfs_mount_path   = "/orchestrator/shared-store"
   nfs_mount_subdir = "chunks-cache"
   nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
-    "tcp",                     // docs say to avoid it on highspeed connections
     format("nfsvers=%s", var.filestore_cache_enabled ? module.filestore[0].nfs_version == "NFS_V3" ? "3" : "4" : ""),
-    "lookupcache=none", // do not cache file handles
-    "noac",             // do not use attribute caching
-    "noacl",            // do not use an acl
-    "nolock",           // do not use locking
+
+    "actimeo=600",          // cache attributes for 60 seconds
+    "async",                // delay writes until certain conditions are met
+    "hard",                 // retry nfs requests indefinitely until they succeed, never fail
+    "lookupcache=positive", // cache successful file handle lookups
+    "nconnect=7",           // use multiple connections
+    "noacl",                // do not use an acl
+    "nocto",                // skip "close-to-open" attribute checks
+    "nolock",               // do not use locking
+    "noresvport",           // use a non-privileged source port
+    "retrans=2",            // retry two times before performing recovery actions
+    "rsize=1048576",        // receive 1 MB per read request
+    "sec=sys",              // use AUTH_SYS for all requests
+    "timeo=600",            // wait 60 seconds (measured in deci-seconds) before retrying a failed request
+    "wsize=1048576",        // receive 1 MB per write request
   ])
 
   file_hash = {
@@ -104,12 +114,10 @@ module "network" {
   domain_name               = var.domain_name
   additional_domains        = var.additional_domains
 
-  client_instance_group    = google_compute_region_instance_group_manager.client_pool.instance_group
   client_proxy_port        = var.edge_proxy_port
   client_proxy_health_port = var.edge_api_port
 
   api_instance_group    = google_compute_instance_group_manager.api_pool.instance_group
-  build_instance_group  = google_compute_instance_group_manager.build_pool.instance_group
   server_instance_group = google_compute_instance_group_manager.server_pool.instance_group
 
   nomad_port = var.nomad_port

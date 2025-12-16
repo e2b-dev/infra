@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -22,14 +22,6 @@ func (a *APIStore) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
-
-		return
-	}
-
-	// requests was for this service instance
-	if body.ServiceInstanceID == a.info.ServiceInstanceID && body.ServiceType == api.ClusterNodeTypeEdge {
-		a.info.SetStatus(api.Unhealthy)
-		c.Status(http.StatusOK)
 
 		return
 	}

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"testing"
 
@@ -13,18 +14,20 @@ import (
 )
 
 type SandboxConfig struct {
-	metadata  api.SandboxMetadata
-	timeout   int32
-	autoPause bool
+	templateID          string
+	metadata            api.SandboxMetadata
+	timeout             int32
+	autoPause           bool
+	network             *api.SandboxNetworkConfig
+	allowInternetAccess *bool
+	secure              *bool
 }
 
 type SandboxOption func(config *SandboxConfig)
 
 func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
 	return func(config *SandboxConfig) {
-		for key, value := range metadata {
-			config.metadata[key] = value
-		}
+		maps.Copy(config.metadata, metadata)
 	}
 }
 
@@ -43,6 +46,30 @@ func WithTimeout(timeout int32) SandboxOption {
 func WithAutoPause(autoPause bool) SandboxOption {
 	return func(config *SandboxConfig) {
 		config.autoPause = autoPause
+	}
+}
+
+func WithSecure(secure bool) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.secure = &secure
+	}
+}
+
+func WithNetwork(network *api.SandboxNetworkConfig) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.network = network
+	}
+}
+
+func WithAllowInternetAccess(allow bool) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.allowInternetAccess = &allow
+	}
+}
+
+func WithTemplateID(templateID string) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.templateID = templateID
 	}
 }
 
@@ -65,11 +92,19 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		option(&config)
 	}
 
+	templateID := config.templateID
+	if templateID == "" {
+		templateID = setup.SandboxTemplateID
+	}
+
 	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
-		TemplateID: setup.SandboxTemplateID,
-		Timeout:    &config.timeout,
-		Metadata:   &config.metadata,
-		AutoPause:  &config.autoPause,
+		TemplateID:          templateID,
+		Timeout:             &config.timeout,
+		Metadata:            &config.metadata,
+		AutoPause:           &config.autoPause,
+		Network:             config.network,
+		AllowInternetAccess: config.allowInternetAccess,
+		Secure:              config.secure,
 	}, setup.WithAPIKey())
 
 	require.NoError(t, err)

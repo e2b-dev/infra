@@ -80,6 +80,57 @@ func WithSandboxSleepingClient(baseSandboxCreateTime time.Duration) TestOptions 
 	}
 }
 
+func WithCPUInfo(cpuArch, cpuFamily, cpuModel string) TestOptions {
+	return func(node *TestNode) {
+		node.machineInfo.CPUArchitecture = cpuArch
+		node.machineInfo.CPUFamily = cpuFamily
+		node.machineInfo.CPUModel = cpuModel
+	}
+}
+
+// mockSandboxClientWithError implements orchestrator.SandboxServiceClient that returns an error
+type mockSandboxClientWithError struct {
+	orchestrator.SandboxServiceClient
+
+	err error
+}
+
+// Create is a mock implementation that returns a specific error
+func (n *mockSandboxClientWithError) Create(_ context.Context, _ *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+	return nil, n.err
+}
+
+func WithSandboxCreateError(err error) TestOptions {
+	return func(node *TestNode) {
+		node.client.Sandbox = &mockSandboxClientWithError{
+			err: err,
+		}
+	}
+}
+
+// MockSandboxClientCustom allows custom error logic per call
+type MockSandboxClientCustom struct {
+	orchestrator.SandboxServiceClient
+
+	CreateFunc func() error
+}
+
+// Create calls the custom function to determine the error
+func (n *MockSandboxClientCustom) Create(_ context.Context, _ *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+	if n.CreateFunc != nil {
+		if err := n.CreateFunc(); err != nil {
+			return nil, err
+		}
+	}
+
+	return &orchestrator.SandboxCreateResponse{}, nil
+}
+
+// SetSandboxClient allows setting a custom sandbox client on a test node
+func (n *TestNode) SetSandboxClient(client orchestrator.SandboxServiceClient) {
+	n.client.Sandbox = client
+}
+
 // NewTestNode creates a properly initialized Node for testing purposes
 // It uses a mock gRPC client and has simplified Status() method behavior
 func NewTestNode(id string, status api.NodeStatus, cpuAllocated int64, cpuCount uint32, options ...TestOptions) *TestNode {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -14,7 +13,6 @@ import (
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -42,7 +40,6 @@ type ClusterGRPC struct {
 
 type ClusterHTTP struct {
 	Client *api.ClientWithResponses
-	NodeID string
 }
 
 var (
@@ -50,7 +47,7 @@ var (
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
 
-func NewCluster(tel *telemetry.Client, endpoint string, endpointTLS bool, secret string, clusterID uuid.UUID, sandboxDomain *string) (*Cluster, error) {
+func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, endpointTLS bool, secret string, clusterID uuid.UUID, sandboxDomain *string) (*Cluster, error) {
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
@@ -96,7 +93,7 @@ func NewCluster(tel *telemetry.Client, endpoint string, endpointTLS bool, secret
 	c.synchronization = synchronization.NewSynchronize("cluster-instances", "Cluster instances", store)
 
 	// periodically sync cluster instances
-	go c.startSync()
+	go c.startSync(ctx)
 
 	return c, nil
 }
@@ -165,8 +162,8 @@ func (c *Cluster) GetGRPC(serviceInstanceID string) *ClusterGRPC {
 	return &ClusterGRPC{c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: serviceInstanceID})}
 }
 
-func (c *Cluster) GetHTTP(nodeID string) *ClusterHTTP {
-	return &ClusterHTTP{c.httpClient, nodeID}
+func (c *Cluster) GetHTTP() *ClusterHTTP {
+	return &ClusterHTTP{c.httpClient}
 }
 
 func (c *Cluster) GetOrchestrators() []*ClusterInstance {
@@ -182,38 +179,4 @@ func (c *Cluster) GetOrchestrators() []*ClusterInstance {
 
 func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
 	return c.httpClient
-}
-
-func (c *Cluster) RegisterSandboxInCatalog(ctx context.Context, serviceInstanceID string, sandboxStartTime time.Time, sandboxConfig *orchestratorgrpc.SandboxConfig) error {
-	body := api.V1SandboxCatalogCreateJSONRequestBody{
-		OrchestratorID: serviceInstanceID,
-
-		ExecutionID:      sandboxConfig.GetExecutionId(),
-		SandboxID:        sandboxConfig.GetSandboxId(),
-		SandboxMaxLength: sandboxConfig.GetMaxSandboxLength(),
-		SandboxStartTime: sandboxStartTime,
-	}
-
-	rsp, err := c.httpClient.V1SandboxCatalogCreate(ctx, body)
-	if err != nil {
-		return fmt.Errorf("failed to register sandbox in catalog: %w", err)
-	}
-	defer rsp.Body.Close()
-
-	return nil
-}
-
-func (c *Cluster) RemoveSandboxFromCatalog(ctx context.Context, sandboxID string, executionID string) error {
-	body := api.V1SandboxCatalogDeleteJSONRequestBody{
-		SandboxID:   sandboxID,
-		ExecutionID: executionID,
-	}
-
-	rsp, err := c.httpClient.V1SandboxCatalogDelete(ctx, body)
-	if err != nil {
-		return fmt.Errorf("failed to remove sandbox from catalog: %w", err)
-	}
-	defer rsp.Body.Close()
-
-	return nil
 }

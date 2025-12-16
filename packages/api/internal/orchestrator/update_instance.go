@@ -2,13 +2,14 @@ package orchestrator
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -41,9 +42,14 @@ func (o *Orchestrator) UpdateSandbox(
 			EndTime:   timestamppb.New(endTime),
 		},
 	)
-
-	err = utils.UnwrapGRPCError(err)
 	if err != nil {
+		grpcErr, ok := status.FromError(err)
+		if ok && grpcErr.Code() == codes.NotFound {
+			return ErrSandboxNotFound
+		}
+
+		err = utils.UnwrapGRPCError(err)
+
 		return fmt.Errorf("failed to update sandbox '%s': %w", sandboxID, err)
 	}
 

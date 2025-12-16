@@ -23,9 +23,34 @@ const (
 	TierKind ldcontext.Kind = "tier"
 
 	ServiceKind ldcontext.Kind = "service"
+
+	TemplateKind ldcontext.Kind = "template"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
+
+type JSONFlag struct {
+	name     string
+	fallback ldvalue.Value
+}
+
+func (f JSONFlag) String() string {
+	return f.name
+}
+
+func (f JSONFlag) Fallback() *ldvalue.Value {
+	return &f.fallback
+}
+
+func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
+	flag := JSONFlag{name: name, fallback: fallback}
+	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(fallback)
+	LaunchDarklyOfflineStore.Update(builder)
+
+	return flag
+}
+
+var CleanNFSCacheExperimental = newJSONFlag("clean-nfs-cache-experimental", ldvalue.Null())
 
 type BoolFlag struct {
 	name     string
@@ -45,15 +70,13 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 }
 
 var (
-	MetricsWriteFlagName                = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
-	MetricsReadFlagName                 = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
-	SandboxLifeCycleEventsWriteFlagName = newBoolFlag("sandbox-lifecycle-events-write", env.IsDevelopment())
-	SnapshotFeatureFlagName             = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
-	TemplateFeatureFlagName             = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
-	SandboxEventsPublishFlagName        = newBoolFlag("sandbox-events-publish", env.IsDevelopment())
-	BestOfKPlacementAlgorithm           = newBoolFlag("best-of-k-placement-algorithm", env.IsDevelopment())
-	BestOfKCanFit                       = newBoolFlag("best-of-k-can-fit", true)
-	BestOfKTooManyStarting              = newBoolFlag("best-of-k-too-many-starting", false)
+	MetricsWriteFlagName               = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
+	MetricsReadFlagName                = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
+	SnapshotFeatureFlagName            = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
+	TemplateFeatureFlagName            = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
+	BestOfKCanFit                      = newBoolFlag("best-of-k-can-fit", true)
+	BestOfKTooManyStarting             = newBoolFlag("best-of-k-too-many-starting", false)
+	EdgeProvidedSandboxMetricsFlagName = newBoolFlag("edge-provided-sandbox-metrics", false)
 )
 
 type IntFlag struct {
@@ -93,4 +116,29 @@ var (
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
 	// that can be used before the cache starts evicting items.
 	BuildCacheMaxUsagePercentage = newIntFlag("build-cache-max-usage-percentage", 85)
+	BuildProvisionVersion        = newIntFlag("build-provision-version", 0)
 )
+
+type StringFlag struct {
+	name     string
+	fallback string
+}
+
+func (f StringFlag) String() string {
+	return f.name
+}
+
+func (f StringFlag) Fallback() string {
+	return f.fallback
+}
+
+func newStringFlag(name string, fallback string) StringFlag {
+	flag := StringFlag{name: name, fallback: fallback}
+	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback))
+	LaunchDarklyOfflineStore.Update(builder)
+
+	return flag
+}
+
+// BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
+var BuildIoEngine = newStringFlag("build-io-engine", "Sync")

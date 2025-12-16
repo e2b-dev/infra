@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -38,7 +39,7 @@ type StepBuilder struct {
 	stepNumber int
 	step       *templatemanager.TemplateStep
 
-	logger              *zap.Logger
+	logger              logger.Logger
 	defaultLoggingLevel zapcore.Level
 	proxy               *proxy.SandboxProxy
 
@@ -52,7 +53,7 @@ type StepBuilder struct {
 func New(
 	buildContext buildcontext.BuildContext,
 	sandboxFactory *sandbox.Factory,
-	logger *zap.Logger,
+	logger logger.Logger,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
 	commandExecutor *commands.CommandExecutor,
@@ -112,19 +113,19 @@ func (sb *StepBuilder) Layer(
 	if !forceBuild {
 		m, err := sb.index.LayerMetaFromHash(ctx, hash)
 		if err != nil {
-			sb.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+			sb.logger.Info(ctx, "layer not found in cache, building new step layer", zap.Error(err), zap.String("hash", hash))
 		} else {
 			// Check if the layer is cached
 			meta, err := sb.index.Cached(ctx, m.Template.BuildID)
-			if err != nil {
-				zap.L().Info("layer not cached, building new layer", zap.Error(err), zap.String("hash", hash))
-			} else {
+			if err == nil {
 				return phases.LayerResult{
 					Metadata: meta,
 					Cached:   true,
 					Hash:     hash,
 				}, nil
 			}
+
+			logger.L().Info(ctx, "layer not cached, building new layer", zap.Error(err), zap.String("hash", hash))
 		}
 	}
 
@@ -144,7 +145,7 @@ func (sb *StepBuilder) Layer(
 
 func (sb *StepBuilder) Build(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	prefix string,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,

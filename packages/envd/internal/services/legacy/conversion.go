@@ -2,6 +2,7 @@ package legacy
 
 import (
 	"errors"
+	"maps"
 	"net/http"
 	"reflect"
 
@@ -175,9 +176,7 @@ func maybeConvertResponse(logger *zerolog.Logger, response connect.AnyResponse) 
 }
 
 func copyHeaders(src, dst http.Header) {
-	for key, values := range src {
-		dst[key] = values
-	}
+	maps.Copy(dst, src)
 }
 
 // Helper functions for WatchDirResponse conversion

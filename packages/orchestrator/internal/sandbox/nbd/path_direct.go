@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -63,13 +64,17 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 	defer func() {
 		// Set the device index to the one returned, correctly capture error values
 		d.deviceIndex = retDeviceIndex
-		zap.L().Debug("opening direct path mount", zap.Uint32("device_index", d.deviceIndex), zap.Error(err))
+		logger.L().Debug(ctx, "opening direct path mount", zap.Uint32("device_index", d.deviceIndex), zap.Error(err))
 	}()
+
+	telemetry.ReportEvent(ctx, "opening direct path mount")
 
 	size, err := d.Backend.Size()
 	if err != nil {
 		return math.MaxUint32, err
 	}
+
+	telemetry.ReportEvent(ctx, "got backend size")
 
 	deviceIndex := uint32(math.MaxUint32)
 
@@ -78,6 +83,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		if err != nil {
 			return math.MaxUint32, err
 		}
+
+		telemetry.ReportEvent(ctx, "got device index")
 
 		d.socksClient = make([]*os.File, 0)
 		d.socksServer = make([]io.Closer, 0)
@@ -100,18 +107,15 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 			dispatch := NewDispatch(serverc, d.Backend)
 			// Start reading commands on the socket and dispatching them to our provider
-			d.handlersWg.Add(1)
-			go func() {
-				defer d.handlersWg.Done()
-
+			d.handlersWg.Go(func() {
 				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
-				zap.L().Info("closing handler for NBD commands",
+				logger.L().Info(ctx, "closing handler for NBD commands",
 					zap.Error(handleErr),
 					zap.Uint32("device_index", deviceIndex),
 					zap.Int("socket_index", i),
 				)
-			}()
+			})
 
 			d.socksServer = append(d.socksServer, serverc)
 			d.socksClient = append(d.socksClient, client)
@@ -134,7 +138,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			break
 		}
 
-		zap.L().Error("error opening NBD, retrying", zap.Error(err), zap.Uint32("device_index", deviceIndex))
+		logger.L().Error(ctx, "error opening NBD, retrying", zap.Error(err), zap.Uint32("device_index", deviceIndex))
 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
@@ -147,7 +151,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		// Release the device back to the pool
 		releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
 		if releaseErr != nil {
-			zap.L().Error("error opening NBD, error releasing device", zap.Error(releaseErr), zap.Uint32("device_index", deviceIndex))
+			logger.L().Error(ctx, "error opening NBD, error releasing device", zap.Error(releaseErr), zap.Uint32("device_index", deviceIndex))
 		}
 
 		if strings.Contains(err.Error(), "invalid argument") {
@@ -169,6 +173,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		default:
 		}
 
+		telemetry.ReportEvent(ctx, "waiting for NBD connection")
+
 		s, err := nbdnl.Status(deviceIndex)
 		if err == nil && s.Connected {
 			break
@@ -176,6 +182,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 		time.Sleep(100 * time.Nanosecond)
 	}
+
+	telemetry.ReportEvent(ctx, "connected to NBD")
 
 	return deviceIndex, nil
 }

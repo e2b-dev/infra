@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -70,7 +71,7 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 
 	apiKeysDB, err := a.sqlcDB.GetTeamAPIKeysWithCreator(ctx, teamID)
 	if err != nil {
-		zap.L().Warn("error when getting team API keys", zap.Error(err))
+		logger.L().Warn(ctx, "error when getting team API keys", zap.Error(err))
 		c.String(http.StatusInternalServerError, "Error when getting team API keys")
 
 		return
@@ -161,7 +162,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
-	user, err := a.db.Client.User.Get(ctx, userID)
+	user, err := a.sqlcDB.GetUser(ctx, userID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err))
 

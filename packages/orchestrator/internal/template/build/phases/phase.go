@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -31,9 +32,9 @@ type BuilderPhase interface {
 	String(ctx context.Context) (string, error)
 	Metadata() PhaseMeta
 
-	Hash(sourceLayer LayerResult) (string, error)
+	Hash(ctx context.Context, sourceLayer LayerResult) (string, error)
 	Layer(ctx context.Context, sourceLayer LayerResult, hash string) (LayerResult, error)
-	Build(ctx context.Context, userLogger *zap.Logger, prefix string, sourceLayer LayerResult, currentLayer LayerResult) (LayerResult, error)
+	Build(ctx context.Context, userLogger logger.Logger, prefix string, sourceLayer LayerResult, currentLayer LayerResult) (LayerResult, error)
 }
 
 type LayerResult struct {
@@ -58,7 +59,8 @@ func layerInfo(
 
 func Run(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	logger logger.Logger,
+	userLogger logger.Logger,
 	bc buildcontext.BuildContext,
 	metrics *metrics.BuildMetrics,
 	builders []BuilderPhase,
@@ -75,15 +77,18 @@ func Run(
 	for _, builder := range builders {
 		meta := builder.Metadata()
 
-		stepUserLogger := userLogger.With(
+		loggerFields := []zap.Field{
 			zap.String("phase", string(meta.Phase)),
 			zap.String("step_type", meta.StepType),
 			zap.Intp("step_number", meta.StepNumber),
 			zap.String("step", phaseToStepString(builder)),
-		)
+		}
+
+		logger.Debug(ctx, "running builder phase", loggerFields...)
+		stepUserLogger := userLogger.With(loggerFields...)
 
 		phaseStartTime := time.Now()
-		hash, err := builder.Hash(sourceLayer)
+		hash, err := builder.Hash(ctx, sourceLayer)
 		if err != nil {
 			return LayerResult{}, fmt.Errorf("getting hash: %w", err)
 		}
@@ -99,7 +104,7 @@ func Run(
 		if err != nil {
 			return LayerResult{}, fmt.Errorf("getting source: %w", err)
 		}
-		stepUserLogger.Info(layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
+		stepUserLogger.Info(ctx, layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
 
 		if currentLayer.Cached {
 			phaseDuration := time.Since(phaseStartTime)

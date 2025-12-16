@@ -29,16 +29,16 @@ job "template-manager-system" {
     }
 
     service {
-      name = "template-manager"
-      port = "${port}"
+      name     = "template-manager"
+      port     = "${port}"
+      provider = "nomad"
 
       check {
-        type         = "grpc"
+        type         = "http"
+        path         = "/health"
         name         = "health"
         interval     = "20s"
         timeout      = "5s"
-        grpc_use_tls = false
-        port         = "${port}"
       }
     }
 
@@ -47,7 +47,7 @@ job "template-manager-system" {
 
 %{ if update_stanza }
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
-      kill_timeout      = "20m"
+      kill_timeout      = "70m"
 %{ else }
       kill_timeout      = "1m"
 %{ endif }
@@ -73,7 +73,6 @@ job "template-manager-system" {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
         ORCHESTRATOR_SERVICES         = "${orchestrator_services}"
-        ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
         SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         DOCKERHUB_REMOTE_REPOSITORY_URL  = "${dockerhub_remote_repository_url}"

@@ -1,5 +1,6 @@
 locals {
-  client_pool_name = "${var.prefix}${var.client_cluster_name}"
+  client_pool_name     = "${var.prefix}${var.client_cluster_name}"
+  client_has_local_ssd = var.client_cluster_cache_disk_type == "local-ssd"
   client_startup_script = templatefile("${path.module}/scripts/start-client.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
     SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
@@ -22,6 +23,8 @@ locals {
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
     NODE_POOL                    = var.orchestrator_node_pool
     BASE_HUGEPAGES_PERCENTAGE    = var.orchestrator_base_hugepages_percentage
+    CACHE_DISK_COUNT             = var.client_cluster_cache_disk_count
+    LOCAL_SSD                    = local.client_has_local_ssd ? "true" : "false"
   })
 }
 
@@ -58,7 +61,17 @@ resource "google_compute_region_autoscaler" "client" {
     mode = "ONLY_SCALE_OUT"
 
     cpu_utilization {
-      target = 0.6
+      target = var.client_cluster_autoscaling_cpu_target
+    }
+
+    dynamic "metric" {
+      for_each = var.client_cluster_autoscaling_memory_target < 100 ? [1] : []
+      content {
+        name   = "agent.googleapis.com/memory/percent_used"
+        type   = "GAUGE"
+        filter = "resource.type = \"gce_instance\" AND metric.labels.state = \"used\""
+        target = var.client_cluster_autoscaling_memory_target
+      }
     }
   }
 }
@@ -131,18 +144,39 @@ resource "google_compute_instance_template" "client" {
   }
 
   disk {
+    auto_delete  = true
     boot         = true
     source_image = data.google_compute_image.client_source_image.id
-    disk_size_gb = 300
-    disk_type    = "pd-ssd"
+    disk_size_gb = var.client_cluster_root_disk_size_gb
+    disk_type    = var.client_boot_disk_type
   }
 
-  disk {
-    auto_delete  = true
-    boot         = false
-    type         = "PERSISTENT"
-    disk_size_gb = var.client_cluster_cache_disk_size_gb
-    disk_type    = var.client_cluster_cache_disk_type
+  # Cache disks - Local SSDs
+  dynamic "disk" {
+    for_each = [
+      for _ in range(local.client_has_local_ssd ? var.client_cluster_cache_disk_count : 0) : {}
+    ]
+
+    content {
+      auto_delete  = true
+      boot         = false
+      disk_size_gb = var.client_cluster_cache_disk_size_gb
+      interface    = "NVME"
+      disk_type    = var.client_cluster_cache_disk_type
+      type         = "SCRATCH"
+    }
+  }
+
+  # Cache Disk - Persistent Disk
+  dynamic "disk" {
+    for_each = [for n in range(!local.client_has_local_ssd ? 1 : 0) : {}]
+    content {
+      auto_delete  = true
+      boot         = false
+      type         = "PERSISTENT"
+      disk_size_gb = var.client_cluster_cache_disk_size_gb
+      disk_type    = var.client_cluster_cache_disk_type
+    }
   }
 
   network_interface {
@@ -171,6 +205,14 @@ resource "google_compute_instance_template" "client" {
   # we need to create a new instance template before we can destroy the old one. Note that any Terraform resource on
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
+    precondition {
+      condition     = local.client_has_local_ssd || var.client_cluster_cache_disk_count == 1
+      error_message = "When using persistent disks for the client cluster cache, only 1 disk is supported."
+    }
+    precondition {
+      condition     = !local.client_has_local_ssd || var.client_cluster_cache_disk_size_gb == 375
+      error_message = "When using local-ssd for the client cluster cache, each disk must be exactly 375 GB."
+    }
     create_before_destroy = true
   }
 

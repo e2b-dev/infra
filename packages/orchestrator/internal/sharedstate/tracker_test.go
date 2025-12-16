@@ -114,7 +114,7 @@ func TestTrackerRoundTrip(t *testing.T) {
 	}, allocated)
 
 	// add a local sandbox
-	tracker.OnInsert(&sandbox.Sandbox{
+	tracker.OnInsert(ctx, &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config: sandbox.Config{
 				Vcpu:            1,
@@ -172,7 +172,7 @@ func TestTracker_handleWriteSelf(t *testing.T) {
 	tracker, err := New(10 * time.Second)
 	require.NoError(t, err)
 
-	tracker.OnInsert(&sandbox.Sandbox{
+	tracker.OnInsert(t.Context(), &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config: sandbox.Config{
 				Vcpu:            1,

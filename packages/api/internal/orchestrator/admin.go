@@ -2,10 +2,10 @@ package orchestrator
 
 import (
 	"cmp"
+	"context"
 	"slices"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (o *Orchestrator) AdminNodes() []*api.Node {
+func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
 	apiNodes := make(map[string]*api.Node)
 
 	for _, n := range o.nodes.Items() {
@@ -24,11 +24,18 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 
 		meta := n.Metadata()
 		metrics := n.GetAPIMetric()
+		machineInfo := n.MachineInfo()
 		apiNodes[n.ID] = &api.Node{
-			NodeID:               n.NomadNodeShortID,
-			Id:                   n.ID,
-			ServiceInstanceID:    meta.ServiceInstanceID,
-			ClusterID:            n.ClusterID.String(),
+			NodeID:            n.NomadNodeShortID,
+			Id:                n.ID,
+			ServiceInstanceID: meta.ServiceInstanceID,
+			ClusterID:         n.ClusterID.String(),
+			MachineInfo: api.MachineInfo{
+				CpuArchitecture: machineInfo.CPUArchitecture,
+				CpuFamily:       machineInfo.CPUFamily,
+				CpuModel:        machineInfo.CPUModel,
+				CpuModelName:    machineInfo.CPUModelName,
+			},
 			Status:               n.Status(),
 			CreateSuccesses:      n.PlacementMetrics.SuccessCount(),
 			CreateFails:          n.PlacementMetrics.FailsCount(),
@@ -42,7 +49,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 	for _, sbx := range o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning}) {
 		n, ok := apiNodes[sbx.NodeID]
 		if !ok {
-			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.NodeID), logger.WithSandboxID(sbx.SandboxID))
+			logger.L().Error(ctx, "node for sandbox wasn't found", logger.WithNodeID(sbx.NodeID), logger.WithSandboxID(sbx.SandboxID))
 
 			continue
 		}
@@ -70,13 +77,19 @@ func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeSho
 
 	meta := n.Metadata()
 	metrics := n.GetAPIMetric()
+	machineInfo := n.MachineInfo()
 
 	node := &api.NodeDetail{
 		Id:                n.ID,
 		NodeID:            n.NomadNodeShortID,
 		ClusterID:         n.ClusterID.String(),
 		ServiceInstanceID: meta.ServiceInstanceID,
-
+		MachineInfo: api.MachineInfo{
+			CpuArchitecture: machineInfo.CPUArchitecture,
+			CpuFamily:       machineInfo.CPUFamily,
+			CpuModel:        machineInfo.CPUModel,
+			CpuModelName:    machineInfo.CPUModelName,
+		},
 		Status:          n.Status(),
 		CreateSuccesses: n.PlacementMetrics.SuccessCount(),
 		CreateFails:     n.PlacementMetrics.FailsCount(),

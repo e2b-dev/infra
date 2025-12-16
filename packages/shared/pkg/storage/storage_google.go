@@ -19,6 +19,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -66,7 +67,10 @@ type GCPBucketStorageObjectProvider struct {
 	limiter *limit.Limiter
 }
 
-var _ StorageObjectProvider = (*GCPBucketStorageObjectProvider)(nil)
+var (
+	_ SeekableObjectProvider = (*GCPBucketStorageObjectProvider)(nil)
+	_ ObjectProvider         = (*GCPBucketStorageObjectProvider)(nil)
+)
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
 	client, err := storage.NewClient(ctx)
@@ -128,7 +132,29 @@ func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path strin
 	return url, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string) (StorageObjectProvider, error) {
+func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
+	handle := g.bucket.Object(path).Retryer(
+		storage.WithMaxAttempts(googleMaxAttempts),
+		storage.WithPolicy(storage.RetryAlways),
+		storage.WithBackoff(
+			gax.Backoff{
+				Initial:    googleInitialBackoff,
+				Max:        googleMaxBackoff,
+				Multiplier: googleBackoffMultiplier,
+			},
+		),
+	)
+
+	return &GCPBucketStorageObjectProvider{
+		storage: g,
+		path:    path,
+		handle:  handle,
+
+		limiter: g.limiter,
+	}, nil
+}
+
+func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -159,6 +185,12 @@ func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (g *GCPBucketStorageObjectProvider) Exists(ctx context.Context) (bool, error) {
+	_, err := g.Size(ctx)
+
+	return err == nil, ignoreNotExists(err)
 }
 
 func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
@@ -212,18 +244,25 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {
+func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (n int, e error) {
 	timer := googleWriteTimerFactory.Begin()
+	defer func() {
+		if e == nil {
+			timer.End(ctx, int64(n))
+		}
+	}()
 
 	w := g.handle.NewWriter(ctx)
-	defer w.Close()
+	defer func() {
+		if err := w.Close(); err != nil {
+			e = errors.Join(e, fmt.Errorf("failed to write to %q: %w", g.path, err))
+		}
+	}()
 
 	n, err := w.Write(data)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, fmt.Errorf("failed to write to %q: %w", g.path, err)
 	}
-
-	timer.End(ctx, int64(n))
 
 	return n, nil
 }
@@ -314,7 +353,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
-	zap.L().Debug("Uploaded file in parallel",
+	logger.L().Debug(ctx, "Uploaded file in parallel",
 		zap.String("bucket", bucketName),
 		zap.String("object", objectName),
 		zap.String("path", filePath),

@@ -71,7 +71,7 @@ func Test_server_List(t *testing.T) {
 				info:      &service.ServiceInfo{},
 			}
 			for _, sbx := range tt.data {
-				s.sandboxes.Insert(sbx)
+				s.sandboxes.Insert(t.Context(), sbx)
 			}
 			got, err := s.List(t.Context(), tt.args.in1)
 			if (err != nil) != tt.wantErr {

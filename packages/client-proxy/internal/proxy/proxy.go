@@ -11,7 +11,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
@@ -25,11 +26,6 @@ const (
 	// Also it's a good practice to set it to a value higher than the idle timeout of the backend service
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 610 * time.Second
-
-	// We use a constant connection key, because we don't have to separate connection pools
-	// as we need to do when connecting to sandboxes (from orchestrator proxy) to prevent reuse of pool connections
-	// by different sandboxes cause failed connections.
-	clientProxyConnectionKey = "client-proxy"
 )
 
 var ErrNodeNotFound = errors.New("node not found")
@@ -50,46 +46,59 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
+	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
+
 	proxy := reverseproxy.New(
 		port,
 		// Retries that are needed to handle port forwarding delays in sandbox envd are handled by the orchestrator proxy
 		reverseproxy.ClientProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := reverseproxy.ParseHost(r.Host)
+			ctx := r.Context()
+			sandboxId, port, err := getTargetFromRequest(r)
 			if err != nil {
 				return nil, err
 			}
 
-			logger := zap.L().With(
-				zap.String("host", r.Host),
-				l.WithSandboxID(sandboxId),
+			l := logger.L().With(
+				zap.String("origin_host", r.Host),
+				logger.WithSandboxID(sandboxId),
 				zap.Uint64("sandbox_req_port", port),
 				zap.String("sandbox_req_path", r.URL.Path),
+				zap.String("sandbox_req_method", r.Method),
+				zap.String("sandbox_req_user_agent", r.UserAgent()),
+				zap.String("remote_addr", r.RemoteAddr),
+				zap.Int64("content_length", r.ContentLength),
 			)
 
 			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
-					logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err))
+					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
 				}
 
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
-			logger.Debug("Proxying request", zap.String("node_ip", nodeIP))
+			url := &url.URL{
+				Scheme: "http",
+				Host:   fmt.Sprintf("%s:%d", nodeIP, orchestratorProxyPort),
+			}
+
+			l = l.With(
+				zap.String("target_hostname", url.Hostname()),
+				zap.String("target_port", url.Port()),
+			)
 
 			return &pool.Destination{
 				SandboxId:     sandboxId,
-				RequestLogger: logger,
+				RequestLogger: l,
 				SandboxPort:   port,
-				ConnectionKey: clientProxyConnectionKey,
-				Url: &url.URL{
-					Scheme: "http",
-					Host:   fmt.Sprintf("%s:%d", nodeIP, orchestratorProxyPort),
-				},
+				ConnectionKey: pool.ClientProxyConnectionKey,
+				Url:           url,
 			}, nil
 		},
+		false,
 	)
 
 	meter := meterProvider.Meter(serviceName)

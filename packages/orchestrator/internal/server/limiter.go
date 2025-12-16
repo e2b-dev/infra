@@ -9,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sharedstate"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -56,7 +57,7 @@ func (t TooManySandboxesStartingError) Error() string {
 func (t *Limiter) AcquireStarting(ctx context.Context) error {
 	maxRunningSandboxesPerNode, err := t.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
 	if err != nil {
-		zap.L().Error("Failed to get MaxSandboxesPerNode flag", zap.Error(err))
+		logger.L().Error(ctx, "Failed to get MaxSandboxesPerNode flag", zap.Error(err))
 	}
 
 	runningSandboxes := t.sharedStateManager.TotalRunningCount()

@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -22,6 +26,8 @@ const (
 	// Also it's a good practice to set it to higher values as you progress in the stack
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
+
+	trafficAccessTokenHeader = "e2b-traffic-access-token"
 )
 
 type SandboxProxy struct {
@@ -29,13 +35,15 @@ type SandboxProxy struct {
 }
 
 func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map) (*SandboxProxy, error) {
+	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
+
 	proxy := reverseproxy.New(
 		port,
 		// Retry 5 times to handle port forwarding delays in sandbox envd.
 		reverseproxy.SandboxProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := reverseproxy.ParseHost(r.Host)
+			sandboxId, port, err := getTargetFromRequest(r)
 			if err != nil {
 				return nil, err
 			}
@@ -45,10 +53,48 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
+			var accessToken *string = nil
+			if net := sbx.Config.Network; net != nil && net.GetIngress() != nil {
+				accessToken = net.GetIngress().TrafficAccessToken
+			}
+
+			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
+
+			// Handle traffic access token validation.
+			// We are skipping envd port as it has its own access validation mechanism.
+			if accessToken != nil && isNonEnvdTraffic {
+				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
+				if accessTokenRaw == "" {
+					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
+				} else if accessTokenRaw != *accessToken {
+					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
+				}
+			}
+
+			// Handle request host masking only for non-envd traffic.
+			var maskRequestHost *string = nil
+			if h := sbx.Config.Network.GetIngress().GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
+				h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
+				maskRequestHost = &h
+			}
+
 			url := &url.URL{
 				Scheme: "http",
 				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIPString(), port),
 			}
+
+			logger := logger.L().With(
+				zap.String("origin_host", r.Host),
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithTeamID(sbx.Runtime.TeamID),
+				zap.String("sandbox_ip", sbx.Slot.HostIPString()),
+				zap.Uint64("sandbox_req_port", port),
+				zap.String("sandbox_req_path", r.URL.Path),
+				zap.String("sandbox_req_method", r.Method),
+				zap.String("sandbox_req_user_agent", r.UserAgent()),
+				zap.String("remote_addr", r.RemoteAddr),
+				zap.Int64("content_length", r.ContentLength),
+			)
 
 			return &pool.Destination{
 				Url:                                url,
@@ -58,17 +104,15 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				IncludeSandboxIdInProxyErrorLogger: true,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
-				ConnectionKey: sbx.Runtime.ExecutionID,
-				RequestLogger: zap.L().With(
-					zap.String("host", r.Host),
-					logger.WithSandboxID(sbx.Runtime.SandboxID),
-					zap.String("sandbox_ip", sbx.Slot.HostIPString()),
-					logger.WithTeamID(sbx.Runtime.TeamID),
-					zap.String("sandbox_req_port", url.Port()),
-					zap.String("sandbox_req_path", r.URL.Path),
-				),
+				ConnectionKey:   sbx.Runtime.ExecutionID,
+				RequestLogger:   logger,
+				MaskRequestHost: maskRequestHost,
 			}, nil
 		},
+		// We are not using keepalives for orchestrator proxy,
+		// because the servers inside of the sandbox can be unstable (restarts),
+		// and we are also on the same host, so the overhead is minimal.
+		true,
 	)
 
 	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
@@ -121,8 +165,8 @@ func (p *SandboxProxy) Close(ctx context.Context) error {
 	return nil
 }
 
-func (p *SandboxProxy) RemoveFromPool(connectionKey string) {
-	p.proxy.RemoveFromPool(connectionKey)
+func (p *SandboxProxy) RemoveFromPool(connectionKey string) error {
+	return p.proxy.RemoveFromPool(connectionKey)
 }
 
 func (p *SandboxProxy) GetAddr() string {

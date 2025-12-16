@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -21,7 +22,14 @@ type Provider interface {
 	Size() (int64, error)
 }
 
-const dispatchBufferSize = 4 * 1024 * 1024
+const (
+	// TODO: Look into optimizing the buffer reads by increasing the buffer size by 28 bytes,
+	// to account for a request that is 28 bytes of header + 4MB of data (this seems to be preferred kernel buffer size).
+	dispatchBufferSize = 4 * 1024 * 1024
+	// https://sourceforge.net/p/nbd/mailman/message/35081223/
+	// 32MB is the maximum buffer size for a single request that should be universally supported.
+	dispatchMaxWriteBufferSize = 32 * 1024 * 1024
+)
 
 // NBD Commands
 const (
@@ -130,7 +138,6 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 		// Now go through processing complete packets
 		rp := 0
-	process:
 		for {
 			// Check if there is a fatal error from an async read/write to return
 			select {
@@ -142,56 +149,79 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 			}
 
 			// Make sure we have a complete header
-			if wp-rp >= 28 {
-				// We can read the neader...
-
-				header := buffer[rp : rp+28]
-				request.Magic = binary.BigEndian.Uint32(header)
-				request.Type = binary.BigEndian.Uint32(header[4:8])
-				request.Handle = binary.BigEndian.Uint64(header[8:16])
-				request.From = binary.BigEndian.Uint64(header[16:24])
-				request.Length = binary.BigEndian.Uint32(header[24:28])
-
-				if request.Magic != NBDRequestMagic {
-					return fmt.Errorf("received invalid MAGIC")
-				}
-
-				switch request.Type {
-				case NBDCmdDisconnect:
-					return nil // All done
-				case NBDCmdFlush:
-					return fmt.Errorf("not supported: Flush")
-				case NBDCmdRead:
-					rp += 28
-					err := d.cmdRead(ctx, request.Handle, request.From, request.Length)
-					if err != nil {
-						return err
-					}
-				case NBDCmdWrite:
-					rp += 28
-					if wp-rp < int(request.Length) {
-						rp -= 28
-
-						break process // We don't have enough data yet... Wait for next read
-					}
-					data := make([]byte, request.Length)
-					copy(data, buffer[rp:rp+int(request.Length)])
-					rp += int(request.Length)
-					err := d.cmdWrite(ctx, request.Handle, request.From, data)
-					if err != nil {
-						return err
-					}
-				case NBDCmdTrim:
-					rp += 28
-					err := d.cmdTrim(request.Handle, request.From, request.Length)
-					if err != nil {
-						return err
-					}
-				default:
-					return fmt.Errorf("nbd not implemented %d", request.Type)
-				}
-			} else {
+			if wp-rp < 28 {
 				break // Try again when we have more data...
+			}
+
+			// We can read the neader...
+
+			header := buffer[rp : rp+28]
+			request.Magic = binary.BigEndian.Uint32(header)
+			request.Type = binary.BigEndian.Uint32(header[4:8])
+			request.Handle = binary.BigEndian.Uint64(header[8:16])
+			request.From = binary.BigEndian.Uint64(header[16:24])
+			request.Length = binary.BigEndian.Uint32(header[24:28])
+
+			if request.Magic != NBDRequestMagic {
+				return fmt.Errorf("received invalid MAGIC")
+			}
+
+			switch request.Type {
+			case NBDCmdDisconnect:
+				return nil // All done
+			case NBDCmdFlush:
+				return fmt.Errorf("not supported: Flush")
+			case NBDCmdRead:
+				rp += 28
+				err := d.cmdRead(ctx, request.Handle, request.From, request.Length)
+				if err != nil {
+					return err
+				}
+			case NBDCmdWrite:
+				rp += 28
+
+				if request.Length > dispatchMaxWriteBufferSize {
+					return fmt.Errorf("nbd write request length %d exceeds maximum %d", request.Length, dispatchMaxWriteBufferSize)
+				}
+
+				data := make([]byte, request.Length)
+
+				dataCopied := copy(data, buffer[rp:wp])
+
+				rp += dataCopied
+
+				// We need to wait for more data here, otherwise we will deadlock if the buffer is Xmb and the length is Xmb because of the header's extra 28 bytes needed.
+				// At the same time we don't want to increase the default buffer size as the max would be 32mb which is too large for hundreds of sandbox connections.
+
+				for dataCopied < int(request.Length) {
+					n, err := d.fp.Read(data[dataCopied:])
+					if err != nil {
+						return fmt.Errorf("nbd write read error: %w", err)
+					}
+
+					dataCopied += n
+
+					select {
+					case err := <-d.fatal:
+						return err
+					case <-ctx.Done():
+						return ctx.Err()
+					default:
+					}
+				}
+
+				err := d.cmdWrite(ctx, request.Handle, request.From, data)
+				if err != nil {
+					return err
+				}
+			case NBDCmdTrim:
+				rp += 28
+				err := d.cmdTrim(request.Handle, request.From, request.Length)
+				if err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("nbd not implemented %d", request.Type)
 			}
 		}
 		// Now we need to move any partial to the start
@@ -204,13 +234,13 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
 	d.shuttingDownLock.Lock()
-	if !d.shuttingDown {
-		d.pendingResponses.Add(1)
-	} else {
+	if d.shuttingDown {
 		d.shuttingDownLock.Unlock()
 
 		return ErrShuttingDown
 	}
+
+	d.pendingResponses.Add(1)
 	d.shuttingDownLock.Unlock()
 
 	performRead := func(handle uint64, from uint64, length uint32) error {
@@ -243,7 +273,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			select {
 			case d.fatal <- err:
 			default:
-				zap.L().Error("nbd error cmd read", zap.Error(err))
+				logger.L().Error(ctx, "nbd error cmd read", zap.Error(err))
 			}
 		}
 		d.pendingResponses.Done()
@@ -254,13 +284,13 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 
 func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
 	d.shuttingDownLock.Lock()
-	if !d.shuttingDown {
-		d.pendingResponses.Add(1)
-	} else {
+	if d.shuttingDown {
 		d.shuttingDownLock.Unlock()
 
 		return ErrShuttingDown
 	}
+
+	d.pendingResponses.Add(1)
 	d.shuttingDownLock.Unlock()
 
 	performWrite := func(handle uint64, from uint64, data []byte) error {
@@ -291,7 +321,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			select {
 			case d.fatal <- err:
 			default:
-				zap.L().Error("nbd error cmd write", zap.Error(err))
+				logger.L().Error(ctx, "nbd error cmd write", zap.Error(err))
 			}
 		}
 		d.pendingResponses.Done()

@@ -17,7 +17,11 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, CLIENT_MACHINE_TYPE) \
 	$(call tfvar, CLIENT_CLUSTER_SIZE) \
 	$(call tfvar, CLIENT_CLUSTER_SIZE_MAX) \
+	$(call tfvar, CLIENT_CLUSTER_AUTOSCALING_CPU_TARGET) \
+	$(call tfvar, CLIENT_CLUSTER_AUTOSCALING_MEMORY_TARGET) \
+	$(call tfvar, CLIENT_CLUSTER_ROOT_DISK_SIZE_GB) \
 	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
+	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_COUNT) \
 	$(call tfvar, API_MACHINE_TYPE) \
 	$(call tfvar, API_CLUSTER_SIZE) \
 	$(call tfvar, API_USE_NAT) \
@@ -26,6 +30,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, BUILD_CLUSTER_SIZE) \
 	$(call tfvar, BUILD_CLUSTER_ROOT_DISK_SIZE_GB) \
 	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_SIZE_GB) \
+	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_COUNT) \
 	$(call tfvar, SERVER_MACHINE_TYPE) \
 	$(call tfvar, SERVER_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
@@ -36,7 +41,6 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, GCP_REGION) \
 	$(call tfvar, GCP_ZONE) \
 	$(call tfvar, DOMAIN_NAME) \
-	$(call tfvar, ADDITIONAL_DOMAINS) \
 	$(call tfvar, ADDITIONAL_API_SERVICES_JSON) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
@@ -66,7 +70,13 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_TYPE) \
 	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_TYPE) \
 	$(call tfvar, MIN_CPU_PLATFORM) \
-	$(call tfvar, REMOTE_REPOSITORY_ENABLED)
+	$(call tfvar, REMOTE_REPOSITORY_ENABLED) \
+	$(call tfvar, CLIENT_BOOT_DISK_TYPE) \
+	$(call tfvar, BUILD_BOOT_DISK_TYPE) \
+	$(call tfvar, API_BOOT_DISK_TYPE) \
+	$(call tfvar, SERVER_BOOT_DISK_TYPE) \
+	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
+	$(call tfvar, LOKI_BOOT_DISK_TYPE)
 
 .PHONY: init
 init:
@@ -97,36 +107,23 @@ switch:
 	@ printf "Switching Terraform backend for different env ${ENV}\n"
 	$(TF) init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
 
+.PHONY: destroy
+destroy:
+	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(tf_vars) $(TF) destroy
+
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode; \
-	status=$$?; \
-	if [ $$status -eq 0 ]; then \
-		echo "No changes."; \
-	elif [ $$status -eq 2 ]; then \
-		echo "Changes detected."; \
-	else \
-		echo "Error during plan."; \
-		exit $$status; \
-	fi
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings
 
 # Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad; \
-	status=$$?; \
-	if [ $$status -eq 0 ]; then \
-		echo "No changes."; \
-	elif [ $$status -eq 2 ]; then \
-		echo "Changes detected."; \
-	else \
-		echo "Error during plan."; \
-		exit $$status; \
-	fi
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad
 
 # Deploy a specific job name in Nomad
 # When job name is specified, all '-' are replaced with '_' in the job name
@@ -134,7 +131,7 @@ plan-only-jobs:
 plan-only-jobs/%:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_');
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_');
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
@@ -165,3 +162,12 @@ apply:
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(tf_vars) $(TF) import "$(TARGET)" "$(ID)" -no-color
+
+# Login for Packer and Docker (uses gcloud user creds)
+# Login for Terraform (uses application default creds)
+.PHONY: provider-login
+provider-login:
+	gcloud --quiet auth login
+	gcloud config set project "$(GCP_PROJECT_ID)"
+	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
+	gcloud --quiet auth application-default login

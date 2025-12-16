@@ -12,13 +12,13 @@ func TestParse(t *testing.T) {
 	t.Setenv("SD_ORCHESTRATOR_PROVIDER", "STATIC")
 
 	t.Run("create parse provider", func(t *testing.T) {
-		t.Setenv("SD_EDGE_PROVIDER", "STATIC")
-		t.Setenv("SD_EDGE_DNS_QUERY", "sd-edge-dns-query")
+		t.Setenv("SD_ORCHESTRATOR_PROVIDER", "STATIC")
+		t.Setenv("SD_ORCHESTRATOR_DNS_QUERY", "10.11.11.1")
 
 		config, err := Parse()
 		require.NoError(t, err)
 
-		assert.Equal(t, "STATIC", config.EdgeServiceDiscovery.Provider)
-		assert.Equal(t, []string{"sd-edge-dns-query"}, config.EdgeServiceDiscovery.DNSQuery)
+		assert.Equal(t, "STATIC", config.OrchestratorServiceDiscovery.Provider)
+		assert.Equal(t, []string{"10.11.11.1"}, config.OrchestratorServiceDiscovery.DNSQuery)
 	})
 }

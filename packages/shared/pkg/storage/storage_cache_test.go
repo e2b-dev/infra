@@ -17,7 +17,7 @@ import (
 )
 
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
-	c := CachedFileObjectProvider{path: "/a/b/c", chunkSize: 1024}
+	c := CachedSeekableObjectProvider{path: "/a/b/c", chunkSize: 1024}
 	filename := c.makeChunkFilename(1024 * 4)
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
 }
@@ -26,10 +26,10 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 	t.Run("can be cached successfully", func(t *testing.T) {
 		const expectedSize int64 = 1024
 
-		inner := storagemocks.NewMockStorageObjectProvider(t)
+		inner := storagemocks.NewMockSeekableObjectProvider(t)
 		inner.EXPECT().Size(mock.Anything).Return(expectedSize, nil)
 
-		c := CachedFileObjectProvider{path: t.TempDir(), inner: inner}
+		c := CachedSeekableObjectProvider{path: t.TempDir(), inner: inner}
 
 		// first call will write to cache
 		size, err := c.Size(t.Context())
@@ -53,7 +53,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		tempDir := t.TempDir()
 
 		tempPath := filepath.Join(tempDir, "a", "b", "c")
-		c := CachedFileObjectProvider{path: tempPath, chunkSize: 3}
+		c := CachedSeekableObjectProvider{path: tempPath, chunkSize: 3}
 
 		// create cache file
 		cacheFilename := c.makeChunkFilename(0)
@@ -72,7 +72,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		fakeStorageObjectProvider := storagemocks.NewMockStorageObjectProvider(t)
+		fakeStorageObjectProvider := storagemocks.NewMockSeekableObjectProvider(t)
 
 		fakeStorageObjectProvider.EXPECT().
 			ReadAt(mock.Anything, mock.Anything, mock.Anything).
@@ -86,7 +86,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			})
 
 		tempDir := t.TempDir()
-		c := CachedFileObjectProvider{
+		c := CachedSeekableObjectProvider{
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
@@ -114,7 +114,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 	t.Run("WriteTo calls should read from cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3}
 
-		fakeStorageObjectProvider := storagemocks.NewMockStorageObjectProvider(t)
+		fakeStorageObjectProvider := storagemocks.NewMockObjectProvider(t)
 		fakeStorageObjectProvider.EXPECT().
 			WriteTo(mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
@@ -124,7 +124,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			})
 
 		tempDir := t.TempDir()
-		c := CachedFileObjectProvider{
+		c := CachedObjectProvider{
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
@@ -184,7 +184,7 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
-			c := CachedFileObjectProvider{
+			c := CachedSeekableObjectProvider{
 				chunkSize: tc.chunkSize,
 			}
 			err := c.validateReadAtParams(tc.bufferSize, tc.offset)
@@ -198,13 +198,14 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 }
 
 func TestMoveWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
+	ctx := t.Context()
 	td := t.TempDir()
 	content := []byte("alpha")
 	src := filepath.Join(td, "src")
 	dst := filepath.Join(td, "dst")
 
 	require.NoError(t, os.WriteFile(src, content, 0o644))
-	err := moveWithoutReplace(src, dst)
+	err := moveWithoutReplace(ctx, src, dst)
 	require.NoError(t, err)
 
 	// Dest has original content.
@@ -217,6 +218,7 @@ func TestMoveWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
 }
 
 func TestMoveWithoutReplace_FailWhenExists(t *testing.T) {
+	ctx := t.Context()
 	td := t.TempDir()
 	content := []byte("alpha")
 	secondContent := []byte("beta")
@@ -225,35 +227,13 @@ func TestMoveWithoutReplace_FailWhenExists(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(src, content, 0o644))
 	require.NoError(t, os.WriteFile(dst, secondContent, 0o644))
-	err := moveWithoutReplace(src, dst)
+	err := moveWithoutReplace(ctx, src, dst)
 	require.NoError(t, err)
 
 	// Dest has original content.
 	got, err := os.ReadFile(dst)
 	require.NoError(t, err)
 	assert.Equal(t, secondContent, got)
-
-	_, err = os.Stat(src)
-	assert.ErrorIs(t, err, os.ErrNotExist)
-}
-
-func TestMoveWithoutReplace_Fail(t *testing.T) {
-	td := t.TempDir()
-	content := []byte("alpha")
-	src := filepath.Join(td, "src")
-	require.NoError(t, os.WriteFile(src, content, 0o644))
-
-	roDir := filepath.Join(td, "ro")
-	require.NoError(t, os.Mkdir(roDir, 0o555)) // r-x only, no write
-	t.Cleanup(func() {
-		// ensure cleanup possible
-		err := os.Chmod(roDir, 0o755)
-		assert.NoError(t, err)
-	})
-
-	dst := filepath.Join(roDir, "dst")
-	err := moveWithoutReplace(src, dst)
-	require.Error(t, err)
 
 	_, err = os.Stat(src)
 	assert.ErrorIs(t, err, os.ErrNotExist)

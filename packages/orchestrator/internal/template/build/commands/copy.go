@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +13,6 @@ import (
 	txtTemplate "text/template"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -20,7 +20,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Copy struct {
@@ -35,63 +37,16 @@ type copyScriptData struct {
 	TargetPath  string
 	Owner       string
 	Permissions string
+
+	// Workdir is the working directory for the target path resolution if relative.
+	Workdir string
+	// User is used for filling the workdir if empty.
+	User string
 }
 
-var copyScriptTemplate = txtTemplate.Must(txtTemplate.New("copy-script-template").Parse(`
-#!/bin/bash
-
-# Get the parent folder of the source file/folder
-sourceFolder="$(dirname "{{ .SourcePath}}")"
-
-# Set targetPath relative to current working directory if not absolute
-inputPath="{{ .TargetPath }}"
-if [[ "$inputPath" = /* ]]; then
- targetPath="$inputPath"
-else
- targetPath="$(pwd)/$inputPath"
-fi
-
-cd "$sourceFolder" || exit 1
-
-# Get the first entry (file, directory, or symlink)
-entry=$(ls -A | head -n 1)
-
-if [ -z "$entry" ]; then
- echo "Error: sourceFolder is empty"
- exit 1
-fi
-
-# Check type BEFORE applying ownership/permissions to avoid dereferencing symlinks
-if [ -L "$entry" ]; then
- # It's a symlink – create parent folders and move+rename it to the exact path
- mkdir -p "$(dirname "$targetPath")"
- # Change ownership of the symlink itself (not the target)
- chown -h "{{ .Owner }}" "$entry"
- # Note: chmod on symlinks affects the target, not the link itself in most systems
- # We skip chmod for symlinks as it's typically not meaningful
- mv "$entry" "$targetPath"
-elif [ -f "$entry" ]; then
- # It's a file – create parent folders and move+rename it to the exact path
- chown "{{ .Owner }}" "$entry"
- {{ if .Permissions -}}
-  chmod "{{ .Permissions }}" "$entry"
- {{ end -}}
- mkdir -p "$(dirname "$targetPath")"
- mv "$entry" "$targetPath"
-elif [ -d "$entry" ]; then
- # It's a directory – apply ownership/permissions recursively, then move contents
- chown -R "{{ .Owner }}" "$entry"
- {{ if .Permissions -}}
-  chmod -R "{{ .Permissions }}" "$entry"
- {{ end -}}
- mkdir -p "$targetPath"
- # Move all contents including hidden files
- find "$entry" -mindepth 1 -maxdepth 1 -exec mv {} "$targetPath/" \;
-else
- echo "Error: entry is neither file, directory, nor symlink"
- exit 1
-fi
-`))
+//go:embed copy_script.sh
+var copyScriptFile string
+var copyScriptTemplate = txtTemplate.Must(txtTemplate.New("copy-script-template").Parse(copyScriptFile))
 
 // Execute implements the Copy command.
 // It works in the following steps:
@@ -106,7 +61,7 @@ fi
 // because the /tmp is mounted as a tmpfs and deleted on restart.
 func (c *Copy) Execute(
 	ctx context.Context,
-	logger *zap.Logger,
+	logger logger.Logger,
 	_ zapcore.Level,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
@@ -125,7 +80,7 @@ func (c *Copy) Execute(
 	}
 
 	// 1) Download the layer tar file from the storage to the local filesystem
-	obj, err := c.FilesStorage.OpenObject(ctx, paths.GetLayerFilesCachePath(c.CacheScope, step.GetFilesHash()))
+	obj, err := c.FilesStorage.OpenObject(ctx, paths.GetLayerFilesCachePath(c.CacheScope, step.GetFilesHash()), storage.BuildLayerFileObjectType)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to open files object from storage: %w", err)
 	}
@@ -177,6 +132,9 @@ func (c *Copy) Execute(
 
 	var moveScript bytes.Buffer
 	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
+		Workdir: utils.DerefOrDefault(cmdMetadata.WorkDir, ""),
+		User:    cmdMetadata.User,
+
 		SourcePath: filepath.Join(sbxUnpackPath, args.SourcePath),
 		TargetPath: args.TargetPath,
 		Owner:      args.Owner,

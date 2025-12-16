@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -10,9 +11,11 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (s *Slot) CreateNetwork() error {
+func (s *Slot) CreateNetwork(ctx context.Context) error {
 	// Prevent thread changes so we can safely manipulate with namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -26,12 +29,12 @@ func (s *Slot) CreateNetwork() error {
 	defer func() {
 		err = netns.Set(hostNS)
 		if err != nil {
-			zap.L().Error("error resetting network namespace back to the host namespace", zap.Error(err))
+			logger.L().Error(ctx, "error resetting network namespace back to the host namespace", zap.Error(err))
 		}
 
 		err = hostNS.Close()
 		if err != nil {
-			zap.L().Error("error closing host network namespace", zap.Error(err))
+			logger.L().Error(ctx, "error closing host network namespace", zap.Error(err))
 		}
 	}()
 
@@ -224,6 +227,18 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
 	}
 
+	// Redirect unmarked TCP traffic to the egress proxy.
+	// Allowed traffic is marked by nftables and bypasses this rule.
+	// This preserves the original destination IP for SO_ORIGINAL_DST.
+	err = tables.Append(
+		"nat", "PREROUTING", "-i", s.VethName(),
+		"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
+		"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
+	)
+	if err != nil {
+		return fmt.Errorf("error creating redirect rule to egress proxy: %w", err)
+	}
+
 	return nil
 }
 
@@ -264,6 +279,16 @@ func (s *Slot) RemoveNetwork() error {
 		)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
+		}
+
+		// Delete egress proxy redirect rule
+		err = tables.Delete(
+			"nat", "PREROUTING", "-i", s.VethName(),
+			"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
+			"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting egress proxy redirect rule: %w", err))
 		}
 	}
 

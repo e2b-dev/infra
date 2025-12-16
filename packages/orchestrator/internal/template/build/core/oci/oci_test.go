@@ -20,11 +20,11 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
@@ -54,7 +54,7 @@ func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
 func TestCreateExportLayersOrder(t *testing.T) {
 	ctx := t.Context()
 
-	logger := zap.NewNop()
+	logger := logger.NewNopLogger()
 
 	// Create a dummy image with some layers
 	img := empty.Image
@@ -140,6 +140,14 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 	require.NoError(t, err)
 
 	testImage, err = mutate.AppendLayers(testImage, layer)
+	require.NoError(t, err)
+
+	// Set the config to include the proper platform
+	configFile, err := testImage.ConfigFile()
+	require.NoError(t, err)
+	configFile.Architecture = "amd64"
+	configFile.OS = "linux"
+	testImage, err = mutate.ConfigFile(testImage, configFile)
 	require.NoError(t, err)
 
 	// Test credentials

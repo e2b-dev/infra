@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildlogger"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -73,15 +75,20 @@ func (b *BuildInfo) SetFail(reason *template_manager.TemplateBuildStatusReason) 
 	})
 }
 
-func (b *BuildInfo) GetLogs() []*template_manager.TemplateBuildLogEntry {
-	return b.logs.Lines()
+func (b *BuildInfo) GetLogs(direction template_manager.LogsDirection) []*template_manager.TemplateBuildLogEntry {
+	lines := b.logs.Lines()
+	if direction == template_manager.LogsDirection_Backward {
+		slices.Reverse(lines)
+	}
+
+	return lines
 }
 
 type BuildCache struct {
 	cache *ttlcache.Cache[string, *BuildInfo]
 }
 
-func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
+func NewBuildCache(ctx context.Context, meterProvider metric.MeterProvider) *BuildCache {
 	meter := meterProvider.Meter("orchestrator.cache.build")
 
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
@@ -105,7 +112,7 @@ func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("error creating counter", zap.Error(err), zap.String("counter_name", string(telemetry.BuildCounterMeterName)))
+		logger.L().Error(ctx, "error creating counter", zap.Error(err), zap.String("counter_name", string(telemetry.BuildCounterMeterName)))
 	}
 
 	go cache.Start()

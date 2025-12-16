@@ -28,16 +28,16 @@ var ValidSandboxEventTypes = []string{
 }
 
 type SandboxEvent struct {
-	Version string `json:"version"`
-	Type    string `json:"type"`
+	ID        uuid.UUID `json:"id"`
+	Version   string    `json:"version"`
+	Type      string    `json:"type"`
+	Timestamp time.Time `json:"timestamp"`
 
 	// Deprecated: for new events use event field with dot syntax
 	EventCategory string `json:"event_category"`
 	// Deprecated: for new events use event field with dot syntax
 	EventLabel string         `json:"event_label"`
 	EventData  map[string]any `json:"event_data,omitempty"`
-
-	Timestamp time.Time `json:"timestamp"`
 
 	SandboxID          string    `json:"sandbox_id"`
 	SandboxExecutionID string    `json:"sandbox_execution_id"`

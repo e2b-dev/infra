@@ -2,6 +2,9 @@ name: Run tests on PRs
 
 on: [workflow_call]
 
+permissions:
+  contents: read
+
 jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
@@ -43,6 +46,37 @@ jobs:
           sudo mount -t hugetlbfs none /mnt/hugepages
           echo 128 | sudo tee /proc/sys/vm/nr_hugepages
 
+      - name: Enable NBD
+        run: |
+          sudo modprobe nbd nbds_max=256
+
+      - name: Disable inotify watching of change events for NBD devices
+        run: |
+          echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger
+
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v ${{ matrix.test_path }}
+        run: sudo go test -v ${{ matrix.test_path }}
+
+  validate-iac:
+    name: Validate terraform
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse .tool-versions
+        uses: wistia/parse-tool-versions@v2.1.1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "${{ env.TERRAFORM }}"
+
+      - name: Validate terraform
+        working-directory: ./iac/provider-gcp
+        run: |
+          terraform init -backend=false
+          terraform validate
