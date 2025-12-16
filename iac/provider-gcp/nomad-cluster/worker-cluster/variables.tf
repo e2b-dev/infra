@@ -1,5 +1,10 @@
 variable "cluster_size" {
   type = number
+
+  validation {
+    condition     = var.cluster_size >= 1
+    error_message = "Cluster size must be at least 1."
+  }
 }
 
 variable "autoscaler" {
