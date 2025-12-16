@@ -1,6 +1,11 @@
 variable "datacenter" { type = string }
 variable "nomad_address" { type = string }
 variable "consul_address" { type = string }
+
+variable "enable_nomad_jobs" {
+  type    = bool
+  default = true
+}
 variable "ingress_node_ip" { type = string }
 variable "nomad_acl_token" {
   type    = string

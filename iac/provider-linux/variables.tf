@@ -254,6 +254,11 @@ variable "artifact_scp_port" {
   default = 0
 }
 
+variable "enable_artifact_scp_server" {
+  type    = bool
+  default = true
+}
+
 variable "default_kernel_version" {
   type    = string
   default = "6.1.0"
@@ -277,4 +282,34 @@ variable "firecracker_source_base_url" {
 variable "fc_artifact_node_pools" {
   type    = list(string)
   default = []
+}
+
+variable "enable_nomad_jobs" {
+  type    = bool
+  default = true
+}
+
+variable "enable_nodes_docker_proxy" {
+  type    = bool
+  default = true
+}
+
+variable "enable_nodes_fc_artifacts" {
+  type    = bool
+  default = true
+}
+
+variable "enable_nodes_uninstall" {
+  type    = bool
+  default = false
+}
+
+variable "uninstall_version" {
+  type    = string
+  default = "v1"
+}
+
+variable "uninstall_confirm_phrase" {
+  type    = string
+  default = ""
 }

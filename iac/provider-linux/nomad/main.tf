@@ -12,7 +12,14 @@ provider "nomad" {
   secret_id = var.nomad_acl_token
 }
 
+resource "null_resource" "postgres_change_trigger" {
+  triggers = {
+    hash = sha1(var.postgres_connection_string)
+  }
+}
+
 resource "nomad_job" "ingress" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/ingress.hcl",
     {
       count         = var.ingress_count
@@ -37,6 +44,7 @@ resource "nomad_job" "ingress" {
 }
 
 resource "nomad_job" "api" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/api.hcl", {
     update_stanza      = var.api_machine_count > 1
     node_pool          = var.api_node_pool
@@ -74,9 +82,14 @@ resource "nomad_job" "api" {
     local_cluster_token    = var.edge_api_secret
     domain_name            = var.domain_name
   })
+
+  lifecycle {
+    replace_triggered_by = [null_resource.postgres_change_trigger]
+  }
 }
 
 resource "nomad_job" "client_proxy" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/edge.hcl",
     {
       update_stanza       = var.api_machine_count > 1
@@ -100,7 +113,7 @@ resource "nomad_job" "client_proxy" {
       api_port_name     = var.edge_api_port.name
       api_port          = var.edge_api_port.port
       api_secret        = var.edge_api_secret
-      orchestrator_port = var.orchestrator_port
+      orchestrator_port = var.template_manager_port
       domain_name       = var.domain_name
 
       image_name = var.client_proxy_image
@@ -115,6 +128,7 @@ resource "nomad_job" "client_proxy" {
 }
 
 resource "nomad_job" "redis" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/redis.hcl",
     {
       node_pool           = var.api_node_pool
@@ -127,6 +141,7 @@ resource "nomad_job" "redis" {
 }
 
 resource "nomad_job" "docker_reverse_proxy" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
     {
       datacenter                    = var.datacenter
@@ -144,9 +159,14 @@ resource "nomad_job" "docker_reverse_proxy" {
       docker_image_prefix           = var.docker_image_prefix
     }
   )
+
+  lifecycle {
+    replace_triggered_by = [null_resource.postgres_change_trigger]
+  }
 }
 
 resource "nomad_job" "otel_collector" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/otel-collector.hcl", {
     memory_mb  = var.otel_collector_resources_memory_mb
     cpu_count  = var.otel_collector_resources_cpu_count
@@ -156,12 +176,14 @@ resource "nomad_job" "otel_collector" {
     otel_collector_grpc_port = var.otel_collector_grpc_port
     otel_collector_config = templatefile("${path.module}/configs/otel-collector.yaml", {
       otel_collector_grpc_port = var.otel_collector_grpc_port
+      loki_endpoint            = "http://localhost:${var.loki_service_port.port}"
     })
     docker_image_prefix = var.docker_image_prefix
   })
 }
 
 resource "nomad_job" "logs_collector" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/logs-collector.hcl", {
     logs_health_port_number  = var.logs_health_proxy_port.port
     logs_port_number         = var.logs_proxy_port.port
@@ -172,6 +194,7 @@ resource "nomad_job" "logs_collector" {
 }
 
 resource "nomad_job" "loki" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/loki.hcl", {
     datacenter               = var.datacenter
     node_pool                = var.api_node_pool
@@ -184,6 +207,7 @@ resource "nomad_job" "loki" {
 }
 
 resource "nomad_job" "grafana" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/grafana.hcl", {
     datacenter                  = var.datacenter
     node_pool                   = var.api_node_pool
@@ -197,6 +221,7 @@ resource "nomad_job" "grafana" {
 }
 
 resource "nomad_job" "template_manager" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
     update_stanza                        = var.template_manager_machine_count > 1
     node_pool                            = var.builder_node_pool
@@ -235,6 +260,7 @@ resource "nomad_job" "template_manager" {
 }
 
 resource "nomad_job" "orchestrator" {
+  count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/orchestrator.hcl", {
     node_pool                            = var.orchestrator_node_pool
     port                                 = var.orchestrator_port
@@ -269,7 +295,7 @@ resource "nomad_job" "orchestrator" {
 }
 
 resource "nomad_job" "nfs_server" {
-  count = var.use_nfs_share_storage && var.nfs_server_ip != "" ? 1 : 0
+  count = var.enable_nomad_jobs && var.use_nfs_share_storage && var.nfs_server_ip != "" ? 1 : 0
 
   jobspec = templatefile("${path.module}/jobs/nfs-server.hcl", {
     datacenter   = var.datacenter
@@ -280,7 +306,7 @@ resource "nomad_job" "nfs_server" {
 }
 
 resource "nomad_job" "network_policy" {
-  count = var.enable_network_policy_job ? 1 : 0
+  count = var.enable_nomad_jobs && var.enable_network_policy_job ? 1 : 0
 
   jobspec = templatefile("${path.module}/jobs/network-policy.hcl", {
     datacenter   = var.datacenter
@@ -291,7 +317,7 @@ resource "nomad_job" "network_policy" {
 }
 
 resource "nomad_job" "clickhouse" {
-  count = var.clickhouse_server_count > 0 ? 1 : 0
+  count = var.enable_nomad_jobs && (var.clickhouse_server_count > 0) ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/clickhouse.hcl", {
     server_count            = var.clickhouse_server_count
     node_pool               = var.api_node_pool

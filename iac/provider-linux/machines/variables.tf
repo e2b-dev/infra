@@ -73,6 +73,70 @@ variable "default_firecracker_version" {
   type = string
 }
 
-variable "fc_artifact_node_pools" {
-  type = list(string)
+
+
+variable "base_config_version" {
+  type    = string
+  default = "v1"
+}
+
+variable "docker_proxy_config_version" {
+  type    = string
+  default = "v1"
+}
+
+
+
+variable "consul_config_version" {
+  type    = string
+  default = "v1"
+}
+
+variable "nomad_config_version" {
+  type    = string
+  default = "v2"
+}
+
+variable "dns_config_version" {
+  type    = string
+  default = "v1"
+}
+
+
+
+variable "fc_artifacts_version" {
+  type    = string
+  default = "v1"
+}
+
+variable "node_pools_config_version" {
+  type    = string
+  default = "v2"
+}
+
+
+
+variable "enable_nodes_docker_proxy" {
+  type    = bool
+  default = true
+}
+
+variable "enable_nodes_fc_artifacts" {
+  type    = bool
+  default = true
+}
+
+variable "enable_nodes_uninstall" {
+  type    = bool
+  default = false
+}
+
+variable "uninstall_version" {
+  type    = string
+  default = "v1"
+}
+
+variable "uninstall_confirm_phrase" {
+  type    = string
+  default = ""
 }

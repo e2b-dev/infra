@@ -41,7 +41,11 @@ module "machines" {
   firecracker_source_base_url = var.firecracker_source_base_url
   default_kernel_version      = var.default_kernel_version
   default_firecracker_version = var.default_firecracker_version
-  fc_artifact_node_pools      = var.fc_artifact_node_pools
+  enable_nodes_docker_proxy   = var.enable_nodes_docker_proxy
+  enable_nodes_fc_artifacts   = var.enable_nodes_fc_artifacts
+  enable_nodes_uninstall      = var.enable_nodes_uninstall
+  uninstall_version           = var.uninstall_version
+  uninstall_confirm_phrase    = var.uninstall_confirm_phrase
 }
 
 module "nomad" {
@@ -117,6 +121,7 @@ module "nomad" {
   dockerhub_remote_repository_url      = var.dockerhub_remote_repository_url
   dockerhub_remote_repository_provider = var.dockerhub_remote_repository_provider
   docker_image_prefix                  = var.docker_image_prefix
+  enable_nomad_jobs                    = var.enable_nodes_uninstall ? false : var.enable_nomad_jobs
   orchestrator_proxy_port              = var.orchestrator_proxy_port
   orchestrator_node_pool               = var.orchestrator_node_pool
   redis_secure_cluster_url             = var.redis_secure_cluster_url
@@ -134,7 +139,7 @@ module "nomad" {
 }
 
 resource "null_resource" "artifact_scp_server" {
-  count = var.artifact_scp_host != "" ? 1 : 0
+  count = (var.enable_nodes_uninstall ? 0 : (var.enable_artifact_scp_server && var.artifact_scp_host != "" ? 1 : 0))
 
   triggers = {
     url1 = var.orchestrator_artifact_url
