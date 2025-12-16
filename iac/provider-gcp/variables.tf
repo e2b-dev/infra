@@ -440,25 +440,25 @@ variable "client_clusters_config_json" {
 JSON configuration for the client clusters.
 Format: [
   {
-    "autoscaler": {
-      "size_min": 1,
-      "size_max": 2,
-      "cpu_target": 0.7,
-      "memory_target": 85
-    },
-    "machine": {
-      "type": "n1-standard-8",
-      "min_cpu_platform": "Intel Skylake"
-    },
-    "boot_disk": {
-      "disk_type": "pd-ssd",
-      "size_gb": 100
-    },
-    "cache_disk": {
-      "disk_type": "pd-ssd",
-      "size_gb": 200,
-      "count": 1
-    }
+      "cluster_size": 1,  // Number of nodes (the actual number of nodes may be higher due to autoscaling)
+      "machine": {   // Machine type and CPU platform
+          "type": "n1-standard-8",
+          "min_cpu_platform": "Intel Skylake"
+      },
+      "autoscaler": {
+          "size_max": 1, // Maximum number of nodes to scale up to
+          "memory_target": 100,  // Target memory utilization percentage for autoscaling (0-100)
+          "cpu_target": 0.7  // Target CPU utilization percentage for autoscaling (0-1)
+      },
+      "boot_disk": {
+          "disk_type": "pd-ssd",  // Boot disk type
+          "size_gb": 100  // Boot disk size in GB
+      },
+      "cache_disks": {
+          "disk_type": "local-ssd",  // Cache disk type
+          "size_gb": 375,  // Cache disk size in GB
+          "count": 3  // Number of cache disks
+      }
   }
 ]
 EOT
@@ -474,19 +474,25 @@ variable "build_cluster_config_json" {
 JSON configuration for the build cluster.
 Format:
 {
-  "machine": {
-    "type": "n1-standard-8",
-    "min_cpu_platform": "Intel Skylake"
-  },
-  "boot_disk": {
-    "disk_type": "pd-ssd",
-    "size_gb": 100
-  },
-  "cache_disk": {
-    "disk_type": "pd-ssd",
-    "size_gb": 200,
-    "count": 1
-  }
+    "cluster_size": 1,  // Number of nodes (the actual number of nodes may be higher due to autoscaling)
+    "machine": {   // Machine type and CPU platform
+        "type": "n1-standard-8",
+        "min_cpu_platform": "Intel Skylake"
+    },
+    "autoscaler": {
+        "size_max": 1, // Maximum number of nodes to scale up to
+        "memory_target": 100,  // Target memory utilization percentage for autoscaling (0-100)
+        "cpu_target": 0.7  // Target CPU utilization percentage for autoscaling (0-1)
+    },
+    "boot_disk": {
+        "disk_type": "pd-ssd",  // Boot disk type
+        "size_gb": 100  // Boot disk size in GB
+    },
+    "cache_disks": {
+        "disk_type": "local-ssd",  // Cache disk type
+        "size_gb": 375,  // Cache disk size in GB
+        "count": 3  // Number of cache disks
+    }
 }
 EOT
   validation {

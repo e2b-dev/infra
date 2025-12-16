@@ -158,6 +158,7 @@ module "build_cluster" {
   google_service_account_email = var.google_service_account_email
   google_service_account_key   = var.google_service_account_key
 
+  cluster_size     = var.build_cluster_config.cluster_size
   cache_disks      = var.build_cluster_config.cache_disks
   machine_type     = var.build_cluster_config.machine.type
   min_cpu_platform = var.build_cluster_config.machine.min_cpu_platform
@@ -213,6 +214,7 @@ module "client_cluster" {
   google_service_account_email = var.google_service_account_email
   google_service_account_key   = var.google_service_account_key
 
+  cluster_size     = each.value.cluster_size
   cache_disks      = each.value.cache_disks
   machine_type     = each.value.machine.type
   min_cpu_platform = each.value.machine.min_cpu_platform

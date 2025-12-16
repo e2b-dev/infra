@@ -227,7 +227,7 @@ module "nomad" {
   template_manager_port           = var.template_manager_port
   template_bucket_name            = module.init.fc_template_bucket_name
   build_cache_bucket_name         = module.init.fc_build_cache_bucket_name
-  template_manager_machine_count  = local.build_cluster_config.autoscaler.size_min
+  template_manager_machine_count  = local.build_cluster_config.cluster_size
   dockerhub_remote_repository_url = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
 
   # Redis

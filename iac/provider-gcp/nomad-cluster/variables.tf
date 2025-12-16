@@ -109,12 +109,12 @@ variable "client_cluster_name" {
 variable "client_clusters_config" {
   description = "List of client cluster configuration object"
   type = list(object({
-    autoscaler = object({
-      size_min      = number
+    cluster_size = number
+    autoscaler = optional(object({
       size_max      = optional(number)
       cpu_target    = optional(number)
       memory_target = optional(number)
-    })
+    }))
     machine = object({
       type             = string
       min_cpu_platform = string
@@ -134,12 +134,12 @@ variable "client_clusters_config" {
 variable "build_cluster_config" {
   description = "Build cluster configuration object"
   type = object({
-    autoscaler = object({
-      size_min      = number
+    cluster_size = number
+    autoscaler = optional(object({
       size_max      = optional(number)
       cpu_target    = optional(number)
       memory_target = optional(number)
-    })
+    }))
     machine = object({
       type             = string
       min_cpu_platform = string

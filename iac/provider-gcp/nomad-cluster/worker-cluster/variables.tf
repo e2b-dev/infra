@@ -1,25 +1,14 @@
+variable "cluster_size" {
+  type = number
+}
+
 variable "autoscaler" {
   type = object({
-    size_min      = number
     size_max      = optional(number)
     cpu_target    = optional(number)
     memory_target = optional(number)
   })
-
-  validation {
-    condition     = var.autoscaler.size_max == null || (var.autoscaler.size_max >= var.autoscaler.size_min)
-    error_message = "autoscaling_size_max must be >= autoscaling_size_min."
-  }
-
-  validation {
-    condition     = var.autoscaler.cpu_target == null || (var.autoscaler.cpu_target >= 0 && var.autoscaler.cpu_target <= 1)
-    error_message = "autoscaling_cpu_target must be between 0 and 1."
-  }
-
-  validation {
-    condition     = var.autoscaler.memory_target == null || (var.autoscaler.memory_target >= 0 && var.autoscaler.memory_target <= 100)
-    error_message = "autoscaling_memory_target must be between 0 and 100."
-  }
+  default = {}
 }
 
 variable "machine_type" {
