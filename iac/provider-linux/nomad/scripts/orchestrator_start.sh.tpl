@@ -6,6 +6,7 @@ is_mounted() { grep -qsE '[[:space:]]/e2b-share[[:space:]]' /proc/mounts; }
 if is_mounted; then
   echo "/e2b-share already mounted,skipping."
 else
+  mkdir -p /e2b-share
   if ! command -v mount.nfs >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then
       apt-get update -y
