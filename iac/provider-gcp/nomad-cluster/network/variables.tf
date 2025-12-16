@@ -94,14 +94,6 @@ variable "api_instance_group" {
   type = string
 }
 
-variable "build_instance_group" {
-  type = string
-}
-
-variable "client_instance_group" {
-  type = string
-}
-
 variable "server_instance_group" {
   type = string
 }
