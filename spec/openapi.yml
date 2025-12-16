@@ -75,6 +75,13 @@ components:
       required: true
       schema:
         type: string
+    tag:
+      name: tag
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Tag name
     paginationLimit:
       name: limit
       in: query
@@ -883,6 +890,11 @@ components:
         alias:
           description: Alias of the template
           type: string
+        tags:
+          type: array
+          description: Tags to assign to the template
+          items:
+            type: string
         teamID:
           type: string
           description: Identifier of the team
@@ -1469,6 +1481,30 @@ components:
           type: string
           description: New name for the API key
 
+    TemplateTag:
+      required:
+        - tag
+        - buildID
+      properties:
+        tag:
+          type: string
+          description: Tag name
+        buildID:
+          type: string
+          format: uuid
+          description: Identifier of the build associated with this tag
+
+    AssignTemplateTagRequest:
+      required:
+        - tag
+      properties:
+        sourceTag:
+          type: string
+          description: Reference tag name
+        tag:
+          type: string
+          description: Tag name
+
     Error:
       required:
         - code
@@ -1508,6 +1544,7 @@ tags:
   - name: auth
   - name: access-tokens
   - name: api-keys
+  - name: tags
 
 paths:
   /health:
@@ -2421,6 +2458,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TemplateBuildLogsResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags:
+    post:
+      description: Assign a tag to a template build
+      tags: [tags]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignTemplateTagRequest"
+      responses:
+        "201":
+          description: Tag assigned successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTag"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/{tag}:
+    delete:
+      description: Delete a tag from a template
+      tags: [tags]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tag"
+      responses:
+        "204":
+          description: Tag deleted successfully
         "401":
           $ref: "#/components/responses/401"
         "404":

@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // PostV3Templates triggers a new template build
@@ -48,7 +49,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	alias, tag, err := id.ParseTemplateIDOrAliasWithTag(body.Alias)
+	alias, _, err := id.ParseTemplateIDOrAliasWithTag(body.Alias)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid alias", err)
@@ -84,6 +85,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	span.End()
 
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
+	tags := utils.DerefOrDefault(body.Tags, nil)
 
 	buildReq := template.RegisterBuildData{
 		ClusterID:          apiutils.WithClusterFallback(team.ClusterID),
@@ -91,7 +93,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		UserID:             nil,
 		Team:               team,
 		Alias:              &alias,
-		Tag:                tag,
+		Tags:               tags,
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV2LatestVersion,
@@ -115,7 +117,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", alias).
-		Set("tag", tag),
+		Set("tags", tags),
 	)
 	span.End()
 

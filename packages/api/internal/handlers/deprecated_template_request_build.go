@@ -157,17 +157,22 @@ func (a *APIStore) buildTemplate(
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 
 	var alias string
-	var tag *string
+	var tags []string
 
 	if body.Alias != nil {
 		var err error
-		alias, tag, err = id.ParseTemplateIDOrAliasWithTag(*body.Alias)
+		a, t, err := id.ParseTemplateIDOrAliasWithTag(*body.Alias)
 		if err != nil {
 			return nil, &api.APIError{
 				Code:      http.StatusBadRequest,
 				ClientMsg: fmt.Sprintf("Invalid alias: %s", err),
 				Err:       err,
 			}
+		}
+
+		alias = a
+		if t != nil {
+			tags = []string{*t}
 		}
 	}
 
@@ -179,7 +184,7 @@ func (a *APIStore) buildTemplate(
 		Team:               team,
 		Dockerfile:         body.Dockerfile,
 		Alias:              &alias,
-		Tag:                tag,
+		Tags:               tags,
 		StartCmd:           body.StartCmd,
 		ReadyCmd:           body.ReadyCmd,
 		CpuCount:           body.CpuCount,

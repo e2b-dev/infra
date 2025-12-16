@@ -32,7 +32,7 @@ type RegisterBuildData struct {
 	Team               *types.Team
 	Dockerfile         string
 	Alias              *string
-	Tag                *string
+	Tags               []string
 	StartCmd           *string
 	ReadyCmd           *string
 	CpuCount           *int32
@@ -103,8 +103,8 @@ func RegisterBuild(
 	if data.Alias != nil {
 		telemetry.SetAttributes(ctx, attribute.String("env.alias", *data.Alias))
 	}
-	if data.Tag != nil {
-		telemetry.SetAttributes(ctx, attribute.String("env.tag", *data.Tag))
+	if len(data.Tags) > 0 {
+		telemetry.SetAttributes(ctx, attribute.StringSlice("env.tags", data.Tags))
 	}
 	if data.StartCmd != nil {
 		telemetry.SetAttributes(ctx, attribute.String("env.start_cmd", *data.StartCmd))
@@ -294,21 +294,22 @@ func RegisterBuild(
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
 	}
 
-	// Add custom tag to the build if present
-	if data.Tag != nil {
-		tag := *data.Tag
-		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
-			TemplateID: data.TemplateID,
-			BuildID:    buildID,
-			Tag:        tag,
-		})
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error when adding custom tag to build", err, attribute.String("tag", tag))
+	// Add custom tags to the build if present
+	if len(data.Tags) > 0 {
+		for _, tag := range data.Tags {
+			err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+				TemplateID: data.TemplateID,
+				BuildID:    buildID,
+				Tag:        tag,
+			})
+			if err != nil {
+				telemetry.ReportCriticalError(ctx, "error when adding custom tag to build", err, attribute.String("tag", tag))
 
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Error when adding custom tag to build: %s", err),
-				Code:      http.StatusInternalServerError,
+				return nil, &api.APIError{
+					Err:       err,
+					ClientMsg: fmt.Sprintf("Error when adding custom tag to build: %s", err),
+					Code:      http.StatusInternalServerError,
+				}
 			}
 		}
 	}

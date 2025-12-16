@@ -110,6 +110,15 @@ type AdminSandboxKillResult struct {
 	KilledCount int `json:"killedCount"`
 }
 
+// AssignTemplateTagRequest defines model for AssignTemplateTagRequest.
+type AssignTemplateTagRequest struct {
+	// SourceTag Reference tag name
+	SourceTag *string `json:"sourceTag,omitempty"`
+
+	// Tag Tag name
+	Tag string `json:"tag"`
+}
+
 // BuildLogEntry defines model for BuildLogEntry.
 type BuildLogEntry struct {
 	// Level State of the sandbox
@@ -885,6 +894,9 @@ type TemplateBuildRequestV3 struct {
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
+	// Tags Tags to assign to the template
+	Tags *[]string `json:"tags,omitempty"`
+
 	// TeamID Identifier of the team
 	TeamID *string `json:"teamID,omitempty"`
 }
@@ -987,6 +999,15 @@ type TemplateStep struct {
 	Type string `json:"type"`
 }
 
+// TemplateTag defines model for TemplateTag.
+type TemplateTag struct {
+	// BuildID Identifier of the build associated with this tag
+	BuildID openapi_types.UUID `json:"buildID"`
+
+	// Tag Tag name
+	Tag string `json:"tag"`
+}
+
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.
 type TemplateUpdateRequest struct {
 	// Public Whether the template is public or only accessible by the team
@@ -1046,6 +1067,9 @@ type PaginationNextToken = string
 
 // SandboxID defines model for sandboxID.
 type SandboxID = string
+
+// Tag Tag name
+type Tag = string
 
 // TeamID defines model for teamID.
 type TeamID = string
@@ -1225,6 +1249,9 @@ type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
 
 // PostTemplatesTemplateIDJSONRequestBody defines body for PostTemplatesTemplateID for application/json ContentType.
 type PostTemplatesTemplateIDJSONRequestBody = TemplateBuildRequest
+
+// PostTemplatesTemplateIDTagsJSONRequestBody defines body for PostTemplatesTemplateIDTags for application/json ContentType.
+type PostTemplatesTemplateIDTagsJSONRequestBody = AssignTemplateTagRequest
 
 // PostV2TemplatesJSONRequestBody defines body for PostV2Templates for application/json ContentType.
 type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2
