@@ -81,6 +81,7 @@ module "nomad" {
   analytics_collector_host      = var.analytics_collector_host
   analytics_collector_api_token = var.analytics_collector_api_token
   redis_url                     = var.redis_url
+  redis_secure_cluster_url      = var.redis_secure_cluster_url
   launch_darkly_api_key         = var.launch_darkly_api_key
 
   orchestrator_port        = var.orchestrator_port
@@ -124,7 +125,6 @@ module "nomad" {
   enable_nomad_jobs                    = var.enable_nodes_uninstall ? false : var.enable_nomad_jobs
   orchestrator_proxy_port              = var.orchestrator_proxy_port
   orchestrator_node_pool               = var.orchestrator_node_pool
-  redis_secure_cluster_url             = var.redis_secure_cluster_url
   allow_sandbox_internet               = var.allow_sandbox_internet
   builder_node_pool                    = var.builder_node_pool
   envd_timeout                         = var.envd_timeout

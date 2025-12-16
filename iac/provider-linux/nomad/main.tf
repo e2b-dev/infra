@@ -70,8 +70,8 @@ resource "nomad_job" "api" {
     otel_tracing_print             = var.otel_tracing_print
     nomad_acl_token                = var.nomad_acl_token
     admin_token                    = var.api_admin_token
-    redis_url                      = var.redis_url == "redis.service.consul" ? "" : var.redis_url
-    redis_cluster_url              = var.redis_url == "redis.service.consul" ? "" : var.redis_url
+    redis_url                      = var.redis_url
+    redis_secure_cluster_url       = var.redis_secure_cluster_url
     dns_port_number                = 5353
     clickhouse_connection_string   = local.clickhouse_connection_string
     db_migrator_docker_image       = var.db_migrator_image
@@ -103,8 +103,8 @@ resource "nomad_job" "client_proxy" {
       datacenter  = var.datacenter
       environment = var.environment
 
-      redis_url         = var.redis_url == "redis.service.consul" ? "" : var.redis_url
-      redis_cluster_url = var.redis_url == "redis.service.consul" ? "" : var.redis_url
+      redis_url         = var.redis_url
+      redis_cluster_url = var.redis_secure_cluster_url
 
       loki_url = "http://loki.service.consul:${var.loki_service_port.port}"
 
@@ -275,7 +275,7 @@ resource "nomad_job" "orchestrator" {
     allow_sandbox_internet               = var.allow_sandbox_internet
     shared_chunk_cache_path              = var.shared_chunk_cache_path
     clickhouse_connection_string         = local.clickhouse_connection_string
-    redis_url                            = var.redis_url == "redis.service.consul" ? "" : var.redis_url
+    redis_url                            = var.redis_url
     redis_cluster_url                    = var.redis_secure_cluster_url
     redis_tls_ca_base64                  = var.redis_tls_ca_base64
     launch_darkly_api_key                = trimspace(var.launch_darkly_api_key)

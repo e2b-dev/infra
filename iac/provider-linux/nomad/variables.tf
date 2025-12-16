@@ -56,6 +56,9 @@ variable "posthog_api_key" { type = string }
 variable "analytics_collector_host" { type = string }
 variable "analytics_collector_api_token" { type = string }
 variable "redis_url" { type = string }
+variable "redis_tls_ca_base64" { type = string }
+variable "redis_secure_cluster_url" { type = string }
+
 variable "launch_darkly_api_key" {
   type    = string
   default = ""
@@ -108,8 +111,6 @@ variable "docker_image_prefix" {
   default = ""
 }
 variable "api_secret" { type = string }
-variable "redis_tls_ca_base64" { type = string }
-variable "redis_secure_cluster_url" { type = string }
 
 variable "otel_collector_resources_memory_mb" { type = number }
 variable "otel_collector_resources_cpu_count" { type = number }

@@ -60,6 +60,7 @@ tf_vars := \
 	$(call tfvar, ANALYTICS_COLLECTOR_HOST) \
 	$(call tfvar, ANALYTICS_COLLECTOR_API_TOKEN) \
 	$(call tfvar, REDIS_URL) \
+	$(call tfvar, REDIS_SECURE_CLUSTER_URL) \
 	$(call tfvar, LAUNCH_DARKLY_API_KEY) \
 	$(call tfvar, API_IMAGE) \
 	$(call tfvar, DB_MIGRATOR_IMAGE) \
