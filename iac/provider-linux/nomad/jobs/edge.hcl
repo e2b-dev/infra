@@ -42,14 +42,18 @@ job "client-proxy" {
 
       tags = [
         "traefik.enable=true",
-        "traefik.http.routers.edge-proxy.rule=HostRegexp(`{subdomain:.+}.${domain_name}`)",
+        "traefik.http.routers.edge-proxy.rule=HostRegexp(`.+\\.${domain_name}`)",
         "traefik.http.routers.edge-proxy.entrypoints=websecure",
         "traefik.http.routers.edge-proxy.tls=true",
+        "traefik.http.routers.edge-proxy.tls.domains[0].main=${domain_name}",
+        "traefik.http.routers.edge-proxy.tls.domains[0].sans=*.${domain_name}",
+        "traefik.http.routers.edge-proxy.priority=1",
         "traefik.http.routers.edge-proxy.service=edge-proxy",
         "traefik.http.services.edge-proxy.loadbalancer.server.port=${proxy_port}",
-        "traefik.http.routers.edge-execute.rule=PathPrefix(`/execute`)",
+        "traefik.http.routers.edge-execute.rule=Host(`edge.${domain_name}`) && PathPrefix(`/execute`)",
         "traefik.http.routers.edge-execute.entrypoints=websecure",
         "traefik.http.routers.edge-execute.tls=true",
+        "traefik.http.routers.edge-execute.priority=200",
         "traefik.http.routers.edge-execute.service=edge-proxy",
         "traefik.http.services.edge-execute.loadbalancer.server.port=${proxy_port}"
       ]
@@ -73,6 +77,7 @@ job "client-proxy" {
         "traefik.http.routers.edge.rule=Host(`edge.${domain_name}`)",
         "traefik.http.routers.edge.entrypoints=websecure",
         "traefik.http.routers.edge.tls=true",
+        "traefik.http.routers.edge.priority=100",
         "traefik.http.routers.edge.service=edge-api",
         "traefik.http.services.edge-api.loadbalancer.server.port=${api_port}"
       ]

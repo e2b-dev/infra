@@ -37,6 +37,7 @@ job "api" {
         "traefik.http.routers.api.rule=Host(`api.${domain_name}`)",
         "traefik.http.routers.api.entrypoints=websecure",
         "traefik.http.routers.api.tls=true",
+        "traefik.http.routers.api.priority=150",
         "traefik.http.routers.api.service=api",
         "traefik.http.services.api.loadbalancer.server.port=${port_number}"
       ]
