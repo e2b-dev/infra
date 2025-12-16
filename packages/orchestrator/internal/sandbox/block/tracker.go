@@ -39,11 +39,33 @@ func (t *Tracker) Has(off int64) bool {
 	return t.b.Test(uint(header.BlockIdx(off, t.blockSize)))
 }
 
+func (t *Tracker) HasOffsets(off, length int64) bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	for off := range getOffsets(off, off+length, t.blockSize) {
+		if !t.b.Test(uint(header.BlockIdx(off, t.blockSize))) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (t *Tracker) Add(off int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	t.b.Set(uint(header.BlockIdx(off, t.blockSize)))
+}
+
+func (t *Tracker) AddOffsets(off, length int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for off := range getOffsets(off, off+length, t.blockSize) {
+		t.b.Set(uint(header.BlockIdx(off, t.blockSize)))
+	}
 }
 
 func (t *Tracker) Reset() {

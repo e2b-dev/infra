@@ -13,7 +13,7 @@ type Range struct {
 	// Start is inclusive.
 	Start int64
 	// Size is the size of the range in bytes.
-	Size uint64
+	Size int64
 }
 
 func (r *Range) End() int64 {
@@ -24,7 +24,13 @@ func (r *Range) End() int64 {
 // This assumes the Range.Start is a multiple of the blockSize.
 func (r *Range) Offsets(blockSize int64) iter.Seq[int64] {
 	return func(yield func(offset int64) bool) {
-		for off := r.Start; off < r.End(); off += blockSize {
+		getOffsets(r.Start, r.End(), blockSize)(yield)
+	}
+}
+
+func getOffsets(start, end int64, blockSize int64) iter.Seq[int64] {
+	return func(yield func(offset int64) bool) {
+		for off := start; off < end; off += blockSize {
 			if !yield(off) {
 				return
 			}
@@ -33,7 +39,7 @@ func (r *Range) Offsets(blockSize int64) iter.Seq[int64] {
 }
 
 // NewRange creates a new range from a start address and size in bytes.
-func NewRange(start int64, size uint64) Range {
+func NewRange(start int64, size int64) Range {
 	return Range{
 		Start: start,
 		Size:  size,
@@ -44,7 +50,7 @@ func NewRange(start int64, size uint64) Range {
 func NewRangeFromBlocks(startIdx, numberOfBlocks, blockSize int64) Range {
 	return Range{
 		Start: header.BlockOffset(startIdx, blockSize),
-		Size:  uint64(header.BlockOffset(numberOfBlocks, blockSize)),
+		Size:  header.BlockOffset(numberOfBlocks, blockSize),
 	}
 }
 
@@ -70,7 +76,7 @@ func BitsetRanges(b *bitset.BitSet, blockSize int64) iter.Seq[Range] {
 	}
 }
 
-func GetSize(rs []Range) (size uint64) {
+func GetSize(rs []Range) (size int64) {
 	for _, r := range rs {
 		size += r.Size
 	}

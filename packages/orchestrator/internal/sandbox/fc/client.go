@@ -67,6 +67,7 @@ func (c *apiClient) loadSnapshot(
 			EnableDiffSnapshots: false,
 			MemBackend:          backend,
 			SnapshotPath:        &snapfilePath,
+			NetworkOverrides:    []*models.NetworkOverride{},
 		},
 	}
 
