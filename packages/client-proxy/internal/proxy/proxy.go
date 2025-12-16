@@ -81,7 +81,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			// https://linear.app/e2b/issue/ENG-3398
 			proxyPort := entry.OrchestratorProxyPort
 			if proxyPort == 0 {
-				proxyPort = uint16(consts.OrchestratorProxyPort)
+				proxyPort = consts.OrchestratorProxyPort
 			}
 
 			proxyUrl := &url.URL{

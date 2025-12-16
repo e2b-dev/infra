@@ -94,7 +94,7 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadS
 	for _, n := range nomadNodes {
 		result = append(result, nodemanager.NomadServiceDiscovery{
 			NomadNodeShortID:    n.ID[:consts.NodeIDLength],
-			OrchestratorAddress: fmt.Sprintf("%s:%s", n.Address, consts.OrchestratorApiPort),
+			OrchestratorAddress: fmt.Sprintf("%s:%d", n.Address, consts.OrchestratorApiPort),
 			IPAddress:           n.Address,
 		})
 	}

@@ -12,6 +12,6 @@ const NodeIDLength = 8
 // We don't want to use some obviously dummy value such as empty zeros, because for users it will look like something is wrong with the sandbox id
 const ClientID = "6532622b"
 
-var OrchestratorApiPort = utils.Must(env.GetEnvAsInt("ORCHESTRATOR_PORT", 5008))
+var OrchestratorApiPort = uint16(utils.Must(env.GetEnvAsInt("ORCHESTRATOR_PORT", 5008)))
 
-var OrchestratorProxyPort = utils.Must(env.GetEnvAsInt("ORCHESTRATOR_PROXY_PORT", 5007))
+var OrchestratorProxyPort = uint16(utils.Must(env.GetEnvAsInt("ORCHESTRATOR_PROXY_PORT", 5007)))
