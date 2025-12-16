@@ -205,11 +205,6 @@ func (f *Factory) CreateSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
 	f.addSandbox()
-	defer func() {
-		if e != nil {
-			f.subtractSandbox()
-		}
-	}()
 
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
@@ -228,6 +223,12 @@ func (f *Factory) CreateSandbox(
 			execSpan.End()
 		}
 	}()
+
+	cleanup.AddNoContext(ctx, func() error {
+		f.subtractSandbox()
+
+		return nil
+	})
 
 	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
@@ -362,7 +363,6 @@ func (f *Factory) CreateSandbox(
 	cleanup.AddPriority(ctx, sbx.Stop)
 
 	go func() {
-		defer f.subtractSandbox()
 		defer execSpan.End()
 
 		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
@@ -399,11 +399,6 @@ func (f *Factory) ResumeSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
 	f.addSandbox()
-	defer func() {
-		if e != nil {
-			f.subtractSandbox()
-		}
-	}()
 
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
@@ -422,6 +417,11 @@ func (f *Factory) ResumeSandbox(
 			execSpan.End()
 		}
 	}()
+	cleanup.AddNoContext(ctx, func() error {
+		f.subtractSandbox()
+
+		return nil
+	})
 
 	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
@@ -624,7 +624,6 @@ func (f *Factory) ResumeSandbox(
 	go sbx.Checks.Start(execCtx)
 
 	go func() {
-		defer f.subtractSandbox()
 		defer execSpan.End()
 
 		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")

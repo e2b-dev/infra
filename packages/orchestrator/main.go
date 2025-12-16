@@ -375,7 +375,7 @@ func run(config cfg.Config) (success bool) {
 		sandboxes,
 		tel.MeterProvider,
 	)
-	startService("tcp egress firewall", func() error {
+	startService("tcp egress firewall", func(context.Context) error {
 		return tcpFirewall.Start(ctx)
 	})
 	closers = append(closers, closer{"tcp egress firewall", tcpFirewall.Close})
