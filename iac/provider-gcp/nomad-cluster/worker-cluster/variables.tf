@@ -7,17 +7,17 @@ variable "autoscaler" {
   })
 
   validation {
-    condition     = var.autoscaler.size_max >= var.autoscaler.size_min
+    condition     = var.autoscaler.size_max == null || (var.autoscaler.size_max >= var.autoscaler.size_min)
     error_message = "autoscaling_size_max must be >= autoscaling_size_min."
   }
 
   validation {
-    condition     = var.autoscaler.cpu_target >= 0 && var.autoscaler.cpu_target <= 1
+    condition     = var.autoscaler.cpu_target == null || (var.autoscaler.cpu_target >= 0 && var.autoscaler.cpu_target <= 1)
     error_message = "autoscaling_cpu_target must be between 0 and 1."
   }
 
   validation {
-    condition     = var.autoscaler.memory_target >= 0 && var.autoscaler.memory_target <= 100
+    condition     = var.autoscaler.memory_target == null || (var.autoscaler.memory_target >= 0 && var.autoscaler.memory_target <= 100)
     error_message = "autoscaling_memory_target must be between 0 and 100."
   }
 }
@@ -48,6 +48,17 @@ variable "cache_disks" {
     condition     = var.cache_disks.count >= 1
     error_message = "You have to have at least one cache disk"
   }
+
+  validation {
+    condition     = var.cache_disks.disk_type == "local-ssd" || var.cache_disks.count == 1
+    error_message = "When using persistent disks for the cluster cache, only 1 disk is supported."
+  }
+
+  validation {
+    condition     = !(var.cache_disks.disk_type == "local-ssd") || var.cache_disks.size_gb == 375
+    error_message = "When using local-ssd for the cluster cache, each disk must be exactly 375 GB."
+  }
+
 }
 
 variable "cluster_name" {

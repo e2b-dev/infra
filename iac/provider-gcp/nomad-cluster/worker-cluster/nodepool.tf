@@ -59,8 +59,11 @@ resource "google_compute_region_autoscaler" "autoscaler" {
     # Turn off autoscaling when the cluster size is equal to the maximum size.
     mode = "ONLY_SCALE_OUT"
 
-    cpu_utilization {
-      target = var.autoscaler.cpu_target
+    dynamic "cpu_utilization" {
+      for_each = var.autoscaler.cpu_target != null && var.autoscaler.cpu_target < 100 ? [1] : []
+      content {
+        target = var.autoscaler.cpu_target
+      }
     }
 
     dynamic "metric" {
