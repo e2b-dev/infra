@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -146,13 +147,8 @@ func (s *ServerStore) Close(ctx context.Context) error {
 }
 
 func (s *ServerStore) Wait(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
 	s.logger.Info(ctx, "Waiting for all build jobs to finish")
-	s.wg.Wait()
-	s.logger.Info(ctx, "Template build queue cleaned")
+	defer s.logger.Info(ctx, "Template build queue cleaned")
 
-	return nil
+	return utils.Wait(ctx, s.wg)
 }
