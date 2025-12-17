@@ -12,7 +12,7 @@ import (
 )
 
 type (
-	InsertCallback func(ctx context.Context, sbx Sandbox, created bool)
+	InsertCallback func(ctx context.Context, sbx Sandbox)
 	ItemsOption    func(*ItemsFilter)
 )
 
@@ -50,10 +50,18 @@ func WithOnlyExpired(isExpired bool) ItemsOption {
 	}
 }
 
+type Callbacks struct {
+	// AddSandboxRouting should be called sync to prevent race conditions where we would know where to route the sandbox
+	AddSandboxRouting InsertCallback
+	// AsyncSandboxCounter should be called async to prevent blocking the main goroutine
+	AsyncSandboxCounter InsertCallback
+	// AsyncNewlyCreatedSandbox should be called async to prevent blocking the main goroutine
+	AsyncNewlyCreatedSandbox InsertCallback
+}
+
 type Store struct {
-	storage              Storage
-	insertCallbacks      []InsertCallback
-	insertAsyncCallbacks []InsertCallback
+	storage   Storage
+	callbacks Callbacks
 
 	reservations ReservationStorage
 }
@@ -61,16 +69,12 @@ type Store struct {
 func NewStore(
 	backend Storage,
 	reservations ReservationStorage,
-
-	insertCallbacks []InsertCallback,
-	insertAsyncCallbacks []InsertCallback,
+	callbacks Callbacks,
 ) *Store {
 	return &Store{
 		storage:      backend,
 		reservations: reservations,
-
-		insertCallbacks:      insertCallbacks,
-		insertAsyncCallbacks: insertAsyncCallbacks,
+		callbacks:    callbacks,
 	}
 }
 
@@ -88,16 +92,17 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 	}
 
 	err := s.storage.Add(ctx, sandbox)
-	if err != nil {
+	if err == nil {
+		// Count only newly added sandboxes to the store
+		go s.callbacks.AsyncSandboxCounter(context.WithoutCancel(ctx), sandbox)
+	} else {
 		// There's a race condition when the sandbox is added from node sync
 		// This should be fixed once the sync is improved
-		if errors.Is(err, ErrAlreadyExists) {
-			logger.L().Warn(ctx, "Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
-
-			return nil
+		if !errors.Is(err, ErrAlreadyExists) {
+			return err
 		}
 
-		return err
+		logger.L().Warn(ctx, "Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
 	}
 
 	// Ensure the team reservation is set - no limit
@@ -110,13 +115,11 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 		finishStart(sandbox, nil)
 	}
 
-	// Run callbacks
-	for _, callback := range s.insertCallbacks {
-		callback(ctx, sandbox, newlyCreated)
-	}
+	// Add sandbox info to node for routing
+	s.callbacks.AddSandboxRouting(ctx, sandbox)
 
-	for _, callback := range s.insertAsyncCallbacks {
-		go callback(context.WithoutCancel(ctx), sandbox, newlyCreated)
+	if newlyCreated {
+		go s.callbacks.AsyncNewlyCreatedSandbox(context.WithoutCancel(ctx), sandbox)
 	}
 
 	return nil

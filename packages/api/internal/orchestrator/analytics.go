@@ -113,36 +113,43 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox sandbox.Sand
 	}
 }
 
-func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox sandbox.Sandbox, created bool) {
+func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox sandbox.Sandbox) {
 	ctx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
-	if created {
-		// Run in separate goroutine to not block sandbox creation
-		_, err := o.analytics.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
-			InstanceId:    sandbox.SandboxID,
-			ExecutionId:   sandbox.ExecutionID,
-			EnvironmentId: sandbox.TemplateID,
-			BuildId:       sandbox.BuildID.String(),
-			TeamId:        sandbox.TeamID.String(),
-			CpuCount:      sandbox.VCpu,
-			RamMb:         sandbox.RamMB,
-			DiskSizeMb:    sandbox.TotalDiskSizeMB,
-			Timestamp:     timestamppb.Now(),
-		})
-		if err != nil {
-			logger.L().Error(ctx, "Error sending Analytics event", zap.Error(err))
-		}
+	_, err := o.analytics.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
+		InstanceId:    sandbox.SandboxID,
+		ExecutionId:   sandbox.ExecutionID,
+		EnvironmentId: sandbox.TemplateID,
+		BuildId:       sandbox.BuildID.String(),
+		TeamId:        sandbox.TeamID.String(),
+		CpuCount:      sandbox.VCpu,
+		RamMb:         sandbox.RamMB,
+		DiskSizeMb:    sandbox.TotalDiskSizeMB,
+		Timestamp:     timestamppb.Now(),
+	})
+	if err != nil {
+		logger.L().Error(ctx, "Error sending Analytics event", zap.Error(err))
 	}
 }
 
-func (o *Orchestrator) countersInsert(ctx context.Context, sandbox sandbox.Sandbox, newlyCreated bool) {
+func (o *Orchestrator) handleNewlyCreatedSandbox(ctx context.Context, sandbox sandbox.Sandbox) {
+	// Send analytics event
+	o.analyticsInsert(ctx, sandbox)
+
+	// Update team metrics
+	o.teamMetricsObserver.Add(ctx, sandbox.TeamID)
+
+	// Increment created counter
 	attributes := []attribute.KeyValue{
 		telemetry.WithTeamID(sandbox.TeamID.String()),
 	}
+	o.createdCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
+}
 
-	if newlyCreated {
-		o.createdCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
+func (o *Orchestrator) sandboxCounterInsert(ctx context.Context, sandbox sandbox.Sandbox) {
+	attributes := []attribute.KeyValue{
+		telemetry.WithTeamID(sandbox.TeamID.String()),
 	}
 
 	o.sandboxCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
