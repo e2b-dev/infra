@@ -71,11 +71,11 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 			continue
 		}
 
+		logEntries = append(logEntries, entry)
+
 		if uint32(len(logEntries)) >= limit {
 			break
 		}
-
-		logEntries = append(logEntries, entry)
 	}
 
 	// If the direction is backward, we need to reverse the log entries again to have them back in the ascending order
