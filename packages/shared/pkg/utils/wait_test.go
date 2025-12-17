@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWait(t *testing.T) {
@@ -22,7 +23,7 @@ func TestWait(t *testing.T) {
 		err := Wait(ctx, &wg)
 		actualFinish := time.Now()
 
-		assert.ErrorIs(t, err, context.Canceled)
+		require.ErrorIs(t, err, context.Canceled)
 		assert.WithinDuration(t, start, actualFinish, 10*time.Millisecond)
 	})
 
@@ -45,7 +46,7 @@ func TestWait(t *testing.T) {
 		actualFinish := time.Now()
 		expectedFinish := start.Add(sleepTime)
 
-		assert.ErrorIs(t, err, context.Canceled)
+		require.ErrorIs(t, err, context.Canceled)
 		assert.WithinDuration(t, expectedFinish, actualFinish, 10*time.Millisecond)
 	})
 
@@ -63,7 +64,7 @@ func TestWait(t *testing.T) {
 		actualFinish := time.Now()
 		expectedFinish := start.Add(sleepTime)
 
-		assert.ErrorIs(t, err, context.DeadlineExceeded)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.WithinDuration(t, expectedFinish, actualFinish, 10*time.Millisecond)
 	})
 
@@ -83,7 +84,7 @@ func TestWait(t *testing.T) {
 		actualFinish := time.Now()
 		expectedFinish := start.Add(sleepTime)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.WithinDuration(t, expectedFinish, actualFinish, 10*time.Millisecond)
 	})
 }
