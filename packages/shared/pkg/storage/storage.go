@@ -149,7 +149,7 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 	case AWSStorageProvider:
 		return newAWSBucketStore(ctx, bucketName)
 	case GCPStorageProvider:
-		return newGCPBucketStore(ctx, bucketName, limiter)
+		return NewGCPBucketStorageProvider(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
@@ -171,7 +171,7 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	case AWSStorageProvider:
 		return newAWSBucketStore(ctx, bucketName)
 	case GCPStorageProvider:
-		return newGCPBucketStore(ctx, bucketName, limiter)
+		return NewGCPBucketStorageProvider(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)

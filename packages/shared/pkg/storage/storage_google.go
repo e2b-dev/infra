@@ -90,7 +90,7 @@ var (
 	_ FramedReader   = (*gcpFramedReader)(nil)
 )
 
-func newGCPBucketStore(ctx context.Context, bucketName string, limiter *limit.Limiter) (*gcpBucketStore, error) {
+func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*gcpBucketStore, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
