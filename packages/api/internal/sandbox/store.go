@@ -92,6 +92,8 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 		// There's a race condition when the sandbox is added from node sync
 		// This should be fixed once the sync is improved
 		if errors.Is(err, ErrAlreadyExists) {
+			logger.L().Warn(ctx, "Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
+
 			return nil
 		}
 
