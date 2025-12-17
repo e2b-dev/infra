@@ -17,9 +17,9 @@ import (
 func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	added := s.items.SetIfAbsent(sbx.SandboxID, newMemorySandbox(sbx))
 	if !added {
-		// There's a race condition when the sandbox is added from sync, we don't want to error out in that case
-		// This should be fixed after we improve the sync
 		logger.L().Warn(ctx, "Sandbox already exists in cache", logger.WithSandboxID(sbx.SandboxID))
+
+		return sandbox.ErrAlreadyExists
 	}
 
 	return nil

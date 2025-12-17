@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -88,6 +89,12 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 
 	err := s.storage.Add(ctx, sandbox)
 	if err != nil {
+		// There's a race condition when the sandbox is added from node sync
+		// This should be fixed once the sync is improved
+		if errors.Is(err, ErrAlreadyExists) {
+			return nil
+		}
+
 		return err
 	}
 
