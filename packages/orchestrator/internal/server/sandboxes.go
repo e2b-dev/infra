@@ -70,10 +70,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			Build(),
 	)
 
-	maxRunningSandboxesPerNode, err := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to get MaxSandboxesPerNode flag", zap.Error(err))
-	}
+	maxRunningSandboxesPerNode := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
 
 	runningSandboxes := s.sandboxes.Count()
 	if runningSandboxes >= maxRunningSandboxesPerNode {

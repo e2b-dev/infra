@@ -1082,10 +1082,7 @@ func (s *Sandbox) WaitForEnvd(
 }
 
 func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
-	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
-	if err != nil {
-		logger.L().Warn(ctx, "failed to get envd timeout from feature flag, using default", zap.Error(err))
-	}
+	envdInitRequestTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutMilliseconds)
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
 }
