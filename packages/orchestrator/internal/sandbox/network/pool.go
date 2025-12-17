@@ -137,7 +137,7 @@ func (p *Pool) Populate(ctx context.Context) error {
 					)
 				}
 
-				return ErrClosed
+				return nil
 			case p.newSlots <- slot:
 			case <-ctx.Done():
 				return ctx.Err()
@@ -189,11 +189,11 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 }
 
 func (p *Pool) Return(ctx context.Context, slot *Slot) error {
+	// avoid checking p.done, as we want to return the slot even if the pool is closed.
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-p.done:
-		return ErrClosed
 	default:
 	}
 
@@ -210,8 +210,6 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-p.done:
-		return ErrClosed
 	case p.reusedSlots <- slot:
 		returnedSlotCounter.Add(ctx, 1)
 		reusableSlotsAvailableCounter.Add(ctx, 1)

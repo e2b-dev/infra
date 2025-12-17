@@ -131,7 +131,7 @@ func (d *DevicePool) Populate(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-d.done:
-			return ErrClosed
+			return nil
 		default:
 		}
 
@@ -162,7 +162,7 @@ func (d *DevicePool) Populate(ctx context.Context) error {
 		case <-d.done:
 			cleanup()
 
-			return ErrClosed
+			return nil
 		case d.slots <- *device:
 			// sent successfully
 		}
