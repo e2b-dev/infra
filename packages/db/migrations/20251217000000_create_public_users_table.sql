@@ -49,6 +49,6 @@ SELECT id, email FROM auth.users;
 -- +goose Down
 -- +goose StatementBegin
 DROP TRIGGER IF EXISTS sync_to_public_users ON auth.users;
-DROP FUNCTION IF EXISTS public.sync_auth_users_to_public_users();
+DROP FUNCTION IF EXISTS public.sync_auth_users_to_public_users_trigger();
 DROP TABLE IF EXISTS public.users;
 -- +goose StatementEnd
