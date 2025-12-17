@@ -46,7 +46,8 @@ func main() {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	obj, err := storage.OpenSeekableObject(ctx, storagePath, objectType)
+	// TODO: handle compressed objects
+	obj, err := storage.OpenFramedReader(ctx, storagePath, nil)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}
