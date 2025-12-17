@@ -24,17 +24,14 @@ func main() {
 
 	var storagePath string
 	var blockSize int64
-	var objectType storage.SeekableObjectType
 
 	switch *kind {
 	case "memfile":
 		storagePath = template.StorageMemfilePath()
 		blockSize = 2097152
-		objectType = storage.MemfileObjectType
 	case "rootfs":
 		storagePath = template.StorageRootfsPath()
 		blockSize = 4096
-		objectType = storage.RootFSObjectType
 	default:
 		log.Fatalf("invalid kind: %s", *kind)
 	}

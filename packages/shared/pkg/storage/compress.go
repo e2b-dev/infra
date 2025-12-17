@@ -95,7 +95,8 @@ type frameEncoder struct {
 type frameUploader struct {
 	targetPartSize int
 
-	ctx      context.Context
+	// ctx can not be otherwise passed down to the callbacks.
+	ctx      context.Context //nolint:containedctx
 	partN    int
 	bytes    int64
 	frames   [][]byte
@@ -203,7 +204,7 @@ func (fe *frameEncoder) closeFrame(last bool) error {
 func (fe *frameEncoder) Write(data []byte) (n int, err error) {
 	for len(data) > 0 {
 		// Write out data that fits the current chunk
-		remainInChunk := max(int(fe.opts.ChunkSize-fe.bytesInChunk), 0)
+		remainInChunk := max(fe.opts.ChunkSize-fe.bytesInChunk, 0)
 		writeNow := min(len(data), remainInChunk)
 		written, err := fe.enc.Write(data[:writeNow])
 		n += written

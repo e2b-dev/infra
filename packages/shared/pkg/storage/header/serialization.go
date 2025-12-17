@@ -55,8 +55,22 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
 	}
 
+	// TODO !!! serialize with compression
 	for _, mapping := range mappings {
-		err := binary.Write(&buf, binary.LittleEndian, mapping)
+		type buildMapNoCompression struct {
+			Offset             uint64
+			Length             uint64
+			BuildId            uuid.UUID
+			BuildStorageOffset uint64
+		}
+
+		v := buildMapNoCompression{
+			Offset:             mapping.Offset,
+			Length:             mapping.Length,
+			BuildId:            mapping.BuildId,
+			BuildStorageOffset: mapping.BuildStorageOffset,
+		}
+		err := binary.Write(&buf, binary.LittleEndian, v)
 		if err != nil {
 			return nil, fmt.Errorf("failed to write block mapping: %w", err)
 		}

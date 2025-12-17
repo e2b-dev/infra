@@ -49,7 +49,11 @@ type cachedStore struct {
 
 var _ StorageProvider = (*cachedStore)(nil)
 
-func NewCachedProvider(rootPath string, inner StorageProvider) *cachedStore {
+func NewCachedProvider(rootPath string, inner StorageProvider) StorageProvider {
+	return newCachedProvider(rootPath, inner)
+}
+
+func newCachedProvider(rootPath string, inner StorageProvider) *cachedStore {
 	return &cachedStore{rootPath: rootPath, inner: inner, chunkSize: MemoryChunkSize}
 }
 

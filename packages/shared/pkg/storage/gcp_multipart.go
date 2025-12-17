@@ -217,7 +217,7 @@ type multipartUploaderGCP struct {
 
 var _ MultipartUploader = (*multipartUploaderGCP)(nil)
 
-func NewGCPUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig) (*multipartUploaderGCP, error) {
+func newGCPUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig) (*multipartUploaderGCP, error) {
 	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials: %w", err)

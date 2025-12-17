@@ -164,7 +164,7 @@ func (g *gcpBucketStore) handle(path string) *storage.ObjectHandle {
 	)
 }
 
-func (g *gcpBucketStore) OpenFramedWriter(ctx context.Context, path string, opts *CompressionOptions) (FramedWriter, error) {
+func (g *gcpBucketStore) OpenFramedWriter(_ context.Context, path string, opts *CompressionOptions) (FramedWriter, error) {
 	return &gcpFramedWriter{
 		gcpObj: gcpObj{
 			store:   g,
@@ -176,7 +176,7 @@ func (g *gcpBucketStore) OpenFramedWriter(ctx context.Context, path string, opts
 	}, nil
 }
 
-func (g *gcpBucketStore) OpenFramedReader(ctx context.Context, path string, frameInfo *CompressedInfo) (FramedReader, error) {
+func (g *gcpBucketStore) OpenFramedReader(_ context.Context, path string, frameInfo *CompressedInfo) (FramedReader, error) {
 	return &gcpFramedReader{
 		gcpObj: gcpObj{
 			store:   g,
@@ -188,7 +188,7 @@ func (g *gcpBucketStore) OpenFramedReader(ctx context.Context, path string, fram
 	}, nil
 }
 
-func (g *gcpBucketStore) OpenObject(ctx context.Context, path string, _ ObjectType) (ObjectProvider, error) {
+func (g *gcpBucketStore) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -383,7 +383,7 @@ func (g *gcpObj) CopyFromFileSystem(ctx context.Context, path string) error {
 		maxConcurrency = g.limiter.GCloudMaxTasks(ctx)
 	}
 
-	uploader, err := NewGCPUploaderWithRetryConfig(
+	uploader, err := newGCPUploaderWithRetryConfig(
 		ctx,
 		bucketName,
 		objectName,
@@ -438,7 +438,7 @@ func (g *gcpFramedWriter) StoreFromFileSystem(ctx context.Context, path string) 
 		maxConcurrency = g.limiter.GCloudMaxTasks(ctx)
 	}
 
-	uploader, err := NewGCPUploaderWithRetryConfig(
+	uploader, err := newGCPUploaderWithRetryConfig(
 		ctx,
 		bucketName,
 		objectName,
@@ -537,23 +537,20 @@ func (g *gcpFramedReader) ReadAt(ctx context.Context, buf []byte, offset int64) 
 	}
 
 	// copy from responses into the user buffer
-	remaining := int64(len(buf))
-	bufOffset := int64(0)
+	remaining := len(buf)
+	bufOffset := 0
 	for _, respCh := range responses {
 		decompressedFrame := <-respCh
 		close(respCh)
 
 		// calculate the offset within the decompressed frame to start copying from
-		startInFrame := int64(0)
-		if offset > g.info.FramesStartAt.U+bufOffset {
-			startInFrame = offset - (g.info.FramesStartAt.U + bufOffset)
+		startInFrame := 0
+		if offset > g.info.FramesStartAt.U+int64(bufOffset) {
+			startInFrame = int(offset - (g.info.FramesStartAt.U + int64(bufOffset)))
 		}
 
 		// calculate how much data to copy from this frame
-		toCopy := int64(len(decompressedFrame)) - startInFrame
-		if toCopy > remaining {
-			toCopy = remaining
-		}
+		toCopy := min(len(decompressedFrame)-startInFrame, remaining)
 
 		copy(buf[bufOffset:bufOffset+toCopy], decompressedFrame[startInFrame:startInFrame+toCopy])
 
@@ -564,6 +561,10 @@ func (g *gcpFramedReader) ReadAt(ctx context.Context, buf []byte, offset int64) 
 	return len(buf), nil
 }
 
-func (f *gcpFramedReader) Size(ctx context.Context) (int64, error) {
-	return f.info.TotalUncompressedSize(), nil
+func (g *gcpFramedReader) Size(_ context.Context) (int64, error) {
+	if g.info == nil {
+		return 0, fmt.Errorf("TODO! implement for missing compression info")
+	}
+
+	return g.info.TotalUncompressedSize(), nil
 }

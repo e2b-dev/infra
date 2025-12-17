@@ -136,7 +136,7 @@ func (a *awsBucketStore) OpenObject(_ context.Context, path string, _ ObjectType
 	}, nil
 }
 
-func (a *awsBucketStore) OpenFramedWriter(ctx context.Context, path string, _ *CompressionOptions) (FramedWriter, error) {
+func (a *awsBucketStore) OpenFramedWriter(_ context.Context, path string, _ *CompressionOptions) (FramedWriter, error) {
 	return &awsObject{
 		client:     a.client,
 		bucketName: a.bucketName,
@@ -144,7 +144,7 @@ func (a *awsBucketStore) OpenFramedWriter(ctx context.Context, path string, _ *C
 	}, nil
 }
 
-func (a *awsBucketStore) OpenFramedReader(ctx context.Context, path string, _ *CompressedInfo) (FramedReader, error) {
+func (a *awsBucketStore) OpenFramedReader(_ context.Context, path string, _ *CompressedInfo) (FramedReader, error) {
 	return &awsObject{
 		client:     a.client,
 		bucketName: a.bucketName,

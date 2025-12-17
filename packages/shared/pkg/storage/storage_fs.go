@@ -70,7 +70,7 @@ func (fs *fsStore) OpenObject(_ context.Context, path string, _ ObjectType) (Obj
 	}, nil
 }
 
-func (fs *fsStore) OpenFramedWriter(ctx context.Context, path string, opts *CompressionOptions) (FramedWriter, error) {
+func (fs *fsStore) OpenFramedWriter(_ context.Context, path string, opts *CompressionOptions) (FramedWriter, error) {
 	dir := filepath.Dir(fs.abs(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -82,7 +82,7 @@ func (fs *fsStore) OpenFramedWriter(ctx context.Context, path string, opts *Comp
 	}, nil
 }
 
-func (fs *fsStore) OpenFramedReader(ctx context.Context, path string, info *CompressedInfo) (FramedReader, error) {
+func (fs *fsStore) OpenFramedReader(_ context.Context, path string, info *CompressedInfo) (FramedReader, error) {
 	return &fsFramedReader{
 		path: fs.abs(path),
 		info: info,
@@ -174,7 +174,7 @@ func (f *fsObject) Delete(_ context.Context) error {
 	return os.Remove(f.path)
 }
 
-func (f *fsFramedWriter) StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error) {
+func (f *fsFramedWriter) StoreFromFileSystem(_ context.Context, path string) (*CompressedInfo, error) {
 	handle, err := getHandle(f.path, false)
 	if err != nil {
 		return nil, err
@@ -187,7 +187,7 @@ func (f *fsFramedWriter) StoreFromFileSystem(ctx context.Context, path string) (
 	}
 	defer src.Close()
 
-	fe, err := newFrameEncoder(f.opts, func(frame []byte, last bool) error {
+	fe, err := newFrameEncoder(f.opts, func(frame []byte, _ bool) error {
 		_, err := handle.Write(frame)
 
 		return err
@@ -250,23 +250,20 @@ func (f *fsFramedReader) ReadAt(_ context.Context, buf []byte, offset int64) (n 
 		}
 
 		// calculate the offset within the decompressed frame to start copying from
-		startInFrame := int64(0)
+		startInFrame := 0
 		if offset > off.U {
-			startInFrame = offset - off.U
+			startInFrame = int(offset - off.U)
 		}
 
 		// calculate how much data to copy from this frame
-		toCopy := int64(len(decompressedFrame)) - startInFrame
-		if toCopy > int64(len(buf)) {
-			toCopy = int64(len(buf))
-		}
+		toCopy := min(len(buf), len(decompressedFrame)-startInFrame)
 
 		// copy the data to the buffer
 		copy(buf[:toCopy], decompressedFrame[startInFrame:startInFrame+toCopy])
 
 		// update the buffer and offset for the next iteration
 		buf = buf[toCopy:]
-		offset += toCopy
+		offset += int64(toCopy)
 
 		return nil
 	})

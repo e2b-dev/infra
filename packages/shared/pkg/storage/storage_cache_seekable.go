@@ -33,7 +33,7 @@ type cachedFramedReaderWriter struct {
 
 var _ FramedReader = (*cachedFramedReaderWriter)(nil)
 
-func (c *cachedFramedReaderWriter) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
+func (c cachedFramedReaderWriter) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.ReadAt", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int("buff_len", len(buff)),
@@ -93,21 +93,21 @@ func (c cachedFramedReaderWriter) Size(ctx context.Context) (int64, error) {
 	return size, nil
 }
 
-func (c *cachedFramedReaderWriter) StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error) {
+func (c cachedFramedReaderWriter) StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error) {
 	return c.w.StoreFromFileSystem(ctx, path)
 }
 
-func (c *cachedFramedReaderWriter) makeChunkFilename(offset int64) string {
+func (c cachedFramedReaderWriter) makeChunkFilename(offset int64) string {
 	return fmt.Sprintf("%s/%012d-%d.bin", c.path, offset/c.chunkSize, c.chunkSize)
 }
 
-func (c *cachedFramedReaderWriter) makeTempChunkFilename(offset int64) string {
+func (c cachedFramedReaderWriter) makeTempChunkFilename(offset int64) string {
 	tempFilename := uuid.NewString()
 
 	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
 }
 
-func (c *cachedFramedReaderWriter) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (int, error) {
+func (c cachedFramedReaderWriter) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (int, error) {
 	var fp *os.File
 	fp, err := os.Open(chunkPath)
 	if err != nil {
@@ -124,11 +124,11 @@ func (c *cachedFramedReaderWriter) readAtFromCache(ctx context.Context, chunkPat
 	return count, err // return `err` in case it's io.EOF
 }
 
-func (c *cachedFramedReaderWriter) sizeFilename() string {
+func (c cachedFramedReaderWriter) sizeFilename() string {
 	return filepath.Join(c.path, "size.txt")
 }
 
-func (c *cachedFramedReaderWriter) readLocalSize(ctx context.Context) (int64, bool) {
+func (c cachedFramedReaderWriter) readLocalSize(ctx context.Context) (int64, bool) {
 	fname := c.sizeFilename()
 	content, err := os.ReadFile(fname)
 	if err != nil {
@@ -152,7 +152,7 @@ func (c *cachedFramedReaderWriter) readLocalSize(ctx context.Context) (int64, bo
 	return size, true
 }
 
-func (c *cachedFramedReaderWriter) validateReadAtParams(buffSize, offset int64) error {
+func (c cachedFramedReaderWriter) validateReadAtParams(buffSize, offset int64) error {
 	if buffSize == 0 {
 		return ErrBufferTooSmall
 	}
@@ -169,7 +169,7 @@ func (c *cachedFramedReaderWriter) validateReadAtParams(buffSize, offset int64) 
 	return nil
 }
 
-func (c *cachedFramedReaderWriter) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) {
+func (c cachedFramedReaderWriter) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) {
 	// Try to acquire lock for this chunk write to NFS cache
 	lockFile, err := lock.TryAcquireLock(ctx, chunkPath)
 	if err != nil {
@@ -225,7 +225,7 @@ func (c *cachedFramedReaderWriter) writeChunkToCache(ctx context.Context, offset
 	writeTimer.End(ctx, int64(len(bytes)))
 }
 
-func (c *cachedFramedReaderWriter) writeLocalSize(ctx context.Context, size int64) {
+func (c cachedFramedReaderWriter) writeLocalSize(ctx context.Context, size int64) {
 	finalFilename := c.sizeFilename()
 
 	// Try to acquire lock for this chunk write to NFS cache

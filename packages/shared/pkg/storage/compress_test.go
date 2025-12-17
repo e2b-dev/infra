@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,7 +98,7 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			partNum := r.URL.Query().Get("partNumber")
-			require.NotEmpty(t, partNum)
+			assert.NotEmpty(t, partNum)
 
 			// Upload part
 			body, _ := io.ReadAll(r.Body)
