@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/pkg/errors"
@@ -69,6 +70,11 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		}
 
 		logEntries = append(logEntries, entry)
+	}
+
+	// If the direction is backward, we need to reverse the log entries again to have them in the ascending order
+	if direction == template_manager.LogsDirection_Backward {
+		slices.Reverse(logEntries)
 	}
 
 	result := buildInfo.GetResult()
