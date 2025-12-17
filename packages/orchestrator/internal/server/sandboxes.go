@@ -84,7 +84,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		acquireCtx, acquireCancel := context.WithTimeout(ctx, acquireTimeout)
 		defer acquireCancel()
 
-		err = s.startingSandboxes.Acquire(acquireCtx, 1)
+		err := s.startingSandboxes.Acquire(acquireCtx, 1)
 		if err != nil {
 			telemetry.ReportEvent(ctx, "too many resuming sandboxes on node")
 
