@@ -41,28 +41,28 @@ var (
 		metric.WithDescription("total cache misses")))
 )
 
-type CachedProvider struct {
+type cachedStore struct {
 	rootPath  string
 	chunkSize int64
 	inner     StorageProvider
 }
 
-var _ StorageProvider = (*CachedProvider)(nil)
+var _ StorageProvider = (*cachedStore)(nil)
 
-func NewCachedProvider(rootPath string, inner StorageProvider) *CachedProvider {
-	return &CachedProvider{rootPath: rootPath, inner: inner, chunkSize: MemoryChunkSize}
+func NewCachedProvider(rootPath string, inner StorageProvider) *cachedStore {
+	return &cachedStore{rootPath: rootPath, inner: inner, chunkSize: MemoryChunkSize}
 }
 
-func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+func (c cachedStore) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
 }
 
-func (c CachedProvider) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+func (c cachedStore) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
 	return c.inner.UploadSignedURL(ctx, path, ttl)
 }
 
-func (c CachedProvider) OpenObject(ctx context.Context, path string, objectType ObjectType, compression CompressionType) (ObjectProvider, error) {
-	innerObject, err := c.inner.OpenObject(ctx, path, objectType, compression)
+func (c cachedStore) OpenObject(ctx context.Context, path string, objectType ObjectType) (ObjectProvider, error) {
+	innerObject, err := c.inner.OpenObject(ctx, path, objectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -72,11 +72,21 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string, objectType 
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &CachedObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
+	return &cachedObject{path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
 }
 
-func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, objectType SeekableObjectType, compression CompressionType) (SeekableObjectProvider, error) {
-	innerObject, err := c.inner.OpenSeekableObject(ctx, path, objectType, compression)
+func (c cachedStore) OpenFramedReader(ctx context.Context, path string, info *CompressedInfo) (FramedReader, error) {
+	innerObject, err := c.inner.OpenFramedReader(ctx, path, info)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open object: %w", err)
+	}
+	localPath := filepath.Join(c.rootPath, path)
+
+	return &cachedFramedReaderWriter{path: localPath, chunkSize: c.chunkSize, r: innerObject}, nil
+}
+
+func (c cachedStore) OpenFramedWriter(ctx context.Context, path string, opts *CompressionOptions) (FramedWriter, error) {
+	innerObject, err := c.inner.OpenFramedWriter(ctx, path, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -86,10 +96,10 @@ func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, obj
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &CachedSeekableObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
+	return &cachedFramedReaderWriter{path: localPath, chunkSize: c.chunkSize, w: innerObject}, nil
 }
 
-func (c CachedProvider) GetDetails() string {
+func (c cachedStore) GetDetails() string {
 	return fmt.Sprintf("[Caching file storage, base path set to %s, which wraps %s]",
 		c.rootPath, c.inner.GetDetails())
 }

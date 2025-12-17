@@ -38,6 +38,63 @@ func (_m *MockObjectProvider) EXPECT() *MockObjectProvider_Expecter {
 	return &MockObjectProvider_Expecter{mock: &_m.Mock}
 }
 
+// CopyFromFileSystem provides a mock function for the type MockObjectProvider
+func (_mock *MockObjectProvider) CopyFromFileSystem(ctx context.Context, path string) error {
+	ret := _mock.Called(ctx, path)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CopyFromFileSystem")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, path)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockObjectProvider_CopyFromFileSystem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CopyFromFileSystem'
+type MockObjectProvider_CopyFromFileSystem_Call struct {
+	*mock.Call
+}
+
+// CopyFromFileSystem is a helper method to define mock.On call
+//   - ctx context.Context
+//   - path string
+func (_e *MockObjectProvider_Expecter) CopyFromFileSystem(ctx interface{}, path interface{}) *MockObjectProvider_CopyFromFileSystem_Call {
+	return &MockObjectProvider_CopyFromFileSystem_Call{Call: _e.mock.On("CopyFromFileSystem", ctx, path)}
+}
+
+func (_c *MockObjectProvider_CopyFromFileSystem_Call) Run(run func(ctx context.Context, path string)) *MockObjectProvider_CopyFromFileSystem_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockObjectProvider_CopyFromFileSystem_Call) Return(err error) *MockObjectProvider_CopyFromFileSystem_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockObjectProvider_CopyFromFileSystem_Call) RunAndReturn(run func(ctx context.Context, path string) error) *MockObjectProvider_CopyFromFileSystem_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Exists provides a mock function for the type MockObjectProvider
 func (_mock *MockObjectProvider) Exists(ctx context.Context) (bool, error) {
 	ret := _mock.Called(ctx)
@@ -160,80 +217,6 @@ func (_c *MockObjectProvider_Write_Call) Return(n int, err error) *MockObjectPro
 }
 
 func (_c *MockObjectProvider_Write_Call) RunAndReturn(run func(ctx context.Context, p []byte) (int, error)) *MockObjectProvider_Write_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// WriteFromFileSystem provides a mock function for the type MockObjectProvider
-func (_mock *MockObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error) {
-	ret := _mock.Called(ctx, path, compression)
-
-	if len(ret) == 0 {
-		panic("no return value specified for WriteFromFileSystem")
-	}
-
-	var r0 []FrameInfo
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, CompressionType) ([]FrameInfo, error)); ok {
-		return returnFunc(ctx, path, compression)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, CompressionType) []FrameInfo); ok {
-		r0 = returnFunc(ctx, path, compression)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]FrameInfo)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, CompressionType) error); ok {
-		r1 = returnFunc(ctx, path, compression)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockObjectProvider_WriteFromFileSystem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WriteFromFileSystem'
-type MockObjectProvider_WriteFromFileSystem_Call struct {
-	*mock.Call
-}
-
-// WriteFromFileSystem is a helper method to define mock.On call
-//   - ctx context.Context
-//   - path string
-//   - compression CompressionType
-func (_e *MockObjectProvider_Expecter) WriteFromFileSystem(ctx interface{}, path interface{}, compression interface{}) *MockObjectProvider_WriteFromFileSystem_Call {
-	return &MockObjectProvider_WriteFromFileSystem_Call{Call: _e.mock.On("WriteFromFileSystem", ctx, path, compression)}
-}
-
-func (_c *MockObjectProvider_WriteFromFileSystem_Call) Run(run func(ctx context.Context, path string, compression CompressionType)) *MockObjectProvider_WriteFromFileSystem_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		var arg2 CompressionType
-		if args[2] != nil {
-			arg2 = args[2].(CompressionType)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-		)
-	})
-	return _c
-}
-
-func (_c *MockObjectProvider_WriteFromFileSystem_Call) Return(frameInfos []FrameInfo, err error) *MockObjectProvider_WriteFromFileSystem_Call {
-	_c.Call.Return(frameInfos, err)
-	return _c
-}
-
-func (_c *MockObjectProvider_WriteFromFileSystem_Call) RunAndReturn(run func(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error)) *MockObjectProvider_WriteFromFileSystem_Call {
 	_c.Call.Return(run)
 	return _c
 }

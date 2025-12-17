@@ -11,11 +11,11 @@ import (
 )
 
 // helper to create a FileSystemStorageProvider rooted in a temp directory.
-func newTempProvider(t *testing.T) *FileSystemStorageProvider {
+func newTempProvider(t *testing.T) *fsStore {
 	t.Helper()
 
 	base := t.TempDir()
-	p, err := NewFileSystemStorageProvider(base)
+	p, err := newFSStore(base)
 	require.NoError(t, err)
 
 	return p
@@ -25,7 +25,7 @@ func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenObject(ctx, filepath.Join("sub", "file.txt"), MetadataObjectType, CompressionNone)
+	obj, err := p.OpenObject(ctx, filepath.Join("sub", "file.txt"), MetadataObjectType)
 	require.NoError(t, err)
 
 	contents := []byte("hello world")
@@ -56,9 +56,9 @@ func TestWriteFromFileSystem(t *testing.T) {
 	const payload = "copy me please"
 	require.NoError(t, os.WriteFile(srcPath, []byte(payload), 0o600))
 
-	obj, err := p.OpenObject(ctx, "copy/dst.txt", UnknownObjectType, CompressionNone)
+	obj, err := p.OpenObject(ctx, "copy/dst.txt", UnknownObjectType)
 	require.NoError(t, err)
-	_, err = obj.WriteFromFileSystem(t.Context(), srcPath, CompressionNone)
+	err = obj.CopyFromFileSystem(t.Context(), srcPath)
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
@@ -71,7 +71,7 @@ func TestDelete(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenObject(ctx, "to/delete.txt", UnknownObjectType, CompressionNone)
+	obj, err := p.OpenObject(ctx, "to/delete.txt", UnknownObjectType)
 	require.NoError(t, err)
 
 	_, err = obj.Write(t.Context(), []byte("bye"))
@@ -100,7 +100,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 		"data/sub/c.txt",
 	}
 	for _, pth := range paths {
-		obj, err := p.OpenObject(ctx, pth, UnknownObjectType, CompressionNone)
+		obj, err := p.OpenObject(ctx, pth, UnknownObjectType)
 		require.NoError(t, err)
 		_, err = obj.Write(t.Context(), []byte("x"))
 		require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestWriteToNonExistentObject(t *testing.T) {
 	p := newTempProvider(t)
 
 	ctx := t.Context()
-	obj, err := p.OpenObject(ctx, "missing/file.txt", UnknownObjectType, CompressionNone)
+	obj, err := p.OpenObject(ctx, "missing/file.txt", UnknownObjectType)
 	require.NoError(t, err)
 
 	var sink bytes.Buffer

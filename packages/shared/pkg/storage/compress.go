@@ -21,20 +21,28 @@ const (
 	zstdDefaultConcurrency    = 0 // use default concurrency settings
 )
 
-type FrameInfo struct {
-	Offset       int64
-	Uncompressed int
-	Compressed   int
+var DefaultCompressionOptions = &CompressionOptions{
+	CompressionType: CompressionZstd,
+	ChunkSize:       chunkUncompressedSize,
+	TargetFrameSize: targetFrameCompressedSize,
+	Level:           int(zstdCompressionLevel),
+	Concurrency:     zstdDefaultConcurrency,
 }
 
 // MultipartCompressUploadFile compresses the given file and uploads it using multipart upload.
-func MultipartCompressUploadFile(ctx context.Context, file *os.File, u MultipartUploader, maxConcurrency int, compression CompressionType) ([]FrameInfo, error) {
+func MultipartCompressUploadFile(ctx context.Context, filePath string, u MultipartUploader, maxConcurrency int, opts *CompressionOptions) (*CompressedInfo, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
 	fu, err := newFrameUploader(ctx, u, gcpMultipartUploadPartSize, maxConcurrency)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create frame handler: %w", err)
 	}
 
-	fe, err := newFrameEncoder(compression, zstdCompressionLevel, zstdDefaultConcurrency, chunkUncompressedSize, targetFrameCompressedSize, fu.handleFrame)
+	fe, err := newFrameEncoder(opts, fu.handleFrame)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create framed encoder: %w", err)
 	}
@@ -44,7 +52,7 @@ func MultipartCompressUploadFile(ctx context.Context, file *os.File, u Multipart
 
 // multipartCompressUploadFile is the testable version, used internally by
 // MultipartCompressUploadFile.
-func multipartCompressUploadFile(file io.Reader, fe *frameEncoder, fu *frameUploader, bufSize int) ([]FrameInfo, error) {
+func multipartCompressUploadFile(file io.Reader, fe *frameEncoder, fu *frameUploader, bufSize int) (*CompressedInfo, error) {
 	var err error
 	if bufSize > 0 {
 		_, err = io.CopyBuffer(fe, file, make([]byte, bufSize))
@@ -73,19 +81,15 @@ func multipartCompressUploadFile(file io.Reader, fe *frameEncoder, fu *frameUplo
 }
 
 type frameEncoder struct {
-	compression      CompressionType
-	compressionLevel zstd.EncoderLevel
-	concurrency      int
-	chunkSize        int
-	targetFrameSize  int
-	handleFrame      func(frame []byte, last bool) error
+	opts *CompressionOptions
 
-	off                   int64 // TODO plausibly useless
+	handleFrame func(frame []byte, last bool) error
+
 	frameUncompressedSize int64
 	bytesInChunk          int
 	enc                   io.WriteCloser
 	compressedBuffer      *syncBuffer
-	fi                    []FrameInfo
+	info                  *CompressedInfo
 }
 
 type frameUploader struct {
@@ -100,17 +104,13 @@ type frameUploader struct {
 	eg       *errgroup.Group
 }
 
-func newFrameEncoder(compression CompressionType, compressionLevel zstd.EncoderLevel,
-	concurrency int, chunkSize int, targetFrameSize int,
+func newFrameEncoder(opts *CompressionOptions,
 	handler func(frame []byte, last bool) error,
 ) (*frameEncoder, error) {
 	fe := &frameEncoder{
-		compression:      compression,
-		compressionLevel: compressionLevel,
-		concurrency:      concurrency,
-		targetFrameSize:  targetFrameSize,
-		chunkSize:        chunkSize,
-		handleFrame:      handler,
+		opts:        opts,
+		handleFrame: handler,
+		info:        &CompressedInfo{CompressionType: opts.CompressionType},
 	}
 
 	return fe.startFrame()
@@ -123,13 +123,13 @@ func (fe *frameEncoder) startFrame() (*frameEncoder, error) {
 	fe.frameUncompressedSize = 0
 
 	// Can't reset and reuse because we hand off the bytes to another goroutine.
-	fe.compressedBuffer = newSyncBuffer(fe.targetFrameSize + fe.chunkSize)
+	fe.compressedBuffer = newSyncBuffer(fe.opts.TargetFrameSize + fe.opts.ChunkSize)
 
-	switch fe.compression {
+	switch fe.opts.CompressionType {
 	case CompressionZstd:
-		enc, err = newZstdEncoder(fe.compressedBuffer, fe.concurrency, fe.targetFrameSize, fe.compressionLevel)
+		enc, err = newZstdEncoder(fe.compressedBuffer, fe.opts.Concurrency, fe.opts.TargetFrameSize, zstd.EncoderLevel(fe.opts.Level))
 	default:
-		return nil, fmt.Errorf("unsupported compression type: %v", fe.compression)
+		return nil, fmt.Errorf("unsupported compression type: %v", fe.opts.CompressionType)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create zstd encoder: %w", err)
@@ -160,13 +160,13 @@ func newZstdEncoder(out io.Writer, concurrency int, windowSize int, compressionL
 	}
 }
 
-func (fe *frameEncoder) Close() (frameInfos []FrameInfo, err error) {
+func (fe *frameEncoder) Close() (info *CompressedInfo, err error) {
 	err = fe.closeFrame(true)
 	if err != nil {
 		return nil, err
 	}
 
-	return fe.fi, nil
+	return fe.info, nil
 }
 
 func (fe *frameEncoder) closeFrame(last bool) error {
@@ -185,12 +185,10 @@ func (fe *frameEncoder) closeFrame(last bool) error {
 			}
 		}
 
-		fe.fi = append(fe.fi, FrameInfo{
-			Offset:       fe.off,
-			Uncompressed: int(fe.frameUncompressedSize),
-			Compressed:   len(bb),
+		fe.info.Frames = append(fe.info.Frames, Frame{
+			U: int(fe.frameUncompressedSize),
+			C: len(bb),
 		})
-		fe.off += int64(len(bb))
 	}
 
 	if !last {
@@ -205,7 +203,7 @@ func (fe *frameEncoder) closeFrame(last bool) error {
 func (fe *frameEncoder) Write(data []byte) (n int, err error) {
 	for len(data) > 0 {
 		// Write out data that fits the current chunk
-		remainInChunk := max(int(fe.chunkSize-fe.bytesInChunk), 0)
+		remainInChunk := max(int(fe.opts.ChunkSize-fe.bytesInChunk), 0)
 		writeNow := min(len(data), remainInChunk)
 		written, err := fe.enc.Write(data[:writeNow])
 		n += written
@@ -217,9 +215,9 @@ func (fe *frameEncoder) Write(data []byte) (n int, err error) {
 		data = data[written:]
 
 		// See if we reached the end of the chunk
-		if fe.bytesInChunk >= fe.chunkSize {
+		if fe.bytesInChunk >= fe.opts.ChunkSize {
 			// See if the chunk puts us over the target encoded frame size
-			if fe.compressedBuffer.Len() >= fe.targetFrameSize {
+			if fe.compressedBuffer.Len() >= fe.opts.TargetFrameSize {
 				if err := fe.closeFrame(false); err != nil {
 					return n, err
 				}
@@ -360,4 +358,51 @@ func (cb *syncBuffer) Bytes() []byte {
 	defer cb.mu.Unlock()
 
 	return cb.Buffer.Bytes()
+}
+
+// Iterates over frames that overlap with the given range and calls fn for each frame.
+func (ci *CompressedInfo) Range(start, length int64, fn func(offset Offset, frame Frame) error) error {
+	var currentOffset Offset
+	for _, frame := range ci.Frames {
+		frameEnd := currentOffset.U + int64(frame.U)
+		requestEnd := start + length
+		if frameEnd <= start {
+			// frame is before the requested range
+			currentOffset.U += int64(frame.U)
+			currentOffset.C += int64(frame.C)
+
+			continue
+		}
+		if currentOffset.U >= requestEnd {
+			// frame is after the requested range
+			break
+		}
+
+		// frame overlaps with the requested range
+		if err := fn(currentOffset, frame); err != nil {
+			return err
+		}
+		currentOffset.U += int64(frame.U)
+		currentOffset.C += int64(frame.C)
+	}
+
+	return nil
+}
+
+func (ci *CompressedInfo) TotalUncompressedSize() int64 {
+	var total int64
+	for _, frame := range ci.Frames {
+		total += int64(frame.U)
+	}
+
+	return total
+}
+
+func (ci *CompressedInfo) TotalCompressedSize() int64 {
+	var total int64
+	for _, frame := range ci.Frames {
+		total += int64(frame.C)
+	}
+
+	return total
 }

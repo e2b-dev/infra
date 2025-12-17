@@ -7,73 +7,118 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 )
 
-type FileSystemStorageProvider struct {
+type fsStore struct {
 	basePath string
 	opened   map[string]*os.File
 }
 
-var _ StorageProvider = (*FileSystemStorageProvider)(nil)
+var _ StorageProvider = (*fsStore)(nil)
 
-type FileSystemStorageObjectProvider struct {
+type fsObject struct {
 	path string
 }
 
-var (
-	_ SeekableObjectProvider = (*FileSystemStorageObjectProvider)(nil)
-	_ ObjectProvider         = (*FileSystemStorageObjectProvider)(nil)
-)
+var _ ObjectProvider = (*fsObject)(nil)
 
-func NewFileSystemStorageProvider(basePath string) (*FileSystemStorageProvider, error) {
-	return &FileSystemStorageProvider{
+type fsFramedWriter struct {
+	path string
+	opts *CompressionOptions
+}
+
+var _ FramedWriter = (*fsFramedWriter)(nil)
+
+type fsFramedReader struct {
+	path string
+	info *CompressedInfo
+}
+
+var _ FramedReader = (*fsFramedReader)(nil)
+
+func newFSStore(basePath string) (*fsStore, error) {
+	return &fsStore{
 		basePath: basePath,
 		opened:   make(map[string]*os.File),
 	}, nil
 }
 
-func (fs *FileSystemStorageProvider) DeleteObjectsWithPrefix(_ context.Context, prefix string) error {
-	filePath := fs.getPath(prefix)
+func (fs *fsStore) DeleteObjectsWithPrefix(_ context.Context, prefix string) error {
+	filePath := fs.abs(prefix)
 
 	return os.RemoveAll(filePath)
 }
 
-func (fs *FileSystemStorageProvider) GetDetails() string {
+func (fs *fsStore) GetDetails() string {
 	return fmt.Sprintf("[Local file storage, base path set to %s]", fs.basePath)
 }
 
-func (fs *FileSystemStorageProvider) UploadSignedURL(_ context.Context, _ string, _ time.Duration) (string, error) {
+func (fs *fsStore) UploadSignedURL(_ context.Context, _ string, _ time.Duration) (string, error) {
 	return "", fmt.Errorf("file system storage does not support signed URLs")
 }
 
-func (fs *FileSystemStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType, _ CompressionType) (SeekableObjectProvider, error) {
-	dir := filepath.Dir(fs.getPath(path))
+func (fs *fsStore) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
+	dir := filepath.Dir(fs.abs(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 
-	return &FileSystemStorageObjectProvider{
-		path: fs.getPath(path),
+	return &fsObject{
+		path: fs.abs(path),
 	}, nil
 }
 
-func (fs *FileSystemStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType, _ CompressionType) (ObjectProvider, error) {
-	dir := filepath.Dir(fs.getPath(path))
+func (fs *fsStore) OpenFramedWriter(ctx context.Context, path string, opts *CompressionOptions) (FramedWriter, error) {
+	dir := filepath.Dir(fs.abs(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 
-	return &FileSystemStorageObjectProvider{
-		path: fs.getPath(path),
+	return &fsFramedWriter{
+		path: fs.abs(path),
+		opts: opts,
 	}, nil
 }
 
-func (fs *FileSystemStorageProvider) getPath(path string) string {
+func (fs *fsStore) OpenFramedReader(ctx context.Context, path string, info *CompressedInfo) (FramedReader, error) {
+	return &fsFramedReader{
+		path: fs.abs(path),
+		info: info,
+	}, nil
+}
+
+func (fs *fsStore) abs(path string) string {
 	return filepath.Join(fs.basePath, path)
 }
 
-func (f *FileSystemStorageObjectProvider) WriteTo(_ context.Context, dst io.Writer) (int64, error) {
-	handle, err := f.getHandle(true)
+func getHandle(path string, checkExistence bool) (*os.File, error) {
+	if checkExistence {
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, ErrObjectNotExist
+			}
+
+			return nil, err
+		}
+
+		if info.IsDir() {
+			return nil, fmt.Errorf("path %s is a directory", path)
+		}
+	}
+
+	handle, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	if err != nil {
+		return nil, err
+	}
+
+	return handle, nil
+}
+
+func (f *fsObject) WriteTo(_ context.Context, dst io.Writer) (int64, error) {
+	handle, err := getHandle(f.path, true)
 	if err != nil {
 		return 0, err
 	}
@@ -83,8 +128,54 @@ func (f *FileSystemStorageObjectProvider) WriteTo(_ context.Context, dst io.Writ
 	return io.Copy(dst, handle)
 }
 
-func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(_ context.Context, path string, compression CompressionType) ([]FrameInfo, error) {
-	handle, err := f.getHandle(false)
+func (f *fsObject) Write(_ context.Context, data []byte) (int, error) {
+	handle, err := getHandle(f.path, false)
+	if err != nil {
+		return 0, err
+	}
+	defer handle.Close()
+
+	count, err := handle.Write(data)
+
+	return count, err
+}
+
+func (f *fsObject) CopyFromFileSystem(_ context.Context, path string) error {
+	handle, err := getHandle(f.path, false)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+
+	src, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	_, err = io.Copy(handle, src)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (f *fsObject) Exists(_ context.Context) (bool, error) {
+	_, err := os.Stat(f.path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+
+	return err == nil, err
+}
+
+func (f *fsObject) Delete(_ context.Context) error {
+	return os.Remove(f.path)
+}
+
+func (f *fsFramedWriter) StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error) {
+	handle, err := getHandle(f.path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -96,84 +187,96 @@ func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(_ context.Context,
 	}
 	defer src.Close()
 
-	_, err = io.Copy(handle, src)
+	fe, err := newFrameEncoder(f.opts, func(frame []byte, last bool) error {
+		_, err := handle.Write(frame)
+
+		return err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create framed encoder: %w", err)
+	}
+
+	_, err = io.Copy(fe, src)
 	if err != nil {
 		return nil, err
 	}
 
-	return nil, nil
+	return fe.Close()
 }
 
-func (f *FileSystemStorageObjectProvider) Write(_ context.Context, data []byte) (int, error) {
-	handle, err := f.getHandle(false)
+func (f *fsFramedReader) ReadAt(_ context.Context, buf []byte, offset int64) (n int, err error) {
+	handle, err := getHandle(f.path, true)
 	if err != nil {
 		return 0, err
 	}
 	defer handle.Close()
 
-	count, err := handle.Write(data)
+	if f.info == nil || f.info.CompressionType == CompressionNone {
+		return handle.ReadAt(buf, offset)
+	}
 
-	return count, err
-}
+	if offset < f.info.FramesStartAt.U {
+		return 0, fmt.Errorf("offset %d is before start of framed data %d", offset, f.info.FramesStartAt.U)
+	}
 
-func (f *FileSystemStorageObjectProvider) ReadAt(_ context.Context, buff []byte, off int64) (n int, err error) {
-	handle, err := f.getHandle(true)
+	dec, err := zstd.NewReader(nil, nil)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to create zstd decoder: %w", err)
 	}
-	defer handle.Close()
+	defer dec.Close()
 
-	return handle.ReadAt(buff, off)
-}
-
-func (f *FileSystemStorageObjectProvider) Exists(_ context.Context) (bool, error) {
-	_, err := os.Stat(f.path)
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-
-	return err == nil, err
-}
-
-func (f *FileSystemStorageObjectProvider) Size(_ context.Context) (int64, error) {
-	handle, err := f.getHandle(true)
-	if err != nil {
-		return 0, err
-	}
-	defer handle.Close()
-
-	fileInfo, err := handle.Stat()
-	if err != nil {
-		return 0, err
-	}
-
-	return fileInfo.Size(), nil
-}
-
-func (f *FileSystemStorageObjectProvider) Delete(_ context.Context) error {
-	return os.Remove(f.path)
-}
-
-func (f *FileSystemStorageObjectProvider) getHandle(checkExistence bool) (*os.File, error) {
-	if checkExistence {
-		info, err := os.Stat(f.path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil, ErrObjectNotExist
+	first := true
+	err = f.info.Range(offset, int64(len(buf)), func(off Offset, frame Frame) error {
+		if first {
+			// seek to the start of the first frame
+			_, err = handle.Seek(off.C, io.SeekStart)
+			if err != nil {
+				return fmt.Errorf("failed to seek to frame at offset %d: %w", off.C, err)
 			}
-
-			return nil, err
+			first = false
 		}
 
-		if info.IsDir() {
-			return nil, fmt.Errorf("path %s is a directory", f.path)
+		// read the compressed frame
+		compressedFrame := make([]byte, frame.C)
+		_, err = io.ReadFull(handle, compressedFrame)
+		if err != nil {
+			return fmt.Errorf("failed to read compressed frame at offset %d: %w", off.C, err)
 		}
-	}
 
-	handle, err := os.OpenFile(f.path, os.O_RDWR|os.O_CREATE, 0o644)
+		// decompress the frame
+		decompressedFrame, err := dec.DecodeAll(compressedFrame, nil)
+		if err != nil {
+			return fmt.Errorf("failed to decompress frame at offset %d: %w", off.C, err)
+		}
+
+		// calculate the offset within the decompressed frame to start copying from
+		startInFrame := int64(0)
+		if offset > off.U {
+			startInFrame = offset - off.U
+		}
+
+		// calculate how much data to copy from this frame
+		toCopy := int64(len(decompressedFrame)) - startInFrame
+		if toCopy > int64(len(buf)) {
+			toCopy = int64(len(buf))
+		}
+
+		// copy the data to the buffer
+		copy(buf[:toCopy], decompressedFrame[startInFrame:startInFrame+toCopy])
+
+		// update the buffer and offset for the next iteration
+		buf = buf[toCopy:]
+		offset += toCopy
+
+		return nil
+	})
 	if err != nil {
-		return nil, err
+		return n, err
 	}
 
-	return handle, nil
+	return len(buf), nil
+}
+
+func (f *fsFramedReader) Size(_ context.Context) (int64, error) {
+	return f.info.TotalUncompressedSize(), nil
 }

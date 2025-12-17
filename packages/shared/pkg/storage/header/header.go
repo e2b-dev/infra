@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/bits-and-blooms/bitset"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -61,29 +60,34 @@ func (t *Header) IsNormalizeFixApplied() bool {
 	return t.Metadata.Version >= NormalizeFixVersion
 }
 
-func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (mappedOffset int64, mappedLength int64, buildID *uuid.UUID, err error) {
+func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (mappedToBuild *BuildMap, err error) {
 	mapping, shift, err := t.getMapping(ctx, offset)
 	if err != nil {
-		return 0, 0, nil, err
+		return nil, err
+	}
+	lengthInBuild := int64(mapping.Length) - shift
+
+	b := &BuildMap{
+		Offset:      mapping.BuildStorageOffset + uint64(shift),
+		Length:      uint64(lengthInBuild), // TODO can we use int64 more consistently, or do we need the full uint64 range, which we kind of don't get anyway?
+		BuildId:     mapping.BuildId,
+		CompressedInfo: mapping.CompressedInfo,
 	}
 
-	mappedOffset = int64(mapping.BuildStorageOffset) + shift
-	mappedLength = int64(mapping.Length) - shift
-	buildID = &mapping.BuildId
-
-	if mappedLength < 0 {
+	if lengthInBuild < 0 {
 		if t.IsNormalizeFixApplied() {
-			return 0, 0, nil, fmt.Errorf("mapped length for offset %d is negative: %d", offset, mappedLength)
+			return nil, fmt.Errorf("mapped length for offset %d is negative: %d", offset, lengthInBuild)
 		}
 
+		b.Length = 0
 		logger.L().Warn(ctx, "mapped length is negative, but normalize fix is not applied",
 			zap.Int64("offset", offset),
-			zap.Int64("mappedLength", mappedLength),
+			zap.Int64("mappedLength", lengthInBuild),
 			logger.WithBuildID(mapping.BuildId.String()),
 		)
 	}
 
-	return mappedOffset, mappedLength, buildID, nil
+	return b, nil
 }
 
 // TODO: Maybe we can optimize mapping by automatically assuming the mapping is uuid.Nil if we don't find it + stopping storing the nil mapping.

@@ -26,26 +26,27 @@ const (
 	awsReadTimeout      = 15 * time.Second
 )
 
-type AWSBucketStorageProvider struct {
+type awsBucketStore struct {
 	client        *s3.Client
 	presignClient *s3.PresignClient
 	bucketName    string
 }
 
-var _ StorageProvider = (*AWSBucketStorageProvider)(nil)
+var _ StorageProvider = (*awsBucketStore)(nil)
 
-type AWSBucketStorageObjectProvider struct {
+type awsObject struct {
 	client     *s3.Client
 	path       string
 	bucketName string
 }
 
 var (
-	_ SeekableObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
-	_ ObjectProvider         = (*AWSBucketStorageObjectProvider)(nil)
+	_ ObjectProvider = (*awsObject)(nil)
+	_ FramedReader   = (*awsObject)(nil)
+	_ FramedWriter   = (*awsObject)(nil)
 )
 
-func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {
+func newAWSBucketStore(ctx context.Context, bucketName string) (*awsBucketStore, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -54,14 +55,14 @@ func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBu
 	client := s3.NewFromConfig(cfg)
 	presignClient := s3.NewPresignClient(client)
 
-	return &AWSBucketStorageProvider{
+	return &awsBucketStore{
 		client:        client,
 		presignClient: presignClient,
 		bucketName:    bucketName,
 	}, nil
 }
 
-func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+func (a *awsBucketStore) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 
@@ -108,11 +109,11 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 	return nil
 }
 
-func (a *AWSBucketStorageProvider) GetDetails() string {
+func (a *awsBucketStore) GetDetails() string {
 	return fmt.Sprintf("[AWS Storage, bucket set to %s]", a.bucketName)
 }
 
-func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+func (a *awsBucketStore) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(a.bucketName),
 		Key:    aws.String(path),
@@ -127,23 +128,31 @@ func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path str
 	return resp.URL, nil
 }
 
-func (a *AWSBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType, _ CompressionType) (SeekableObjectProvider, error) {
-	return &AWSBucketStorageObjectProvider{
+func (a *awsBucketStore) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
+	return &awsObject{
 		client:     a.client,
 		bucketName: a.bucketName,
 		path:       path,
 	}, nil
 }
 
-func (a *AWSBucketStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType, _ CompressionType) (ObjectProvider, error) {
-	return &AWSBucketStorageObjectProvider{
+func (a *awsBucketStore) OpenFramedWriter(ctx context.Context, path string, _ *CompressionOptions) (FramedWriter, error) {
+	return &awsObject{
 		client:     a.client,
 		bucketName: a.bucketName,
 		path:       path,
 	}, nil
 }
 
-func (a *AWSBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+func (a *awsBucketStore) OpenFramedReader(ctx context.Context, path string, _ *CompressedInfo) (FramedReader, error) {
+	return &awsObject{
+		client:     a.client,
+		bucketName: a.bucketName,
+		path:       path,
+	}, nil
+}
+
+func (a *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
@@ -162,13 +171,13 @@ func (a *AWSBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	return io.Copy(dst, resp.Body)
 }
 
-func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string, _ CompressionType) ([]FrameInfo, error) {
+func (a *awsObject) CopyFromFileSystem(ctx context.Context, path string) error {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer file.Close()
 
@@ -189,10 +198,19 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		},
 	)
 
-	return nil, err
+	return err
 }
 
-func (a *AWSBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {
+func (a *awsObject) StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error) {
+	err := a.CopyFromFileSystem(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (a *awsObject) Write(ctx context.Context, data []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
@@ -215,7 +233,7 @@ func (a *AWSBucketStorageObjectProvider) Write(ctx context.Context, data []byte)
 	return int(*result.Size), nil
 }
 
-func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+func (a *awsObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
@@ -246,7 +264,7 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	return n, err
 }
 
-func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+func (a *awsObject) Size(ctx context.Context) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 
@@ -263,13 +281,13 @@ func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 	return *resp.ContentLength, nil
 }
 
-func (a *AWSBucketStorageObjectProvider) Exists(ctx context.Context) (bool, error) {
+func (a *awsObject) Exists(ctx context.Context) (bool, error) {
 	_, err := a.Size(ctx)
 
 	return err == nil, ignoreNotExists(err)
 }
 
-func (a *AWSBucketStorageObjectProvider) Delete(ctx context.Context) error {
+func (a *awsObject) Delete(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 

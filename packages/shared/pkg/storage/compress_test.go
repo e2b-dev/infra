@@ -116,26 +116,33 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 	uploader := createTestMultipartUploader(t, handler)
 	fu, err := newFrameUploader(t.Context(), uploader, partSize, 3)
 	require.NoError(t, err)
-	fe, err := newFrameEncoder(CompressionZstd, zstdCompressionLevel, 0, chunkSize, frameSize, fu.handleFrame)
+	opts := CompressionOptions{
+		CompressionType: CompressionZstd,
+		Level:           int(zstdCompressionLevel),
+		ChunkSize:       chunkSize,
+		TargetFrameSize: frameSize,
+	}
+
+	fe, err := newFrameEncoder(&opts, fu.handleFrame)
 	require.NoError(t, err)
 
 	// 171 and newVectorReader (a "pure" io.Reader) to exercise uneven chunking
 	// in fe.Write
-	fi, err := multipartCompressUploadFile(newVectorReader([][]byte{origData}), fe, fu, 171)
+	ci, err := multipartCompressUploadFile(newVectorReader([][]byte{origData}), fe, fu, 171)
 	require.NoError(t, err)
 	require.Equal(t, 1, initiateC)
 	require.Equal(t, 1, completeC)
 	require.Greater(t, len(receivedParts), 3, "should have been at least 4 parts uploaded")
 
-	fiTotalUncompressed := 0
-	for _, frame := range fi {
-		fiTotalUncompressed += frame.Uncompressed
-		require.LessOrEqual(t, frame.Compressed, frame.Uncompressed,
+	totalUncompressed := 0
+	for _, frame := range ci.Frames {
+		totalUncompressed += frame.U
+		require.LessOrEqual(t, frame.C, frame.U,
 			"expect that all frames get somewhat compressed due to the nature of the data")
-		require.Equal(t, 0, frame.Uncompressed%chunkSize,
+		require.Equal(t, 0, frame.U%chunkSize,
 			"expect each frame's uncompressed size to be multiple of chunk size")
 	}
-	require.Equal(t, uncompressedSize, fiTotalUncompressed,
+	require.Equal(t, uncompressedSize, totalUncompressed,
 		"expect total uncompressed size in frame info to match original data length")
 
 	// Verify uploaded parts

@@ -64,11 +64,36 @@ const (
 
 type CompressionType byte
 
+type Offset struct {
+	U int64 // TODO is uint64 needed?
+	C int64
+}
+
+type Frame struct {
+	U int
+	C int
+}
+
+type CompressedInfo struct {
+	CompressionType CompressionType
+	FramesStartAt   Offset
+	Frames          []Frame
+}
+
+type CompressionOptions struct {
+	CompressionType CompressionType
+	Level           int
+	Concurrency     int
+	ChunkSize       int // frames are made of whole chunks
+	TargetFrameSize int // frames may be bigger than this size due to chunk alignment and async compression.
+}
+
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
-	OpenObject(ctx context.Context, path string, objectType ObjectType, compression CompressionType) (ObjectProvider, error)
-	OpenSeekableObject(ctx context.Context, path string, seekableObjectType SeekableObjectType, compression CompressionType) (SeekableObjectProvider, error)
+	OpenObject(ctx context.Context, path string, objectType ObjectType) (ObjectProvider, error)
+	OpenFramedWriter(ctx context.Context, path string, opts *CompressionOptions) (FramedWriter, error)
+	OpenFramedReader(ctx context.Context, path string, compressedInfo *CompressedInfo) (FramedReader, error)
 	GetDetails() string
 }
 
@@ -87,7 +112,7 @@ type ReaderAtCtx interface {
 type ObjectProvider interface {
 	// write
 	WriterCtx
-	WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error)
+	CopyFromFileSystem(ctx context.Context, path string) error
 
 	// read
 	WriterToCtx
@@ -96,10 +121,11 @@ type ObjectProvider interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-type SeekableObjectProvider interface {
-	// write
-	WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error)
+type FramedWriter interface {
+	StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error)
+}
 
+type FramedReader interface {
 	// read
 	ReaderAtCtx
 
@@ -113,7 +139,7 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
 
-		return NewFileSystemStorageProvider(basePath)
+		return newFSStore(basePath)
 	}
 
 	bucketName := utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
@@ -121,9 +147,9 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 	// cloud bucket-based storage
 	switch provider {
 	case AWSStorageProvider:
-		return NewAWSBucketStorageProvider(ctx, bucketName)
+		return newAWSBucketStore(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPBucketStorageProvider(ctx, bucketName, limiter)
+		return newGCPBucketStore(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
@@ -135,7 +161,7 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
 
-		return NewFileSystemStorageProvider(basePath)
+		return newFSStore(basePath)
 	}
 
 	bucketName := utils.RequiredEnv("BUILD_CACHE_BUCKET_NAME", "Bucket for storing template files")
@@ -143,9 +169,9 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	// cloud bucket-based storage
 	switch provider {
 	case AWSStorageProvider:
-		return NewAWSBucketStorageProvider(ctx, bucketName)
+		return newAWSBucketStore(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPBucketStorageProvider(ctx, bucketName, limiter)
+		return newGCPBucketStore(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)

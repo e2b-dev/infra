@@ -56,18 +56,18 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 	return nil
 }
 
-func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) ([]storage.FrameInfo, error) {
-	object, err := t.persistence.OpenSeekableObject(ctx, t.files.StorageMemfilePath(), storage.MemfileObjectType)
+func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) (*storage.CompressedInfo, error) {
+	object, err := t.persistence.OpenFramedWriter(ctx, t.files.StorageMemfilePath(), storage.DefaultCompressionOptions)
 	if err != nil {
 		return nil, err
 	}
 
-	fi, err := object.WriteFromFileSystem(ctx, memfilePath, storage.CompressionZstd)
+	ci, err := object.StoreFromFileSystem(ctx, memfilePath)
 	if err != nil {
 		return nil, fmt.Errorf("error when uploading memfile: %w", err)
 	}
 
-	return fi, nil
+	return ci, nil
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
@@ -89,18 +89,18 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 	return nil
 }
 
-func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) ([]storage.FrameInfo, error) {
-	object, err := t.persistence.OpenSeekableObject(ctx, t.files.StorageRootfsPath(), storage.RootFSObjectType)
+func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) (*storage.CompressedInfo, error) {
+	object, err := t.persistence.OpenFramedWriter(ctx, t.files.StorageRootfsPath(), storage.DefaultCompressionOptions)
 	if err != nil {
 		return nil, err
 	}
 
-	fi, err := object.WriteFromFileSystem(ctx, rootfsPath, storage.CompressionZstd)
+	ci, err := object.StoreFromFileSystem(ctx, rootfsPath)
 	if err != nil {
 		return nil, fmt.Errorf("error when uploading rootfs: %w", err)
 	}
 
-	return fi, nil
+	return ci, nil
 }
 
 // Snap-file is small enough so we don't use composite upload.
@@ -110,7 +110,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 		return err
 	}
 
-	if _, err = object.WriteFromFileSystem(ctx, path, storage.CompressionZstd); err != nil {
+	if err = object.CopyFromFileSystem(ctx, path); err != nil {
 		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
@@ -124,7 +124,7 @@ func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
 		return err
 	}
 
-	if _, err := object.WriteFromFileSystem(ctx, path, storage.CompressionZstd); err != nil {
+	if err = object.CopyFromFileSystem(ctx, path); err != nil {
 		return fmt.Errorf("error when uploading metadata: %w", err)
 	}
 
@@ -135,32 +135,25 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		if t.rootfsHeader == nil {
-			return nil
-		}
-
-		err := t.uploadRootfsHeader(ctx, t.rootfsHeader)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	eg.Go(func() error {
 		if rootfsPath == nil {
 			return nil
 		}
 
-		err := t.uploadRootfs(ctx, *rootfsPath)
+		ci, err := t.uploadRootfs(ctx, *rootfsPath)
 		if err != nil {
 			return err
 		}
 
-		return nil
-	})
+		if t.rootfsHeader == nil {
+			return nil
+		}
 
-	eg.Go(func() error {
+		fmt.Printf("<>/<> TODO: embed ci into rootfs header: %+v\n", ci)
+
+		err = t.uploadRootfsHeader(ctx, t.rootfsHeader)
+		if err != nil {
+			return err
+		}
 
 		return nil
 	})
@@ -170,7 +163,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		fi, err := t.uploadMemfile(ctx, *memfilePath)
+		ci, err := t.uploadMemfile(ctx, *memfilePath)
 		if err != nil {
 			return err
 		}
@@ -179,7 +172,9 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		err := t.uploadMemfileHeader(ctx, t.memfileHeader)
+		fmt.Printf("<>/<> TODO: embed ci into memfile header: %+v\n", ci)
+
+		err = t.uploadMemfileHeader(ctx, t.memfileHeader)
 		if err != nil {
 			return err
 		}

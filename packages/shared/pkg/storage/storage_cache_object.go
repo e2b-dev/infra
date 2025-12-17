@@ -20,19 +20,19 @@ const (
 	megabyte = 1024 * kilobyte
 )
 
-type CachedObjectProvider struct {
+type cachedObject struct {
 	path      string
 	chunkSize int64
 	inner     ObjectProvider
 }
 
-var _ ObjectProvider = CachedObjectProvider{}
+var _ ObjectProvider = cachedObject{}
 
-func (c CachedObjectProvider) Exists(ctx context.Context) (bool, error) {
+func (c cachedObject) Exists(ctx context.Context) (bool, error) {
 	return c.inner.Exists(ctx)
 }
 
-func (c CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int64, err error) {
+func (c cachedObject) WriteTo(ctx context.Context, dst io.Writer) (n int64, err error) {
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteTo")
 	defer span.End()
 
@@ -43,25 +43,25 @@ func (c CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int
 	return c.readAndCacheFullRemoteFile(ctx, dst)
 }
 
-func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, err error) {
+func (c cachedObject) Write(ctx context.Context, p []byte) (n int, err error) {
 	return c.inner.Write(ctx, p)
 }
 
-func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error) {
-	return c.inner.WriteFromFileSystem(ctx, path, compression)
+func (c cachedObject) CopyFromFileSystem(ctx context.Context, path string) error {
+	return c.inner.CopyFromFileSystem(ctx, path)
 }
 
-func (c CachedObjectProvider) fullFilename() string {
+func (c cachedObject) fullFilename() string {
 	return fmt.Sprintf("%s/content.bin", c.path)
 }
 
-func (c CachedObjectProvider) tempFullFilename() string {
+func (c cachedObject) tempFullFilename() string {
 	tempFilename := uuid.NewString()
 
 	return fmt.Sprintf("%s/.temp.content.bin.%s", c.path, tempFilename)
 }
 
-func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.Writer) (int64, bool) {
+func (c cachedObject) copyFullFileFromCache(ctx context.Context, dst io.Writer) (int64, bool) {
 	cachedRead := cacheReadTimerFactory.Begin()
 
 	path := c.fullFilename()
@@ -94,7 +94,7 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 	return count, true
 }
 
-func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, dst io.Writer) (int64, error) {
+func (c cachedObject) readAndCacheFullRemoteFile(ctx context.Context, dst io.Writer) (int64, error) {
 	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
 	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
 	// file is larger than 2 MB, the buffer will grow, it just won't be as efficient WRT memory allocations.
@@ -115,7 +115,7 @@ func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, ds
 	return int64(written), err
 }
 
-func (c CachedObjectProvider) writeFullFileToCache(ctx context.Context, b []byte) {
+func (c cachedObject) writeFullFileToCache(ctx context.Context, b []byte) {
 	finalPath := c.fullFilename()
 
 	// Try to acquire lock for this chunk write to NFS cache

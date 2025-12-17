@@ -6,6 +6,8 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 // Start, Length and SourceStart are in bytes of the data file
@@ -13,10 +15,11 @@ import (
 // The list of block mappings will be in order of increasing Start, covering the entire file
 type BuildMap struct {
 	// Offset defines which block of the current layer this mapping starts at
-	Offset             uint64
+	Offset             uint64 // in the memory space
 	Length             uint64
 	BuildId            uuid.UUID
 	BuildStorageOffset uint64
+	CompressedInfo     *storage.CompressedInfo
 }
 
 func (mapping *BuildMap) Copy() *BuildMap {

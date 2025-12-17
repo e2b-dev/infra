@@ -8,6 +8,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type LocalDiffFile struct {
@@ -134,7 +135,7 @@ func (b *localDiff) CacheKey() DiffStoreKey {
 	return b.cacheKey
 }
 
-func (b *localDiff) Init(context.Context) error {
+func (b *localDiff) Init(context.Context, *storage.CompressedInfo) error {
 	return nil
 }
 

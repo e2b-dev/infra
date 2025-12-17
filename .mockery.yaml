@@ -14,8 +14,13 @@ packages:
           dir: packages/shared/pkg/storage
           filename: mock_objectprovider.go
           inpackage: true # refers to types in the same package
-      SeekableObjectProvider:
+      FramedWriter:
         config:
           dir: packages/shared/pkg/storage
-          filename: mock_seekableobjectprovider.go
+          filename: mock_framedwriter.go
+          inpackage: true # refers to types in the same package
+      FramedReader:
+        config:
+          dir: packages/shared/pkg/storage
+          filename: mock_framedwriter.go
           inpackage: true # refers to types in the same package

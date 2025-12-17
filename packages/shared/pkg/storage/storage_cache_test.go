@@ -15,7 +15,7 @@ import (
 )
 
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
-	c := CachedSeekableObjectProvider{path: "/a/b/c", chunkSize: 1024}
+	c := cachedFramedReaderWriter{path: "/a/b/c", chunkSize: 1024}
 	filename := c.makeChunkFilename(1024 * 4)
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
 }
@@ -24,10 +24,10 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 	t.Run("can be cached successfully", func(t *testing.T) {
 		const expectedSize int64 = 1024
 
-		inner := NewMockSeekableObjectProvider(t)
+		inner := NewMockFramedReader(t)
 		inner.EXPECT().Size(mock.Anything).Return(expectedSize, nil)
 
-		c := CachedSeekableObjectProvider{path: t.TempDir(), inner: inner}
+		c := cachedFramedReaderWriter{path: t.TempDir(), r: inner}
 
 		// first call will write to cache
 		size, err := c.Size(t.Context())
@@ -38,7 +38,7 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 
 		// second call must come from cache
-		c.inner = nil
+		c.r = nil
 
 		size, err = c.Size(t.Context())
 		require.NoError(t, err)
@@ -51,7 +51,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		tempDir := t.TempDir()
 
 		tempPath := filepath.Join(tempDir, "a", "b", "c")
-		c := CachedSeekableObjectProvider{path: tempPath, chunkSize: 3}
+		c := cachedFramedReaderWriter{path: tempPath, chunkSize: 3}
 
 		// create cache file
 		cacheFilename := c.makeChunkFilename(0)
@@ -70,7 +70,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		fakeStorageObjectProvider := NewMockSeekableObjectProvider(t)
+		fakeStorageObjectProvider := NewMockFramedReader(t)
 
 		fakeStorageObjectProvider.EXPECT().
 			ReadAt(mock.Anything, mock.Anything, mock.Anything).
@@ -84,10 +84,10 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			})
 
 		tempDir := t.TempDir()
-		c := CachedSeekableObjectProvider{
+		c := cachedFramedReaderWriter{
 			path:      tempDir,
 			chunkSize: 3,
-			inner:     fakeStorageObjectProvider,
+			r:         fakeStorageObjectProvider,
 		}
 
 		// first read goes to source
@@ -101,7 +101,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		time.Sleep(time.Millisecond * 20)
 
 		// second read pulls from cache
-		c.inner = nil // prevent remote reads, force cache read
+		c.r = nil // prevent remote reads, force cache read
 		buffer = make([]byte, 3)
 		read, err = c.ReadAt(t.Context(), buffer, 3)
 		require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			})
 
 		tempDir := t.TempDir()
-		c := CachedObjectProvider{
+		c := cachedObject{
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
@@ -182,7 +182,7 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
-			c := CachedSeekableObjectProvider{
+			c := cachedFramedReaderWriter{
 				chunkSize: tc.chunkSize,
 			}
 			err := c.validateReadAtParams(tc.bufferSize, tc.offset)

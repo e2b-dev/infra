@@ -24,15 +24,16 @@ var (
 	ErrBufferTooLarge  = errors.New("buffer is too large")
 )
 
-type CachedSeekableObjectProvider struct {
+type cachedFramedReaderWriter struct {
 	path      string
 	chunkSize int64
-	inner     SeekableObjectProvider
+	r         FramedReader
+	w         FramedWriter
 }
 
-var _ SeekableObjectProvider = CachedSeekableObjectProvider{}
+var _ FramedReader = (*cachedFramedReaderWriter)(nil)
 
-func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
+func (c *cachedFramedReaderWriter) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.ReadAt", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int("buff_len", len(buff)),
@@ -62,7 +63,7 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 		zap.Error(err))
 
 	// read remote file
-	readCount, err := c.inner.ReadAt(ctx, buff, offset)
+	readCount, err := c.r.ReadAt(ctx, buff, offset)
 	if err != nil {
 		return 0, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
@@ -74,7 +75,7 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 	return readCount, nil
 }
 
-func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
+func (c cachedFramedReaderWriter) Size(ctx context.Context) (int64, error) {
 	if size, ok := c.readLocalSize(ctx); ok {
 		cacheHits.Add(ctx, 1)
 
@@ -82,7 +83,7 @@ func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 	}
 	cacheMisses.Add(ctx, 1)
 
-	size, err := c.inner.Size(ctx)
+	size, err := c.r.Size(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -92,21 +93,21 @@ func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 	return size, nil
 }
 
-func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compression CompressionType) ([]FrameInfo, error) {
-	return c.inner.WriteFromFileSystem(ctx, path, compression)
+func (c *cachedFramedReaderWriter) StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error) {
+	return c.w.StoreFromFileSystem(ctx, path)
 }
 
-func (c CachedSeekableObjectProvider) makeChunkFilename(offset int64) string {
+func (c *cachedFramedReaderWriter) makeChunkFilename(offset int64) string {
 	return fmt.Sprintf("%s/%012d-%d.bin", c.path, offset/c.chunkSize, c.chunkSize)
 }
 
-func (c CachedSeekableObjectProvider) makeTempChunkFilename(offset int64) string {
+func (c *cachedFramedReaderWriter) makeTempChunkFilename(offset int64) string {
 	tempFilename := uuid.NewString()
 
 	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
 }
 
-func (c CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (int, error) {
+func (c *cachedFramedReaderWriter) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (int, error) {
 	var fp *os.File
 	fp, err := os.Open(chunkPath)
 	if err != nil {
@@ -123,11 +124,11 @@ func (c CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunk
 	return count, err // return `err` in case it's io.EOF
 }
 
-func (c CachedSeekableObjectProvider) sizeFilename() string {
+func (c *cachedFramedReaderWriter) sizeFilename() string {
 	return filepath.Join(c.path, "size.txt")
 }
 
-func (c CachedSeekableObjectProvider) readLocalSize(ctx context.Context) (int64, bool) {
+func (c *cachedFramedReaderWriter) readLocalSize(ctx context.Context) (int64, bool) {
 	fname := c.sizeFilename()
 	content, err := os.ReadFile(fname)
 	if err != nil {
@@ -151,7 +152,7 @@ func (c CachedSeekableObjectProvider) readLocalSize(ctx context.Context) (int64,
 	return size, true
 }
 
-func (c CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int64) error {
+func (c *cachedFramedReaderWriter) validateReadAtParams(buffSize, offset int64) error {
 	if buffSize == 0 {
 		return ErrBufferTooSmall
 	}
@@ -168,7 +169,7 @@ func (c CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int6
 	return nil
 }
 
-func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) {
+func (c *cachedFramedReaderWriter) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) {
 	// Try to acquire lock for this chunk write to NFS cache
 	lockFile, err := lock.TryAcquireLock(ctx, chunkPath)
 	if err != nil {
@@ -224,7 +225,7 @@ func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, off
 	writeTimer.End(ctx, int64(len(bytes)))
 }
 
-func (c CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size int64) {
+func (c *cachedFramedReaderWriter) writeLocalSize(ctx context.Context, size int64) {
 	finalFilename := c.sizeFilename()
 
 	// Try to acquire lock for this chunk write to NFS cache
