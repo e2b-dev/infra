@@ -178,6 +178,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 		if err != nil {
 			return err
 		}
+
 		return nil
 	})
 
