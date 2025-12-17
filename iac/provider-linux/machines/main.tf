@@ -186,37 +186,29 @@ resource "null_resource" "nodes_consul_nomad" {
     inline = [
       "set -e",
       "if [ \"$(id -u)\" -eq 0 ]; then SUDO=\"\"; else SUDO=\"sudo\"; fi",
+      "$SUDO systemctl stop consul || true",
+      "$SUDO systemctl stop nomad || true",
+
       "$SUDO mkdir -p /etc/consul.d /etc/nomad.d",
       "$SUDO mkdir -p /var/lib/consul /var/lib/nomad",
       "$SUDO chown -R consul:consul /var/lib/consul /etc/consul.d",
       "$SUDO chown -R nomad:nomad /var/lib/nomad /etc/nomad.d",
       "$SUDO mv /tmp/consul.json /etc/consul.d/consul.json",
-      "$SUDO consul validate /etc/consul.d/consul.json || (echo invalid consul.json; $SUDO cat /etc/consul.d/consul.json; exit 1)",
       "$SUDO mv /tmp/nomad.json /etc/nomad.d/nomad.json",
 
-      "$SUDO find /etc/nomad.d -type f ! -name 'nomad.json' -delete || true",
-      "$SUDO systemctl stop consul || true",
-      "$SUDO pkill -x consul || true",
-      "$SUDO fuser -k 8600/udp || true",
-      "$SUDO fuser -k 8600/tcp || true",
-      "$SUDO systemctl stop nomad || true",
-      "$SUDO rm -rf /var/lib/consul/* || true",
-      "$SUDO rm -rf /var/lib/nomad/* || true",
-      "$SUDO find /etc/consul.d -type f ! -name 'consul.json' ! -name 'consul.hcl' -delete || true",
-      "$SUDO mkdir -p /etc/systemd/system/consul.service.d /etc/systemd/system/nomad.service.d",
-      "printf '[Unit]\\nWants=network-online.target\\nAfter=network-online.target\\n\\n[Service]\\nRestart=always\\nRestartSec=2s\\n' | $SUDO tee /etc/systemd/system/consul.service.d/override.conf >/dev/null",
-      "printf '[Unit]\\nWants=network-online.target\\nAfter=network-online.target\\n\\n[Service]\\nRestart=always\\nRestartSec=2s\\n' | $SUDO tee /etc/systemd/system/nomad.service.d/override.conf >/dev/null",
       "$SUDO systemctl daemon-reload",
       "$SUDO systemctl enable consul",
       "$SUDO systemctl restart consul || true",
       "for i in $(seq 1 12); do $SUDO systemctl is-active consul >/dev/null 2>&1 && break || sleep 2; done",
       "$SUDO systemctl is-active consul >/dev/null 2>&1 || (echo consul failed to start; $SUDO journalctl -xeu consul.service | tail -n 100; exit 1)",
+
       "for i in $(seq 1 12); do curl -sSf http://127.0.0.1:8500/v1/status/leader >/dev/null 2>&1 && break || sleep 2; done",
       "curl -sSf http://127.0.0.1:8500/v1/status/leader >/dev/null 2>&1 || (echo consul http api not ready; $SUDO journalctl -xeu consul.service | tail -n 100; exit 1)",
+
       "$SUDO systemctl enable nomad",
       "$SUDO systemctl restart nomad",
       "for i in $(seq 1 12); do $SUDO systemctl is-active nomad >/dev/null 2>&1 && break || sleep 2; done",
-      "for i in $(seq 1 12); do curl -sSf http://127.0.0.1:4646/v1/agent/self >/dev/null 2>&1 && break || sleep 2; done"
+      "curl -sSf http://127.0.0.1:4646/v1/agent/self >/dev/null 2>&1 || (echo nomad http api not ready; $SUDO journalctl -xeu nomad.service | tail -n 100; exit 1)"
     ]
   }
 
