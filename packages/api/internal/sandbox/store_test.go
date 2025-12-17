@@ -189,7 +189,7 @@ func TestAdd_NewSandbox(t *testing.T) {
 
 		tracker := NewCallbackTracker(3) // Expect 3 callbacks
 		callbacks := sandbox.Callbacks{
-			AddSandboxRouting:        tracker.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -207,7 +207,7 @@ func TestAdd_NewSandbox(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify all callbacks called exactly once
-		tracker.AssertCallCount(t, "AddSandboxRouting", 1)
+		tracker.AssertCallCount(t, "AddToSandboxRoutingTable", 1)
 		tracker.AssertCallCount(t, "AsyncSandboxCounter", 1)
 		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", 1)
 
@@ -228,7 +228,7 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 		// First add with all 3 callbacks
 		tracker1 := NewCallbackTracker(3)
 		callbacks1 := sandbox.Callbacks{
-			AddSandboxRouting:        tracker1.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker1.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker1.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker1.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -243,7 +243,7 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 		// (AsyncSandboxCounter is NOT called because already in cache)
 		tracker2 := NewCallbackTracker(2)
 		callbacks2 := sandbox.Callbacks{
-			AddSandboxRouting:        tracker2.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker2.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker2.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker2.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -253,12 +253,12 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 		tracker2.WaitForCalls(t, 2*time.Second)
 
 		require.NoError(t, err)
-		tracker2.AssertCallCount(t, "AddSandboxRouting", 1)
+		tracker2.AssertCallCount(t, "AddToSandboxRoutingTable", 1)
 		tracker2.AssertNotCalled(t, "AsyncSandboxCounter") // NOT called when already in cache!
 		tracker2.AssertCallCount(t, "AsyncNewlyCreatedSandbox", 1)
 	})
 
-	t.Run("newlyCreated=false - only AddSandboxRouting called when already in cache", func(t *testing.T) {
+	t.Run("newlyCreated=false - only AddToSandboxRoutingTable called when already in cache", func(t *testing.T) {
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
@@ -267,7 +267,7 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 		// First add with newlyCreated=true
 		tracker1 := NewCallbackTracker(3)
 		callbacks1 := sandbox.Callbacks{
-			AddSandboxRouting:        tracker1.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker1.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker1.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker1.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -282,7 +282,7 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 		// (AsyncSandboxCounter NOT called because already in cache)
 		tracker2 := NewCallbackTracker(1)
 		callbacks2 := sandbox.Callbacks{
-			AddSandboxRouting:        tracker2.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker2.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker2.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker2.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -292,14 +292,14 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 		tracker2.WaitForCalls(t, 2*time.Second)
 
 		require.NoError(t, err)
-		tracker2.AssertCallCount(t, "AddSandboxRouting", 1)
+		tracker2.AssertCallCount(t, "AddToSandboxRoutingTable", 1)
 		tracker2.AssertNotCalled(t, "AsyncSandboxCounter") // NOT called when already in cache
 		tracker2.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
 	})
 }
 
 func TestAdd_NotNewlyCreated(t *testing.T) {
-	t.Run("not in cache - AddSandboxRouting and AsyncSandboxCounter called", func(t *testing.T) {
+	t.Run("not in cache - AddToSandboxRoutingTable and AsyncSandboxCounter called", func(t *testing.T) {
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
@@ -308,7 +308,7 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		// Add with newlyCreated=false, expect 2 callbacks
 		tracker := NewCallbackTracker(2)
 		callbacks := sandbox.Callbacks{
-			AddSandboxRouting:        tracker.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -319,12 +319,12 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		tracker.WaitForCalls(t, 2*time.Second)
 
 		require.NoError(t, err)
-		tracker.AssertCallCount(t, "AddSandboxRouting", 1)
+		tracker.AssertCallCount(t, "AddToSandboxRoutingTable", 1)
 		tracker.AssertCallCount(t, "AsyncSandboxCounter", 1)
 		tracker.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
 	})
 
-	t.Run("already in cache - only AddSandboxRouting called", func(t *testing.T) {
+	t.Run("already in cache - only AddToSandboxRoutingTable called", func(t *testing.T) {
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
@@ -333,7 +333,7 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		// First add
 		tracker1 := NewCallbackTracker(2)
 		callbacks1 := sandbox.Callbacks{
-			AddSandboxRouting:        tracker1.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker1.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker1.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker1.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -347,7 +347,7 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		// Second add with same sandbox, newlyCreated=false, only 1 callback
 		tracker2 := NewCallbackTracker(1)
 		callbacks2 := sandbox.Callbacks{
-			AddSandboxRouting:        tracker2.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker2.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker2.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker2.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -357,7 +357,7 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		tracker2.WaitForCalls(t, 2*time.Second)
 
 		require.NoError(t, err)
-		tracker2.AssertCallCount(t, "AddSandboxRouting", 1)
+		tracker2.AssertCallCount(t, "AddToSandboxRoutingTable", 1)
 		tracker2.AssertNotCalled(t, "AsyncSandboxCounter") // NOT called when already in cache
 		tracker2.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
 	})
@@ -377,7 +377,7 @@ func TestAdd_StorageErrors(t *testing.T) {
 		// Expect 0 callbacks since error should be returned immediately
 		tracker := NewCallbackTracker(1)
 		callbacks := sandbox.Callbacks{
-			AddSandboxRouting:        tracker.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -394,7 +394,7 @@ func TestAdd_StorageErrors(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		// No callbacks should have been called
-		tracker.AssertNotCalled(t, "AddSandboxRouting")
+		tracker.AssertNotCalled(t, "AddToSandboxRoutingTable")
 		tracker.AssertNotCalled(t, "AsyncSandboxCounter")
 		tracker.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
 	})
@@ -411,7 +411,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		tracker := NewCallbackTracker(numGoroutines * 3) // Each add calls 3 callbacks
 
 		callbacks := sandbox.Callbacks{
-			AddSandboxRouting:        tracker.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -448,7 +448,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		tracker.WaitForCalls(t, 5*time.Second)
 
 		// Verify all callbacks were called expected number of times
-		tracker.AssertCallCount(t, "AddSandboxRouting", numGoroutines)
+		tracker.AssertCallCount(t, "AddToSandboxRoutingTable", numGoroutines)
 		tracker.AssertCallCount(t, "AsyncSandboxCounter", numGoroutines)
 		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", numGoroutines)
 
@@ -475,7 +475,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		tracker := NewCallbackTracker(3 + (numGoroutines-1)*2)
 
 		callbacks := sandbox.Callbacks{
-			AddSandboxRouting:        tracker.Track("AddSandboxRouting"),
+			AddToSandboxRoutingTable: tracker.Track("AddToSandboxRoutingTable"),
 			AsyncSandboxCounter:      tracker.Track("AsyncSandboxCounter"),
 			AsyncNewlyCreatedSandbox: tracker.Track("AsyncNewlyCreatedSandbox"),
 		}
@@ -503,7 +503,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		tracker.WaitForCalls(t, 5*time.Second)
 
 		// Verify callbacks
-		tracker.AssertCallCount(t, "AddSandboxRouting", numGoroutines)
+		tracker.AssertCallCount(t, "AddToSandboxRoutingTable", numGoroutines)
 		tracker.AssertCallCount(t, "AsyncSandboxCounter", 1)                  // Only called once (first successful add)
 		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", numGoroutines) // All calls have newlyCreated=true
 
