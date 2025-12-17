@@ -29,6 +29,7 @@ type CallbackTracker struct {
 	expectedCalls int
 	actualCalls   atomic.Int32
 	done          chan struct{}
+	closeOnce     sync.Once
 }
 
 func NewCallbackTracker(expectedCalls int) *CallbackTracker {
@@ -47,12 +48,9 @@ func (ct *CallbackTracker) Track(name string) sandbox.InsertCallback {
 		ct.mu.Unlock()
 
 		if int(ct.actualCalls.Add(1)) >= ct.expectedCalls {
-			select {
-			case <-ct.done:
-				// Already closed
-			default:
+			ct.closeOnce.Do(func() {
 				close(ct.done)
-			}
+			})
 		}
 	}
 }
