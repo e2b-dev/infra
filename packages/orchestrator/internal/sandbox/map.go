@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -9,8 +10,8 @@ import (
 )
 
 type MapSubscriber interface {
-	OnInsert(sandbox *Sandbox)
-	OnRemove(sandboxID string)
+	OnInsert(ctx context.Context, sandbox *Sandbox)
+	OnRemove(ctx context.Context, sandboxID string)
 }
 
 type Map struct {
@@ -63,23 +64,23 @@ func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 	return nil, fmt.Errorf("sandbox with address %s not found", hostPort)
 }
 
-func (m *Map) Insert(sbx *Sandbox) {
+func (m *Map) Insert(ctx context.Context, sbx *Sandbox) {
 	m.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)
 
 	go m.trigger(func(s MapSubscriber) {
-		s.OnInsert(sbx)
+		s.OnInsert(ctx, sbx)
 	})
 }
 
-func (m *Map) Remove(sandboxID string) {
+func (m *Map) Remove(ctx context.Context, sandboxID string) {
 	m.sandboxes.Remove(sandboxID)
 
 	go m.trigger(func(s MapSubscriber) {
-		s.OnRemove(sandboxID)
+		s.OnRemove(ctx, sandboxID)
 	})
 }
 
-func (m *Map) RemoveByExecutionID(sandboxID, executionID string) {
+func (m *Map) RemoveByExecutionID(ctx context.Context, sandboxID, executionID string) {
 	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, v *Sandbox, exists bool) bool {
 		if !exists {
 			return false
@@ -94,7 +95,7 @@ func (m *Map) RemoveByExecutionID(sandboxID, executionID string) {
 
 	if removed {
 		go m.trigger(func(s MapSubscriber) {
-			s.OnRemove(sandboxID)
+			s.OnRemove(ctx, sandboxID)
 		})
 	}
 }

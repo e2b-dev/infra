@@ -6,7 +6,6 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
@@ -26,19 +25,19 @@ import (
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
-	config            cfg.Config
-	sandboxFactory    *sandbox.Factory
-	info              *service.ServiceInfo
-	sandboxes         *sandbox.Map
-	proxy             *proxy.SandboxProxy
-	networkPool       *network.Pool
-	templateCache     *template.Cache
-	pauseMu           sync.Mutex
-	devicePool        *nbd.DevicePool
-	persistence       storage.StorageProvider
-	featureFlags      *featureflags.Client
-	sbxEventsService  *events.EventsService
-	startingSandboxes *semaphore.Weighted
+	config           cfg.Config
+	sandboxLimiter   *Limiter
+	sandboxFactory   *sandbox.Factory
+	info             *service.ServiceInfo
+	sandboxes        *sandbox.Map
+	proxy            *proxy.SandboxProxy
+	networkPool      *network.Pool
+	templateCache    *template.Cache
+	pauseMu          sync.Mutex
+	devicePool       *nbd.DevicePool
+	persistence      storage.StorageProvider
+	featureFlags     *featureflags.Client
+	sbxEventsService *events.EventsService
 }
 
 type ServiceConfig struct {
@@ -54,22 +53,23 @@ type ServiceConfig struct {
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
+	SandboxLimiter   *Limiter
 }
 
 func New(ctx context.Context, cfg ServiceConfig) *Server {
 	server := &Server{
-		config:            cfg.Config,
-		sandboxFactory:    cfg.SandboxFactory,
-		info:              cfg.Info,
-		proxy:             cfg.Proxy,
-		sandboxes:         cfg.Sandboxes,
-		networkPool:       cfg.NetworkPool,
-		templateCache:     cfg.TemplateCache,
-		devicePool:        cfg.DevicePool,
-		persistence:       cfg.Persistence,
-		featureFlags:      cfg.FeatureFlags,
-		sbxEventsService:  cfg.SbxEventsService,
-		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
+		config:           cfg.Config,
+		sandboxFactory:   cfg.SandboxFactory,
+		info:             cfg.Info,
+		proxy:            cfg.Proxy,
+		sandboxes:        cfg.Sandboxes,
+		networkPool:      cfg.NetworkPool,
+		templateCache:    cfg.TemplateCache,
+		devicePool:       cfg.DevicePool,
+		persistence:      cfg.Persistence,
+		featureFlags:     cfg.FeatureFlags,
+		sbxEventsService: cfg.SbxEventsService,
+		sandboxLimiter:   cfg.SandboxLimiter,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")

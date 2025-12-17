@@ -147,9 +147,9 @@ func (bb *BaseBuilder) provisionSandbox(
 	defer sbx.Close(ctx)
 
 	// Add to proxy so we can call envd and route traffic from the sandbox
-	bb.sandboxes.Insert(sbx)
+	bb.sandboxes.Insert(ctx, sbx)
 	defer func() {
-		bb.sandboxes.Remove(sbx.Runtime.SandboxID)
+		bb.sandboxes.Remove(ctx, sbx.Runtime.SandboxID)
 
 		closeErr := bb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
 		if closeErr != nil {
