@@ -41,7 +41,7 @@ func NewCallbackTracker(expectedCalls int) *CallbackTracker {
 
 // Track returns a callback function that tracks invocations
 func (ct *CallbackTracker) Track(name string) sandbox.InsertCallback {
-	return func(ctx context.Context, sbx sandbox.Sandbox) {
+	return func(_ context.Context, sbx sandbox.Sandbox) {
 		ct.mu.Lock()
 		ct.calls[name] = append(ct.calls[name], sbx)
 		ct.mu.Unlock()
@@ -96,6 +96,7 @@ func (ct *CallbackTracker) AssertCallCount(t *testing.T, name string, count int)
 func (ct *CallbackTracker) GetCalls(name string) []sandbox.Sandbox {
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
+
 	return append([]sandbox.Sandbox{}, ct.calls[name]...)
 }
 
@@ -113,6 +114,7 @@ func (n *NoOpReservationStorage) Release(_ context.Context, _, _ string) error {
 // MockStorage wraps real storage and can inject errors
 type MockStorage struct {
 	sandbox.Storage
+
 	addError error
 	mu       sync.Mutex
 }
@@ -421,7 +423,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		errorsChan := make(chan error, numGoroutines)
 
 		// Launch concurrent adds
-		for i := 0; i < numGoroutines; i++ {
+		for i := range numGoroutines {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
@@ -453,7 +455,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", numGoroutines)
 
 		// Verify all sandboxes are in storage
-		for i := 0; i < numGoroutines; i++ {
+		for i := range numGoroutines {
 			sandboxID := fmt.Sprintf("concurrent-sandbox-%d", i)
 			_, err := storage.Get(ctx, sandboxID)
 			assert.NoError(t, err, "expected sandbox %s to be in storage", sandboxID)
@@ -485,15 +487,13 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		successCount := atomic.Int32{}
 
 		// Launch concurrent adds for the same sandbox
-		for i := 0; i < numGoroutines; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range numGoroutines {
+			wg.Go(func() {
 				err := store.Add(ctx, sbx, true)
 				if err == nil {
 					successCount.Add(1)
 				}
-			}()
+			})
 		}
 
 		wg.Wait()
