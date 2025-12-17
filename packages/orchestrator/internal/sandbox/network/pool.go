@@ -130,6 +130,12 @@ func (p *Pool) Populate(ctx context.Context) error {
 
 			select {
 			case <-p.done:
+				if err := p.Return(ctx, slot); err != nil {
+					logger.L().Error(ctx, "[network slot pool]: failed to return slot after closing",
+						zap.Error(err),
+						zap.String("slot_key", slot.Key),
+					)
+				}
 				return ErrClosed
 			case p.newSlots <- slot:
 			case <-ctx.Done():
