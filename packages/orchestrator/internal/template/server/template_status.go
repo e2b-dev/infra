@@ -44,9 +44,15 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		end = e.AsTime()
 	}
 
+	logLines := buildInfo.GetLogs()
+	// If the direction is backward, we need to reverse the log entries to have them in the descending order
+	if direction == template_manager.LogsDirection_Backward {
+		slices.Reverse(logLines)
+	}
+
 	logEntries := make([]*template_manager.TemplateBuildLogEntry, 0)
 	logsCrawled := int32(0)
-	for _, entry := range buildInfo.GetLogs(direction) {
+	for _, entry := range logLines {
 		// Skip entries that are below the specified level
 		if entry.GetLevel().Number() < in.GetLevel().Number() {
 			continue
@@ -72,7 +78,7 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		logEntries = append(logEntries, entry)
 	}
 
-	// If the direction is backward, we need to reverse the log entries again to have them in the ascending order
+	// If the direction is backward, we need to reverse the log entries again to have them back in the ascending order
 	if direction == template_manager.LogsDirection_Backward {
 		slices.Reverse(logEntries)
 	}
