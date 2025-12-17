@@ -136,6 +136,7 @@ func (p *Pool) Populate(ctx context.Context) error {
 						zap.String("slot_key", slot.Key),
 					)
 				}
+
 				return ErrClosed
 			case p.newSlots <- slot:
 			case <-ctx.Done():

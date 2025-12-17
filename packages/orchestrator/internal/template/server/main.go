@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -25,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type closeable interface {
