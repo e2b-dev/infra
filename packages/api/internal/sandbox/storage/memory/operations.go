@@ -14,12 +14,10 @@ import (
 )
 
 // Add the sandbox to the cache
-func (s *Storage) Add(ctx context.Context, sandbox sandbox.Sandbox) error {
-	added := s.items.SetIfAbsent(sandbox.SandboxID, newMemorySandbox(sandbox))
+func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
+	added := s.items.SetIfAbsent(sbx.SandboxID, newMemorySandbox(sbx))
 	if !added {
-		logger.L().Warn(ctx, "Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
-
-		return fmt.Errorf("sandbox \"%s\" already exists", sandbox.SandboxID)
+		logger.L().Warn(ctx, "Sandbox already exists in cache", logger.WithSandboxID(sbx.SandboxID))
 	}
 
 	return nil
