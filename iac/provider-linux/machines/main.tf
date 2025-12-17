@@ -247,8 +247,8 @@ resource "null_resource" "servers_node_pools" {
       "echo nomad acl token: $TOKEN",
       "printf 'node_pool \"api\" {\\n  description = \"Nodes for api.\"\\n}\\n' | $SUDO tee /tmp/api_node_pool.hcl >/dev/null",
       "printf 'node_pool \"build\" {\\n  description = \"Nodes for template builds.\"\\n}\\n' | $SUDO tee /tmp/build_node_pool.hcl >/dev/null",
-      "for i in $(seq 1 5); do if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/api_node_pool.hcl && break; else $SUDO nomad node pool apply /tmp/api_node_pool.hcl && break; fi; sleep 2; done",
-      "for i in $(seq 1 5); do if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/build_node_pool.hcl && break; else $SUDO nomad node pool apply /tmp/build_node_pool.hcl && break; fi; sleep 2; done"
+      "if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/api_node_pool.hcl; else $SUDO nomad node pool apply /tmp/api_node_pool.hcl; fi",
+      "if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/build_node_pool.hcl; else $SUDO nomad node pool apply /tmp/build_node_pool.hcl; fi"
     ]
   }
 
@@ -277,6 +277,7 @@ resource "null_resource" "nodes_dns" {
       "printf '[Resolve]\\nDNS=127.0.0.1:8600\\nDomains=~consul\\nDNSSEC=false\\n' | $SUDO tee /etc/systemd/resolved.conf.d/consul.conf >/dev/null",
       "printf '[Resolve]\\nDNSStubListener=yes\\nDNSStubListenerExtra=172.17.0.1\\n' | $SUDO tee /etc/systemd/resolved.conf.d/docker.conf >/dev/null",
       "for i in $(seq 1 10); do echo > /dev/tcp/127.0.0.1/8600 2>/dev/null && break || sleep 1; done",
+      "echo > /dev/tcp/127.0.0.1/8600 2>/dev/null || (echo \"Consul DNS (port 8600) not reachable\"; exit 1)",
       "$SUDO systemctl restart systemd-resolved"
     ]
   }
@@ -317,12 +318,12 @@ resource "null_resource" "nodes_fc_artifacts" {
       "  if ! command -v wget >/dev/null 2>&1; then $SUDO apt-get update -y && $SUDO apt-get install -y wget; fi",
       "  if [ -n \"$KBASE\" ]; then",
       "    CUT_K=$(echo \"$KBASE\" | sed -E 's|https?://[^/]+/||' | awk -F/ '{print NF}')",
-      "    wget -q -r -np -nH --cut-dirs=\"$CUT_K\" --reject \"index.html*\" -P /fc-kernels \"$KBASE/\" || true",
+      "    wget -q -r -np -nH --cut-dirs=\"$CUT_K\" --reject \"index.html*\" -P /fc-kernels \"$KBASE/\"",
       "  fi",
       "  if [ -n \"$FBASE\" ]; then",
       "    CUT_F=$(echo \"$FBASE\" | sed -E 's|https?://[^/]+/||' | awk -F/ '{print NF}')",
-      "    wget -q -r -np -nH --cut-dirs=\"$CUT_F\" --reject \"index.html*\" -P /fc-versions \"$FBASE/\" || true",
-      "    find /fc-versions -type f -name firecracker -exec $SUDO chmod +x {} \\; || true",
+      "    wget -q -r -np -nH --cut-dirs=\"$CUT_F\" --reject \"index.html*\" -P /fc-versions \"$FBASE/\"",
+      "    find /fc-versions -type f -name firecracker -exec $SUDO chmod +x {} \\;",
       "  fi",
       "fi"
     ]
