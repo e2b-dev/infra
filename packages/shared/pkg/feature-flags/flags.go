@@ -148,10 +148,14 @@ const (
 	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
 )
 
+var firecrackerVersions = map[string]string{
+	"v1.10": DefaultFirecackerV1_10Version,
+	"v1.12": DefaultFirecackerV1_12Version,
+}
+
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
 	BuildFirecrackerVersion = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
 	BuildIoEngine           = newStringFlag("build-io-engine", "Sync")
-	FirecrackerV1_10Version = newStringFlag("firecracker-v1-10-version", DefaultFirecackerV1_10Version)
-	FirecrackerV1_12Version = newStringFlag("firecracker-v1-12-version", DefaultFirecackerV1_12Version)
+	FirecrackerVersions     = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
 )

@@ -72,18 +72,13 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 }
 
 func getFirecrackerVersion(ctx context.Context, featureFlags *feature_flags.Client, version semver.Version) (string, error) {
-	if version.Major() != 1 {
-		return "", fmt.Errorf("unsupported firecracker major version: %d", version.Major())
+	firecrackerVersions := featureFlags.JSONFlag(ctx, feature_flags.FirecrackerVersions).AsValueMap()
+	fcVersion, ok := firecrackerVersions.Get(fmt.Sprintf("v%d.%d", version.Major(), version.Minor())).AsOptionalString().Get()
+	if !ok {
+		return "", fmt.Errorf("failed to get firecracker version for version %s", version.String())
 	}
 
-	switch version.Minor() {
-	case 10:
-		return featureFlags.StringFlag(ctx, feature_flags.FirecrackerV1_10Version), nil
-	case 12:
-		return featureFlags.StringFlag(ctx, feature_flags.FirecrackerV1_12Version), nil
-	default:
-		return "", fmt.Errorf("unsupported firecracker version: %s", version.String())
-	}
+	return fcVersion, nil
 }
 
 func (o *Orchestrator) CreateSandbox(
