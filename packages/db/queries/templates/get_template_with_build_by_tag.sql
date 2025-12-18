@@ -19,10 +19,7 @@ JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
         eba.tag = COALESCE(sqlc.narg(tag), 'latest')
         OR
         -- Match by build_id if the tag parameter is a valid UUID
-        (
-            sqlc.narg(tag) IS NOT NULL
-            AND eba.build_id::text = sqlc.narg(tag)
-        )
+        eba.build_id = try_cast_uuid(sqlc.narg(tag))
     )
 JOIN public.env_builds AS eb ON eb.id = eba.build_id
     AND eb.status = 'uploaded'

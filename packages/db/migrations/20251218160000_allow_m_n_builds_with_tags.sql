@@ -1,5 +1,17 @@
 -- +goose Up
 -- +goose StatementBegin
+-- 0. Create helper function to safely cast text to UUID (returns NULL if invalid)
+-- This is needed for PostgreSQL < 16 (which has pg_input_is_valid)
+CREATE OR REPLACE FUNCTION try_cast_uuid(p_value text) RETURNS uuid AS $$
+BEGIN
+    RETURN p_value::uuid;
+EXCEPTION WHEN invalid_text_representation THEN
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
 -- 1. Create the new env_build_assignments table
 CREATE TABLE env_build_assignments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -25,6 +37,13 @@ CREATE TABLE env_build_assignments (
         UNIQUE (build_id, tag, created_at)
 );
 ALTER TABLE "public"."env_build_assignments" ENABLE ROW LEVEL SECURITY;
+
+-- Create indexes for efficient lookups
+CREATE INDEX idx_env_build_assignments_env_tag_created 
+    ON env_build_assignments (env_id, tag, created_at DESC);
+
+CREATE INDEX idx_env_build_assignments_env_build 
+    ON env_build_assignments (env_id, build_id);
 -- +goose StatementEnd
 
 -- +goose StatementBegin
@@ -85,7 +104,18 @@ DROP FUNCTION IF EXISTS sync_env_build_assignment();
 -- +goose StatementEnd
 
 -- +goose StatementBegin
--- 3. Drop the assignments table
+-- 3. Drop indexes
+DROP INDEX IF EXISTS idx_env_build_assignments_env_tag_created;
+DROP INDEX IF EXISTS idx_env_build_assignments_env_build;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+-- 4. Drop the assignments table
 DROP TABLE IF EXISTS env_build_assignments;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+-- 5. Drop helper function
+DROP FUNCTION IF EXISTS try_cast_uuid(text);
 -- +goose StatementEnd
 

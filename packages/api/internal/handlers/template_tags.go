@@ -24,6 +24,7 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 	body, err := utils.ParseBody[api.AssignTemplateTagRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
+
 		return
 	}
 
@@ -31,6 +32,7 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 	if body.Tag == "" {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Tag name is required")
 		telemetry.ReportError(ctx, "tag name is required", nil)
+
 		return
 	}
 
@@ -50,11 +52,13 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 			}
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' with tag '%s' not found", templateIDOrAlias, tag))
 			telemetry.ReportError(ctx, "template or source tag not found", err, telemetry.WithTemplateID(templateIDOrAlias))
+
 			return
 		}
 
 		telemetry.ReportError(ctx, "error when getting template with build", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting template")
+
 		return
 	}
 
@@ -66,6 +70,7 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
+
 		return
 	}
 
@@ -78,6 +83,7 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 	if template.TeamID != team.ID {
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateIDOrAlias))
 		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(template.ID))
+
 		return
 	}
 
@@ -90,6 +96,7 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when creating tag assignment", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error creating tag assignment")
+
 		return
 	}
 
@@ -121,6 +128,7 @@ func (a *APIStore) DeleteTemplatesTemplateIDTagsTag(c *gin.Context, templateIDOr
 	if tag == id.DefaultTag {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Cannot delete the '%s' tag", id.DefaultTag))
 		telemetry.ReportError(ctx, "cannot delete default tag", nil)
+
 		return
 	}
 
@@ -130,11 +138,13 @@ func (a *APIStore) DeleteTemplatesTemplateIDTagsTag(c *gin.Context, templateIDOr
 		if dberrors.IsNotFoundError(err) {
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateIDOrAlias))
 			telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(templateIDOrAlias))
+
 			return
 		}
 
 		telemetry.ReportError(ctx, "error when getting template", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting template")
+
 		return
 	}
 
@@ -143,6 +153,7 @@ func (a *APIStore) DeleteTemplatesTemplateIDTagsTag(c *gin.Context, templateIDOr
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
+
 		return
 	}
 
@@ -155,6 +166,7 @@ func (a *APIStore) DeleteTemplatesTemplateIDTagsTag(c *gin.Context, templateIDOr
 	if template.TeamID != team.ID {
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateIDOrAlias))
 		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(template.ID))
+
 		return
 	}
 
@@ -166,6 +178,7 @@ func (a *APIStore) DeleteTemplatesTemplateIDTagsTag(c *gin.Context, templateIDOr
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when deleting tag assignment", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error deleting tag assignment")
+		
 		return
 	}
 
