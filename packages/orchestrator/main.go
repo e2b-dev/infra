@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -113,10 +114,12 @@ func run(config cfg.Config) (success bool) {
 
 	services := cfg.GetServices(config)
 
+	forceStop := atomic.NewBool(config.ForceStop)
+
 	// Check if the orchestrator crashed and restarted
 	// Skip this check in development mode
 	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, cfg.Orchestrator) {
+	if !env.IsDevelopment() && !forceStop.Load() && slices.Contains(services, cfg.Orchestrator) {
 		fileLockName := config.OrchestratorLockPath
 		info, err := os.Stat(fileLockName)
 		if err == nil {
@@ -562,7 +565,7 @@ func run(config cfg.Config) (success bool) {
 
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 	defer cancelCloseCtx()
-	if config.ForceStop {
+	if forceStop.Load() {
 		cancelCloseCtx()
 	}
 
@@ -572,7 +575,7 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Info(ctx, "Force shutdown signal received")
 		cancel()
 		cancelCloseCtx()
-		config.ForceStop = true
+		forceStop.Store(true)
 	}()
 
 	var closeWg sync.WaitGroup
@@ -616,7 +619,10 @@ func run(config cfg.Config) (success bool) {
 
 	slices.Reverse(closers)
 	for _, closer := range closers {
-		clog := globalLogger.With(zap.String("service", closer.name), zap.Bool("forced", config.ForceStop))
+		clog := globalLogger.With(
+			zap.String("service", closer.name),
+			zap.Bool("forced", forceStop.Load()),
+		)
 		clog.Info(ctx, "closing")
 		if err := closer.close(closeCtx); ignoreCancelled(err) != nil {
 			clog.Error(ctx, "error during shutdown", zap.Error(err))
