@@ -42,7 +42,7 @@ type ServerStore struct {
 	templateStorage   storage.StorageProvider
 	buildStorage      storage.StorageProvider
 
-	wg   *sync.WaitGroup // wait group for running builds
+	wg   sync.WaitGroup // wait group for running builds
 	info *service.ServiceInfo
 
 	closers []closeable
@@ -124,7 +124,6 @@ func New(
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistance,
 		info:              info,
-		wg:                &sync.WaitGroup{},
 		closers:           closers,
 	}
 
@@ -148,7 +147,11 @@ func (s *ServerStore) Close(ctx context.Context) error {
 
 func (s *ServerStore) Wait(ctx context.Context) error {
 	s.logger.Info(ctx, "Waiting for all build jobs to finish")
-	defer s.logger.Info(ctx, "Template build queue cleaned")
+	defer s.logger.Info(ctx, "Template build queue is empty")
 
-	return utils.Wait(ctx, s.wg)
+	return utils.Wait(ctx, &s.wg)
+}
+
+func (s *ServerStore) StopAllBuilds() {
+	s.buildCache.StopAll()
 }

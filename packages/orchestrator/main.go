@@ -16,7 +16,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
-	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -114,12 +113,10 @@ func run(config cfg.Config) (success bool) {
 
 	services := cfg.GetServices(config)
 
-	forceStop := atomic.NewBool(config.ForceStop)
-
 	// Check if the orchestrator crashed and restarted
 	// Skip this check in development mode
 	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !forceStop.Load() && slices.Contains(services, cfg.Orchestrator) {
+	if !env.IsDevelopment() && slices.Contains(services, cfg.Orchestrator) {
 		fileLockName := config.OrchestratorLockPath
 		info, err := os.Stat(fileLockName)
 		if err == nil {
@@ -422,27 +419,6 @@ func run(config cfg.Config) (success bool) {
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
 	})
 
-	// template manager sandbox logger
-	tmplSbxLoggerExternal := sbxlogger.NewLogger(
-		ctx,
-		tel.LogsProvider,
-		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      constants.ServiceNameTemplate,
-			IsInternal:       false,
-			CollectorAddress: env.LogsCollectorAddress(),
-		},
-	)
-	closers = append(closers, closer{
-		"template manager sandbox logger", func(context.Context) error {
-			// Sync returns EINVAL when path is /dev/stdout (for example)
-			if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
-				return err
-			}
-
-			return nil
-		},
-	})
-
 	// hyperloop server
 	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes)
 	if err != nil {
@@ -464,6 +440,27 @@ func run(config cfg.Config) (success bool) {
 	// template manager
 	var tmpl *tmplserver.ServerStore
 	if slices.Contains(services, cfg.TemplateManager) {
+		// template manager sandbox logger
+		tmplSbxLoggerExternal := sbxlogger.NewLogger(
+			ctx,
+			tel.LogsProvider,
+			sbxlogger.SandboxLoggerConfig{
+				ServiceName:      constants.ServiceNameTemplate,
+				IsInternal:       false,
+				CollectorAddress: env.LogsCollectorAddress(),
+			},
+		)
+		closers = append(closers, closer{
+			"template manager sandbox logger", func(context.Context) error {
+				// Sync returns EINVAL when path is /dev/stdout (for example)
+				if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
+					return err
+				}
+
+				return nil
+			},
+		})
+
 		tmpl, err = tmplserver.New(
 			ctx,
 			config,
@@ -499,25 +496,6 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
 	}
-	startService("cmux server", func(ctx context.Context) error {
-		logger.L().Info(ctx, "Starting network server", zap.Uint16("port", config.GRPCPort))
-		err := cmuxServer.Serve()
-		if err != nil {
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				return nil
-			}
-
-			return err
-		}
-
-		return nil
-	})
-	closers = append(closers, closer{"cmux server", func(context.Context) error {
-		logger.L().Info(ctx, "Shutting down cmux server")
-		cmuxServer.Close()
-
-		return nil
-	}})
 
 	// http server
 	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
@@ -546,11 +524,36 @@ func run(config cfg.Config) (success bool) {
 	// grpc server
 	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
 	startService("grpc server", func(context.Context) error {
-		return grpcServer.Serve(grpcListener)
+		err := grpcServer.Serve(grpcListener)
+		if errors.Is(err, cmux.ErrServerClosed) {
+			return nil
+		}
+
+		return err
 	})
 	closers = append(closers, closer{"grpc server", func(context.Context) error {
 		logger.L().Info(ctx, "Shutting down grpc server")
 		grpcServer.GracefulStop()
+
+		return nil
+	}})
+
+	startService("cmux server", func(ctx context.Context) error {
+		logger.L().Info(ctx, "Starting network server", zap.Uint16("port", config.GRPCPort))
+		err := cmuxServer.Serve()
+		if err != nil {
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				return nil
+			}
+
+			return err
+		}
+
+		return nil
+	})
+	closers = append(closers, closer{"cmux server", func(context.Context) error {
+		logger.L().Info(ctx, "Shutting down cmux server")
+		cmuxServer.Close()
 
 		return nil
 	}})
@@ -563,68 +566,73 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Error(ctx, "Service error", zap.Error(serviceErr))
 	}
 
-	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
-	defer cancelCloseCtx()
-	if forceStop.Load() {
-		cancelCloseCtx()
+	ctx = context.WithoutCancel(ctx)
+
+	// Mark service draining if not already.
+	// If service stats was previously changed via API, we don't want to override it.
+	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
+		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
+	}
+
+	if config.StopSandboxesOnExit {
+		logger.L().Info(ctx, "Killing all sandboxes on exit")
+		sandboxes.StopAll(ctx)
 	}
 
 	// if a signal is received again, cancel the context and force quit
 	go func() {
 		<-sigs
-		logger.L().Info(ctx, "Force shutdown signal received")
-		cancel()
-		cancelCloseCtx()
-		forceStop.Store(true)
+		logger.L().Info(ctx, "Force shutdown signal received, stopping all sandboxes")
+		sandboxes.StopAll(ctx)
+		if tmpl != nil {
+			logger.L().Info(ctx, "Force shutdown signal received, stopping all template builds")
+			tmpl.StopAllBuilds()
+		}
 	}()
 
 	var closeWg sync.WaitGroup
 
 	closeWg.Go(func() {
-		// Mark service draining if not already.
-		// If service stats was previously changed via API, we don't want to override it.
-		if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
-			serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
-
-			logger.L().Info(ctx, "Waiting for api to read orchestrator status")
-			sleepCtx(closeCtx, 15*time.Second)
-		}
+		logger.L().Info(ctx, "Waiting for api to read orchestrator status")
+		sleepCtx(ctx, 15*time.Second)
 	})
 
 	closeWg.Go(func() {
-		if err := sandboxFactory.Wait(closeCtx); err != nil {
+		if err := sandboxFactory.Wait(ctx); err != nil {
 			logger.L().Error(ctx, "error while waiting for sandbox factory to drain", zap.Error(err))
 			success = false
 		}
 
 		logger.L().Info(ctx, "Waiting for sandbox clients to close connections")
-		sleepCtx(closeCtx, 15*time.Second)
+		sleepCtx(ctx, 15*time.Second)
+		logger.L().Info(ctx, "Assuming sandbox clients have closed their connections")
 	})
 
 	closeWg.Go(func() {
 		// Wait for services to be drained before closing them
 		if tmpl != nil {
-			err := tmpl.Wait(closeCtx)
+			err := tmpl.Wait(ctx)
 			if err != nil {
 				logger.L().Error(ctx, "error while waiting for template manager to drain", zap.Error(err))
 				success = false
 			}
 
 			logger.L().Info(ctx, "Waiting for consumers to check build status")
-			sleepCtx(closeCtx, 15*time.Second)
+			sleepCtx(ctx, 15*time.Second)
+			logger.L().Info(ctx, "Assuming consumers have updated build status")
 		}
 	})
 
 	closeWg.Wait()
 
 	slices.Reverse(closers)
+
 	for _, closer := range closers {
 		clog := globalLogger.With(
 			zap.String("service", closer.name),
-			zap.Bool("forced", forceStop.Load()),
 		)
 		clog.Info(ctx, "closing")
-		if err := closer.close(closeCtx); ignoreCancelled(err) != nil {
+		if err := closer.close(ctx); ignoreCancelled(err) != nil {
 			clog.Error(ctx, "error during shutdown", zap.Error(err))
 			success = false
 		}

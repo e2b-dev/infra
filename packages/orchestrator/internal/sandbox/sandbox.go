@@ -208,7 +208,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	cleanup.AddNoContext(ctx, func() error {
+	cleanup.AddNoContext(ctx, "reduce counter", func() error {
 		f.subtractSandbox()
 
 		return nil
@@ -221,7 +221,7 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
+	cleanup.Add(ctx, "clean up files", cleanupFiles(f.config, sandboxFiles))
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
@@ -246,7 +246,7 @@ func (f *Factory) CreateSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
-	cleanup.Add(ctx, rootfsProvider.Close)
+	cleanup.Add(ctx, "close rootfs provider", rootfsProvider.Close)
 	go func() {
 		runErr := rootfsProvider.Start(execCtx)
 		if runErr != nil {
@@ -344,7 +344,7 @@ func (f *Factory) CreateSandbox(
 	sbx.Checks = NewChecks(sbx, false)
 
 	// Stop the sandbox first if it is still running, otherwise do nothing
-	cleanup.AddPriority(ctx, sbx.Stop)
+	cleanup.AddPriority(ctx, "stop sandbox", sbx.Stop)
 
 	go func() {
 		defer execSpan.End()
@@ -401,7 +401,7 @@ func (f *Factory) ResumeSandbox(
 			execSpan.End()
 		}
 	}()
-	cleanup.AddNoContext(ctx, func() error {
+	cleanup.AddNoContext(ctx, "subtract sandbox", func() error {
 		f.subtractSandbox()
 
 		return nil
@@ -414,7 +414,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
+	cleanup.Add(ctx, "clean up files", cleanupFiles(f.config, sandboxFiles))
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
@@ -434,7 +434,7 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
 
-	cleanup.Add(ctx, rootfsOverlay.Close)
+	cleanup.Add(ctx, "close rootfs overlay", rootfsOverlay.Close)
 
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
@@ -588,7 +588,7 @@ func (f *Factory) ResumeSandbox(
 	// This is to prevent race condition of reporting unhealthy sandbox
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
 
-	cleanup.AddPriority(ctx, func(ctx context.Context) error {
+	cleanup.AddPriority(ctx, "stop sandbox", func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
 		return sbx.Stop(ctx)
 	})
@@ -775,7 +775,7 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
-	cleanup.AddNoContext(ctx, snapshotTemplateFiles.Close)
+	cleanup.AddNoContext(ctx, "close snapshot template files", snapshotTemplateFiles.Close)
 
 	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
 	if err != nil {
@@ -799,7 +799,7 @@ func (s *Sandbox) Pause(
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
-	cleanup.AddNoContext(ctx, snapfile.Close)
+	cleanup.AddNoContext(ctx, "close snapfile", snapfile.Close)
 	// Memfile is also closed on diff creation processing
 	/* The process of snapshotting memory is as follows:
 	1. Pause FC via API
@@ -852,7 +852,7 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
-	cleanup.AddNoContext(ctx, memfileDiff.Close)
+	cleanup.AddNoContext(ctx, "close memfile diff", memfileDiff.Close)
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
 		ctx,
@@ -867,10 +867,10 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
-	cleanup.AddNoContext(ctx, rootfsDiff.Close)
+	cleanup.AddNoContext(ctx, "close rootfs diff", rootfsDiff.Close)
 
 	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
-	cleanup.AddNoContext(ctx, metadataFileLink.Close)
+	cleanup.AddNoContext(ctx, "close metadata file link", metadataFileLink.Close)
 
 	err = m.ToFile(metadataFileLink.Path())
 	if err != nil {
@@ -992,7 +992,7 @@ func getNetworkSlotAsync(
 			return
 		}
 
-		cleanup.Add(ctx, func(ctx context.Context) error {
+		cleanup.Add(ctx, "return network slot", func(ctx context.Context) error {
 			ctx, span := tracer.Start(ctx, "network-slot-clean")
 			defer span.End()
 
@@ -1035,7 +1035,7 @@ func serveMemory(
 
 	telemetry.ReportEvent(ctx, "started uffd")
 
-	cleanup.Add(ctx, func(ctx context.Context) error {
+	cleanup.Add(ctx, "stop uffd", func(ctx context.Context) error {
 		_, span := tracer.Start(ctx, "uffd-stop")
 		defer span.End()
 
