@@ -50,8 +50,8 @@ func NewSynchronize[SourceItem any, PoolItem any](spanPrefix string, logsPrefix 
 
 func (s *Synchronize[SourceItem, PoolItem]) Start(ctx context.Context, syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
 	if runInitialSync {
-		initialSyncTimeout, initialSyncCancel := context.WithTimeout(context.WithoutCancel(ctx), syncRoundTimeout)
-		err := s.sync(initialSyncTimeout)
+		initialSyncCtx, initialSyncCancel := context.WithTimeout(context.WithoutCancel(ctx), syncRoundTimeout)
+		err := s.sync(initialSyncCtx)
 		initialSyncCancel()
 		if err != nil {
 			logger.L().Error(ctx, s.getLog("Initial sync failed"), zap.Error(err))
