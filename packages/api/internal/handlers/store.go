@@ -135,7 +135,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
-	templateManager, err := template_manager.New(sqlcDB, clustersPool, templateBuildsCache, templateCache)
+	templateManager, err := template_manager.New(sqlcDB, clustersPool, templateBuildsCache, templateCache, featureFlags)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Template manager client", zap.Error(err))
 	}

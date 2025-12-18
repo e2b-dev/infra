@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -21,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
@@ -67,6 +69,16 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	return orchNetwork
+}
+
+func getFirecrackerVersion(ctx context.Context, featureFlags *feature_flags.Client, version semver.Version, fallback string) string {
+	firecrackerVersions := featureFlags.JSONFlag(ctx, feature_flags.FirecrackerVersions).AsValueMap()
+	fcVersion, ok := firecrackerVersions.Get(fmt.Sprintf("v%d.%d", version.Major(), version.Minor())).AsOptionalString().Get()
+	if !ok {
+		return fallback
+	}
+
+	return fcVersion
 }
 
 func (o *Orchestrator) CreateSandbox(
@@ -155,9 +167,9 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}()
 
-	features, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
+	fcSemver, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to get features for firecracker version '%s': %w", build.FirecrackerVersion, err)
+		errMsg := fmt.Errorf("failed to get fcSemver for firecracker fcSemver '%s': %w", build.FirecrackerVersion, err)
 
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -166,7 +178,9 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
-	telemetry.ReportEvent(ctx, "Got FC version info")
+	hasHugePages := fcSemver.HasHugePages()
+	firecrackerVersion := getFirecrackerVersion(ctx, o.featureFlagsClient, fcSemver.Version(), build.FirecrackerVersion)
+	telemetry.ReportEvent(ctx, "Got FC info")
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
@@ -207,13 +221,13 @@ func (o *Orchestrator) CreateSandbox(
 			SandboxId:           sandboxID,
 			ExecutionId:         executionID,
 			KernelVersion:       build.KernelVersion,
-			FirecrackerVersion:  build.FirecrackerVersion,
+			FirecrackerVersion:  firecrackerVersion,
 			EnvdVersion:         *build.EnvdVersion,
 			Metadata:            metadata,
 			EnvVars:             envVars,
 			EnvdAccessToken:     envdAuthToken,
 			MaxSandboxLength:    team.Limits.MaxLengthHours,
-			HugePages:           features.HasHugePages(),
+			HugePages:           hasHugePages,
 			RamMb:               build.RamMb,
 			Vcpu:                build.Vcpu,
 			Snapshot:            isResume,
@@ -287,7 +301,7 @@ func (o *Orchestrator) CreateSandbox(
 		*build.TotalDiskSizeMb,
 		build.RamMb,
 		build.KernelVersion,
-		build.FirecrackerVersion,
+		firecrackerVersion,
 		*build.EnvdVersion,
 		node.ID,
 		node.ClusterID,
