@@ -1,4 +1,4 @@
-package memory
+package block
 
 import (
 	"context"
@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -84,17 +83,6 @@ func TestCopyFromProcess_Success(t *testing.T) {
 	ctx := context.Background()
 	size := int64(4096)
 
-	// Create cache
-	tmpFile := t.TempDir() + "/cache"
-	cache, err := block.NewCache(
-		size,
-		header.PageSize,
-		tmpFile,
-		false,
-	)
-	require.NoError(t, err)
-	defer cache.Close()
-
 	// Start helper process
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
 	cmd.Env = append(os.Environ(), "GO_TEST_COPY_HELPER_PROCESS=1")
@@ -122,12 +110,16 @@ func TestCopyFromProcess_Success(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Test copying a single range
-	ranges := []block.Range{
+	ranges := []Range{
 		{Start: int64(addr), Size: size},
 	}
 
-	err = cache.CopyFromProcess(ctx, cmd.Process.Pid, ranges)
+	tmpFile := t.TempDir() + "/cache"
+
+	cache, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
 	require.NoError(t, err)
+
+	defer cache.Close()
 
 	// Verify the copied data
 	data := make([]byte, size)
@@ -146,14 +138,8 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	segmentSize := uint64(1024)
+	segmentSize := uint64(header.PageSize) // Use PageSize to ensure alignment
 	totalSize := segmentSize * 3
-
-	// Create cache
-	tmpFile := t.TempDir() + "/cache"
-	cache, err := block.NewCache(int64(totalSize), header.PageSize, tmpFile, false)
-	require.NoError(t, err)
-	defer cache.Close()
 
 	// Start helper process
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
@@ -182,16 +168,18 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Test copying multiple non-contiguous ranges
-	ranges := []block.Range{
+	ranges := []Range{
 		{Start: int64(baseAddr), Size: int64(segmentSize)},
 		{Start: int64(baseAddr + segmentSize*2), Size: int64(segmentSize)},
 		{Start: int64(baseAddr + segmentSize), Size: int64(segmentSize)},
 	}
 
-	err = cache.CopyFromProcess(ctx, cmd.Process.Pid, ranges)
+	tmpFile := t.TempDir() + "/cache"
+	cache, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
 	require.NoError(t, err)
+	defer cache.Close()
 
-	// Verify the first segment
+	// Verify the first segment (at cache offset 0)
 	data1 := make([]byte, segmentSize)
 	n, err := cache.ReadAt(data1, 0)
 	require.NoError(t, err)
@@ -226,18 +214,12 @@ func TestCopyFromProcess_EmptyRanges(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	size := uint64(4096)
-
-	// Create cache
-	tmpFile := t.TempDir() + "/cache"
-	cache, err := block.NewCache(int64(size), int64(header.PageSize), tmpFile, false)
-	require.NoError(t, err)
-	defer cache.Close()
 
 	// Test with empty ranges
-	ranges := []block.Range{}
-	err = cache.CopyFromProcess(ctx, os.Getpid(), ranges)
-	require.NoError(t, err)
+	ranges := []Range{}
+	tmpFile := t.TempDir() + "/cache"
+	_, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, os.Getpid(), ranges)
+	require.ErrorIs(t, err, ErrNoRanges)
 }
 
 func TestCopyFromProcess_ContextCancellation(t *testing.T) {
@@ -245,12 +227,6 @@ func TestCopyFromProcess_ContextCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	size := uint64(4096)
-
-	// Create cache
-	tmpFile := t.TempDir() + "/cache"
-	cache, err := block.NewCache(int64(size), int64(header.PageSize), tmpFile, false)
-	require.NoError(t, err)
-	defer cache.Close()
 
 	// Start helper process
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
@@ -282,11 +258,12 @@ func TestCopyFromProcess_ContextCancellation(t *testing.T) {
 	cancel()
 
 	// Test copying with cancelled context
-	ranges := []block.Range{
+	ranges := []Range{
 		{Start: int64(addr), Size: int64(size)},
 	}
 
-	err = cache.CopyFromProcess(ctx, cmd.Process.Pid, ranges)
+	tmpFile := t.TempDir() + "/cache"
+	_, err = NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
 	require.Error(t, err)
 	assert.Equal(t, context.Canceled, err)
 }
@@ -295,21 +272,15 @@ func TestCopyFromProcess_InvalidPID(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	size := uint64(4096)
-
-	// Create cache
-	tmpFile := t.TempDir() + "/cache"
-	cache, err := block.NewCache(int64(size), header.PageSize, tmpFile, false)
-	require.NoError(t, err)
-	defer cache.Close()
 
 	// Test with invalid PID (very high PID that doesn't exist)
 	invalidPID := 999999999
-	ranges := []block.Range{
+	ranges := []Range{
 		{Start: 0x1000, Size: 1024},
 	}
 
-	err = cache.CopyFromProcess(ctx, invalidPID, ranges)
+	tmpFile := t.TempDir() + "/cache"
+	_, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, invalidPID, ranges)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read memory")
 }
@@ -318,21 +289,15 @@ func TestCopyFromProcess_InvalidAddress(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	size := uint64(4096)
-
-	// Create cache
-	tmpFile := t.TempDir() + "/cache"
-	cache, err := block.NewCache(int64(size), int64(header.PageSize), tmpFile, false)
-	require.NoError(t, err)
-	defer cache.Close()
 
 	// Test with invalid memory address (very high address that fits in int64)
 	invalidAddr := int64(0x7FFFFFFF00000000) // Large but valid int64 value
-	ranges := []block.Range{
+	ranges := []Range{
 		{Start: invalidAddr, Size: 1024},
 	}
 
-	err = cache.CopyFromProcess(ctx, os.Getpid(), ranges)
+	tmpFile := t.TempDir() + "/cache"
+	_, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, os.Getpid(), ranges)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read memory")
 }
@@ -342,12 +307,6 @@ func TestCopyFromProcess_ZeroSizeRange(t *testing.T) {
 
 	ctx := context.Background()
 	size := uint64(4096)
-
-	// Create cache
-	tmpFile := t.TempDir() + "/cache"
-	cache, err := block.NewCache(int64(size), int64(header.PageSize), tmpFile, false)
-	require.NoError(t, err)
-	defer cache.Close()
 
 	// Start helper process
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
@@ -376,12 +335,13 @@ func TestCopyFromProcess_ZeroSizeRange(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Test with zero-size range
-	ranges := []block.Range{
+	ranges := []Range{
 		{Start: int64(addr), Size: 0},
 	}
 
-	err = cache.CopyFromProcess(ctx, cmd.Process.Pid, ranges)
-	require.NoError(t, err)
+	tmpFile := t.TempDir() + "/cache"
+	_, err = NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
+	require.ErrorIs(t, err, ErrNoRanges)
 }
 
 func TestCopyFromProcess_LargeRanges(t *testing.T) {
@@ -395,10 +355,6 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 
 	// Create cache large enough for all ranges
 	totalSize := rangeSize * uint64(numRanges)
-	tmpFile := t.TempDir() + "/cache"
-	cache, err := block.NewCache(int64(totalSize), int64(header.PageSize), tmpFile, false)
-	require.NoError(t, err)
-	defer cache.Close()
 
 	// Start helper process
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
@@ -427,34 +383,45 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create many small ranges that exceed IOV_MAX
-	ranges := make([]block.Range, numRanges)
+	ranges := make([]Range, numRanges)
 	for i := 0; i < numRanges; i++ {
-		ranges[i] = block.Range{
+		ranges[i] = Range{
 			Start: int64(baseAddr) + int64(i)*int64(rangeSize),
 			Size:  int64(rangeSize),
 		}
 	}
 
-	err = cache.CopyFromProcess(ctx, cmd.Process.Pid, ranges)
+	tmpFile := t.TempDir() + "/cache"
+	cache, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
 	require.NoError(t, err)
+	defer cache.Close()
 
 	// Verify the data was copied correctly
 	// Check a few ranges to ensure they were copied
+	// ReadAt offsets must be multiples of header.PageSize
 	checkCount := 10
 	if numRanges < checkCount {
 		checkCount = numRanges
 	}
 	for i := 0; i < checkCount; i++ {
-		offset := int64(i) * int64(rangeSize)
-		data := make([]byte, rangeSize)
-		n, err := cache.ReadAt(data, offset)
-		require.NoError(t, err)
-		require.Equal(t, int(rangeSize), n)
+		// Calculate the actual offset in cache (ranges are stored sequentially)
+		actualOffset := int64(i) * int64(rangeSize)
+		// Align offset to header.PageSize boundary
+		alignedOffset := (actualOffset / header.PageSize) * header.PageSize
+		// Calculate offset within the aligned block
+		offsetInBlock := actualOffset - alignedOffset
 
-		// Verify pattern
-		for j := range data {
-			expected := byte((int(offset) + j) % 256)
-			assert.Equal(t, expected, data[j], "range %d, byte at offset %d", i, j)
+		// Read a full page to ensure we get the data
+		data := make([]byte, header.PageSize)
+		fmt.Println("reading at aligned offset", alignedOffset, "with offset in block", offsetInBlock)
+		n, err := cache.ReadAt(data, alignedOffset)
+		require.NoError(t, err)
+		require.Equal(t, int(header.PageSize), n)
+
+		// Verify pattern for the range we're checking
+		for j := 0; j < int(rangeSize); j++ {
+			expected := byte((int(actualOffset) + j) % 256)
+			assert.Equal(t, expected, data[offsetInBlock+int64(j)], "range %d, byte at offset %d", i, j)
 		}
 	}
 }

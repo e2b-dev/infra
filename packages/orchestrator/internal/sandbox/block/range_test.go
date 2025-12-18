@@ -13,7 +13,7 @@ func TestRange_End(t *testing.T) {
 	tests := []struct {
 		name     string
 		start    int64
-		size     uint64
+		size     int64
 		expected int64
 	}{
 		{
@@ -63,7 +63,7 @@ func TestNewRange(t *testing.T) {
 	tests := []struct {
 		name     string
 		start    int64
-		size     uint64
+		size     int64
 		expected Range
 	}{
 		{
@@ -380,7 +380,7 @@ func TestGetSize(t *testing.T) {
 	tests := []struct {
 		name     string
 		ranges   []Range
-		expected uint64
+		expected int64
 	}{
 		{
 			name:     "empty",

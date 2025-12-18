@@ -2,7 +2,6 @@ package fc
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/bits-and-blooms/bitset"
@@ -45,22 +44,9 @@ func (p *Process) ExportMemory(
 		return nil, fmt.Errorf("failed to get pid: %w", err)
 	}
 
-	size := block.GetSize(remoteRanges)
-
-	cache, err := block.NewCache(
-		size,
-		blockSize,
-		cachePath,
-		false,
-	)
+	cache, err := block.NewCacheFromProcessMemory(ctx, blockSize, cachePath, pid, remoteRanges)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache: %w", err)
-	}
-
-	err = cache.CopyProcessMemory(ctx, pid, remoteRanges)
-	if err != nil {
-		// Close the cache even if the copy fails.
-		return nil, fmt.Errorf("failed to copy process memory: %w", errors.Join(err, cache.Close()))
 	}
 
 	return cache, nil

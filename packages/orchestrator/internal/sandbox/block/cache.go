@@ -26,6 +26,8 @@ const (
 	oomMaxJitter  = 100 * time.Millisecond
 )
 
+var ErrNoRanges = errors.New("no ranges (or ranges with total size 0) provided")
+
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block")
 
 type CacheClosedError struct {
@@ -291,7 +293,33 @@ func (c *Cache) Path() string {
 	return c.filePath
 }
 
-func (c *Cache) CopyFromProcess(
+func NewCacheFromProcessMemory(
+	ctx context.Context,
+	blockSize int64,
+	filePath string,
+	pid int,
+	ranges []Range,
+) (*Cache, error) {
+	size := GetSize(ranges)
+
+	if size == 0 {
+		return nil, ErrNoRanges
+	}
+
+	cache, err := NewCache(size, blockSize, filePath, false)
+	if err != nil {
+		return nil, err
+	}
+
+	err = cache.copyProcessMemory(ctx, pid, ranges)
+	if err != nil {
+		return nil, err
+	}
+
+	return cache, nil
+}
+
+func (c *Cache) copyProcessMemory(
 	ctx context.Context,
 	pid int,
 	ranges []Range,
@@ -299,7 +327,6 @@ func (c *Cache) CopyFromProcess(
 	var start int64
 
 	for i := 0; i < len(ranges); i += IOV_MAX {
-		// TODO: Is this accumulation correct?
 		segmentRanges := ranges[i:min(i+IOV_MAX, len(ranges))]
 
 		remote := make([]unix.RemoteIovec, len(segmentRanges))
@@ -356,80 +383,9 @@ func (c *Cache) CopyFromProcess(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			start += segmentSize
-
-			break
-		}
-	}
-
-	return nil
-}
-
-func (c *Cache) CopyProcessMemory(
-	ctx context.Context,
-	pid int,
-	ranges []Range,
-) error {
-	var start int64
-
-	for i := 0; i < len(ranges); i += int(IOV_MAX) {
-		segmentRanges := ranges[i:min(i+int(IOV_MAX), len(ranges))]
-
-		remote := make([]unix.RemoteIovec, len(segmentRanges))
-
-		var segmentSize int64
-
-		for j, r := range segmentRanges {
-			remote[j] = unix.RemoteIovec{
-				Base: uintptr(r.Start),
-				Len:  int(r.Size),
-			}
-
-			segmentSize += r.Size
-		}
-
-		local := []unix.Iovec{
-			{
-				Base: c.Address(start),
-				// We could keep this as full cache length, but we might as well be exact here.
-				Len: uint64(segmentSize),
-			},
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-
-			// We could retry only on the remaining segment size, but for simplicity we retry the whole segment.
-			n, err := unix.ProcessVMReadv(pid,
-				local,
-				remote,
-				0,
-			)
-			if errors.Is(err, unix.EAGAIN) {
-				continue
-			}
-			if errors.Is(err, unix.EINTR) {
-				continue
-			}
-			if errors.Is(err, unix.ENOMEM) {
-				time.Sleep(oomMinBackoff + time.Duration(rand.Intn(int(oomMaxJitter.Milliseconds())))*time.Millisecond)
-
-				continue
-			}
-
-			if err != nil {
-				return fmt.Errorf("failed to read memory: %w", err)
-			}
-
-			if int64(n) != segmentSize {
-				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
-			}
-
 			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
+				fmt.Println("setting dirty", start+blockOff)
+
 				c.dirty.Store(start+blockOff, struct{}{})
 			}
 
