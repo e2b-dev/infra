@@ -94,10 +94,10 @@ SELECT id, email FROM auth.users;
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE IF EXISTS public.users;
-
 DROP TRIGGER IF EXISTS sync_inserts_to_public_users ON auth.users;
 DROP TRIGGER IF EXISTS sync_updates_to_public_users ON auth.users;
+
+DROP TABLE IF EXISTS public.users;
 
 DROP FUNCTION IF EXISTS public.sync_insert_auth_users_to_public_users_trigger();
 DROP FUNCTION IF EXISTS public.sync_update_auth_users_to_public_users_trigger();
