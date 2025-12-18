@@ -76,10 +76,10 @@ func TestParseTemplateIDWithTag(t *testing.T) {
 			wantErr:        true,
 		},
 		{
-			name:           "latest tag",
+			name:           "latest tag normalized to nil",
 			input:          "my-template:latest",
 			wantTemplateID: "my-template",
-			wantTag:        stringPtr(DefaultTag),
+			wantTag:        nil,
 			wantErr:        false,
 		},
 	}
