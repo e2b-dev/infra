@@ -208,7 +208,14 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	}
 
 	select {
+	case <-p.done:
+		return nil
 	case <-ctx.Done():
+		if err := p.cleanup(ctx, slot); err != nil {
+			logger.L().Error(ctx, "failed to cleanup slot after closing",
+				zap.String("slot_key", slot.Key),
+				zap.Error(err))
+		}
 		return ctx.Err()
 	case p.reusedSlots <- slot:
 		returnedSlotCounter.Add(ctx, 1)
