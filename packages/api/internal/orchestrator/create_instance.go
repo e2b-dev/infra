@@ -312,7 +312,7 @@ func (o *Orchestrator) CreateSandbox(
 		*build.TotalDiskSizeMb,
 		build.RamMb,
 		build.KernelVersion,
-		build.FirecrackerVersion,
+		firecrackerVersion,
 		*build.EnvdVersion,
 		node.ID,
 		node.ClusterID,
