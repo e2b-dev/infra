@@ -48,9 +48,10 @@ func (p *Process) ExportMemory(
 	size := block.GetSize(remoteRanges)
 
 	cache, err := block.NewCache(
-		cachePath,
 		size,
 		blockSize,
+		cachePath,
+		false,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache: %w", err)

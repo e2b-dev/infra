@@ -279,7 +279,7 @@ func (c *Cache) FileSize() (int64, error) {
 	return stat.Blocks * fsStat.Bsize, nil
 }
 
-func (c *Cache) Address(off uint64) *byte {
+func (c *Cache) Address(off int64) *byte {
 	return &(*c.mmap)[off]
 }
 
@@ -296,14 +296,15 @@ func (c *Cache) CopyFromProcess(
 	pid int,
 	ranges []Range,
 ) error {
-	var start uint64
+	var start int64
 
-	for i := 0; i < len(ranges); i += int(IOV_MAX) {
-		segmentRanges := ranges[i:min(i+int(IOV_MAX), len(ranges))]
+	for i := 0; i < len(ranges); i += IOV_MAX {
+		// TODO: Is this accumulation correct?
+		segmentRanges := ranges[i:min(i+IOV_MAX, len(ranges))]
 
 		remote := make([]unix.RemoteIovec, len(segmentRanges))
 
-		var segmentSize uint64
+		var segmentSize int64
 
 		for j, r := range segmentRanges {
 			remote[j] = unix.RemoteIovec{
@@ -318,7 +319,7 @@ func (c *Cache) CopyFromProcess(
 			{
 				Base: c.Address(start),
 				// We could keep this as full cache length, but we might as well be exact here.
-				Len: segmentSize,
+				Len: uint64(segmentSize),
 			},
 		}
 
@@ -351,7 +352,7 @@ func (c *Cache) CopyFromProcess(
 				return fmt.Errorf("failed to read memory: %w", err)
 			}
 
-			if uint64(n) != segmentSize {
+			if int64(n) != segmentSize {
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
@@ -428,8 +429,9 @@ func (c *Cache) CopyProcessMemory(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			// Mark the copied data as cached so it can be read via Slice/ReadAt
-			c.dirty.AddOffsets(start, segmentSize)
+			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
+				c.dirty.Store(start+blockOff, struct{}{})
+			}
 
 			start += segmentSize
 

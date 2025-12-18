@@ -87,9 +87,10 @@ func TestCopyFromProcess_Success(t *testing.T) {
 	// Create cache
 	tmpFile := t.TempDir() + "/cache"
 	cache, err := block.NewCache(
-		tmpFile,
 		size,
 		header.PageSize,
+		tmpFile,
+		false,
 	)
 	require.NoError(t, err)
 	defer cache.Close()
@@ -150,7 +151,7 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 
 	// Create cache
 	tmpFile := t.TempDir() + "/cache"
-	cache, err := block.NewCache(tmpFile, int64(totalSize), header.PageSize)
+	cache, err := block.NewCache(int64(totalSize), header.PageSize, tmpFile, false)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -182,9 +183,9 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 
 	// Test copying multiple non-contiguous ranges
 	ranges := []block.Range{
-		{Start: int64(baseAddr), Size: segmentSize},
-		{Start: int64(baseAddr + segmentSize*2), Size: segmentSize},
-		{Start: int64(baseAddr + segmentSize), Size: segmentSize},
+		{Start: int64(baseAddr), Size: int64(segmentSize)},
+		{Start: int64(baseAddr + segmentSize*2), Size: int64(segmentSize)},
+		{Start: int64(baseAddr + segmentSize), Size: int64(segmentSize)},
 	}
 
 	err = cache.CopyFromProcess(ctx, cmd.Process.Pid, ranges)
@@ -282,7 +283,7 @@ func TestCopyFromProcess_ContextCancellation(t *testing.T) {
 
 	// Test copying with cancelled context
 	ranges := []block.Range{
-		{Start: int64(addr), Size: size},
+		{Start: int64(addr), Size: int64(size)},
 	}
 
 	err = cache.CopyFromProcess(ctx, cmd.Process.Pid, ranges)
@@ -298,7 +299,7 @@ func TestCopyFromProcess_InvalidPID(t *testing.T) {
 
 	// Create cache
 	tmpFile := t.TempDir() + "/cache"
-	cache, err := block.NewCache(tmpFile, int64(size), header.PageSize)
+	cache, err := block.NewCache(int64(size), header.PageSize, tmpFile, false)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -430,7 +431,7 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 	for i := 0; i < numRanges; i++ {
 		ranges[i] = block.Range{
 			Start: int64(baseAddr) + int64(i)*int64(rangeSize),
-			Size:  rangeSize,
+			Size:  int64(rangeSize),
 		}
 	}
 
