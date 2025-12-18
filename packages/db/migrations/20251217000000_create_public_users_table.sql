@@ -63,6 +63,10 @@ BEGIN
         updated_at = now()
     WHERE id = NEW.id;
 
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'User with id % does not exist in public.users', NEW.id;
+    END IF;
+
     RETURN NEW;
 END;
 $func$ SECURITY DEFINER SET search_path = public;
