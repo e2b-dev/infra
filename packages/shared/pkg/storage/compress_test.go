@@ -127,9 +127,9 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 	fe, err := newFrameEncoder(&opts, fu.handleFrame)
 	require.NoError(t, err)
 
-	// 171 and newVectorReader (a "pure" io.Reader) to exercise uneven chunking
+	// 171 and newPureReader (a "pure" io.Reader) to exercise uneven chunking
 	// in fe.Write
-	ci, err := multipartCompressUploadFile(newVectorReader([][]byte{origData}), fe, fu, 171)
+	ci, err := multipartCompressUploadFile(newPureReader(origData), fe, fu, 171)
 	require.NoError(t, err)
 	require.Equal(t, 1, initiateC)
 	require.Equal(t, 1, completeC)
@@ -164,4 +164,31 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 
 	// Verify full data
 	require.Equal(t, origData, data, "expected uploaded data to match original data")
+}
+
+type pureReader struct {
+	data []byte
+}
+
+func newPureReader(data []byte) *pureReader {
+	return &pureReader{
+		data: data,
+	}
+}
+
+func (mr *pureReader) Read(p []byte) (n int, err error) {
+	if len(mr.data) == 0 {
+		return 0, io.EOF
+	}
+
+	if len(mr.data) < len(p) {
+		copy(p, mr.data)
+		n = len(mr.data)
+		mr.data = nil
+		return n, io.EOF
+	}
+
+	copy(p, mr.data[:len(p)])
+	mr.data = mr.data[len(p):]
+	return len(p), nil
 }

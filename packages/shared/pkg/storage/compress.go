@@ -291,31 +291,12 @@ func (u *frameUploader) complete() error {
 	return nil
 }
 
-type vectorReader struct {
-	data [][]byte
-	pos  int
-	off  int
-}
-
-func newVectorReader(data [][]byte) *vectorReader {
-	return &vectorReader{
-		data: data,
+func newMultiReader(data [][]byte) io.Reader {
+	rr := []io.Reader{}
+	for _, d := range data {
+		rr = append(rr, bytes.NewReader(d))
 	}
-}
-
-func (mr *vectorReader) Read(p []byte) (n int, err error) {
-	if mr.pos >= len(mr.data) {
-		return 0, io.EOF
-	}
-
-	n = copy(p, mr.data[mr.pos][mr.off:])
-	mr.off += n
-	if mr.off >= len(mr.data[mr.pos]) {
-		mr.pos++
-		mr.off = 0
-	}
-
-	return n, nil
+	return io.MultiReader(rr...)
 }
 
 type syncBuffer struct {

@@ -284,7 +284,13 @@ func (m *multipartUploaderGCP) UploadPart(uploadID string, partNumber int, dataL
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
-	req, err := retryablehttp.NewRequest("PUT", url, newVectorReader(dataList))
+	var r io.Reader
+	if len(dataList) == 1 {
+		r = bytes.NewReader(dataList[0])
+	} else {
+		r = newMultiReader(dataList)
+	}
+	req, err := retryablehttp.NewRequest("PUT", url, r)
 	if err != nil {
 		return err
 	}
