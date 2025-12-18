@@ -22,5 +22,6 @@ func (l *Lazy[T]) GetOrInit(f func() T) T {
 	l.once.Do(func() {
 		l.value = f()
 	})
+
 	return l.value
 }
