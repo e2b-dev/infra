@@ -112,6 +112,15 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 func (p *Pool) Populate(ctx context.Context) error {
 	defer close(p.newSlots)
 
+	cleanup := func(ctx context.Context, slot *Slot) {
+		if err := p.Return(ctx, slot); err != nil {
+			logger.L().Error(ctx, "[network slot pool]: failed to return slot after closing",
+				zap.Error(err),
+				zap.String("slot_key", slot.Key),
+			)
+		}
+	}
+
 	for {
 		select {
 		case <-p.done:
@@ -129,17 +138,15 @@ func (p *Pool) Populate(ctx context.Context) error {
 			newSlotsAvailableCounter.Add(ctx, 1)
 
 			select {
+			case p.newSlots <- slot:
+
 			case <-p.done:
-				if err := p.Return(ctx, slot); err != nil {
-					logger.L().Error(ctx, "[network slot pool]: failed to return slot after closing",
-						zap.Error(err),
-						zap.String("slot_key", slot.Key),
-					)
-				}
+				cleanup(ctx, slot)
 
 				return nil
-			case p.newSlots <- slot:
 			case <-ctx.Done():
+				cleanup(ctx, slot)
+
 				return ctx.Err()
 			}
 		}
