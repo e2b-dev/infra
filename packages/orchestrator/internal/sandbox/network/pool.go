@@ -216,6 +216,7 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 				zap.String("slot_key", slot.Key),
 				zap.Error(err))
 		}
+
 		return ctx.Err()
 	case p.reusedSlots <- slot:
 		returnedSlotCounter.Add(ctx, 1)
