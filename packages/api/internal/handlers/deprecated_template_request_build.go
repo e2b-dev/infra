@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
@@ -17,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/dberrors"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
@@ -156,10 +154,7 @@ func (a *APIStore) buildTemplate(
 	templateID api.TemplateID,
 	body api.TemplateBuildRequest,
 ) (*template.RegisterBuildResponse, *api.APIError) {
-	firecrackerVersion, err := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
-	if err != nil {
-		logger.L().Warn(ctx, "error getting build firecracker version feature flag, using default", zap.Error(err))
-	}
+	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 
 	// Create the build
 	data := template.RegisterBuildData{

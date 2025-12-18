@@ -78,19 +78,9 @@ func getFirecrackerVersion(ctx context.Context, featureFlags *feature_flags.Clie
 
 	switch version.Minor() {
 	case 10:
-		firecrackerVersion, err := featureFlags.StringFlag(ctx, feature_flags.FirecrackerV1_10Version)
-		if err != nil {
-			logger.L().Warn(ctx, "failed to get firecracker v1.10 version flag", zap.Error(err))
-		}
-
-		return firecrackerVersion, nil
+		return featureFlags.StringFlag(ctx, feature_flags.FirecrackerV1_10Version), nil
 	case 12:
-		firecrackerVersion, err := featureFlags.StringFlag(ctx, feature_flags.FirecrackerV1_12Version)
-		if err != nil {
-			logger.L().Warn(ctx, "failed to get firecracker v1.12 version flag", zap.Error(err))
-		}
-
-		return firecrackerVersion, nil
+		return featureFlags.StringFlag(ctx, feature_flags.FirecrackerV1_12Version), nil
 	default:
 		return "", fmt.Errorf("unsupported firecracker version: %s", version.String())
 	}
