@@ -96,8 +96,8 @@ func (bb *BaseBuilder) provisionSandbox(
 		scanner := bufio.NewScanner(exitCodeReader)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.HasPrefix(line, rootfs.ProvisioningExitPrefix) {
-				exitStatus := strings.TrimPrefix(line, rootfs.ProvisioningExitPrefix)
+			if after, ok := strings.CutPrefix(line, rootfs.ProvisioningExitPrefix); ok {
+				exitStatus := after
 				if exitStatus == "0" {
 					// Success exit code
 					return nil
@@ -145,6 +145,25 @@ func (bb *BaseBuilder) provisionSandbox(
 		return fmt.Errorf("error creating sandbox: %w", err)
 	}
 	defer sbx.Close(ctx)
+
+	// Add to proxy so we can call envd and route traffic from the sandbox
+	bb.sandboxes.Insert(sbx)
+	defer func() {
+		bb.sandboxes.Remove(sbx.Runtime.SandboxID)
+
+		closeErr := bb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		if closeErr != nil {
+			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
+			bb.logger.Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
+		} else {
+			bb.logger.Debug(
+				ctx,
+				"removed proxy from pool",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithExecutionID(sbx.Runtime.ExecutionID),
+			)
+		}
+	}()
 
 	if err := done.WaitWithContext(ctx); err != nil {
 		return fmt.Errorf("error waiting for provisioning sandbox: %w", err)

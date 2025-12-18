@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -33,10 +32,7 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 		return
 	}
 
-	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
-	if err != nil {
-		logger.L().Warn(ctx, "error getting metrics read feature flag, soft failing", zap.Error(err))
-	}
+	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
 
 	if !metricsReadFlag {
 		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
@@ -58,7 +54,7 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 		end = time.Unix(*params.End, 0)
 	}
 
-	start, end, err = clickhouseUtils.ValidateRange(start, end)
+	start, end, err := clickhouseUtils.ValidateRange(start, end)
 	if err != nil {
 		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())

@@ -40,10 +40,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 			Build(),
 	)
 
-	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
-	if err != nil {
-		logger.L().Warn(ctx, "error getting metrics read feature flag, soft failing", zap.Error(err))
-	}
+	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
 
 	if !metricsReadFlag {
 		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
@@ -56,10 +53,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	}
 
 	// TODO: Remove in [ENG-3377], once edge is migrated
-	edgeProvidedMetrics, err := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlagName)
-	if err != nil {
-		logger.L().Warn(ctx, "error getting edge provided metrics feature flag, soft failing", zap.Error(err))
-	}
+	edgeProvidedMetrics := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlagName)
 
 	var metrics []api.SandboxMetric
 	var apiErr *api.APIError

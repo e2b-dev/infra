@@ -136,14 +136,14 @@ func run() int {
 		}()
 		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
-		if errors.Is(err, factories.ErrRedisDisabled) {
-			l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-			catalog = e2bcatalog.NewMemorySandboxesCatalog()
-		} else {
+		if !errors.Is(err, factories.ErrRedisDisabled) {
 			l.Error(ctx, "Failed to create redis client", zap.Error(err))
 
 			return 1
 		}
+
+		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
+		catalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, l, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
@@ -212,10 +212,7 @@ func run() int {
 	restListener := muxServer.Match(cmux.Any())
 	restSrv := &http.Server{Handler: restHttpHandler} // handler requests for REST API
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		err := grpcSrv.Serve(grpcListener)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
@@ -227,12 +224,9 @@ func run() int {
 			// this probably shouldn't happen...
 			logger.L().Error(ctx, "Edge grpc service exited without error")
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		err := restSrv.Serve(restListener)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
@@ -244,12 +238,9 @@ func run() int {
 			// this probably shouldn't happen...
 			logger.L().Error(ctx, "Edge api service exited without error")
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		// make sure to cancel the parent context before this
 		// goroutine returns, so that in the case of a panic
 		// or error here, the other thread won't block until
@@ -271,12 +262,9 @@ func run() int {
 				edgeRunLogger.Info(ctx, "Edge api exited without error")
 			}
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		// make sure to cancel the parent context before this
 		// goroutine returns, so that in the case of a panic
 		// or error here, the other thread won't block until
@@ -298,7 +286,7 @@ func run() int {
 			// this probably shouldn't happen...
 			proxyRunLogger.Error(ctx, "Http proxy exited without error")
 		}
-	}()
+	})
 
 	// Service gracefully shutdown flow
 	//
@@ -316,9 +304,7 @@ func run() int {
 	// After GRPC proxy and edge API servers are gracefully shutdown, we are marking the service as terminating,
 	// this is message primary for instances management that we are ready to be terminated and everything is properly cleaned up.
 	// Finally, we are closing the mux server just to clean up, new connections will not be accepted anymore because we already closed listeners.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		<-signalCtx.Done()
 
 		shutdownLogger := l.With(zap.Uint16("proxy_port", config.ProxyPort), zap.Uint16("edge_port", config.EdgePort))
@@ -377,7 +363,7 @@ func run() int {
 				logger.L().Error(ctx, "error during shutdown", zap.Error(err))
 			}
 		}
-	}()
+	})
 
 	wg.Wait()
 

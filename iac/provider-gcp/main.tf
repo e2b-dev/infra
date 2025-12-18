@@ -70,6 +70,7 @@ module "cluster" {
   client_cluster_autoscaling_cpu_target    = var.client_cluster_autoscaling_cpu_target
   client_cluster_autoscaling_memory_target = var.client_cluster_autoscaling_memory_target
   build_cluster_root_disk_size_gb          = var.build_cluster_root_disk_size_gb
+  client_cluster_root_disk_size_gb         = var.client_cluster_root_disk_size_gb
 
   api_cluster_size        = var.api_cluster_size
   build_cluster_size      = var.build_cluster_size
@@ -78,8 +79,14 @@ module "cluster" {
   server_cluster_size     = var.server_cluster_size
   loki_cluster_size       = var.loki_cluster_size
 
-  build_cluster_cache_disk_count  = var.build_cluster_cache_disk_count
-  client_cluster_cache_disk_count = var.client_cluster_cache_disk_count
+  build_cluster_cache_disk_count   = var.build_cluster_cache_disk_count
+  build_cluster_cache_disk_size_gb = var.build_cluster_cache_disk_size_gb
+  build_cluster_cache_disk_type    = var.build_cluster_cache_disk_type
+
+  client_cluster_cache_disk_count   = var.client_cluster_cache_disk_count
+  client_cluster_cache_disk_size_gb = var.client_cluster_cache_disk_size_gb
+  client_cluster_cache_disk_type    = var.client_cluster_cache_disk_type
+
 
   server_machine_type     = var.server_machine_type
   client_machine_type     = var.client_machine_type
@@ -135,6 +142,14 @@ module "cluster" {
   prefix = var.prefix
 
   min_cpu_platform = var.min_cpu_platform
+
+  # Boot disk types
+  client_boot_disk_type     = var.client_boot_disk_type
+  build_boot_disk_type      = var.build_boot_disk_type
+  api_boot_disk_type        = var.api_boot_disk_type
+  server_boot_disk_type     = var.server_boot_disk_type
+  clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
+  loki_boot_disk_type       = var.loki_boot_disk_type
 }
 
 module "nomad" {

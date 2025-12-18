@@ -3,6 +3,7 @@ package logger
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
@@ -94,12 +95,6 @@ func WithoutHealthCheck() selector.Matcher {
 
 func WithoutRoutes(routes ...string) selector.Matcher {
 	return selector.MatchFunc(func(_ context.Context, c interceptors.CallMeta) bool {
-		for _, route := range routes {
-			if c.FullMethod() == route {
-				return false
-			}
-		}
-
-		return true
+		return !slices.Contains(routes, c.FullMethod())
 	})
 }

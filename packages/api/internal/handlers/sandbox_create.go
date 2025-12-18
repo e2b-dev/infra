@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -32,6 +34,9 @@ const (
 	InstanceIDPrefix            = "i"
 	metricTemplateAlias         = metrics.MetricPrefix + "template.alias"
 	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
+
+	// Network validation error messages
+	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
 )
 
 // mostUsedTemplates is a map of the most used template aliases.
@@ -320,6 +325,36 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("mask request host is not ASCII (%s)!=(%s)", host, hostname),
 				ClientMsg: fmt.Sprintf("mask request host '%s' is not ASCII. Please use ASCII characters only.", hostname),
+			}
+		}
+	}
+
+	denyOut := sharedUtils.DerefOrDefault(network.DenyOut, nil)
+	for _, cidr := range denyOut {
+		if !sandbox_network.IsIPOrCIDR(cidr) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid denied CIDR %s", cidr),
+				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", cidr),
+			}
+		}
+	}
+
+	// Validate that allow out rules have corresponding deny out rules
+	allowOut := sharedUtils.DerefOrDefault(network.AllowOut, nil)
+	if len(allowOut) > 0 {
+		_, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
+
+		// Check if DenyOut contains block-all CIDR
+		hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
+
+		// When specifying domains, require block-all CIDR in DenyOut
+		// Without this, domain filtering is meaningless (traffic is allowed by default)
+		if len(allowedDomains) > 0 && !hasBlockAll {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
+				ClientMsg: ErrMsgDomainsRequireBlockAll,
 			}
 		}
 	}

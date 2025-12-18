@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 )
 
 type SandboxConfig struct {
+	templateID          string
 	metadata            api.SandboxMetadata
 	timeout             int32
 	autoPause           bool
@@ -25,9 +27,7 @@ type SandboxOption func(config *SandboxConfig)
 
 func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
 	return func(config *SandboxConfig) {
-		for key, value := range metadata {
-			config.metadata[key] = value
-		}
+		maps.Copy(config.metadata, metadata)
 	}
 }
 
@@ -67,6 +67,12 @@ func WithAllowInternetAccess(allow bool) SandboxOption {
 	}
 }
 
+func WithTemplateID(templateID string) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.templateID = templateID
+	}
+}
+
 // SetupSandboxWithCleanup creates a new sandbox and returns its data
 func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options ...SandboxOption) *api.Sandbox {
 	t.Helper()
@@ -86,8 +92,13 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		option(&config)
 	}
 
+	templateID := config.templateID
+	if templateID == "" {
+		templateID = setup.SandboxTemplateID
+	}
+
 	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
-		TemplateID:          setup.SandboxTemplateID,
+		TemplateID:          templateID,
 		Timeout:             &config.timeout,
 		Metadata:            &config.metadata,
 		AutoPause:           &config.autoPause,

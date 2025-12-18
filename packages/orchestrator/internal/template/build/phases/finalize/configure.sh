@@ -10,10 +10,6 @@ TEMPLATE_ID={{ .TemplateID }}
 BUILD_ID={{ .BuildID }}
 EOF
 
-echo "Enable swap"
-echo 0 > /proc/sys/vm/swappiness
-swapon /swap/swapfile
-
 # Create default user.
 # if the /home/user directory exists, we copy the skeleton files to it because the adduser command
 # will ignore the directory if it exists, but we want to include the skeleton files in the home directory

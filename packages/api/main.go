@@ -371,10 +371,7 @@ func run() int {
 	// HTTP service to terminate:
 	defer wg.Wait()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		// make sure to cancel the parent context before this
 		// goroutine returns, so that in the case of a panic
 		// or error here, the other thread won't block until
@@ -396,11 +393,9 @@ func run() int {
 			// this probably shouldn't happen...
 			l.Info(ctx, "Http service exited without error", zap.Int("port", port))
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		<-signalCtx.Done()
 
 		// Start returning 503s for health checks
@@ -426,7 +421,7 @@ func run() int {
 			exitCode.Add(1)
 			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
-	}()
+	})
 
 	// wait for the HTTP service to complete shutting down first
 	// before doing other cleanup, we're listening for the signal

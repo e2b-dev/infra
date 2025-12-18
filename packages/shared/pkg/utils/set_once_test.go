@@ -56,13 +56,10 @@ func TestSetOnceWait(t *testing.T) {
 	setOnce := NewSetOnce[int]()
 
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		time.Sleep(200 * time.Millisecond)
 		setOnce.SetValue(1)
-	}()
+	})
 
 	value, err := setOnce.Wait()
 	require.NoError(t, err)
@@ -78,13 +75,10 @@ func TestSetOnceWaitWithContext(t *testing.T) {
 	defer cancel()
 
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		time.Sleep(200 * time.Millisecond)
 		setOnce.SetValue(1)
-	}()
+	})
 
 	value, err := setOnce.WaitWithContext(ctx)
 	require.NoError(t, err)
@@ -101,13 +95,10 @@ func TestSetOnceWaitWithContextCanceled(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		time.Sleep(10 * time.Millisecond)
 		cancel()
-	}()
+	})
 
 	_, err := setOnce.WaitWithContext(ctx)
 	require.Error(t, err)
@@ -321,12 +312,9 @@ func TestResultAfterDone(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		setOnce.SetValue(1)
-	}()
+	})
 
 	<-setOnce.Done
 
@@ -343,12 +331,9 @@ func TestMultipleDone(t *testing.T) {
 	wg := sync.WaitGroup{}
 
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			<-setOnce.Done
-		}()
+		})
 	}
 
 	setOnce.SetValue(1)

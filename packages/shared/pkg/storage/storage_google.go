@@ -244,18 +244,25 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {
+func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (n int, e error) {
 	timer := googleWriteTimerFactory.Begin()
+	defer func() {
+		if e == nil {
+			timer.End(ctx, int64(n))
+		}
+	}()
 
 	w := g.handle.NewWriter(ctx)
-	defer w.Close()
+	defer func() {
+		if err := w.Close(); err != nil {
+			e = errors.Join(e, fmt.Errorf("failed to write to %q: %w", g.path, err))
+		}
+	}()
 
 	n, err := w.Write(data)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, fmt.Errorf("failed to write to %q: %w", g.path, err)
 	}
-
-	timer.End(ctx, int64(n))
 
 	return n, nil
 }

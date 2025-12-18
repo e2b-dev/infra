@@ -326,6 +326,16 @@ variable "api_nat_min_ports_per_vm" {
   type = number
 }
 
+variable "build_cluster_cache_disk_type" {
+  description = "The cache disk type for the build machines."
+  type        = string
+}
+
+variable "build_cluster_cache_disk_size_gb" {
+  description = "The size in GB of each cache disk for the build machines."
+  type        = number
+}
+
 variable "build_cluster_cache_disk_count" {
   type = number
 
@@ -335,6 +345,23 @@ variable "build_cluster_cache_disk_count" {
   }
 }
 
+variable "client_cluster_root_disk_size_gb" {
+  description = "The size in GB of the root disk for the client machines."
+  type        = number
+}
+
+
+variable "client_cluster_cache_disk_type" {
+  description = "The cache disk type for the client machines."
+  type        = string
+}
+
+variable "client_cluster_cache_disk_size_gb" {
+  description = "The size in GB of each cache disk for the client machines."
+  type        = number
+}
+
+
 variable "client_cluster_cache_disk_count" {
   type = number
 
@@ -342,4 +369,35 @@ variable "client_cluster_cache_disk_count" {
     condition     = var.client_cluster_cache_disk_count > 0
     error_message = "Must include at least 1 client cluster cache disk"
   }
+}
+
+# Boot disk type variables
+variable "client_boot_disk_type" {
+  description = "The GCE boot disk type for the client (orchestrator) machines."
+  type        = string
+}
+
+variable "build_boot_disk_type" {
+  description = "The GCE boot disk type for the build machines."
+  type        = string
+}
+
+variable "api_boot_disk_type" {
+  description = "The GCE boot disk type for the API machines."
+  type        = string
+}
+
+variable "server_boot_disk_type" {
+  description = "The GCE boot disk type for the control server machines."
+  type        = string
+}
+
+variable "clickhouse_boot_disk_type" {
+  description = "The GCE boot disk type for the ClickHouse machines."
+  type        = string
+}
+
+variable "loki_boot_disk_type" {
+  description = "The GCE boot disk type for the Loki machines."
+  type        = string
 }
