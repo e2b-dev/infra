@@ -70,13 +70,12 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 }
 
 var (
-	MetricsWriteFlagName               = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
-	MetricsReadFlagName                = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
-	SnapshotFeatureFlagName            = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
-	TemplateFeatureFlagName            = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
-	BestOfKCanFit                      = newBoolFlag("best-of-k-can-fit", true)
-	BestOfKTooManyStarting             = newBoolFlag("best-of-k-too-many-starting", false)
-	EdgeProvidedSandboxMetricsFlagName = newBoolFlag("edge-provided-sandbox-metrics", false)
+	MetricsWriteFlagName    = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
+	MetricsReadFlagName     = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
+	SnapshotFeatureFlagName = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
+	TemplateFeatureFlagName = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
+	BestOfKCanFit           = newBoolFlag("best-of-k-can-fit", true)
+	BestOfKTooManyStarting  = newBoolFlag("best-of-k-too-many-starting", false)
 )
 
 type IntFlag struct {
@@ -110,7 +109,6 @@ var (
 	BestOfKSampleSize             = newIntFlag("best-of-k-sample-size", 3)                   // Default K=3
 	BestOfKMaxOvercommit          = newIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
 	BestOfKAlpha                  = newIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
-	PubsubQueueChannelSize        = newIntFlag("pubsub-queue-channel-size", 8*1024)          // size of the channel buffer used to queue incoming sandbox events
 	EnvdInitTimeoutSeconds        = newIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage

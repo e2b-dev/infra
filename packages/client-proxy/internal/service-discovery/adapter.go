@@ -5,10 +5,10 @@ import (
 )
 
 type ServiceDiscoveryItem struct {
-	NodeIP   string `json:"node_ip"`
-	NodePort uint16 `json:"node_port"`
+	InstanceIPAddress string
+	InstancePort      uint16
 }
 
 type ServiceDiscoveryAdapter interface {
-	ListNodes(ctx context.Context) ([]ServiceDiscoveryItem, error)
+	ListInstances(ctx context.Context) ([]ServiceDiscoveryItem, error)
 }

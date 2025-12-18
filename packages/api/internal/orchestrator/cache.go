@@ -25,10 +25,10 @@ func (o *Orchestrator) GetSandbox(ctx context.Context, sandboxID string) (sandbo
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(ctx context.Context, store *sandbox.Store, skipSyncingWithNomad bool) {
+func (o *Orchestrator) keepInSync(ctx context.Context, store *sandbox.Store) {
 	// Run the first sync immediately
 	logger.L().Info(ctx, "Running the initial node sync")
-	o.syncNodes(ctx, store, skipSyncingWithNomad)
+	o.syncNodes(ctx, store)
 
 	// Sync the nodes every cacheSyncTime
 	ticker := time.NewTicker(cacheSyncTime)
@@ -41,12 +41,12 @@ func (o *Orchestrator) keepInSync(ctx context.Context, store *sandbox.Store, ski
 
 			return
 		case <-ticker.C:
-			o.syncNodes(ctx, store, skipSyncingWithNomad)
+			o.syncNodes(ctx, store)
 		}
 	}
 }
 
-func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skipSyncingWithNomad bool) {
+func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store) {
 	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
@@ -55,30 +55,8 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 
 	var wg sync.WaitGroup
 
-	nomadNodes := make([]nodemanager.NomadServiceDiscovery, 0)
-
-	// Optionally, skip syncing from Nomad service discovery
-	if !skipSyncingWithNomad {
-		nomadSD, err := o.listNomadNodes(spanCtx)
-		if err != nil {
-			logger.L().Error(spanCtx, "Error listing orchestrator nodes", zap.Error(err))
-
-			return
-		}
-
-		nomadNodes = nomadSD
-	}
-
-	wg.Go(func() {
-		o.syncLocalDiscoveredNodes(spanCtx, nomadNodes)
-	})
-
-	wg.Go(func() {
-		o.syncClusterDiscoveredNodes(spanCtx)
-	})
-
 	// Wait for nodes discovery to finish
-	wg.Wait()
+	o.syncDiscoveredNodes(spanCtx)
 
 	// Sync state of all nodes currently in the pool
 	syncNodesSpanCtx, syncNodesSpan := tracer.Start(spanCtx, "keep-in-sync-existing")
@@ -87,19 +65,12 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 	defer wg.Wait()
 	for _, n := range o.nodes.Items() {
 		wg.Go(func() {
-			// cluster and local nodes needs to by synced differently,
-			// because each of them is taken from different source pool
-			var err error
-			if n.IsNomadManaged() {
-				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, store)
-			} else {
-				err = o.syncClusterNode(syncNodesSpanCtx, n, store)
-			}
+			err := o.syncNode(syncNodesSpanCtx, n, store)
 			if err != nil {
 				logger.L().Error(syncNodesSpanCtx, "Error syncing node", zap.Error(err))
 				err = n.Close(context.WithoutCancel(syncNodesSpanCtx))
 				if err != nil {
-					logger.L().Error(syncNodesSpanCtx, "Error closing grpc connection", zap.Error(err))
+					logger.L().Error(syncNodesSpanCtx, "Error closing node", zap.Error(err))
 				}
 
 				o.deregisterNode(n)
@@ -108,28 +79,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 	}
 }
 
-func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered []nodemanager.NomadServiceDiscovery) {
-	// Connect local nodes that are not in the list, yet
-	connectLocalSpanCtx, connectLocalSpan := tracer.Start(ctx, "keep-in-sync-connect-local-nodes")
-	defer connectLocalSpan.End()
-
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	for _, n := range discovered {
-		// If the node is not in the list, connect to it
-		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
-			wg.Go(func() {
-				err := o.connectToNode(connectLocalSpanCtx, n)
-				if err != nil {
-					logger.L().Error(ctx, "Error connecting to node", zap.Error(err))
-				}
-			})
-		}
-	}
-}
-
-func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
+func (o *Orchestrator) syncDiscoveredNodes(ctx context.Context) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -150,7 +100,7 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	}
 }
 
-func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, store *sandbox.Store) error {
+func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, store *sandbox.Store) error {
 	ctx, childSpan := tracer.Start(ctx, "sync-cluster-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID), telemetry.WithClusterID(node.ClusterID))
 	defer childSpan.End()
@@ -166,30 +116,6 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 	_, found := cluster.GetByServiceInstanceID(instanceID)
 	if !found {
 		return fmt.Errorf("node instance not found with instance ID '%s'", instanceID)
-	}
-
-	// Unified call for syncing node state across different node types
-	node.Sync(ctx, store)
-
-	return nil
-}
-
-func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, store *sandbox.Store) error {
-	ctx, childSpan := tracer.Start(ctx, "sync-node")
-	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
-	defer childSpan.End()
-
-	found := false
-	for _, activeNode := range discovered {
-		if node.NomadNodeShortID == activeNode.NomadNodeShortID {
-			found = true
-
-			break
-		}
-	}
-
-	if !found {
-		return fmt.Errorf("node '%s' not found in the discovered nodes", node.NomadNodeShortID)
 	}
 
 	// Unified call for syncing node state across different node types

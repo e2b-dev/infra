@@ -26,7 +26,7 @@ func (n *Node) Status() api.NodeStatus {
 		return n.status
 	}
 
-	switch n.client.Connection.GetState() {
+	switch n.connection.Connection.GetState() {
 	case connectivity.Shutdown:
 		return api.NodeStatusUnhealthy
 	case connectivity.TransientFailure:
@@ -56,8 +56,7 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
-	client, ctx := n.GetClient(ctx)
-	_, err := client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
+	_, err := n.GetConnection().Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
 		logger.L().Error(ctx, "Failed to send status change", zap.Error(err))
 

@@ -18,7 +18,7 @@ func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
 
 	for _, n := range o.nodes.Items() {
 		// Skip all nodes that are not running in local (Nomad) cluster
-		if !n.IsNomadManaged() {
+		if !n.IsLocal() {
 			continue
 		}
 
@@ -26,8 +26,8 @@ func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
 		metrics := n.GetAPIMetric()
 		machineInfo := n.MachineInfo()
 		apiNodes[n.ID] = &api.Node{
-			NodeID:            n.NomadNodeShortID,
 			Id:                n.ID,
+			NodeID:            n.ID[:consts.NodeIDLength],
 			ServiceInstanceID: meta.ServiceInstanceID,
 			ClusterID:         n.ClusterID.String(),
 			MachineInfo: api.MachineInfo{
@@ -81,7 +81,7 @@ func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeSho
 
 	node := &api.NodeDetail{
 		Id:                n.ID,
-		NodeID:            n.NomadNodeShortID,
+		NodeID:            n.ID[:consts.NodeIDLength],
 		ClusterID:         n.ClusterID.String(),
 		ServiceInstanceID: meta.ServiceInstanceID,
 		MachineInfo: api.MachineInfo{

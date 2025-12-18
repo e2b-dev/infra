@@ -24,13 +24,13 @@ const (
 
 type RedisSandboxCatalog struct {
 	redisClient redis.UniversalClient
-	cache       *ttlcache.Cache[string, *SandboxInfo]
+	cache       *ttlcache.Cache[string, SandboxInfo]
 }
 
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
 func NewRedisSandboxesCatalog(redisClient redis.UniversalClient) *RedisSandboxCatalog {
-	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
+	cache := ttlcache.New(ttlcache.WithTTL[string, SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, SandboxInfo]())
 	go cache.Start()
 
 	return &RedisSandboxCatalog{
@@ -41,7 +41,7 @@ func NewRedisSandboxesCatalog(redisClient redis.UniversalClient) *RedisSandboxCa
 
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
-func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error) {
+func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (SandboxInfo, error) {
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
@@ -56,16 +56,16 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 	data, err := c.redisClient.Get(ctx, c.getCatalogKey(sandboxID)).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return nil, ErrSandboxNotFound
+			return SandboxInfo{}, ErrSandboxNotFound
 		}
 
-		return nil, fmt.Errorf("failed to get sandbox info from redis: %w", err)
+		return SandboxInfo{}, fmt.Errorf("failed to get sandbox info from redis: %w", err)
 	}
 
-	var info *SandboxInfo
+	var info SandboxInfo
 	err = json.Unmarshal(data, &info)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal sandbox info: %w", err)
+		return SandboxInfo{}, fmt.Errorf("failed to unmarshal sandbox info: %w", err)
 	}
 
 	// Store in local cache if needed
@@ -74,14 +74,14 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 	return info, nil
 }
 
-func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
+func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo SandboxInfo, expiration time.Duration) error {
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
 
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
 
-	bytes, err := json.Marshal(*sandboxInfo)
+	bytes, err := json.Marshal(sandboxInfo)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sandbox info: %w", err)
 	}
@@ -118,7 +118,7 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 	}
 
 	// Different execution is stored in the cache, we don't want to remove it
-	if info.ExecutionID != executionID {
+	if info.SandboxExecutionID != executionID {
 		return nil
 	}
 

@@ -1,0 +1,207 @@
+package clusters
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	nomadapi "github.com/hashicorp/nomad/api"
+	"go.uber.org/zap"
+
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
+	"github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+)
+
+const (
+	poolSyncInterval = 15 * time.Second
+	poolSyncTimeout  = 5 * time.Second
+)
+
+type Pool struct {
+	db  *client.Client
+	tel *telemetry.Client
+
+	clusters        *smap.Map[*Cluster]
+	synchronization *synchronization.Synchronize[queries.Cluster, *Cluster]
+}
+
+func localClusterConfig() (*queries.Cluster, error) {
+	return &queries.Cluster{
+		ID:                 consts.LocalClusterID,
+		EndpointTls:        false,
+		Endpoint:           "",
+		Token:              "",
+		SandboxProxyDomain: nil,
+	}, nil
+}
+
+func NewPool(
+	ctx context.Context,
+	tel *telemetry.Client,
+	db *client.Client,
+	nomad *nomadapi.Client,
+	clickhouse clickhouse.Clickhouse,
+	queryLogsProvider *loki.LokiQueryProvider,
+) (*Pool, error) {
+	local, err := localClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	clusters := smap.New[*Cluster]()
+	store := clustersSyncStore{
+		local:             local,
+		db:                db,
+		tel:               tel,
+		clusters:          clusters,
+		nomad:             nomad,
+		clickhouse:        clickhouse,
+		queryLogsProvider: queryLogsProvider,
+	}
+
+	pool := &Pool{
+		db:              db,
+		tel:             tel,
+		clusters:        clusters,
+		synchronization: synchronization.NewSynchronize("clusters-pool", "Clusters pool", store),
+	}
+
+	// Periodically sync clusters with the database
+	go pool.synchronization.Start(context.WithoutCancel(ctx), poolSyncInterval, poolSyncTimeout, true)
+
+	return pool, nil
+}
+
+func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
+	return p.clusters.Get(id.String())
+}
+
+func (p *Pool) GetClusters() map[string]*Cluster {
+	return p.clusters.Items()
+}
+
+func (p *Pool) Close(ctx context.Context) {
+	p.synchronization.Close()
+
+	wg := &sync.WaitGroup{}
+	for _, cluster := range p.clusters.Items() {
+		wg.Add(1)
+		go func(c *Cluster) {
+			defer wg.Done()
+
+			logger.L().Info(ctx, "Closing cluster", logger.WithClusterID(c.ID))
+			c.Close()
+		}(cluster)
+	}
+
+	wg.Wait()
+}
+
+// SynchronizationStore is an interface that defines methods for synchronizing the clusters pool with the database
+type clustersSyncStore struct {
+	db                *client.Client
+	tel               *telemetry.Client
+	clusters          *smap.Map[*Cluster]
+	local             *queries.Cluster
+	nomad             *nomadapi.Client
+	clickhouse        clickhouse.Clickhouse
+	queryLogsProvider *loki.LokiQueryProvider
+}
+
+func (d clustersSyncStore) SourceList(ctx context.Context) ([]queries.Cluster, error) {
+	db, err := d.db.GetActiveClusters(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]queries.Cluster, 0)
+	for _, row := range db {
+		entries = append(entries, row.Cluster)
+	}
+
+	// Append local cluster if registered
+	if d.local != nil {
+		entries = append(entries, *d.local)
+	}
+
+	return entries, nil
+}
+
+func (d clustersSyncStore) SourceExists(_ context.Context, s []queries.Cluster, p *Cluster) bool {
+	for _, item := range s {
+		if item.ID == p.ID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (d clustersSyncStore) PoolList(_ context.Context) []*Cluster {
+	items := make([]*Cluster, 0)
+	for _, item := range d.clusters.Items() {
+		items = append(items, item)
+	}
+
+	return items
+}
+
+func (d clustersSyncStore) PoolExists(_ context.Context, cluster queries.Cluster) bool {
+	_, found := d.clusters.Get(cluster.ID.String())
+
+	return found
+}
+
+func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Cluster) {
+	clusterID := cluster.ID.String()
+
+	logger.L().Info(ctx, "Initializing newly discovered cluster", logger.WithClusterID(cluster.ID))
+
+	var c *Cluster
+	var err error
+
+	// Local cluster
+	if cluster.ID == consts.LocalClusterID {
+		c, err = NewLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.clickhouse, d.queryLogsProvider)
+		if err != nil {
+			logger.L().Error(ctx, "Initializing local cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
+
+			return
+		}
+
+		d.clusters.Insert(clusterID, c)
+		logger.L().Info(ctx, "Local cluster initialized successfully", logger.WithClusterID(cluster.ID))
+
+		return
+	}
+
+	// Remote cluster
+	c, err = NewRemoteCluster(context.WithoutCancel(ctx), d.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID, cluster.SandboxProxyDomain)
+	if err != nil {
+		logger.L().Error(ctx, "Initializing remote cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
+
+		return
+	}
+
+	d.clusters.Insert(clusterID, c)
+	logger.L().Info(ctx, "Remote cluster initialized successfully", logger.WithClusterID(cluster.ID))
+}
+
+func (d clustersSyncStore) PoolUpdate(_ context.Context, _ *Cluster) {
+	// Clusters pool currently does not do something special during synchronization
+}
+
+func (d clustersSyncStore) PoolRemove(ctx context.Context, cluster *Cluster) {
+	logger.L().Info(ctx, "Removing cluster from pool", logger.WithClusterID(cluster.ID))
+
+	cluster.Close()
+	d.clusters.Remove(cluster.ID.String())
+}

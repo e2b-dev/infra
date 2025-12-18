@@ -7,11 +7,8 @@ import (
 )
 
 func (n *Node) SandboxCreate(ctx context.Context, sbxRequest *orchestrator.SandboxCreateRequest) error {
-	client, ctx := n.GetClient(ctx)
-	_, err := client.Sandbox.Create(n.GetSandboxCreateCtx(ctx, sbxRequest), sbxRequest)
-	if err != nil {
-		return err
-	}
+	client, ctx := n.GetSandboxCreateCtx(ctx, sbxRequest)
+	_, err := client.Sandbox.Create(ctx, sbxRequest)
 
-	return nil
+	return err
 }

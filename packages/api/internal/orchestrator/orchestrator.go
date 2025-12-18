@@ -7,14 +7,13 @@ import (
 	"net/http"
 	"time"
 
-	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -25,7 +24,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/populate_redis"
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
@@ -39,7 +37,6 @@ var ErrNodeNotFound = errors.New("node not found")
 
 type Orchestrator struct {
 	httpClient              *http.Client
-	nomadClient             *nomadapi.Client
 	sandboxStore            *sandbox.Store
 	nodes                   *smap.Map[*nodemanager.Node]
 	placementAlgorithm      *placement.BestOfK
@@ -49,7 +46,7 @@ type Orchestrator struct {
 	routingCatalog          e2bcatalog.SandboxesCatalog
 	sqlcDB                  *sqlcdb.Client
 	tel                     *telemetry.Client
-	clusters                *edge.Pool
+	clusters                *clusters.Pool
 	metricsRegistration     metric.Registration
 	createdSandboxesCounter metric.Int64Counter
 	teamMetricsObserver     *metrics.TeamObserver
@@ -62,11 +59,10 @@ func New(
 	ctx context.Context,
 	config cfg.Config,
 	tel *telemetry.Client,
-	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	sqlcDB *sqlcdb.Client,
-	clusters *edge.Pool,
+	clusters *clusters.Pool,
 	featureFlags *featureflags.Client,
 	accessTokenGenerator *sandbox.AccessTokenGenerator,
 ) (*Orchestrator, error) {
@@ -115,7 +111,6 @@ func New(
 		httpClient:           httpClient,
 		analytics:            analyticsInstance,
 		posthogClient:        posthogClient,
-		nomadClient:          nomadClient,
 		nodes:                smap.New[*nodemanager.Node](),
 		placementAlgorithm:   bestOfKAlgorithm,
 		featureFlagsClient:   featureFlags,
@@ -167,10 +162,7 @@ func New(
 
 	o.teamMetricsObserver = teamMetricsObserver
 
-	// For local development and testing, we skip the Nomad sync
-	// Local cluster is used for single-node setups instead
-	skipNomadSync := env.IsLocal()
-	go o.keepInSync(ctx, o.sandboxStore, skipNomadSync)
+	go o.keepInSync(ctx, o.sandboxStore)
 
 	if err := o.setupMetrics(tel.MeterProvider); err != nil {
 		logger.L().Error(ctx, "Failed to setup metrics", zap.Error(err))

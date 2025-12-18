@@ -17,21 +17,17 @@ import (
 )
 
 func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
-	childCtx, childSpan := tracer.Start(ctx, "get-sandboxes-from-orchestrator")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "get-sandboxes-from-orchestrator")
+	defer span.End()
 
-	client, childCtx := n.GetClient(childCtx)
-	res, err := client.Sandbox.List(childCtx, &empty.Empty{})
-
+	res, err := n.GetConnection().Sandbox.List(ctx, &empty.Empty{})
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sandboxes: %w", err)
 	}
 
 	sandboxes := res.GetSandboxes()
-
 	sandboxesInfo := make([]sandbox.Sandbox, 0, len(sandboxes))
-
 	for _, sbx := range sandboxes {
 		config := sbx.GetConfig()
 

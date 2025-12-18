@@ -11,10 +11,9 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -32,7 +31,7 @@ type processingBuilds struct {
 }
 
 type TemplateManager struct {
-	edgePool *edge.Pool
+	clusters *clusters.Pool
 
 	lock          sync.Mutex
 	processing    map[uuid.UUID]processingBuilds
@@ -55,7 +54,7 @@ const (
 
 func New(
 	sqlcDB *sqlcdb.Client,
-	edgePool *edge.Pool,
+	clusters *clusters.Pool,
 	buildCache *templatecache.TemplatesBuildCache,
 	templateCache *templatecache.TemplateCache,
 ) (*TemplateManager, error) {
@@ -63,7 +62,7 @@ func New(
 		sqlcDB:        sqlcDB,
 		buildCache:    buildCache,
 		templateCache: templateCache,
-		edgePool:      edgePool,
+		clusters:      clusters,
 
 		lock:       sync.Mutex{},
 		processing: make(map[uuid.UUID]processingBuilds),
@@ -103,8 +102,8 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	}
 }
 
-func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID uuid.UUID) (*edge.ClusterInstance, error) {
-	cluster, ok := tm.edgePool.GetClusterById(clusterID)
+func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID uuid.UUID) (*clusters.Instance, error) {
+	cluster, ok := tm.clusters.GetClusterById(clusterID)
 	if !ok {
 		return nil, fmt.Errorf("cluster with ID '%s' not found", clusterID)
 	}
@@ -117,8 +116,8 @@ func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterI
 	return builder, nil
 }
 
-func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID string) (*BuildClient, error) {
-	cluster, ok := tm.edgePool.GetClusterById(clusterID)
+func (tm *TemplateManager) GetBuilderClient(clusterID uuid.UUID, nodeID string) (*clusters.GRPCClient, error) {
+	cluster, ok := tm.clusters.GetClusterById(clusterID)
 	if !ok {
 		return nil, errors.New("cluster not found")
 	}
@@ -128,11 +127,7 @@ func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID str
 		return nil, fmt.Errorf("failed to get builder by id '%s': %w", nodeID, err)
 	}
 
-	grpc := cluster.GetGRPC(instance.ServiceInstanceID)
-
-	return &BuildClient{
-		GRPC: grpc,
-	}, nil
+	return instance.GetConnection(), nil
 }
 
 func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) error {
@@ -143,7 +138,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, t
 	)
 	defer span.End()
 
-	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
+	client, err := tm.GetBuilderClient(clusterID, nodeID)
 	if err != nil {
 		// nodeID can be an orchestrator ID, if the build corresponds to a snapshot.
 		// We may want to improve this later by adding the Delete method to Orchestrator as well.
@@ -155,15 +150,14 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, t
 		nodeID = node.NodeID
 
 		logger.L().Info(ctx, "Fallback to available node", zap.String("nodeID", nodeID), zap.String("clusterID", clusterID.String()))
-		client, err = tm.GetClusterBuildClient(clusterID, nodeID)
+		client, err = tm.GetBuilderClient(clusterID, nodeID)
 		if err != nil {
 			return fmt.Errorf("failed to get builder client: %w", err)
 		}
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, client.GRPC.Metadata)
-	_, err = client.GRPC.Client.Template.TemplateBuildDelete(
-		reqCtx, &templatemanagergrpc.TemplateBuildDeleteRequest{
+	_, err = client.Template.TemplateBuildDelete(
+		ctx, &templatemanagergrpc.TemplateBuildDeleteRequest{
 			BuildID:    buildID.String(),
 			TemplateID: templateID,
 		},
@@ -189,16 +183,14 @@ func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuil
 }
 
 func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
-	cli, err := tm.GetClusterBuildClient(clusterID, nodeID)
+	client, err := tm.GetBuilderClient(clusterID, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, cli.GRPC.Metadata)
-
 	// error unwrapping is done in the caller
-	return cli.GRPC.Client.Template.TemplateBuildStatus(
-		reqCtx,
+	return client.Template.TemplateBuildStatus(
+		ctx,
 		&templatemanagergrpc.TemplateStatusRequest{
 			BuildID: buildID.String(), TemplateID: templateID,
 		},

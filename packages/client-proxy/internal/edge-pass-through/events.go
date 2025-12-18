@@ -48,12 +48,10 @@ func (s *NodePassThroughServer) catalogCreateEventHandler(ctx context.Context, m
 	}
 
 	err = s.catalog.StoreSandbox(
-		ctx,
-		c.SandboxID,
-		&catalog.SandboxInfo{
-			OrchestratorID: c.OrchestratorID,
-			OrchestratorIP: o.GetInfo().IP,
-			ExecutionID:    c.ExecutionID,
+		ctx, c.SandboxID, catalog.SandboxInfo{
+			OrchestratorID:     c.OrchestratorID,
+			OrchestratorIP:     o.GetInfo().IPAddress,
+			SandboxExecutionID: c.ExecutionID,
 
 			SandboxStartedAt:        c.SandboxStartTime,
 			SandboxMaxLengthInHours: c.SandboxMaxLengthInHours,

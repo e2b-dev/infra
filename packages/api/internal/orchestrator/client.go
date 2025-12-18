@@ -6,11 +6,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -18,26 +16,8 @@ import (
 
 const nodeHealthCheckTimeout = time.Second * 2
 
-func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager.NomadServiceDiscovery) error {
-	ctx, childSpan := tracer.Start(ctx, "connect-to-node")
-	defer childSpan.End()
-
-	orchestratorNode, err := nodemanager.New(ctx, o.tel.TracerProvider, o.tel.MeterProvider, discovered)
-	if err != nil {
-		return err
-	}
-
-	// Update host metrics from service info
-	o.registerNode(orchestratorNode)
-
-	return nil
-}
-
-func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *edge.Cluster, i *edge.ClusterInstance) {
-	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
-	clusterGRPC := cluster.GetGRPC(i.ServiceInstanceID)
-
-	orchestratorNode, err := nodemanager.NewClusterNode(ctx, clusterGRPC.Client, cluster.ID, cluster.SandboxDomain, i)
+func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *clusters.Cluster, i *clusters.Instance) {
+	orchestratorNode, err := nodemanager.NewNode(ctx, cluster.ID, cluster.SandboxDomain, i)
 	if err != nil {
 		logger.L().Error(ctx, "Failed to create node", zap.Error(err))
 
@@ -64,42 +44,6 @@ func (o *Orchestrator) scopedNodeID(clusterID uuid.UUID, nodeID string) string {
 	}
 
 	return fmt.Sprintf("%s-%s", clusterID.String(), nodeID)
-}
-
-func (o *Orchestrator) GetClient(ctx context.Context, clusterID uuid.UUID, nodeID string) (*grpclient.GRPCClient, context.Context, error) {
-	n := o.GetNode(clusterID, nodeID)
-	if n == nil {
-		return nil, nil, fmt.Errorf("node '%s' not found in cluster '%s'", nodeID, clusterID)
-	}
-
-	client, ctx := n.GetClient(ctx)
-
-	return client, ctx, nil
-}
-
-func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadServiceDiscovery, error) {
-	_, listSpan := tracer.Start(ctx, "list-nomad-nodes")
-	defer listSpan.End()
-
-	options := &nomadapi.QueryOptions{
-		// TODO: Use variable for node pool name ("default")
-		Filter: "Status == \"ready\" and NodePool == \"default\"",
-	}
-	nomadNodes, _, err := o.nomadClient.Nodes().List(options.WithContext(ctx))
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]nodemanager.NomadServiceDiscovery, 0, len(nomadNodes))
-	for _, n := range nomadNodes {
-		result = append(result, nodemanager.NomadServiceDiscovery{
-			NomadNodeShortID:    n.ID[:consts.NodeIDLength],
-			OrchestratorAddress: fmt.Sprintf("%s:%s", n.Address, consts.OrchestratorPort),
-			IPAddress:           n.Address,
-		})
-	}
-
-	return result, nil
 }
 
 func (o *Orchestrator) GetNode(clusterID uuid.UUID, nodeID string) *nodemanager.Node {
@@ -135,7 +79,7 @@ func (o *Orchestrator) GetNodeByIDOrNomadShortID(clusterID uuid.UUID, nodeIDOrNo
 // Deprecated: use GetNode instead
 func (o *Orchestrator) GetNodeByNomadShortID(id string) *nodemanager.Node {
 	for _, n := range o.nodes.Items() {
-		if n.NomadNodeShortID == id {
+		if n.IsLocal() && n.ID[:consts.NodeIDLength] == id {
 			return n
 		}
 	}

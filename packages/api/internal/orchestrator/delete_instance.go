@@ -85,9 +85,12 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	// Remove the sandbox resources after the sandbox is deleted
 	defer node.RemoveSandbox(sbx)
 
-	err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
-	if err != nil {
-		logger.L().Error(ctx, "error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+	// Add routing record only for local nodes
+	if node.IsLocal() {
+		err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
+		if err != nil {
+			logger.L().Error(ctx, "error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+		}
 	}
 
 	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",
@@ -106,9 +109,10 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 		}
 	case sandbox.StateActionKill:
 		var err error
+
 		req := &orchestrator.SandboxDeleteRequest{SandboxId: sbx.SandboxID}
-		client, ctx := node.GetClient(ctx)
-		_, err = client.Sandbox.Delete(node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID), req)
+		client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
+		_, err = client.Sandbox.Delete(ctx, req)
 		if err != nil {
 			return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
 		}

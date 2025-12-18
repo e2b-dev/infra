@@ -48,7 +48,7 @@ func NewK8sServiceDiscovery(ctx context.Context, logger logger.Logger, client *k
 	return sd
 }
 
-func (sd *K8sServiceDiscovery) ListNodes(_ context.Context) ([]ServiceDiscoveryItem, error) {
+func (sd *K8sServiceDiscovery) ListInstances(_ context.Context) ([]ServiceDiscoveryItem, error) {
 	entries := sd.entries.Items()
 	items := make([]ServiceDiscoveryItem, 0)
 
@@ -100,8 +100,8 @@ func (sd *K8sServiceDiscovery) sync(ctx context.Context) {
 
 		key := fmt.Sprintf("%s:%d", ip, sd.port)
 		item := ServiceDiscoveryItem{
-			NodeIP:   ip,
-			NodePort: sd.port,
+			InstanceIPAddress: ip,
+			InstancePort:      sd.port,
 		}
 
 		sd.entries.Insert(key, item)

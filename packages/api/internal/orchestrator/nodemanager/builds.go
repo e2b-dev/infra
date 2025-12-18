@@ -31,12 +31,10 @@ func (n *Node) InsertBuild(buildID string) {
 }
 
 func (n *Node) listCachedBuilds(ctx context.Context) ([]*orchestrator.CachedBuildInfo, error) {
-	childCtx, childSpan := tracer.Start(ctx, "list-cached-builds")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "list-cached-builds")
+	defer span.End()
 
-	client, childCtx := n.GetClient(childCtx)
-	res, err := client.Sandbox.ListCachedBuilds(childCtx, &empty.Empty{})
-
+	res, err := n.GetConnection().Sandbox.ListCachedBuilds(ctx, &empty.Empty{})
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sandboxes: %w", err)

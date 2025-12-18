@@ -11,13 +11,13 @@ func NewStaticServiceDiscovery(results []string, port uint16) *StaticServiceDisc
 
 	for _, result := range results {
 		items = append(
-			items, ServiceDiscoveryItem{NodeIP: result, NodePort: port},
+			items, ServiceDiscoveryItem{InstanceIPAddress: result, InstancePort: port},
 		)
 	}
 
 	return &StaticServiceDiscovery{items: items}
 }
 
-func (s StaticServiceDiscovery) ListNodes(_ context.Context) ([]ServiceDiscoveryItem, error) {
+func (s StaticServiceDiscovery) ListInstances(_ context.Context) ([]ServiceDiscoveryItem, error) {
 	return s.items, nil
 }

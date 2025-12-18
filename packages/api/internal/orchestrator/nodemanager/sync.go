@@ -17,8 +17,7 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
-		client, ctx := n.GetClient(ctx)
-		nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
+		nodeInfo, err := n.GetConnection().Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
 			logger.L().Error(ctx, "Error getting node info", zap.Error(err), logger.WithNodeID(n.ID))
 

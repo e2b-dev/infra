@@ -31,16 +31,17 @@ const (
 )
 
 type OrchestratorInstanceInfo struct {
-	NodeID string
+	NodeID     string
+	InstanceID string
 
-	ServiceInstanceID    string
-	ServiceVersion       string
-	ServiceVersionCommit string
-	ServiceStatus        OrchestratorStatus
-	ServiceStartup       time.Time
+	Version       string
+	VersionCommit string
+	Status        OrchestratorStatus
+	Startup       time.Time
 
-	Host  string
-	IP    string
+	IPAddress string
+	ApiPort   uint16
+
 	Roles []e2bgrpcorchestratorinfo.ServiceInfoRole
 }
 
@@ -60,9 +61,8 @@ type OrchestratorGRPCClient struct {
 	Connection *grpc.ClientConn
 }
 
-func NewOrchestratorInstance(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port uint16) (*OrchestratorInstance, error) {
-	host := fmt.Sprintf("%s:%d", ip, port)
-
+func newOrchestratorInstance(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ipAddress string, port uint16) (*OrchestratorInstance, error) {
+	host := fmt.Sprintf("%s:%d", ipAddress, port)
 	client, err := newClient(tracerProvider, meterProvider, host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GRPC client: %w", err)
@@ -71,8 +71,8 @@ func NewOrchestratorInstance(tracerProvider trace.TracerProvider, meterProvider 
 	o := &OrchestratorInstance{
 		client: client,
 		info: OrchestratorInstanceInfo{
-			Host: host,
-			IP:   ip,
+			IPAddress: ipAddress,
+			ApiPort:   port,
 		},
 	}
 
@@ -91,11 +91,11 @@ func (o *OrchestratorInstance) sync(ctx context.Context) error {
 		}
 
 		freshInfo.NodeID = status.GetNodeId()
-		freshInfo.ServiceInstanceID = status.GetServiceId()
-		freshInfo.ServiceStartup = status.GetServiceStartup().AsTime()
-		freshInfo.ServiceStatus = getMappedStatus(ctx, status.GetServiceStatus())
-		freshInfo.ServiceVersion = status.GetServiceVersion()
-		freshInfo.ServiceVersionCommit = status.GetServiceCommit()
+		freshInfo.InstanceID = status.GetServiceId()
+		freshInfo.Startup = status.GetServiceStartup().AsTime()
+		freshInfo.Status = getMappedStatus(ctx, status.GetServiceStatus())
+		freshInfo.Version = status.GetServiceVersion()
+		freshInfo.VersionCommit = status.GetServiceCommit()
 		freshInfo.Roles = status.GetServiceRoles()
 		o.setInfo(freshInfo)
 
@@ -113,7 +113,7 @@ func (o *OrchestratorInstance) sync(ctx context.Context) error {
 func (o *OrchestratorInstance) setStatus(status OrchestratorStatus) {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
-	o.info.ServiceStatus = status
+	o.info.Status = status
 }
 
 func (o *OrchestratorInstance) setInfo(i OrchestratorInstanceInfo) {

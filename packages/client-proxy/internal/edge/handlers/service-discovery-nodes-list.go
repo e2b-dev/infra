@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"sort"
 
@@ -24,13 +25,13 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 			response,
 			api.ClusterNode{
 				NodeID:               info.NodeID,
-				ServiceInstanceID:    info.ServiceInstanceID,
-				ServiceStatus:        getOrchestratorStatusResolved(ctx, info.ServiceStatus),
+				ServiceInstanceID:    info.InstanceID,
+				ServiceStatus:        getOrchestratorStatusResolved(ctx, info.Status),
 				ServiceType:          api.ClusterNodeTypeOrchestrator,
-				ServiceVersion:       info.ServiceVersion,
-				ServiceVersionCommit: info.ServiceVersionCommit,
-				ServiceHost:          info.Host,
-				ServiceStartedAt:     info.ServiceStartup,
+				ServiceVersion:       info.Version,
+				ServiceVersionCommit: info.VersionCommit,
+				ServiceHost:          fmt.Sprintf("%s:%d", info.IPAddress, info.ApiPort),
+				ServiceStartedAt:     info.Startup,
 			},
 		)
 	}

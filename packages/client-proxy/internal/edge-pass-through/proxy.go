@@ -60,7 +60,7 @@ func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn,
 		return nil, nil, status.Error(codes.InvalidArgument, "error getting metadata from context")
 	}
 
-	auths := md.Get(consts.EdgeRpcAuthHeader)
+	auths := md.Get(consts.EdgeRpcProxyAuthHeader)
 	if len(auths) == 0 || len(auths) > 1 {
 		return nil, nil, status.Error(codes.Unauthenticated, "error getting authentication metadata from context")
 	}
@@ -72,7 +72,7 @@ func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn,
 		return nil, nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
-	serviceInstanceIDs := md.Get(consts.EdgeRpcServiceInstanceIDHeader)
+	serviceInstanceIDs := md.Get(consts.EdgeRpcProxyServiceInstanceIDHeader)
 	if len(serviceInstanceIDs) == 0 || len(serviceInstanceIDs) > 1 {
 		return nil, nil, status.Error(codes.InvalidArgument, "service instance id header missing or invalid")
 	}

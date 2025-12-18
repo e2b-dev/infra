@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sort"
 
@@ -21,20 +22,20 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	response := make([]api.ClusterOrchestratorNode, 0)
-
 	for _, node := range a.orchestratorPool.GetOrchestrators() {
 		info := node.GetInfo()
 		response = append(
 			response,
 			api.ClusterOrchestratorNode{
 				NodeID:            info.NodeID,
-				ServiceInstanceID: info.ServiceInstanceID,
+				ServiceInstanceID: info.InstanceID,
 
-				ServiceVersion:       info.ServiceVersion,
-				ServiceVersionCommit: info.ServiceVersionCommit,
-				ServiceHost:          info.Host,
-				ServiceStartedAt:     info.ServiceStartup,
-				ServiceStatus:        getOrchestratorStatusResolved(ctx, info.ServiceStatus),
+				ServiceVersion:       info.Version,
+				ServiceVersionCommit: info.VersionCommit,
+
+				ServiceStartedAt: info.Startup,
+				ServiceHost:      fmt.Sprintf("%s:%d", info.IPAddress, info.ApiPort),
+				ServiceStatus:    getOrchestratorStatusResolved(ctx, info.Status),
 
 				Roles: getOrchestratorRolesResolved(ctx, info.Roles),
 			},

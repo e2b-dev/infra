@@ -22,17 +22,23 @@ func (o *Orchestrator) addToNode(ctx context.Context, sandbox sandbox.Sandbox, _
 	} else {
 		node.AddSandbox(sandbox)
 
-		info := e2bcatalog.SandboxInfo{
-			OrchestratorID: node.Metadata().ServiceInstanceID,
-			OrchestratorIP: node.IPAddress,
-			ExecutionID:    sandbox.ExecutionID,
+		// Add routing record to only for local nodes
+		if !node.IsLocal() {
+			return
+		}
 
+		info := e2bcatalog.SandboxInfo{
+			OrchestratorID:        node.Metadata().ServiceInstanceID,
+			OrchestratorIP:        node.LocalIPAddress,
+			OrchestratorProxyPort: node.LocalProxyPort,
+
+			SandboxExecutionID:      sandbox.ExecutionID,
 			SandboxStartedAt:        sandbox.StartTime,
 			SandboxMaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
 		}
 
 		lifetime := time.Duration(info.SandboxMaxLengthInHours) * time.Hour
-		err := o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, &info, lifetime)
+		err := o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, info, lifetime)
 		if err != nil {
 			logger.L().Error(ctx, "error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
 		}
