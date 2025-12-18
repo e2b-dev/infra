@@ -30,7 +30,7 @@ CREATE POLICY "Allow to select a user"
     AS PERMISSIVE
     FOR SELECT
     TO trigger_user
-    WITH CHECK (true);
+    USING (true);
 
 GRANT UPDATE ON public.users TO trigger_user;
 CREATE POLICY "Allow to update a user"

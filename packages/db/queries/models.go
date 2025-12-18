@@ -170,8 +170,10 @@ type Tier struct {
 }
 
 type User struct {
-	ID    uuid.UUID
-	Email string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	ID        uuid.UUID
+	Email     string
 }
 
 type UsersTeam struct {
