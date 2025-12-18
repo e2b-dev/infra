@@ -71,14 +71,14 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	return orchNetwork
 }
 
-func getFirecrackerVersion(ctx context.Context, featureFlags *feature_flags.Client, version semver.Version) (string, error) {
+func getFirecrackerVersion(ctx context.Context, featureFlags *feature_flags.Client, version semver.Version, fallback string) string {
 	firecrackerVersions := featureFlags.JSONFlag(ctx, feature_flags.FirecrackerVersions).AsValueMap()
 	fcVersion, ok := firecrackerVersions.Get(fmt.Sprintf("v%d.%d", version.Major(), version.Minor())).AsOptionalString().Get()
 	if !ok {
-		return "", fmt.Errorf("failed to get firecracker version for version %s", version.String())
+		return fallback
 	}
 
-	return fcVersion, nil
+	return fcVersion
 }
 
 func (o *Orchestrator) CreateSandbox(
@@ -167,9 +167,9 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}()
 
-	features, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
+	fcSemver, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to get features for firecracker version '%s': %w", build.FirecrackerVersion, err)
+		errMsg := fmt.Errorf("failed to get fcSemver for firecracker fcSemver '%s': %w", build.FirecrackerVersion, err)
 
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -178,15 +178,9 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
-	telemetry.ReportEvent(ctx, "Got FC version info")
-	firecrackerVersion, err := getFirecrackerVersion(ctx, o.featureFlagsClient, features.Version())
-	if err != nil {
-		return sandbox.Sandbox{}, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: "Failed to get firecracker version",
-			Err:       fmt.Errorf("failed to get firecracker version: %w", err),
-		}
-	}
+	hasHugePages := fcSemver.HasHugePages()
+	firecrackerVersion := getFirecrackerVersion(ctx, o.featureFlagsClient, fcSemver.Version(), build.FirecrackerVersion)
+	telemetry.ReportEvent(ctx, "Got FC info")
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
@@ -233,7 +227,7 @@ func (o *Orchestrator) CreateSandbox(
 			EnvVars:             envVars,
 			EnvdAccessToken:     envdAuthToken,
 			MaxSandboxLength:    team.Limits.MaxLengthHours,
-			HugePages:           features.HasHugePages(),
+			HugePages:           hasHugePages,
 			RamMb:               build.RamMb,
 			Vcpu:                build.Vcpu,
 			Snapshot:            isResume,
