@@ -13,10 +13,8 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
-	"github.com/klauspost/compress/zstd"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/iterator"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -81,7 +79,7 @@ type gcpFramedWriter struct {
 type gcpFramedReader struct {
 	gcpObj
 
-	info *CompressedInfo
+	compressedInfo *CompressedInfo
 }
 
 var (
@@ -188,33 +186,19 @@ func (g *gcpBucketStore) OpenFramedReader(_ context.Context, path string, frameI
 			handle:  g.handle(path),
 			limiter: g.limiter,
 		},
-		info: frameInfo,
+		compressedInfo: frameInfo,
 	}, nil
 }
 
 func (g *gcpBucketStore) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
-	handle := g.bucket.Object(path).Retryer(
-		storage.WithMaxAttempts(googleMaxAttempts),
-		storage.WithPolicy(storage.RetryAlways),
-		storage.WithBackoff(
-			gax.Backoff{
-				Initial:    googleInitialBackoff,
-				Max:        googleMaxBackoff,
-				Multiplier: googleBackoffMultiplier,
-			},
-		),
-	)
-
-	obj := &gcpObject{
+	return &gcpObject{
 		gcpObj: gcpObj{
 			store:   g,
 			path:    path,
-			handle:  handle,
+			handle:  g.handle(path),
 			limiter: g.limiter,
 		},
-	}
-
-	return obj, nil
+	}, nil
 }
 
 func (g *gcpObject) Delete(ctx context.Context) error {
@@ -255,11 +239,7 @@ func (g *gcpObject) size(ctx context.Context) (int64, error) {
 	return attrs.Size, nil
 }
 
-func (g *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
-	return g.readAt(ctx, buff, off)
-}
-
-func (g *gcpObj) readAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+func (g *gcpObj) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	timer := googleReadTimerFactory.Begin()
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
@@ -492,83 +472,31 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	return &sa, nil
 }
 
-func (g *gcpFramedReader) ReadAt(ctx context.Context, buf []byte, offset int64) (n int, err error) {
-	if g.info == nil || g.info.CompressionType == CompressionNone {
-		return g.gcpObj.readAt(ctx, buf, offset)
+func (g *gcpFramedReader) NewRangeReader(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
+	return g.handle.NewRangeReader(ctx, offset, length)
+}
+
+func (g *gcpFramedReader) ReadAt(ctx context.Context, userBuf []byte, offset int64) (n int, err error) {
+	if g.compressedInfo == nil || g.compressedInfo.CompressionType == CompressionNone {
+		return g.gcpObj.ReadAt(ctx, userBuf, offset)
+	}
+	if offset < g.compressedInfo.FramesStartAt.U {
+		return 0, fmt.Errorf("offset %d is before start of available framed data %d", offset, g.compressedInfo.FramesStartAt.U)
 	}
 
-	if offset < g.info.FramesStartAt.U {
-		return 0, fmt.Errorf("offset %d is before start of framed data %d", offset, g.info.FramesStartAt.U)
-	}
+	timer := googleReadTimerFactory.Begin()
 
-	responses := make([]chan []byte, 0)
-	// TODO max concurrency for frame downloads
-	eg, ctx := errgroup.WithContext(ctx)
-	err = g.info.Range(offset, int64(len(buf)), func(off Offset, frame Frame) error {
-		respCh := make(chan []byte, 1)
-		responses = append(responses, respCh)
-		eg.Go(func() error {
-			buf = make([]byte, frame.C)
-			_, err = g.readAt(ctx, buf, off.C)
-			if err != nil {
-				return fmt.Errorf("failed to read compressed frame at offset %d: %w", off.C, err)
-			}
+	g.compressedInfo.DownloadSlice(ctx, g, userBuf, offset)
 
-			dec, err := zstd.NewReader(nil, nil)
-			if err != nil {
-				return fmt.Errorf("failed to create zstd decoder: %w", err)
-			}
-			defer dec.Close()
+	timer.End(ctx, int64(len(userBuf)), attribute.String("method", "frame"))
 
-			decompressedFrame, err := dec.DecodeAll(buf, nil)
-			if err != nil {
-				return fmt.Errorf("failed to decompress frame at offset %d: %w", off.C, err)
-			}
-			respCh <- decompressedFrame
-
-			return nil
-		})
-
-		return nil
-	})
-	if err != nil {
-		return n, err
-	}
-
-	err = eg.Wait()
-	if err != nil {
-		return 0, err
-	}
-
-	// copy from responses into the user buffer
-	remaining := len(buf)
-	bufOffset := 0
-	for _, respCh := range responses {
-		decompressedFrame := <-respCh
-		close(respCh)
-
-		// calculate the offset within the decompressed frame to start copying from
-		startInFrame := 0
-		if offset > g.info.FramesStartAt.U+int64(bufOffset) {
-			startInFrame = int(offset - (g.info.FramesStartAt.U + int64(bufOffset)))
-		}
-
-		// calculate how much data to copy from this frame
-		toCopy := min(len(decompressedFrame)-startInFrame, remaining)
-
-		copy(buf[bufOffset:bufOffset+toCopy], decompressedFrame[startInFrame:startInFrame+toCopy])
-
-		bufOffset += toCopy
-		remaining -= toCopy
-	}
-
-	return len(buf), nil
+	return len(userBuf), nil
 }
 
 func (g *gcpFramedReader) Size(_ context.Context) (int64, error) {
-	if g.info == nil {
+	if g.compressedInfo == nil {
 		return 0, fmt.Errorf("TODO! implement for missing compression info")
 	}
 
-	return g.info.TotalUncompressedSize(), nil
+	return g.compressedInfo.TotalUncompressedSize(), nil
 }

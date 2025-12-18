@@ -63,13 +63,11 @@ func multipartCompressUploadFile(file io.Reader, fe *frameEncoder, fu *frameUplo
 		return nil, fmt.Errorf("failed to copy file to framed encoder: %w", err)
 	}
 
-	fi, err := fe.Close()
+	compressedInfo, err := fe.Close()
 	if err != nil {
 		return nil, fmt.Errorf("failed to close framed encoder: %w", err)
 	}
 
-	// TODO: what happens to incomplete uploads if this fails?
-	//
 	// TODO: if we error before complete, we never eg.Wait(); presumably the
 	// goroutines will exit when the context is cancelled?
 	err = fu.complete()
@@ -77,7 +75,7 @@ func multipartCompressUploadFile(file io.Reader, fe *frameEncoder, fu *frameUplo
 		return nil, fmt.Errorf("failed to upload frames: %w", err)
 	}
 
-	return fi, nil
+	return compressedInfo, nil
 }
 
 type frameEncoder struct {
@@ -388,4 +386,93 @@ func (ci *CompressedInfo) TotalCompressedSize() int64 {
 	}
 
 	return total
+}
+
+type Ranger interface {
+	NewRangeReader(ctx context.Context, start, length int64) (io.ReadCloser, error)
+}
+
+func readFromFrame(ctx context.Context, src Ranger, frameOffset Offset, frame Frame, startInFrame int, buf []byte) error {
+	// TODO timeout should be set elsewhere, or we need to parameterize the value
+	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
+	defer cancel()
+
+	// r reads the compressed frame from GCS
+	r, err := src.NewRangeReader(ctx, frameOffset.C, int64(frame.C))
+	if err != nil {
+		return fmt.Errorf("failed to create a range reader: %w", err)
+	}
+	defer r.Close()
+
+	dec, err := zstd.NewReader(r)
+	if err != nil {
+		return fmt.Errorf("failed to create zstd decoder: %w", err)
+	}
+	defer dec.Close()
+
+	w := &SkipWriter{
+		buf:  buf,
+		skip: int64(startInFrame),
+	}
+
+	if _, err := io.Copy(w, dec); err != nil {
+		return fmt.Errorf("failed to read decompressed data: %w", err)
+	}
+
+	return nil
+}
+
+func (ci *CompressedInfo) DownloadSlice(ctx context.Context, src Ranger, userBuf []byte, start int64) error {
+	s := 0
+	// TODO add a max concurrency limiter for frame downloads
+	// TODO consider downloading multiple frames per request if too many frames?
+	eg, ctx := errgroup.WithContext(ctx)
+	err := ci.Range(start, int64(len(userBuf)), func(off Offset, frame Frame) error {
+		skip := int(max(0, start-off.U))
+		l := min(frame.U-skip, len(userBuf)-s)
+
+		receiveBuf := userBuf[s : s+l]
+		s += len(receiveBuf)
+
+		eg.Go(func() error {
+			err := readFromFrame(ctx, src, off, frame, skip, receiveBuf)
+			if err != nil {
+				return fmt.Errorf("failed to read compressed frame at offset %d: %w", off.C, err)
+			}
+
+			return nil
+		})
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return eg.Wait()
+}
+
+type SkipWriter struct {
+	buf  []byte
+	skip int64
+}
+
+func (sw *SkipWriter) Write(p []byte) (int, error) {
+	l := len(p)
+	if sw.skip > 0 {
+		if int64(len(p)) <= sw.skip {
+			sw.skip -= int64(len(p))
+
+			return len(p), nil // fully skipped
+		}
+		p = p[sw.skip:]
+		sw.skip = 0
+	}
+
+	toCopy := min(len(sw.buf), len(p))
+
+	n := copy(sw.buf, p[:toCopy])
+	sw.buf = sw.buf[n:]
+
+	return l, nil
 }
