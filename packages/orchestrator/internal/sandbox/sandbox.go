@@ -127,6 +127,8 @@ type Sandbox struct {
 	APIStoredConfig *orchestrator.SandboxConfig
 
 	exit *utils.ErrorOnce
+
+	stop utils.Lazy[error]
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -628,8 +630,16 @@ func (s *Sandbox) Close(ctx context.Context) error {
 	return nil
 }
 
-// Stop kills the sandbox.
+// Stop kills the sandbox. It is safe to call multiple times; only the first
+// call will actually perform the stop operation.
 func (s *Sandbox) Stop(ctx context.Context) error {
+	return s.stop.GetOrInit(func() error {
+		return s.doStop(ctx)
+	})
+}
+
+// doStop performs the actual stop operation.
+func (s *Sandbox) doStop(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sandbox-close")
 	defer span.End()
 
@@ -1082,10 +1092,7 @@ func (s *Sandbox) WaitForEnvd(
 }
 
 func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
-	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
-	if err != nil {
-		logger.L().Warn(ctx, "failed to get envd timeout from feature flag, using default", zap.Error(err))
-	}
+	envdInitRequestTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutMilliseconds)
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
 }
