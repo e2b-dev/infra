@@ -296,6 +296,7 @@ func newMultiReader(data [][]byte) io.Reader {
 	for _, d := range data {
 		rr = append(rr, bytes.NewReader(d))
 	}
+
 	return io.MultiReader(rr...)
 }
 

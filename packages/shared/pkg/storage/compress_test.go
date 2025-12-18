@@ -185,10 +185,12 @@ func (mr *pureReader) Read(p []byte) (n int, err error) {
 		copy(p, mr.data)
 		n = len(mr.data)
 		mr.data = nil
+
 		return n, io.EOF
 	}
 
 	copy(p, mr.data[:len(p)])
 	mr.data = mr.data[len(p):]
+
 	return len(p), nil
 }

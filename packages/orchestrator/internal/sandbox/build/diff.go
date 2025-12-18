@@ -59,7 +59,7 @@ func (n *NoDiff) CacheKey() DiffStoreKey {
 	return ""
 }
 
-func (n *NoDiff) Init(_ context.Context, compressedInfo *storage.CompressedInfo) error {
+func (n *NoDiff) Init(_ context.Context, _ *storage.CompressedInfo) error {
 	return NoDiffError{}
 }
 
