@@ -27,10 +27,7 @@ JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
         eba.tag = COALESCE($1, 'latest')
         OR
         -- Match by build_id if the tag parameter is a valid UUID
-        (
-            $1 IS NOT NULL
-            AND eba.build_id::text = $1
-        )
+        eba.build_id = try_cast_uuid($1)
     )
 JOIN public.env_builds AS eb ON eb.id = eba.build_id
     AND eb.status = 'uploaded'

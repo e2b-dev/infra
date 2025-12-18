@@ -178,7 +178,7 @@ func (a *APIStore) DeleteTemplatesTemplateIDTagsTag(c *gin.Context, templateIDOr
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when deleting tag assignment", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error deleting tag assignment")
-		
+
 		return
 	}
 
