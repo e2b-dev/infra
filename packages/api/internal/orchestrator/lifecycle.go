@@ -11,11 +11,7 @@ import (
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
-func (o *Orchestrator) observeTeamSandbox(ctx context.Context, sandbox sandbox.Sandbox, created bool) {
-	o.teamMetricsObserver.Add(ctx, sandbox.TeamID, created)
-}
-
-func (o *Orchestrator) addToNode(ctx context.Context, sandbox sandbox.Sandbox, _ bool) {
+func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox sandbox.Sandbox) {
 	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
 	if node == nil {
 		logger.L().Error(ctx, "failed to get node", logger.WithNodeID(sandbox.NodeID))
