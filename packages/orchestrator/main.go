@@ -390,15 +390,14 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"device pool", devicePool.Close})
 
 	// network pool
+	operations := network.NewNetNSOperations()
 	slotStorage, err := newStorage(ctx, nodeID, config.NetworkConfig)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create network pool", zap.Error(err))
 	}
-	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
+	networkPool := network.NewPool(operations, slotStorage, config.NetworkConfig)
 	startService("network pool", func() error {
-		networkPool.Populate(ctx)
-
-		return nil
+		return networkPool.Populate(ctx)
 	})
 	closers = append(closers, closer{"network pool", networkPool.Close})
 

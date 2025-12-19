@@ -123,7 +123,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 	return slot, nil
 }
 
-func (s *StorageKV) Release(ips *Slot) error {
+func (s *StorageKV) Release(_ context.Context, ips *Slot) error {
 	kv := s.consulClient.KV()
 
 	pair, _, err := kv.Get(ips.Key, nil)

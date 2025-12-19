@@ -19,3 +19,17 @@ packages:
           dir: packages/shared/pkg/storage/mocks
           filename: mockseekableobjectprovider.go
           pkgname: storagemocks
+
+  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network:
+    interfaces:
+      Storage:
+        config:
+          dir: packages/orchestrator/internal/sandbox/network
+          filename: mocks_test.go
+          pkgname: network_test
+
+      Operations:
+        config:
+          dir: packages/orchestrator/internal/sandbox/network
+          filename: mocks_test.go
+          pkgname: network_test

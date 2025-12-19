@@ -15,7 +15,20 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (s *Slot) CreateNetwork(ctx context.Context) error {
+type Operations interface {
+	CreateNetwork(ctx context.Context, slot *Slot) error
+	RemoveNetwork(ctx context.Context, slot *Slot) error
+}
+
+type NetNSOperations struct{}
+
+var _ Operations = (*NetNSOperations)(nil)
+
+func NewNetNSOperations() *NetNSOperations {
+	return &NetNSOperations{}
+}
+
+func (n NetNSOperations) CreateNetwork(ctx context.Context, s *Slot) error {
 	// Prevent thread changes so we can safely manipulate with namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -242,7 +255,7 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 	return nil
 }
 
-func (s *Slot) RemoveNetwork() error {
+func (n NetNSOperations) RemoveNetwork(_ context.Context, s *Slot) error {
 	var errs []error
 
 	err := s.CloseFirewall()

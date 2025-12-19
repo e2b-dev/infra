@@ -128,7 +128,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	slotStorage, err := network.NewStorageLocal(b.Context(), config.NetworkConfig)
 	require.NoError(b, err)
-	networkPool := network.NewPool(8, 8, slotStorage, config.NetworkConfig)
+	operations := network.NewNetNSOperations()
+	networkPool := network.NewPool(operations, slotStorage, config.NetworkConfig)
 	go func() {
 		networkPool.Populate(b.Context())
 		l.Info(b.Context(), "network pool populated")

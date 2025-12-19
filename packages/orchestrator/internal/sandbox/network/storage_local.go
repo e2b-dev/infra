@@ -102,7 +102,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 	}
 }
 
-func (s *StorageLocal) Release(ips *Slot) error {
+func (s *StorageLocal) Release(_ context.Context, ips *Slot) error {
 	s.acquiredNsMu.Lock()
 	defer s.acquiredNsMu.Unlock()
 
