@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -90,7 +91,7 @@ func (so *TeamObserver) Start(store *sandbox.Store) (err error) {
 			// Reset the max for the new interval to the current counts
 			// Observe the max concurrent sandbox counts for each team
 			for teamID, count := range sbxsPerTeam {
-				obs.ObserveInt64(so.teamSandboxRunning, count, metric.WithAttributes(telemetry.WithTeamID(teamID)))
+				obs.ObserveInt64(so.teamSandboxRunning, count, metric.WithAttributes(attribute.String("team_id", teamID)))
 			}
 
 			return nil
@@ -105,7 +106,12 @@ func (so *TeamObserver) Start(store *sandbox.Store) (err error) {
 }
 
 func (so *TeamObserver) Add(ctx context.Context, teamID uuid.UUID) {
-	so.teamSandboxesCreated.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(teamID.String())))
+	// Count started only if the sandbox was created
+	attributes := []attribute.KeyValue{
+		attribute.String("team_id", teamID.String()),
+	}
+
+	so.teamSandboxesCreated.Add(ctx, 1, metric.WithAttributes(attributes...))
 }
 
 func (so *TeamObserver) Close(ctx context.Context) error {
