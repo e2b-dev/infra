@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/posthog/posthog-go"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -141,24 +140,13 @@ func (o *Orchestrator) handleNewlyCreatedSandbox(ctx context.Context, sandbox sa
 	o.teamMetricsObserver.Add(ctx, sandbox.TeamID)
 
 	// Increment created counter
-	attributes := []attribute.KeyValue{
-		telemetry.WithTeamID(sandbox.TeamID.String()),
-	}
-	o.createdCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
+	o.createdCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sandbox.TeamID.String())))
 }
 
 func (o *Orchestrator) sandboxCounterInsert(ctx context.Context, sandbox sandbox.Sandbox) {
-	attributes := []attribute.KeyValue{
-		telemetry.WithTeamID(sandbox.TeamID.String()),
-	}
-
-	o.sandboxCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
+	o.sandboxCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sandbox.TeamID.String())))
 }
 
 func (o *Orchestrator) countersRemove(ctx context.Context, sandbox sandbox.Sandbox, _ sandbox.StateAction) {
-	attributes := []attribute.KeyValue{
-		telemetry.WithTeamID(sandbox.TeamID.String()),
-	}
-
-	o.sandboxCounter.Add(ctx, -1, metric.WithAttributes(attributes...))
+	o.sandboxCounter.Add(ctx, -1, metric.WithAttributes(telemetry.WithTeamID(sandbox.TeamID.String())))
 }
