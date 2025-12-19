@@ -78,8 +78,8 @@ job "template-manager-system" {
         DOCKERHUB_REMOTE_REPOSITORY_URL = "${dockerhub_remote_repository_url}"
         GRPC_PORT                       = "${port}"
         GIN_MODE                        = "release"
-        NETWORK_SLOTS_POOL_SIZE         = "100"
-        NETWORK_SLOTS_TO_PREPOPULATE    = "32"
+        NETWORK_SLOTS_REUSE_POOL_SIZE   = "100"
+        NETWORK_SLOTS_FRESH_POOL_SIZE   = "32"
 %{ if !update_stanza }
         FORCE_STOP                      = "true"
 %{ endif }

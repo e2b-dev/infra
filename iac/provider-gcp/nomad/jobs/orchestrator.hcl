@@ -88,8 +88,8 @@ EOT
         GRPC_PORT                     = "${port}"
         PROXY_PORT                    = "${proxy_port}"
         GIN_MODE                      = "release"
-        NETWORK_SLOTS_POOL_SIZE       = "100"
-        NETWORK_SLOTS_TO_PREPOPULATE  = "32"
+        NETWORK_SLOTS_REUSE_POOL_SIZE = "100"
+        NETWORK_SLOTS_FRESH_POOL_SIZE = "32"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
