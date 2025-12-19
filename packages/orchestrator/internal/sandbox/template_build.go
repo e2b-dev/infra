@@ -148,7 +148,14 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		fmt.Printf("<>/<> TODO: embed ci into rootfs header: %+v\n", ci)
+		if ci != nil {
+			// iterate over the mappings, and for each one from the current build add the compressed info
+			for _, mapping := range t.rootfsHeader.Mapping {
+				if mapping.BuildId == t.rootfsHeader.Metadata.BuildId {
+					mapping.CompressedInfo = ci.Subset(int64(mapping.Offset), int64(mapping.Length))
+				}
+			}
+		}
 
 		err = t.uploadRootfsHeader(ctx, t.rootfsHeader)
 		if err != nil {
@@ -172,7 +179,14 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		fmt.Printf("<>/<> TODO: embed ci into memfile header: %+v\n", ci)
+		if ci != nil {
+			// iterate over the mappings, and for each one from the current build add the compressed info
+			for _, mapping := range t.memfileHeader.Mapping {
+				if mapping.BuildId == t.memfileHeader.Metadata.BuildId {
+					mapping.CompressedInfo = ci.Subset(int64(mapping.Offset), int64(mapping.Length))
+				}
+			}
+		}
 
 		err = t.uploadMemfileHeader(ctx, t.memfileHeader)
 		if err != nil {

@@ -472,7 +472,7 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	return &sa, nil
 }
 
-func (g *gcpFramedReader) NewRangeReader(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
+func (g *gcpFramedReader) RangeGet(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
 	return g.handle.NewRangeReader(ctx, offset, length)
 }
 

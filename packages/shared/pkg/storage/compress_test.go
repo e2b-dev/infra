@@ -199,7 +199,7 @@ type fakeRanger struct {
 	data []byte
 }
 
-func (r *fakeRanger) NewRangeReader(_ context.Context, offset, length int64) (io.ReadCloser, error) {
+func (r *fakeRanger) RangeGet(_ context.Context, offset, length int64) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(r.data[offset : offset+length])), nil
 }
 
@@ -230,4 +230,193 @@ func (mr *pureReader) Read(p []byte) (n int, err error) {
 	mr.data = mr.data[len(p):]
 
 	return len(p), nil
+}
+
+func TestCompressedInfo_Subset(t *testing.T) {
+	// Create a CompressedInfo with frames of known sizes
+	// Frame 0: U=1000, C=500 (offset 0-1000)
+	// Frame 1: U=2000, C=1000 (offset 1000-3000)
+	// Frame 2: U=1500, C=750 (offset 3000-4500)
+	// Frame 3: U=3000, C=1500 (offset 4500-7500)
+	// Total uncompressed: 7500 bytes
+	ci := &CompressedInfo{
+		CompressionType: CompressionZstd,
+		FramesStartAt:   Offset{U: 100, C: 50},
+		Frames: []Frame{
+			{U: 1000, C: 500},
+			{U: 2000, C: 1000},
+			{U: 1500, C: 750},
+			{U: 3000, C: 1500},
+		},
+	}
+
+	t.Run("subset at the beginning", func(t *testing.T) {
+		// Request range [0, 500) - should include only frame 0
+		subset := ci.Subset(0, 500)
+		require.NotNil(t, subset)
+		require.Equal(t, CompressionZstd, subset.CompressionType)
+		require.Len(t, subset.Frames, 1)
+		require.Equal(t, Frame{U: 1000, C: 500}, subset.Frames[0])
+	})
+
+	t.Run("subset exactly one frame", func(t *testing.T) {
+		// Request range [1000, 2000) - should include frame 1
+		subset := ci.Subset(1000, 2000)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 1)
+		require.Equal(t, Frame{U: 2000, C: 1000}, subset.Frames[0])
+	})
+
+	t.Run("subset spanning multiple frames", func(t *testing.T) {
+		// Request range [500, 3500) - should include frames 0, 1, 2
+		subset := ci.Subset(500, 3000)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 3)
+		require.Equal(t, Frame{U: 1000, C: 500}, subset.Frames[0])
+		require.Equal(t, Frame{U: 2000, C: 1000}, subset.Frames[1])
+		require.Equal(t, Frame{U: 1500, C: 750}, subset.Frames[2])
+	})
+
+	t.Run("subset at the end", func(t *testing.T) {
+		// Request range [6000, 1500) - should include only frame 3
+		subset := ci.Subset(6000, 1500)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 1)
+		require.Equal(t, Frame{U: 3000, C: 1500}, subset.Frames[0])
+	})
+
+	t.Run("subset entire range", func(t *testing.T) {
+		// Request range [0, 7500) - should include all frames
+		subset := ci.Subset(0, 7500)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 4)
+		require.Equal(t, ci.Frames, subset.Frames)
+	})
+
+	t.Run("subset with frame boundaries aligned", func(t *testing.T) {
+		// Request range [1000, 3000) - exactly frames 1 and 2
+		subset := ci.Subset(1000, 3000)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 2)
+		require.Equal(t, Frame{U: 2000, C: 1000}, subset.Frames[0])
+		require.Equal(t, Frame{U: 1500, C: 750}, subset.Frames[1])
+	})
+
+	t.Run("subset starting in middle of frame", func(t *testing.T) {
+		// Request range [1500, 2000) - starts in frame 1, needs entire frames 1 and 2
+		subset := ci.Subset(1500, 2000)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 2)
+		require.Equal(t, Frame{U: 2000, C: 1000}, subset.Frames[0])
+		require.Equal(t, Frame{U: 1500, C: 750}, subset.Frames[1])
+	})
+
+	t.Run("subset ending in middle of frame", func(t *testing.T) {
+		// Request range [3000, 500) - ends in frame 2, includes frame 2
+		subset := ci.Subset(3000, 500)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 1)
+		require.Equal(t, Frame{U: 1500, C: 750}, subset.Frames[0])
+	})
+
+	t.Run("subset beyond total size stops at end", func(t *testing.T) {
+		// Request range [7000, 1000) - end exceeds total size, stops at frame 3
+		subset := ci.Subset(7000, 1000)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 1)
+		require.Equal(t, Frame{U: 3000, C: 1500}, subset.Frames[0])
+	})
+
+	t.Run("subset starting beyond total size returns empty", func(t *testing.T) {
+		// Request range [8000, 100) - start beyond total size, no frames included
+		subset := ci.Subset(8000, 100)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 0)
+	})
+
+	t.Run("subset with zero length", func(t *testing.T) {
+		// Request range [1000, 0) - zero length, should return empty subset
+		subset := ci.Subset(1000, 0)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 0)
+	})
+
+	t.Run("subset single byte at start", func(t *testing.T) {
+		// Request range [0, 1) - single byte, needs entire first frame
+		subset := ci.Subset(0, 1)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 1)
+		require.Equal(t, Frame{U: 1000, C: 500}, subset.Frames[0])
+	})
+
+	t.Run("subset single byte in middle", func(t *testing.T) {
+		// Request range [2500, 1) - single byte in frame 1, needs entire frame
+		subset := ci.Subset(2500, 1)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 1)
+		require.Equal(t, Frame{U: 2000, C: 1000}, subset.Frames[0])
+	})
+
+	t.Run("subset single byte at end", func(t *testing.T) {
+		// Request range [7499, 1) - last byte, needs entire last frame
+		subset := ci.Subset(7499, 1)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 1)
+		require.Equal(t, Frame{U: 3000, C: 1500}, subset.Frames[0])
+	})
+
+	t.Run("subset preserves compression type", func(t *testing.T) {
+		// Verify compression type is preserved
+		subset := ci.Subset(0, 1000)
+		require.Equal(t, CompressionZstd, subset.CompressionType)
+	})
+
+	t.Run("subset with large frames", func(t *testing.T) {
+		// Create CompressedInfo with larger frames
+		largeCi := &CompressedInfo{
+			CompressionType: CompressionZstd,
+			Frames: []Frame{
+				{U: 1000000, C: 500000},  // 1MB uncompressed
+				{U: 2000000, C: 1000000}, // 2MB uncompressed
+				{U: 1000000, C: 500000},  // 1MB uncompressed
+			},
+		}
+
+		// Request middle portion
+		subset := largeCi.Subset(500000, 2000000)
+		require.Len(t, subset.Frames, 2)
+		require.Equal(t, Frame{U: 1000000, C: 500000}, subset.Frames[0])
+		require.Equal(t, Frame{U: 2000000, C: 1000000}, subset.Frames[1])
+	})
+
+	t.Run("subset from empty CompressedInfo returns empty", func(t *testing.T) {
+		emptyCi := &CompressedInfo{
+			CompressionType: CompressionZstd,
+			Frames:          []Frame{},
+		}
+
+		// Request returns empty subset
+		subset := emptyCi.Subset(0, 100)
+		require.NotNil(t, subset)
+		require.Len(t, subset.Frames, 0)
+	})
+
+	t.Run("subset beyond end stops gracefully", func(t *testing.T) {
+		totalSize := ci.TotalUncompressedSize()
+		require.Equal(t, int64(7500), totalSize)
+
+		// Requesting exactly the total size should work
+		subset := ci.Subset(0, int64(totalSize))
+		require.Len(t, subset.Frames, 4)
+
+		// Requesting one byte more stops at the end
+		subset = ci.Subset(0, int64(totalSize)+1)
+		require.Len(t, subset.Frames, 4)
+	})
+
+	t.Run("Subset of nil is nil", func(t *testing.T) {
+		var nilCi *CompressedInfo
+		subset := nilCi.Subset(0, 100)
+		require.Nil(t, subset)
+	})
 }

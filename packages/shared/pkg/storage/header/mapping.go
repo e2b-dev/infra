@@ -163,6 +163,7 @@ func MergeMappings(
 					// the build storage offset is the same as the base mapping
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
+				leftBase.CompressedInfo = base.CompressedInfo.Subset(int64(leftBase.Offset), int64(leftBase.Length))
 
 				mappings = append(mappings, leftBase)
 			}
@@ -181,6 +182,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
+				rightBase.CompressedInfo = base.CompressedInfo.Subset(int64(rightBase.Offset), int64(rightBase.Length))
 
 				baseMapping[baseIdx] = rightBase
 			} else {
@@ -208,6 +210,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
+				rightBase.CompressedInfo = base.CompressedInfo.Subset(int64(rightBase.Offset), int64(rightBase.Length))
 
 				baseMapping[baseIdx] = rightBase
 			} else {
@@ -229,6 +232,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
+				leftBase.CompressedInfo = base.CompressedInfo.Subset(int64(leftBase.Offset), int64(leftBase.Length))
 
 				mappings = append(mappings, leftBase)
 			}

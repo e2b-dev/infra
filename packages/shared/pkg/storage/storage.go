@@ -57,7 +57,7 @@ const (
 )
 
 const (
-	CompressionNone = iota
+	CompressionNone = CompressionType(iota)
 	CompressionZstd
 	CompressionLZ4
 )

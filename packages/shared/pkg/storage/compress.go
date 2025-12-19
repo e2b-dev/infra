@@ -388,17 +388,53 @@ func (ci *CompressedInfo) TotalCompressedSize() int64 {
 	return total
 }
 
-type Ranger interface {
-	NewRangeReader(ctx context.Context, start, length int64) (io.ReadCloser, error)
+// Subset returns a new CompressedInfo that represents the minimal set of frames
+// that cover the start(length) range. Only entire frames are included (since
+// they are compressed and can not be sliced). All offsets and sizes are in
+// memory/uncompressed bytes. If the requested range extends beyond the total
+// uncompressed size, the subset silently stops at the end of the frameset.
+func (ci *CompressedInfo) Subset(start int64, length int64) *CompressedInfo {
+	if ci == nil {
+		return nil
+	}
+	newCI := &CompressedInfo{
+		CompressionType: ci.CompressionType,
+	}
+
+	var currentOffset int64
+	requestedEnd := start + length
+	for _, frame := range ci.Frames {
+		frameEnd := currentOffset + int64(frame.U)
+		if frameEnd <= start {
+			// frame is before the requested range
+			currentOffset += int64(frame.U)
+
+			continue
+		}
+		if currentOffset >= requestedEnd {
+			// frame is after the requested range
+			break
+		}
+
+		// frame overlaps with the requested range
+		newCI.Frames = append(newCI.Frames, frame)
+		currentOffset += int64(frame.U)
+	}
+
+	return newCI
 }
 
-func readFromFrame(ctx context.Context, src Ranger, frameOffset Offset, frame Frame, startInFrame int, buf []byte) error {
+type RangeGetter interface {
+	RangeGet(ctx context.Context, start, length int64) (io.ReadCloser, error)
+}
+
+func readFromFrame(ctx context.Context, src RangeGetter, frameOffset Offset, frame Frame, startInFrame int, buf []byte) error {
 	// TODO timeout should be set elsewhere, or we need to parameterize the value
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 	defer cancel()
 
 	// r reads the compressed frame from GCS
-	r, err := src.NewRangeReader(ctx, frameOffset.C, int64(frame.C))
+	r, err := src.RangeGet(ctx, frameOffset.C, int64(frame.C))
 	if err != nil {
 		return fmt.Errorf("failed to create a range reader: %w", err)
 	}
@@ -422,7 +458,7 @@ func readFromFrame(ctx context.Context, src Ranger, frameOffset Offset, frame Fr
 	return nil
 }
 
-func (ci *CompressedInfo) DownloadSlice(ctx context.Context, src Ranger, userBuf []byte, start int64) error {
+func (ci *CompressedInfo) DownloadSlice(ctx context.Context, src RangeGetter, userBuf []byte, start int64) error {
 	s := 0
 	// TODO add a max concurrency limiter for frame downloads
 	// TODO consider downloading multiple frames per request if too many frames?
