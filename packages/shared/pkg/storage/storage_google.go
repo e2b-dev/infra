@@ -222,7 +222,7 @@ func (g *gcpObject) Size(ctx context.Context) (int64, error) {
 	return g.size(ctx)
 }
 
-func (g *gcpObject) size(ctx context.Context) (int64, error) {
+func (g *gcpObj) size(ctx context.Context) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -493,9 +493,10 @@ func (g *gcpFramedReader) ReadAt(ctx context.Context, userBuf []byte, offset int
 	return len(userBuf), nil
 }
 
-func (g *gcpFramedReader) Size(_ context.Context) (int64, error) {
+func (g *gcpFramedReader) Size(ctx context.Context) (int64, error) {
 	if g.compressedInfo == nil {
-		return 0, fmt.Errorf("TODO! implement for missing compression info")
+		// treat as uncompressed?
+		return g.gcpObj.size(ctx)
 	}
 
 	return g.compressedInfo.TotalUncompressedSize(), nil
