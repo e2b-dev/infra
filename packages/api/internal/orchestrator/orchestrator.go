@@ -144,13 +144,10 @@ func New(
 	o.sandboxStore = sandbox.NewStore(
 		sandboxStorage,
 		reservationStorage,
-		[]sandbox.InsertCallback{
-			o.addToNode,
-		},
-		[]sandbox.InsertCallback{
-			o.observeTeamSandbox,
-			o.countersInsert,
-			o.analyticsInsert,
+		sandbox.Callbacks{
+			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
+			AsyncSandboxCounter:      o.sandboxCounterInsert,
+			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
 		},
 	)
 

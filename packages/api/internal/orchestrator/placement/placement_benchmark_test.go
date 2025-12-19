@@ -13,7 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
@@ -125,11 +124,6 @@ func (n *SimulatedNode) placeSandbox(sbx *LiveSandbox) bool {
 		return false
 	}
 
-	n.AddSandbox(sandbox.Sandbox{
-		VCpu:  sbx.RequestedCPU,
-		RamMB: sbx.RequestedMemory,
-	})
-
 	n.UpdateMetricsFromServiceInfoResponse(&orchestrator.ServiceInfoResponse{
 		MetricSandboxesRunning: uint32(len(n.sandboxes)) + 1,
 		// Host system usage metrics
@@ -156,10 +150,6 @@ func (n *SimulatedNode) removeSandbox(sandboxID string) {
 	metrics := n.Metrics()
 
 	if sbx, exists := n.sandboxes[sandboxID]; exists {
-		n.RemoveSandbox(sandbox.Sandbox{
-			VCpu:  sbx.RequestedCPU,
-			RamMB: sbx.RequestedMemory,
-		})
 		n.UpdateMetricsFromServiceInfoResponse(&orchestrator.ServiceInfoResponse{
 			MetricSandboxesRunning: uint32(len(n.sandboxes)) - 1,
 

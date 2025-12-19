@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -19,3 +20,5 @@ type NotFoundError struct {
 func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("sandbox %s not found", e.SandboxID)
 }
+
+var ErrAlreadyExists = errors.New("sandbox already exists")
