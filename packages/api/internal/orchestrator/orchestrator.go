@@ -145,7 +145,7 @@ func New(
 		sandboxStorage,
 		reservationStorage,
 		sandbox.Callbacks{
-			AddToSandboxRoutingTable: o.addToSandboxRoutingTable,
+			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
 			AsyncSandboxCounter:      o.sandboxCounterInsert,
 			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
 		},

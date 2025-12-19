@@ -51,8 +51,8 @@ func WithOnlyExpired(isExpired bool) ItemsOption {
 }
 
 type Callbacks struct {
-	// AddToSandboxRoutingTable should be called sync to prevent race conditions where we would know where to route the sandbox
-	AddToSandboxRoutingTable InsertCallback
+	// AddSandboxToRoutingTable should be called sync to prevent race conditions where we would know where to route the sandbox
+	AddSandboxToRoutingTable InsertCallback
 	// AsyncSandboxCounter should be called async to prevent blocking the main goroutine
 	AsyncSandboxCounter InsertCallback
 	// AsyncNewlyCreatedSandbox should be called async to prevent blocking the main goroutine
@@ -94,6 +94,7 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 	err := s.storage.Add(ctx, sandbox)
 	if err == nil {
 		// Count only newly added sandboxes to the store
+		s.callbacks.AddSandboxToRoutingTable(ctx, sandbox)
 		go s.callbacks.AsyncSandboxCounter(context.WithoutCancel(ctx), sandbox)
 	} else {
 		// There's a race condition when the sandbox is added from node sync
@@ -114,9 +115,6 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 	if finishStart != nil {
 		finishStart(sandbox, nil)
 	}
-
-	// Add sandbox info to node for routing
-	s.callbacks.AddToSandboxRoutingTable(ctx, sandbox)
 
 	if newlyCreated {
 		go s.callbacks.AsyncNewlyCreatedSandbox(context.WithoutCancel(ctx), sandbox)
