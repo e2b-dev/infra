@@ -13,6 +13,7 @@ import (
 type LogsQueryProvider interface {
 	QueryBuildLogs(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int32, level *logs.LogLevel, direction logproto.Direction) ([]logs.LogEntry, error)
 	QuerySandboxLogs(ctx context.Context, teamID string, sandboxID string, start time.Time, end time.Time, limit int) ([]logs.LogEntry, error)
+	QuerySandboxLogsV2(ctx context.Context, teamID string, sandboxID string, start time.Time, end time.Time, limit int, direction logproto.Direction) ([]logs.LogEntry, error)
 }
 
 func GetLogsQueryProvider(config cfg.Config) (LogsQueryProvider, error) {

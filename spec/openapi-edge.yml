@@ -272,6 +272,17 @@ components:
           items:
             $ref: "#/components/schemas/SandboxLogEntry"
 
+    SandboxLogsV2Response:
+      required:
+        - logs
+      properties:
+        logs:
+          default: []
+          description: Sandbox logs structured
+          type: array
+          items:
+            $ref: "#/components/schemas/SandboxLogEntry"
+
     ServiceDiscoveryNodeStatusRequest:
       type: object
       required:
@@ -522,6 +533,69 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SandboxLogsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v2/sandboxes/{sandboxID}/logs:
+    get:
+      operationId: v2SandboxLogs
+      summary: List structured sandbox logs (v2)
+      security:
+        - ApiKeyAuth: []
+      tags: [sandboxes]
+      parameters:
+        - name: sandboxID
+          in: path
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: teamID
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: start
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Starting timestamp of the logs that should be returned in milliseconds
+        - in: query
+          name: end
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Ending timestamp of the logs that should be returned in milliseconds
+        - in: query
+          name: limit
+          schema:
+            default: 1000
+            type: integer
+            format: int32
+            minimum: 0
+            maximum: 1000
+          description: Maximum number of logs that should be returned
+        - in: query
+          name: direction
+          schema:
+            type: string
+            enum:
+              - forward
+              - backward
+            description: Direction of the logs that should be returned
+      responses:
+        "200":
+          description: Successfully returned the sandbox logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxLogsV2Response"
         "400":
           $ref: "#/components/responses/400"
         "401":

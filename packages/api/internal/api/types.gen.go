@@ -614,6 +614,12 @@ type SandboxLogs struct {
 	Logs []SandboxLog `json:"logs"`
 }
 
+// SandboxLogsV2Response defines model for SandboxLogsV2Response.
+type SandboxLogsV2Response struct {
+	// Logs Sandbox logs structured
+	Logs []SandboxLogEntry `json:"logs"`
+}
+
 // SandboxMetadata defines model for SandboxMetadata.
 type SandboxMetadata map[string]string
 
@@ -1188,6 +1194,16 @@ type GetV2SandboxesParams struct {
 
 	// Limit Maximum number of items to return per page
 	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetV2SandboxesSandboxIDLogsParams defines parameters for GetV2SandboxesSandboxIDLogs.
+type GetV2SandboxesSandboxIDLogsParams struct {
+	// Cursor Starting timestamp of the logs that should be returned in milliseconds
+	Cursor *int64 `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Maximum number of logs that should be returned
+	Limit     *int32         `form:"limit,omitempty" json:"limit,omitempty"`
+	Direction *LogsDirection `form:"direction,omitempty" json:"direction,omitempty"`
 }
 
 // PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.

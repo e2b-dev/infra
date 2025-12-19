@@ -49,6 +49,9 @@ type ServerInterface interface {
 	// Template build logs
 	// (GET /v1/templates/builds/{buildID}/logs)
 	V1TemplateBuildLogs(c *gin.Context, buildID string, params V1TemplateBuildLogsParams)
+	// List structured sandbox logs (v2)
+	// (GET /v2/sandboxes/{sandboxID}/logs)
+	V2SandboxLogs(c *gin.Context, sandboxID string, params V2SandboxLogsParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -442,6 +445,82 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildLogs(c *gin.Context) {
 	siw.Handler.V1TemplateBuildLogs(c, buildID, params)
 }
 
+// V2SandboxLogs operation middleware
+func (siw *ServerInterfaceWrapper) V2SandboxLogs(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params V2SandboxLogsParams
+
+	// ------------- Required query parameter "teamID" -------------
+
+	if paramValue := c.Query("teamID"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument teamID is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "teamID", c.Request.URL.Query(), &params.TeamID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "start" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "start", c.Request.URL.Query(), &params.Start)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter start: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "end" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "end", c.Request.URL.Query(), &params.End)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter end: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "direction" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "direction", c.Request.URL.Query(), &params.Direction)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter direction: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V2SandboxLogs(c, sandboxID, params)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -481,4 +560,5 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/v1/service-discovery/nodes/kill", wrapper.V1ServiceDiscoveryNodeKill)
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes/orchestrators", wrapper.V1ServiceDiscoveryGetOrchestrators)
 	router.GET(options.BaseURL+"/v1/templates/builds/:buildID/logs", wrapper.V1TemplateBuildLogs)
+	router.GET(options.BaseURL+"/v2/sandboxes/:sandboxID/logs", wrapper.V2SandboxLogs)
 }
