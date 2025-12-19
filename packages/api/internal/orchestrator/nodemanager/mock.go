@@ -142,7 +142,6 @@ func NewTestNode(id string, status api.NodeStatus, cpuAllocated int64, cpuCount 
 		SandboxDomain: nil,
 		status:        status,
 		metrics: Metrics{
-			CpuUsage:     cpuAllocated,
 			CpuAllocated: uint32(cpuAllocated),
 			CpuCount:     cpuCount,
 		},

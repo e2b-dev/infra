@@ -20,8 +20,6 @@ func (o *Orchestrator) addToNode(ctx context.Context, sandbox sandbox.Sandbox, _
 	if node == nil {
 		logger.L().Error(ctx, "failed to get node", logger.WithNodeID(sandbox.NodeID))
 	} else {
-		node.AddSandbox(sandbox)
-
 		info := e2bcatalog.SandboxInfo{
 			OrchestratorID: node.Metadata().ServiceInstanceID,
 			OrchestratorIP: node.IPAddress,
