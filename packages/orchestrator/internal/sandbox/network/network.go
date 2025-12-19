@@ -5,19 +5,26 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"path/filepath"
 	"runtime"
 
+	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type Operations interface {
 	CreateNetwork(ctx context.Context, slot *Slot) error
 	RemoveNetwork(ctx context.Context, slot *Slot) error
+	ConfigureInternet(ctx context.Context, s *Slot, network *orchestrator.SandboxNetworkConfig) error
+	ResetInternet(ctx context.Context, s *Slot) error
 }
 
 type NetNSOperations struct{}
@@ -28,7 +35,7 @@ func NewNetNSOperations() *NetNSOperations {
 	return &NetNSOperations{}
 }
 
-func (n NetNSOperations) CreateNetwork(ctx context.Context, s *Slot) error {
+func (ops NetNSOperations) CreateNetwork(ctx context.Context, s *Slot) error {
 	// Prevent thread changes so we can safely manipulate with namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -255,7 +262,7 @@ func (n NetNSOperations) CreateNetwork(ctx context.Context, s *Slot) error {
 	return nil
 }
 
-func (n NetNSOperations) RemoveNetwork(_ context.Context, s *Slot) error {
+func (ops NetNSOperations) RemoveNetwork(_ context.Context, s *Slot) error {
 	var errs []error
 
 	err := s.CloseFirewall()
@@ -334,4 +341,84 @@ func (n NetNSOperations) RemoveNetwork(_ context.Context, s *Slot) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func (ops NetNSOperations) ResetInternet(ctx context.Context, s *Slot) error {
+	_, span := tracer.Start(ctx, "slot-internet-reset", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+	))
+	defer span.End()
+
+	if !s.firewallCustomRules.CompareAndSwap(true, false) {
+		return nil
+	}
+
+	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	err = n.Do(func(_ ns.NetNS) error {
+		err := s.Firewall.Reset()
+		if err != nil {
+			return fmt.Errorf("error cleaning firewall rules: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+
+	return nil
+}
+
+func (ops NetNSOperations) ConfigureInternet(ctx context.Context, s *Slot, network *orchestrator.SandboxNetworkConfig) error {
+	_, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+	))
+	defer span.End()
+
+	egress := network.GetEgress()
+	if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
+		// Internet access is allowed by default.
+		return nil
+	}
+
+	s.firewallCustomRules.Store(true)
+
+	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	err = n.Do(func(_ ns.NetNS) error {
+		err := s.Firewall.SetTCPFirewall(true)
+		if err != nil {
+			return fmt.Errorf("error setting TCP firewall: %w", err)
+		}
+
+		for _, cidr := range network.GetEgress().GetAllowedCidrs() {
+			err = s.Firewall.AddAllowedCIDR(cidr)
+			if err != nil {
+				return fmt.Errorf("error setting firewall rules: %w", err)
+			}
+		}
+
+		for _, cidr := range network.GetEgress().GetDeniedCidrs() {
+			err = s.Firewall.AddDeniedCIDR(cidr)
+			if err != nil {
+				return fmt.Errorf("error setting firewall rules: %w", err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+
+	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -36,6 +37,69 @@ type MockOperations_Expecter struct {
 
 func (_m *MockOperations) EXPECT() *MockOperations_Expecter {
 	return &MockOperations_Expecter{mock: &_m.Mock}
+}
+
+// ConfigureInternet provides a mock function for the type MockOperations
+func (_mock *MockOperations) ConfigureInternet(ctx context.Context, s *network.Slot, network1 *orchestrator.SandboxNetworkConfig) error {
+	ret := _mock.Called(ctx, s, network1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ConfigureInternet")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *network.Slot, *orchestrator.SandboxNetworkConfig) error); ok {
+		r0 = returnFunc(ctx, s, network1)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockOperations_ConfigureInternet_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ConfigureInternet'
+type MockOperations_ConfigureInternet_Call struct {
+	*mock.Call
+}
+
+// ConfigureInternet is a helper method to define mock.On call
+//   - ctx context.Context
+//   - s *network.Slot
+//   - network1 *orchestrator.SandboxNetworkConfig
+func (_e *MockOperations_Expecter) ConfigureInternet(ctx interface{}, s interface{}, network1 interface{}) *MockOperations_ConfigureInternet_Call {
+	return &MockOperations_ConfigureInternet_Call{Call: _e.mock.On("ConfigureInternet", ctx, s, network1)}
+}
+
+func (_c *MockOperations_ConfigureInternet_Call) Run(run func(ctx context.Context, s *network.Slot, network1 *orchestrator.SandboxNetworkConfig)) *MockOperations_ConfigureInternet_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *network.Slot
+		if args[1] != nil {
+			arg1 = args[1].(*network.Slot)
+		}
+		var arg2 *orchestrator.SandboxNetworkConfig
+		if args[2] != nil {
+			arg2 = args[2].(*orchestrator.SandboxNetworkConfig)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockOperations_ConfigureInternet_Call) Return(err error) *MockOperations_ConfigureInternet_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockOperations_ConfigureInternet_Call) RunAndReturn(run func(ctx context.Context, s *network.Slot, network1 *orchestrator.SandboxNetworkConfig) error) *MockOperations_ConfigureInternet_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // CreateNetwork provides a mock function for the type MockOperations
@@ -148,6 +212,63 @@ func (_c *MockOperations_RemoveNetwork_Call) Return(err error) *MockOperations_R
 }
 
 func (_c *MockOperations_RemoveNetwork_Call) RunAndReturn(run func(ctx context.Context, slot *network.Slot) error) *MockOperations_RemoveNetwork_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResetInternet provides a mock function for the type MockOperations
+func (_mock *MockOperations) ResetInternet(ctx context.Context, s *network.Slot) error {
+	ret := _mock.Called(ctx, s)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResetInternet")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *network.Slot) error); ok {
+		r0 = returnFunc(ctx, s)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockOperations_ResetInternet_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResetInternet'
+type MockOperations_ResetInternet_Call struct {
+	*mock.Call
+}
+
+// ResetInternet is a helper method to define mock.On call
+//   - ctx context.Context
+//   - s *network.Slot
+func (_e *MockOperations_Expecter) ResetInternet(ctx interface{}, s interface{}) *MockOperations_ResetInternet_Call {
+	return &MockOperations_ResetInternet_Call{Call: _e.mock.On("ResetInternet", ctx, s)}
+}
+
+func (_c *MockOperations_ResetInternet_Call) Run(run func(ctx context.Context, s *network.Slot)) *MockOperations_ResetInternet_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *network.Slot
+		if args[1] != nil {
+			arg1 = args[1].(*network.Slot)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockOperations_ResetInternet_Call) Return(err error) *MockOperations_ResetInternet_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockOperations_ResetInternet_Call) RunAndReturn(run func(ctx context.Context, s *network.Slot) error) *MockOperations_ResetInternet_Call {
 	_c.Call.Return(run)
 	return _c
 }

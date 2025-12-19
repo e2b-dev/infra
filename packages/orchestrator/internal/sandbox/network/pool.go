@@ -51,8 +51,8 @@ type Config struct {
 	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
 
 	// Network slots
-	NetworkSlotsPoolSize      int `env:"NETWORK_SLOTS_POOL_SIZE"      envDefault:"8"`
-	NetworkSlotsToPrepopulate int `env:"NETWORK_SLOTS_TO_PREPOPULATE" envDefault:"8"`
+	NetworkSlotsReusePoolSize int `env:"NETWORK_SLOTS_REUSE_POOL_SIZE" envDefault:"8"`
+	NetworkSlotsFreshPoolSize int `env:"NETWORK_SLOTS_FRESH_POOL_SIZE" envDefault:"8"`
 
 	// SandboxTCPFirewallPort is the port to redirect TCP traffic to for egress filtering
 	SandboxTCPFirewallPort uint16 `env:"SANDBOX_TCP_FIREWALL_PORT" envDefault:"5016"`
@@ -78,8 +78,8 @@ type Pool struct {
 var ErrClosed = errors.New("cannot read from a closed pool")
 
 func NewPool(operations Operations, slotStorage Storage, config Config) *Pool {
-	newSlots := make(chan *Slot, config.NetworkSlotsToPrepopulate)
-	reusedSlots := make(chan *Slot, config.NetworkSlotsPoolSize)
+	newSlots := make(chan *Slot, config.NetworkSlotsFreshPoolSize)
+	reusedSlots := make(chan *Slot, config.NetworkSlotsReusePoolSize)
 
 	pool := &Pool{
 		config:      config,
@@ -176,11 +176,11 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 		slot = s
 	}
 
-	err := slot.ConfigureInternet(ctx, network)
+	err := p.operations.ConfigureInternet(ctx, slot, network)
 	if err != nil {
 		// Return the slot to the pool if configuring internet fails
 		go func() {
-			if returnErr := p.Return(context.WithoutCancel(ctx), slot); returnErr != nil {
+			if returnErr := p.Return(ctx, slot); returnErr != nil {
 				logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
 			}
 		}()
@@ -200,7 +200,7 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	default:
 	}
 
-	err := slot.ResetInternet(ctx)
+	err := p.operations.ResetInternet(ctx, slot)
 	if err != nil {
 		// Cleanup the slot if resetting internet fails
 		go p.cleanup(ctx, slot)
