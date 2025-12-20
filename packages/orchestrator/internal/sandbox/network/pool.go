@@ -61,6 +61,7 @@ func NewPool(slotStorage Storage, config Config) *Pool {
 
 	pool := &Pool{
 		wp: utils.NewWarmPool[*Slot](
+			"network slot",
 			"orchestrator.network.slots_pool",
 			config.NetworkSlotsReusePoolSize,
 			config.NetworkSlotsFreshPoolSize,
@@ -87,9 +88,7 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 	err = slot.ConfigureInternet(ctx, network)
 	if err != nil {
 		// Return the slot to the pool if configuring internet fails
-		go func() {
-			p.wp.Return(context.WithoutCancel(ctx), slot)
-		}()
+		p.wp.Return(context.WithoutCancel(ctx), slot)
 
 		return nil, fmt.Errorf("error setting slot internet access: %w", err)
 	}

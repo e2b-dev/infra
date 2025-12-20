@@ -24,7 +24,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1,
 			testFactory,
@@ -56,7 +56,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1,
 			testFactory,
@@ -90,7 +90,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1,
 			testFactory,
@@ -121,7 +121,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1,
 			testFactory,
@@ -152,7 +152,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			5,
 			5,
 			testFactory,
@@ -187,7 +187,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1,
 			testFactory,
@@ -198,7 +198,6 @@ func TestWarmPool_Populate(t *testing.T) {
 		})
 
 		testFactory.EXPECT().Create(mock.Anything).RunAndReturn(makeItems)
-		testFactory.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil)
 
 		// populate asynchronously
 		ctx, cancel := context.WithCancel(t.Context())
@@ -225,7 +224,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1, // only 1 item can be created before stalling
 			testFactory,
@@ -268,7 +267,7 @@ func TestWarmPool_Populate(t *testing.T) {
 func TestWarmPool_Get(t *testing.T) {
 	t.Run("get returns an item from the fresh channel", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1, // only 1 item can be created before stalling
 			nil,
@@ -284,7 +283,7 @@ func TestWarmPool_Get(t *testing.T) {
 
 	t.Run("get returns an item from the reuse pool", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1, // only 1 item can be created before stalling
 			nil,
@@ -300,7 +299,7 @@ func TestWarmPool_Get(t *testing.T) {
 
 	t.Run("get returns an error when the pool is closed", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1, // only 1 item can be created before stalling
 			nil,
@@ -316,7 +315,7 @@ func TestWarmPool_Get(t *testing.T) {
 
 	t.Run("get returns an error when the context has been canceled", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1, // only 1 item can be created before stalling
 			nil,
@@ -335,7 +334,7 @@ func TestWarmPool_Get(t *testing.T) {
 func TestWarmPool_Return(t *testing.T) {
 	t.Run("return ends when already closed", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1, // only 1 item can be created before stalling
 			NewMockItemFactory[*testItem](t),
@@ -350,7 +349,7 @@ func TestWarmPool_Return(t *testing.T) {
 
 	t.Run("return ends in error when context already canceled", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1, // only 1 item can be created before stalling
 			NewMockItemFactory[*testItem](t),
@@ -369,7 +368,7 @@ func TestWarmPool_Return(t *testing.T) {
 		f.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil)
 
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1, // only 1 item can be created before stalling
 			f,
@@ -388,7 +387,7 @@ func TestWarmPool_Return(t *testing.T) {
 		f.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil)
 
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1, // only 1 item can be created before stalling
 			f,
@@ -408,7 +407,7 @@ func TestWarmPool_Return(t *testing.T) {
 func TestWarmPool_Close(t *testing.T) {
 	t.Run("close returns an error when the pool is already closed", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1,
 			nil,
@@ -423,7 +422,7 @@ func TestWarmPool_Close(t *testing.T) {
 
 	t.Run("close returns an error when the context has been canceled", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			1,
 			1,
 			nil,
@@ -451,7 +450,7 @@ func TestWarmPool_Close(t *testing.T) {
 			})
 
 		wp := NewWarmPool[*testItem](
-			"prefix",
+			"test", "prefix",
 			3,
 			1,
 			f,
