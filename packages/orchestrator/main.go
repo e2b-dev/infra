@@ -394,7 +394,7 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create network pool", zap.Error(err))
 	}
-	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
+	networkPool := network.NewPool(slotStorage, config.NetworkConfig)
 	startService("network pool", func() error {
 		networkPool.Populate(ctx)
 

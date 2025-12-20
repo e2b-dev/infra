@@ -3,19 +3,19 @@ package utils
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var (
-	meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
-)
+var meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
 
 var ErrClosed = errors.New("cannot read from a closed pool")
 
@@ -96,6 +96,7 @@ func (wp *WarmPool[T]) Populate(ctx context.Context) error {
 		slot, err := wp.acquisition.Create(ctx)
 		if err != nil {
 			wp.createdCounter.Add(ctx, 1, withFailureAttr())
+
 			continue
 		}
 		wp.createdCounter.Add(ctx, 1, withSuccessAttr())
@@ -111,9 +112,11 @@ func (wp *WarmPool[T]) Populate(ctx context.Context) error {
 		select {
 		case <-wp.done:
 			wp.beginDestroy(ctx, slot, "populate while closed")
+
 			return nil
 		case <-ctx.Done():
 			wp.beginDestroy(ctx, slot, "populate while context canceled")
+
 			return ctx.Err()
 		case wp.freshItems <- slot:
 		}
@@ -138,6 +141,7 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (i T, e error) {
 	// early check to bail
 	if err := wp.isClosed(ctx); err != nil {
 		wp.getCounter.Add(ctx, 1, withFailureAttr())
+
 		return i, err
 	}
 
@@ -148,8 +152,9 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (i T, e error) {
 	case <-wp.done:
 		return i, ErrClosed
 	case s := <-wp.reusableItems:
-		telemetry.ReportEvent(ctx, "reused network slot")
+		telemetry.ReportEvent(ctx, fmt.Sprintf("reused %s", wp.name))
 		source = attribute.String("pool", "used")
+
 		return s, nil
 	default:
 	}
@@ -161,12 +166,13 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (i T, e error) {
 	case <-ctx.Done():
 		return i, ctx.Err()
 	case s := <-wp.reusableItems:
-		telemetry.ReportEvent(ctx, "reused network slot")
+		telemetry.ReportEvent(ctx, fmt.Sprintf("reused %s", wp.name))
 		source = attribute.String("pool", "used")
+
 		return s, nil
 	case s := <-wp.freshItems:
 		source = attribute.String("pool", "fresh")
-		telemetry.ReportEvent(ctx, "new network slot")
+		telemetry.ReportEvent(ctx, fmt.Sprintf("new %s", wp.name))
 
 		return s, nil
 	}
@@ -180,14 +186,16 @@ func (wp *WarmPool[T]) Return(ctx context.Context, item T) {
 	wp.wg.Go(func() {
 		if err := wp.isClosed(ctx); err != nil {
 			wp.returnedCounter.Add(ctx, 1, withFailureAttr())
+
 			return
 		}
 
 		// try to push item in to reusable pool first
 		select {
 		case wp.reusableItems <- item:
-			telemetry.ReportEvent(ctx, "returned network slot")
+			telemetry.ReportEvent(ctx, fmt.Sprintf("returned %s", wp.name))
 			wp.returnedCounter.Add(ctx, 1, withSuccessAttr())
+
 			return
 		default:
 		}
@@ -195,15 +203,15 @@ func (wp *WarmPool[T]) Return(ctx context.Context, item T) {
 		// if that didn't work, keep trying to push, but listen for failures as well
 		select {
 		case wp.reusableItems <- item:
-			telemetry.ReportEvent(ctx, "returned network slot")
+			telemetry.ReportEvent(ctx, fmt.Sprintf("returned %s", wp.name))
 			wp.returnedCounter.Add(ctx, 1, withSuccessAttr())
 
 		case <-ctx.Done():
-			wp.beginDestroy(ctx, item, "return while context canceled")
+			wp.beginDestroy(ctx, item, "return failed due to canceled context")
 			wp.returnedCounter.Add(ctx, 1, withFailureAttr())
 
 		case <-wp.done:
-			wp.beginDestroy(ctx, item, "return while pool closed")
+			wp.beginDestroy(ctx, item, "return failed due to closed pool")
 			wp.returnedCounter.Add(ctx, 1, withFailureAttr())
 		}
 	})
@@ -250,6 +258,7 @@ func (wp *WarmPool[T]) destroy(ctx context.Context, item T, reason string) {
 			zap.Error(err),
 			zap.String("item", item.String()),
 		)
+
 		return
 	}
 
@@ -269,11 +278,13 @@ func (wp *WarmPool[T]) isClosed(ctx context.Context) error {
 
 func withFailureAttr(attrs ...attribute.KeyValue) metric.AddOption {
 	attrs = append(attrs, attribute.Bool("success", false))
+
 	return metric.WithAttributes(attrs...)
 }
 
 func withSuccessAttr(attrs ...attribute.KeyValue) metric.AddOption {
 	attrs = append(attrs, attribute.Bool("success", true))
+
 	return metric.WithAttributes(attrs...)
 }
 

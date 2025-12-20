@@ -32,15 +32,17 @@ func TestWarmPool_Populate(t *testing.T) {
 
 		// cancel when an item is created, so the next loop will bail
 		ctx, cancel := context.WithCancel(t.Context())
-		testFactory.EXPECT().Create(mock.Anything).RunAndReturn(func(ctx context.Context) (*testItem, error) {
+		testFactory.EXPECT().Create(mock.Anything).RunAndReturn(func(context.Context) (*testItem, error) {
 			cancel()
+
 			return item, nil
 		})
 
 		// track which items have been released
 		testFactory.EXPECT().Destroy(mock.Anything, item).
-			RunAndReturn(func(ctx context.Context, s *testItem) error {
+			RunAndReturn(func(_ context.Context, s *testItem) error {
 				released[s.Key] = struct{}{}
+
 				return nil
 			})
 		err := wp.Populate(ctx)
@@ -70,7 +72,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			err := wp.Populate(ctx)
-			require.ErrorIs(t, err, context.Canceled)
+			assert.ErrorIs(t, err, context.Canceled)
 			close(done)
 		}()
 
@@ -103,7 +105,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			err := wp.Populate(t.Context())
-			require.NoError(t, err)
+			assert.NoError(t, err)
 			close(done)
 		}()
 
@@ -135,7 +137,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			err := wp.Populate(ctx)
-			require.ErrorIs(t, err, context.Canceled)
+			assert.ErrorIs(t, err, context.Canceled)
 			close(done)
 		}()
 
@@ -161,14 +163,14 @@ func TestWarmPool_Populate(t *testing.T) {
 		testFactory.EXPECT().Create(mock.Anything).RunAndReturn(makeItems)
 		testFactory.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil)
 
-		assert.Len(t, wp.freshItems, 0, "fresh channel should be empty")
+		assert.Empty(t, wp.freshItems, "fresh channel should be empty")
 
 		// populate asynchronously
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})
 		go func() {
 			err := wp.Populate(ctx)
-			require.ErrorIs(t, err, context.Canceled)
+			assert.ErrorIs(t, err, context.Canceled)
 			close(done)
 		}()
 
@@ -203,7 +205,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			err := wp.Populate(ctx)
-			require.ErrorIs(t, err, context.Canceled)
+			assert.ErrorIs(t, err, context.Canceled)
 			close(done)
 		}()
 
@@ -239,7 +241,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			err := wp.Populate(ctx)
-			require.ErrorIs(t, err, context.Canceled)
+			assert.ErrorIs(t, err, context.Canceled)
 			close(done)
 		}()
 
@@ -342,8 +344,8 @@ func TestWarmPool_Return(t *testing.T) {
 		err := wp.Close(t.Context())
 		require.NoError(t, err)
 
-		wp.Return(t.Context(), new(testItem))
-		assert.Len(t, wp.reusableItems, 0) // ensure the item did not make it to the reuse pool
+		wp.Return(t.Context(), &testItem{})
+		assert.Empty(t, wp.reusableItems) // ensure the item did not make it to the reuse pool
 	})
 
 	t.Run("return ends in error when context already canceled", func(t *testing.T) {
@@ -358,8 +360,8 @@ func TestWarmPool_Return(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		wp.Return(ctx, new(testItem))
-		assert.Len(t, wp.reusableItems, 0) // ensure the item did not make it to the reuse pool
+		wp.Return(ctx, &testItem{})
+		assert.Empty(t, wp.reusableItems) // ensure the item did not make it to the reuse pool
 	})
 
 	t.Run("return returns an item to the reuse pool", func(t *testing.T) {
@@ -374,7 +376,7 @@ func TestWarmPool_Return(t *testing.T) {
 		)
 		t.Cleanup(closePool(t, wp))
 
-		wp.Return(t.Context(), new(testItem))
+		wp.Return(t.Context(), &testItem{})
 
 		wp.wg.Wait()
 
@@ -394,10 +396,10 @@ func TestWarmPool_Return(t *testing.T) {
 		t.Cleanup(closePool(t, wp))
 
 		// fill up the channel
-		wp.reusableItems <- new(testItem)
+		wp.reusableItems <- &testItem{}
 
 		// try to return an item
-		wp.Return(t.Context(), new(testItem))
+		wp.Return(t.Context(), &testItem{})
 
 		assert.Len(t, wp.reusableItems, 1) // ensure the item did not make it to the reuse pool
 	})
@@ -439,11 +441,12 @@ func TestWarmPool_Close(t *testing.T) {
 
 		f := NewMockItemFactory[*testItem](t)
 		f.EXPECT().Destroy(mock.Anything, mock.Anything).
-			RunAndReturn(func(ctx context.Context, s *testItem) error {
+			RunAndReturn(func(_ context.Context, s *testItem) error {
 				destroyed[s.Key] = struct{}{}
 				if s.Key == "test-2" {
 					return errors.New("failed to destroy")
 				}
+
 				return nil
 			})
 
@@ -465,7 +468,7 @@ func TestWarmPool_Close(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Len(t, destroyed, 3)
-		assert.Len(t, wp.reusableItems, 0)
+		assert.Empty(t, wp.reusableItems)
 	})
 }
 
@@ -483,22 +486,26 @@ func closePool(t *testing.T, wp *WarmPool[*testItem]) func() {
 
 func newItemFactory(count int) func(context.Context) (*testItem, error) {
 	current := 0
-	return func(ctx context.Context) (*testItem, error) {
+
+	return func(_ context.Context) (*testItem, error) {
 		current++
 		if current > count {
 			return nil, fmt.Errorf("no more items")
 		}
+
 		return &testItem{Key: fmt.Sprintf("test-%d", current)}, nil
 	}
 }
 
 func newItemFactoryFn(shouldSucceed func(id int) bool) func(context.Context) (*testItem, error) {
 	current := 0
-	return func(ctx context.Context) (*testItem, error) {
+
+	return func(_ context.Context) (*testItem, error) {
 		current++
 		if !shouldSucceed(current) {
 			return nil, fmt.Errorf("no more items")
 		}
+
 		return &testItem{Key: fmt.Sprintf("test-%d", current)}, nil
 	}
 }
