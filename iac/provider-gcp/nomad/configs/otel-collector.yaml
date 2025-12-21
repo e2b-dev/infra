@@ -161,42 +161,37 @@ receivers:
       #    system.uptime:
       #      enabled: false
 
-  # Separate receiver for per-process metrics that will be aggregated
-  hostmetrics/process:
-    root_path: /hostfs
-    collection_interval: 30s
-    scrapers:
-      process:
-        mute_process_all_errors: true
-        metrics:
-          process.cpu.time:
-            enabled: false
-          process.disk.io:
-            enabled: false
-          process.memory.usage:
-            enabled: false
-          process.memory.virtual:
-            enabled: false
-          process.context_switches:
-            enabled: true
-          process.cpu.utilization:
-            enabled: false
-          process.disk.operations:
-            enabled: false
-          process.handles:
-            enabled: false
-          process.memory.utilization:
-            enabled: false
-          process.open_file_descriptors:
-            enabled: true
-          process.paging.faults:
-            enabled: false
-          process.signals_pending:
-            enabled: false
-          process.threads:
-            enabled: true
-          process.uptime:
-            enabled: false
+      # process:
+      #   mute_process_all_errors: true
+      #   metrics:
+      #     process.cpu.time:
+      #       enabled: false
+      #     process.disk.io:
+      #       enabled: false
+      #     process.memory.usage:
+      #       enabled: false
+      #     process.memory.virtual:
+      #       enabled: false
+      #     process.context_switches:
+      #       enabled: true
+      #     process.cpu.utilization:
+      #       enabled: false
+      #     process.disk.operations:
+      #       enabled: false
+      #     process.handles:
+      #       enabled: false
+      #     process.memory.utilization:
+      #       enabled: false
+      #     process.open_file_descriptors:
+      #       enabled: false
+      #     process.paging.faults:
+      #       enabled: false
+      #     process.signals_pending:
+      #       enabled: false
+      #     process.threads:
+      #       enabled: false
+      #     process.uptime:
+      #       enabled: false
 
 processors:
   batch:
@@ -208,13 +203,6 @@ processors:
 
   attributes/host_metrics_node:
     actions:
-      - key: node.id
-        value: $${NODE_ID}
-        action: insert
-
-  # Add node.id as a RESOURCE attribute (for groupbyattrs to work)
-  resource/host_metrics_node:
-    attributes:
       - key: node.id
         value: $${NODE_ID}
         action: insert
@@ -264,72 +252,6 @@ processors:
               - node.id
               - state
             aggregation_type: sum
-
-  metricstransform/aggregate_process_metrics:
-    transforms:
-      - include: "process.open_file_descriptors"
-        match_type: strict
-        action: update
-        new_name: "system.processes.open_file_descriptors"
-        operations:
-          - action: aggregate_labels
-            label_set:
-              - node.id
-            aggregation_type: sum
-      - include: "process.context_switches"
-        match_type: strict
-        action: update
-        new_name: "system.processes.context_switches"
-        operations:
-          - action: aggregate_labels
-            label_set:
-              - node.id
-            aggregation_type: sum
-      - include: "process.threads"
-        match_type: strict
-        action: update
-        new_name: "system.processes.threads"
-        operations:
-          - action: aggregate_labels
-            label_set:
-              - node.id
-            aggregation_type: sum
-
-  groupbyattrs/process_metrics:
-    keys:
-      - node.id
-
-  # Delete process-specific resource attributes before grouping
-  # Without this, groupbyattrs won't merge resources properly
-  transform/delete_process_resource_attrs:
-    metric_statements:
-      - context: resource
-        statements:
-          - delete_key(attributes, "process.pid")
-          - delete_key(attributes, "process.parent_pid")
-          - delete_key(attributes, "process.executable.name")
-          - delete_key(attributes, "process.executable.path")
-          - delete_key(attributes, "process.command")
-          - delete_key(attributes, "process.command_line")
-          - delete_key(attributes, "process.owner")
-
-  # Normalize timestamps to allow aggregation across different processes
-  # Without this, each process has unique timestamps making them distinct time series
-  # Set all timestamps to 0 so they can be aggregated
-  transform/normalize_process_timestamps:
-    metric_statements:
-      - context: datapoint
-        statements:
-          - set(start_time_unix_nano, 0)
-          - set(time_unix_nano, 0)
-
-  # Set real timestamps after aggregation so backends accept the metrics
-  transform/set_process_timestamps:
-    metric_statements:
-      - context: datapoint
-        statements:
-          - set(start_time_unix_nano, UnixNano(Now()))
-          - set(time_unix_nano, UnixNano(Now()))
 
   resourcedetection:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
@@ -494,23 +416,6 @@ service:
       processors:
         - attributes/host_metrics_node
         - metricstransform/single_cpu
-        - resourcedetection
-        - transform/set-name
-        - batch
-      exporters:
-        - otlphttp/grafana_cloud
-    # Dedicated pipeline for per-process metrics aggregated by node
-    metrics/host_process:
-      receivers:
-        - hostmetrics/process
-      processors:
-        - resource/host_metrics_node
-        - transform/delete_process_resource_attrs
-        - groupbyattrs/process_metrics
-        - attributes/host_metrics_node
-        - transform/normalize_process_timestamps
-        - metricstransform/aggregate_process_metrics
-        - transform/set_process_timestamps
         - resourcedetection
         - transform/set-name
         - batch

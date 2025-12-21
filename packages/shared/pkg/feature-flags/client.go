@@ -2,7 +2,6 @@ package feature_flags
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
@@ -68,17 +67,21 @@ func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcont
 	return enabled
 }
 
-func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) (ldvalue.Value, error) {
+func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) ldvalue.Value {
 	if c.ld == nil {
-		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
+		logger.L().Warn(ctx, "LaunchDarkly client is not initialized, returning fallback")
+
+		return flag.fallback
 	}
 
 	v, err := c.ld.JSONVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
 	if err != nil {
-		return v, fmt.Errorf("error evaluating %s: %w", flag, err)
+		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.name))
+
+		return v
 	}
 
-	return v, nil
+	return v
 }
 
 func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) int {

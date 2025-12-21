@@ -40,7 +40,10 @@ func (m *NoopMemory) Start(context.Context, string) error {
 }
 
 func (m *NoopMemory) Stop() error {
-	return m.exit.SetSuccess()
+	m.exit.SetSuccess()
+
+	// This should be idempotent, so no need to return an error if it's already set.
+	return nil
 }
 
 func (m *NoopMemory) Ready() chan struct{} {
