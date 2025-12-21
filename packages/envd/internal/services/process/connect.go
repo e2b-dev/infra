@@ -27,10 +27,10 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 
 	exitChan := make(chan struct{})
 
-	data, dataCancel := proc.DataEvent.Fork()
+	data, dataCancel := proc.DataEvent.Fork(req.Msg.GetReplay())
 	defer dataCancel()
 
-	end, endCancel := proc.EndEvent.Fork()
+	end, endCancel := proc.EndEvent.Fork(false)
 	defer endCancel()
 
 	streamErr := stream.Send(&rpc.ConnectResponse{
@@ -72,10 +72,12 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 				cancel(ctx.Err())
 
 				return
-			case event, ok := <-data:
+			case item, ok := <-data:
 				if !ok {
 					break dataLoop
 				}
+
+				event, eventHandled := item.ValueWithAck()
 
 				streamErr := stream.Send(&rpc.ConnectResponse{
 					Event: &rpc.ProcessEvent{
@@ -85,8 +87,12 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 				if streamErr != nil {
 					cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending data event: %w", streamErr)))
 
+					eventHandled(false)
+
 					return
 				}
+
+				eventHandled(true)
 
 				resetKeepalive()
 			}
@@ -97,12 +103,14 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 			cancel(ctx.Err())
 
 			return
-		case event, ok := <-end:
+		case item, ok := <-end:
 			if !ok {
 				cancel(connect.NewError(connect.CodeUnknown, errors.New("end event channel closed before sending end event")))
 
 				return
 			}
+
+			event := item.Value()
 
 			streamErr := stream.Send(&rpc.ConnectResponse{
 				Event: &rpc.ProcessEvent{

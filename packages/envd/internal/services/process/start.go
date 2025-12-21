@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler/multiplex"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
 
@@ -97,16 +98,16 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 
 	exitChan := make(chan struct{})
 
-	startMultiplexer := handler.NewMultiplexedChannel[rpc.ProcessEvent_Start](0)
+	startMultiplexer := multiplex.NewChannel[rpc.ProcessEvent_Start](0, false)
 	defer close(startMultiplexer.Source)
 
-	start, startCancel := startMultiplexer.Fork()
+	start, startCancel := startMultiplexer.Fork(false)
 	defer startCancel()
 
-	data, dataCancel := proc.DataEvent.Fork()
+	data, dataCancel := proc.DataEvent.Fork(false)
 	defer dataCancel()
 
-	end, endCancel := proc.EndEvent.Fork()
+	end, endCancel := proc.EndEvent.Fork(false)
 	defer endCancel()
 
 	go func() {
@@ -117,12 +118,14 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 			cancel(ctx.Err())
 
 			return
-		case event, ok := <-start:
+		case item, ok := <-start:
 			if !ok {
 				cancel(connect.NewError(connect.CodeUnknown, errors.New("start event channel closed before sending start event")))
 
 				return
 			}
+
+			event := item.Value()
 
 			streamErr := stream.Send(&rpc.StartResponse{
 				Event: &rpc.ProcessEvent{
@@ -134,6 +137,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 
 				return
 			}
+
 		}
 
 		keepaliveTicker, resetKeepalive := permissions.GetKeepAliveTicker(req)
@@ -159,10 +163,12 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 				cancel(ctx.Err())
 
 				return
-			case event, ok := <-data:
+			case item, ok := <-data:
 				if !ok {
 					break dataLoop
 				}
+
+				event, eventHandled := item.ValueWithAck()
 
 				streamErr := stream.Send(&rpc.StartResponse{
 					Event: &rpc.ProcessEvent{
@@ -172,8 +178,12 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 				if streamErr != nil {
 					cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending data event: %w", streamErr)))
 
+					eventHandled(false)
+
 					return
 				}
+
+				eventHandled(true)
 
 				resetKeepalive()
 			}
@@ -184,12 +194,14 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 			cancel(ctx.Err())
 
 			return
-		case event, ok := <-end:
+		case item, ok := <-end:
 			if !ok {
 				cancel(connect.NewError(connect.CodeUnknown, errors.New("end event channel closed before sending end event")))
 
 				return
 			}
+
+			event := item.Value()
 
 			streamErr := stream.Send(&rpc.StartResponse{
 				Event: &rpc.ProcessEvent{
@@ -211,11 +223,11 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 
 	s.processes.Store(pid, proc)
 
-	start <- rpc.ProcessEvent_Start{
+	startMultiplexer.Send(rpc.ProcessEvent_Start{
 		Start: &rpc.ProcessEvent_StartEvent{
 			Pid: pid,
 		},
-	}
+	})
 
 	go func() {
 		defer s.processes.Delete(pid)
