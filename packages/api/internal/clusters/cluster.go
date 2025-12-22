@@ -6,21 +6,32 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/clusters")
+
+const (
+	instancesSyncInterval = 5 * time.Second
+	instancesSyncTimeout  = 5 * time.Second
+)
 
 type Cluster struct {
 	ID            uuid.UUID
@@ -43,7 +54,7 @@ var (
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
 
-func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, endpointTLS bool, secret string, clusterID uuid.UUID, sandboxDomain *string) (*Cluster, error) {
+func newCluster(ctx context.Context, tel *telemetry.Client, endpoint string, endpointTLS bool, secret string, clusterID uuid.UUID, sandboxDomain *string) (*Cluster, error) {
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
@@ -174,4 +185,35 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 
 func (c *Cluster) GetResources() ClusterResource {
 	return c.resources
+}
+
+func (c *Cluster) startSync(ctx context.Context) {
+	c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
+}
+
+func (c *Cluster) syncInstance(ctx context.Context, instance *Instance) {
+	grpc := c.GetGRPC(instance.InstanceID)
+
+	// we are taking service info directly from the instance to avoid timing delays in service discovery
+	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
+	info, err := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
+
+	err = utils.UnwrapGRPCError(err)
+	if err != nil {
+		logger.L().Error(ctx, "Failed to get instance info",
+			zap.Error(err),
+			logger.WithClusterID(c.ID),
+			logger.WithNodeID(instance.NodeID),
+			logger.WithServiceInstanceID(instance.InstanceID),
+		)
+
+		return
+	}
+
+	instance.mutex.Lock()
+	defer instance.mutex.Unlock()
+
+	instance.status = info.GetServiceStatus()
+	instance.roles = info.GetServiceRoles()
+	instance.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
 }

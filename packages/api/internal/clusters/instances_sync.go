@@ -5,99 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"sync"
-	"time"
 
-	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/types/known/emptypb"
-
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
-
-type Instance struct {
-	NodeID     string
-	InstanceID string
-
-	ServiceVersion       string
-	ServiceVersionCommit string
-
-	roles       []infogrpc.ServiceInfoRole
-	machineInfo machineinfo.MachineInfo
-
-	status infogrpc.ServiceInfoStatus
-	mutex  sync.RWMutex
-}
-
-const (
-	instancesSyncInterval = 5 * time.Second
-	instancesSyncTimeout  = 5 * time.Second
-)
-
-func (c *Cluster) startSync(ctx context.Context) {
-	c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
-}
-
-func (c *Cluster) syncInstance(ctx context.Context, instance *Instance) {
-	grpc := c.GetGRPC(instance.InstanceID)
-
-	// we are taking service info directly from the instance to avoid timing delays in service discovery
-	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
-	info, err := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
-
-	err = utils.UnwrapGRPCError(err)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to get instance info",
-			zap.Error(err),
-			logger.WithClusterID(c.ID),
-			logger.WithNodeID(instance.NodeID),
-			logger.WithServiceInstanceID(instance.InstanceID),
-		)
-
-		return
-	}
-
-	instance.mutex.Lock()
-	defer instance.mutex.Unlock()
-
-	instance.status = info.GetServiceStatus()
-	instance.roles = info.GetServiceRoles()
-	instance.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
-}
-
-func (n *Instance) GetStatus() infogrpc.ServiceInfoStatus {
-	n.mutex.RLock()
-	defer n.mutex.RUnlock()
-
-	return n.status
-}
-
-func (n *Instance) GetMachineInfo() machineinfo.MachineInfo {
-	n.mutex.RLock()
-	defer n.mutex.RUnlock()
-
-	return n.machineInfo
-}
-
-func (n *Instance) hasRole(r infogrpc.ServiceInfoRole) bool {
-	n.mutex.RLock()
-	defer n.mutex.RUnlock()
-
-	return slices.Contains(n.roles, r)
-}
-
-func (n *Instance) IsBuilder() bool {
-	return n.hasRole(infogrpc.ServiceInfoRole_TemplateBuilder)
-}
-
-func (n *Instance) IsOrchestrator() bool {
-	return n.hasRole(infogrpc.ServiceInfoRole_Orchestrator)
-}
 
 // SynchronizationStore defines methods for synchronizing cluster instances
 type clusterSynchronizationStore struct {
