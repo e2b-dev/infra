@@ -118,17 +118,17 @@ func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered 
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	// Make sure slow/failed connections don't block the whole sync loop
-	ctx, cancel := context.WithTimeout(ctx, nodeConnectTimeout)
-	defer cancel()
-
 	for _, n := range discovered {
 		// If the node is not in the list, connect to it
 		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
 			wg.Go(func() {
-				err := o.connectToNode(ctx, n)
+				// Make sure slow/failed connections don't block the whole sync loop
+				connectCtx, connectCancel := context.WithTimeout(ctx, nodeConnectTimeout)
+				defer connectCancel()
+
+				err := o.connectToNode(connectCtx, n)
 				if err != nil {
-					logger.L().Error(ctx, "Error connecting to node", zap.Error(err))
+					logger.L().Error(connectCtx, "Error connecting to node", zap.Error(err))
 				}
 			})
 		}
@@ -142,10 +142,6 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	ctx, span := tracer.Start(ctx, "keep-in-sync-connect-clustered-nodes")
 	defer span.End()
 
-	// Make sure slow/failed connections don't block the whole sync loop
-	ctx, cancel := context.WithTimeout(ctx, nodeConnectTimeout)
-	defer cancel()
-
 	// Connect clustered nodes that are not in the list, yet
 	// We need to iterate over all clusters and their nodes
 	for _, cluster := range o.clusters.GetClusters() {
@@ -153,7 +149,11 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 			// If the node is not in the list, connect to it
 			if o.GetNode(cluster.ID, n.NodeID) == nil {
 				wg.Go(func() {
-					o.connectToClusterNode(ctx, cluster, n)
+					// Make sure slow/failed connections don't block the whole sync loop
+					connectCtx, connectCancel := context.WithTimeout(ctx, nodeConnectTimeout)
+					defer connectCancel()
+
+					o.connectToClusterNode(connectCtx, cluster, n)
 				})
 			}
 		}
