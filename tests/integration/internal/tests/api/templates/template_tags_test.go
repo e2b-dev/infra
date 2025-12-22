@@ -450,3 +450,45 @@ func TestTemplateBuildWithTagsAndSandboxCreation(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, sbxResp.StatusCode())
 	require.NotNil(t, sbxResp.JSON201)
 }
+
+func TestTemplateBuildWithTagInAlias(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
+	defer cancel()
+
+	c := setup.GetAPIClient()
+
+	// Build a template with tag in alias (e.g., "my-alias:my-tag")
+	// Without providing explicit tags in the request body
+	// The tag from the alias should be used automatically
+	template := testutils.BuildTemplate(t, testutils.TemplateBuildOptions{
+		Alias: "test-alias-with-tag:v2.0",
+		// Tags: intentionally not provided - should be inferred from alias
+		BuildData: api.TemplateBuildStartV2{
+			FromImage: utils.ToPtr("ubuntu:22.04"),
+		},
+		ReqEditors: []api.RequestEditorFn{setup.WithAPIKey()},
+	})
+
+	// Create sandbox using the tag that was embedded in the alias
+	sbxTimeout := int32(60)
+	sbxResp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
+		TemplateID: template.TemplateID + ":v2.0",
+		Timeout:    &sbxTimeout,
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("Response: %s", string(sbxResp.Body))
+		}
+
+		if sbxResp.JSON201 != nil {
+			testutils.TeardownSandbox(t, c, sbxResp.JSON201.SandboxID)
+		}
+	})
+
+	assert.Equal(t, http.StatusCreated, sbxResp.StatusCode())
+	require.NotNil(t, sbxResp.JSON201)
+}

@@ -49,7 +49,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	alias, _, err := id.ParseTemplateIDOrAliasWithTag(body.Alias)
+	alias, maybeTagFromAlias, err := id.ParseTemplateIDOrAliasWithTag(body.Alias)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid alias", err)
@@ -86,6 +86,11 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 	tags := utils.DerefOrDefault(body.Tags, nil)
+
+	// If no tags are provided, use the tag from the alias (if it exists)
+	if len(tags) == 0 && maybeTagFromAlias != nil {
+		tags = []string{*maybeTagFromAlias}
+	}
 
 	buildReq := template.RegisterBuildData{
 		ClusterID:          apiutils.WithClusterFallback(team.ClusterID),
