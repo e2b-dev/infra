@@ -94,6 +94,7 @@ func getBuildAssignments(t *testing.T, ctx context.Context, db *client.Client, e
 				}
 				assignments = append(assignments, a)
 			}
+
 			return nil
 		},
 		envID,
@@ -113,8 +114,10 @@ func getBuildAssignmentByBuildID(t *testing.T, ctx context.Context, db *client.C
 		func(rows pgx.Rows) error {
 			if rows.Next() {
 				assignment = &BuildAssignment{}
+
 				return rows.Scan(&assignment.ID, &assignment.EnvID, &assignment.BuildID, &assignment.Tag, &assignment.Source)
 			}
+
 			return nil
 		},
 		buildID,
@@ -135,6 +138,7 @@ func getEnvByID(t *testing.T, ctx context.Context, db *client.Client, envID stri
 			if rows.Next() {
 				return rows.Scan(&exists)
 			}
+
 			return nil
 		},
 		envID,
@@ -155,6 +159,7 @@ func getEnvBuildByID(t *testing.T, ctx context.Context, db *client.Client, build
 			if rows.Next() {
 				return rows.Scan(&exists)
 			}
+
 			return nil
 		},
 		buildID,

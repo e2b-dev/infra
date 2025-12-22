@@ -449,4 +449,3 @@ func TestTemplateBuildWithTagsAndSandboxCreation(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, sbxResp.StatusCode())
 	require.NotNil(t, sbxResp.JSON201)
 }
-
