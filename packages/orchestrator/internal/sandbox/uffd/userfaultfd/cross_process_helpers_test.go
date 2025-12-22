@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"testing"
 
@@ -53,10 +52,12 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
-	err = register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
+	err = register(Fd(uffdFd), memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
 	require.NoError(t, err)
 
-	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
+	// We don't use t.Context() here, because we want to be able to kill the process manually and listen to the correct exit code,
+	// while also handling the cleanup of the uffd. The t.Context seems to trigger before the test cleanup is started.
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestHelperServingProcess")
 	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
@@ -81,11 +82,18 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		assert.NoError(t, closeErr)
 	}()
 
-	offsetsReader, offsetsWriter, err := os.Pipe()
+	accessedOffsetsReader, accessedOffsetsWriter, err := os.Pipe()
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		offsetsReader.Close()
+		accessedOffsetsReader.Close()
+	})
+
+	dirtyOffsetsReader, dirtyOffsetsWriter, err := os.Pipe()
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		dirtyOffsetsReader.Close()
 	})
 
 	readyReader, readyWriter, err := os.Pipe()
@@ -106,8 +114,9 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	cmd.ExtraFiles = []*os.File{
 		uffdFile,
 		contentReader,
-		offsetsWriter,
+		accessedOffsetsWriter,
 		readyWriter,
+		dirtyOffsetsWriter,
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -116,36 +125,59 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	require.NoError(t, err)
 
 	contentReader.Close()
-	offsetsWriter.Close()
+	accessedOffsetsWriter.Close()
 	readyWriter.Close()
 	uffdFile.Close()
+	dirtyOffsetsWriter.Close()
+
+	go func() {
+		waitErr := cmd.Wait()
+		assert.NoError(t, waitErr)
+
+		assert.NotEqual(t, -1, cmd.ProcessState.ExitCode(), "process was not terminated gracefully")
+		assert.NotEqual(t, 2, cmd.ProcessState.ExitCode(), "fd exit prematurely terminated the serve loop")
+		assert.NotEqual(t, 1, cmd.ProcessState.ExitCode(), "process exited with unexpected exit code")
+
+		assert.Equal(t, 0, cmd.ProcessState.ExitCode())
+	}()
 
 	t.Cleanup(func() {
-		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
+		// We are using SIGHUP to actually get exit code, not -1.
+		signalErr := cmd.Process.Signal(syscall.SIGTERM)
 		assert.NoError(t, signalErr)
-
-		waitErr := cmd.Wait()
-		// It can be either nil, an ExitError, a context.Canceled error, or "signal: killed"
-		assert.True(t,
-			(waitErr != nil && func(err error) bool {
-				var exitErr *exec.ExitError
-
-				return errors.As(err, &exitErr)
-			}(waitErr)) ||
-				errors.Is(waitErr, context.Canceled) ||
-				(waitErr != nil && strings.Contains(waitErr.Error(), "signal: killed")) ||
-				waitErr == nil,
-			"unexpected error: %v", waitErr,
-		)
 	})
 
-	offsetsOnce := func() ([]uint, error) {
+	accessedOffsetsOnce := func() ([]uint, error) {
 		err := cmd.Process.Signal(syscall.SIGUSR2)
 		if err != nil {
 			return nil, err
 		}
 
-		offsetsBytes, err := io.ReadAll(offsetsReader)
+		offsetsBytes, err := io.ReadAll(accessedOffsetsReader)
+		if err != nil {
+			return nil, err
+		}
+
+		var offsetList []uint
+
+		if len(offsetsBytes)%8 != 0 {
+			return nil, fmt.Errorf("invalid offsets bytes length: %d", len(offsetsBytes))
+		}
+
+		for i := 0; i < len(offsetsBytes); i += 8 {
+			offsetList = append(offsetList, uint(binary.LittleEndian.Uint64(offsetsBytes[i:i+8])))
+		}
+
+		return offsetList, nil
+	}
+
+	dirtyOffsetsOnce := func() ([]uint, error) {
+		err := cmd.Process.Signal(syscall.SIGUSR1)
+		if err != nil {
+			return nil, err
+		}
+
+		offsetsBytes, err := io.ReadAll(dirtyOffsetsReader)
 		if err != nil {
 			return nil, err
 		}
@@ -169,23 +201,38 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	case <-readySignal:
 	}
 
+	mapping := memory.NewMapping([]memory.Region{
+		{
+			BaseHostVirtAddr: memoryStart,
+			Size:             uintptr(size),
+			Offset:           0,
+			PageSize:         uintptr(tt.pagesize),
+		},
+	})
+
 	return &testHandler{
-		memoryArea:  &memoryArea,
-		pagesize:    tt.pagesize,
-		data:        data,
-		offsetsOnce: offsetsOnce,
+		memoryArea:          &memoryArea,
+		pagesize:            tt.pagesize,
+		data:                data,
+		accessedOffsetsOnce: accessedOffsetsOnce,
+		mapping:             mapping,
+		dirtyOffsetsOnce:    dirtyOffsetsOnce,
 	}, nil
 }
 
-// Secondary process, orchestrator in our case
+// Secondary process, orchestrator in our case.
 func TestHelperServingProcess(t *testing.T) {
 	if os.Getenv("GO_TEST_HELPER_PROCESS") != "1" {
 		t.Skip("this is a helper process, skipping direct execution")
 	}
 
 	err := crossProcessServe()
+	if errors.Is(err, fdexit.ErrFdExit) {
+		os.Exit(2)
+	}
+
 	if err != nil {
-		fmt.Println("exit serving process", err)
+		fmt.Fprintf(os.Stderr, "error serving: %v", err)
 		os.Exit(1)
 	}
 
@@ -240,29 +287,61 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit creating logger: %w", err)
 	}
 
-	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, l)
+	uffd, err := NewUserfaultfdFromFd(Fd(uffdFd), data, m, l)
 	if err != nil {
 		return fmt.Errorf("exit creating uffd: %w", err)
 	}
 
-	offsetsFile := os.NewFile(uintptr(5), "offsets")
+	accessedOffsetsFile := os.NewFile(uintptr(5), "accessed-offsets")
 
-	offsetsSignal := make(chan os.Signal, 1)
-	signal.Notify(offsetsSignal, syscall.SIGUSR2)
-	defer signal.Stop(offsetsSignal)
+	accessedOffsestsSignal := make(chan os.Signal, 1)
+	signal.Notify(accessedOffsestsSignal, syscall.SIGUSR2)
+	defer signal.Stop(accessedOffsestsSignal)
 
 	go func() {
-		defer offsetsFile.Close()
+		defer accessedOffsetsFile.Close()
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-offsetsSignal:
-				for offset := range uffd.Dirty().Offsets() {
-					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
+			case <-accessedOffsestsSignal:
+				for offset := range accessed(uffd).Offsets() {
+					writeErr := binary.Write(accessedOffsetsFile, binary.LittleEndian, uint64(offset))
 					if writeErr != nil {
-						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
+						msg := fmt.Errorf("error writing accessed offsets to file: %w", writeErr)
+
+						fmt.Fprint(os.Stderr, msg.Error())
+
+						cancel(msg)
+
+						return
+					}
+				}
+
+				return
+			}
+		}
+	}()
+
+	dirtyOffsetsFile := os.NewFile(uintptr(7), "dirty-offsets")
+
+	dirtyOffsetsSignal := make(chan os.Signal, 1)
+	signal.Notify(dirtyOffsetsSignal, syscall.SIGUSR1)
+	defer signal.Stop(dirtyOffsetsSignal)
+
+	go func() {
+		defer dirtyOffsetsFile.Close()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-dirtyOffsetsSignal:
+				for offset := range uffd.Dirty().Offsets() {
+					writeErr := binary.Write(dirtyOffsetsFile, binary.LittleEndian, uint64(offset))
+					if writeErr != nil {
+						msg := fmt.Errorf("error writing dirty offsets to file: %w", writeErr)
 
 						fmt.Fprint(os.Stderr, msg.Error())
 
@@ -289,6 +368,14 @@ func crossProcessServe() error {
 		}()
 
 		serverErr := uffd.Serve(ctx, fdExit)
+		if errors.Is(serverErr, fdexit.ErrFdExit) {
+			err := fmt.Errorf("serving finished via fd exit: %w", serverErr)
+
+			cancel(err)
+
+			return
+		}
+
 		if serverErr != nil {
 			msg := fmt.Errorf("error serving: %w", serverErr)
 
@@ -298,6 +385,8 @@ func crossProcessServe() error {
 
 			return
 		}
+
+		fmt.Fprint(os.Stderr, "serving finished")
 	}()
 
 	cleanup := func() {
@@ -318,7 +407,7 @@ func crossProcessServe() error {
 	defer cleanup()
 
 	exitSignal := make(chan os.Signal, 1)
-	signal.Notify(exitSignal, syscall.SIGUSR1)
+	signal.Notify(exitSignal, syscall.SIGTERM)
 	defer signal.Stop(exitSignal)
 
 	readyFile := os.NewFile(uintptr(6), "ready")
@@ -330,7 +419,7 @@ func crossProcessServe() error {
 
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("context done: %w: %w", ctx.Err(), context.Cause(ctx))
+		return context.Cause(ctx)
 	case <-exitSignal:
 		return nil
 	}

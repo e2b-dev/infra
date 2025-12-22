@@ -63,6 +63,33 @@ func TestMissing(t *testing.T) {
 			},
 		},
 		{
+			name:          "standard 4k page, reads, varying offsets",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 4 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 5 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 2 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.PageSize,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
 			name:          "hugepage, operation at start",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
@@ -110,6 +137,33 @@ func TestMissing(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:          "hugepage, reads, varying offsets",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 4 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 5 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 2 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -120,15 +174,13 @@ func TestMissing(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, operation := range tt.operations {
-				if operation.mode == operationModeRead {
-					err := h.executeRead(t.Context(), operation)
-					require.NoError(t, err, "for operation %+v", operation)
-				}
+				err := h.executeOperation(t.Context(), operation)
+				assert.NoError(t, err, "for operation %+v", operation) //nolint:testifylint
 			}
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
 
-			accessedOffsets, err := h.offsetsOnce()
+			accessedOffsets, err := h.accessedOffsetsOnce()
 			require.NoError(t, err)
 
 			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
@@ -158,7 +210,7 @@ func TestParallelMissing(t *testing.T) {
 
 	for range parallelOperations {
 		verr.Go(func() error {
-			return h.executeRead(t.Context(), readOp)
+			return h.executeOperation(t.Context(), readOp)
 		})
 	}
 
@@ -167,7 +219,7 @@ func TestParallelMissing(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{readOp}, operationModeRead)
 
-	accessedOffsets, err := h.offsetsOnce()
+	accessedOffsets, err := h.accessedOffsetsOnce()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
@@ -191,14 +243,14 @@ func TestParallelMissingWithPrefault(t *testing.T) {
 		mode:   operationModeRead,
 	}
 
-	err = h.executeRead(t.Context(), readOp)
+	err = h.executeOperation(t.Context(), readOp)
 	require.NoError(t, err)
 
 	var verr errgroup.Group
 
 	for range parallelOperations {
 		verr.Go(func() error {
-			return h.executeRead(t.Context(), readOp)
+			return h.executeOperation(t.Context(), readOp)
 		})
 	}
 
@@ -207,7 +259,7 @@ func TestParallelMissingWithPrefault(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{readOp}, operationModeRead)
 
-	accessedOffsets, err := h.offsetsOnce()
+	accessedOffsets, err := h.accessedOffsetsOnce()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
@@ -232,13 +284,13 @@ func TestSerialMissing(t *testing.T) {
 	}
 
 	for range serialOperations {
-		err := h.executeRead(t.Context(), readOp)
+		err := h.executeOperation(t.Context(), readOp)
 		require.NoError(t, err)
 	}
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{readOp}, operationModeRead)
 
-	accessedOffsets, err := h.offsetsOnce()
+	accessedOffsets, err := h.accessedOffsetsOnce()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")

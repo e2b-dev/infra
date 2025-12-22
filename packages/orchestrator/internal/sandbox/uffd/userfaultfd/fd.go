@@ -32,12 +32,19 @@ const (
 	UFFD_EVENT_PAGEFAULT = C.UFFD_EVENT_PAGEFAULT
 
 	UFFDIO_REGISTER_MODE_MISSING = C.UFFDIO_REGISTER_MODE_MISSING
+	UFFDIO_REGISTER_MODE_WP      = C.UFFDIO_REGISTER_MODE_WP
 
-	UFFDIO_API      = C.UFFDIO_API
-	UFFDIO_REGISTER = C.UFFDIO_REGISTER
-	UFFDIO_COPY     = C.UFFDIO_COPY
+	UFFDIO_WRITEPROTECT_MODE_WP = C.UFFDIO_WRITEPROTECT_MODE_WP
+	UFFDIO_COPY_MODE_WP         = C.UFFDIO_COPY_MODE_WP
+
+	UFFDIO_API          = C.UFFDIO_API
+	UFFDIO_REGISTER     = C.UFFDIO_REGISTER
+	UFFDIO_UNREGISTER   = C.UFFDIO_UNREGISTER
+	UFFDIO_COPY         = C.UFFDIO_COPY
+	UFFDIO_WRITEPROTECT = C.UFFDIO_WRITEPROTECT
 
 	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
+	UFFD_PAGEFAULT_FLAG_WP    = C.UFFD_PAGEFAULT_FLAG_WP
 
 	UFFD_FEATURE_MISSING_HUGETLBFS = C.UFFD_FEATURE_MISSING_HUGETLBFS
 )
@@ -73,6 +80,13 @@ func newUffdioRange(start, length CULong) UffdioRange {
 
 func newUffdioRegister(start, length, mode CULong) UffdioRegister {
 	return UffdioRegister{
+		_range: newUffdioRange(start, length),
+		mode:   mode,
+	}
+}
+
+func newUffdioWriteProtect(start, length, mode CULong) UffdioWriteProtect {
+	return UffdioWriteProtect{
 		_range: newUffdioRange(start, length),
 		mode:   mode,
 	}
@@ -120,6 +134,23 @@ func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 	return nil
 }
 
+// mode: UFFDIO_WRITEPROTECT_MODE_WP
+// Passing 0 as the mode will remove the write protection.
+func (f Fd) writeProtect(addr, size uintptr, mode CULong) error {
+	register := newUffdioWriteProtect(CULong(addr), CULong(size), mode)
+
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_WRITEPROTECT ioctl failed: %w (ret=%d)", errno, ret)
+	}
+
+	return nil
+}
+
 func (f Fd) close() error {
 	return syscall.Close(int(f))
+}
+
+func (f Fd) fd() int32 {
+	return int32(f)
 }
