@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -33,7 +33,7 @@ type processingBuilds struct {
 }
 
 type TemplateManager struct {
-	edgePool *edge.Pool
+	edgePool *clusters.Pool
 
 	lock          sync.Mutex
 	processing    map[uuid.UUID]processingBuilds
@@ -58,7 +58,7 @@ const (
 
 func New(
 	sqlcDB *sqlcdb.Client,
-	edgePool *edge.Pool,
+	edgePool *clusters.Pool,
 	buildCache *templatecache.TemplatesBuildCache,
 	templateCache *templatecache.TemplateCache,
 	featureFlags *featureflags.Client,
@@ -108,7 +108,7 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	}
 }
 
-func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID uuid.UUID) (*edge.ClusterInstance, error) {
+func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID uuid.UUID) (*clusters.ClusterInstance, error) {
 	cluster, ok := tm.edgePool.GetClusterById(clusterID)
 	if !ok {
 		return nil, fmt.Errorf("cluster with ID '%s' not found", clusterID)

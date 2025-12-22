@@ -9,7 +9,7 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -33,7 +33,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 	return nil
 }
 
-func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *edge.Cluster, i *edge.ClusterInstance) {
+func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *clusters.Cluster, i *clusters.ClusterInstance) {
 	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
 	clusterGRPC := cluster.GetGRPC(i.ServiceInstanceID)
 

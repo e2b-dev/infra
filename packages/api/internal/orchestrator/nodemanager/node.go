@@ -15,7 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -114,7 +114,7 @@ func New(
 	return n, nil
 }
 
-func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *edge.ClusterInstance) (*Node, error) {
+func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *clusters.ClusterInstance) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
 	if !ok {
 		logger.L().Error(ctx, "Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))

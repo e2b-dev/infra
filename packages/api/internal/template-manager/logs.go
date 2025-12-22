@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	buildlogs "github.com/e2b-dev/infra/packages/api/internal/template-manager/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
@@ -21,7 +21,7 @@ const (
 	maxTimeRangeDuration = 7 * 24 * time.Hour
 )
 
-func GetBuildLogs(ctx context.Context, cluster *edge.Cluster, nodeID *string, templateID, buildID string, offset int32, limit int32, level *logs.LogLevel, cursor *time.Time, direction api.LogsDirection, source *api.LogsSource) []logs.LogEntry {
+func GetBuildLogs(ctx context.Context, cluster *clusters.Cluster, nodeID *string, templateID, buildID string, offset int32, limit int32, level *logs.LogLevel, cursor *time.Time, direction api.LogsDirection, source *api.LogsSource) []logs.LogEntry {
 	ctx, span := tracer.Start(ctx, "get build-logs")
 	defer span.End()
 	l := logger.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID))

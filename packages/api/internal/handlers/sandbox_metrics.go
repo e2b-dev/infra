@@ -12,8 +12,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseUtils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
@@ -58,7 +58,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	var metrics []api.SandboxMetric
 	var apiErr *api.APIError
 	if edgeProvidedMetrics {
-		metrics, apiErr = edge.GetClusterSandboxMetrics(
+		metrics, apiErr = clusters.GetClusterSandboxMetrics(
 			ctx,
 			a.clustersPool,
 			sandboxID,

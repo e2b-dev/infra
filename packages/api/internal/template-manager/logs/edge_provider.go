@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
@@ -17,7 +17,7 @@ import (
 )
 
 type EdgeProvider struct {
-	HTTP *edge.ClusterHTTP
+	HTTP *clusters.ClusterHTTP
 }
 
 func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {

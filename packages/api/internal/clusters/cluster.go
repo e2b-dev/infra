@@ -1,4 +1,4 @@
-package edge
+package clusters
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/edge")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/clusters")
 
 type Cluster struct {
 	ID uuid.UUID
