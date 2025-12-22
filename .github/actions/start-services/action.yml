@@ -96,7 +96,6 @@ runs:
         ENVD_TIMEOUT: "60s"
         ORCHESTRATOR_SERVICES: "orchestrator,template-manager"
         SANDBOX_ACCESS_TOKEN_HASH_SEED: "abcdefghijklmnopqrstuvwxyz"
-        TEMPLATE_MANAGER_HOST: "localhost:5008"
         ARTIFACTS_REGISTRY_PROVIDER: "Local"
         STORAGE_PROVIDER: "Local"
         ENVIRONMENT: "local"

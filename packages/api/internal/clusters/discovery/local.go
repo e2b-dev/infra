@@ -10,8 +10,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters/discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var testsInstanceHost = env.GetEnv("TESTS_ORCH_INSTANCE_HOST", "localhost")
 
 type LocalServiceDiscovery struct {
 	nomad     *nomadapi.Client
@@ -28,6 +32,25 @@ func NewLocalDiscovery(clusterID uuid.UUID, nomad *nomadapi.Client) Discovery {
 func (sd *LocalServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 	_, span := tracer.Start(ctx, "query-local-cluster-nodes", trace.WithAttributes(telemetry.WithClusterID(sd.clusterID)))
 	defer span.End()
+
+	// Static discovery for local environment
+	if env.IsLocal() {
+		if testsInstanceHost == "" {
+			logger.L().Debug(ctx, "Service discovery is disabled in local environment")
+
+			return []Item{}, nil
+		}
+
+		return []Item{
+			{
+				UniqueIdentifier:     "local",
+				NodeID:               "local",
+				InstanceID:           "unknown",
+				LocalIPAddress:       testsInstanceHost,
+				LocalInstanceApiPort: consts.OrchestratorApiPort,
+			},
+		}, nil
+	}
 
 	// For now, we want to search only for template builders as local orchestrators are still discovered
 	// old way via Nomad discovery directly inside node manager flow. To minimize changes, we keep it this way for now.

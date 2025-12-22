@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -23,13 +22,6 @@ type instancesSyncStore struct {
 }
 
 func (d instancesSyncStore) SourceList(ctx context.Context) ([]discovery.Item, error) {
-	// Disable discovery for local environments
-	if env.IsLocal() {
-		logger.L().Debug(ctx, "Service discovery is disabled in local environment")
-
-		return []discovery.Item{}, nil
-	}
-
 	items, err := d.discovery.Query(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cluster instances from service discovery: %w", err)
