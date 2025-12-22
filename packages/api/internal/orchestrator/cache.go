@@ -52,7 +52,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
-	spanCtx, span := tracer.Start(ctxTimeout, "keep-in-sync")
+	ctx, span := tracer.Start(ctxTimeout, "keep-in-sync")
 	defer span.End()
 
 	var wg sync.WaitGroup
@@ -61,9 +61,9 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 
 	// Optionally, skip syncing from Nomad service discovery
 	if !skipSyncingWithNomad {
-		nomadSD, err := o.listNomadNodes(spanCtx)
+		nomadSD, err := o.listNomadNodes(ctx)
 		if err != nil {
-			logger.L().Error(spanCtx, "Error listing orchestrator nodes", zap.Error(err))
+			logger.L().Error(ctx, "Error listing orchestrator nodes", zap.Error(err))
 
 			return
 		}
@@ -72,18 +72,18 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 	}
 
 	wg.Go(func() {
-		o.syncLocalDiscoveredNodes(spanCtx, nomadNodes)
+		o.syncLocalDiscoveredNodes(ctx, nomadNodes)
 	})
 
 	wg.Go(func() {
-		o.syncClusterDiscoveredNodes(spanCtx)
+		o.syncClusterDiscoveredNodes(ctx)
 	})
 
 	// Wait for nodes discovery to finish
 	wg.Wait()
 
 	// Sync state of all nodes currently in the pool
-	syncNodesSpanCtx, syncNodesSpan := tracer.Start(spanCtx, "keep-in-sync-existing")
+	ctx, syncNodesSpan := tracer.Start(ctx, "keep-in-sync-existing")
 	defer syncNodesSpan.End()
 
 	defer wg.Wait()
@@ -93,15 +93,15 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 			// because each of them is taken from different source pool
 			var err error
 			if n.IsNomadManaged() {
-				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, store)
+				err = o.syncNode(ctx, n, nomadNodes, store)
 			} else {
-				err = o.syncClusterNode(syncNodesSpanCtx, n, store)
+				err = o.syncClusterNode(ctx, n, store)
 			}
 			if err != nil {
-				logger.L().Error(syncNodesSpanCtx, "Error syncing node", zap.Error(err))
-				err = n.Close(context.WithoutCancel(syncNodesSpanCtx))
+				logger.L().Error(ctx, "Error syncing node", zap.Error(err))
+				err = n.Close(context.WithoutCancel(ctx))
 				if err != nil {
-					logger.L().Error(syncNodesSpanCtx, "Error closing grpc connection", zap.Error(err))
+					logger.L().Error(ctx, "Error closing grpc connection", zap.Error(err))
 				}
 
 				o.deregisterNode(n)
