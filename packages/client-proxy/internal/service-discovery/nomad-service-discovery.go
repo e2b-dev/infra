@@ -78,7 +78,7 @@ func (sd *NomadServiceDiscovery) sync(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, nomadQueryRefreshInterval)
 	defer cancel()
 
-	alloc, err := discovery.ListOrchestratorAndTemplateBuilderAllocations(ctx, sd.client)
+	alloc, err := discovery.ListOrchestratorAndTemplateBuilderAllocations(ctx, sd.client, discovery.FilterTemplateBuildersAndOrchestrators)
 	if err != nil {
 		sd.logger.Error(ctx, "Failed to list orchestrator and template builders", zap.Error(err))
 

@@ -24,20 +24,32 @@ const (
 	orchestratorJobPrefix  = "orchestrator"
 )
 
-var filter = fmt.Sprintf(
-	"ClientStatus == \"running\" and ((TaskGroup == \"%s\" and JobID contains \"%s\") or (TaskGroup == \"%s\" and JobID contains \"%s\"))",
-	templateManagersTaskGroup,
-	templateManagerJobPrefix,
-	orchestratorsTaskGroup,
-	orchestratorJobPrefix,
+type NomadQueryFilter string
+
+var FilterTemplateBuilders = NomadQueryFilter(
+	fmt.Sprintf(
+		"ClientStatus == \"running\" and TaskGroup == \"%s\" and JobID contains \"%s\"",
+		templateManagersTaskGroup,
+		templateManagerJobPrefix,
+	),
 )
 
-func ListOrchestratorAndTemplateBuilderAllocations(ctx context.Context, client *nomadapi.Client) ([]Allocation, error) {
+var FilterTemplateBuildersAndOrchestrators = NomadQueryFilter(
+	fmt.Sprintf(
+		"ClientStatus == \"running\" and ((TaskGroup == \"%s\" and JobID contains \"%s\") or (TaskGroup == \"%s\" and JobID contains \"%s\"))",
+		templateManagersTaskGroup,
+		templateManagerJobPrefix,
+		orchestratorsTaskGroup,
+		orchestratorJobPrefix,
+	),
+)
+
+func ListOrchestratorAndTemplateBuilderAllocations(ctx context.Context, client *nomadapi.Client, filter NomadQueryFilter) ([]Allocation, error) {
 	options := &nomadapi.QueryOptions{
 		// https://developer.hashicorp.com/nomad/api-docs/allocations#resources
 		// Return allocation resources as part of the response
 		Params: map[string]string{"resources": "true"},
-		Filter: filter,
+		Filter: string(filter),
 	}
 
 	results, _, err := client.Allocations().List(options.WithContext(ctx))
