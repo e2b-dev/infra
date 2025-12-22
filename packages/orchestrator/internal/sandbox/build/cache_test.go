@@ -280,6 +280,9 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
+
 	// Add items to the cache
 	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
 	store.Add(diff)

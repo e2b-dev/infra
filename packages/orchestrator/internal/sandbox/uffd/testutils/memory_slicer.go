@@ -2,8 +2,6 @@ package testutils
 
 import (
 	"context"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
 // MemorySlicer exposes byte slice via the Slicer interface.
@@ -12,8 +10,6 @@ type MemorySlicer struct {
 	content  []byte
 	pagesize int64
 }
-
-var _ block.Slicer = (*MemorySlicer)(nil)
 
 func NewMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
 	return &MemorySlicer{
