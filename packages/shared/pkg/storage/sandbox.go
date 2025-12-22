@@ -17,10 +17,10 @@ type SandboxFiles struct {
 	randomID string
 }
 
-type BuilderConfig interface {
-	GetSandboxCacheDir() string
-	GetSnapshotCacheDir() string
-	GetTemplateCacheDir() string
+type Config struct {
+	SandboxCacheDir  string `env:"SANDBOX_CACHE_DIR,expand"  envDefault:"${ORCHESTRATOR_BASE_PATH}/sandbox"`
+	SnapshotCacheDir string `env:"SNAPSHOT_CACHE_DIR,expand" envDefault:"/mnt/snapshot-cache"`
+	TemplateCacheDir string `env:"TEMPLATE_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/template"`
 }
 
 func (c TemplateCacheFiles) NewSandboxFiles(sandboxID string) *SandboxFiles {
@@ -43,8 +43,8 @@ func (c TemplateCacheFiles) NewSandboxFilesWithStaticID(sandboxID string, static
 	}
 }
 
-func (s *SandboxFiles) SandboxCacheRootfsPath(config BuilderConfig) string {
-	return filepath.Join(config.GetSandboxCacheDir(), fmt.Sprintf("rootfs-%s-%s.cow", s.SandboxID, s.randomID))
+func (s *SandboxFiles) SandboxCacheRootfsPath(config Config) string {
+	return filepath.Join(config.SandboxCacheDir, fmt.Sprintf("rootfs-%s-%s.cow", s.SandboxID, s.randomID))
 }
 
 func (s *SandboxFiles) SandboxFirecrackerSocketPath() string {
@@ -55,6 +55,6 @@ func (s *SandboxFiles) SandboxUffdSocketPath() string {
 	return filepath.Join(s.tmpDir, fmt.Sprintf("uffd-%s-%s.sock", s.SandboxID, s.randomID))
 }
 
-func (s *SandboxFiles) SandboxCacheRootfsLinkPath(config BuilderConfig) string {
-	return filepath.Join(config.GetSandboxCacheDir(), fmt.Sprintf("rootfs-%s-%s.link", s.SandboxID, s.randomID))
+func (s *SandboxFiles) SandboxCacheRootfsLinkPath(config Config) string {
+	return filepath.Join(config.SandboxCacheDir, fmt.Sprintf("rootfs-%s-%s.link", s.SandboxID, s.randomID))
 }

@@ -97,7 +97,7 @@ func cleanupFiles(config cfg.BuilderConfig, files *storage.SandboxFiles) func(co
 		for _, p := range []string{
 			files.SandboxFirecrackerSocketPath(),
 			files.SandboxUffdSocketPath(),
-			files.SandboxCacheRootfsLinkPath(config),
+			files.SandboxCacheRootfsLinkPath(config.StorageConfig),
 		} {
 			err := os.RemoveAll(p)
 			if err != nil {

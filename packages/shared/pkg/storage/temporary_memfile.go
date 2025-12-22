@@ -25,7 +25,7 @@ type TemporaryMemfile struct {
 
 func AcquireTmpMemfile(
 	ctx context.Context,
-	config BuilderConfig,
+	config Config,
 	buildID string,
 ) (*TemporaryMemfile, error) {
 	randomID := uuid.NewString()
@@ -54,8 +54,8 @@ func (f *TemporaryMemfile) Close() error {
 	return os.Remove(f.path)
 }
 
-func cacheMemfileFullSnapshotPath(config BuilderConfig, buildID string, randomID string) string {
+func cacheMemfileFullSnapshotPath(config Config, buildID string, randomID string) string {
 	name := fmt.Sprintf("%s-%s-%s.full", buildID, MemfileName, randomID)
 
-	return filepath.Join(config.GetSnapshotCacheDir(), name)
+	return filepath.Join(config.SnapshotCacheDir, name)
 }

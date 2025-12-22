@@ -8,6 +8,7 @@ import (
 	"github.com/caarlos0/env/v11"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type BuilderConfig struct {
@@ -21,17 +22,11 @@ type BuilderConfig struct {
 	SharedChunkCacheDir    string        `env:"SHARED_CHUNK_CACHE_PATH"`
 	TemplatesDir           string        `env:"TEMPLATES_DIR,expand"     envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
 
-	DefaultCacheDir  string `env:"DEFAULT_CACHE_DIR,expand"  envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
-	SandboxCacheDir  string `env:"SANDBOX_CACHE_DIR,expand"  envDefault:"${ORCHESTRATOR_BASE_PATH}/sandbox"`
-	SnapshotCacheDir string `env:"SNAPSHOT_CACHE_DIR,expand" envDefault:"/mnt/snapshot-cache"`
-	TemplateCacheDir string `env:"TEMPLATE_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/template"`
+	DefaultCacheDir string `env:"DEFAULT_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
 
+	StorageConfig storage.Config
 	NetworkConfig network.Config
 }
-
-func (bc BuilderConfig) GetSandboxCacheDir() string  { return bc.SandboxCacheDir }
-func (bc BuilderConfig) GetSnapshotCacheDir() string { return bc.SnapshotCacheDir }
-func (bc BuilderConfig) GetTemplateCacheDir() string { return bc.TemplateCacheDir }
 
 func makePathsAbsolute(c *BuilderConfig) error {
 	for _, item := range []*string{
@@ -40,11 +35,11 @@ func makePathsAbsolute(c *BuilderConfig) error {
 		&c.HostEnvdPath,
 		&c.HostKernelsDir,
 		&c.OrchestratorBaseDir,
-		&c.SandboxCacheDir,
+		&c.StorageConfig.SandboxCacheDir,
 		&c.SandboxDir,
 		&c.SharedChunkCacheDir,
-		&c.SnapshotCacheDir,
-		&c.TemplateCacheDir,
+		&c.StorageConfig.SnapshotCacheDir,
+		&c.StorageConfig.TemplateCacheDir,
 		&c.TemplatesDir,
 	} {
 		dir := *item

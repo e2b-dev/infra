@@ -88,11 +88,11 @@ func ensureDirs(c cfg.Config) error {
 	for _, dir := range []string{
 		c.DefaultCacheDir,
 		c.OrchestratorBaseDir,
-		c.SandboxCacheDir,
+		c.StorageConfig.SandboxCacheDir,
 		c.SandboxDir,
 		c.SharedChunkCacheDir,
-		c.SnapshotCacheDir,
-		c.TemplateCacheDir,
+		c.StorageConfig.SnapshotCacheDir,
+		c.StorageConfig.TemplateCacheDir,
 		c.TemplatesDir,
 	} {
 		if dir == "" {

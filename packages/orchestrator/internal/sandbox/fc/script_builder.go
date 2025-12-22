@@ -95,7 +95,7 @@ func (sb *StartScriptBuilder) buildArgs(
 		SandboxKernelFile: SandboxKernelFile,
 
 		// Rootfs
-		HostRootfsPath:             files.SandboxCacheRootfsLinkPath(sb.builderConfig),
+		HostRootfsPath:             files.SandboxCacheRootfsLinkPath(sb.builderConfig.StorageConfig),
 		DeprecatedSandboxRootfsDir: rootfsPaths.DeprecatedSandboxRootfsDir(),
 		SandboxRootfsFile:          SandboxRootfsFile,
 

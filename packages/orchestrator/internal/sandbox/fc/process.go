@@ -161,7 +161,7 @@ func (p *Process) configure(
 	}
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
-	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config))
+	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -290,7 +290,7 @@ func (p *Process) Create(
 	telemetry.ReportEvent(ctx, "set fc boot source config")
 
 	// Rootfs
-	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
+	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -363,7 +363,7 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
 
-	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
+	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
