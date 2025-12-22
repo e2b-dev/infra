@@ -192,13 +192,8 @@ func (u *Uffd) DiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	dirty := uffd.Dirty()
-	if err != nil {
-		return nil, err
-	}
-
 	return &header.DiffMetadata{
-		Dirty: dirty.BitSet(),
+		Dirty: uffd.Dirty().BitSet(),
 		// We don't track and filter empty pages for subsequent sandbox pauses as pages should usually not be empty.
 		Empty:     bitset.New(0),
 		BlockSize: u.memfile.BlockSize(),
