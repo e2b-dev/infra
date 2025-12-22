@@ -29,6 +29,7 @@ var ErrUnexpectedEventType = errors.New("unexpected event type")
 
 type uffdio interface {
 	copy(addr, pagesize uintptr, data []byte, mode CULong) error
+	register(addr uintptr, size uint64, mode CULong) error
 	writeProtect(addr, size uintptr, mode CULong) error
 	close() error
 	fd() int32
@@ -65,7 +66,7 @@ func NewUserfaultfdFromFd(uffd uffdio, src block.Slicer, m *memory.Mapping, logg
 		// The memory region is already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these registration flags.
 		// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
 		// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
-		err := register(uffd, region.BaseHostVirtAddr, uint64(region.Size), UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING)
+		err := uffd.register(region.BaseHostVirtAddr, uint64(region.Size), UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING)
 		if err != nil {
 			return nil, fmt.Errorf("failed to reregister memory region with write protection %d-%d: %w", region.Offset, region.Offset+region.Size, err)
 		}

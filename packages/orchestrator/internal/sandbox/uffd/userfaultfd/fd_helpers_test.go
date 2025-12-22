@@ -28,10 +28,6 @@ func (m *mockFd) register(_ uintptr, _ uint64, _ CULong) error {
 	return nil
 }
 
-func (m *mockFd) unregister(_, _ uintptr) error {
-	return nil
-}
-
 func (m *mockFd) copy(addr, pagesize uintptr, _ []byte, mode CULong) error {
 	// Don't use the uffdioCopy constructor as it unsafely checks slice address and fails for arbitrary pointer.
 	e := newBlockedEvent(UffdioCopy{
@@ -99,20 +95,6 @@ func configureApi(f Fd, pagesize uint64) error {
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_API, uintptr(unsafe.Pointer(&api)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_API ioctl failed: %w (ret=%d)", errno, ret)
-	}
-
-	return nil
-}
-
-// mode: UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING
-// This is already called by the FC, but only with the UFFDIO_REGISTER_MODE_MISSING
-// We need to call it with UFFDIO_REGISTER_MODE_WP when we use both missing and wp
-func register(f Fd, addr uintptr, size uint64, mode CULong) error {
-	register := newUffdioRegister(CULong(addr), CULong(size), mode)
-
-	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
-	if errno != 0 {
-		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %w (ret=%d)", errno, ret)
 	}
 
 	return nil

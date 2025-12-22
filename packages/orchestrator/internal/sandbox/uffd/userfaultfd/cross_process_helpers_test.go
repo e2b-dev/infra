@@ -52,7 +52,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
-	err = register(Fd(uffdFd), memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
+	err = uffdFd.register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
 	require.NoError(t, err)
 
 	// We don't use t.Context() here, because we want to be able to kill the process manually and listen to the correct exit code,
