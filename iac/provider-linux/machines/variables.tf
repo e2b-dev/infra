@@ -52,6 +52,11 @@ variable "builder_node_pool" {
   default = ""
 }
 
+variable "api_node_pool" {
+  type    = string
+  default = ""
+}
+
 variable "orchestrator_node_pool" {
   type    = string
   default = ""

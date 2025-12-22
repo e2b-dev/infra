@@ -245,10 +245,12 @@ resource "null_resource" "servers_node_pools" {
       "  fi",
       "fi",
       "echo nomad acl token: $TOKEN",
-      "printf 'node_pool \"api\" {\\n  description = \"Nodes for api.\"\\n}\\n' | $SUDO tee /tmp/api_node_pool.hcl >/dev/null",
-      "printf 'node_pool \"build\" {\\n  description = \"Nodes for template builds.\"\\n}\\n' | $SUDO tee /tmp/build_node_pool.hcl >/dev/null",
+      "printf 'node_pool \"${var.api_node_pool}\" {\\n  description = \"Nodes for api.\"\\n}\\n' | $SUDO tee /tmp/api_node_pool.hcl >/dev/null",
+      "printf 'node_pool \"${var.builder_node_pool}\" {\\n  description = \"Nodes for template builds.\"\\n}\\n' | $SUDO tee /tmp/build_node_pool.hcl >/dev/null",
+      "printf 'node_pool \"${var.orchestrator_node_pool}\" {\\n  description = \"Nodes for orchestrator.\"\\n}\\n' | $SUDO tee /tmp/orchestrator_node_pool.hcl >/dev/null",
       "if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/api_node_pool.hcl; else $SUDO nomad node pool apply /tmp/api_node_pool.hcl; fi",
-      "if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/build_node_pool.hcl; else $SUDO nomad node pool apply /tmp/build_node_pool.hcl; fi"
+      "if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/build_node_pool.hcl; else $SUDO nomad node pool apply /tmp/build_node_pool.hcl; fi",
+      "if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/orchestrator_node_pool.hcl; else $SUDO nomad node pool apply /tmp/orchestrator_node_pool.hcl; fi"
     ]
   }
 

@@ -36,6 +36,7 @@ module "machines" {
   docker_https_proxy          = var.docker_https_proxy
   docker_no_proxy             = var.docker_no_proxy
   builder_node_pool           = var.builder_node_pool
+  api_node_pool               = var.api_node_pool
   orchestrator_node_pool      = var.orchestrator_node_pool
   kernel_source_base_url      = var.kernel_source_base_url
   firecracker_source_base_url = var.firecracker_source_base_url
