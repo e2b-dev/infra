@@ -8,10 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -29,7 +27,7 @@ type Instance struct {
 
 	roles       []infogrpc.ServiceInfoRole
 	machineInfo machineinfo.MachineInfo
-	grpc        *grpc.GRPCClient
+	grpc        *GRPCClient
 
 	status infogrpc.ServiceInfoStatus
 	mutex  sync.RWMutex
@@ -69,7 +67,7 @@ func newInstance(
 		closeErr := conn.Close()
 		if closeErr != nil {
 			logger.L().Error(
-				ctx, "Failed to close gRPC connection after instance sync failure",
+				ctx, "Failed to close gRPC Connection after instance sync failure",
 				zap.Error(err),
 				logger.WithNodeID(i.NodeID),
 				logger.WithClusterID(i.ClusterID),
@@ -135,11 +133,8 @@ func (i *Instance) IsOrchestrator() bool {
 	return i.hasRole(infogrpc.ServiceInfoRole_Orchestrator)
 }
 
-func (i *Instance) GetConnection() *ClusterGRPC {
-	return &ClusterGRPC{
-		Client:   i.grpc,
-		Metadata: metadata.New(nil),
-	}
+func (i *Instance) GetConnection() *GRPCClient {
+	return i.grpc
 }
 
 func (i *Instance) Close() error {

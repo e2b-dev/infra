@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -149,9 +148,8 @@ func (tm *TemplateManager) CreateTemplate(
 		return nil
 	}
 
-	_, err = client.Client.Template.TemplateCreate(
-		metadata.NewOutgoingContext(ctx, client.Metadata),
-		&templatemanagergrpc.TemplateCreateRequest{
+	_, err = client.Template.TemplateCreate(
+		ctx, &templatemanagergrpc.TemplateCreateRequest{
 			Template:   template,
 			CacheScope: ut.ToPtr(teamID.String()),
 			Version:    &version,

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -18,9 +17,8 @@ func (tm *TemplateManager) InitLayerFileUpload(ctx context.Context, clusterID uu
 		return nil, fmt.Errorf("failed to get build client for template '%s': %w", templateID, err)
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, client.Metadata)
-	resp, err := client.Client.Template.InitLayerFileUpload(
-		reqCtx, &templatemanager.InitLayerFileUploadRequest{
+	resp, err := client.Template.InitLayerFileUpload(
+		ctx, &templatemanager.InitLayerFileUploadRequest{
 			CacheScope: ut.ToPtr(teamID.String()),
 			TemplateID: templateID,
 			Hash:       hash,

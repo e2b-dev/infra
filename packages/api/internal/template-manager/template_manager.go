@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -131,7 +130,7 @@ func (tm *TemplateManager) GetClusterResources(clusterID uuid.UUID) (clusters.Cl
 	return cluster.GetResources(), nil
 }
 
-func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID string) (*clusters.ClusterGRPC, error) {
+func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID string) (*clusters.GRPCClient, error) {
 	cluster, ok := tm.clusters.GetClusterById(clusterID)
 	if !ok {
 		return nil, errors.New("cluster not found")
@@ -171,9 +170,8 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, t
 		}
 	}
 
-	_, err = client.Client.Template.TemplateBuildDelete(
-		metadata.NewOutgoingContext(ctx, client.Metadata),
-		&templatemanagergrpc.TemplateBuildDeleteRequest{
+	_, err = client.Template.TemplateBuildDelete(
+		ctx, &templatemanagergrpc.TemplateBuildDeleteRequest{
 			BuildID:    buildID.String(),
 			TemplateID: templateID,
 		},
@@ -205,9 +203,8 @@ func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, tem
 	}
 
 	// error unwrapping is done in the caller
-	return client.Client.Template.TemplateBuildStatus(
-		metadata.NewOutgoingContext(ctx, client.Metadata),
-		&templatemanagergrpc.TemplateStatusRequest{
+	return client.Template.TemplateBuildStatus(
+		ctx, &templatemanagergrpc.TemplateStatusRequest{
 			BuildID: buildID.String(), TemplateID: templateID,
 		},
 	)
