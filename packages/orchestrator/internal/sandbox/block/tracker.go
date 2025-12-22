@@ -53,12 +53,10 @@ func (t *Tracker) Reset() {
 	t.b.ClearAll()
 }
 
-// BitSet returns a clone of the bitset and the block size.
+// BitSet returns the bitset.
+// This is not safe to use concurrently.
 func (t *Tracker) BitSet() *bitset.BitSet {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-
-	return t.b.Clone()
+	return t.b
 }
 
 func (t *Tracker) BlockSize() int64 {
@@ -66,14 +64,20 @@ func (t *Tracker) BlockSize() int64 {
 }
 
 func (t *Tracker) Clone() *Tracker {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
 	return &Tracker{
-		b:         t.BitSet(),
+		b:         t.b.Clone(),
 		blockSize: t.BlockSize(),
 	}
 }
 
 func (t *Tracker) Offsets() iter.Seq[int64] {
-	return bitsetOffsets(t.BitSet(), t.BlockSize())
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return bitsetOffsets(t.b.Clone(), t.BlockSize())
 }
 
 func bitsetOffsets(b *bitset.BitSet, blockSize int64) iter.Seq[int64] {

@@ -92,5 +92,5 @@
   "mise.configureExtensionsAutomatically": true,
   "mise.configureExtensionsAutomaticallyIgnoreList": [
     "ms-vscode.js-debug"
-  ],
+  ]
 }
