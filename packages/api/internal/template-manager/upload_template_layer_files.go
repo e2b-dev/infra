@@ -8,19 +8,19 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func (tm *TemplateManager) InitLayerFileUpload(ctx context.Context, clusterID uuid.UUID, nodeID string, teamID uuid.UUID, templateID string, hash string) (*template_manager.InitLayerFileUploadResponse, error) {
+func (tm *TemplateManager) InitLayerFileUpload(ctx context.Context, clusterID uuid.UUID, nodeID string, teamID uuid.UUID, templateID string, hash string) (*templatemanager.InitLayerFileUploadResponse, error) {
 	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build client for template '%s': %w", templateID, err)
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, client.GRPC.Metadata)
-	resp, err := client.GRPC.Client.Template.InitLayerFileUpload(
-		reqCtx, &template_manager.InitLayerFileUploadRequest{
+	reqCtx := metadata.NewOutgoingContext(ctx, client.Metadata)
+	resp, err := client.Client.Template.InitLayerFileUpload(
+		reqCtx, &templatemanager.InitLayerFileUploadRequest{
 			CacheScope: ut.ToPtr(teamID.String()),
 			TemplateID: templateID,
 			Hash:       hash,
