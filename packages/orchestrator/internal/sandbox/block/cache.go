@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sys/unix"
@@ -62,6 +63,15 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 
 	defer f.Close()
 
+	if size == 0 {
+		return &Cache{
+			filePath:  filePath,
+			size:      size,
+			blockSize: blockSize,
+			dirtyFile: dirtyFile,
+		}, nil
+	}
+
 	// This should create a sparse file on Linux.
 	err = f.Truncate(size)
 	if err != nil {
@@ -98,6 +108,10 @@ func (c *Cache) Sync() error {
 		return NewErrCacheClosed(c.filePath)
 	}
 
+	if c.mmap == nil {
+		return nil
+	}
+
 	err := c.mmap.Flush()
 	if err != nil {
 		return fmt.Errorf("error syncing cache: %w", err)
@@ -115,6 +129,14 @@ func (c *Cache) ExportToDiff(ctx context.Context, out io.Writer) (*header.DiffMe
 
 	if c.isClosed() {
 		return nil, NewErrCacheClosed(c.filePath)
+	}
+
+	if c.mmap == nil {
+		return &header.DiffMetadata{
+			Dirty:     bitset.New(0),
+			Empty:     bitset.New(0),
+			BlockSize: c.blockSize,
+		}, nil
 	}
 
 	err := c.mmap.Flush()
@@ -140,6 +162,10 @@ func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	if c.mmap == nil {
+		return 0, nil
+	}
+
 	if c.isClosed() {
 		return 0, NewErrCacheClosed(c.filePath)
 	}
@@ -156,6 +182,10 @@ func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if c.mmap == nil {
+		return 0, nil
+	}
+
 	if c.isClosed() {
 		return 0, NewErrCacheClosed(c.filePath)
 	}
@@ -166,6 +196,10 @@ func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
 func (c *Cache) Close() (e error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if c.mmap == nil {
+		return nil
+	}
 
 	succ := c.closed.CompareAndSwap(false, true)
 	if !succ {
@@ -198,6 +232,10 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 		return nil, NewErrCacheClosed(c.filePath)
 	}
 
+	if c.mmap == nil {
+		return nil, nil
+	}
+
 	if c.dirtyFile || c.isCached(off, length) {
 		end := min(off+length, c.size)
 
@@ -228,6 +266,10 @@ func (c *Cache) setIsCached(off, length int64) {
 func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	if c.isClosed() {
 		return 0, NewErrCacheClosed(c.filePath)
+	}
+
+	if c.mmap == nil {
+		return 0, nil
 	}
 
 	end := min(off+int64(len(b)), c.size)
@@ -272,6 +314,10 @@ func (c *Cache) FileSize() (int64, error) {
 }
 
 func (c *Cache) address(off int64) *byte {
+	if c.mmap == nil {
+		return nil
+	}
+
 	return &(*c.mmap)[off]
 }
 
