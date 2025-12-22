@@ -19,7 +19,7 @@ const (
 
 type K8sServiceDiscovery struct {
 	logger  logger.Logger
-	entries *smap.Map[ServiceDiscoveryItem]
+	entries *smap.Map[DiscoveredInstance]
 	client  *kubernetes.Clientset
 
 	filterLabels    string
@@ -40,7 +40,7 @@ func NewK8sServiceDiscovery(ctx context.Context, logger logger.Logger, client *k
 		filterLabels:    podLabels,
 		filterNamespace: podNamespace,
 
-		entries: smap.New[ServiceDiscoveryItem](),
+		entries: smap.New[DiscoveredInstance](),
 	}
 
 	go func() { sd.keepInSync(ctx) }()
@@ -48,9 +48,9 @@ func NewK8sServiceDiscovery(ctx context.Context, logger logger.Logger, client *k
 	return sd
 }
 
-func (sd *K8sServiceDiscovery) ListNodes(_ context.Context) ([]ServiceDiscoveryItem, error) {
+func (sd *K8sServiceDiscovery) ListInstances(_ context.Context) ([]DiscoveredInstance, error) {
 	entries := sd.entries.Items()
-	items := make([]ServiceDiscoveryItem, 0)
+	items := make([]DiscoveredInstance, 0)
 
 	for _, item := range entries {
 		items = append(items, item)
@@ -99,9 +99,9 @@ func (sd *K8sServiceDiscovery) sync(ctx context.Context) {
 		}
 
 		key := fmt.Sprintf("%s:%d", ip, sd.port)
-		item := ServiceDiscoveryItem{
-			NodeIP:   ip,
-			NodePort: sd.port,
+		item := DiscoveredInstance{
+			InstanceIPAddress: ip,
+			InstancePort:      sd.port,
 		}
 
 		sd.entries.Insert(key, item)
