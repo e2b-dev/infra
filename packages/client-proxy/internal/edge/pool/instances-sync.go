@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 )
 
-type OrchestratorsPool struct {
+type InstancesPool struct {
 	discovery       sd.ServiceDiscoveryAdapter
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[sd.DiscoveredInstance, *Instance]
@@ -31,21 +31,21 @@ type OrchestratorsPool struct {
 }
 
 const (
-	orchestratorsPoolInterval        = 5 * time.Second
-	orchestratorsPoolRoundTimeout    = 5 * time.Second
-	orchestratorsInstanceSyncTimeout = 5 * time.Second
+	instancesPoolInterval     = 5 * time.Second
+	instancesPoolRoundTimeout = 5 * time.Second
+	instanceSyncTimeout       = 5 * time.Second
 
 	statusLogInterval = 1 * time.Minute
 )
 
-func NewOrchestratorsPool(
+func NewInstancesPool(
 	ctx context.Context,
 	l logger.Logger,
 	tracerProvider trace.TracerProvider,
 	metricProvider metric.MeterProvider,
 	discovery sd.ServiceDiscoveryAdapter,
-) *OrchestratorsPool {
-	pool := &OrchestratorsPool{
+) *InstancesPool {
+	pool := &InstancesPool{
 		discovery: discovery,
 		instances: smap.New[*Instance](),
 
@@ -57,23 +57,21 @@ func NewOrchestratorsPool(
 		close: make(chan struct{}),
 	}
 
-	store := &orchestratorInstancesSyncStore{pool: pool}
-	pool.synchronization = synchronization.NewSynchronize("orchestrator-instances", "Orchestrator instances", store)
+	store := &instancesSyncStore{pool: pool}
+	pool.synchronization = synchronization.NewSynchronize("instances", "Instances", store)
 
 	// Background synchronization of orchestrators pool
-	go func() {
-		pool.synchronization.Start(ctx, orchestratorsPoolInterval, orchestratorsPoolRoundTimeout, true)
-	}()
-	go func() { pool.statusLogSync(ctx) }()
+	go pool.synchronization.Start(ctx, instancesPoolInterval, instancesPoolRoundTimeout, true)
+	go pool.statusLogSync(ctx)
 
 	return pool
 }
 
-func (p *OrchestratorsPool) GetOrchestrators() map[string]*Instance {
+func (p *InstancesPool) GetOrchestrators() map[string]*Instance {
 	return p.instances.Items()
 }
 
-func (p *OrchestratorsPool) GetOrchestrator(instanceID string) (i *Instance, ok bool) {
+func (p *InstancesPool) GetOrchestrator(instanceID string) (i *Instance, ok bool) {
 	orchestrators := p.GetOrchestrators()
 	for _, i = range orchestrators {
 		if i.GetInfo().ServiceInstanceID == instanceID {
@@ -84,7 +82,7 @@ func (p *OrchestratorsPool) GetOrchestrator(instanceID string) (i *Instance, ok 
 	return nil, false
 }
 
-func (p *OrchestratorsPool) statusLogSync(ctx context.Context) {
+func (p *InstancesPool) statusLogSync(ctx context.Context) {
 	ticker := time.NewTicker(statusLogInterval)
 	defer ticker.Stop()
 
@@ -105,7 +103,7 @@ func (p *OrchestratorsPool) statusLogSync(ctx context.Context) {
 	}
 }
 
-func (p *OrchestratorsPool) Close(ctx context.Context) error {
+func (p *InstancesPool) Close(ctx context.Context) error {
 	p.synchronization.Close()
 
 	// Close all orchestrator instances in the pool
@@ -125,19 +123,19 @@ func (p *OrchestratorsPool) Close(ctx context.Context) error {
 }
 
 // SynchronizationStore is an interface that defines methods for synchronizing the orchestrator instances inside the pool.
-type orchestratorInstancesSyncStore struct {
-	pool *OrchestratorsPool
+type instancesSyncStore struct {
+	pool *InstancesPool
 }
 
-func (e *orchestratorInstancesSyncStore) getHost(ip string, port uint16) string {
+func (e *instancesSyncStore) getHost(ip string, port uint16) string {
 	return fmt.Sprintf("%s:%d", ip, port)
 }
 
-func (e *orchestratorInstancesSyncStore) SourceList(ctx context.Context) ([]sd.DiscoveredInstance, error) {
+func (e *instancesSyncStore) SourceList(ctx context.Context) ([]sd.DiscoveredInstance, error) {
 	return e.pool.discovery.ListInstances(ctx)
 }
 
-func (e *orchestratorInstancesSyncStore) SourceExists(_ context.Context, s []sd.DiscoveredInstance, p *Instance) bool {
+func (e *instancesSyncStore) SourceExists(_ context.Context, s []sd.DiscoveredInstance, p *Instance) bool {
 	itself := p.GetInfo()
 	for _, item := range s {
 		itemHost := e.getHost(item.InstanceIPAddress, item.InstancePort)
@@ -149,7 +147,7 @@ func (e *orchestratorInstancesSyncStore) SourceExists(_ context.Context, s []sd.
 	return false
 }
 
-func (e *orchestratorInstancesSyncStore) PoolList(_ context.Context) []*Instance {
+func (e *instancesSyncStore) PoolList(_ context.Context) []*Instance {
 	items := make([]*Instance, 0)
 	for _, item := range e.pool.instances.Items() {
 		items = append(items, item)
@@ -158,14 +156,14 @@ func (e *orchestratorInstancesSyncStore) PoolList(_ context.Context) []*Instance
 	return items
 }
 
-func (e *orchestratorInstancesSyncStore) PoolExists(_ context.Context, source sd.DiscoveredInstance) bool {
+func (e *instancesSyncStore) PoolExists(_ context.Context, source sd.DiscoveredInstance) bool {
 	host := e.getHost(source.InstanceIPAddress, source.InstancePort)
 	_, found := e.pool.instances.Get(host)
 
 	return found
 }
 
-func (e *orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source sd.DiscoveredInstance) {
+func (e *instancesSyncStore) PoolInsert(ctx context.Context, source sd.DiscoveredInstance) {
 	host := e.getHost(source.InstanceIPAddress, source.InstancePort)
 	o, err := newInstance(e.pool.tracerProvider, e.pool.metricProvider, source.InstanceIPAddress, source.InstancePort)
 	if err != nil {
@@ -174,7 +172,7 @@ func (e *orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source 
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, orchestratorsInstanceSyncTimeout)
+	ctx, cancel := context.WithTimeout(ctx, instanceSyncTimeout)
 	defer cancel()
 
 	// Initial synchronization of the orchestrator Instance
@@ -189,8 +187,8 @@ func (e *orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source 
 	e.pool.instances.Insert(host, o)
 }
 
-func (e *orchestratorInstancesSyncStore) PoolUpdate(ctx context.Context, item *Instance) {
-	ctx, cancel := context.WithTimeout(ctx, orchestratorsInstanceSyncTimeout)
+func (e *instancesSyncStore) PoolUpdate(ctx context.Context, item *Instance) {
+	ctx, cancel := context.WithTimeout(ctx, instanceSyncTimeout)
 	defer cancel()
 
 	err := item.sync(ctx)
@@ -199,7 +197,7 @@ func (e *orchestratorInstancesSyncStore) PoolUpdate(ctx context.Context, item *I
 	}
 }
 
-func (e *orchestratorInstancesSyncStore) PoolRemove(ctx context.Context, item *Instance) {
+func (e *instancesSyncStore) PoolRemove(ctx context.Context, item *Instance) {
 	info := item.GetInfo()
 	logger.L().Info(ctx, "Orchestrator Instance connection is not active anymore, closing.", logger.WithNodeID(info.NodeID))
 
