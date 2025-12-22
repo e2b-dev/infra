@@ -26,8 +26,6 @@ const (
 	oomMaxJitter  = 100 * time.Millisecond
 )
 
-var ErrNoRanges = errors.New("no ranges (or ranges with total size 0) provided")
-
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block")
 
 type CacheClosedError struct {
@@ -294,13 +292,13 @@ func NewCacheFromProcessMemory(
 ) (*Cache, error) {
 	size := GetSize(ranges)
 
-	if size == 0 {
-		return nil, ErrNoRanges
-	}
-
 	cache, err := NewCache(size, blockSize, filePath, false)
 	if err != nil {
 		return nil, err
+	}
+
+	if size == 0 {
+		return cache, nil
 	}
 
 	err = cache.copyProcessMemory(ctx, pid, ranges)

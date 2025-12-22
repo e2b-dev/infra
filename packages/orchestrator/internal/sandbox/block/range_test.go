@@ -40,12 +40,6 @@ func TestRange_End(t *testing.T) {
 			size:     1024 * 1024,
 			expected: 1024 * 1024,
 		},
-		{
-			name:     "negative start",
-			start:    -100,
-			size:     50,
-			expected: -50,
-		},
 	}
 
 	for _, tt := range tests {

@@ -214,18 +214,6 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	}
 }
 
-func TestCopyFromProcess_EmptyRanges(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	// Test with empty ranges
-	ranges := []Range{}
-	tmpFile := t.TempDir() + "/cache"
-	_, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, os.Getpid(), ranges)
-	require.ErrorIs(t, err, ErrNoRanges)
-}
-
 func TestCopyFromProcess_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
@@ -306,48 +294,6 @@ func TestCopyFromProcess_InvalidAddress(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to read memory")
 }
 
-func TestCopyFromProcess_ZeroSizeRange(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	size := uint64(4096)
-
-	// Start helper process
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
-	cmd.Env = append(os.Environ(), "GO_TEST_COPY_HELPER_PROCESS=1")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_TEST_MEMORY_SIZE=%d", size))
-	cmd.Stderr = os.Stderr
-
-	stdout, err := cmd.StdoutPipe()
-	require.NoError(t, err)
-
-	err = cmd.Start()
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		cmd.Process.Signal(syscall.SIGTERM)
-		cmd.Wait()
-	})
-
-	// Read the memory address from the helper process
-	var addr uint64
-	err = binary.Read(stdout, binary.LittleEndian, &addr)
-	require.NoError(t, err)
-	stdout.Close()
-
-	// Wait a bit for the process to be ready
-	time.Sleep(100 * time.Millisecond)
-
-	// Test with zero-size range
-	ranges := []Range{
-		{Start: int64(addr), Size: 0},
-	}
-
-	tmpFile := t.TempDir() + "/cache"
-	_, err = NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
-	require.ErrorIs(t, err, ErrNoRanges)
-}
-
 func TestCopyFromProcess_LargeRanges(t *testing.T) {
 	t.Parallel()
 
@@ -425,4 +371,17 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 			assert.Equal(t, expected, data[offsetInBlock+int64(j)], "range %d, byte at offset %d", i, j)
 		}
 	}
+}
+
+func TestEmptyRanges(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	ranges := []Range{}
+	tmpFile := t.TempDir() + "/cache"
+	c, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, os.Getpid(), ranges)
+	require.NoError(t, err)
+
+	defer c.Close()
 }
