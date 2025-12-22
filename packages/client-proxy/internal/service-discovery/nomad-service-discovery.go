@@ -19,7 +19,7 @@ const (
 
 type NomadServiceDiscovery struct {
 	logger  logger.Logger
-	entries *smap.Map[ServiceDiscoveryItem]
+	entries *smap.Map[DiscoveredInstance]
 	client  *nomadapi.Client
 
 	port uint16
@@ -36,7 +36,7 @@ func NewNomadServiceDiscovery(ctx context.Context, logger logger.Logger, port ui
 		logger:  logger,
 		client:  client,
 		port:    port,
-		entries: smap.New[ServiceDiscoveryItem](),
+		entries: smap.New[DiscoveredInstance](),
 	}
 
 	go func() { sd.keepInSync(ctx) }()
@@ -44,9 +44,9 @@ func NewNomadServiceDiscovery(ctx context.Context, logger logger.Logger, port ui
 	return sd, nil
 }
 
-func (sd *NomadServiceDiscovery) ListNodes(_ context.Context) ([]ServiceDiscoveryItem, error) {
+func (sd *NomadServiceDiscovery) ListInstances(_ context.Context) ([]DiscoveredInstance, error) {
 	entries := sd.entries.Items()
-	items := make([]ServiceDiscoveryItem, 0)
+	items := make([]DiscoveredInstance, 0)
 
 	for _, item := range entries {
 		items = append(items, item)
@@ -88,9 +88,9 @@ func (sd *NomadServiceDiscovery) sync(ctx context.Context) {
 	found := make(map[string]string, len(alloc))
 	for _, v := range alloc {
 		key := fmt.Sprintf("%s:%d", v.AllocationIP, sd.port)
-		item := ServiceDiscoveryItem{
-			NodeIP:   v.AllocationIP,
-			NodePort: sd.port,
+		item := DiscoveredInstance{
+			InstanceIPAddress: v.AllocationIP,
+			InstancePort:      sd.port,
 		}
 
 		sd.entries.Insert(key, item)
