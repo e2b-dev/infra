@@ -189,7 +189,7 @@ func (tm *TemplateManager) CreateTemplate(
 		}
 
 		// Invalidate the cache
-		tm.templateCache.Invalidate(templateID, nil)
+		tm.templateCache.InvalidateAllTags(templateID)
 	}(context.WithoutCancel(ctx))
 
 	return nil

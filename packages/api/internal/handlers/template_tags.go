@@ -48,9 +48,18 @@ func (a *APIStore) PostTemplatesTagsName(c *gin.Context, name string) {
 		return
 	}
 
+	client, tx, err := a.sqlcDB.WithTx(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when beginning transaction", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error beginning transaction")
+
+		return
+	}
+	defer tx.Rollback(ctx)
+
 	// Get template and build from the source tag
 	sourceTagValue := sharedUtils.DerefOrDefault(sourceTag, id.DefaultTag)
-	result, err := a.sqlcDB.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
+	result, err := client.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
 		AliasOrEnvID: sourceAlias,
 		Tag:          &sourceTagValue,
 	})
@@ -117,7 +126,7 @@ func (a *APIStore) PostTemplatesTagsName(c *gin.Context, name string) {
 
 	// Create the tag assignments
 	for tag := range tags {
-		err = a.sqlcDB.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: template.ID,
 			BuildID:    buildID,
 			Tag:        tag,
@@ -128,6 +137,14 @@ func (a *APIStore) PostTemplatesTagsName(c *gin.Context, name string) {
 
 			return
 		}
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when committing transaction", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error committing transaction")
+
+		return
 	}
 
 	// Invalidate the template cache for the new tags

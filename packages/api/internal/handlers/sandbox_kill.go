@@ -66,7 +66,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		}
 	}(context.WithoutCancel(ctx))
 
-	a.templateCache.Invalidate(snapshot.TemplateID, nil)
+	a.templateCache.InvalidateAllTags(snapshot.TemplateID)
 
 	return nil
 }
