@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	loggerprovider "github.com/e2b-dev/infra/packages/proxy/internal/edge/logger-provider"
 	metricsprovider "github.com/e2b-dev/infra/packages/proxy/internal/edge/metrics-provider"
-	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
+	e2binstances "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -27,7 +27,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/client-proxy/interna
 type APIStore struct {
 	logger                      logger.Logger
 	info                        *info.ServiceInfo
-	orchestratorPool            *e2borchestrators.OrchestratorsPool
+	instancesPool               *e2binstances.InstancesPool
 	sandboxes                   catalog.SandboxesCatalog
 	queryLogsProvider           loggerprovider.LogsQueryProvider
 	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider
@@ -41,7 +41,7 @@ func NewStore(
 	ctx context.Context,
 	l logger.Logger,
 	info *info.ServiceInfo,
-	orchestratorsPool *e2borchestrators.OrchestratorsPool,
+	instances *e2binstances.InstancesPool,
 	catalog catalog.SandboxesCatalog,
 	config cfg.Config,
 ) (*APIStore, error) {
@@ -56,7 +56,7 @@ func NewStore(
 	}
 
 	store := &APIStore{
-		orchestratorPool:            orchestratorsPool,
+		instancesPool:               instances,
 		queryLogsProvider:           queryLogsProvider,
 		querySandboxMetricsProvider: querySandboxMetricsProvider,
 
@@ -91,7 +91,7 @@ func NewStore(
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				list := orchestratorsPool.GetOrchestrators()
+				list := instances.GetOrchestrators()
 				if len(list) > 0 {
 					logger.L().Info(ctx, "Marking API as healthy, at least one orchestrator is available")
 					store.info.SetStatus(ctx, api.Healthy)
