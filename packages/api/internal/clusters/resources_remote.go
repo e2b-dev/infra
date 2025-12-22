@@ -123,8 +123,53 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 	return api.SandboxLogs{Logs: l, LogEntries: le}, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetBuildLogs(ctx context.Context, _ *string, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, cursor *time.Time, direction api.LogsDirection, source *api.LogsSource) ([]logs.LogEntry, error) {
+func (r *ClusterResourceProviderImpl) GetBuildLogs(
+	ctx context.Context,
+	nodeID *string,
+	templateID string,
+	buildID string,
+	offset int32,
+	limit int32,
+	level *logs.LogLevel,
+	cursor *time.Time,
+	direction api.LogsDirection,
+	source *api.LogsSource,
+) ([]logs.LogEntry, error) {
+	ctx, span := tracer.Start(ctx, "get build-logs")
+	defer span.End()
+
 	start, end := logQueryWindow(cursor, direction)
+
+	// Fetch logs directly from template builder instance
+	if nodeID != nil && logCheckSourceType(source, api.LogsSourceTemporary) {
+		instance, found := r.instances.Get(*nodeID)
+		if !found {
+			return nil, fmt.Errorf("node instance not found for id '%s'", *nodeID)
+		}
+
+		entries, err := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
+		if err != nil {
+			return nil, fmt.Errorf("error getting build logs from node: %w", err)
+		}
+
+		return entries, nil
+	}
+
+	// Fetch logs from edge API
+	if logCheckSourceType(source, api.LogsSourcePersistent) {
+		// Fetch logs from edge API
+		entries, err := r.getBuildLogsFromEdge(ctx, templateID, buildID, offset, limit, level, start, end, direction)
+		if err != nil {
+			return nil, fmt.Errorf("error getting build logs from edge API: %w", err)
+		}
+
+		return entries, nil
+	}
+
+	return nil, nil
+}
+
+func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) ([]logs.LogEntry, error) {
 	res, err := r.client.V1TemplateBuildLogsWithResponse(
 		ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{
 			TemplateID: templateID,
@@ -160,14 +205,4 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(ctx context.Context, _ *strin
 	}
 
 	return l, nil
-}
-
-func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {
-	if level == nil {
-		return nil
-	}
-
-	value := edgeapi.LogLevel(logs.LevelToString(*level))
-
-	return &value
 }
