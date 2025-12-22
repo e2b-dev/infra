@@ -144,7 +144,7 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 	return api.SandboxLogs{Logs: ll, LogEntries: le}, nil
 }
 
-func (l *LocalClusterResourceProvider) GetBuildLogs(ctx context.Context, nodeID *string, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, cursor *time.Time, direction api.LogsDirection, source *api.LogsSource) ([]logs.LogEntry, error) {
+func (l *LocalClusterResourceProvider) GetBuildLogs(ctx context.Context, nodeID *string, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, cursor *time.Time, direction api.LogsDirection, _ *api.LogsSource) ([]logs.LogEntry, error) {
 	start, end := logQueryWindow(cursor, direction)
 
 	lokiDirection := defaultDirection
@@ -153,13 +153,13 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(ctx context.Context, nodeID 
 	}
 
 	// todo
-	if source == nil {
-		// try node and then default to Loki
-	} else if *source == api.LogsSourcePersistent {
-		// force to node
-	} else if *source == api.LogsSourceTemporary {
-		// force to loki
-	}
+	// if source == nil {
+	//	// try node and then default to Loki
+	// } else if *source == api.LogsSourcePersistent {
+	//	// force to node
+	// } else if *source == api.LogsSourceTemporary {
+	//	// force to loki
+	// }
 
 	if nodeID != nil {
 		instance, found := l.instances.Get(*nodeID)

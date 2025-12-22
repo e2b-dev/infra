@@ -123,7 +123,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 	return api.SandboxLogs{Logs: l, LogEntries: le}, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetBuildLogs(ctx context.Context, _ *string, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, cursor *time.Time, direction api.LogsDirection, source *api.LogsSource) ([]logs.LogEntry, error) {
+func (r *ClusterResourceProviderImpl) GetBuildLogs(ctx context.Context, _ *string, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, cursor *time.Time, direction api.LogsDirection, _ *api.LogsSource) ([]logs.LogEntry, error) {
 	start, end := logQueryWindow(cursor, direction)
 	res, err := r.client.V1TemplateBuildLogsWithResponse(
 		ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{
