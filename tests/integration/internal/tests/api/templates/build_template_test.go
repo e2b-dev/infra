@@ -26,7 +26,7 @@ type BuildLogHandler func(alias string, entry api.BuildLogEntry)
 
 func buildTemplate(
 	tb testing.TB,
-	templateAlias string,
+	templateName string,
 	data api.TemplateBuildStartV2,
 	logHandler BuildLogHandler,
 ) bool {
@@ -39,7 +39,7 @@ func buildTemplate(
 
 	// Request build
 	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
-		Alias:    templateAlias,
+		Names:    utils.ToPtr([]string{templateName}),
 		CpuCount: utils.ToPtr[int32](2),
 		MemoryMB: utils.ToPtr[int32](1024),
 	}, setup.WithAPIKey(), setup.WithTestsUserAgent())
@@ -84,7 +84,7 @@ func buildTemplate(
 
 		offset += len(statusResp.JSON200.LogEntries)
 		for _, entry := range statusResp.JSON200.LogEntries {
-			logHandler(templateAlias, entry)
+			logHandler(templateName, entry)
 		}
 
 		switch statusResp.JSON200.Status {

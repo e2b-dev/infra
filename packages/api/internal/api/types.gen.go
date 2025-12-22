@@ -112,11 +112,8 @@ type AdminSandboxKillResult struct {
 
 // AssignTemplateTagRequest defines model for AssignTemplateTagRequest.
 type AssignTemplateTagRequest struct {
-	// SourceTag Reference tag name
-	SourceTag *string `json:"sourceTag,omitempty"`
-
-	// Tag Tag name
-	Tag string `json:"tag"`
+	// Names Names of the template
+	Names []string `json:"names"`
 }
 
 // BuildLogEntry defines model for BuildLogEntry.
@@ -773,6 +770,9 @@ type Template struct {
 	// SpawnCount Number of times the template was used
 	SpawnCount int64 `json:"spawnCount"`
 
+	// Tags Tags of the template
+	Tags []string `json:"tags"`
+
 	// TemplateID Identifier of the template
 	TemplateID string `json:"templateID"`
 
@@ -886,7 +886,7 @@ type TemplateBuildRequestV2 struct {
 // TemplateBuildRequestV3 defines model for TemplateBuildRequestV3.
 type TemplateBuildRequestV3 struct {
 	// Alias Alias of the template
-	Alias string `json:"alias"`
+	Alias *string `json:"alias,omitempty"`
 
 	// CpuCount CPU cores for the sandbox
 	CpuCount *CPUCount `json:"cpuCount,omitempty"`
@@ -894,8 +894,8 @@ type TemplateBuildRequestV3 struct {
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
-	// Tags Tags to assign to the template
-	Tags *[]string `json:"tags,omitempty"`
+	// Names Names of the template
+	Names *[]string `json:"names,omitempty"`
 
 	// TeamID Identifier of the team
 	TeamID *string `json:"teamID,omitempty"`
@@ -1004,8 +1004,8 @@ type TemplateTag struct {
 	// BuildID Identifier of the build associated with this tag
 	BuildID openapi_types.UUID `json:"buildID"`
 
-	// Tag Tag name
-	Tag string `json:"tag"`
+	// Tags Tags of the template
+	Tags []string `json:"tags"`
 }
 
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.
@@ -1250,8 +1250,8 @@ type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
 // PostTemplatesTemplateIDJSONRequestBody defines body for PostTemplatesTemplateID for application/json ContentType.
 type PostTemplatesTemplateIDJSONRequestBody = TemplateBuildRequest
 
-// PostTemplatesTemplateIDTagsJSONRequestBody defines body for PostTemplatesTemplateIDTags for application/json ContentType.
-type PostTemplatesTemplateIDTagsJSONRequestBody = AssignTemplateTagRequest
+// PostTemplatesTemplateIDTagsTagJSONRequestBody defines body for PostTemplatesTemplateIDTagsTag for application/json ContentType.
+type PostTemplatesTemplateIDTagsTagJSONRequestBody = AssignTemplateTagRequest
 
 // PostV2TemplatesJSONRequestBody defines body for PostV2Templates for application/json ContentType.
 type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2

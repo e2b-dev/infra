@@ -3,7 +3,9 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -49,12 +51,41 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	alias, maybeTagFromAlias, err := id.ParseTemplateIDOrAliasWithTag(body.Alias)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", err))
-		telemetry.ReportCriticalError(ctx, "invalid alias", err)
+	names := utils.DerefOrDefault(body.Names, nil)
+	if body.Alias != nil {
+		names = slices.Concat(names, []string{*body.Alias})
+	}
+
+	if len(names) == 0 {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "At least one name is required")
+		telemetry.ReportError(ctx, "at least one name is required", nil)
 
 		return nil
+	}
+
+	var alias string
+	tags := make(map[string]bool)
+	for _, name := range names {
+		al, t, err := id.ParseTemplateIDOrAliasWithTag(name)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", err))
+			telemetry.ReportCriticalError(ctx, "invalid alias", err)
+
+			return nil
+		}
+
+		// The template alias must be the same for all aliases with tags
+		if alias != al && alias != "" {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template alias must be same for all aliases with tags: %s", err))
+			telemetry.ReportCriticalError(ctx, "template alias must be same for all aliases with tags", err)
+
+			return nil
+		}
+
+		alias = al
+		if t != nil {
+			tags[*t] = true
+		}
 	}
 
 	// Create the build, find the template ID by alias or generate a new one
@@ -85,12 +116,6 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	span.End()
 
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
-	tags := utils.DerefOrDefault(body.Tags, nil)
-
-	// If no tags are provided, use the tag from the alias (if it exists)
-	if len(tags) == 0 && maybeTagFromAlias != nil {
-		tags = []string{*maybeTagFromAlias}
-	}
 
 	buildReq := template.RegisterBuildData{
 		ClusterID:          apiutils.WithClusterFallback(team.ClusterID),
@@ -98,7 +123,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		UserID:             nil,
 		Team:               team,
 		Alias:              &alias,
-		Tags:               tags,
+		Tags:               slices.Collect(maps.Keys(tags)),
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV2LatestVersion,
@@ -122,7 +147,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", alias).
-		Set("tags", tags),
+		Set("tags", slices.Collect(maps.Keys(tags))),
 	)
 	span.End()
 

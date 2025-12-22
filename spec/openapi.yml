@@ -617,6 +617,7 @@ components:
         - buildCount
         - envdVersion
         - aliases
+        - tags
         - buildStatus
       properties:
         templateID:
@@ -637,6 +638,11 @@ components:
         aliases:
           type: array
           description: Aliases of the template
+          items:
+            type: string
+        tags:
+          type: array
+          description: Tags of the template
           items:
             type: string
         createdAt:
@@ -884,15 +890,13 @@ components:
           description: Whether the step should be forced to run regardless of the cache
 
     TemplateBuildRequestV3:
-      required:
-        - alias
       properties:
         alias:
           description: Alias of the template
           type: string
-        tags:
+        names:
           type: array
-          description: Tags to assign to the template
+          description: Names of the template
           items:
             type: string
         teamID:
@@ -1483,12 +1487,14 @@ components:
 
     TemplateTag:
       required:
-        - tag
+        - tags
         - buildID
       properties:
-        tag:
-          type: string
-          description: Tag name
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags of the template
         buildID:
           type: string
           format: uuid
@@ -1496,14 +1502,13 @@ components:
 
     AssignTemplateTagRequest:
       required:
-        - tag
+        - names
       properties:
-        sourceTag:
-          type: string
-          description: Reference tag name
-        tag:
-          type: string
-          description: Tag name
+        names:
+          description: Names of the template
+          type: array
+          items:
+            type: string
 
     Error:
       required:
@@ -2465,7 +2470,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /templates/{templateID}/tags:
+  /templates/{templateID}/tags/{tag}:
     post:
       description: Assign a tag to a template build
       tags: [tags]
@@ -2475,6 +2480,7 @@ paths:
           Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tag"
       requestBody:
         required: true
         content:
@@ -2496,8 +2502,6 @@ paths:
           $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
-
-  /templates/{templateID}/tags/{tag}:
     delete:
       description: Delete a tag from a template
       tags: [tags]

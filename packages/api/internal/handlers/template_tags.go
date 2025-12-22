@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,8 +19,8 @@ import (
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// PostTemplatesTemplateIDTags assigns a tag to a template build
-func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias api.TemplateID) {
+// PostTemplatesTemplateIDTags assigns tags to a template build
+func (a *APIStore) PostTemplatesTemplateIDTagsTag(c *gin.Context, templateAlias api.TemplateID, tag string) {
 	ctx := c.Request.Context()
 
 	body, err := utils.ParseBody[api.AssignTemplateTagRequest](ctx, c)
@@ -29,29 +31,22 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 	}
 
 	// Validate tag name
-	if body.Tag == "" {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Tag name is required")
-		telemetry.ReportError(ctx, "tag name is required", nil)
+	if len(body.Names) == 0 {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "At least one name is required")
+		telemetry.ReportError(ctx, "at least one name is required", nil)
 
 		return
 	}
 
-	// Determine the source tag to get the build ID from (nil defaults to 'default' in the query)
-	sourceTag := body.SourceTag
-
 	// Get template and build from the source tag in a single query
 	result, err := a.sqlcDB.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
-		AliasOrEnvID: templateIDOrAlias,
-		Tag:          sourceTag,
+		AliasOrEnvID: templateAlias,
+		Tag:          &tag,
 	})
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
-			tag := id.DefaultTag
-			if sourceTag != nil {
-				tag = *sourceTag
-			}
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' with tag '%s' not found", templateIDOrAlias, tag))
-			telemetry.ReportError(ctx, "template or source tag not found", err, telemetry.WithTemplateID(templateIDOrAlias))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' with tag '%s' not found", templateAlias, tag))
+			telemetry.ReportError(ctx, "template or source tag not found", err, telemetry.WithTemplateID(templateAlias))
 
 			return
 		}
@@ -63,6 +58,7 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 	}
 
 	template := result.Env
+	aliases := slices.Concat(result.Aliases, []string{template.ID})
 	buildID := result.EnvBuild.ID
 
 	// Get and verify team access
@@ -81,33 +77,61 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 	)
 
 	if template.TeamID != team.ID {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateIDOrAlias))
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateAlias))
 		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(template.ID))
 
 		return
 	}
 
-	// Create the tag assignment
-	err = a.sqlcDB.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
-		TemplateID: template.ID,
-		BuildID:    buildID,
-		Tag:        body.Tag,
-	})
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when creating tag assignment", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error creating tag assignment")
+	tags := make(map[string]bool)
+	for _, name := range body.Names {
+		alias, tag, err := id.ParseTemplateIDOrAliasWithTag(name)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag name: %s", name))
+			telemetry.ReportCriticalError(ctx, "invalid tag name", err)
 
-		return
+			return
+		}
+
+		if !slices.Contains(aliases, alias) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template alias '%s' not matching the template", alias))
+			telemetry.ReportCriticalError(ctx, "template alias not matching the template", err)
+
+			return
+		}
+
+		tags[sharedUtils.DerefOrDefault(tag, id.DefaultTag)] = true
+	}
+
+	// Create the tag assignment
+	for tag := range tags {
+		err = a.sqlcDB.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+			TemplateID: template.ID,
+			BuildID:    buildID,
+			Tag:        tag,
+		})
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error when creating tag assignment", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error creating tag assignment")
+
+			return
+		}
 	}
 
 	// Invalidate the template cache for the new tag
-	a.templateCache.Invalidate(template.ID, &body.Tag)
+	for tag := range tags {
+		a.templateCache.Invalidate(template.ID, &tag)
+	}
 
 	telemetry.ReportEvent(ctx, "assigned template tag")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "assigned template tag", properties.Set("environment", template.ID).Set("tag", body.Tag))
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "assigned template tag",
+		properties.
+			Set("environment", template.ID).
+			Set("tags", maps.Keys(tags)),
+	)
 
 	logger.L().Info(ctx, "Assigned template tag",
 		logger.WithTemplateID(template.ID),
@@ -115,13 +139,13 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 	)
 
 	c.JSON(http.StatusCreated, api.TemplateTag{
-		Tag:     body.Tag,
+		Tags:    slices.Collect(maps.Keys(tags)),
 		BuildID: buildID,
 	})
 }
 
 // DeleteTemplatesTemplateIDTagsTag deletes a tag from a template
-func (a *APIStore) DeleteTemplatesTemplateIDTagsTag(c *gin.Context, templateIDOrAlias api.TemplateID, tag api.Tag) {
+func (a *APIStore) DeleteTemplatesTemplateIDTagsTag(c *gin.Context, templateIDOrAlias api.TemplateID, tag string) {
 	ctx := c.Request.Context()
 
 	// Prevent deleting the default tag
