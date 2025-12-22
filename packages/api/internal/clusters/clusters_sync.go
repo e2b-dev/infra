@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	poolSyncInterval = 60 * time.Second
-	poolSyncTimeout  = 15 * time.Second
+	clustersSyncInterval = 15 * time.Second
+	clusterSyncTimeout   = 5 * time.Second
 )
 
 type Pool struct {
@@ -70,7 +70,7 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, noma
 	}
 
 	// Periodically sync clusters with the database
-	go p.synchronization.Start(ctx, poolSyncInterval, poolSyncTimeout, true)
+	go p.synchronization.Start(ctx, clustersSyncInterval, clusterSyncTimeout, true)
 
 	return p, nil
 }
