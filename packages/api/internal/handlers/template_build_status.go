@@ -106,7 +106,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	cluster, ok := a.clustersPool.GetClusterById(utils.WithClusterFallback(team.ClusterID))
+	cluster, ok := a.clusters.GetClusterById(utils.WithClusterFallback(team.ClusterID))
 	if !ok {
 		telemetry.ReportError(ctx, "error when getting cluster", fmt.Errorf("cluster with ID '%s' not found", team.ClusterID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting cluster")

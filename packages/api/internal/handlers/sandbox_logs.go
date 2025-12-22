@@ -26,7 +26,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 	)
 
 	clusterID := utils.WithClusterFallback(team.ClusterID)
-	cluster, ok := a.clustersPool.GetClusterById(clusterID)
+	cluster, ok := a.clusters.GetClusterById(clusterID)
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "error getting cluster by ID", fmt.Errorf("cluster with ID '%s' not found", clusterID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error getting cluster '%s'", clusterID))

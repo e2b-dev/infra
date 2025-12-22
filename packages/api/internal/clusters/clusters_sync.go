@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -49,26 +50,24 @@ func localClusterConfig(clusterEndpoint, clusterToken string) (*queries.Cluster,
 	}, nil
 }
 
-func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, config cfg.Config) (*Pool, error) {
-	p := &Pool{
-		db:       db,
-		tel:      tel,
-		clusters: smap.New[*Cluster](),
-	}
-
-	// Shutdown function to gracefully close the pool
-	go func() {
-		<-ctx.Done()
-		p.Close(ctx)
-	}()
+func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, nomad *nomadapi.Client, config cfg.Config) (*Pool, error) {
+	clusters := smap.New[*Cluster]()
 
 	localCluster, err := localClusterConfig(config.LocalClusterEndpoint, config.LocalClusterToken)
 	if err != nil {
 		return nil, err
 	}
 
-	store := poolSynchronizationStore{pool: p, localCluster: localCluster}
-	p.synchronization = synchronization.NewSynchronize("clusters-pool", "Clusters pool", store)
+	p := &Pool{
+		db:       db,
+		tel:      tel,
+		clusters: clusters,
+		synchronization: synchronization.NewSynchronize(
+			"clusters-pool",
+			"Clusters pool",
+			clustersSyncStore{db: db, tel: tel, clusters: clusters, local: localCluster, nomad: nomad},
+		),
+	}
 
 	// Periodically sync clusters with the database
 	go p.synchronization.Start(ctx, poolSyncInterval, poolSyncTimeout, true)
@@ -103,13 +102,16 @@ func (p *Pool) Close(ctx context.Context) {
 }
 
 // SynchronizationStore is an interface that defines methods for synchronizing the clusters pool with the database
-type poolSynchronizationStore struct {
-	pool         *Pool
-	localCluster *queries.Cluster
+type clustersSyncStore struct {
+	db       *client.Client
+	tel      *telemetry.Client
+	clusters *smap.Map[*Cluster]
+	local    *queries.Cluster
+	nomad    *nomadapi.Client
 }
 
-func (d poolSynchronizationStore) SourceList(ctx context.Context) ([]queries.Cluster, error) {
-	db, err := d.pool.db.GetActiveClusters(ctx)
+func (d clustersSyncStore) SourceList(ctx context.Context) ([]queries.Cluster, error) {
+	db, err := d.db.GetActiveClusters(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -119,15 +121,15 @@ func (d poolSynchronizationStore) SourceList(ctx context.Context) ([]queries.Clu
 		entries = append(entries, row.Cluster)
 	}
 
-	// Append local cluster if registered
-	if d.localCluster != nil {
-		entries = append(entries, *d.localCluster)
+	// Append local cluster if provided
+	if d.local != nil {
+		entries = append(entries, *d.local)
 	}
 
 	return entries, nil
 }
 
-func (d poolSynchronizationStore) SourceExists(_ context.Context, s []queries.Cluster, p *Cluster) bool {
+func (d clustersSyncStore) SourceExists(_ context.Context, s []queries.Cluster, p *Cluster) bool {
 	for _, item := range s {
 		if item.ID == p.ID {
 			return true
@@ -137,49 +139,61 @@ func (d poolSynchronizationStore) SourceExists(_ context.Context, s []queries.Cl
 	return false
 }
 
-func (d poolSynchronizationStore) PoolList(_ context.Context) []*Cluster {
+func (d clustersSyncStore) PoolList(_ context.Context) []*Cluster {
 	items := make([]*Cluster, 0)
-	for _, item := range d.pool.clusters.Items() {
+	for _, item := range d.clusters.Items() {
 		items = append(items, item)
 	}
 
 	return items
 }
 
-func (d poolSynchronizationStore) PoolExists(_ context.Context, cluster queries.Cluster) bool {
-	_, found := d.pool.clusters.Get(cluster.ID.String())
+func (d clustersSyncStore) PoolExists(_ context.Context, cluster queries.Cluster) bool {
+	_, found := d.clusters.Get(cluster.ID.String())
 
 	return found
 }
 
-func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster queries.Cluster) {
+func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Cluster) {
 	clusterID := cluster.ID.String()
 
 	logger.L().Info(ctx, "Initializing newly discovered cluster", logger.WithClusterID(cluster.ID))
 
-	c, err := newCluster(context.WithoutCancel(ctx),
-		d.pool.tel,
-		cluster.Endpoint,
-		cluster.EndpointTls,
-		cluster.Token,
-		cluster.ID,
-		cluster.SandboxProxyDomain,
-	)
-	if err != nil {
-		logger.L().Error(ctx, "Initializing cluster failed", zap.Error(err), logger.WithClusterID(c.ID))
+	var c *Cluster
+	var err error
+
+	// Local cluster
+	if cluster.ID == consts.LocalClusterID {
+		c, err = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.local.Endpoint, d.local.Token)
+		if err != nil {
+			logger.L().Error(ctx, "Initializing local cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
+
+			return
+		}
+
+		d.clusters.Insert(clusterID, c)
+		logger.L().Info(ctx, "Local cluster initialized successfully", logger.WithClusterID(cluster.ID))
 
 		return
 	}
 
-	logger.L().Info(ctx, "Cluster initialized successfully", logger.WithClusterID(c.ID))
-	d.pool.clusters.Insert(clusterID, c)
+	// Remote cluster
+	c, err = newRemoteCluster(context.WithoutCancel(ctx), d.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID, cluster.SandboxProxyDomain)
+	if err != nil {
+		logger.L().Error(ctx, "Initializing remote cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
+
+		return
+	}
+
+	d.clusters.Insert(clusterID, c)
+	logger.L().Info(ctx, "Remote cluster initialized successfully", logger.WithClusterID(cluster.ID))
 }
 
-func (d poolSynchronizationStore) PoolUpdate(_ context.Context, _ *Cluster) {
+func (d clustersSyncStore) PoolUpdate(_ context.Context, _ *Cluster) {
 	// Clusters pool currently does not do something special during synchronization
 }
 
-func (d poolSynchronizationStore) PoolRemove(ctx context.Context, cluster *Cluster) {
+func (d clustersSyncStore) PoolRemove(ctx context.Context, cluster *Cluster) {
 	logger.L().Info(ctx, "Removing cluster from pool", logger.WithClusterID(cluster.ID))
 
 	err := cluster.Close()
@@ -187,5 +201,5 @@ func (d poolSynchronizationStore) PoolRemove(ctx context.Context, cluster *Clust
 		logger.L().Error(ctx, "Error during removing cluster from pool", zap.Error(err), logger.WithClusterID(cluster.ID))
 	}
 
-	d.pool.clusters.Remove(cluster.ID.String())
+	d.clusters.Remove(cluster.ID.String())
 }

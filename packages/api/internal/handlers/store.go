@@ -58,7 +58,7 @@ type APIStore struct {
 	clickhouseStore      clickhouse.Clickhouse
 	accessTokenGenerator *sandbox.AccessTokenGenerator
 	featureFlags         *featureflags.Client
-	clustersPool         *clusters.Pool
+	clusters             *clusters.Pool
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
@@ -110,7 +110,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		}
 	}
 
-	clustersPool, err := clusters.NewPool(ctx, tel, sqlcDB, config)
+	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, nomadClient, config)
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}
@@ -125,7 +125,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		logger.L().Fatal(ctx, "Initializing access token generator failed", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clustersPool, featureFlags, accessTokenGenerator)
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
@@ -135,7 +135,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
-	templateManager, err := template_manager.New(sqlcDB, clustersPool, templateBuildsCache, templateCache, featureFlags)
+	templateManager, err := template_manager.New(sqlcDB, clusters, templateBuildsCache, templateCache, featureFlags)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Template manager client", zap.Error(err))
 	}
@@ -157,7 +157,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		templateSpawnCounter: templateSpawnCounter,
 		clickhouseStore:      clickhouseStore,
 		accessTokenGenerator: accessTokenGenerator,
-		clustersPool:         clustersPool,
+		clusters:             clusters,
 		featureFlags:         featureFlags,
 		redisClient:          redisClient,
 	}
@@ -206,6 +206,8 @@ func (a *APIStore) Close(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("closing auth cache: %w", err))
 		}
 	}
+
+	a.clusters.Close(ctx)
 
 	if err := a.sqlcDB.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))

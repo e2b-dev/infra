@@ -49,7 +49,7 @@ func (a *APIStore) getSandboxesMetrics(
 		return make(map[string]api.SandboxMetric), nil
 	}
 
-	cluster, found := a.clustersPool.GetClusterById(clusterID)
+	cluster, found := a.clusters.GetClusterById(clusterID)
 	if !found {
 		return nil, &api.APIError{
 			Code:      http.StatusInternalServerError,

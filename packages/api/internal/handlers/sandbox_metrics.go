@@ -46,7 +46,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	}
 
 	clusterID := utils.WithClusterFallback(team.ClusterID)
-	cluster, found := a.clustersPool.GetClusterById(clusterID)
+	cluster, found := a.clusters.GetClusterById(clusterID)
 	if !found {
 		logger.L().Error(ctx, "cluster not found for sandbox metrics", logger.WithClusterID(clusterID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "cluster not found for sandbox metrics")
