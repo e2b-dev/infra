@@ -13,11 +13,11 @@ import (
 )
 
 // SynchronizationStore defines methods for synchronizing cluster instances
-type clusterSynchronizationStore struct {
+type instancesSyncStore struct {
 	cluster *Cluster
 }
 
-func (d clusterSynchronizationStore) SourceList(ctx context.Context) ([]api.ClusterOrchestratorNode, error) {
+func (d instancesSyncStore) SourceList(ctx context.Context) ([]api.ClusterOrchestratorNode, error) {
 	// fetch cluster instances with use of service discovery
 	res, err := d.cluster.httpClient.V1ServiceDiscoveryGetOrchestratorsWithResponse(ctx)
 	if err != nil {
@@ -35,7 +35,7 @@ func (d clusterSynchronizationStore) SourceList(ctx context.Context) ([]api.Clus
 	return *res.JSON200, nil
 }
 
-func (d clusterSynchronizationStore) SourceExists(_ context.Context, s []api.ClusterOrchestratorNode, p *Instance) bool {
+func (d instancesSyncStore) SourceExists(_ context.Context, s []api.ClusterOrchestratorNode, p *Instance) bool {
 	for _, item := range s {
 		// With comparing service instance ID we ensure when orchestrator on same node and node ID is still same
 		// we will properly clean up old instance and later register as new one
@@ -47,7 +47,7 @@ func (d clusterSynchronizationStore) SourceExists(_ context.Context, s []api.Clu
 	return false
 }
 
-func (d clusterSynchronizationStore) PoolList(_ context.Context) []*Instance {
+func (d instancesSyncStore) PoolList(_ context.Context) []*Instance {
 	mapped := make([]*Instance, 0)
 	for _, item := range d.cluster.instances.Items() {
 		mapped = append(mapped, item)
@@ -56,13 +56,13 @@ func (d clusterSynchronizationStore) PoolList(_ context.Context) []*Instance {
 	return mapped
 }
 
-func (d clusterSynchronizationStore) PoolExists(_ context.Context, s api.ClusterOrchestratorNode) bool {
+func (d instancesSyncStore) PoolExists(_ context.Context, s api.ClusterOrchestratorNode) bool {
 	_, found := d.cluster.instances.Get(s.NodeID)
 
 	return found
 }
 
-func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.ClusterOrchestratorNode) {
+func (d instancesSyncStore) PoolInsert(ctx context.Context, item api.ClusterOrchestratorNode) {
 	logger.L().Info(ctx, "Adding instance into cluster pool",
 		logger.WithClusterID(d.cluster.ID),
 		logger.WithNodeID(item.NodeID),
@@ -87,11 +87,11 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 	d.cluster.instances.Insert(item.NodeID, instance)
 }
 
-func (d clusterSynchronizationStore) PoolUpdate(ctx context.Context, instance *Instance) {
+func (d instancesSyncStore) PoolUpdate(ctx context.Context, instance *Instance) {
 	d.cluster.syncInstance(ctx, instance)
 }
 
-func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, instance *Instance) {
+func (d instancesSyncStore) PoolRemove(ctx context.Context, instance *Instance) {
 	logger.L().Info(ctx, "Removing instance from cluster pool",
 		logger.WithClusterID(d.cluster.ID),
 		logger.WithNodeID(instance.NodeID),

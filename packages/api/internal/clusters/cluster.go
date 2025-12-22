@@ -99,7 +99,7 @@ func newCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 		grpcClient: grpcClient,
 	}
 
-	store := clusterSynchronizationStore{cluster: c}
+	store := instancesSyncStore{cluster: c}
 	c.synchronization = synchronization.NewSynchronize("cluster-instances", "Cluster instances", store)
 
 	// periodically sync cluster instances
