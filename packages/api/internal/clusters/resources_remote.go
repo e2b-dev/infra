@@ -88,7 +88,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 		}
 	}
 
-	return map[string]api.SandboxMetric{}, nil
+	return items, nil
 }
 
 func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, error) {

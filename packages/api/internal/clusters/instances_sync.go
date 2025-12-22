@@ -119,5 +119,15 @@ func (d instancesSyncStore) PoolRemove(ctx context.Context, instance *Instance) 
 		logger.WithServiceInstanceID(instance.InstanceID),
 	)
 
+	closeErr := instance.Close()
+	if closeErr != nil {
+		logger.L().Error(ctx, "Failed to close cluster instance after sync failure",
+			zap.Error(closeErr),
+			logger.WithClusterID(d.clusterID),
+			logger.WithNodeID(instance.NodeID),
+			logger.WithServiceInstanceID(instance.InstanceID),
+		)
+	}
+
 	d.instances.Remove(instance.NodeID)
 }
