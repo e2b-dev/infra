@@ -133,6 +133,9 @@ func TestCopyFromProcess_Success(t *testing.T) {
 		cmd.Wait()
 	})
 
+	// Wait until the process is up and running before interacting with it.
+	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
+
 	// Read the memory address from the helper process
 	var addr uint64
 	err = binary.Read(stdout, binary.LittleEndian, &addr)
@@ -143,9 +146,6 @@ func TestCopyFromProcess_Success(t *testing.T) {
 	_, err = stdout.Read(expectedData)
 	require.NoError(t, err)
 	stdout.Close()
-
-	// Wait until the process is up and running before copying its memory.
-	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
 
 	// Test copying a single range
 	ranges := []Range{
@@ -193,6 +193,9 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 		cmd.Wait()
 	})
 
+	// Wait until the process is up and running before interacting with it.
+	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
+
 	// Read the memory address from the helper process
 	var baseAddr uint64
 	err = binary.Read(stdout, binary.LittleEndian, &baseAddr)
@@ -203,8 +206,6 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	_, err = stdout.Read(expectedData)
 	require.NoError(t, err)
 	stdout.Close()
-
-	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
 
 	// Test copying multiple non-contiguous ranges
 	// Order: 0th, 2nd, then 1st segment in memory
@@ -267,6 +268,9 @@ func TestCopyFromProcess_ContextCancellation(t *testing.T) {
 		cmd.Wait()
 	})
 
+	// Wait until the process is up and running before interacting with it.
+	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
+
 	// Read the memory address from the helper process
 	var addr uint64
 	err = binary.Read(stdout, binary.LittleEndian, &addr)
@@ -277,8 +281,6 @@ func TestCopyFromProcess_ContextCancellation(t *testing.T) {
 	_, err = stdout.Read(expectedData)
 	require.NoError(t, err)
 	stdout.Close()
-
-	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
 
 	// Cancel context immediately
 	cancel()
@@ -363,6 +365,9 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 		cmd.Wait()
 	})
 
+	// Wait until the process is up and running before interacting with it.
+	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
+
 	// Read the memory address from the helper process
 	var baseAddr uint64
 	err = binary.Read(stdout, binary.LittleEndian, &baseAddr)
@@ -373,8 +378,6 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 	_, err = stdout.Read(expectedData)
 	require.NoError(t, err)
 	stdout.Close()
-
-	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
 
 	// Create many small ranges that exceed IOV_MAX
 	ranges := make([]Range, numRanges)
