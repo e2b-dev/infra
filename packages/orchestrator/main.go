@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -115,7 +116,7 @@ func run(config cfg.Config) (success bool) {
 	// Check if the orchestrator crashed and restarted
 	// Skip this check in development mode
 	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, cfg.Orchestrator) {
+	if !env.IsDevelopment() && slices.Contains(services, cfg.Orchestrator) {
 		fileLockName := config.OrchestratorLockPath
 		info, err := os.Stat(fileLockName)
 		if err == nil {
@@ -144,8 +145,8 @@ func run(config cfg.Config) (success bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
-	defer sigCancel()
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 
 	nodeID := env.GetNodeID()
 	serviceName := cfg.GetServiceName(services)
@@ -169,7 +170,7 @@ func run(config cfg.Config) (success bool) {
 	// there's a panic.
 	defer func(g *errgroup.Group) {
 		err := g.Wait()
-		if err != nil {
+		if ignoreServiceDoneError(err) != nil {
 			log.Printf("error while shutting down: %v", err)
 			success = false
 		}
@@ -182,7 +183,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)
-		if err != nil {
+		if ignoreCancelled(err) != nil {
 			log.Printf("error while shutting down telemetry: %v", err)
 			success = false
 		}
@@ -197,7 +198,7 @@ func run(config cfg.Config) (success bool) {
 	}))
 	defer func(l logger.Logger) {
 		err := l.Sync()
-		if err != nil {
+		if ignoreInvalidArg(err) != nil {
 			log.Printf("error while shutting down logger: %v", err)
 			success = false
 		}
@@ -215,7 +216,7 @@ func run(config cfg.Config) (success bool) {
 	)
 	defer func(l logger.Logger) {
 		err := l.Sync()
-		if err != nil {
+		if ignoreInvalidArg(err) != nil {
 			log.Printf("error while shutting down sandbox logger: %v", err)
 			success = false
 		}
@@ -233,7 +234,7 @@ func run(config cfg.Config) (success bool) {
 	)
 	defer func(l logger.Logger) {
 		err := l.Sync()
-		if err != nil {
+		if ignoreInvalidArg(err) != nil {
 			log.Printf("error while shutting down sandbox logger: %v", err)
 			success = false
 		}
@@ -242,13 +243,13 @@ func run(config cfg.Config) (success bool) {
 
 	globalLogger.Info(ctx, "Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
 
-	startService := func(name string, f func() error) {
+	startService := func(name string, f func(context.Context) error) {
 		g.Go(func() error {
 			l := globalLogger.With(zap.String("service", name))
 			l.Info(ctx, "starting service")
 
-			err := f()
-			if err != nil {
+			err := f(ctx)
+			if ignoreCancelled(err) != nil {
 				l.Error(ctx, "service returned an error", zap.Error(err))
 			}
 
@@ -258,6 +259,8 @@ func run(config cfg.Config) (success bool) {
 				// Don't block if the serviceError channel is already closed
 				// or if the error is already sent
 			}
+
+			l.Info(ctx, "service stopped")
 
 			return serviceDoneError{name: name}
 		})
@@ -355,7 +358,7 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create sandbox proxy", zap.Error(err))
 	}
-	startService("sandbox proxy", func() error {
+	startService("sandbox proxy", func(ctx context.Context) error {
 		err := sandboxProxy.Start(ctx)
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
@@ -372,7 +375,7 @@ func run(config cfg.Config) (success bool) {
 		sandboxes,
 		tel.MeterProvider,
 	)
-	startService("tcp egress firewall", func() error {
+	startService("tcp egress firewall", func(context.Context) error {
 		return tcpFirewall.Start(ctx)
 	})
 	closers = append(closers, closer{"tcp egress firewall", tcpFirewall.Close})
@@ -382,10 +385,8 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create device pool", zap.Error(err))
 	}
-	startService("nbd device pool", func() error {
-		devicePool.Populate(ctx)
-
-		return nil
+	startService("nbd device pool", func(ctx context.Context) error {
+		return devicePool.Populate(ctx)
 	})
 	closers = append(closers, closer{"device pool", devicePool.Close})
 
@@ -395,10 +396,8 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create network pool", zap.Error(err))
 	}
 	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
-	startService("network pool", func() error {
-		networkPool.Populate(ctx)
-
-		return nil
+	startService("network pool", func(ctx context.Context) error {
+		return networkPool.Populate(ctx)
 	})
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
@@ -420,33 +419,12 @@ func run(config cfg.Config) (success bool) {
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
 	})
 
-	// template manager sandbox logger
-	tmplSbxLoggerExternal := sbxlogger.NewLogger(
-		ctx,
-		tel.LogsProvider,
-		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      constants.ServiceNameTemplate,
-			IsInternal:       false,
-			CollectorAddress: env.LogsCollectorAddress(),
-		},
-	)
-	closers = append(closers, closer{
-		"template manager sandbox logger", func(context.Context) error {
-			// Sync returns EINVAL when path is /dev/stdout (for example)
-			if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
-				return err
-			}
-
-			return nil
-		},
-	})
-
 	// hyperloop server
 	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create hyperloop server", zap.Error(err))
 	}
-	startService("hyperloop server", func() error {
+	startService("hyperloop server", func(context.Context) error {
 		err := hyperloopSrv.ListenAndServe()
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
@@ -462,6 +440,27 @@ func run(config cfg.Config) (success bool) {
 	// template manager
 	var tmpl *tmplserver.ServerStore
 	if slices.Contains(services, cfg.TemplateManager) {
+		// template manager sandbox logger
+		tmplSbxLoggerExternal := sbxlogger.NewLogger(
+			ctx,
+			tel.LogsProvider,
+			sbxlogger.SandboxLoggerConfig{
+				ServiceName:      constants.ServiceNameTemplate,
+				IsInternal:       false,
+				CollectorAddress: env.LogsCollectorAddress(),
+			},
+		)
+		closers = append(closers, closer{
+			"template manager sandbox logger", func(context.Context) error {
+				// Sync returns EINVAL when path is /dev/stdout (for example)
+				if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
+					return err
+				}
+
+				return nil
+			},
+		})
+
 		tmpl, err = tmplserver.New(
 			ctx,
 			config,
@@ -497,21 +496,6 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
 	}
-	startService("cmux server", func() error {
-		logger.L().Info(ctx, "Starting network server", zap.Uint16("port", config.GRPCPort))
-		err := cmuxServer.Serve()
-		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
-			return nil
-		}
-
-		return err
-	})
-	closers = append(closers, closer{"cmux server", func(context.Context) error {
-		logger.L().Info(ctx, "Shutting down cmux server")
-		cmuxServer.Close()
-
-		return nil
-	}})
 
 	// http server
 	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
@@ -524,7 +508,7 @@ func run(config cfg.Config) (success bool) {
 	httpServer := factories.NewHTTPServer()
 	httpServer.Handler = healthcheck.CreateHandler()
 
-	startService("http server", func() error {
+	startService("http server", func(context.Context) error {
 		err := httpServer.Serve(httpListener)
 		switch {
 		case errors.Is(err, cmux.ErrServerClosed):
@@ -539,8 +523,13 @@ func run(config cfg.Config) (success bool) {
 
 	// grpc server
 	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
-	startService("grpc server", func() error {
-		return grpcServer.Serve(grpcListener)
+	startService("grpc server", func(context.Context) error {
+		err := grpcServer.Serve(grpcListener)
+		if errors.Is(err, cmux.ErrServerClosed) {
+			return nil
+		}
+
+		return err
 	})
 	closers = append(closers, closer{"grpc server", func(context.Context) error {
 		logger.L().Info(ctx, "Shutting down grpc server")
@@ -549,45 +538,101 @@ func run(config cfg.Config) (success bool) {
 		return nil
 	}})
 
+	startService("cmux server", func(ctx context.Context) error {
+		logger.L().Info(ctx, "Starting network server", zap.Uint16("port", config.GRPCPort))
+		err := cmuxServer.Serve()
+		if err != nil {
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				return nil
+			}
+
+			return err
+		}
+
+		return nil
+	})
+	closers = append(closers, closer{"cmux server", func(context.Context) error {
+		logger.L().Info(ctx, "Shutting down cmux server")
+		cmuxServer.Close()
+
+		return nil
+	}})
+
 	// Wait for the shutdown signal or if some service fails
 	select {
-	case <-sig.Done():
+	case <-sigs:
 		logger.L().Info(ctx, "Shutdown signal received")
 	case serviceErr := <-serviceError:
 		logger.L().Error(ctx, "Service error", zap.Error(serviceErr))
 	}
 
-	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
-	defer cancelCloseCtx()
-	if config.ForceStop {
-		cancelCloseCtx()
-	}
+	ctx = context.WithoutCancel(ctx)
 
 	// Mark service draining if not already.
 	// If service stats was previously changed via API, we don't want to override it.
 	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
 		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
-
-		// Wait for draining state to propagate to all consumers
-		if !env.IsLocal() {
-			time.Sleep(15 * time.Second)
-		}
 	}
 
-	// Wait for services to be drained before closing them
-	if tmpl != nil {
-		err := tmpl.Wait(closeCtx)
-		if err != nil {
-			logger.L().Error(ctx, "error while waiting for template manager to drain", zap.Error(err))
+	if config.StopSandboxesOnExit {
+		logger.L().Info(ctx, "Killing all sandboxes on exit")
+		sandboxes.StopAll(ctx)
+	}
+
+	// if a signal is received again, cancel the context and force quit
+	go func() {
+		<-sigs
+		logger.L().Info(ctx, "Force shutdown signal received, stopping all sandboxes")
+		sandboxes.StopAll(ctx)
+		if tmpl != nil {
+			logger.L().Info(ctx, "Force shutdown signal received, stopping all template builds")
+			tmpl.StopAllBuilds()
+		}
+	}()
+
+	var closeWg sync.WaitGroup
+
+	closeWg.Go(func() {
+		logger.L().Info(ctx, "Waiting for api to read orchestrator status")
+		sleepCtx(ctx, 15*time.Second)
+	})
+
+	closeWg.Go(func() {
+		if err := sandboxFactory.Wait(ctx); err != nil {
+			logger.L().Error(ctx, "error while waiting for sandbox factory to drain", zap.Error(err))
 			success = false
 		}
-	}
+
+		logger.L().Info(ctx, "Waiting for sandbox clients to close connections")
+		sleepCtx(ctx, 15*time.Second)
+		logger.L().Info(ctx, "Assuming sandbox clients have closed their connections")
+	})
+
+	closeWg.Go(func() {
+		// Wait for services to be drained before closing them
+		if tmpl != nil {
+			err := tmpl.Wait(ctx)
+			if err != nil {
+				logger.L().Error(ctx, "error while waiting for template manager to drain", zap.Error(err))
+				success = false
+			}
+
+			logger.L().Info(ctx, "Waiting for consumers to check build status")
+			sleepCtx(ctx, 15*time.Second)
+			logger.L().Info(ctx, "Assuming consumers have updated build status")
+		}
+	})
+
+	closeWg.Wait()
 
 	slices.Reverse(closers)
+
 	for _, closer := range closers {
-		clog := globalLogger.With(zap.String("service", closer.name), zap.Bool("forced", config.ForceStop))
+		clog := globalLogger.With(
+			zap.String("service", closer.name),
+		)
 		clog.Info(ctx, "closing")
-		if err := closer.close(closeCtx); err != nil {
+		if err := closer.close(ctx); ignoreCancelled(err) != nil {
 			clog.Error(ctx, "error during shutdown", zap.Error(err))
 			success = false
 		}
@@ -601,6 +646,40 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	return success
+}
+
+func sleepCtx(closeCtx context.Context, duration time.Duration) {
+	select {
+	case <-closeCtx.Done():
+		return
+	case <-time.After(duration):
+		return
+	}
+}
+
+func ignoreInvalidArg(err error) error {
+	if errors.Is(err, syscall.EINVAL) {
+		return nil
+	}
+
+	return err
+}
+
+func ignoreServiceDoneError(err error) error {
+	var sde serviceDoneError
+	if errors.As(err, &sde) {
+		return nil
+	}
+
+	return err
+}
+
+func ignoreCancelled(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+
+	return err
 }
 
 type serviceDoneError struct {

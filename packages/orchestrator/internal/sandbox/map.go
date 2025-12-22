@@ -1,11 +1,14 @@
 package sandbox
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"go.uber.org/zap"
 )
 
 type MapSubscriber interface {
@@ -97,6 +100,24 @@ func (m *Map) RemoveByExecutionID(sandboxID, executionID string) {
 			s.OnRemove(sandboxID)
 		})
 	}
+}
+
+func (m *Map) StopAll(ctx context.Context) {
+	l := logger.L()
+
+	var count int
+	for id, sbx := range m.sandboxes.Items() {
+		count++
+
+		ls := l.With(zap.String("sandbox-id", id))
+		ls.Info(ctx, "stopping sandbox")
+		err := sbx.Stop(ctx)
+		if err != nil {
+			ls.Error(ctx, "error stopping sandbox", zap.String("sandbox-id", id), zap.Error(err))
+		}
+	}
+
+	l.Info(ctx, "stopped all sandboxes", zap.Int("count", count))
 }
 
 func NewSandboxesMap() *Map {

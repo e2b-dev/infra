@@ -45,13 +45,7 @@ job "template-manager-system" {
     task "start" {
       driver = "raw_exec"
 
-%{ if update_stanza }
-      # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
-      kill_timeout      = "70m"
-%{ else }
-      kill_timeout      = "1m"
-%{ endif }
-      kill_signal  = "SIGTERM"
+      kill_timeout = "24h"
 
       resources {
         memory     = 1024

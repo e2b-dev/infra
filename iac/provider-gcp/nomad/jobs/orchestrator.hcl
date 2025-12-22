@@ -70,6 +70,8 @@ EOT
         attempts = 0
       }
 
+      kill_timeout = "24h"
+
       env {
         NODE_ID                      = "$${node.unique.name}"
         CONSUL_TOKEN                 = "${consul_acl_token}"

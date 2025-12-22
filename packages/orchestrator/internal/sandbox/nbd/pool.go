@@ -122,26 +122,26 @@ func getMaxDevices() (uint, error) {
 	return uint(maxDevices), nil
 }
 
-func (d *DevicePool) Populate(ctx context.Context) {
+func (d *DevicePool) Populate(ctx context.Context) error {
 	defer close(d.slots)
 
 	failedCount := 0
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		case <-d.done:
-			return
+			return nil
 		default:
 		}
 
-		device, err := d.getFreeDeviceSlot()
+		device, cleanup, err := d.getFreeDeviceSlot()
 		if err != nil {
 			if failedCount%100 == 0 {
-				logger.L().Error(ctx, "[nbd pool]: failed to create network",
-					zap.Error(err),
-					zap.Int("failed_count", failedCount),
-				)
+				//logger.L().Error(ctx, "[nbd pool]: failed to create network",
+				//	zap.Error(err),
+				//	zap.Int("failed_count", failedCount),
+				//)
 			}
 
 			failedCount++
@@ -156,9 +156,13 @@ func (d *DevicePool) Populate(ctx context.Context) {
 		// Use select to avoid panic if context is canceled before writing
 		select {
 		case <-ctx.Done():
-			return
+			cleanup()
+
+			return ctx.Err()
 		case <-d.done:
-			return
+			cleanup()
+
+			return nil
 		case d.slots <- *device:
 			// sent successfully
 		}
@@ -226,7 +230,7 @@ func (d *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bo
 }
 
 // Get a free device slot.
-func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
+func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, func(), error) {
 	start := uint32(0)
 
 	for {
@@ -235,14 +239,14 @@ func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 		if !ok {
 			cleanup()
 
-			return nil, NoFreeSlotsError{}
+			return nil, nil, NoFreeSlotsError{}
 		}
 
 		free, err := d.isDeviceFree(slot)
 		if err != nil {
 			cleanup()
 
-			return nil, fmt.Errorf("failed to check if device is free: %w", err)
+			return nil, nil, fmt.Errorf("failed to check if device is free: %w", err)
 		}
 
 		if !free {
@@ -255,7 +259,7 @@ func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 			continue
 		}
 
-		return &slot, nil
+		return &slot, cleanup, nil
 	}
 }
 

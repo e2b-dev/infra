@@ -153,3 +153,11 @@ func (c *BuildCache) Create(teamID string, buildID string, logs *buildlogger.Log
 func (c *BuildCache) Delete(buildID string) {
 	c.cache.Delete(buildID)
 }
+
+func (c *BuildCache) StopAll() {
+	for _, item := range c.cache.Items() {
+		item.Value().SetFail(&template_manager.TemplateBuildStatusReason{
+			Message: "build cancelled",
+		})
+	}
+}

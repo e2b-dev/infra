@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -20,12 +19,12 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type closeable interface {
@@ -43,7 +42,7 @@ type ServerStore struct {
 	templateStorage   storage.StorageProvider
 	buildStorage      storage.StorageProvider
 
-	wg   *sync.WaitGroup // wait group for running builds
+	wg   sync.WaitGroup // wait group for running builds
 	info *service.ServiceInfo
 
 	closers []closeable
@@ -125,7 +124,6 @@ func New(
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistance,
 		info:              info,
-		wg:                &sync.WaitGroup{},
 		closers:           closers,
 	}
 
@@ -135,38 +133,25 @@ func New(
 func (s *ServerStore) Close(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
+		return ctx.Err()
 	default:
-		var closersErr error
+		var errs []error
 		for _, closer := range s.closers {
 			err := closer.Close()
-			if err != nil {
-				closersErr = errors.Join(closersErr, err)
-			}
-		}
-		if closersErr != nil {
-			return fmt.Errorf("failed to close services: %w", closersErr)
+			errs = append(errs, err)
 		}
 
-		return nil
+		return errors.Join(errs...)
 	}
 }
 
 func (s *ServerStore) Wait(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
-	default:
-		s.logger.Info(ctx, "Waiting for all build jobs to finish")
-		s.wg.Wait()
+	s.logger.Info(ctx, "Waiting for all build jobs to finish")
+	defer s.logger.Info(ctx, "Template build queue is empty")
 
-		if !env.IsLocal() {
-			s.logger.Info(ctx, "Waiting for consumers to check build status")
-			time.Sleep(15 * time.Second)
-		}
+	return utils.Wait(ctx, &s.wg)
+}
 
-		s.logger.Info(ctx, "Template build queue cleaned")
-
-		return nil
-	}
+func (s *ServerStore) StopAllBuilds() {
+	s.buildCache.StopAll()
 }

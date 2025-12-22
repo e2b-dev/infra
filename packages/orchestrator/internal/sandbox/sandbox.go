@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -149,6 +150,7 @@ type Factory struct {
 	networkPool  *network.Pool
 	devicePool   *nbd.DevicePool
 	featureFlags *featureflags.Client
+	wg           sync.WaitGroup
 }
 
 func NewFactory(
@@ -165,6 +167,16 @@ func NewFactory(
 	}
 }
 
+// Wait for all sandboxes to exit
+func (f *Factory) Wait(ctx context.Context) error {
+	l := logger.L()
+
+	l.Info(ctx, "Waiting for all sandboxes to exit")
+	defer l.Info(ctx, "All sandboxes exited")
+
+	return utils.Wait(ctx, &f.wg)
+}
+
 // CreateSandbox creates the sandbox.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) CreateSandbox(
@@ -178,6 +190,8 @@ func (f *Factory) CreateSandbox(
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
+	f.addSandbox()
+
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
@@ -196,6 +210,12 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
+	cleanup.AddNoContext(ctx, "reduce counter", func() error {
+		f.subtractSandbox()
+
+		return nil
+	})
+
 	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
@@ -203,7 +223,7 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
+	cleanup.Add(ctx, "clean up files", cleanupFiles(f.config, sandboxFiles))
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
@@ -228,7 +248,7 @@ func (f *Factory) CreateSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
-	cleanup.Add(ctx, rootfsProvider.Close)
+	cleanup.Add(ctx, "close rootfs provider", rootfsProvider.Close)
 	go func() {
 		runErr := rootfsProvider.Start(execCtx)
 		if runErr != nil {
@@ -326,7 +346,7 @@ func (f *Factory) CreateSandbox(
 	sbx.Checks = NewChecks(sbx, false)
 
 	// Stop the sandbox first if it is still running, otherwise do nothing
-	cleanup.AddPriority(ctx, sbx.Stop)
+	cleanup.AddPriority(ctx, "stop sandbox", sbx.Stop)
 
 	go func() {
 		defer execSpan.End()
@@ -364,6 +384,8 @@ func (f *Factory) ResumeSandbox(
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
+	f.addSandbox()
+
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
@@ -381,6 +403,11 @@ func (f *Factory) ResumeSandbox(
 			execSpan.End()
 		}
 	}()
+	cleanup.AddNoContext(ctx, "subtract sandbox", func() error {
+		f.subtractSandbox()
+
+		return nil
+	})
 
 	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
@@ -389,7 +416,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
+	cleanup.Add(ctx, "clean up files", cleanupFiles(f.config, sandboxFiles))
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
@@ -409,7 +436,7 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
 
-	cleanup.Add(ctx, rootfsOverlay.Close)
+	cleanup.Add(ctx, "close rootfs overlay", rootfsOverlay.Close)
 
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
@@ -563,7 +590,7 @@ func (f *Factory) ResumeSandbox(
 	// This is to prevent race condition of reporting unhealthy sandbox
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
 
-	cleanup.AddPriority(ctx, func(ctx context.Context) error {
+	cleanup.AddPriority(ctx, "stop sandbox", func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
 		return sbx.Stop(ctx)
 	})
@@ -602,6 +629,14 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	return sbx, nil
+}
+
+func (f *Factory) addSandbox() {
+	f.wg.Add(1)
+}
+
+func (f *Factory) subtractSandbox() {
+	f.wg.Done()
 }
 
 func startExecutionSpan(ctx context.Context) (context.Context, trace.Span) {
@@ -750,7 +785,7 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
-	cleanup.AddNoContext(ctx, snapshotTemplateFiles.Close)
+	cleanup.AddNoContext(ctx, "close snapshot template files", snapshotTemplateFiles.Close)
 
 	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
 	if err != nil {
@@ -774,7 +809,7 @@ func (s *Sandbox) Pause(
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
-	cleanup.AddNoContext(ctx, snapfile.Close)
+	cleanup.AddNoContext(ctx, "close snapfile", snapfile.Close)
 	// Memfile is also closed on diff creation processing
 	/* The process of snapshotting memory is as follows:
 	1. Pause FC via API
@@ -827,7 +862,7 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
-	cleanup.AddNoContext(ctx, memfileDiff.Close)
+	cleanup.AddNoContext(ctx, "close memfile diff", memfileDiff.Close)
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
 		ctx,
@@ -842,10 +877,10 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
-	cleanup.AddNoContext(ctx, rootfsDiff.Close)
+	cleanup.AddNoContext(ctx, "close rootfs diff", rootfsDiff.Close)
 
 	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
-	cleanup.AddNoContext(ctx, metadataFileLink.Close)
+	cleanup.AddNoContext(ctx, "close metadata file link", metadataFileLink.Close)
 
 	err = m.ToFile(metadataFileLink.Path())
 	if err != nil {
@@ -967,7 +1002,7 @@ func getNetworkSlotAsync(
 			return
 		}
 
-		cleanup.Add(ctx, func(ctx context.Context) error {
+		cleanup.Add(ctx, "return network slot", func(ctx context.Context) error {
 			ctx, span := tracer.Start(ctx, "network-slot-clean")
 			defer span.End()
 
@@ -1010,7 +1045,7 @@ func serveMemory(
 
 	telemetry.ReportEvent(ctx, "started uffd")
 
-	cleanup.Add(ctx, func(ctx context.Context) error {
+	cleanup.Add(ctx, "stop uffd", func(ctx context.Context) error {
 		_, span := tracer.Start(ctx, "uffd-stop")
 		defer span.End()
 

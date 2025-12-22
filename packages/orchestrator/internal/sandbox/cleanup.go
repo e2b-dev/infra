@@ -11,11 +11,16 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"go.uber.org/zap"
 )
 
+type cleaner struct {
+	name string
+	fn   func(context.Context) error
+}
 type Cleanup struct {
-	cleanup         []func(ctx context.Context) error
-	priorityCleanup []func(ctx context.Context) error
+	cleanup         []cleaner
+	priorityCleanup []cleaner
 	error           error
 	once            sync.Once
 
@@ -27,13 +32,13 @@ func NewCleanup() *Cleanup {
 	return &Cleanup{}
 }
 
-func (c *Cleanup) AddNoContext(ctx context.Context, f func() error) {
-	c.Add(ctx, func(_ context.Context) error { return f() })
+func (c *Cleanup) AddNoContext(ctx context.Context, name string, f func() error) {
+	c.Add(ctx, name, func(_ context.Context) error { return f() })
 }
 
-func (c *Cleanup) Add(ctx context.Context, f func(ctx context.Context) error) {
+func (c *Cleanup) Add(ctx context.Context, name string, f func(ctx context.Context) error) {
 	if c.hasRun.Load() == true {
-		logger.L().Error(ctx, "Add called after cleanup has run, ignoring function")
+		logger.L().Error(ctx, "Add called after cleanup has run, ignoring function", zap.String("name", name))
 
 		return
 	}
@@ -41,10 +46,10 @@ func (c *Cleanup) Add(ctx context.Context, f func(ctx context.Context) error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.cleanup = append(c.cleanup, f)
+	c.cleanup = append(c.cleanup, cleaner{name: name, fn: f})
 }
 
-func (c *Cleanup) AddPriority(ctx context.Context, f func(ctx context.Context) error) {
+func (c *Cleanup) AddPriority(ctx context.Context, name string, f func(ctx context.Context) error) {
 	if c.hasRun.Load() == true {
 		logger.L().Error(ctx, "AddPriority called after cleanup has run, ignoring function")
 
@@ -54,7 +59,7 @@ func (c *Cleanup) AddPriority(ctx context.Context, f func(ctx context.Context) e
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.priorityCleanup = append(c.priorityCleanup, f)
+	c.priorityCleanup = append(c.priorityCleanup, cleaner{name: name, fn: f})
 }
 
 func (c *Cleanup) Run(ctx context.Context) error {
@@ -74,16 +79,20 @@ func (c *Cleanup) run(ctx context.Context) {
 	var errs []error
 
 	for i := len(c.priorityCleanup) - 1; i >= 0; i-- {
-		err := c.priorityCleanup[i](ctx)
+		clnr := c.priorityCleanup[i]
+		zap.L().Info("running cleaner", zap.String("name", clnr.name))
+		err := clnr.fn(ctx)
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("cleaner %q failed: %w", clnr.name, err))
 		}
 	}
 
 	for i := len(c.cleanup) - 1; i >= 0; i-- {
-		err := c.cleanup[i](ctx)
+		clnr := c.cleanup[i]
+		zap.L().Info("running cleaner", zap.String("name", clnr.name))
+		err := clnr.fn(ctx)
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("cleaner %q failed: %w", clnr.name, err))
 		}
 	}
 

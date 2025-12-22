@@ -100,7 +100,7 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 
 	err = ips.CreateNetwork(ctx)
 	if err != nil {
-		releaseErr := p.slotStorage.Release(ips)
+		releaseErr := p.slotStorage.Release(ctx, ips)
 		err = errors.Join(err, releaseErr)
 
 		return nil, fmt.Errorf("failed to create network: %w", err)
@@ -109,15 +109,24 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 	return ips, nil
 }
 
-func (p *Pool) Populate(ctx context.Context) {
+func (p *Pool) Populate(ctx context.Context) error {
 	defer close(p.newSlots)
+
+	cleanup := func(ctx context.Context, slot *Slot) {
+		if err := p.Return(ctx, slot); err != nil {
+			logger.L().Error(ctx, "[network slot pool]: failed to return slot after closing",
+				zap.Error(err),
+				zap.String("slot_key", slot.Key),
+			)
+		}
+	}
 
 	for {
 		select {
 		case <-p.done:
-			return
+			return ErrClosed
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		default:
 			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {
@@ -127,7 +136,19 @@ func (p *Pool) Populate(ctx context.Context) {
 			}
 
 			newSlotsAvailableCounter.Add(ctx, 1)
-			p.newSlots <- slot
+
+			select {
+			case p.newSlots <- slot:
+
+			case <-p.done:
+				cleanup(ctx, slot)
+
+				return nil
+			case <-ctx.Done():
+				cleanup(ctx, slot)
+
+				return ctx.Err()
+			}
 		}
 	}
 }
@@ -175,11 +196,11 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 }
 
 func (p *Pool) Return(ctx context.Context, slot *Slot) error {
+	// avoid checking p.done, as we want to return the slot even if the pool is closed.
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-p.done:
-		return ErrClosed
 	default:
 	}
 
@@ -194,10 +215,16 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	}
 
 	select {
-	case <-ctx.Done():
-		return ctx.Err()
 	case <-p.done:
-		return ErrClosed
+		return nil
+	case <-ctx.Done():
+		if err := p.cleanup(ctx, slot); err != nil {
+			logger.L().Error(ctx, "failed to cleanup slot after closing",
+				zap.String("slot_key", slot.Key),
+				zap.Error(err))
+		}
+
+		return ctx.Err()
 	case p.reusedSlots <- slot:
 		returnedSlotCounter.Add(ctx, 1)
 		reusableSlotsAvailableCounter.Add(ctx, 1)
@@ -219,7 +246,7 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}
 
-	err = p.slotStorage.Release(slot)
+	err = p.slotStorage.Release(ctx, slot)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
 	}

@@ -72,7 +72,6 @@ type Config struct {
 	BuilderConfig
 
 	ClickhouseConnectionString string   `env:"CLICKHOUSE_CONNECTION_STRING"`
-	ForceStop                  bool     `env:"FORCE_STOP"`
 	GRPCPort                   uint16   `env:"GRPC_PORT"                    envDefault:"5008"`
 	LaunchDarklyAPIKey         string   `env:"LAUNCH_DARKLY_API_KEY"`
 	OrchestratorLockPath       string   `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
@@ -81,6 +80,9 @@ type Config struct {
 	RedisTLSCABase64           string   `env:"REDIS_TLS_CA_BASE64"`
 	RedisURL                   string   `env:"REDIS_URL"`
 	Services                   []string `env:"ORCHESTRATOR_SERVICES"        envDefault:"orchestrator"`
+
+	// When set to `true`, stop sandboxes on exit. When set to `false`, wait for sandboxes to finish before shutting down.
+	StopSandboxesOnExit bool `env:"FORCE_STOP"`
 }
 
 func Parse() (Config, error) {
