@@ -35,7 +35,7 @@ func TestCopyFromProcess_FullRange(t *testing.T) {
 	addr, mem := allocateTestMemory(t, uint64(size), uint64(pageSize))
 
 	ranges := []Range{
-		{Start: int64(addr), Size: int64(size)},
+		{Start: int64(addr), Size: size},
 	}
 
 	cache, err := NewCacheFromProcessMemory(
@@ -112,9 +112,9 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	pageSize := uint64(header.PageSize)
 	rangeSize := int64(pageSize * 64)
 
-	totalSize := int64(rangeSize * int64(numRanges))
+	totalSize := rangeSize * int64(numRanges)
 
-	addr, mem := allocateTestMemory(t, uint64(totalSize), uint64(pageSize))
+	addr, mem := allocateTestMemory(t, uint64(totalSize), pageSize)
 
 	ranges := make([]Range, numRanges)
 	for i := range numRanges {
@@ -166,8 +166,8 @@ func TestCopyFromProcess_HugepageToRegularPage(t *testing.T) {
 	require.Equal(t, len(mem), n)
 
 	ranges := []Range{
-		{Start: int64(addr), Size: int64(pageSize * 2)},
-		{Start: int64(addr) + int64(pageSize*4), Size: int64(pageSize * 4)},
+		{Start: int64(addr), Size: pageSize * 2},
+		{Start: int64(addr) + pageSize*4, Size: pageSize * 4},
 	}
 
 	cache, err := NewCacheFromProcessMemory(
@@ -184,14 +184,14 @@ func TestCopyFromProcess_HugepageToRegularPage(t *testing.T) {
 		cache.Close()
 	})
 
-	data := make([]byte, int64(pageSize)*2)
+	data := make([]byte, pageSize*2)
 	n, err = cache.ReadAt(data, 0)
 	require.NoError(t, err)
 	require.Equal(t, int(pageSize*2), n)
 	require.NoError(t, compareData(data[:n], mem[0:pageSize*2]))
 
-	data = make([]byte, int64(pageSize)*4)
-	n, err = cache.ReadAt(data, int64(pageSize*2))
+	data = make([]byte, pageSize*4)
+	n, err = cache.ReadAt(data, pageSize*2)
 	require.NoError(t, err)
 	require.Equal(t, int(pageSize*4), n)
 	require.NoError(t, compareData(data[:n], mem[pageSize*4:pageSize*8]))
