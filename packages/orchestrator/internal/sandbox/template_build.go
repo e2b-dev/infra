@@ -56,18 +56,18 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 	return nil
 }
 
-func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
-	object, err := t.persistence.OpenSeekableObject(ctx, t.files.StorageMemfilePath(), storage.MemfileObjectType)
+func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) (*storage.CompressedInfo, error) {
+	object, err := t.persistence.OpenFramedWriter(ctx, t.files.StorageMemfilePath(), storage.DefaultCompressionOptions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = object.WriteFromFileSystem(ctx, memfilePath)
+	ci, err := object.StoreFromFileSystem(ctx, memfilePath)
 	if err != nil {
-		return fmt.Errorf("error when uploading memfile: %w", err)
+		return nil, fmt.Errorf("error when uploading memfile: %w", err)
 	}
 
-	return nil
+	return ci, nil
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
@@ -89,18 +89,18 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 	return nil
 }
 
-func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
-	object, err := t.persistence.OpenSeekableObject(ctx, t.files.StorageRootfsPath(), storage.RootFSObjectType)
+func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) (*storage.CompressedInfo, error) {
+	object, err := t.persistence.OpenFramedWriter(ctx, t.files.StorageRootfsPath(), storage.DefaultCompressionOptions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = object.WriteFromFileSystem(ctx, rootfsPath)
+	ci, err := object.StoreFromFileSystem(ctx, rootfsPath)
 	if err != nil {
-		return fmt.Errorf("error when uploading rootfs: %w", err)
+		return nil, fmt.Errorf("error when uploading rootfs: %w", err)
 	}
 
-	return nil
+	return ci, nil
 }
 
 // Snap-file is small enough so we don't use composite upload.
@@ -110,7 +110,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err = object.WriteFromFileSystem(ctx, path); err != nil {
+	if err = object.CopyFromFileSystem(ctx, path); err != nil {
 		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
@@ -124,7 +124,7 @@ func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err := object.WriteFromFileSystem(ctx, path); err != nil {
+	if err = object.CopyFromFileSystem(ctx, path); err != nil {
 		return fmt.Errorf("error when uploading metadata: %w", err)
 	}
 
@@ -135,37 +135,29 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		if t.rootfsHeader == nil {
-			return nil
-		}
-
-		err := t.uploadRootfsHeader(ctx, t.rootfsHeader)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	eg.Go(func() error {
 		if rootfsPath == nil {
 			return nil
 		}
 
-		err := t.uploadRootfs(ctx, *rootfsPath)
+		ci, err := t.uploadRootfs(ctx, *rootfsPath)
 		if err != nil {
 			return err
 		}
 
-		return nil
-	})
-
-	eg.Go(func() error {
-		if t.memfileHeader == nil {
+		if t.rootfsHeader == nil {
 			return nil
 		}
 
-		err := t.uploadMemfileHeader(ctx, t.memfileHeader)
+		if ci != nil {
+			// iterate over the mappings, and for each one from the current build add the compressed info
+			for _, mapping := range t.rootfsHeader.Mapping {
+				if mapping.BuildId == t.rootfsHeader.Metadata.BuildId {
+					mapping.CompressedInfo = ci.Subset(int64(mapping.Offset), int64(mapping.Length))
+				}
+			}
+		}
+
+		err = t.uploadRootfsHeader(ctx, t.rootfsHeader)
 		if err != nil {
 			return err
 		}
@@ -178,7 +170,25 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		err := t.uploadMemfile(ctx, *memfilePath)
+		ci, err := t.uploadMemfile(ctx, *memfilePath)
+		if err != nil {
+			return err
+		}
+
+		if t.memfileHeader == nil {
+			return nil
+		}
+
+		if ci != nil {
+			// iterate over the mappings, and for each one from the current build add the compressed info
+			for _, mapping := range t.memfileHeader.Mapping {
+				if mapping.BuildId == t.memfileHeader.Metadata.BuildId {
+					mapping.CompressedInfo = ci.Subset(int64(mapping.Offset), int64(mapping.Length))
+				}
+			}
+		}
+
+		err = t.uploadMemfileHeader(ctx, t.memfileHeader)
 		if err != nil {
 			return err
 		}

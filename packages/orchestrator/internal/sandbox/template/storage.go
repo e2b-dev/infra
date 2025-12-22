@@ -81,11 +81,12 @@ func NewStorage(
 	// If we can't find the diff header in storage, we try to find the "old" style template without a header as a fallback.
 	if h == nil {
 		objectPath := buildId + "/" + string(fileType)
-		objectType, ok := objectType(fileType)
+		_, ok := objectType(fileType)
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
-		object, err := persistence.OpenSeekableObject(ctx, objectPath, objectType)
+		// Old style must not be compressed
+		object, err := persistence.OpenFramedReader(ctx, objectPath, nil)
 		if err != nil {
 			return nil, err
 		}

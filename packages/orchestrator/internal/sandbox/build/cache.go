@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const (
@@ -98,7 +99,7 @@ func (s *DiffStore) Close() {
 	s.cache.Stop()
 }
 
-func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
+func (s *DiffStore) Get(ctx context.Context, compression *storage.CompressedInfo, diff Diff) (Diff, error) {
 	s.resetDelete(diff.CacheKey())
 	source, found := s.cache.GetOrSet(
 		diff.CacheKey(),
@@ -112,7 +113,7 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 	}
 
 	if !found {
-		err := diff.Init(ctx)
+		err := diff.Init(ctx, compression)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init source: %w", err)
 		}

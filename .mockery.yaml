@@ -11,11 +11,16 @@ packages:
     interfaces:
       ObjectProvider:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockobjectprovider.go
-          pkgname: storagemocks
-      SeekableObjectProvider:
+          dir: packages/shared/pkg/storage
+          filename: mock_objectprovider.go
+          inpackage: true # refers to types in the same package
+      FramedWriter:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockseekableobjectprovider.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          filename: mock_framedwriter.go
+          inpackage: true # refers to types in the same package
+      FramedReader:
+        config:
+          dir: packages/shared/pkg/storage
+          filename: mock_framedwriter.go
+          inpackage: true # refers to types in the same package

@@ -84,8 +84,8 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 	return b.cacheKey
 }
 
-func (b *StorageDiff) Init(ctx context.Context) error {
-	obj, err := b.persistence.OpenSeekableObject(ctx, b.storagePath, b.storageObjectType)
+func (b *StorageDiff) Init(ctx context.Context, compressedInfo *storage.CompressedInfo) error {
+	obj, err := b.persistence.OpenFramedReader(ctx, b.storagePath, compressedInfo)
 	if err != nil {
 		return err
 	}

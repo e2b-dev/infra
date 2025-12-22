@@ -23,6 +23,8 @@ require (
 	cloud.google.com/go/artifactregistry v1.16.0
 	cloud.google.com/go/storage v1.50.0
 	connectrpc.com/connect v1.18.1
+	github.com/SaveTheRbtz/fastcdc-go v0.3.0
+	github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.8.0
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.74
@@ -46,12 +48,14 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/hashicorp/go-retryablehttp v0.7.7
 	github.com/jellydator/ttlcache/v3 v3.4.0
+	github.com/klauspost/compress v1.18.0
 	github.com/launchdarkly/go-sdk-common/v3 v3.3.0
 	github.com/launchdarkly/go-server-sdk/v7 v7.13.0
 	github.com/ngrok/firewall_toolkit v0.0.18
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/redis/go-redis/v9 v9.12.1
+	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/bridges/otelzap v0.13.0
 	go.opentelemetry.io/otel v1.38.0
@@ -68,6 +72,7 @@ require (
 	golang.org/x/mod v0.29.0
 	golang.org/x/oauth2 v0.30.0
 	golang.org/x/sync v0.18.0
+	golang.org/x/term v0.37.0
 	google.golang.org/api v0.214.0
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
@@ -217,7 +222,6 @@ require (
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -237,6 +241,7 @@ require (
 	github.com/mdlayher/netlink v1.7.3-0.20250113171957-fbb4dce95f42 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/miekg/dns v1.1.63 // indirect
+	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c // indirect
@@ -274,6 +279,7 @@ require (
 	github.com/prometheus/exporter-toolkit v0.10.1-0.20230714054209-2f4150c63f97 // indirect
 	github.com/prometheus/procfs v0.16.0 // indirect
 	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852 // indirect
+	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
