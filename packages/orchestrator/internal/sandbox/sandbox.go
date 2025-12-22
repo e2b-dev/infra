@@ -714,7 +714,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 // Currently the memory snapshotting works like this:
 //  1. We pause FC VM
 //  2. We call FC snapshot endpoint without specifying memfile path. With our custom FC,
-//     with out custom Fc, this only creates the snapfile and drains and flushes the disk.
+//     this only creates the snapfile and drains and flushes the disk.
 //  3. We call custom FC endpoint that returns memory addresses of the sandbox memory, that we will process after.
 //  4. In case of NoopMemory (the sandbox was not a resume) we also call the custom FC endpoint,
 //     that returns info about resident memory pages and about empty memory pages.
