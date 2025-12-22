@@ -157,7 +157,7 @@ func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster querie
 
 	logger.L().Info(ctx, "Initializing newly discovered cluster", logger.WithClusterID(cluster.ID))
 
-	c, err := NewCluster(context.WithoutCancel(ctx),
+	c, err := newCluster(context.WithoutCancel(ctx),
 		d.pool.tel,
 		cluster.Endpoint,
 		cluster.EndpointTls,
