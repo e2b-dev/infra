@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -58,10 +59,14 @@ func (n *mockSandboxClientWithSleep) Create(_ context.Context, _ *orchestrator.S
 
 // newMockGRPCClient creates a new mock gRPC connection for testing
 func newMockGRPCClient() *clusters.GRPCClient {
+	// Create a dummy connection that will never be used
+	conn, _ := grpc.NewClient("localhost:0", grpc.WithTransportCredentials(insecure.NewCredentials()))
+
 	return &clusters.GRPCClient{
-		Info:     &mockInfoClient{},
-		Sandbox:  &mockSandboxClient{},
-		Template: &mockTemplateClient{},
+		Info:       &mockInfoClient{},
+		Sandbox:    &mockSandboxClient{},
+		Template:   &mockTemplateClient{},
+		Connection: conn,
 	}
 }
 
