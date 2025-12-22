@@ -78,7 +78,7 @@ func (m *Mapping) GetHostVirtRanges(off int64, size int64) (hostVirtRanges []blo
 
 		hostVirtRanges = append(hostVirtRanges, r)
 
-		n += int64(r.Size)
+		n += r.Size
 	}
 
 	return hostVirtRanges, nil

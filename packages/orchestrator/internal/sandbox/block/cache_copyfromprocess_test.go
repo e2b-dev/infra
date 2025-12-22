@@ -32,14 +32,16 @@ func TestCopyFromProcess_HelperProcess(t *testing.T) {
 	size, err := strconv.ParseUint(sizeStr, 10, 64)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to parse memory size: %v\n", err)
-		os.Exit(1)
+
+		panic(err)
 	}
 
 	// Allocate memory using mmap (similar to testutils.NewPageMmap but simpler)
 	mem, err := unix.Mmap(-1, 0, int(size), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to mmap memory: %v\n", err)
-		os.Exit(1)
+
+		panic(err)
 	}
 	defer unix.Munmap(mem)
 
@@ -56,7 +58,8 @@ func TestCopyFromProcess_HelperProcess(t *testing.T) {
 	err = binary.Write(os.Stdout, binary.LittleEndian, addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to write address: %v\n", err)
-		os.Exit(1)
+
+		panic(err)
 	}
 
 	// Signal ready by closing stdout
@@ -73,7 +76,8 @@ func TestCopyFromProcess_HelperProcess(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		// Timeout after 30 seconds
 		fmt.Fprintf(os.Stderr, "helper process timeout\n")
-		os.Exit(1)
+
+		panic("helper process timeout")
 	}
 }
 
@@ -384,7 +388,7 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 
 	// Create many small ranges that exceed IOV_MAX
 	ranges := make([]Range, numRanges)
-	for i := 0; i < numRanges; i++ {
+	for i := range numRanges {
 		ranges[i] = Range{
 			Start: int64(baseAddr) + int64(i)*int64(rangeSize),
 			Size:  int64(rangeSize),
@@ -399,11 +403,8 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 	// Verify the data was copied correctly
 	// Check a few ranges to ensure they were copied
 	// ReadAt offsets must be multiples of header.PageSize
-	checkCount := 10
-	if numRanges < checkCount {
-		checkCount = numRanges
-	}
-	for i := 0; i < checkCount; i++ {
+	checkCount := min(numRanges, 10)
+	for i := range checkCount {
 		// Calculate the actual offset in cache (ranges are stored sequentially)
 		actualOffset := int64(i) * int64(rangeSize)
 		// Align offset to header.PageSize boundary
@@ -419,8 +420,8 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 		require.Equal(t, int(header.PageSize), n)
 
 		// Verify pattern for the range we're checking
-		for j := 0; j < int(rangeSize); j++ {
-			expected := byte((int(actualOffset) + j) % 256)
+		for j := range rangeSize {
+			expected := byte((actualOffset + int64(j)) % 256)
 			assert.Equal(t, expected, data[offsetInBlock+int64(j)], "range %d, byte at offset %d", i, j)
 		}
 	}

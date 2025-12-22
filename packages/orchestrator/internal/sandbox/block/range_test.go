@@ -330,7 +330,7 @@ func TestBitsetRanges_MultipleRanges(t *testing.T) {
 
 func TestBitsetRanges_AllSet(t *testing.T) {
 	b := bitset.New(10)
-	for i := uint(0); i < 10; i++ {
+	for i := range uint(10) {
 		b.Set(i)
 	}
 	blockSize := int64(4096)

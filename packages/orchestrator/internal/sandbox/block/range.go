@@ -17,7 +17,7 @@ type Range struct {
 }
 
 func (r *Range) End() int64 {
-	return r.Start + int64(r.Size)
+	return r.Start + r.Size
 }
 
 // Offsets returns the block offsets contained in the range.

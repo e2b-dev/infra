@@ -38,3 +38,17 @@ func configureApi(f Fd, pagesize uint64) error {
 
 	return nil
 }
+
+// mode: UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING
+// This is already called by the FC, but only with the UFFDIO_REGISTER_MODE_MISSING
+// We need to call it with UFFDIO_REGISTER_MODE_WP when we use both missing and wp
+func register(f Fd, addr uintptr, size uint64, mode CULong) error {
+	register := newUffdioRegister(CULong(addr), CULong(size), mode)
+
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %w (ret=%d)", errno, ret)
+	}
+
+	return nil
+}
