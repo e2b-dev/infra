@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -182,14 +183,24 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-// Dirty waits for the current requests to finish and returns the dirty pages.
+// DiffMetadata waits for the current requests to finish and returns the dirty pages.
 //
 // It *MUST* be only called after the sandbox was successfully paused via API and after the snapshot endpoint was called.
-func (u *Uffd) Dirty(ctx context.Context) (*bitset.BitSet, error) {
+func (u *Uffd) DiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	return uffd.Dirty().BitSet(), nil
+	dirty := uffd.Dirty()
+	if err != nil {
+		return nil, err
+	}
+
+	return &header.DiffMetadata{
+		Dirty: dirty.BitSet(),
+		// We don't track and filter empty pages for subsequent sandbox pauses as pages should usually not be empty.
+		Empty:     bitset.New(0),
+		BlockSize: u.memfile.BlockSize(),
+	}, nil
 }

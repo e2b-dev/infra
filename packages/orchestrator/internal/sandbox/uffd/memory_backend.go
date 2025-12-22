@@ -3,13 +3,12 @@ package uffd
 import (
 	"context"
 
-	"github.com/bits-and-blooms/bitset"
-
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type MemoryBackend interface {
-	Dirty(ctx context.Context) (*bitset.BitSet, error)
+	DiffMetadata(ctx context.Context) (*header.DiffMetadata, error)
 	Start(ctx context.Context, sandboxId string) error
 	Stop() error
 	Ready() chan struct{}

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
@@ -94,16 +93,6 @@ type Resources struct {
 	Slot   *network.Slot
 	rootfs rootfs.Provider
 	memory uffd.MemoryBackend
-	// Filter to apply to the dirty bitset before creating the diff metadata.
-	memoryDiffFilter func(ctx context.Context) (*header.DiffMetadata, error)
-}
-
-func (r *Resources) MemfileDiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
-	if r.memoryDiffFilter == nil {
-		return nil, fmt.Errorf("memory diff filter is not set")
-	}
-
-	return r.memoryDiffFilter(ctx)
 }
 
 type internalConfig struct {
@@ -303,28 +292,7 @@ func (f *Factory) CreateSandbox(
 	resources := &Resources{
 		Slot:   ips.slot,
 		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
-		memoryDiffFilter: func(ctx context.Context) (*header.DiffMetadata, error) {
-			diffInfo, err := fcHandle.MemoryInfo(ctx, memfile.BlockSize())
-			if err != nil {
-				return nil, err
-			}
-
-			dirty := diffInfo.Dirty.Difference(diffInfo.Empty)
-
-			numberOfPages := header.TotalBlocks(memfileSize, memfile.BlockSize())
-
-			empty := bitset.New(uint(numberOfPages))
-			empty.FlipRange(0, uint(numberOfPages))
-
-			empty = empty.Difference(dirty)
-
-			return &header.DiffMetadata{
-				Dirty:     dirty,
-				Empty:     empty,
-				BlockSize: memfile.BlockSize(),
-			}, nil
-		},
+		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize(), fcHandle.MemoryInfo),
 	}
 
 	metadata := &Metadata{
@@ -559,19 +527,6 @@ func (f *Factory) ResumeSandbox(
 		Slot:   ips.slot,
 		rootfs: rootfsOverlay,
 		memory: fcUffd,
-		memoryDiffFilter: func(ctx context.Context) (*header.DiffMetadata, error) {
-			dirty, err := fcUffd.Dirty(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			return &header.DiffMetadata{
-				Dirty: dirty,
-				// We don't track and filter empty pages for subsequent sandbox pauses as pages should usually not be empty.
-				Empty:     bitset.New(0),
-				BlockSize: memfile.BlockSize(),
-			}, nil
-		},
 	}
 
 	metadata := &Metadata{
@@ -808,7 +763,7 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	memfileDiffMetadata, err := s.Resources.MemfileDiffMetadata(ctx)
+	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}
