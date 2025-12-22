@@ -294,3 +294,162 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	assert.Equal(t, "third_value", thirdStoredMetadata["key"], "Third metadata key should have latest value")
 	assert.NotEqual(t, updatedStoredMetadata, thirdStoredMetadata, "Third metadata should be different from second")
 }
+
+// getSnapshotCreatedAt retrieves the created_at timestamp from a snapshot using raw SQL
+func getSnapshotCreatedAt(t *testing.T, ctx context.Context, db *client.Client, sandboxID string) *time.Time {
+	t.Helper()
+	var createdAt *time.Time
+
+	err := db.TestsRawSQLQuery(ctx,
+		"SELECT created_at FROM public.snapshots WHERE sandbox_id = $1",
+		func(rows pgx.Rows) error {
+			if !rows.Next() {
+				return nil
+			}
+
+			return rows.Scan(&createdAt)
+		},
+		sandboxID,
+	)
+	require.NoError(t, err, "Failed to query snapshot created_at")
+
+	return createdAt
+}
+
+// snapshotExists checks if a snapshot with the given sandbox_id exists
+func snapshotExists(t *testing.T, ctx context.Context, db *client.Client, sandboxID string) bool {
+	t.Helper()
+	var exists bool
+
+	err := db.TestsRawSQLQuery(ctx,
+		"SELECT EXISTS(SELECT 1 FROM public.snapshots WHERE sandbox_id = $1)",
+		func(rows pgx.Rows) error {
+			if !rows.Next() {
+				return nil
+			}
+
+			return rows.Scan(&exists)
+		},
+		sandboxID,
+	)
+	require.NoError(t, err, "Failed to check if snapshot exists")
+
+	return exists
+}
+
+func TestUpsertSnapshot_CreatedAtAutoPopulated(t *testing.T) {
+	// Setup test database with migrations
+	client := testutils.SetupDatabase(t)
+	ctx := context.Background()
+
+	// Create a test team first (required by foreign key constraint)
+	teamID := createTestTeam(t, ctx, client)
+	// Create a base env (required by foreign key constraint on snapshots table)
+	baseTemplateID := createTestBaseEnv(t, ctx, client, teamID)
+
+	// Record time before creating the snapshot
+	beforeCreate := time.Now().Add(-1 * time.Second)
+
+	// Prepare test data for a new snapshot
+	templateID := "test-template-" + uuid.New().String()
+	sandboxID := "sandbox-" + uuid.New().String()
+	originNodeID := "node-1"
+	envdVersion := "v1.0.0"
+	kernelVersion := "6.1.0"
+	firecrackerVersion := "1.4.0"
+	totalDiskSize := int64(1024)
+	allowInternet := true
+
+	params := queries.UpsertSnapshotParams{
+		TemplateID:          templateID,
+		TeamID:              teamID,
+		SandboxID:           sandboxID,
+		BaseTemplateID:      baseTemplateID,
+		StartedAt:           pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		Vcpu:                2,
+		RamMb:               2048,
+		TotalDiskSizeMb:     &totalDiskSize,
+		Metadata:            types.JSONBStringMap{"key": "value"},
+		KernelVersion:       kernelVersion,
+		FirecrackerVersion:  firecrackerVersion,
+		EnvdVersion:         &envdVersion,
+		Secure:              true,
+		AllowInternetAccess: &allowInternet,
+		AutoPause:           true,
+		Config:              &types.PausedSandboxConfig{Version: types.PausedSandboxConfigVersion},
+		OriginNodeID:        &originNodeID,
+		Status:              "snapshotting",
+	}
+
+	// Execute UpsertSnapshot for a new snapshot
+	_, err := client.UpsertSnapshot(ctx, params)
+	require.NoError(t, err, "Failed to create new snapshot")
+
+	// Record time after creating the snapshot
+	afterCreate := time.Now().Add(1 * time.Second)
+
+	// Verify created_at was automatically populated
+	createdAt := getSnapshotCreatedAt(t, ctx, client, sandboxID)
+	require.NotNil(t, createdAt, "created_at should be populated automatically")
+	assert.True(t, createdAt.After(beforeCreate), "created_at should be after test started")
+	assert.True(t, createdAt.Before(afterCreate), "created_at should be before test ended")
+}
+
+func TestSnapshotCascadeDeleteOnEnvDelete(t *testing.T) {
+	// Setup test database with migrations
+	client := testutils.SetupDatabase(t)
+	ctx := context.Background()
+
+	// Create a test team first (required by foreign key constraint)
+	teamID := createTestTeam(t, ctx, client)
+	// Create a base env (required by foreign key constraint on snapshots table)
+	baseTemplateID := createTestBaseEnv(t, ctx, client, teamID)
+
+	// Prepare test data for a new snapshot
+	templateID := "test-template-" + uuid.New().String()
+	sandboxID := "sandbox-" + uuid.New().String()
+	originNodeID := "node-1"
+	envdVersion := "v1.0.0"
+	kernelVersion := "6.1.0"
+	firecrackerVersion := "1.4.0"
+	totalDiskSize := int64(1024)
+	allowInternet := true
+
+	params := queries.UpsertSnapshotParams{
+		TemplateID:          templateID,
+		TeamID:              teamID,
+		SandboxID:           sandboxID,
+		BaseTemplateID:      baseTemplateID,
+		StartedAt:           pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		Vcpu:                2,
+		RamMb:               2048,
+		TotalDiskSizeMb:     &totalDiskSize,
+		Metadata:            types.JSONBStringMap{"key": "value"},
+		KernelVersion:       kernelVersion,
+		FirecrackerVersion:  firecrackerVersion,
+		EnvdVersion:         &envdVersion,
+		Secure:              true,
+		AllowInternetAccess: &allowInternet,
+		AutoPause:           true,
+		Config:              &types.PausedSandboxConfig{Version: types.PausedSandboxConfigVersion},
+		OriginNodeID:        &originNodeID,
+		Status:              "snapshotting",
+	}
+
+	// Execute UpsertSnapshot for a new snapshot
+	result, err := client.UpsertSnapshot(ctx, params)
+	require.NoError(t, err, "Failed to create new snapshot")
+
+	// Verify the snapshot exists
+	assert.True(t, snapshotExists(t, ctx, client, sandboxID), "Snapshot should exist after creation")
+
+	// Delete the env that the snapshot references (env_id)
+	err = client.TestsRawSQL(ctx,
+		"DELETE FROM public.envs WHERE id = $1",
+		result.TemplateID,
+	)
+	require.NoError(t, err, "Failed to delete the env")
+
+	// Verify the snapshot was cascade deleted
+	assert.False(t, snapshotExists(t, ctx, client, sandboxID), "Snapshot should be deleted when env_id is deleted (CASCADE)")
+}
