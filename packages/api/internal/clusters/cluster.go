@@ -23,14 +23,14 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/clusters")
 
 type Cluster struct {
-	ID uuid.UUID
+	ID            uuid.UUID
+	SandboxDomain *string
 
-	httpClient *api.ClientWithResponses
-	grpcClient *grpclient.GRPCClient
-
+	httpClient      *api.ClientWithResponses
+	grpcClient      *grpclient.GRPCClient
 	instances       *smap.Map[*ClusterInstance]
 	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterInstance]
-	SandboxDomain   *string
+	resources       ClusterResource
 }
 
 type ClusterGRPC struct {
@@ -80,11 +80,14 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 		return nil, fmt.Errorf("failed to create grpc client: %w", err)
 	}
 
+	instances := smap.New[*ClusterInstance]()
+
 	c := &Cluster{
 		ID:            clusterID,
 		SandboxDomain: sandboxDomain,
 
-		instances:  smap.New[*ClusterInstance](),
+		resources:  newRemoteClusterResourceProvider(instances, httpClient),
+		instances:  instances,
 		httpClient: httpClient,
 		grpcClient: grpcClient,
 	}
@@ -179,4 +182,8 @@ func (c *Cluster) GetOrchestrators() []*ClusterInstance {
 
 func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
 	return c.httpClient
+}
+
+func (c *Cluster) GetResources() ClusterResource {
+	return c.resources
 }
