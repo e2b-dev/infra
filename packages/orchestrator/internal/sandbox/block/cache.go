@@ -303,7 +303,7 @@ func NewCacheFromProcessMemory(
 
 	err = cache.copyProcessMemory(ctx, pid, ranges)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to copy process memory: %w", errors.Join(err, cache.Close()))
 	}
 
 	return cache, nil
