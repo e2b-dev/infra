@@ -4,14 +4,16 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
-	"time"
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
@@ -21,6 +23,144 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+// helperProcessData contains the data needed to interact with a helper process
+type helperProcessData struct {
+	cmd          *exec.Cmd
+	addr         uint64
+	expectedData []byte
+}
+
+// startHelperProcess starts a helper process and waits for it to be ready.
+// It returns the memory address and expected data for verification.
+func startHelperProcess(t *testing.T, ctx context.Context, size uint64) *helperProcessData {
+	t.Helper()
+
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
+	cmd.Env = append(os.Environ(), "GO_TEST_COPY_HELPER_PROCESS=1")
+	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_TEST_MEMORY_SIZE=%d", size))
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+
+	// Create pipes for communication
+	addrReader, addrWriter, err := os.Pipe()
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		addrReader.Close()
+	})
+
+	dataReader, dataWriter, err := os.Pipe()
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		dataReader.Close()
+	})
+
+	readyReader, readyWriter, err := os.Pipe()
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		readyReader.Close()
+	})
+
+	cmd.ExtraFiles = []*os.File{
+		addrWriter,
+		dataWriter,
+		readyWriter,
+	}
+
+	err = cmd.Start()
+	require.NoError(t, err)
+
+	// Start reading goroutines BEFORE closing write ends to ensure they're ready
+	addrChan := make(chan uint64, 1)
+	addrErrChan := make(chan error, 1)
+	go func() {
+		var addr uint64
+		err := binary.Read(addrReader, binary.LittleEndian, &addr)
+		if err != nil {
+			addrErrChan <- err
+
+			return
+		}
+		addrChan <- addr
+	}()
+
+	expectedData := make([]byte, size)
+	dataErrChan := make(chan error, 1)
+	go func() {
+		_, err := io.ReadFull(dataReader, expectedData)
+		if err != nil {
+			dataErrChan <- err
+
+			return
+		}
+	}()
+
+	readySignal := make(chan struct{}, 1)
+	go func() {
+		_, err := io.ReadAll(readyReader)
+		assert.NoError(t, err)
+		readySignal <- struct{}{}
+	}()
+
+	// Close the write ends in the parent process after starting
+	// The child has its own copies via ExtraFiles (fds 3, 4, 5), so closing these is safe
+	addrWriter.Close()
+	dataWriter.Close()
+	readyWriter.Close()
+
+	t.Cleanup(func() {
+		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
+		assert.NoError(t, signalErr)
+
+		waitErr := cmd.Wait()
+		// It can be either nil, an ExitError, a context.Canceled error, or "signal: killed"
+		assert.True(t,
+			(waitErr != nil && func(err error) bool {
+				var exitErr *exec.ExitError
+
+				return errors.As(err, &exitErr)
+			}(waitErr)) ||
+				errors.Is(waitErr, context.Canceled) ||
+				(waitErr != nil && strings.Contains(waitErr.Error(), "signal: killed")) ||
+				waitErr == nil,
+			"unexpected error: %v", waitErr,
+		)
+	})
+
+	// Wait for ready signal (child has written all data by this point)
+	select {
+	case <-ctx.Done():
+		t.Fatalf("context cancelled while waiting for helper process: %v", ctx.Err())
+	case <-readySignal:
+	}
+
+	// Get the address
+	var addr uint64
+	select {
+	case err := <-addrErrChan:
+		t.Fatalf("failed to read address: %v", err)
+	case addr = <-addrChan:
+	}
+
+	// Check for data read errors
+	select {
+	case err := <-dataErrChan:
+		t.Fatalf("failed to read data: %v", err)
+	default:
+	}
+
+	addrReader.Close()
+	dataReader.Close()
+
+	return &helperProcessData{
+		cmd:          cmd,
+		addr:         addr,
+		expectedData: expectedData,
+	}
+}
+
 // TestCopyFromProcess_HelperProcess is a helper process that allocates memory
 // with known content and waits for the test to read it.
 func TestCopyFromProcess_HelperProcess(t *testing.T) {
@@ -28,85 +168,83 @@ func TestCopyFromProcess_HelperProcess(t *testing.T) {
 		t.Skip("this is a helper process, skipping direct execution")
 	}
 
+	err := crossProcessHelper()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "exit helper process: %v\n", err)
+		os.Exit(1)
+	}
+
+	os.Exit(0)
+}
+
+func crossProcessHelper() error {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+
 	// Allocate memory with known content
 	sizeStr := os.Getenv("GO_TEST_MEMORY_SIZE")
 	size, err := strconv.ParseUint(sizeStr, 10, 64)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse memory size: %v\n", err)
-
-		panic(err)
+		return fmt.Errorf("failed to parse memory size: %w", err)
 	}
 
-	// Allocate memory using mmap (similar to testutils.NewPageMmap but simpler)
+	// Allocate memory using mmap
 	mem, err := unix.Mmap(-1, 0, int(size), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to mmap memory: %v\n", err)
-
-		panic(err)
+		return fmt.Errorf("failed to mmap memory: %w", err)
 	}
 	defer unix.Munmap(mem)
 
 	// Fill memory with random data
 	_, err = rand.Read(mem)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to generate random data: %v\n", err)
-
-		panic(err)
+		return fmt.Errorf("failed to generate random data: %w", err)
 	}
 
-	// Write the memory address to stdout (as 8 bytes, little endian)
+	// Get file descriptors from ExtraFiles
+	// fd 3: addrWriter
+	// fd 4: dataWriter
+	// fd 5: readyWriter
+	addrFile := os.NewFile(uintptr(3), "addr")
+	defer addrFile.Close()
+
+	dataFile := os.NewFile(uintptr(4), "data")
+	defer dataFile.Close()
+
+	readyFile := os.NewFile(uintptr(5), "ready")
+	defer readyFile.Close()
+
+	// Write the memory address (as 8 bytes, little endian)
 	addr := uint64(0)
 	if len(mem) > 0 {
 		addr = uint64(uintptr(unsafe.Pointer(&mem[0])))
 	}
-	err = binary.Write(os.Stdout, binary.LittleEndian, addr)
+	err = binary.Write(addrFile, binary.LittleEndian, addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to write address: %v\n", err)
-
-		panic(err)
+		return fmt.Errorf("failed to write address: %w", err)
 	}
+	addrFile.Close()
 
-	// Write the random data to stdout so the test can verify it
-	_, err = os.Stdout.Write(mem)
+	// Write the random data
+	_, err = dataFile.Write(mem)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to write random data: %v\n", err)
-
-		panic(err)
+		return fmt.Errorf("failed to write random data: %w", err)
 	}
+	dataFile.Close()
 
-	// Signal ready by closing stdout
-	os.Stdout.Close()
+	// Signal ready by closing the ready file
+	readyFile.Close()
 
-	// Wait for SIGTERM to exit
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM)
-	defer signal.Stop(sigChan)
+	// Wait for SIGUSR1 to exit
+	exitSignal := make(chan os.Signal, 1)
+	signal.Notify(exitSignal, syscall.SIGUSR1)
+	defer signal.Stop(exitSignal)
 
 	select {
-	case <-sigChan:
-		// Exit cleanly
-	case <-time.After(30 * time.Second):
-		// Timeout after 30 seconds
-		fmt.Fprintf(os.Stderr, "helper process timeout\n")
-
-		panic("helper process timeout")
-	}
-}
-
-// waitForProcess consistently checks for process existence until it is confirmed or timeout is reached.
-func waitForProcess(pid int, maxWait time.Duration) error {
-	start := time.Now()
-	for {
-		// Try sending signal 0 to the process: if it exists, this succeeds (unless permission is denied).
-		err := syscall.Kill(pid, 0)
-		if err == nil || err == syscall.EPERM {
-			// Process exists (but maybe we lack permission, still good enough for tests)
-			return nil
-		}
-		if time.Since(start) > maxWait {
-			return fmt.Errorf("process %d not available after %.2fs", pid, maxWait.Seconds())
-		}
-		time.Sleep(10 * time.Millisecond)
+	case <-ctx.Done():
+		return fmt.Errorf("context done: %w: %w", ctx.Err(), context.Cause(ctx))
+	case <-exitSignal:
+		return nil
 	}
 }
 
@@ -116,45 +254,16 @@ func TestCopyFromProcess_Success(t *testing.T) {
 	ctx := context.Background()
 	size := int64(4096)
 
-	// Start helper process
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
-	cmd.Env = append(os.Environ(), "GO_TEST_COPY_HELPER_PROCESS=1")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_TEST_MEMORY_SIZE=%d", size))
-	cmd.Stderr = os.Stderr
-
-	stdout, err := cmd.StdoutPipe()
-	require.NoError(t, err)
-
-	err = cmd.Start()
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		cmd.Process.Signal(syscall.SIGTERM)
-		cmd.Wait()
-	})
-
-	// Wait until the process is up and running before interacting with it.
-	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
-
-	// Read the memory address from the helper process
-	var addr uint64
-	err = binary.Read(stdout, binary.LittleEndian, &addr)
-	require.NoError(t, err)
-
-	// Read the random data that was written to memory
-	expectedData := make([]byte, size)
-	_, err = stdout.Read(expectedData)
-	require.NoError(t, err)
-	stdout.Close()
+	helper := startHelperProcess(t, ctx, uint64(size))
 
 	// Test copying a single range
 	ranges := []Range{
-		{Start: int64(addr), Size: size},
+		{Start: int64(helper.addr), Size: size},
 	}
 
 	tmpFile := t.TempDir() + "/cache"
 
-	cache, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
+	cache, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, helper.cmd.Process.Pid, ranges)
 	require.NoError(t, err)
 
 	defer cache.Close()
@@ -166,7 +275,7 @@ func TestCopyFromProcess_Success(t *testing.T) {
 	require.Equal(t, int(size), n)
 
 	// Verify the data matches the random data exactly
-	assert.Equal(t, expectedData, data, "copied data should match the original random data")
+	assert.Equal(t, helper.expectedData, data, "copied data should match the original random data")
 }
 
 func TestCopyFromProcess_MultipleRanges(t *testing.T) {
@@ -176,47 +285,18 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	segmentSize := uint64(header.PageSize) // Use PageSize to ensure alignment
 	totalSize := segmentSize * 3
 
-	// Start helper process
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
-	cmd.Env = append(os.Environ(), "GO_TEST_COPY_HELPER_PROCESS=1")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_TEST_MEMORY_SIZE=%d", totalSize))
-	cmd.Stderr = os.Stderr
-
-	stdout, err := cmd.StdoutPipe()
-	require.NoError(t, err)
-
-	err = cmd.Start()
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		cmd.Process.Signal(syscall.SIGTERM)
-		cmd.Wait()
-	})
-
-	// Wait until the process is up and running before interacting with it.
-	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
-
-	// Read the memory address from the helper process
-	var baseAddr uint64
-	err = binary.Read(stdout, binary.LittleEndian, &baseAddr)
-	require.NoError(t, err)
-
-	// Read the random data that was written to memory
-	expectedData := make([]byte, totalSize)
-	_, err = stdout.Read(expectedData)
-	require.NoError(t, err)
-	stdout.Close()
+	helper := startHelperProcess(t, ctx, totalSize)
 
 	// Test copying multiple non-contiguous ranges
 	// Order: 0th, 2nd, then 1st segment in memory
 	ranges := []Range{
-		{Start: int64(baseAddr), Size: int64(segmentSize)},                 // 0th segment
-		{Start: int64(baseAddr + segmentSize*2), Size: int64(segmentSize)}, // 2nd segment
-		{Start: int64(baseAddr + segmentSize), Size: int64(segmentSize)},   // 1st segment
+		{Start: int64(helper.addr), Size: int64(segmentSize)},                 // 0th segment
+		{Start: int64(helper.addr + segmentSize*2), Size: int64(segmentSize)}, // 2nd segment
+		{Start: int64(helper.addr + segmentSize), Size: int64(segmentSize)},   // 1st segment
 	}
 
 	tmpFile := t.TempDir() + "/cache"
-	cache, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
+	cache, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, helper.cmd.Process.Pid, ranges)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -225,7 +305,7 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	n, err := cache.ReadAt(data1, 0)
 	require.NoError(t, err)
 	require.Equal(t, int(segmentSize), n)
-	expected1 := expectedData[0:segmentSize]
+	expected1 := helper.expectedData[0:segmentSize]
 	assert.Equal(t, expected1, data1, "first segment should match original random data")
 
 	// Verify the second segment (at cache offset segmentSize): should be from source baseAddr+segmentSize*2 (2nd segment of process)
@@ -233,7 +313,7 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	n, err = cache.ReadAt(data2, int64(segmentSize))
 	require.NoError(t, err)
 	require.Equal(t, int(segmentSize), n)
-	expected2 := expectedData[segmentSize*2 : segmentSize*3]
+	expected2 := helper.expectedData[segmentSize*2 : segmentSize*3]
 	assert.Equal(t, expected2, data2, "second segment should match original random data")
 
 	// Verify the third segment (at cache offset segmentSize*2): should be from source baseAddr+segmentSize (1st segment of process)
@@ -241,7 +321,7 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	n, err = cache.ReadAt(data3, int64(segmentSize*2))
 	require.NoError(t, err)
 	require.Equal(t, int(segmentSize), n)
-	expected3 := expectedData[segmentSize : segmentSize*2]
+	expected3 := helper.expectedData[segmentSize : segmentSize*2]
 	assert.Equal(t, expected3, data3, "third segment should match original random data")
 }
 
@@ -251,47 +331,18 @@ func TestCopyFromProcess_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	size := uint64(4096)
 
-	// Start helper process
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
-	cmd.Env = append(os.Environ(), "GO_TEST_COPY_HELPER_PROCESS=1")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_TEST_MEMORY_SIZE=%d", size))
-	cmd.Stderr = os.Stderr
-
-	stdout, err := cmd.StdoutPipe()
-	require.NoError(t, err)
-
-	err = cmd.Start()
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		cmd.Process.Signal(syscall.SIGTERM)
-		cmd.Wait()
-	})
-
-	// Wait until the process is up and running before interacting with it.
-	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
-
-	// Read the memory address from the helper process
-	var addr uint64
-	err = binary.Read(stdout, binary.LittleEndian, &addr)
-	require.NoError(t, err)
-
-	// Read the random data (even though we won't use it, we need to consume it from stdout)
-	expectedData := make([]byte, size)
-	_, err = stdout.Read(expectedData)
-	require.NoError(t, err)
-	stdout.Close()
+	helper := startHelperProcess(t, ctx, size)
 
 	// Cancel context immediately
 	cancel()
 
 	// Test copying with cancelled context
 	ranges := []Range{
-		{Start: int64(addr), Size: int64(size)},
+		{Start: int64(helper.addr), Size: int64(size)},
 	}
 
 	tmpFile := t.TempDir() + "/cache"
-	_, err = NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
+	_, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, helper.cmd.Process.Pid, ranges)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -307,9 +358,6 @@ func TestCopyFromProcess_InvalidPID(t *testing.T) {
 	}
 
 	tmpFile := t.TempDir() + "/cache"
-
-	// Add a wait here, but since the PID doesn't exist, it will timeout (this is fine for this test).
-	_ = waitForProcess(invalidPID, 10*time.Millisecond)
 
 	_, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, invalidPID, ranges)
 	require.Error(t, err)
@@ -329,8 +377,6 @@ func TestCopyFromProcess_InvalidAddress(t *testing.T) {
 
 	tmpFile := t.TempDir() + "/cache"
 
-	require.NoError(t, waitForProcess(os.Getpid(), 2*time.Second)) // Make sure our process is alive
-
 	_, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, os.Getpid(), ranges)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read memory")
@@ -348,48 +394,19 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 	// Create cache large enough for all ranges
 	totalSize := rangeSize * uint64(numRanges)
 
-	// Start helper process
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCopyFromProcess_HelperProcess")
-	cmd.Env = append(os.Environ(), "GO_TEST_COPY_HELPER_PROCESS=1")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_TEST_MEMORY_SIZE=%d", totalSize))
-	cmd.Stderr = os.Stderr
-
-	stdout, err := cmd.StdoutPipe()
-	require.NoError(t, err)
-
-	err = cmd.Start()
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		cmd.Process.Signal(syscall.SIGTERM)
-		cmd.Wait()
-	})
-
-	// Wait until the process is up and running before interacting with it.
-	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
-
-	// Read the memory address from the helper process
-	var baseAddr uint64
-	err = binary.Read(stdout, binary.LittleEndian, &baseAddr)
-	require.NoError(t, err)
-
-	// Read the random data that was written to memory
-	expectedData := make([]byte, totalSize)
-	_, err = stdout.Read(expectedData)
-	require.NoError(t, err)
-	stdout.Close()
+	helper := startHelperProcess(t, ctx, totalSize)
 
 	// Create many small ranges that exceed IOV_MAX
 	ranges := make([]Range, numRanges)
 	for i := range numRanges {
 		ranges[i] = Range{
-			Start: int64(baseAddr) + int64(i)*int64(rangeSize),
+			Start: int64(helper.addr) + int64(i)*int64(rangeSize),
 			Size:  int64(rangeSize),
 		}
 	}
 
 	tmpFile := t.TempDir() + "/cache"
-	cache, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
+	cache, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, helper.cmd.Process.Pid, ranges)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -414,7 +431,7 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 
 		// Verify the range we're checking matches the expected random data
 		for j := range rangeSize {
-			expectedByte := expectedData[actualOffset+int64(j)]
+			expectedByte := helper.expectedData[actualOffset+int64(j)]
 			assert.Equal(t, expectedByte, data[offsetInBlock+int64(j)], "range %d, byte at offset %d", i, j)
 		}
 	}
@@ -427,7 +444,6 @@ func TestEmptyRanges(t *testing.T) {
 
 	ranges := []Range{}
 	tmpFile := t.TempDir() + "/cache"
-	require.NoError(t, waitForProcess(os.Getpid(), 2*time.Second)) // Make sure our process is alive
 	c, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, os.Getpid(), ranges)
 	require.NoError(t, err)
 
