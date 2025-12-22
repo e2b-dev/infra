@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
@@ -18,7 +18,7 @@ import (
 )
 
 type TemplateManagerProvider struct {
-	GRPC *edge.ClusterGRPC
+	GRPC *clusters.ClusterGRPC
 }
 
 func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) ([]logs.LogEntry, error) {

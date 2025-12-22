@@ -13,8 +13,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -57,7 +57,7 @@ func (a *APIStore) getSandboxesMetrics(
 	var metrics map[string]api.SandboxMetric
 	var apiErr *api.APIError
 	if edgeProvidedMetrics {
-		metrics, apiErr = edge.GetClusterSandboxListMetrics(
+		metrics, apiErr = clusters.GetClusterSandboxListMetrics(
 			ctx,
 			a.clustersPool,
 			teamID.String(),

@@ -1,9 +1,9 @@
 package template_manager
 
 import (
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 )
 
 type BuildClient struct {
-	GRPC *edge.ClusterGRPC
+	GRPC *clusters.ClusterGRPC
 }
