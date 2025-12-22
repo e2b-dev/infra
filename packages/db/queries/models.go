@@ -106,7 +106,8 @@ type EnvBuildAssignment struct {
 	ID        uuid.UUID
 	EnvID     string
 	BuildID   uuid.UUID
-	Tag       *string
+	Tag       string
+	Source    string
 	CreatedAt pgtype.Timestamptz
 }
 

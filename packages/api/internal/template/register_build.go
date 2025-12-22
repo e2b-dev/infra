@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	gutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -294,22 +295,24 @@ func RegisterBuild(
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
 	}
 
-	// Add custom tags to the build if present
-	if len(data.Tags) > 0 {
-		for _, tag := range data.Tags {
-			err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
-				TemplateID: data.TemplateID,
-				BuildID:    buildID,
-				Tag:        tag,
-			})
-			if err != nil {
-				telemetry.ReportCriticalError(ctx, "error when adding custom tag to build", err, attribute.String("tag", tag))
+	// Add default tag if no tags are present
+	if len(data.Tags) == 0 {
+		data.Tags = []string{id.DefaultTag}
+	}
 
-				return nil, &api.APIError{
-					Err:       err,
-					ClientMsg: fmt.Sprintf("Error when adding custom tag to build: %s", err),
-					Code:      http.StatusInternalServerError,
-				}
+	for _, tag := range data.Tags {
+		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+			TemplateID: data.TemplateID,
+			BuildID:    buildID,
+			Tag:        tag,
+		})
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error when adding tag to build", err, attribute.String("tag", tag))
+
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Error when adding tag '%s' to build: %s", tag, err),
+				Code:      http.StatusInternalServerError,
 			}
 		}
 	}
