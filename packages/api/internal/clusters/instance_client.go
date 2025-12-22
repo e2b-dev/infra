@@ -20,20 +20,21 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-type clientAuthorization struct {
-	secret string
-	tls    bool
+type instanceAuthorization struct {
+	secret            string
+	serviceInstanceID string
+	tls               bool
 }
 
-func (a clientAuthorization) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
-	return map[string]string{consts.EdgeRpcAuthHeader: a.secret}, nil
+func (a instanceAuthorization) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
+	return map[string]string{consts.EdgeRpcAuthHeader: a.secret, consts.EdgeRpcServiceInstanceIDHeader: a.serviceInstanceID}, nil
 }
 
-func (a clientAuthorization) RequireTransportSecurity() bool {
+func (a instanceAuthorization) RequireTransportSecurity() bool {
 	return a.tls
 }
 
-func createClusterClient(tel *telemetry.Client, auth clientAuthorization, endpoint string, endpointTLS bool) (*grpclient.GRPCClient, error) {
+func createConnection(tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool) (*grpclient.GRPCClient, error) {
 	grpcOptions := []grpc.DialOption{
 		grpc.WithPerRPCCredentials(auth),
 		grpc.WithStatsHandler(

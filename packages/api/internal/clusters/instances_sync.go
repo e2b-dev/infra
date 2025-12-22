@@ -5,16 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
 
-	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"go.uber.org/zap"
+
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // SynchronizationStore defines methods for synchronizing cluster instances
 type instancesSyncStore struct {
-	cluster *Cluster
+	cluster          *Cluster
+	instanceCreation func(ctx context.Context, item api.ClusterOrchestratorNode) (*Instance, error)
 }
 
 func (d instancesSyncStore) SourceList(ctx context.Context) ([]api.ClusterOrchestratorNode, error) {
@@ -69,26 +70,53 @@ func (d instancesSyncStore) PoolInsert(ctx context.Context, item api.ClusterOrch
 		logger.WithServiceInstanceID(item.ServiceInstanceID),
 	)
 
-	instance := &Instance{
-		NodeID: item.NodeID,
+	instance, err := d.instanceCreation(ctx, item)
+	if err != nil {
+		logger.L().Error(ctx, "Failed to create cluster instance during pool insert",
+			zap.Error(err),
+			logger.WithClusterID(d.cluster.ID),
+			logger.WithNodeID(item.NodeID),
+			logger.WithServiceInstanceID(item.ServiceInstanceID),
+		)
 
-		InstanceID:           item.ServiceInstanceID,
-		ServiceVersion:       item.ServiceVersion,
-		ServiceVersionCommit: item.ServiceVersionCommit,
-
-		// initial values before first sync
-		status: infogrpc.ServiceInfoStatus_Unhealthy,
-		roles:  make([]infogrpc.ServiceInfoRole, 0),
-
-		mutex: sync.RWMutex{},
+		return
 	}
 
-	d.cluster.syncInstance(ctx, instance)
+	err = instance.Sync(ctx)
+	if err != nil {
+		closeErr := instance.Close()
+		if closeErr != nil {
+			logger.L().Error(ctx, "Failed to close cluster instance after sync failure",
+				zap.Error(closeErr),
+				logger.WithClusterID(d.cluster.ID),
+				logger.WithNodeID(instance.NodeID),
+				logger.WithServiceInstanceID(instance.InstanceID),
+			)
+		}
+
+		logger.L().Error(ctx, "Failed to sync cluster instance during pool insert",
+			zap.Error(err),
+			logger.WithClusterID(d.cluster.ID),
+			logger.WithNodeID(instance.NodeID),
+			logger.WithServiceInstanceID(instance.InstanceID),
+		)
+
+		return
+	}
+
 	d.cluster.instances.Insert(item.NodeID, instance)
 }
 
 func (d instancesSyncStore) PoolUpdate(ctx context.Context, instance *Instance) {
-	d.cluster.syncInstance(ctx, instance)
+	err := instance.Sync(ctx)
+	if err != nil {
+		logger.L().Error(ctx, "Failed to sync cluster instance during pool update",
+			zap.Error(err),
+			logger.WithClusterID(d.cluster.ID),
+			logger.WithNodeID(instance.NodeID),
+			logger.WithServiceInstanceID(instance.InstanceID),
+		)
+	}
 }
 
 func (d instancesSyncStore) PoolRemove(ctx context.Context, instance *Instance) {
