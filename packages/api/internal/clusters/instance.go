@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -18,6 +19,10 @@ import (
 )
 
 type Instance struct {
+	// Identifier that uniquely identifies the instance so it will not be registered multiple times.
+	// Depending on service discovery used, it can be combination of different parameters, what service discovery gives us.
+	UniqueIdentifier string
+
 	ClusterID  uuid.UUID
 	NodeID     string
 	InstanceID string
@@ -38,8 +43,7 @@ func newInstance(
 	tel *telemetry.Client,
 	clusterAuth *instanceAuthorization,
 	clusterID uuid.UUID,
-	nodeID string,
-	instanceID string,
+	sd discovery.Item,
 	connAddr string,
 	connTls bool,
 ) (*Instance, error) {
@@ -54,9 +58,10 @@ func newInstance(
 	// For case with local cluster we will not receive instance ID from service discovery, but its not needed for proxy routing,
 	// so it can be empty and will be filled after first sync.
 	i := &Instance{
-		NodeID:     nodeID,
-		ClusterID:  clusterID,
-		InstanceID: instanceID,
+		UniqueIdentifier: sd.UniqueIdentifier,
+		NodeID:           sd.NodeID,
+		InstanceID:       sd.InstanceID,
+		ClusterID:        clusterID,
 
 		grpc:  conn,
 		mutex: sync.RWMutex{},

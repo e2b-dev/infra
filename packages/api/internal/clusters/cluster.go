@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel"
 
+	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
@@ -30,9 +32,8 @@ type Cluster struct {
 	ID            uuid.UUID
 	SandboxDomain *string
 
-	httpClient      *api.ClientWithResponses
 	instances       *smap.Map[*Instance]
-	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *Instance]
+	synchronization *synchronization.Synchronize[discovery.Item, *Instance]
 	resources       ClusterResource
 }
 
@@ -41,55 +42,113 @@ var (
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
 
-func newCluster(ctx context.Context, tel *telemetry.Client, endpoint string, endpointTLS bool, secret string, clusterID uuid.UUID, sandboxDomain *string) (*Cluster, error) {
-	clientAuthMiddleware := func(c *api.Client) error {
-		c.RequestEditors = append(
-			c.RequestEditors,
-			func(_ context.Context, req *http.Request) error {
-				req.Header.Set(consts.EdgeApiAuthHeader, secret)
+func newLocalCluster(
+	ctx context.Context,
+	tel *telemetry.Client,
+	nomad *nomadapi.Client,
+	endpoint string,
+	secret string,
+) (*Cluster, error) {
+	clusterID := consts.LocalClusterID
 
-				return nil
-			},
-		)
+	httpClient, err := api.NewClientWithResponses(
+		fmt.Sprintf("http://%s", endpoint),
+		func(c *api.Client) error {
+			c.RequestEditors = append(
+				c.RequestEditors,
+				func(_ context.Context, req *http.Request) error {
+					req.Header.Set(consts.EdgeApiAuthHeader, secret)
 
-		return nil
-	}
+					return nil
+				},
+			)
 
-	// generate the full endpoint URL
-	var endpointBaseUrl string
-	if endpointTLS {
-		endpointBaseUrl = fmt.Sprintf("https://%s", endpoint)
-	} else {
-		endpointBaseUrl = fmt.Sprintf("http://%s", endpoint)
-	}
-
-	httpClient, err := api.NewClientWithResponses(endpointBaseUrl, clientAuthMiddleware)
+			return nil
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create http client: %w", err)
 	}
 
 	instances := smap.New[*Instance]()
-	instanceCreation := func(ctx context.Context, item api.ClusterOrchestratorNode) (*Instance, error) {
-		// For remote cluster we are doing Connection to endpoint that works as gRPC proxy and handles auth and routing for us.
-		auth := &instanceAuthorization{secret: secret, tls: endpointTLS, serviceInstanceID: item.ServiceInstanceID}
-
-		return newInstance(ctx, tel, auth, clusterID, item.NodeID, item.ServiceInstanceID, endpoint, endpointTLS)
+	instanceCreation := func(ctx context.Context, item discovery.Item) (*Instance, error) {
+		// For local cluster we are doing direct connection to instance IP and API port and without additional cluster auth.
+		return newInstance(ctx, tel, nil, clusterID, item, fmt.Sprintf("%s:%d", item.LocalIPAddress, item.LocalInstanceApiPort), false)
 	}
+
+	storeDiscovery := discovery.NewLocalDiscovery(clusterID, nomad)
+	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation}
+
+	c := &Cluster{
+		ID:            clusterID,
+		SandboxDomain: nil,
+
+		instances:       instances,
+		resources:       newRemoteClusterResourceProvider(instances, httpClient),
+		synchronization: synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
+	}
+
+	// Periodically sync cluster instances
+	go c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
+
+	return c, nil
+}
+
+func newRemoteCluster(
+	ctx context.Context,
+	tel *telemetry.Client,
+	endpoint string,
+	endpointTLS bool,
+	secret string,
+	clusterID uuid.UUID,
+	sandboxDomain *string,
+) (*Cluster, error) {
+	endpointBaseUrl := fmt.Sprintf("http://%s", endpoint)
+	if endpointTLS {
+		endpointBaseUrl = fmt.Sprintf("https://%s", endpoint)
+	}
+
+	httpClient, err := api.NewClientWithResponses(
+		endpointBaseUrl,
+		func(c *api.Client) error {
+			c.RequestEditors = append(
+				c.RequestEditors,
+				func(_ context.Context, req *http.Request) error {
+					req.Header.Set(consts.EdgeApiAuthHeader, secret)
+
+					return nil
+				},
+			)
+
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create http client: %w", err)
+	}
+
+	instances := smap.New[*Instance]()
+	instanceCreation := func(ctx context.Context, item discovery.Item) (*Instance, error) {
+		// For remote cluster we are doing connection to endpoint that works as gRPC proxy and handles auth and routing for us.
+		auth := &instanceAuthorization{secret: secret, tls: endpointTLS, serviceInstanceID: item.InstanceID}
+
+		return newInstance(ctx, tel, auth, clusterID, item, endpoint, endpointTLS)
+	}
+
+	storeDiscovery := discovery.NewRemoteServiceDiscovery(clusterID, httpClient)
+	store := instancesSyncStore{clusterID: clusterID, instances: instances, instanceCreation: instanceCreation, discovery: storeDiscovery}
 
 	c := &Cluster{
 		ID:            clusterID,
 		SandboxDomain: sandboxDomain,
 
-		resources:  newRemoteClusterResourceProvider(instances, httpClient),
-		instances:  instances,
-		httpClient: httpClient,
+		instances:       instances,
+		resources:       newRemoteClusterResourceProvider(instances, httpClient),
+		synchronization: synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 	}
 
-	store := instancesSyncStore{cluster: c, instanceCreation: instanceCreation}
-	c.synchronization = synchronization.NewSynchronize("cluster-instances", "Cluster instances", store)
-
-	// periodically sync cluster instances
-	go c.startSync(ctx)
+	// Periodically sync cluster instances
+	go c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
 
 	return c, nil
 }
@@ -164,8 +223,4 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 
 func (c *Cluster) GetResources() ClusterResource {
 	return c.resources
-}
-
-func (c *Cluster) startSync(ctx context.Context) {
-	c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
 }
