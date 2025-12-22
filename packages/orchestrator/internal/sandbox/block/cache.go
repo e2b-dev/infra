@@ -198,7 +198,7 @@ func (c *Cache) Close() (e error) {
 	defer c.mu.Unlock()
 
 	if c.mmap == nil {
-		return nil
+		return os.RemoveAll(c.filePath)
 	}
 
 	succ := c.closed.CompareAndSwap(false, true)
