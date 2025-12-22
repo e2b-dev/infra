@@ -1,6 +1,6 @@
 -- name: GetTemplateWithBuildByTag :one
 -- get the env_id when querying by alias; if not, @alias_or_env_id should be env_id
--- @tag defaults to 'latest' if not provided
+-- @tag defaults to 'default' if not provided
 WITH s AS NOT MATERIALIZED (
     SELECT ea.env_id as env_id
     FROM public.env_aliases as ea
@@ -16,7 +16,7 @@ JOIN public.envs AS e ON e.id = s.env_id
 JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
     AND (
         -- Match by tag
-        eba.tag = COALESCE(sqlc.narg(tag), 'latest')
+        eba.tag = COALESCE(sqlc.narg(tag), 'default')
         OR
         -- Match by build_id if the tag parameter is a valid UUID
         eba.build_id = try_cast_uuid(sqlc.narg(tag))

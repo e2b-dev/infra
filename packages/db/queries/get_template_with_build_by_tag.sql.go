@@ -24,7 +24,7 @@ JOIN public.envs AS e ON e.id = s.env_id
 JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
     AND (
         -- Match by tag
-        eba.tag = COALESCE($1, 'latest')
+        eba.tag = COALESCE($1, 'default')
         OR
         -- Match by build_id if the tag parameter is a valid UUID
         eba.build_id = try_cast_uuid($1)
@@ -52,7 +52,7 @@ type GetTemplateWithBuildByTagRow struct {
 }
 
 // get the env_id when querying by alias; if not, @alias_or_env_id should be env_id
-// @tag defaults to 'latest' if not provided
+// @tag defaults to 'default' if not provided
 // Join through env_build_assignments to support tags or direct build_id
 // Get the most recent assignment for this tag (or the direct build_id match)
 func (q *Queries) GetTemplateWithBuildByTag(ctx context.Context, arg GetTemplateWithBuildByTagParams) (GetTemplateWithBuildByTagRow, error) {

@@ -10,7 +10,7 @@ import (
 
 var caseInsensitiveAlphabet = []byte("abcdefghijklmnopqrstuvwxyz1234567890")
 
-const DefaultTag = "latest"
+const DefaultTag = "default"
 
 func Generate() string {
 	return uniuri.NewLenChars(uniuri.UUIDLen, caseInsensitiveAlphabet)

@@ -111,8 +111,8 @@ func TestTemplateTagDeleteLatestNotAllowed(t *testing.T) {
 	// Build a template to work with
 	template := testutils.BuildSimpleTemplate(t, "test-tag-delete-latest", setup.WithAPIKey())
 
-	// Try to delete the 'latest' tag - should fail
-	deleteResp, err := c.DeleteTemplatesTemplateIDTagsTagWithResponse(ctx, template.TemplateID, "latest", setup.WithAPIKey())
+	// Try to delete the 'default' tag - should fail
+	deleteResp, err := c.DeleteTemplatesTemplateIDTagsTagWithResponse(ctx, template.TemplateID, "default", setup.WithAPIKey())
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusBadRequest, deleteResp.StatusCode())
@@ -364,7 +364,7 @@ func TestTagReassignment(t *testing.T) {
 		ReqEditors: []api.RequestEditorFn{setup.WithAPIKey()},
 	})
 
-	// Reassign 'stable' tag to second build (by using 'latest' as source)
+	// Reassign 'stable' tag to second build (by using 'default' as source)
 	tagResp, err := c.PostTemplatesTemplateIDTagsWithResponse(ctx, template2.TemplateID, api.AssignTemplateTagRequest{
 		Tag: "stable",
 	}, setup.WithAPIKey())

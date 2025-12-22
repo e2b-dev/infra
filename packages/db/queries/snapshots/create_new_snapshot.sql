@@ -92,7 +92,7 @@ build_assignment as (
     VALUES (
         (SELECT template_id FROM new_build),
         (SELECT build_id FROM new_build),
-        'latest'
+        'default'
     )
     ON CONFLICT ON CONSTRAINT uq_env_build_assignment_identity DO NOTHING
     RETURNING build_id, env_id

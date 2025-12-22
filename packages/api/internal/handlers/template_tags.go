@@ -36,7 +36,7 @@ func (a *APIStore) PostTemplatesTemplateIDTags(c *gin.Context, templateIDOrAlias
 		return
 	}
 
-	// Determine the source tag to get the build ID from (nil defaults to 'latest' in the query)
+	// Determine the source tag to get the build ID from (nil defaults to 'default' in the query)
 	sourceTag := body.SourceTag
 
 	// Get template and build from the source tag in a single query

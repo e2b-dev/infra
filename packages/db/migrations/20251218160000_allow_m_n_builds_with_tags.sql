@@ -86,7 +86,7 @@ BEGIN
         IF TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND (OLD.env_id IS NULL OR OLD.env_id != NEW.env_id)) THEN
             -- Note: ON CONFLICT refers to the partial index uq_legacy_assignments
             INSERT INTO env_build_assignments (env_id, build_id, tag, source, created_at)
-            VALUES (NEW.env_id, NEW.id, 'latest', 'trigger', CURRENT_TIMESTAMP)
+            VALUES (NEW.env_id, NEW.id, 'default', 'trigger', CURRENT_TIMESTAMP)
             ON CONFLICT (env_id, build_id, tag) WHERE source IN ('trigger', 'migration') DO NOTHING;
         END IF;
     END IF;
@@ -109,7 +109,7 @@ INSERT INTO env_build_assignments (env_id, build_id, tag, source, created_at)
 SELECT 
     env_id,
     id as build_id,
-    'latest' as tag,
+    'default' as tag,
     'migration' as source,
     created_at
 FROM env_builds
