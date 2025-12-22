@@ -376,8 +376,6 @@ func (c *Cache) copyProcessMemory(
 			}
 
 			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				fmt.Println("setting dirty", start+blockOff)
-
 				c.dirty.Store(start+blockOff, struct{}{})
 			}
 
