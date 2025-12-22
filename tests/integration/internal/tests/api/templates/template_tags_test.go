@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -41,7 +42,7 @@ func TestTemplateTagAssign(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, tagResp.StatusCode())
 	require.NotNil(t, tagResp.JSON201)
 	assert.Equal(t, "v1", tagResp.JSON201.Tag)
-	assert.Equal(t, template.BuildID, tagResp.JSON201.BuildID)
+	assert.Equal(t, template.BuildID, tagResp.JSON201.BuildID.String())
 }
 
 func TestTemplateTagAssignFromSourceTag(t *testing.T) {
@@ -73,7 +74,7 @@ func TestTemplateTagAssignFromSourceTag(t *testing.T) {
 	require.NotNil(t, tagResp.JSON201)
 	assert.Equal(t, "production", tagResp.JSON201.Tag)
 	// Both tags should point to the same build
-	assert.Equal(t, template.BuildID, tagResp.JSON201.BuildID)
+	assert.Equal(t, template.BuildID, tagResp.JSON201.BuildID.String())
 }
 
 func TestTemplateTagDelete(t *testing.T) {
@@ -157,7 +158,7 @@ func TestSandboxCreateWithTag(t *testing.T) {
 	require.NotNil(t, resp.JSON201)
 }
 
-func TestSandboxCreateWithLatestTag(t *testing.T) {
+func TestSandboxCreateWithDefaultTag(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
@@ -165,10 +166,10 @@ func TestSandboxCreateWithLatestTag(t *testing.T) {
 
 	c := setup.GetAPIClient()
 
-	// Create a sandbox using explicit :latest tag - should work same as without tag
+	// Create a sandbox using explicit :default tag - should work same as without tag
 	sbxTimeout := int32(60)
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
-		TemplateID: setup.SandboxTemplateID + ":latest",
+		TemplateID: setup.SandboxTemplateID + ":" + id.DefaultTag,
 		Timeout:    &sbxTimeout,
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
@@ -298,7 +299,7 @@ func TestMultipleTagsOnSameTemplate(t *testing.T) {
 		}, setup.WithAPIKey())
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusCreated, tagResp.StatusCode())
-		assert.Equal(t, template.BuildID, tagResp.JSON201.BuildID)
+		assert.Equal(t, template.BuildID, tagResp.JSON201.BuildID.String())
 	}
 
 	// Verify we can create sandboxes with each tag
@@ -371,7 +372,7 @@ func TestTagReassignment(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusCreated, tagResp.StatusCode())
-	assert.Equal(t, template2.BuildID, tagResp.JSON201.BuildID, "stable tag should now point to second build")
+	assert.Equal(t, template2.BuildID, tagResp.JSON201.BuildID.String(), "stable tag should now point to second build")
 }
 
 func TestTemplateBuildWithTags(t *testing.T) {
