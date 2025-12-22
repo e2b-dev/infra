@@ -13,9 +13,11 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -46,29 +48,10 @@ func newLocalCluster(
 	ctx context.Context,
 	tel *telemetry.Client,
 	nomad *nomadapi.Client,
-	endpoint string,
-	secret string,
+	clickhouse clickhouse.Clickhouse,
+	queryLogsProvider *loki.LokiQueryProvider,
 ) (*Cluster, error) {
 	clusterID := consts.LocalClusterID
-
-	httpClient, err := api.NewClientWithResponses(
-		fmt.Sprintf("http://%s", endpoint),
-		func(c *api.Client) error {
-			c.RequestEditors = append(
-				c.RequestEditors,
-				func(_ context.Context, req *http.Request) error {
-					req.Header.Set(consts.EdgeApiAuthHeader, secret)
-
-					return nil
-				},
-			)
-
-			return nil
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create http client: %w", err)
-	}
 
 	instances := smap.New[*Instance]()
 	instanceCreation := func(ctx context.Context, item discovery.Item) (*Instance, error) {
@@ -84,7 +67,7 @@ func newLocalCluster(
 		SandboxDomain: nil,
 
 		instances:       instances,
-		resources:       newRemoteClusterResourceProvider(instances, httpClient),
+		resources:       newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances),
 		synchronization: synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 	}
 

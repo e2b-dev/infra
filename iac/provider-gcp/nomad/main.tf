@@ -2,6 +2,7 @@ locals {
   clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
   redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
   redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+  loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
 }
 
 # API
@@ -98,12 +99,10 @@ resource "nomad_job" "api" {
     redis_cluster_url              = local.redis_cluster_url
     redis_tls_ca_base64            = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
     clickhouse_connection_string   = local.clickhouse_connection_string
+    loki_url                       = local.loki_url
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = data.google_artifact_registry_docker_image.db_migrator_image.self_link
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-
-    local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
-    local_cluster_token    = var.edge_api_secret
   })
 }
 
@@ -157,7 +156,7 @@ resource "nomad_job" "client_proxy" {
       redis_cluster_url   = local.redis_cluster_url
       redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
-      loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
+      loki_url                     = local.loki_url
       clickhouse_connection_string = local.clickhouse_connection_string
 
       proxy_port_name   = var.edge_proxy_port.name

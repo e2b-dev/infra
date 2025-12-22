@@ -81,6 +81,7 @@ job "api" {
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
         POSTGRES_CONNECTION_STRING     = "${postgres_connection_string}"
         SUPABASE_JWT_SECRETS           = "${supabase_jwt_secrets}"
+        LOKI_URL                       = "${loki_url}"
         CLICKHOUSE_CONNECTION_STRING   = "${clickhouse_connection_string}"
         ENVIRONMENT                    = "${environment}"
         POSTHOG_API_KEY                = "${posthog_api_key}"
@@ -95,9 +96,6 @@ job "api" {
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64            = "${redis_tls_ca_base64}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
-
-        LOCAL_CLUSTER_ENDPOINT = "${local_cluster_endpoint}"
-        LOCAL_CLUSTER_TOKEN    = "${local_cluster_token}"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"

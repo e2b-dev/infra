@@ -33,6 +33,7 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -110,7 +111,12 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		}
 	}
 
-	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, nomadClient, config)
+	queryLogsProvider, err := loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
+	if err != nil {
+		logger.L().Fatal(ctx, "error when getting logs query provider", zap.Error(err))
+	}
+
+	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, nomadClient, clickhouseStore, queryLogsProvider)
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}
