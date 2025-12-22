@@ -35,7 +35,6 @@ func (a instanceAuthorization) RequireTransportSecurity() bool {
 
 func createConnection(tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool) (*GRPCClient, error) {
 	grpcOptions := []grpc.DialOption{
-		grpc.WithPerRPCCredentials(auth),
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(
 				otelgrpc.WithTracerProvider(tel.TracerProvider),
@@ -49,6 +48,10 @@ func createConnection(tel *telemetry.Client, auth *instanceAuthorization, endpoi
 				PermitWithoutStream: true,
 			},
 		),
+	}
+
+	if auth != nil {
+		grpcOptions = append(grpcOptions, grpc.WithPerRPCCredentials(auth))
 	}
 
 	if endpointTLS {
