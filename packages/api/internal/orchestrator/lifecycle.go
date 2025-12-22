@@ -19,8 +19,8 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 		info := e2bcatalog.SandboxInfo{
 			OrchestratorID: node.Metadata().ServiceInstanceID,
 			OrchestratorIP: node.IPAddress,
-			ExecutionID:    sandbox.ExecutionID,
 
+			SandboxExecutionID:      sandbox.ExecutionID,
 			SandboxStartedAt:        sandbox.StartTime,
 			SandboxMaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
 		}
