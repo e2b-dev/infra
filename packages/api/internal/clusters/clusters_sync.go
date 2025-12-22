@@ -2,7 +2,6 @@ package clusters
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -10,11 +9,12 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cfg"
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -33,27 +33,25 @@ type Pool struct {
 	synchronization *synchronization.Synchronize[queries.Cluster, *Cluster]
 }
 
-func localClusterConfig(clusterEndpoint, clusterToken string) (*queries.Cluster, error) {
-	if clusterEndpoint == "" {
-		return nil, nil
-	}
-	if clusterToken == "" {
-		return nil, errors.New("no local cluster token provided")
-	}
-
+func localClusterConfig() (*queries.Cluster, error) {
 	return &queries.Cluster{
 		ID:                 consts.LocalClusterID,
 		EndpointTls:        false,
-		Endpoint:           clusterEndpoint,
-		Token:              clusterToken,
 		SandboxProxyDomain: nil,
 	}, nil
 }
 
-func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, nomad *nomadapi.Client, config cfg.Config) (*Pool, error) {
+func NewPool(
+	ctx context.Context,
+	tel *telemetry.Client,
+	db *client.Client,
+	nomad *nomadapi.Client,
+	queryMetricsProvider clickhouse.Clickhouse,
+	queryLogsProvider *loki.LokiQueryProvider,
+) (*Pool, error) {
 	clusters := smap.New[*Cluster]()
 
-	localCluster, err := localClusterConfig(config.LocalClusterEndpoint, config.LocalClusterToken)
+	localCluster, err := localClusterConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +63,15 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, noma
 		synchronization: synchronization.NewSynchronize(
 			"clusters-pool",
 			"Clusters pool",
-			clustersSyncStore{db: db, tel: tel, clusters: clusters, local: localCluster, nomad: nomad},
+			clustersSyncStore{
+				db:                   db,
+				tel:                  tel,
+				clusters:             clusters,
+				local:                localCluster,
+				nomad:                nomad,
+				queryLogsProvider:    queryLogsProvider,
+				queryMetricsProvider: queryMetricsProvider,
+			},
 		),
 	}
 
@@ -103,11 +109,13 @@ func (p *Pool) Close(ctx context.Context) {
 
 // SynchronizationStore is an interface that defines methods for synchronizing the clusters pool with the database
 type clustersSyncStore struct {
-	db       *client.Client
-	tel      *telemetry.Client
-	clusters *smap.Map[*Cluster]
-	local    *queries.Cluster
-	nomad    *nomadapi.Client
+	db                   *client.Client
+	tel                  *telemetry.Client
+	clusters             *smap.Map[*Cluster]
+	local                *queries.Cluster
+	nomad                *nomadapi.Client
+	queryMetricsProvider clickhouse.Clickhouse
+	queryLogsProvider    *loki.LokiQueryProvider
 }
 
 func (d clustersSyncStore) SourceList(ctx context.Context) ([]queries.Cluster, error) {
@@ -164,7 +172,7 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 
 	// Local cluster
 	if cluster.ID == consts.LocalClusterID {
-		c, err = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.local.Endpoint, d.local.Token)
+		c, err = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.queryMetricsProvider, d.queryLogsProvider)
 		if err != nil {
 			logger.L().Error(ctx, "Initializing local cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
 
