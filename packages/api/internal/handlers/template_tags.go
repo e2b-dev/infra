@@ -95,7 +95,7 @@ func (a *APIStore) PostTemplatesTemplateIDTagsTag(c *gin.Context, templateAlias 
 
 		if !slices.Contains(aliases, alias) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template alias '%s' not matching the template", alias))
-			telemetry.ReportCriticalError(ctx, "template alias not matching the template", err)
+			telemetry.ReportCriticalError(ctx, "template alias not matching the template", nil)
 
 			return
 		}

@@ -156,7 +156,7 @@ func (a *APIStore) buildTemplate(
 ) (*template.RegisterBuildResponse, *api.APIError) {
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 
-	var alias string
+	var alias *string
 	var tags []string
 
 	if body.Alias != nil {
@@ -170,7 +170,7 @@ func (a *APIStore) buildTemplate(
 			}
 		}
 
-		alias = a
+		alias = &a
 		if t != nil {
 			tags = []string{*t}
 		}
@@ -183,7 +183,7 @@ func (a *APIStore) buildTemplate(
 		UserID:             &userID,
 		Team:               team,
 		Dockerfile:         body.Dockerfile,
-		Alias:              &alias,
+		Alias:              alias,
 		Tags:               tags,
 		StartCmd:           body.StartCmd,
 		ReadyCmd:           body.ReadyCmd,
