@@ -57,7 +57,7 @@ func (n *mockSandboxClientWithSleep) Create(_ context.Context, _ *orchestrator.S
 	return &orchestrator.SandboxCreateResponse{}, nil
 }
 
-// newMockGRPCClient creates a new mock gRPC client for testing
+// newMockGRPCClient creates a new mock gRPC connection for testing
 func newMockGRPCClient() *grpclient.GRPCClient {
 	// Create a dummy connection that will never be used
 	conn, _ := grpc.NewClient("localhost:0", grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -74,7 +74,7 @@ type TestOptions func(node *TestNode)
 
 func WithSandboxSleepingClient(baseSandboxCreateTime time.Duration) TestOptions {
 	return func(node *TestNode) {
-		node.client.Sandbox = &mockSandboxClientWithSleep{
+		node.connection.Sandbox = &mockSandboxClientWithSleep{
 			baseSandboxCreateTime: baseSandboxCreateTime,
 		}
 	}
@@ -102,7 +102,7 @@ func (n *mockSandboxClientWithError) Create(_ context.Context, _ *orchestrator.S
 
 func WithSandboxCreateError(err error) TestOptions {
 	return func(node *TestNode) {
-		node.client.Sandbox = &mockSandboxClientWithError{
+		node.connection.Sandbox = &mockSandboxClientWithError{
 			err: err,
 		}
 	}
@@ -126,18 +126,18 @@ func (n *MockSandboxClientCustom) Create(_ context.Context, _ *orchestrator.Sand
 	return &orchestrator.SandboxCreateResponse{}, nil
 }
 
-// SetSandboxClient allows setting a custom sandbox client on a test node
+// SetSandboxClient allows setting a custom sandbox connection on a test node
 func (n *TestNode) SetSandboxClient(client orchestrator.SandboxServiceClient) {
-	n.client.Sandbox = client
+	n.connection.Sandbox = client
 }
 
 // NewTestNode creates a properly initialized Node for testing purposes
-// It uses a mock gRPC client and has simplified Status() method behavior
+// It uses a mock gRPC connection and has simplified Status() method behavior
 func NewTestNode(id string, status api.NodeStatus, cpuAllocated int64, cpuCount uint32, options ...TestOptions) *TestNode {
 	node := &Node{
 		ID:            id,
 		ClusterID:     uuid.New(),
-		client:        newMockGRPCClient(),
+		connection:    newMockGRPCClient(),
 		IPAddress:     "127.0.0.1",
 		SandboxDomain: nil,
 		status:        status,

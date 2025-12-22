@@ -10,17 +10,12 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -38,7 +33,6 @@ type Cluster struct {
 	SandboxDomain *string
 
 	httpClient      *api.ClientWithResponses
-	grpcClient      *grpclient.GRPCClient
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *Instance]
 	resources       ClusterResource
@@ -81,13 +75,13 @@ func newCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 		return nil, fmt.Errorf("failed to create http client: %w", err)
 	}
 
-	grpcAuthorization := clientAuthorization{secret: secret, tls: endpointTLS}
-	grpcClient, err := createClusterClient(tel, grpcAuthorization, endpoint, endpointTLS)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create grpc client: %w", err)
-	}
-
 	instances := smap.New[*Instance]()
+	instanceCreation := func(ctx context.Context, item api.ClusterOrchestratorNode) (*Instance, error) {
+		// For remote cluster we are doing connection to endpoint that works as gRPC proxy and handles auth and routing for us.
+		auth := &instanceAuthorization{secret: secret, tls: endpointTLS, serviceInstanceID: item.ServiceInstanceID}
+
+		return newInstance(ctx, tel, auth, clusterID, item.NodeID, item.ServiceInstanceID, endpoint, endpointTLS)
+	}
 
 	c := &Cluster{
 		ID:            clusterID,
@@ -96,10 +90,9 @@ func newCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 		resources:  newRemoteClusterResourceProvider(instances, httpClient),
 		instances:  instances,
 		httpClient: httpClient,
-		grpcClient: grpcClient,
 	}
 
-	store := instancesSyncStore{cluster: c}
+	store := instancesSyncStore{cluster: c, instanceCreation: instanceCreation}
 	c.synchronization = synchronization.NewSynchronize("cluster-instances", "Cluster instances", store)
 
 	// periodically sync cluster instances
@@ -110,9 +103,8 @@ func newCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 
 func (c *Cluster) Close() error {
 	c.synchronization.Close()
-	err := c.grpcClient.Close()
 
-	return err
+	return nil
 }
 
 func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*Instance, error) {
@@ -149,9 +141,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*Instance, e
 	}
 
 	// Make sure we will always iterate in different order and when there is bigger amount of builders, we will not always pick the same one
-	rand.Shuffle(len(instances), func(i, j int) {
-		instances[i], instances[j] = instances[j], instances[i]
-	})
+	rand.Shuffle(len(instances), func(i, j int) { instances[i], instances[j] = instances[j], instances[i] })
 
 	for _, instance := range instances {
 		if instance.GetStatus() != infogrpc.ServiceInfoStatus_Healthy {
@@ -166,10 +156,6 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*Instance, e
 	}
 
 	return nil, ErrAvailableTemplateBuilderNotFound
-}
-
-func (c *Cluster) GetGRPC(serviceInstanceID string) *ClusterGRPC {
-	return &ClusterGRPC{c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: serviceInstanceID})}
 }
 
 func (c *Cluster) GetOrchestrators() []*Instance {
@@ -189,31 +175,4 @@ func (c *Cluster) GetResources() ClusterResource {
 
 func (c *Cluster) startSync(ctx context.Context) {
 	c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
-}
-
-func (c *Cluster) syncInstance(ctx context.Context, instance *Instance) {
-	grpc := c.GetGRPC(instance.InstanceID)
-
-	// we are taking service info directly from the instance to avoid timing delays in service discovery
-	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
-	info, err := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
-
-	err = utils.UnwrapGRPCError(err)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to get instance info",
-			zap.Error(err),
-			logger.WithClusterID(c.ID),
-			logger.WithNodeID(instance.NodeID),
-			logger.WithServiceInstanceID(instance.InstanceID),
-		)
-
-		return
-	}
-
-	instance.mutex.Lock()
-	defer instance.mutex.Unlock()
-
-	instance.status = info.GetServiceStatus()
-	instance.roles = info.GetServiceRoles()
-	instance.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
 }
