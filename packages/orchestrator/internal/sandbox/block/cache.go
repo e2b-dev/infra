@@ -273,7 +273,7 @@ func (c *Cache) FileSize() (int64, error) {
 	return stat.Blocks * fsStat.Bsize, nil
 }
 
-func (c *Cache) Address(off int64) *byte {
+func (c *Cache) address(off int64) *byte {
 	return &(*c.mmap)[off]
 }
 
@@ -336,7 +336,7 @@ func (c *Cache) copyProcessMemory(
 
 		local := []unix.Iovec{
 			{
-				Base: c.Address(start),
+				Base: c.address(start),
 				// We could keep this as full cache length, but we might as well be exact here.
 				Len: uint64(segmentSize),
 			},
