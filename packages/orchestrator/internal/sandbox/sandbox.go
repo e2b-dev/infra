@@ -828,12 +828,12 @@ func pauseProcessMemory(
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-
 	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
 	}
+
+	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 
 	cache, err := fc.ExportMemory(
 		ctx,

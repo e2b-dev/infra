@@ -2,6 +2,7 @@ package block
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -45,9 +46,12 @@ func TestCopyFromProcess_HelperProcess(t *testing.T) {
 	}
 	defer unix.Munmap(mem)
 
-	// Fill memory with a pattern: each byte is its offset modulo 256
-	for i := range mem {
-		mem[i] = byte(i % 256)
+	// Fill memory with random data
+	_, err = rand.Read(mem)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate random data: %v\n", err)
+
+		panic(err)
 	}
 
 	// Write the memory address to stdout (as 8 bytes, little endian)
@@ -58,6 +62,14 @@ func TestCopyFromProcess_HelperProcess(t *testing.T) {
 	err = binary.Write(os.Stdout, binary.LittleEndian, addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to write address: %v\n", err)
+
+		panic(err)
+	}
+
+	// Write the random data to stdout so the test can verify it
+	_, err = os.Stdout.Write(mem)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write random data: %v\n", err)
 
 		panic(err)
 	}
@@ -108,6 +120,11 @@ func TestCopyFromProcess_Success(t *testing.T) {
 	var addr uint64
 	err = binary.Read(stdout, binary.LittleEndian, &addr)
 	require.NoError(t, err)
+
+	// Read the random data that was written to memory
+	expectedData := make([]byte, size)
+	_, err = stdout.Read(expectedData)
+	require.NoError(t, err)
 	stdout.Close()
 
 	// Wait a bit for the process to be ready
@@ -131,11 +148,8 @@ func TestCopyFromProcess_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int(size), n)
 
-	// Verify pattern: each byte should be its offset modulo 256
-	for i := range data {
-		expected := byte(i % 256)
-		assert.Equal(t, expected, data[i], "byte at offset %d should be %d, got %d", i, expected, data[i])
-	}
+	// Verify the data matches the random data exactly
+	assert.Equal(t, expectedData, data, "copied data should match the original random data")
 }
 
 func TestCopyFromProcess_MultipleRanges(t *testing.T) {
@@ -166,16 +180,22 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	var baseAddr uint64
 	err = binary.Read(stdout, binary.LittleEndian, &baseAddr)
 	require.NoError(t, err)
+
+	// Read the random data that was written to memory
+	expectedData := make([]byte, totalSize)
+	_, err = stdout.Read(expectedData)
+	require.NoError(t, err)
 	stdout.Close()
 
 	// Wait a bit for the process to be ready
 	time.Sleep(100 * time.Millisecond)
 
 	// Test copying multiple non-contiguous ranges
+	// Order: 0th, 2nd, then 1st segment in memory
 	ranges := []Range{
-		{Start: int64(baseAddr), Size: int64(segmentSize)},
-		{Start: int64(baseAddr + segmentSize*2), Size: int64(segmentSize)},
-		{Start: int64(baseAddr + segmentSize), Size: int64(segmentSize)},
+		{Start: int64(baseAddr), Size: int64(segmentSize)},                 // 0th segment
+		{Start: int64(baseAddr + segmentSize*2), Size: int64(segmentSize)}, // 2nd segment
+		{Start: int64(baseAddr + segmentSize), Size: int64(segmentSize)},   // 1st segment
 	}
 
 	tmpFile := t.TempDir() + "/cache"
@@ -183,35 +203,29 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	require.NoError(t, err)
 	defer cache.Close()
 
-	// Verify the first segment (at cache offset 0)
+	// Verify the first segment (at cache offset 0): should be from source baseAddr (0th segment of process)
 	data1 := make([]byte, segmentSize)
 	n, err := cache.ReadAt(data1, 0)
 	require.NoError(t, err)
 	require.Equal(t, int(segmentSize), n)
-	for i := range data1 {
-		expected := byte(i % 256)
-		assert.Equal(t, expected, data1[i], "first segment, byte at offset %d", i)
-	}
+	expected1 := expectedData[0:segmentSize]
+	assert.Equal(t, expected1, data1, "first segment should match original random data")
 
-	// Verify the second segment (copied to offset segmentSize*2 in cache)
+	// Verify the second segment (at cache offset segmentSize): should be from source baseAddr+segmentSize*2 (2nd segment of process)
 	data2 := make([]byte, segmentSize)
-	n, err = cache.ReadAt(data2, int64(segmentSize*2))
+	n, err = cache.ReadAt(data2, int64(segmentSize))
 	require.NoError(t, err)
 	require.Equal(t, int(segmentSize), n)
-	for i := range data2 {
-		expected := byte((int(segmentSize*2) + i) % 256)
-		assert.Equal(t, expected, data2[i], "second segment, byte at offset %d", i)
-	}
+	expected2 := expectedData[segmentSize*2 : segmentSize*3]
+	assert.Equal(t, expected2, data2, "second segment should match original random data")
 
-	// Verify the third segment (copied to offset segmentSize in cache)
+	// Verify the third segment (at cache offset segmentSize*2): should be from source baseAddr+segmentSize (1st segment of process)
 	data3 := make([]byte, segmentSize)
-	n, err = cache.ReadAt(data3, int64(segmentSize))
+	n, err = cache.ReadAt(data3, int64(segmentSize*2))
 	require.NoError(t, err)
 	require.Equal(t, int(segmentSize), n)
-	for i := range data3 {
-		expected := byte((int(segmentSize) + i) % 256)
-		assert.Equal(t, expected, data3[i], "third segment, byte at offset %d", i)
-	}
+	expected3 := expectedData[segmentSize : segmentSize*2]
+	assert.Equal(t, expected3, data3, "third segment should match original random data")
 }
 
 func TestCopyFromProcess_ContextCancellation(t *testing.T) {
@@ -241,6 +255,11 @@ func TestCopyFromProcess_ContextCancellation(t *testing.T) {
 	var addr uint64
 	err = binary.Read(stdout, binary.LittleEndian, &addr)
 	require.NoError(t, err)
+
+	// Read the random data (even though we won't use it, we need to consume it from stdout)
+	expectedData := make([]byte, size)
+	_, err = stdout.Read(expectedData)
+	require.NoError(t, err)
 	stdout.Close()
 
 	// Wait a bit for the process to be ready
@@ -256,8 +275,7 @@ func TestCopyFromProcess_ContextCancellation(t *testing.T) {
 
 	tmpFile := t.TempDir() + "/cache"
 	_, err = NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, cmd.Process.Pid, ranges)
-	require.Error(t, err)
-	assert.Equal(t, context.Canceled, err)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestCopyFromProcess_InvalidPID(t *testing.T) {
@@ -327,6 +345,11 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 	var baseAddr uint64
 	err = binary.Read(stdout, binary.LittleEndian, &baseAddr)
 	require.NoError(t, err)
+
+	// Read the random data that was written to memory
+	expectedData := make([]byte, totalSize)
+	_, err = stdout.Read(expectedData)
+	require.NoError(t, err)
 	stdout.Close()
 
 	// Wait a bit for the process to be ready
@@ -360,15 +383,15 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 
 		// Read a full page to ensure we get the data
 		data := make([]byte, header.PageSize)
-		fmt.Println("reading at aligned offset", alignedOffset, "with offset in block", offsetInBlock)
+
 		n, err := cache.ReadAt(data, alignedOffset)
 		require.NoError(t, err)
 		require.Equal(t, int(header.PageSize), n)
 
-		// Verify pattern for the range we're checking
+		// Verify the range we're checking matches the expected random data
 		for j := range rangeSize {
-			expected := byte((actualOffset + int64(j)) % 256)
-			assert.Equal(t, expected, data[offsetInBlock+int64(j)], "range %d, byte at offset %d", i, j)
+			expectedByte := expectedData[actualOffset+int64(j)]
+			assert.Equal(t, expectedByte, data[offsetInBlock+int64(j)], "range %d, byte at offset %d", i, j)
 		}
 	}
 }
