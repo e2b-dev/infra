@@ -50,10 +50,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		uffdFd.close()
 	})
 
-	err = uffdFd.configureApi(tt.pagesize)
+	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
-	err = uffdFd.register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
+	err = register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
 	require.NoError(t, err)
 
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
