@@ -1,6 +1,7 @@
 package block
 
 import (
+	"iter"
 	"slices"
 	"testing"
 
@@ -8,6 +9,24 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// rangeOffsets returns the block offsets contained in the range.
+// This assumes the Range.Start is a multiple of the blockSize.
+func rangeOffsets(r *Range, blockSize int64) iter.Seq[int64] {
+	return func(yield func(offset int64) bool) {
+		getOffsets(r.Start, r.End(), blockSize)(yield)
+	}
+}
+
+func getOffsets(start, end int64, blockSize int64) iter.Seq[int64] {
+	return func(yield func(offset int64) bool) {
+		for off := start; off < end; off += blockSize {
+			if !yield(off) {
+				return
+			}
+		}
+	}
+}
 
 func TestRange_End(t *testing.T) {
 	tests := []struct {
@@ -230,7 +249,7 @@ func TestRange_Offsets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			offsets := slices.Collect(tt.range_.Offsets(tt.blockSize))
+			offsets := slices.Collect(rangeOffsets(&tt.range_, tt.blockSize))
 			if len(tt.expected) == 0 {
 				assert.Empty(t, offsets)
 			} else {
@@ -249,7 +268,7 @@ func TestRange_Offsets_Iteration(t *testing.T) {
 	blockSize := int64(4096)
 
 	var collected []int64
-	for offset := range r.Offsets(blockSize) {
+	for offset := range rangeOffsets(&r, blockSize) {
 		collected = append(collected, offset)
 		if len(collected) >= 3 {
 			break
@@ -462,7 +481,7 @@ func TestRange_Offsets_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			offsets := slices.Collect(tt.range_.Offsets(tt.blockSize))
+			offsets := slices.Collect(rangeOffsets(&tt.range_, tt.blockSize))
 			assert.Equal(t, tt.expected, offsets)
 		})
 	}

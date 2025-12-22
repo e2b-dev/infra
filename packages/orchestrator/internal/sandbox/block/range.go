@@ -20,24 +20,6 @@ func (r *Range) End() int64 {
 	return r.Start + r.Size
 }
 
-// Offsets returns the block offsets contained in the range.
-// This assumes the Range.Start is a multiple of the blockSize.
-func (r *Range) Offsets(blockSize int64) iter.Seq[int64] {
-	return func(yield func(offset int64) bool) {
-		getOffsets(r.Start, r.End(), blockSize)(yield)
-	}
-}
-
-func getOffsets(start, end int64, blockSize int64) iter.Seq[int64] {
-	return func(yield func(offset int64) bool) {
-		for off := start; off < end; off += blockSize {
-			if !yield(off) {
-				return
-			}
-		}
-	}
-}
-
 // NewRange creates a new range from a start address and size in bytes.
 func NewRange(start int64, size int64) Range {
 	return Range{
