@@ -86,7 +86,7 @@ new_build as (
     ) RETURNING id as build_id, env_id as template_id
 ),
 
--- Create the build assignment edge
+-- Create the build assignment edge (explicit, not relying on trigger)
 build_assignment as (
     INSERT INTO "public"."env_build_assignments" (env_id, build_id, tag)
     VALUES (
@@ -94,8 +94,7 @@ build_assignment as (
         (SELECT build_id FROM new_build),
         'default'
     )
-    ON CONFLICT ON CONSTRAINT uq_env_build_assignment_identity DO NOTHING
-    RETURNING build_id, env_id
+    RETURNING build_id, env_id as template_id
 )
 
 SELECT build_id, template_id FROM new_build;

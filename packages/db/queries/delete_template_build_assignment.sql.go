@@ -7,6 +7,8 @@ package queries
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const deleteTemplateBuildAssignment = `-- name: DeleteTemplateBuildAssignment :exec
@@ -22,5 +24,22 @@ type DeleteTemplateBuildAssignmentParams struct {
 // Deletes a tag assignment from a template (env)
 func (q *Queries) DeleteTemplateBuildAssignment(ctx context.Context, arg DeleteTemplateBuildAssignmentParams) error {
 	_, err := q.db.Exec(ctx, deleteTemplateBuildAssignment, arg.TemplateID, arg.Tag)
+	return err
+}
+
+const deleteTriggerTemplateBuildAssignment = `-- name: DeleteTriggerTemplateBuildAssignment :exec
+DELETE FROM "public"."env_build_assignments"
+WHERE env_id = $1 AND build_id = $2 AND tag = $3::text AND source = 'trigger'
+`
+
+type DeleteTriggerTemplateBuildAssignmentParams struct {
+	TemplateID string
+	BuildID    uuid.UUID
+	Tag        string
+}
+
+// Deletes a tag assignment from a template (env)
+func (q *Queries) DeleteTriggerTemplateBuildAssignment(ctx context.Context, arg DeleteTriggerTemplateBuildAssignmentParams) error {
+	_, err := q.db.Exec(ctx, deleteTriggerTemplateBuildAssignment, arg.TemplateID, arg.BuildID, arg.Tag)
 	return err
 }

@@ -298,6 +298,22 @@ func RegisterBuild(
 	// Add default tag if no tags are present
 	if len(data.Tags) == 0 {
 		data.Tags = []string{id.DefaultTag}
+	} else {
+		// TODO: Remove this once the migration is deployed
+		err = client.DeleteTriggerTemplateBuildAssignment(ctx, queries.DeleteTriggerTemplateBuildAssignmentParams{
+			TemplateID: data.TemplateID,
+			BuildID:    buildID,
+			Tag:        id.DefaultTag,
+		})
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error when deleting tag assignment", err, attribute.String("tag", id.DefaultTag))
+
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Error when deleting tag assignment: %s", err),
+				Code:      http.StatusInternalServerError,
+			}
+		}
 	}
 
 	for _, tag := range data.Tags {
