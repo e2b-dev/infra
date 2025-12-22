@@ -99,6 +99,12 @@ type ServerInterface interface {
 	// (POST /templates)
 	PostTemplates(c *gin.Context)
 
+	// (DELETE /templates/tags/{name})
+	DeleteTemplatesTagsName(c *gin.Context, name string)
+
+	// (POST /templates/tags/{name})
+	PostTemplatesTagsName(c *gin.Context, name string)
+
 	// (DELETE /templates/{templateID})
 	DeleteTemplatesTemplateID(c *gin.Context, templateID TemplateID)
 
@@ -122,12 +128,6 @@ type ServerInterface interface {
 
 	// (GET /templates/{templateID}/files/{hash})
 	GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID TemplateID, hash string)
-
-	// (DELETE /templates/{templateID}/tags/{tag})
-	DeleteTemplatesTemplateIDTagsTag(c *gin.Context, templateID TemplateID, tag Tag)
-
-	// (POST /templates/{templateID}/tags/{tag})
-	PostTemplatesTemplateIDTagsTag(c *gin.Context, templateID TemplateID, tag Tag)
 
 	// (GET /v2/sandboxes)
 	GetV2Sandboxes(c *gin.Context, params GetV2SandboxesParams)
@@ -976,6 +976,66 @@ func (siw *ServerInterfaceWrapper) PostTemplates(c *gin.Context) {
 	siw.Handler.PostTemplates(c)
 }
 
+// DeleteTemplatesTagsName operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTemplatesTagsName(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteTemplatesTagsName(c, name)
+}
+
+// PostTemplatesTagsName operation middleware
+func (siw *ServerInterfaceWrapper) PostTemplatesTagsName(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostTemplatesTagsName(c, name)
+}
+
 // DeleteTemplatesTemplateID operation middleware
 func (siw *ServerInterfaceWrapper) DeleteTemplatesTemplateID(c *gin.Context) {
 
@@ -1337,84 +1397,6 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDFilesHash(c *gin.Contex
 	siw.Handler.GetTemplatesTemplateIDFilesHash(c, templateID, hash)
 }
 
-// DeleteTemplatesTemplateIDTagsTag operation middleware
-func (siw *ServerInterfaceWrapper) DeleteTemplatesTemplateIDTagsTag(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "templateID" -------------
-	var templateID TemplateID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "tag" -------------
-	var tag Tag
-
-	err = runtime.BindStyledParameterWithOptions("simple", "tag", c.Param("tag"), &tag, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	c.Set(Supabase1TokenAuthScopes, []string{})
-
-	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DeleteTemplatesTemplateIDTagsTag(c, templateID, tag)
-}
-
-// PostTemplatesTemplateIDTagsTag operation middleware
-func (siw *ServerInterfaceWrapper) PostTemplatesTemplateIDTagsTag(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "templateID" -------------
-	var templateID TemplateID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "tag" -------------
-	var tag Tag
-
-	err = runtime.BindStyledParameterWithOptions("simple", "tag", c.Param("tag"), &tag, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	c.Set(Supabase1TokenAuthScopes, []string{})
-
-	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.PostTemplatesTemplateIDTagsTag(c, templateID, tag)
-}
-
 // GetV2Sandboxes operation middleware
 func (siw *ServerInterfaceWrapper) GetV2Sandboxes(c *gin.Context) {
 
@@ -1597,6 +1579,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/teams/:teamID/metrics/max", wrapper.GetTeamsTeamIDMetricsMax)
 	router.GET(options.BaseURL+"/templates", wrapper.GetTemplates)
 	router.POST(options.BaseURL+"/templates", wrapper.PostTemplates)
+	router.DELETE(options.BaseURL+"/templates/tags/:name", wrapper.DeleteTemplatesTagsName)
+	router.POST(options.BaseURL+"/templates/tags/:name", wrapper.PostTemplatesTagsName)
 	router.DELETE(options.BaseURL+"/templates/:templateID", wrapper.DeleteTemplatesTemplateID)
 	router.GET(options.BaseURL+"/templates/:templateID", wrapper.GetTemplatesTemplateID)
 	router.PATCH(options.BaseURL+"/templates/:templateID", wrapper.PatchTemplatesTemplateID)
@@ -1605,8 +1589,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/templates/:templateID/builds/:buildID/logs", wrapper.GetTemplatesTemplateIDBuildsBuildIDLogs)
 	router.GET(options.BaseURL+"/templates/:templateID/builds/:buildID/status", wrapper.GetTemplatesTemplateIDBuildsBuildIDStatus)
 	router.GET(options.BaseURL+"/templates/:templateID/files/:hash", wrapper.GetTemplatesTemplateIDFilesHash)
-	router.DELETE(options.BaseURL+"/templates/:templateID/tags/:tag", wrapper.DeleteTemplatesTemplateIDTagsTag)
-	router.POST(options.BaseURL+"/templates/:templateID/tags/:tag", wrapper.PostTemplatesTemplateIDTagsTag)
 	router.GET(options.BaseURL+"/v2/sandboxes", wrapper.GetV2Sandboxes)
 	router.POST(options.BaseURL+"/v2/templates", wrapper.PostV2Templates)
 	router.POST(options.BaseURL+"/v2/templates/:templateID/builds/:buildID", wrapper.PostV2TemplatesTemplateIDBuildsBuildID)

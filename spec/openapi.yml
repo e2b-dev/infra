@@ -2470,17 +2470,21 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /templates/{templateID}/tags/{tag}:
+  /templates/tags/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          description: Template name in "alias:tag" format
     post:
-      description: Assign a tag to a template build
+      description: Assign tag(s) to a template build
       tags: [tags]
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
-      parameters:
-        - $ref: "#/components/parameters/templateID"
-        - $ref: "#/components/parameters/tag"
       requestBody:
         required: true
         content:
@@ -2509,12 +2513,11 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
-      parameters:
-        - $ref: "#/components/parameters/templateID"
-        - $ref: "#/components/parameters/tag"
       responses:
         "204":
           description: Tag deleted successfully
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "404":

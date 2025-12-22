@@ -194,6 +194,14 @@ type ClientInterface interface {
 
 	PostTemplates(ctx context.Context, body PostTemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteTemplatesTagsName request
+	DeleteTemplatesTagsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostTemplatesTagsNameWithBody request with any body
+	PostTemplatesTagsNameWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostTemplatesTagsName(ctx context.Context, name string, body PostTemplatesTagsNameJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteTemplatesTemplateID request
 	DeleteTemplatesTemplateID(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -221,14 +229,6 @@ type ClientInterface interface {
 
 	// GetTemplatesTemplateIDFilesHash request
 	GetTemplatesTemplateIDFilesHash(ctx context.Context, templateID TemplateID, hash string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DeleteTemplatesTemplateIDTagsTag request
-	DeleteTemplatesTemplateIDTagsTag(ctx context.Context, templateID TemplateID, tag Tag, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PostTemplatesTemplateIDTagsTagWithBody request with any body
-	PostTemplatesTemplateIDTagsTagWithBody(ctx context.Context, templateID TemplateID, tag Tag, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	PostTemplatesTemplateIDTagsTag(ctx context.Context, templateID TemplateID, tag Tag, body PostTemplatesTemplateIDTagsTagJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV2Sandboxes request
 	GetV2Sandboxes(ctx context.Context, params *GetV2SandboxesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -705,6 +705,42 @@ func (c *Client) PostTemplates(ctx context.Context, body PostTemplatesJSONReques
 	return c.Client.Do(req)
 }
 
+func (c *Client) DeleteTemplatesTagsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteTemplatesTagsNameRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostTemplatesTagsNameWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostTemplatesTagsNameRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostTemplatesTagsName(ctx context.Context, name string, body PostTemplatesTagsNameJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostTemplatesTagsNameRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) DeleteTemplatesTemplateID(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteTemplatesTemplateIDRequest(c.Server, templateID)
 	if err != nil {
@@ -815,42 +851,6 @@ func (c *Client) GetTemplatesTemplateIDBuildsBuildIDStatus(ctx context.Context, 
 
 func (c *Client) GetTemplatesTemplateIDFilesHash(ctx context.Context, templateID TemplateID, hash string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTemplatesTemplateIDFilesHashRequest(c.Server, templateID, hash)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) DeleteTemplatesTemplateIDTagsTag(ctx context.Context, templateID TemplateID, tag Tag, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteTemplatesTemplateIDTagsTagRequest(c.Server, templateID, tag)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PostTemplatesTemplateIDTagsTagWithBody(ctx context.Context, templateID TemplateID, tag Tag, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostTemplatesTemplateIDTagsTagRequestWithBody(c.Server, templateID, tag, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PostTemplatesTemplateIDTagsTag(ctx context.Context, templateID TemplateID, tag Tag, body PostTemplatesTemplateIDTagsTagJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostTemplatesTemplateIDTagsTagRequest(c.Server, templateID, tag, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2198,6 +2198,87 @@ func NewPostTemplatesRequestWithBody(server string, contentType string, body io.
 	return req, nil
 }
 
+// NewDeleteTemplatesTagsNameRequest generates requests for DeleteTemplatesTagsName
+func NewDeleteTemplatesTagsNameRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "name", runtime.ParamLocationPath, name)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/tags/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostTemplatesTagsNameRequest calls the generic PostTemplatesTagsName builder with application/json body
+func NewPostTemplatesTagsNameRequest(server string, name string, body PostTemplatesTagsNameJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostTemplatesTagsNameRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewPostTemplatesTagsNameRequestWithBody generates requests for PostTemplatesTagsName with any type of body
+func NewPostTemplatesTagsNameRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "name", runtime.ParamLocationPath, name)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/tags/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDeleteTemplatesTemplateIDRequest generates requests for DeleteTemplatesTemplateID
 func NewDeleteTemplatesTemplateIDRequest(server string, templateID TemplateID) (*http.Request, error) {
 	var err error
@@ -2702,101 +2783,6 @@ func NewGetTemplatesTemplateIDFilesHashRequest(server string, templateID Templat
 	return req, nil
 }
 
-// NewDeleteTemplatesTemplateIDTagsTagRequest generates requests for DeleteTemplatesTemplateIDTagsTag
-func NewDeleteTemplatesTemplateIDTagsTagRequest(server string, templateID TemplateID, tag Tag) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "templateID", runtime.ParamLocationPath, templateID)
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "tag", runtime.ParamLocationPath, tag)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/templates/%s/tags/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewPostTemplatesTemplateIDTagsTagRequest calls the generic PostTemplatesTemplateIDTagsTag builder with application/json body
-func NewPostTemplatesTemplateIDTagsTagRequest(server string, templateID TemplateID, tag Tag, body PostTemplatesTemplateIDTagsTagJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewPostTemplatesTemplateIDTagsTagRequestWithBody(server, templateID, tag, "application/json", bodyReader)
-}
-
-// NewPostTemplatesTemplateIDTagsTagRequestWithBody generates requests for PostTemplatesTemplateIDTagsTag with any type of body
-func NewPostTemplatesTemplateIDTagsTagRequestWithBody(server string, templateID TemplateID, tag Tag, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "templateID", runtime.ParamLocationPath, templateID)
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "tag", runtime.ParamLocationPath, tag)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/templates/%s/tags/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 // NewGetV2SandboxesRequest generates requests for GetV2Sandboxes
 func NewGetV2SandboxesRequest(server string, params *GetV2SandboxesParams) (*http.Request, error) {
 	var err error
@@ -3175,6 +3161,14 @@ type ClientWithResponsesInterface interface {
 
 	PostTemplatesWithResponse(ctx context.Context, body PostTemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostTemplatesResponse, error)
 
+	// DeleteTemplatesTagsNameWithResponse request
+	DeleteTemplatesTagsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteTemplatesTagsNameResponse, error)
+
+	// PostTemplatesTagsNameWithBodyWithResponse request with any body
+	PostTemplatesTagsNameWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostTemplatesTagsNameResponse, error)
+
+	PostTemplatesTagsNameWithResponse(ctx context.Context, name string, body PostTemplatesTagsNameJSONRequestBody, reqEditors ...RequestEditorFn) (*PostTemplatesTagsNameResponse, error)
+
 	// DeleteTemplatesTemplateIDWithResponse request
 	DeleteTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*DeleteTemplatesTemplateIDResponse, error)
 
@@ -3202,14 +3196,6 @@ type ClientWithResponsesInterface interface {
 
 	// GetTemplatesTemplateIDFilesHashWithResponse request
 	GetTemplatesTemplateIDFilesHashWithResponse(ctx context.Context, templateID TemplateID, hash string, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDFilesHashResponse, error)
-
-	// DeleteTemplatesTemplateIDTagsTagWithResponse request
-	DeleteTemplatesTemplateIDTagsTagWithResponse(ctx context.Context, templateID TemplateID, tag Tag, reqEditors ...RequestEditorFn) (*DeleteTemplatesTemplateIDTagsTagResponse, error)
-
-	// PostTemplatesTemplateIDTagsTagWithBodyWithResponse request with any body
-	PostTemplatesTemplateIDTagsTagWithBodyWithResponse(ctx context.Context, templateID TemplateID, tag Tag, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostTemplatesTemplateIDTagsTagResponse, error)
-
-	PostTemplatesTemplateIDTagsTagWithResponse(ctx context.Context, templateID TemplateID, tag Tag, body PostTemplatesTemplateIDTagsTagJSONRequestBody, reqEditors ...RequestEditorFn) (*PostTemplatesTemplateIDTagsTagResponse, error)
 
 	// GetV2SandboxesWithResponse request
 	GetV2SandboxesWithResponse(ctx context.Context, params *GetV2SandboxesParams, reqEditors ...RequestEditorFn) (*GetV2SandboxesResponse, error)
@@ -3919,6 +3905,57 @@ func (r PostTemplatesResponse) StatusCode() int {
 	return 0
 }
 
+type DeleteTemplatesTagsNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *N400
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteTemplatesTagsNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteTemplatesTagsNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostTemplatesTagsNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *TemplateTag
+	JSON400      *N400
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostTemplatesTagsNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostTemplatesTagsNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type DeleteTemplatesTemplateIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4107,56 +4144,6 @@ func (r GetTemplatesTemplateIDFilesHashResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetTemplatesTemplateIDFilesHashResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type DeleteTemplatesTemplateIDTagsTagResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON401      *N401
-	JSON404      *N404
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteTemplatesTemplateIDTagsTagResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteTemplatesTemplateIDTagsTagResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type PostTemplatesTemplateIDTagsTagResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON201      *TemplateTag
-	JSON400      *N400
-	JSON401      *N401
-	JSON404      *N404
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r PostTemplatesTemplateIDTagsTagResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PostTemplatesTemplateIDTagsTagResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4593,6 +4580,32 @@ func (c *ClientWithResponses) PostTemplatesWithResponse(ctx context.Context, bod
 	return ParsePostTemplatesResponse(rsp)
 }
 
+// DeleteTemplatesTagsNameWithResponse request returning *DeleteTemplatesTagsNameResponse
+func (c *ClientWithResponses) DeleteTemplatesTagsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteTemplatesTagsNameResponse, error) {
+	rsp, err := c.DeleteTemplatesTagsName(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteTemplatesTagsNameResponse(rsp)
+}
+
+// PostTemplatesTagsNameWithBodyWithResponse request with arbitrary body returning *PostTemplatesTagsNameResponse
+func (c *ClientWithResponses) PostTemplatesTagsNameWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostTemplatesTagsNameResponse, error) {
+	rsp, err := c.PostTemplatesTagsNameWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostTemplatesTagsNameResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostTemplatesTagsNameWithResponse(ctx context.Context, name string, body PostTemplatesTagsNameJSONRequestBody, reqEditors ...RequestEditorFn) (*PostTemplatesTagsNameResponse, error) {
+	rsp, err := c.PostTemplatesTagsName(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostTemplatesTagsNameResponse(rsp)
+}
+
 // DeleteTemplatesTemplateIDWithResponse request returning *DeleteTemplatesTemplateIDResponse
 func (c *ClientWithResponses) DeleteTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*DeleteTemplatesTemplateIDResponse, error) {
 	rsp, err := c.DeleteTemplatesTemplateID(ctx, templateID, reqEditors...)
@@ -4679,32 +4692,6 @@ func (c *ClientWithResponses) GetTemplatesTemplateIDFilesHashWithResponse(ctx co
 		return nil, err
 	}
 	return ParseGetTemplatesTemplateIDFilesHashResponse(rsp)
-}
-
-// DeleteTemplatesTemplateIDTagsTagWithResponse request returning *DeleteTemplatesTemplateIDTagsTagResponse
-func (c *ClientWithResponses) DeleteTemplatesTemplateIDTagsTagWithResponse(ctx context.Context, templateID TemplateID, tag Tag, reqEditors ...RequestEditorFn) (*DeleteTemplatesTemplateIDTagsTagResponse, error) {
-	rsp, err := c.DeleteTemplatesTemplateIDTagsTag(ctx, templateID, tag, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteTemplatesTemplateIDTagsTagResponse(rsp)
-}
-
-// PostTemplatesTemplateIDTagsTagWithBodyWithResponse request with arbitrary body returning *PostTemplatesTemplateIDTagsTagResponse
-func (c *ClientWithResponses) PostTemplatesTemplateIDTagsTagWithBodyWithResponse(ctx context.Context, templateID TemplateID, tag Tag, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostTemplatesTemplateIDTagsTagResponse, error) {
-	rsp, err := c.PostTemplatesTemplateIDTagsTagWithBody(ctx, templateID, tag, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostTemplatesTemplateIDTagsTagResponse(rsp)
-}
-
-func (c *ClientWithResponses) PostTemplatesTemplateIDTagsTagWithResponse(ctx context.Context, templateID TemplateID, tag Tag, body PostTemplatesTemplateIDTagsTagJSONRequestBody, reqEditors ...RequestEditorFn) (*PostTemplatesTemplateIDTagsTagResponse, error) {
-	rsp, err := c.PostTemplatesTemplateIDTagsTag(ctx, templateID, tag, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostTemplatesTemplateIDTagsTagResponse(rsp)
 }
 
 // GetV2SandboxesWithResponse request returning *GetV2SandboxesResponse
@@ -6006,6 +5993,107 @@ func ParsePostTemplatesResponse(rsp *http.Response) (*PostTemplatesResponse, err
 	return response, nil
 }
 
+// ParseDeleteTemplatesTagsNameResponse parses an HTTP response from a DeleteTemplatesTagsNameWithResponse call
+func ParseDeleteTemplatesTagsNameResponse(rsp *http.Response) (*DeleteTemplatesTagsNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteTemplatesTagsNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostTemplatesTagsNameResponse parses an HTTP response from a PostTemplatesTagsNameWithResponse call
+func ParsePostTemplatesTagsNameResponse(rsp *http.Response) (*PostTemplatesTagsNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostTemplatesTagsNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest TemplateTag
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseDeleteTemplatesTemplateIDResponse parses an HTTP response from a DeleteTemplatesTemplateIDWithResponse call
 func ParseDeleteTemplatesTemplateIDResponse(rsp *http.Response) (*DeleteTemplatesTemplateIDResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -6302,100 +6390,6 @@ func ParseGetTemplatesTemplateIDFilesHashResponse(rsp *http.Response) (*GetTempl
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest TemplateBuildFileUpload
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest N400
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest N404
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDeleteTemplatesTemplateIDTagsTagResponse parses an HTTP response from a DeleteTemplatesTemplateIDTagsTagWithResponse call
-func ParseDeleteTemplatesTemplateIDTagsTagResponse(rsp *http.Response) (*DeleteTemplatesTemplateIDTagsTagResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteTemplatesTemplateIDTagsTagResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest N404
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParsePostTemplatesTemplateIDTagsTagResponse parses an HTTP response from a PostTemplatesTemplateIDTagsTagWithResponse call
-func ParsePostTemplatesTemplateIDTagsTagResponse(rsp *http.Response) (*PostTemplatesTemplateIDTagsTagResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PostTemplatesTemplateIDTagsTagResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest TemplateTag
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

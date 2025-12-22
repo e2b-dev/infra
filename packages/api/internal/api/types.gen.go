@@ -1068,9 +1068,6 @@ type PaginationNextToken = string
 // SandboxID defines model for sandboxID.
 type SandboxID = string
 
-// Tag Tag name
-type Tag = string
-
 // TeamID defines model for teamID.
 type TeamID = string
 
@@ -1244,14 +1241,14 @@ type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJ
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest
 
+// PostTemplatesTagsNameJSONRequestBody defines body for PostTemplatesTagsName for application/json ContentType.
+type PostTemplatesTagsNameJSONRequestBody = AssignTemplateTagRequest
+
 // PatchTemplatesTemplateIDJSONRequestBody defines body for PatchTemplatesTemplateID for application/json ContentType.
 type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
 
 // PostTemplatesTemplateIDJSONRequestBody defines body for PostTemplatesTemplateID for application/json ContentType.
 type PostTemplatesTemplateIDJSONRequestBody = TemplateBuildRequest
-
-// PostTemplatesTemplateIDTagsTagJSONRequestBody defines body for PostTemplatesTemplateIDTagsTag for application/json ContentType.
-type PostTemplatesTemplateIDTagsTagJSONRequestBody = AssignTemplateTagRequest
 
 // PostV2TemplatesJSONRequestBody defines body for PostV2Templates for application/json ContentType.
 type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2

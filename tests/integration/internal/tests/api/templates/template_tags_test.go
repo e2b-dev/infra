@@ -28,7 +28,8 @@ func TestTemplateTagAssign(t *testing.T) {
 	template := testutils.BuildSimpleTemplate(t, []string{"test-tag-assign"}, setup.WithAPIKey())
 
 	// Assign a custom tag to the template
-	tagResp, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, template.TemplateID, id.DefaultTag, api.AssignTemplateTagRequest{
+	// POST /templates/tags/{source} with body { names: [targets] }
+	tagResp, err := c.PostTemplatesTagsNameWithResponse(ctx, template.TemplateID+":"+id.DefaultTag, api.AssignTemplateTagRequest{
 		Names: []string{template.TemplateID + ":v1"},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
@@ -58,7 +59,7 @@ func TestTemplateTagAssignFromSourceTag(t *testing.T) {
 
 	// First assign a source tag (from the default build)
 	sourceTag := "staging"
-	stagingResp, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, template.TemplateID, id.DefaultTag, api.AssignTemplateTagRequest{
+	stagingResp, err := c.PostTemplatesTagsNameWithResponse(ctx, template.TemplateID+":"+id.DefaultTag, api.AssignTemplateTagRequest{
 		Names: []string{template.TemplateID + ":" + sourceTag},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
@@ -66,7 +67,7 @@ func TestTemplateTagAssignFromSourceTag(t *testing.T) {
 
 	// Assign a new tag from the source tag (staging)
 	prodTag := "production"
-	tagResp, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, template.TemplateID, sourceTag, api.AssignTemplateTagRequest{
+	tagResp, err := c.PostTemplatesTagsNameWithResponse(ctx, template.TemplateID+":"+sourceTag, api.AssignTemplateTagRequest{
 		Names: []string{template.TemplateID + ":" + prodTag},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
@@ -90,13 +91,13 @@ func TestTemplateTagDelete(t *testing.T) {
 	template := testutils.BuildSimpleTemplate(t, []string{"test-tag-delete"}, setup.WithAPIKey())
 
 	// Assign a tag
-	_, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, template.TemplateID, id.DefaultTag, api.AssignTemplateTagRequest{
+	_, err := c.PostTemplatesTagsNameWithResponse(ctx, template.TemplateID+":"+id.DefaultTag, api.AssignTemplateTagRequest{
 		Names: []string{template.TemplateID + ":to-delete"},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
 
-	// Delete the tag
-	deleteResp, err := c.DeleteTemplatesTemplateIDTagsTagWithResponse(ctx, template.TemplateID, "to-delete", setup.WithAPIKey())
+	// Delete the tag - DELETE /templates/tags/{name}
+	deleteResp, err := c.DeleteTemplatesTagsNameWithResponse(ctx, template.TemplateID+":to-delete", setup.WithAPIKey())
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusNoContent, deleteResp.StatusCode())
@@ -114,7 +115,7 @@ func TestTemplateTagDeleteLatestNotAllowed(t *testing.T) {
 	template := testutils.BuildSimpleTemplate(t, []string{"test-tag-delete-latest"}, setup.WithAPIKey())
 
 	// Try to delete the 'default' tag - should fail
-	deleteResp, err := c.DeleteTemplatesTemplateIDTagsTagWithResponse(ctx, template.TemplateID, id.DefaultTag, setup.WithAPIKey())
+	deleteResp, err := c.DeleteTemplatesTagsNameWithResponse(ctx, template.TemplateID+":"+id.DefaultTag, setup.WithAPIKey())
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusBadRequest, deleteResp.StatusCode())
@@ -132,7 +133,7 @@ func TestSandboxCreateWithTag(t *testing.T) {
 	template := testutils.BuildSimpleTemplate(t, []string{"test-sbx-tag"}, setup.WithAPIKey())
 
 	// Assign a version tag
-	_, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, template.TemplateID, id.DefaultTag, api.AssignTemplateTagRequest{
+	_, err := c.PostTemplatesTagsNameWithResponse(ctx, template.TemplateID+":"+id.DefaultTag, api.AssignTemplateTagRequest{
 		Names: []string{template.TemplateID + ":v1.0"},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
@@ -220,7 +221,7 @@ func TestSandboxCreateWithAliasAndTag(t *testing.T) {
 	testutils.BuildSimpleTemplate(t, []string{alias}, setup.WithAPIKey())
 
 	// Assign a version tag using the alias
-	tagResp, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, alias, id.DefaultTag, api.AssignTemplateTagRequest{
+	tagResp, err := c.PostTemplatesTagsNameWithResponse(ctx, alias+":"+id.DefaultTag, api.AssignTemplateTagRequest{
 		Names: []string{alias + ":stable"},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
@@ -257,7 +258,7 @@ func TestTemplateTagNotFoundForNonExistentTemplate(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Try to assign a tag to a non-existent template
-	tagResp, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, "nonexistent-template-id", id.DefaultTag, api.AssignTemplateTagRequest{
+	tagResp, err := c.PostTemplatesTagsNameWithResponse(ctx, "nonexistent-template-id:"+id.DefaultTag, api.AssignTemplateTagRequest{
 		Names: []string{"nonexistent-template-id:v1"},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
@@ -274,7 +275,7 @@ func TestTemplateTagInvalidTagName(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Try to assign a tag with empty name
-	tagResp, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, setup.SandboxTemplateID, id.DefaultTag, api.AssignTemplateTagRequest{
+	tagResp, err := c.PostTemplatesTagsNameWithResponse(ctx, setup.SandboxTemplateID+":"+id.DefaultTag, api.AssignTemplateTagRequest{
 		Names: []string{""},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
@@ -296,7 +297,7 @@ func TestMultipleTagsOnSameTemplate(t *testing.T) {
 	// Assign multiple tags to the same build
 	tags := []string{"dev", "staging", "prod", "v1.0.0"}
 	for _, tag := range tags {
-		tagResp, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, template.TemplateID, id.DefaultTag, api.AssignTemplateTagRequest{
+		tagResp, err := c.PostTemplatesTagsNameWithResponse(ctx, template.TemplateID+":"+id.DefaultTag, api.AssignTemplateTagRequest{
 			Names: []string{template.TemplateID + ":" + tag},
 		}, setup.WithAPIKey())
 		require.NoError(t, err)
@@ -348,7 +349,7 @@ func TestTagReassignment(t *testing.T) {
 	})
 
 	// Assign 'stable' tag to first build using the alias
-	stableResp, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, alias, id.DefaultTag, api.AssignTemplateTagRequest{
+	stableResp, err := c.PostTemplatesTagsNameWithResponse(ctx, alias+":"+id.DefaultTag, api.AssignTemplateTagRequest{
 		Names: []string{alias + ":stable"},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
@@ -374,7 +375,7 @@ func TestTagReassignment(t *testing.T) {
 	require.Equal(t, template1.TemplateID, template2.TemplateID, "Both builds should be for the same template")
 
 	// Reassign 'stable' tag to second build (by using 'default' as source)
-	tagResp, err := c.PostTemplatesTemplateIDTagsTagWithResponse(ctx, alias, id.DefaultTag, api.AssignTemplateTagRequest{
+	tagResp, err := c.PostTemplatesTagsNameWithResponse(ctx, alias+":"+id.DefaultTag, api.AssignTemplateTagRequest{
 		Names: []string{alias + ":stable"},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
