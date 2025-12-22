@@ -26,6 +26,7 @@ type BuildLogHandler func(alias string, entry api.BuildLogEntry)
 // TemplateBuildOptions contains options for building a template
 type TemplateBuildOptions struct {
 	Alias       string
+	Tags        []string
 	CPUCount    *int32
 	MemoryMB    *int32
 	BuildData   api.TemplateBuildStartV2
@@ -75,7 +76,7 @@ func BuildTemplate(tb testing.TB, opts TemplateBuildOptions) *api.TemplateReques
 	reqEditors := append(opts.ReqEditors, setup.WithTestsUserAgent())
 
 	// Request build
-	template := requestTemplateBuild(tb, opts.Alias, opts.CPUCount, opts.MemoryMB, reqEditors...)
+	template := requestTemplateBuild(tb, opts.Alias, opts.Tags, opts.CPUCount, opts.MemoryMB, reqEditors...)
 
 	// Start build
 	startTemplateBuild(tb, template.TemplateID, template.BuildID, opts.BuildData, reqEditors...)
@@ -155,6 +156,7 @@ func WaitForBuildCompletion(
 func requestTemplateBuild(
 	tb testing.TB,
 	alias string,
+	tags []string,
 	cpuCount, memoryMB *int32,
 	reqEditors ...api.RequestEditorFn,
 ) *api.TemplateRequestResponseV3 {
@@ -170,11 +172,16 @@ func requestTemplateBuild(
 		memoryMB = utils.ToPtr(DefaultMemoryMB)
 	}
 
-	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
+	req := api.TemplateBuildRequestV3{
 		Alias:    alias,
 		CpuCount: cpuCount,
 		MemoryMB: memoryMB,
-	}, reqEditors...)
+	}
+	if len(tags) > 0 {
+		req.Tags = &tags
+	}
+
+	resp, err := c.PostV3TemplatesWithResponse(ctx, req, reqEditors...)
 	require.NoError(tb, err)
 	require.Equal(tb, http.StatusAccepted, resp.StatusCode())
 	require.NotNil(tb, resp.JSON202)
