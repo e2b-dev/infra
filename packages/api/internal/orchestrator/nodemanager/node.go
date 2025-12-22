@@ -15,7 +15,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
@@ -40,7 +39,7 @@ type Node struct {
 	IPAddress     string
 	SandboxDomain *string
 
-	connection *grpclient.GRPCClient
+	connection *clusters.GRPCClient
 	status     api.NodeStatus
 
 	metrics   Metrics
@@ -113,7 +112,7 @@ func New(
 	return n, nil
 }
 
-func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *clusters.Instance) (*Node, error) {
+func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *clusters.Instance) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
 	if !ok {
 		logger.L().Error(ctx, "Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))
@@ -180,7 +179,7 @@ func (n *Node) Close(ctx context.Context) error {
 }
 
 // Ensures that GRPC connection request context always has the latest service instance ID
-func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
+func (n *Node) GetClient(ctx context.Context) (*clusters.GRPCClient, context.Context) {
 	return n.connection, ctx
 }
 

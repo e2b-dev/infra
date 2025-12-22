@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -34,7 +33,7 @@ func (a instanceAuthorization) RequireTransportSecurity() bool {
 	return a.tls
 }
 
-func createConnection(tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool) (*grpclient.GRPCClient, error) {
+func createConnection(tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool) (*GRPCClient, error) {
 	grpcOptions := []grpc.DialOption{
 		grpc.WithPerRPCCredentials(auth),
 		grpc.WithStatsHandler(
@@ -65,7 +64,7 @@ func createConnection(tel *telemetry.Client, auth *instanceAuthorization, endpoi
 		return nil, fmt.Errorf("failed to create grpc client: %w", err)
 	}
 
-	return &grpclient.GRPCClient{
+	return &GRPCClient{
 		Info:       infogrpc.NewInfoServiceClient(conn),
 		Sandbox:    orchestratorgrpc.NewSandboxServiceClient(conn),
 		Template:   templatemanagergrpc.NewTemplateServiceClient(conn),

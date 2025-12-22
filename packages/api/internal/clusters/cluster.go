@@ -10,9 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
-	"google.golang.org/grpc/metadata"
 
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
@@ -36,11 +34,6 @@ type Cluster struct {
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *Instance]
 	resources       ClusterResource
-}
-
-type ClusterGRPC struct {
-	Client   *grpclient.GRPCClient
-	Metadata metadata.MD
 }
 
 var (
@@ -77,7 +70,7 @@ func newCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 
 	instances := smap.New[*Instance]()
 	instanceCreation := func(ctx context.Context, item api.ClusterOrchestratorNode) (*Instance, error) {
-		// For remote cluster we are doing connection to endpoint that works as gRPC proxy and handles auth and routing for us.
+		// For remote cluster we are doing Connection to endpoint that works as gRPC proxy and handles auth and routing for us.
 		auth := &instanceAuthorization{secret: secret, tls: endpointTLS, serviceInstanceID: item.ServiceInstanceID}
 
 		return newInstance(ctx, tel, auth, clusterID, item.NodeID, item.ServiceInstanceID, endpoint, endpointTLS)
