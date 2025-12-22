@@ -54,12 +54,13 @@ resource "null_resource" "nodes_base" {
   provisioner "remote-exec" {
     inline = [
       "set -e",
+      "export DEBIAN_FRONTEND=noninteractive",
       "if [ \"$(id -u)\" -eq 0 ]; then :; else if ! sudo -n true 2>/dev/null; then echo 'Passwordless sudo required for provisioning. Configure /etc/sudoers.d/$(whoami) or connect as root.'; exit 1; fi; fi",
       "if [ \"$(id -u)\" -eq 0 ]; then SUDO=\"\"; SUDO_E=\"\"; else SUDO=\"sudo\"; SUDO_E=\"sudo -E\"; fi",
 
       "$SUDO_E apt-get update -y",
       "$SUDO_E apt-get install -y curl unzip gnupg ca-certificates lsb-release",
-      "if [ ! -f /usr/share/keyrings/hashicorp-archive-keyring.gpg ] || [ ! -f /etc/apt/sources.list.d/hashicorp.list ]; then curl -fsSL https://apt.releases.hashicorp.com/gpg | $SUDO gpg --dearmor | $SUDO tee /usr/share/keyrings/hashicorp-archive-keyring.gpg >/dev/null; CODENAME=$(lsb_release -cs); echo \"deb [arch=amd64 signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $CODENAME main\" | $SUDO tee /etc/apt/sources.list.d/hashicorp.list >/dev/null; $SUDO_E apt-get update -y; fi",
+      "if [ ! -f /usr/share/keyrings/hashicorp-archive-keyring.gpg ] || [ ! -f /etc/apt/sources.list.d/hashicorp.list ]; then curl -fsSL https://apt.releases.hashicorp.com/gpg | $SUDO gpg --dearmor --batch --yes | $SUDO tee /usr/share/keyrings/hashicorp-archive-keyring.gpg >/dev/null; CODENAME=$(lsb_release -cs); echo \"deb [arch=amd64 signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $CODENAME main\" | $SUDO tee /etc/apt/sources.list.d/hashicorp.list >/dev/null; $SUDO_E apt-get update -y; fi",
       "if ! command -v consul >/dev/null 2>&1; then $SUDO_E apt-get install -y consul; fi",
       "if ! command -v nomad  >/dev/null 2>&1; then $SUDO_E apt-get install -y nomad;  fi",
       "if ! command -v docker >/dev/null 2>&1; then (curl -fsSL https://get.docker.com | sh) || ($SUDO_E apt-get update -y && $SUDO_E apt-get install -y docker.io); fi",
