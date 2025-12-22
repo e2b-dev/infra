@@ -120,6 +120,13 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	logs, err := cluster.GetResources().GetBuildLogs(ctx, buildInfo.NodeID, templateID, buildID, offset, limit, apiToLogLevel(params.Level), nil, api.LogsDirectionForward, nil)
+	if err != nil {
+		telemetry.ReportError(ctx, "error when getting build logs", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build logs")
+
+		return
+	}
+
 	for _, entry := range logs {
 		if legacyLogs {
 			lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
