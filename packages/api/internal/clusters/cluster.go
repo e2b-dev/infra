@@ -38,10 +38,6 @@ type ClusterGRPC struct {
 	Metadata metadata.MD
 }
 
-type ClusterHTTP struct {
-	Client *api.ClientWithResponses
-}
-
 var (
 	ErrTemplateBuilderNotFound          = errors.New("template builder not found")
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
@@ -165,10 +161,6 @@ func (c *Cluster) GetGRPC(serviceInstanceID string) *ClusterGRPC {
 	return &ClusterGRPC{c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: serviceInstanceID})}
 }
 
-func (c *Cluster) GetHTTP() *ClusterHTTP {
-	return &ClusterHTTP{c.httpClient}
-}
-
 func (c *Cluster) GetOrchestrators() []*Instance {
 	instances := make([]*Instance, 0)
 	for _, i := range c.instances.Items() {
@@ -178,10 +170,6 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 	}
 
 	return instances
-}
-
-func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
-	return c.httpClient
 }
 
 func (c *Cluster) GetResources() ClusterResource {
