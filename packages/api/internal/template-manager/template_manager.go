@@ -108,7 +108,7 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	}
 }
 
-func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID uuid.UUID) (*clusters.ClusterInstance, error) {
+func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID uuid.UUID) (*clusters.Instance, error) {
 	cluster, ok := tm.clusters.GetClusterById(clusterID)
 	if !ok {
 		return nil, fmt.Errorf("cluster with ID '%s' not found", clusterID)
@@ -142,7 +142,7 @@ func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID str
 		return nil, fmt.Errorf("failed to get builder by id '%s': %w", nodeID, err)
 	}
 
-	return cluster.GetGRPC(instance.ServiceInstanceID), nil
+	return cluster.GetGRPC(instance.InstanceID), nil
 }
 
 func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) error {

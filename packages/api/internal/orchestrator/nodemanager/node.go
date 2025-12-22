@@ -114,7 +114,7 @@ func New(
 	return n, nil
 }
 
-func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *clusters.ClusterInstance) (*Node, error) {
+func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *clusters.Instance) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
 	if !ok {
 		logger.L().Error(ctx, "Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))
@@ -125,7 +125,7 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		ServiceInstanceID: i.ServiceInstanceID,
+		ServiceInstanceID: i.InstanceID,
 		Commit:            i.ServiceVersionCommit,
 		Version:           i.ServiceVersion,
 	}

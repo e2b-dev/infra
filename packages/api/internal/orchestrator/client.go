@@ -33,9 +33,9 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 	return nil
 }
 
-func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *clusters.Cluster, i *clusters.ClusterInstance) {
+func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *clusters.Cluster, i *clusters.Instance) {
 	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
-	clusterGRPC := cluster.GetGRPC(i.ServiceInstanceID)
+	clusterGRPC := cluster.GetGRPC(i.InstanceID)
 
 	orchestratorNode, err := nodemanager.NewClusterNode(ctx, clusterGRPC.Client, cluster.ID, cluster.SandboxDomain, i)
 	if err != nil {
