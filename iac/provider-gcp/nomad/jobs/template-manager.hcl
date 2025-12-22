@@ -22,6 +22,8 @@ job "template-manager-system" {
       mode             = "delay"
     }
 
+    // For future as we can remove static and allow multiple instances on one machine if needed.
+    // Also network allocation is used by Nomad service discovery on API and edge API to find jobs and register them.
     network {
       port "template-manager" {
         static = "${port}"
