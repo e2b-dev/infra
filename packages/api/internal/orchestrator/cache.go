@@ -20,6 +20,8 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchest
 // cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator.
 const cacheSyncTime = 20 * time.Second
 
+const nodeConnectTimeout = 5 * time.Second
+
 func (o *Orchestrator) GetSandbox(ctx context.Context, sandboxID string) (sandbox.Sandbox, error) {
 	return o.sandboxStore.Get(ctx, sandboxID)
 }
@@ -110,17 +112,21 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 
 func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered []nodemanager.NomadServiceDiscovery) {
 	// Connect local nodes that are not in the list, yet
-	connectLocalSpanCtx, connectLocalSpan := tracer.Start(ctx, "keep-in-sync-connect-local-nodes")
-	defer connectLocalSpan.End()
+	ctx, span := tracer.Start(ctx, "keep-in-sync-connect-local-nodes")
+	defer span.End()
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
+
+	// Make sure slow/failed connections don't block the whole sync loop
+	ctx, cancel := context.WithTimeout(ctx, nodeConnectTimeout)
+	defer cancel()
 
 	for _, n := range discovered {
 		// If the node is not in the list, connect to it
 		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
 			wg.Go(func() {
-				err := o.connectToNode(connectLocalSpanCtx, n)
+				err := o.connectToNode(ctx, n)
 				if err != nil {
 					logger.L().Error(ctx, "Error connecting to node", zap.Error(err))
 				}
@@ -133,8 +139,12 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	_, connectClusteredSpan := tracer.Start(ctx, "keep-in-sync-connect-clustered-nodes")
-	defer connectClusteredSpan.End()
+	ctx, span := tracer.Start(ctx, "keep-in-sync-connect-clustered-nodes")
+	defer span.End()
+
+	// Make sure slow/failed connections don't block the whole sync loop
+	ctx, cancel := context.WithTimeout(ctx, nodeConnectTimeout)
+	defer cancel()
 
 	// Connect clustered nodes that are not in the list, yet
 	// We need to iterate over all clusters and their nodes
