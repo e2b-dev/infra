@@ -76,8 +76,8 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 
 		// The template alias must be the same for all aliases with tags
 		if alias != al && alias != "" {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template alias must be same for all aliases with tags: %s", err))
-			telemetry.ReportCriticalError(ctx, "template alias must be same for all aliases with tags", err)
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template alias must be same for all names: got '%s' and '%s'", alias, al))
+			telemetry.ReportCriticalError(ctx, "template alias must be same for all names", nil)
 
 			return nil
 		}
