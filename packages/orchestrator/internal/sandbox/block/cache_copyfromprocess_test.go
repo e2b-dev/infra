@@ -93,6 +93,23 @@ func TestCopyFromProcess_HelperProcess(t *testing.T) {
 	}
 }
 
+// waitForProcess consistently checks for process existence until it is confirmed or timeout is reached.
+func waitForProcess(pid int, maxWait time.Duration) error {
+	start := time.Now()
+	for {
+		// Try sending signal 0 to the process: if it exists, this succeeds (unless permission is denied).
+		err := syscall.Kill(pid, 0)
+		if err == nil || err == syscall.EPERM {
+			// Process exists (but maybe we lack permission, still good enough for tests)
+			return nil
+		}
+		if time.Since(start) > maxWait {
+			return fmt.Errorf("process %d not available after %.2fs", pid, maxWait.Seconds())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestCopyFromProcess_Success(t *testing.T) {
 	t.Parallel()
 
@@ -127,8 +144,8 @@ func TestCopyFromProcess_Success(t *testing.T) {
 	require.NoError(t, err)
 	stdout.Close()
 
-	// Wait a bit for the process to be ready
-	time.Sleep(100 * time.Millisecond)
+	// Wait until the process is up and running before copying its memory.
+	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
 
 	// Test copying a single range
 	ranges := []Range{
@@ -187,8 +204,7 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	require.NoError(t, err)
 	stdout.Close()
 
-	// Wait a bit for the process to be ready
-	time.Sleep(100 * time.Millisecond)
+	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
 
 	// Test copying multiple non-contiguous ranges
 	// Order: 0th, 2nd, then 1st segment in memory
@@ -262,8 +278,7 @@ func TestCopyFromProcess_ContextCancellation(t *testing.T) {
 	require.NoError(t, err)
 	stdout.Close()
 
-	// Wait a bit for the process to be ready
-	time.Sleep(100 * time.Millisecond)
+	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
 
 	// Cancel context immediately
 	cancel()
@@ -290,6 +305,10 @@ func TestCopyFromProcess_InvalidPID(t *testing.T) {
 	}
 
 	tmpFile := t.TempDir() + "/cache"
+
+	// Add a wait here, but since the PID doesn't exist, it will timeout (this is fine for this test).
+	_ = waitForProcess(invalidPID, 10*time.Millisecond)
+
 	_, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, invalidPID, ranges)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read memory")
@@ -307,6 +326,9 @@ func TestCopyFromProcess_InvalidAddress(t *testing.T) {
 	}
 
 	tmpFile := t.TempDir() + "/cache"
+
+	require.NoError(t, waitForProcess(os.Getpid(), 2*time.Second)) // Make sure our process is alive
+
 	_, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, os.Getpid(), ranges)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read memory")
@@ -352,8 +374,7 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 	require.NoError(t, err)
 	stdout.Close()
 
-	// Wait a bit for the process to be ready
-	time.Sleep(100 * time.Millisecond)
+	require.NoError(t, waitForProcess(cmd.Process.Pid, 2*time.Second))
 
 	// Create many small ranges that exceed IOV_MAX
 	ranges := make([]Range, numRanges)
@@ -403,6 +424,7 @@ func TestEmptyRanges(t *testing.T) {
 
 	ranges := []Range{}
 	tmpFile := t.TempDir() + "/cache"
+	require.NoError(t, waitForProcess(os.Getpid(), 2*time.Second)) // Make sure our process is alive
 	c, err := NewCacheFromProcessMemory(ctx, header.PageSize, tmpFile, os.Getpid(), ranges)
 	require.NoError(t, err)
 
