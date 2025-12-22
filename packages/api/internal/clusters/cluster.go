@@ -28,8 +28,8 @@ type Cluster struct {
 
 	httpClient      *api.ClientWithResponses
 	grpcClient      *grpclient.GRPCClient
-	instances       *smap.Map[*ClusterInstance]
-	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterInstance]
+	instances       *smap.Map[*Instance]
+	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *Instance]
 	resources       ClusterResource
 }
 
@@ -80,7 +80,7 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 		return nil, fmt.Errorf("failed to create grpc client: %w", err)
 	}
 
-	instances := smap.New[*ClusterInstance]()
+	instances := smap.New[*Instance]()
 
 	c := &Cluster{
 		ID:            clusterID,
@@ -108,7 +108,7 @@ func (c *Cluster) Close() error {
 	return err
 }
 
-func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterInstance, error) {
+func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*Instance, error) {
 	instance, found := c.instances.Get(nodeID)
 	if !found {
 		return nil, ErrTemplateBuilderNotFound
@@ -121,9 +121,9 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterInstance, e
 	return instance, nil
 }
 
-func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*ClusterInstance, bool) {
+func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*Instance, bool) {
 	for _, instance := range c.instances.Items() {
-		if instance.ServiceInstanceID == serviceInstanceID {
+		if instance.InstanceID == serviceInstanceID {
 			return instance, true
 		}
 	}
@@ -131,12 +131,12 @@ func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*ClusterInst
 	return nil, false
 }
 
-func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInstance, error) {
+func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*Instance, error) {
 	_, span := tracer.Start(ctx, "template-builder-get-available-instance")
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
-	var instances []*ClusterInstance
+	var instances []*Instance
 	for _, instance := range c.instances.Items() {
 		instances = append(instances, instance)
 	}
@@ -169,8 +169,8 @@ func (c *Cluster) GetHTTP() *ClusterHTTP {
 	return &ClusterHTTP{c.httpClient}
 }
 
-func (c *Cluster) GetOrchestrators() []*ClusterInstance {
-	instances := make([]*ClusterInstance, 0)
+func (c *Cluster) GetOrchestrators() []*Instance {
+	instances := make([]*Instance, 0)
 	for _, i := range c.instances.Items() {
 		if i.IsOrchestrator() {
 			instances = append(instances, i)

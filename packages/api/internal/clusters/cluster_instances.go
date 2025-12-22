@@ -20,10 +20,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
-type ClusterInstance struct {
-	NodeID string
+type Instance struct {
+	NodeID     string
+	InstanceID string
 
-	ServiceInstanceID    string
 	ServiceVersion       string
 	ServiceVersionCommit string
 
@@ -43,8 +43,8 @@ func (c *Cluster) startSync(ctx context.Context) {
 	c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
 }
 
-func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
-	grpc := c.GetGRPC(instance.ServiceInstanceID)
+func (c *Cluster) syncInstance(ctx context.Context, instance *Instance) {
+	grpc := c.GetGRPC(instance.InstanceID)
 
 	// we are taking service info directly from the instance to avoid timing delays in service discovery
 	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
@@ -56,7 +56,7 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 			zap.Error(err),
 			logger.WithClusterID(c.ID),
 			logger.WithNodeID(instance.NodeID),
-			logger.WithServiceInstanceID(instance.ServiceInstanceID),
+			logger.WithServiceInstanceID(instance.InstanceID),
 		)
 
 		return
@@ -70,32 +70,32 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 	instance.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
 }
 
-func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
+func (n *Instance) GetStatus() infogrpc.ServiceInfoStatus {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 
 	return n.status
 }
 
-func (n *ClusterInstance) GetMachineInfo() machineinfo.MachineInfo {
+func (n *Instance) GetMachineInfo() machineinfo.MachineInfo {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 
 	return n.machineInfo
 }
 
-func (n *ClusterInstance) hasRole(r infogrpc.ServiceInfoRole) bool {
+func (n *Instance) hasRole(r infogrpc.ServiceInfoRole) bool {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 
 	return slices.Contains(n.roles, r)
 }
 
-func (n *ClusterInstance) IsBuilder() bool {
+func (n *Instance) IsBuilder() bool {
 	return n.hasRole(infogrpc.ServiceInfoRole_TemplateBuilder)
 }
 
-func (n *ClusterInstance) IsOrchestrator() bool {
+func (n *Instance) IsOrchestrator() bool {
 	return n.hasRole(infogrpc.ServiceInfoRole_Orchestrator)
 }
 
@@ -122,11 +122,11 @@ func (d clusterSynchronizationStore) SourceList(ctx context.Context) ([]api.Clus
 	return *res.JSON200, nil
 }
 
-func (d clusterSynchronizationStore) SourceExists(_ context.Context, s []api.ClusterOrchestratorNode, p *ClusterInstance) bool {
+func (d clusterSynchronizationStore) SourceExists(_ context.Context, s []api.ClusterOrchestratorNode, p *Instance) bool {
 	for _, item := range s {
 		// With comparing service instance ID we ensure when orchestrator on same node and node ID is still same
 		// we will properly clean up old instance and later register as new one
-		if item.ServiceInstanceID == p.ServiceInstanceID {
+		if item.ServiceInstanceID == p.InstanceID {
 			return true
 		}
 	}
@@ -134,8 +134,8 @@ func (d clusterSynchronizationStore) SourceExists(_ context.Context, s []api.Clu
 	return false
 }
 
-func (d clusterSynchronizationStore) PoolList(_ context.Context) []*ClusterInstance {
-	mapped := make([]*ClusterInstance, 0)
+func (d clusterSynchronizationStore) PoolList(_ context.Context) []*Instance {
+	mapped := make([]*Instance, 0)
 	for _, item := range d.cluster.instances.Items() {
 		mapped = append(mapped, item)
 	}
@@ -156,10 +156,10 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 		logger.WithServiceInstanceID(item.ServiceInstanceID),
 	)
 
-	instance := &ClusterInstance{
+	instance := &Instance{
 		NodeID: item.NodeID,
 
-		ServiceInstanceID:    item.ServiceInstanceID,
+		InstanceID:           item.ServiceInstanceID,
 		ServiceVersion:       item.ServiceVersion,
 		ServiceVersionCommit: item.ServiceVersionCommit,
 
@@ -174,15 +174,15 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 	d.cluster.instances.Insert(item.NodeID, instance)
 }
 
-func (d clusterSynchronizationStore) PoolUpdate(ctx context.Context, instance *ClusterInstance) {
+func (d clusterSynchronizationStore) PoolUpdate(ctx context.Context, instance *Instance) {
 	d.cluster.syncInstance(ctx, instance)
 }
 
-func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, instance *ClusterInstance) {
+func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, instance *Instance) {
 	logger.L().Info(ctx, "Removing instance from cluster pool",
 		logger.WithClusterID(d.cluster.ID),
 		logger.WithNodeID(instance.NodeID),
-		logger.WithServiceInstanceID(instance.ServiceInstanceID),
+		logger.WithServiceInstanceID(instance.InstanceID),
 	)
 	d.cluster.instances.Remove(instance.NodeID)
 }

@@ -18,11 +18,11 @@ import (
 )
 
 type ClusterResourceProviderImpl struct {
-	instances *smap.Map[*ClusterInstance]
+	instances *smap.Map[*Instance]
 	client    *edgeapi.ClientWithResponses
 }
 
-func newRemoteClusterResourceProvider(instances *smap.Map[*ClusterInstance], client *edgeapi.ClientWithResponses) ClusterResource {
+func newRemoteClusterResourceProvider(instances *smap.Map[*Instance], client *edgeapi.ClientWithResponses) ClusterResource {
 	return &ClusterResourceProviderImpl{
 		instances: instances,
 		client:    client,
