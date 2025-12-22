@@ -73,7 +73,7 @@ func (a *APIStore) sendOrchestratorRequest(ctx context.Context, serviceInstanceI
 	defer findCtxCancel()
 
 	orchestratorStatus := ApiNodeToOrchestratorStateMapper[status]
-	_, err := o.GetClient().Info.ServiceStatusOverride(
+	_, err := o.GetClient().ServiceStatusOverride(
 		findCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: orchestratorStatus},
 	)
 	if err != nil {
