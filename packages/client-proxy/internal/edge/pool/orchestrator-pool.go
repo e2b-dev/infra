@@ -167,7 +167,7 @@ func (e *orchestratorInstancesSyncStore) PoolExists(_ context.Context, source sd
 
 func (e *orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source sd.DiscoveredInstance) {
 	host := e.getHost(source.InstanceIPAddress, source.InstancePort)
-	o, err := NewOrchestratorInstance(e.pool.tracerProvider, e.pool.metricProvider, source.InstanceIPAddress, source.InstancePort)
+	o, err := newInstance(e.pool.tracerProvider, e.pool.metricProvider, source.InstanceIPAddress, source.InstancePort)
 	if err != nil {
 		logger.L().Error(ctx, "failed to register new orchestrator Instance", zap.String("host", host), zap.Error(err))
 
