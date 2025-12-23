@@ -8,6 +8,7 @@ package userfaultfd
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -23,17 +24,62 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+// MemorySlicer exposes byte slice via the Slicer interface.
+// This is used for testing purposes.
+type MemorySlicer struct {
+	content  []byte
+	pagesize int64
+}
+
+var _ block.Slicer = (*MemorySlicer)(nil)
+
+func NewMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
+	return &MemorySlicer{
+		content:  content,
+		pagesize: pagesize,
+	}
+}
+
+func (s *MemorySlicer) Slice(_ context.Context, offset, size int64) ([]byte, error) {
+	return s.content[offset : offset+size], nil
+}
+
+func (s *MemorySlicer) Size() (int64, error) {
+	return int64(len(s.content)), nil
+}
+
+func (s *MemorySlicer) Content() []byte {
+	return s.content
+}
+
+func (s *MemorySlicer) BlockSize() int64 {
+	return s.pagesize
+}
+
+func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {
+	size := pagesize * numberOfPages
+
+	n := int(size)
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		panic(err)
+	}
+
+	return NewMemorySlicer(buf, int64(pagesize))
+}
+
 // Main process, FC in our case
 func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error) {
 	t.Helper()
 
-	data := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
+	data := RandomPages(tt.pagesize, tt.numberOfPages)
 
 	size, err := data.Size()
 	require.NoError(t, err)
@@ -268,7 +314,7 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit parsing page size: %w", err)
 	}
 
-	data := testutils.NewMemorySlicer(content, pageSize)
+	data := NewMemorySlicer(content, pageSize)
 
 	m := memory.NewMapping([]memory.Region{
 		{

@@ -40,7 +40,7 @@ type operation struct {
 type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
-	data       *testutils.MemorySlicer
+	data       *MemorySlicer
 	// Returns offsets of the pages that were faulted.
 	// It can only be called once.
 	// Sorted in ascending order.
