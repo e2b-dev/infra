@@ -152,7 +152,7 @@ module "filestore" {
 
 module "build_cluster" {
   for_each = {
-    for k, v in var.client_clusters_config :
+    for k, v in var.build_clusters_config :
     k => v
   }
   source = "./worker-cluster"
