@@ -31,6 +31,9 @@ message ProcessConfig {
     
     map<string, string> envs = 3;
     optional string cwd = 4;
+    // If true, when reconnecting to a running process without any active client connection,
+    // all process data events, since the last connection, can be replayed to the client.
+    optional bool replayable = 5;
 }
 
 message ListRequest {}
@@ -151,6 +154,7 @@ message SendSignalResponse {}
 
 message ConnectRequest {
     ProcessSelector process = 1;
+    optional bool replay = 2;   
 }
 
 message ProcessSelector {

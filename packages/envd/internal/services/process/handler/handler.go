@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler/multiplex"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
 
@@ -52,8 +53,8 @@ type Handler struct {
 
 	stdin io.WriteCloser
 
-	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
-	EndEvent  *MultiplexedChannel[rpc.ProcessEvent_End]
+	DataEvent *multiplex.Channel[rpc.ProcessEvent_Data]
+	EndEvent  *multiplex.Channel[rpc.ProcessEvent_End]
 }
 
 // This method must be called only after the process has been started
@@ -127,7 +128,7 @@ func New(
 
 	cmd.Env = formattedVars
 
-	outMultiplex := NewMultiplexedChannel[rpc.ProcessEvent_Data](outputBufferSize)
+	outMultiplex := multiplex.NewChannel[rpc.ProcessEvent_Data](outputBufferSize, req.GetProcess().GetReplayable())
 
 	var outWg sync.WaitGroup
 
@@ -143,7 +144,7 @@ func New(
 		cancel:    cancel,
 		outCtx:    outCtx,
 		outCancel: outCancel,
-		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		EndEvent:  multiplex.NewChannel[rpc.ProcessEvent_End](0, false),
 		logger:    logger,
 	}
 
