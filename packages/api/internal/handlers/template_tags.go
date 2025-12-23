@@ -106,7 +106,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	// Parse tags from body
 	tags := make(map[string]bool)
 	for _, name := range body.Names {
-		alias, tag, err := id.ParseTemplateIDOrAliasWithTag(name)
+		alias, tagPtr, err := id.ParseTemplateIDOrAliasWithTag(name)
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", name))
 			telemetry.ReportCriticalError(ctx, "invalid name", err)
@@ -121,7 +121,17 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 			return
 		}
 
-		tags[sharedUtils.DerefOrDefault(tag, id.DefaultTag)] = true
+		tag := sharedUtils.DerefOrDefault(tagPtr, id.DefaultTag)
+
+		err = id.ValidateCreateTag(tag)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
+			telemetry.ReportCriticalError(ctx, "invalid tag", err)
+
+			return
+		}
+
+		tags[tag] = true
 	}
 
 	// Create the tag assignments
@@ -236,7 +246,7 @@ func (a *APIStore) DeleteTemplatesTagsName(c *gin.Context, name string) {
 	}
 
 	// Delete the tag assignment
-	err = a.sqlcDB.DeleteTemplateBuildAssignment(ctx, queries.DeleteTemplateBuildAssignmentParams{
+	err = a.sqlcDB.DeleteTemplateTag(ctx, queries.DeleteTemplateTagParams{
 		TemplateID: template.ID,
 		Tag:        tag,
 	})

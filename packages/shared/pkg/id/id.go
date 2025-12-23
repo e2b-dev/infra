@@ -1,6 +1,7 @@
 package id
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -42,12 +43,22 @@ func cleanTag(tag string) (string, error) {
 		return "", fmt.Errorf("invalid tag: %s", tag)
 	}
 
-	_, err = uuid.Parse(cleanedTag)
+	return cleanedTag, nil
+}
+
+func ValidateCreateTag(tag string) error {
+	cleanedTag, err := cleanTag(tag)
 	if err != nil {
-		return "", fmt.Errorf("invalid tag: %s, cannot be a UUID", tag)
+		return err
 	}
 
-	return cleanedTag, nil
+	// Prevent tags from being a UUID
+	_, err = uuid.Parse(cleanedTag)
+	if err == nil {
+		return errors.New("tag cannot be a UUID")
+	}
+
+	return nil
 }
 
 // ParseTemplateIDOrAliasWithTag parses a template ID or alias with an optional tag in the format "templateID:tag"

@@ -93,6 +93,14 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 
 		alias = al
 		if t != nil {
+			err = id.ValidateCreateTag(*t)
+			if err != nil {
+				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
+				telemetry.ReportCriticalError(ctx, "invalid tag", err)
+
+				return nil
+			}
+
 			tags[*t] = true
 		}
 	}

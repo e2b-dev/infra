@@ -172,6 +172,15 @@ func (a *APIStore) buildTemplate(
 
 		alias = &a
 		if t != nil {
+			err = id.ValidateCreateTag(*t)
+			if err != nil {
+				return nil, &api.APIError{
+					Code:      http.StatusBadRequest,
+					ClientMsg: fmt.Sprintf("Invalid tag: %s", err),
+					Err:       err,
+				}
+			}
+
 			tags = []string{*t}
 		}
 	}
