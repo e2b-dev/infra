@@ -69,6 +69,12 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		logger.L().Fatal(ctx, "Initializing SQLC client", zap.Error(err))
 	}
 
+	// Make sure database connection are already ready
+	_, err = sqlcDB.Health(ctx)
+	if err != nil {
+		logger.L().Fatal(ctx, "Pinging database failed", zap.Error(err))
+	}
+
 	logger.L().Info(ctx, "Created database client")
 
 	var clickhouseStore clickhouse.Clickhouse
