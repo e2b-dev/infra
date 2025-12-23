@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,6 +14,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	apiedge "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+)
+
+const (
+	sandboxLogsMaxTimeRange = 7 * 24 * time.Hour
 )
 
 func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID string, params api.GetV2SandboxesSandboxIDLogsParams) {
@@ -34,19 +39,42 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID string,
 		return
 	}
 
-	// map api direction to edge direction
-	var direction *apiedge.V2SandboxLogsParamsDirection
+	direction := api.LogsDirectionBackward
 	if params.Direction != nil {
-		d := apiedge.V2SandboxLogsParamsDirection(*params.Direction)
-		direction = &d
+		direction = *params.Direction
 	}
 
-	res, err := cluster.GetHttpClient().V2SandboxLogsWithResponse(
-		ctx, sandboxID, &apiedge.V2SandboxLogsParams{
+	start, end := time.Now().Add(-sandboxLogsMaxTimeRange), time.Now()
+	if params.Cursor != nil {
+		cursor := time.UnixMilli(*params.Cursor)
+		if direction == api.LogsDirectionForward {
+			start = cursor
+			end = cursor.Add(sandboxLogsMaxTimeRange)
+		} else {
+			end = cursor
+			start = cursor.Add(-sandboxLogsMaxTimeRange)
+		}
+	}
+
+	var edgeDirection *apiedge.V1SandboxLogsParamsDirection
+	if direction == api.LogsDirectionForward {
+		d := apiedge.V1SandboxLogsParamsDirectionForward
+		edgeDirection = &d
+	} else {
+		d := apiedge.V1SandboxLogsParamsDirectionBackward
+		edgeDirection = &d
+	}
+
+	startMs := start.UnixMilli()
+	endMs := end.UnixMilli()
+
+	res, err := cluster.GetHttpClient().V1SandboxLogsWithResponse(
+		ctx, sandboxID, &apiedge.V1SandboxLogsParams{
 			TeamID:    team.ID.String(),
-			Start:     params.Cursor,
+			Start:     &startMs,
+			End:       &endMs,
 			Limit:     params.Limit,
-			Direction: direction,
+			Direction: edgeDirection,
 		},
 	)
 	if err != nil {
@@ -63,8 +91,8 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID string,
 		return
 	}
 
-	logs := make([]api.SandboxLogEntry, 0, len(res.JSON200.Logs))
-	for _, row := range res.JSON200.Logs {
+	logs := make([]api.SandboxLogEntry, 0, len(res.JSON200.LogEntries))
+	for _, row := range res.JSON200.LogEntries {
 		logs = append(logs, api.SandboxLogEntry{
 			Timestamp: row.Timestamp,
 			Level:     api.LogLevel(row.Level),

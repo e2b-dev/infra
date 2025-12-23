@@ -37,16 +37,16 @@ const (
 	LogLevelWarn  LogLevel = "warn"
 )
 
+// Defines values for V1SandboxLogsParamsDirection.
+const (
+	V1SandboxLogsParamsDirectionBackward V1SandboxLogsParamsDirection = "backward"
+	V1SandboxLogsParamsDirectionForward  V1SandboxLogsParamsDirection = "forward"
+)
+
 // Defines values for V1TemplateBuildLogsParamsDirection.
 const (
 	V1TemplateBuildLogsParamsDirectionBackward V1TemplateBuildLogsParamsDirection = "backward"
 	V1TemplateBuildLogsParamsDirectionForward  V1TemplateBuildLogsParamsDirection = "forward"
-)
-
-// Defines values for V2SandboxLogsParamsDirection.
-const (
-	V2SandboxLogsParamsDirectionBackward V2SandboxLogsParamsDirection = "backward"
-	V2SandboxLogsParamsDirectionForward  V2SandboxLogsParamsDirection = "forward"
 )
 
 // BuildLogEntry defines model for BuildLogEntry.
@@ -184,15 +184,7 @@ type SandboxLogEntry struct {
 type SandboxLogsResponse struct {
 	// LogEntries Structured logs of the sandbox
 	LogEntries []SandboxLogEntry `json:"logEntries"`
-
-	// Logs Sandbox logs
-	Logs []SandboxLog `json:"logs"`
-}
-
-// SandboxLogsV2Response defines model for SandboxLogsV2Response.
-type SandboxLogsV2Response struct {
-	// Logs Sandbox logs structured
-	Logs []SandboxLogEntry `json:"logs"`
+	Logs       []SandboxLog      `json:"logs"`
 }
 
 // SandboxMetric defines model for SandboxMetric.
@@ -271,9 +263,18 @@ type V1SandboxLogsParams struct {
 	// Start Starting timestamp of the logs that should be returned in milliseconds
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 
+	// End Ending timestamp of the logs that should be returned in milliseconds
+	End *int64 `form:"end,omitempty" json:"end,omitempty"`
+
 	// Limit Maximum number of logs that should be returned
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Direction Direction of the logs that should be returned. Defaults to backward
+	Direction *V1SandboxLogsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
 }
+
+// V1SandboxLogsParamsDirection defines parameters for V1SandboxLogs.
+type V1SandboxLogsParamsDirection string
 
 // V1SandboxMetricsParams defines parameters for V1SandboxMetrics.
 type V1SandboxMetricsParams struct {
@@ -309,24 +310,6 @@ type V1TemplateBuildLogsParams struct {
 
 // V1TemplateBuildLogsParamsDirection defines parameters for V1TemplateBuildLogs.
 type V1TemplateBuildLogsParamsDirection string
-
-// V2SandboxLogsParams defines parameters for V2SandboxLogs.
-type V2SandboxLogsParams struct {
-	TeamID string `form:"teamID" json:"teamID"`
-
-	// Start Starting timestamp of the logs that should be returned in milliseconds
-	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
-
-	// End Ending timestamp of the logs that should be returned in milliseconds
-	End *int64 `form:"end,omitempty" json:"end,omitempty"`
-
-	// Limit Maximum number of logs that should be returned
-	Limit     *int32                        `form:"limit,omitempty" json:"limit,omitempty"`
-	Direction *V2SandboxLogsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
-}
-
-// V2SandboxLogsParamsDirection defines parameters for V2SandboxLogs.
-type V2SandboxLogsParamsDirection string
 
 // V1ServiceDiscoveryNodeDrainJSONRequestBody defines body for V1ServiceDiscoveryNodeDrain for application/json ContentType.
 type V1ServiceDiscoveryNodeDrainJSONRequestBody = ServiceDiscoveryNodeStatusRequest
