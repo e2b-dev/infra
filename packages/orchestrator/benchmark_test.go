@@ -300,9 +300,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 type testCycle string
 
 const (
-	onlyStart        testCycle = "only-start"
-	startAndPause    testCycle = "start-and-pause"
-	startPauseResume testCycle = "start-pause-resume"
+	onlyStart     testCycle = "only-start"
+	startAndPause testCycle = "start-and-pause"
 )
 
 type testContainer struct {
