@@ -28,7 +28,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		return
 	}
 
-	cleanedAliasOrTemplateID, err := id.CleanTemplateID(aliasOrTemplateID)
+	cleanedAliasOrTemplateID, _, err := id.ParseTemplateIDOrAliasWithTag(aliasOrTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID))
 
@@ -95,7 +95,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		}
 	}
 
-	a.templateCache.Invalidate(template.ID)
+	a.templateCache.InvalidateAllTags(template.ID)
 
 	telemetry.ReportEvent(ctx, "updated template")
 

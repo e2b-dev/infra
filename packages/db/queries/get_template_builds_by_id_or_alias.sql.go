@@ -13,7 +13,8 @@ import (
 
 const getTemplateBuildsByIdOrAlias = `-- name: GetTemplateBuildsByIdOrAlias :many
 SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id as build_id, eb.cluster_node_id FROM "public"."envs" e
-LEFT JOIN "public"."env_builds" eb ON eb.env_id = e.id
+LEFT JOIN "public"."env_build_assignments" eba ON eba.env_id = e.id
+LEFT JOIN "public"."env_builds" eb ON eb.id = eba.build_id
 WHERE
     e.id in (
     SELECT e.id FROM "public"."envs" e

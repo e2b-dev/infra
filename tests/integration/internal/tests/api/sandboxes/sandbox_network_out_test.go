@@ -29,7 +29,7 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 		t.Log("Building custom template for network egress tests...")
 
 		template := utils.BuildTemplate(t, utils.TemplateBuildOptions{
-			Alias: "network-egress-test",
+			Names: []string{"network-egress-test"},
 			BuildData: api.TemplateBuildStartV2{
 				FromImage: sharedutils.ToPtr("ubuntu:22.04"),
 				Steps: sharedutils.ToPtr([]api.TemplateStep{

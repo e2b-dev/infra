@@ -85,7 +85,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 		return
 	}
 
-	templateID, err := id.CleanTemplateID(rawTemplateID)
+	templateID, _, err := id.ParseTemplateIDOrAliasWithTag(rawTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", rawTemplateID))
 		telemetry.ReportCriticalError(c.Request.Context(), "invalid template ID", err)
@@ -156,6 +156,35 @@ func (a *APIStore) buildTemplate(
 ) (*template.RegisterBuildResponse, *api.APIError) {
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 
+	var alias *string
+	var tags []string
+
+	if body.Alias != nil {
+		var err error
+		a, t, err := id.ParseTemplateIDOrAliasWithTag(*body.Alias)
+		if err != nil {
+			return nil, &api.APIError{
+				Code:      http.StatusBadRequest,
+				ClientMsg: fmt.Sprintf("Invalid alias: %s", err),
+				Err:       err,
+			}
+		}
+
+		alias = &a
+		if t != nil {
+			err = id.ValidateCreateTag(*t)
+			if err != nil {
+				return nil, &api.APIError{
+					Code:      http.StatusBadRequest,
+					ClientMsg: fmt.Sprintf("Invalid tag: %s", err),
+					Err:       err,
+				}
+			}
+
+			tags = []string{*t}
+		}
+	}
+
 	// Create the build
 	data := template.RegisterBuildData{
 		ClusterID:          utils.WithClusterFallback(team.ClusterID),
@@ -163,7 +192,8 @@ func (a *APIStore) buildTemplate(
 		UserID:             &userID,
 		Team:               team,
 		Dockerfile:         body.Dockerfile,
-		Alias:              body.Alias,
+		Alias:              alias,
+		Tags:               tags,
 		StartCmd:           body.StartCmd,
 		ReadyCmd:           body.ReadyCmd,
 		CpuCount:           body.CpuCount,

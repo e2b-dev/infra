@@ -102,6 +102,15 @@ type EnvBuild struct {
 	CpuFlags           []string
 }
 
+type EnvBuildAssignment struct {
+	ID        uuid.UUID
+	EnvID     string
+	BuildID   uuid.UUID
+	Tag       string
+	Source    string
+	CreatedAt pgtype.Timestamptz
+}
+
 type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string

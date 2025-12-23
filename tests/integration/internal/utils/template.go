@@ -25,7 +25,7 @@ type BuildLogHandler func(alias string, entry api.BuildLogEntry)
 
 // TemplateBuildOptions contains options for building a template
 type TemplateBuildOptions struct {
-	Alias       string
+	Names       []string
 	CPUCount    *int32
 	MemoryMB    *int32
 	BuildData   api.TemplateBuildStartV2
@@ -75,13 +75,13 @@ func BuildTemplate(tb testing.TB, opts TemplateBuildOptions) *api.TemplateReques
 	reqEditors := append(opts.ReqEditors, setup.WithTestsUserAgent())
 
 	// Request build
-	template := requestTemplateBuild(tb, opts.Alias, opts.CPUCount, opts.MemoryMB, reqEditors...)
+	template := requestTemplateBuild(tb, opts.Names, opts.CPUCount, opts.MemoryMB, reqEditors...)
 
 	// Start build
 	startTemplateBuild(tb, template.TemplateID, template.BuildID, opts.BuildData, reqEditors...)
 
 	// Wait for build to complete
-	WaitForBuildCompletion(tb, ctx, template.TemplateID, template.BuildID, opts.Alias, opts.LogHandler, opts.EnableDebug, reqEditors...)
+	WaitForBuildCompletion(tb, ctx, template.TemplateID, template.BuildID, opts.Names[0], opts.LogHandler, opts.EnableDebug, reqEditors...)
 
 	return template
 }
@@ -154,7 +154,7 @@ func WaitForBuildCompletion(
 // requestTemplateBuild requests a template build without waiting for completion
 func requestTemplateBuild(
 	tb testing.TB,
-	alias string,
+	names []string,
 	cpuCount, memoryMB *int32,
 	reqEditors ...api.RequestEditorFn,
 ) *api.TemplateRequestResponseV3 {
@@ -170,11 +170,13 @@ func requestTemplateBuild(
 		memoryMB = utils.ToPtr(DefaultMemoryMB)
 	}
 
-	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
-		Alias:    alias,
+	req := api.TemplateBuildRequestV3{
+		Names:    utils.ToPtr(names),
 		CpuCount: cpuCount,
 		MemoryMB: memoryMB,
-	}, reqEditors...)
+	}
+
+	resp, err := c.PostV3TemplatesWithResponse(ctx, req, reqEditors...)
 	require.NoError(tb, err)
 	require.Equal(tb, http.StatusAccepted, resp.StatusCode())
 	require.NotNil(tb, resp.JSON202)
@@ -217,11 +219,11 @@ func safeValue[T any](item *T) T {
 }
 
 // BuildSimpleTemplate builds a simple template with Ubuntu 22.04 base image
-func BuildSimpleTemplate(tb testing.TB, alias string, reqEditors ...api.RequestEditorFn) *api.TemplateRequestResponseV3 {
+func BuildSimpleTemplate(tb testing.TB, names []string, reqEditors ...api.RequestEditorFn) *api.TemplateRequestResponseV3 {
 	tb.Helper()
 
 	opts := TemplateBuildOptions{
-		Alias: alias,
+		Names: names,
 		BuildData: api.TemplateBuildStartV2{
 			FromImage: utils.ToPtr("ubuntu:22.04"),
 		},
