@@ -1,4 +1,6 @@
 -- +goose Up
+-- +goose NO TRANSACTION
+
 -- +goose StatementBegin
 -- 0. Create helper function to safely cast text to UUID
 CREATE OR REPLACE FUNCTION try_cast_uuid(p_value text) RETURNS uuid AS $$
@@ -12,7 +14,7 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 
 -- +goose StatementBegin
 -- 1. Create the new env_build_assignments table
-CREATE TABLE env_build_assignments (
+CREATE TABLE IF NOT EXISTS env_build_assignments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     env_id TEXT NOT NULL,
     build_id UUID NOT NULL,
@@ -34,15 +36,15 @@ CREATE TABLE env_build_assignments (
 -- PARTIAL UNIQUE INDEX: 
 -- Enforces that for 'trigger' or 'migration', only ONE entry exists per env/build/tag.
 -- Does NOT restrict 'app' entries, allowing multiple assignments from code.
-CREATE UNIQUE INDEX uq_legacy_assignments ON env_build_assignments (env_id, build_id, tag)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_legacy_assignments ON env_build_assignments (env_id, build_id, tag)
 WHERE source IN ('trigger', 'migration');
 
 ALTER TABLE "public"."env_build_assignments" ENABLE ROW LEVEL SECURITY;
 
-CREATE INDEX idx_env_build_assignments_env_tag_created 
+CREATE INDEX IF NOT EXISTS idx_env_build_assignments_env_tag_created 
     ON env_build_assignments (env_id, tag, created_at DESC);
 
-CREATE INDEX idx_env_build_assignments_env_build 
+CREATE INDEX IF NOT EXISTS idx_env_build_assignments_env_build 
     ON env_build_assignments (env_id, build_id);
 -- +goose StatementEnd
 
@@ -72,6 +74,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_validate_assignment_source ON env_build_assignments;
 CREATE TRIGGER trigger_validate_assignment_source
     BEFORE INSERT ON env_build_assignments
     FOR EACH ROW EXECUTE FUNCTION validate_assignment_source_takeover();
@@ -97,6 +100,7 @@ $$ LANGUAGE plpgsql;
 
 -- +goose StatementBegin
 -- 4. Create trigger to automatically sync changes
+DROP TRIGGER IF EXISTS trigger_sync_env_build_assignment ON env_builds;
 CREATE TRIGGER trigger_sync_env_build_assignment
     AFTER INSERT OR UPDATE ON env_builds
     FOR EACH ROW
@@ -104,21 +108,75 @@ CREATE TRIGGER trigger_sync_env_build_assignment
 -- +goose StatementEnd
 
 -- +goose StatementBegin
--- 5. Migrate existing data
-INSERT INTO env_build_assignments (env_id, build_id, tag, source, created_at)
-SELECT 
-    env_id,
-    id as build_id,
-    'default' as tag,
-    'migration' as source,
-    created_at
-FROM env_builds
-WHERE env_id IS NOT NULL
-ON CONFLICT (env_id, build_id, tag) WHERE source IN ('trigger', 'migration') DO NOTHING;
+-- 5. Create procedure to migrate existing data in batches
+CREATE OR REPLACE PROCEDURE migrate_env_builds_to_assignments()
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    batch_size INT := 10000;
+    rows_affected INT;
+    total_migrated INT := 0;
+    last_id UUID := '00000000-0000-0000-0000-000000000000';
+    current_max_id UUID;
+BEGIN
+    LOOP
+        -- Get the max ID for this batch (efficient index scan)
+        SELECT id INTO current_max_id
+        FROM (
+            SELECT id FROM env_builds 
+            WHERE env_id IS NOT NULL 
+            AND id > last_id 
+            ORDER BY id 
+            LIMIT batch_size
+        ) sub
+        ORDER BY id DESC
+        LIMIT 1;
+        
+        -- Exit if no more records
+        IF current_max_id IS NULL THEN
+            EXIT;
+        END IF;
+        
+        -- Insert the batch using ID range (efficient)
+        INSERT INTO env_build_assignments (env_id, build_id, tag, source, created_at)
+        SELECT 
+            eb.env_id,
+            eb.id as build_id,
+            'default' as tag,
+            'migration' as source,
+            eb.created_at
+        FROM env_builds eb
+        WHERE eb.env_id IS NOT NULL
+        AND eb.id > last_id
+        AND eb.id <= current_max_id
+        ON CONFLICT (env_id, build_id, tag) WHERE source IN ('trigger', 'migration') DO NOTHING;
+        
+        GET DIAGNOSTICS rows_affected = ROW_COUNT;
+        total_migrated := total_migrated + rows_affected;
+        last_id := current_max_id;
+        
+        COMMIT;
+        RAISE NOTICE 'Migrated batch, processed up to id: % (total rows: %)', last_id, total_migrated;
+    END LOOP;
+    
+    RAISE NOTICE 'Migration complete. Total rows migrated: %', total_migrated;
+END;
+$$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+-- 6. Run the migration procedure
+CALL migrate_env_builds_to_assignments();
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+-- 7. Clean up the migration procedure
+DROP PROCEDURE IF EXISTS migrate_env_builds_to_assignments();
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
+DROP PROCEDURE IF EXISTS migrate_env_builds_to_assignments();
 DROP TRIGGER IF EXISTS trigger_sync_env_build_assignment ON env_builds;
 DROP TRIGGER IF EXISTS trigger_validate_assignment_source ON env_build_assignments;
 DROP FUNCTION IF EXISTS sync_env_build_assignment();
