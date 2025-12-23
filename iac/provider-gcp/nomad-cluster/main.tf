@@ -151,6 +151,10 @@ module "filestore" {
 
 
 module "build_cluster" {
+  for_each = {
+    for k, v in var.client_clusters_config :
+    k => v
+  }
   source = "./worker-cluster"
 
   gcp_region                   = var.gcp_region
@@ -158,12 +162,12 @@ module "build_cluster" {
   google_service_account_email = var.google_service_account_email
   google_service_account_key   = var.google_service_account_key
 
-  cluster_size     = var.build_cluster_config.cluster_size
-  cache_disks      = var.build_cluster_config.cache_disks
-  machine_type     = var.build_cluster_config.machine.type
-  min_cpu_platform = var.build_cluster_config.machine.min_cpu_platform
-  boot_disk        = var.build_cluster_config.boot_disk
-  autoscaler       = var.build_cluster_config.autoscaler
+  cluster_size     = each.value.cluster_size
+  cache_disks      = each.value.cache_disks
+  machine_type     = each.value.machine.type
+  min_cpu_platform = each.value.machine.min_cpu_platform
+  boot_disk        = each.value.boot_disk
+  autoscaler       = each.value.autoscaler
 
   cluster_name              = "${var.prefix}orch-build"
   image_family              = var.build_image_family

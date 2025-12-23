@@ -468,12 +468,13 @@ EOT
   }
 }
 
-variable "build_cluster_config_json" {
+variable "build_clusters_config_json" {
   type        = string
   description = <<EOT
 JSON configuration for the build cluster.
 Format:
-{
+[
+  {
     "cluster_size": 1,  // Number of nodes (the actual number of nodes may be higher due to autoscaling)
     "machine": {   // Machine type and CPU platform
         "type": "n1-standard-8",
@@ -493,11 +494,12 @@ Format:
         "size_gb": 375,  // Cache disk size in GB
         "count": 3  // Number of cache disks
     }
-}
+  }
+]
 EOT
   validation {
-    condition     = can(jsondecode(var.build_cluster_config_json))
-    error_message = "client_cluster_config_json must be a valid JSON"
+    condition     = can(jsondecode(var.build_clusters_config_json))
+    error_message = "build_clusters_config_json must be a valid JSON"
   }
 }
 

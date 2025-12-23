@@ -286,8 +286,8 @@ variable "template_manager_port" {
   type = number
 }
 
-variable "template_manager_machine_count" {
-  type = number
+variable "template_manages_clusters_size_gt_1" {
+  type = bool
 }
 
 # Redis

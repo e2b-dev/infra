@@ -20,10 +20,5 @@ moved {
 
 moved {
   from = google_compute_instance_template.build
-  to   = module.build_cluster.google_compute_instance_template.template
-}
-
-moved {
-  from = google_compute_region_autoscaler.build
-  to   = module.build_cluster.google_compute_region_autoscaler.autoscaler
+  to   = module.build_cluster["0"].google_compute_instance_template.template
 }

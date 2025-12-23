@@ -131,9 +131,9 @@ variable "client_clusters_config" {
   }))
 }
 
-variable "build_cluster_config" {
+variable "build_clusters_config" {
   description = "Build cluster configuration object"
-  type = object({
+  type = list(object({
     cluster_size = number
     autoscaler = optional(object({
       size_max      = optional(number)
@@ -153,7 +153,7 @@ variable "build_cluster_config" {
       size_gb   = number
       count     = number
     })
-  })
+  }))
 }
 
 variable "gcp_project_id" {

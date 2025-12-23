@@ -40,8 +40,11 @@ data "google_secret_manager_secret_version" "routing_domains" {
 
 locals {
   additional_domains     = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
-  build_cluster_config   = jsondecode(var.build_cluster_config_json)
+  build_clusters_config  = jsondecode(var.build_clusters_config_json)
   client_clusters_config = jsondecode(var.client_clusters_config_json)
+
+  // Check if all clusters has size greater than 1
+  template_manages_clusters_size_gt_1 = alltrue([for c in local.build_clusters_config : c.cluster_size > 1])
 }
 
 module "init" {
@@ -68,7 +71,7 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  build_cluster_config   = local.build_cluster_config
+  build_clusters_config  = local.build_clusters_config
   client_clusters_config = local.client_clusters_config
 
   api_cluster_size        = var.api_cluster_size
@@ -223,12 +226,12 @@ module "nomad" {
   envd_timeout                = var.envd_timeout
 
   # Template manager
-  builder_node_pool               = var.build_node_pool
-  template_manager_port           = var.template_manager_port
-  template_bucket_name            = module.init.fc_template_bucket_name
-  build_cache_bucket_name         = module.init.fc_build_cache_bucket_name
-  template_manager_machine_count  = local.build_cluster_config.cluster_size
-  dockerhub_remote_repository_url = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
+  builder_node_pool                   = var.build_node_pool
+  template_manager_port               = var.template_manager_port
+  template_bucket_name                = module.init.fc_template_bucket_name
+  build_cache_bucket_name             = module.init.fc_build_cache_bucket_name
+  template_manages_clusters_size_gt_1 = local.template_manages_clusters_size_gt_1
+  dockerhub_remote_repository_url     = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
 
   # Redis
   redis_managed = var.redis_managed
