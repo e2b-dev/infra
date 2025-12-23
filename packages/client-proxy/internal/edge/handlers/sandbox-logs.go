@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	sandboxLogsOldestLimit   = 168 * time.Hour // 7 days
-	defaultLogsLimit         = 1000
-	defaultSandboxLogsDirection = logproto.BACKWARD
+	sandboxLogsOldestLimit      = 168 * time.Hour // 7 days
+	defaultLogsLimit            = 1000
+	defaultSandboxLogsDirection = logproto.FORWARD
 )
 
 func (a *APIStore) V1SandboxLogs(c *gin.Context, sandboxID string, params api.V1SandboxLogsParams) {
@@ -38,8 +38,8 @@ func (a *APIStore) V1SandboxLogs(c *gin.Context, sandboxID string, params api.V1
 	}
 
 	direction := defaultSandboxLogsDirection
-	if params.Direction != nil && *params.Direction == api.V1SandboxLogsParamsDirectionForward {
-		direction = logproto.FORWARD
+	if params.Direction != nil && *params.Direction == api.V1SandboxLogsParamsDirectionBackward {
+		direction = logproto.BACKWARD
 	}
 
 	logsRaw, err := a.queryLogsProvider.QuerySandboxLogs(ctx, params.TeamID, sandboxID, start, end, limit, direction)
