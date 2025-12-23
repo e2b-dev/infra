@@ -11,7 +11,8 @@ WITH s AS NOT MATERIALIZED (
 SELECT sqlc.embed(e), sqlc.embed(eb), aliases
 FROM s
 JOIN public.envs AS e ON e.id = s.env_id
-JOIN public.env_builds AS eb ON eb.env_id = e.id
+JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
+JOIN public.env_builds AS eb ON eb.id = eba.build_id
 AND eb.status = 'uploaded'
 CROSS JOIN LATERAL (
     SELECT array_agg(alias)::text[] AS aliases
