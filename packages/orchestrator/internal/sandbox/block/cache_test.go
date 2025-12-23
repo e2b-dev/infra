@@ -233,10 +233,7 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 	pageSize := int64(header.HugepageSize)
 	size := pageSize * 500
 
-	b.ResetTimer()
-	b.StopTimer()
-
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		l := int(math.Ceil(float64(size)/float64(pageSize)) * float64(pageSize))
 		mem, err := syscall.Mmap(
 			-1,
@@ -259,7 +256,7 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 		ranges := make([]Range, 0, numRanges)
 		cur := int64(addr)
 
-		for i := 0; i < numRanges; i++ {
+		for i := range numRanges {
 			sizePages := int64(1 + (i % 5)) // pseudo-random but deterministic
 			sizeR := sizePages * pageSize
 			if totalCovered+sizeR > size*int64(numRanges)*8/10 && i > 0 { // Stop if we have covered ~80% total
