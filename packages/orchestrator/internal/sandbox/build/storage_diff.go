@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -47,15 +45,13 @@ func newStorageDiff(
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
 ) (*StorageDiff, error) {
-	cachePathSuffix := id.Generate()
-
 	storagePath := storagePath(buildId, diffType)
 	storageObjectType, ok := storageObjectType(diffType)
 	if !ok {
 		return nil, UnknownDiffTypeError{diffType}
 	}
-	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
-	cachePath := filepath.Join(basePath, cacheFile)
+
+	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 
 	return &StorageDiff{
 		storagePath:       storagePath,
