@@ -144,6 +144,8 @@ func NewSlot(key string, idx int, config Config) (*Slot, error) {
 	return slot, nil
 }
 
+func (s *Slot) String() string { return fmt.Sprintf("slot-%d", s.Idx) }
+
 func (s *Slot) VpeerName() string {
 	return "eth0"
 }
