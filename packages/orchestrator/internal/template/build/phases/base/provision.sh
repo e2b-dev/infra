@@ -9,18 +9,18 @@ echo "Starting provisioning script"
 echo "Making configuration immutable"
 $BUSYBOX chattr +i /etc/resolv.conf
 
+# Helper function to check if a package is installed
+is_package_installed() {
+    dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"
+}
+
 # Install required packages if not already installed
-PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp socat curl ca-certificates fuse3 mount-s3"
+PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp socat curl ca-certificates fuse3"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=""
-
-MOUNTPOINT_ARCH="x86_64"
-MOUNTPOINT_URL="https://s3.amazonaws.com/mountpoint-s3-release/latest/$MOUNTPOINT_ARCH/mount-s3.deb"
-MOUNTPOINT_DOWNLOAD_PATH="/tmp/mount-s3.deb"
-
 for pkg in $PACKAGES; do
-    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+    if ! is_package_installed "$pkg"; then
         echo "Package $pkg is missing, will install it."
         MISSING="$MISSING $pkg"
     fi
@@ -29,21 +29,23 @@ done
 if [ -n "$MISSING" ]; then
     echo "Missing packages detected, installing:$MISSING"
     apt-get -q update
-
-    # Install mount-s3 from URL if it's missing
-    if echo "$MISSING" | grep -q "mount-s3"; then
-        curl -fsSL "$MOUNTPOINT_URL" -o "$MOUNTPOINT_DOWNLOAD_PATH"
-        DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends "$MOUNTPOINT_DOWNLOAD_PATH"
-        rm -f "$MOUNTPOINT_DOWNLOAD_PATH"
-        # Remove mount-s3 from MISSING so it doesn't get installed again via apt-get
-        MISSING=$(echo "$MISSING" | sed 's/ mount-s3//')
-    fi
-
-    if [ -n "$MISSING" ]; then
-        DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends $MISSING
-    fi
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends $MISSING
 else
     echo "All required packages are already installed."
+fi
+
+# Install mount-s3 separately from URL if not already installed
+MOUNTPOINT_ARCH="x86_64"
+MOUNTPOINT_URL="https://s3.amazonaws.com/mountpoint-s3-release/latest/$MOUNTPOINT_ARCH/mount-s3.deb"
+MOUNTPOINT_DOWNLOAD_PATH="/tmp/mount-s3.deb"
+
+if ! is_package_installed "mount-s3"; then
+    echo "mount-s3 is missing, installing from URL"
+    curl -fsSL "$MOUNTPOINT_URL" -o "$MOUNTPOINT_DOWNLOAD_PATH"
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends "$MOUNTPOINT_DOWNLOAD_PATH"
+    rm -f "$MOUNTPOINT_DOWNLOAD_PATH"
+else
+    echo "mount-s3 is already installed."
 fi
 
 echo "Setting up shell"
