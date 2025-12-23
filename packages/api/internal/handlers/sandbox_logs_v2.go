@@ -6,14 +6,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	apiedge "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -24,10 +22,10 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID string,
 	ctx := c.Request.Context()
 	sandboxID = utils.ShortID(sandboxID)
 
-	team := c.Value(auth.TeamContextKey).(*types.Team)
+	team := a.GetTeamInfo(c)
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("instance.id", sandboxID),
+		telemetry.WithSandboxID(sandboxID),
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
@@ -58,11 +56,9 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID string,
 
 	var edgeDirection *apiedge.V1SandboxLogsParamsDirection
 	if direction == api.LogsDirectionForward {
-		d := apiedge.V1SandboxLogsParamsDirectionForward
-		edgeDirection = &d
+		edgeDirection = sharedUtils.ToPtr(apiedge.V1SandboxLogsParamsDirectionForward)
 	} else {
-		d := apiedge.V1SandboxLogsParamsDirectionBackward
-		edgeDirection = &d
+		edgeDirection = sharedUtils.ToPtr(apiedge.V1SandboxLogsParamsDirectionBackward)
 	}
 
 	startMs := start.UnixMilli()

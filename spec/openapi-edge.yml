@@ -262,6 +262,7 @@ components:
       properties:
         logs:
           default: []
+          description: Sandbox logs
           type: array
           items:
             $ref: "#/components/schemas/SandboxLog"

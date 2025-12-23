@@ -184,7 +184,9 @@ type SandboxLogEntry struct {
 type SandboxLogsResponse struct {
 	// LogEntries Structured logs of the sandbox
 	LogEntries []SandboxLogEntry `json:"logEntries"`
-	Logs       []SandboxLog      `json:"logs"`
+
+	// Logs Sandbox logs
+	Logs []SandboxLog `json:"logs"`
 }
 
 // SandboxMetric defines model for SandboxMetric.
