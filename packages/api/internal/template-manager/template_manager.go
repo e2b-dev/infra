@@ -21,6 +21,7 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -114,8 +115,19 @@ func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterI
 		return nil, fmt.Errorf("cluster with ID '%s' not found", clusterID)
 	}
 
-	builder, err := cluster.GetAvailableTemplateBuilder(ctx)
+	nodeInfo := tm.featureFlags.JSONFlag(ctx, featureflags.BuildNodeInfo)
+	builder, err := cluster.GetAvailableTemplateBuilder(ctx, machineinfo.FromLDValue(nodeInfo))
 	if err != nil {
+		if errors.Is(err, edge.ErrAvailableTemplateBuilderNotFound) {
+			// Fallback to any template builder
+			builder, err = cluster.GetAvailableTemplateBuilder(ctx, machineinfo.MachineInfo{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to get any available template builder for cluster '%s': %w", clusterID, err)
+			}
+
+			return builder, nil
+		}
+
 		return nil, fmt.Errorf("failed to get available template builder for cluster '%s': %w", clusterID, err)
 	}
 
