@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/dchest/uniuri"
+	"github.com/google/uuid"
 )
 
 var caseInsensitiveAlphabet = []byte("abcdefghijklmnopqrstuvwxyz1234567890")
@@ -39,6 +40,11 @@ func cleanTag(tag string) (string, error) {
 
 	if !ok {
 		return "", fmt.Errorf("invalid tag: %s", tag)
+	}
+
+	_, err = uuid.Parse(cleanedTag)
+	if err != nil {
+		return "", fmt.Errorf("invalid tag: %s, cannot be a UUID", tag)
 	}
 
 	return cleanedTag, nil

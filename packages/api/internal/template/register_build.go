@@ -299,7 +299,7 @@ func RegisterBuild(
 	if len(data.Tags) == 0 {
 		data.Tags = []string{id.DefaultTag}
 	} else {
-		// TODO: Remove this once the migration is deployed
+		// TODO: Remove this once the migration is deployed [ENG-3268](https://linear.app/e2b/issue/ENG-3268)
 		err = client.DeleteTriggerTemplateBuildAssignment(ctx, queries.DeleteTriggerTemplateBuildAssignmentParams{
 			TemplateID: data.TemplateID,
 			BuildID:    buildID,

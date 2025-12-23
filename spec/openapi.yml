@@ -892,8 +892,9 @@ components:
     TemplateBuildRequestV3:
       properties:
         alias:
-          description: Alias of the template
+          description: Alias of the template. Deprecated, use names instead.
           type: string
+          deprecated: true
         names:
           type: array
           description: Names of the template
@@ -1502,8 +1503,12 @@ components:
 
     AssignTemplateTagRequest:
       required:
+        - target
         - names
       properties:
+        target:
+          type: string
+          description: Target template name in "alias:tag" format
         names:
           description: Names of the template
           type: array
@@ -2470,14 +2475,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /templates/tags/{name}:
-    parameters:
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          description: Template name in "alias:tag" format
+  /templates/tags:
     post:
       description: Assign tag(s) to a template build
       tags: [tags]
@@ -2506,6 +2504,14 @@ paths:
           $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
+  /templates/tags/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          description: Template name in "alias:tag" format
     delete:
       description: Delete a tag from a template
       tags: [tags]

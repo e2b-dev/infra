@@ -19,19 +19,10 @@ import (
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// PostTemplatesTagsName assigns tags to a template build
-// The {name} path parameter is the source template:tag (e.g., "web-server:v1.1.0")
-func (a *APIStore) PostTemplatesTagsName(c *gin.Context, name string) {
+// PostTemplatesTags assigns tags to a template build
+// The target template is specified in the request body via the "target" field
+func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	ctx := c.Request.Context()
-
-	// Parse the source name (alias:tag format)
-	sourceAlias, sourceTag, err := id.ParseTemplateIDOrAliasWithTag(name)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid source name format: %s", name))
-		telemetry.ReportError(ctx, "invalid source name format", err)
-
-		return
-	}
 
 	body, err := utils.ParseBody[api.AssignTemplateTagRequest](ctx, c)
 	if err != nil {
@@ -40,7 +31,16 @@ func (a *APIStore) PostTemplatesTagsName(c *gin.Context, name string) {
 		return
 	}
 
-	// Validate target names
+	// Parse the target template (alias:tag format)
+	targetAlias, targetTag, err := id.ParseTemplateIDOrAliasWithTag(body.Target)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid target template format: %s", body.Target))
+		telemetry.ReportError(ctx, "invalid target template format", err)
+
+		return
+	}
+
+	// Validate names
 	if len(body.Names) == 0 {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "At least one name is required")
 		telemetry.ReportError(ctx, "at least one name is required", nil)
@@ -57,16 +57,16 @@ func (a *APIStore) PostTemplatesTagsName(c *gin.Context, name string) {
 	}
 	defer tx.Rollback(ctx)
 
-	// Get template and build from the source tag
-	sourceTagValue := sharedUtils.DerefOrDefault(sourceTag, id.DefaultTag)
+	// Get template and build from the target tag
+	targetTagValue := sharedUtils.DerefOrDefault(targetTag, id.DefaultTag)
 	result, err := client.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
-		AliasOrEnvID: sourceAlias,
-		Tag:          &sourceTagValue,
+		AliasOrEnvID: targetAlias,
+		Tag:          &targetTagValue,
 	})
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", name))
-			telemetry.ReportError(ctx, "template or source tag not found", err, telemetry.WithTemplateID(sourceAlias))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", body.Target))
+			telemetry.ReportError(ctx, "template or target tag not found", err, telemetry.WithTemplateID(targetAlias))
 
 			return
 		}
@@ -97,25 +97,25 @@ func (a *APIStore) PostTemplatesTagsName(c *gin.Context, name string) {
 	)
 
 	if template.TeamID != team.ID {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", sourceAlias))
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", targetAlias))
 		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(template.ID))
 
 		return
 	}
 
-	// Parse target tags from body
+	// Parse tags from body
 	tags := make(map[string]bool)
-	for _, targetName := range body.Names {
-		alias, tag, err := id.ParseTemplateIDOrAliasWithTag(targetName)
+	for _, name := range body.Names {
+		alias, tag, err := id.ParseTemplateIDOrAliasWithTag(name)
 		if err != nil {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid target name: %s", targetName))
-			telemetry.ReportCriticalError(ctx, "invalid target name", err)
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", name))
+			telemetry.ReportCriticalError(ctx, "invalid name", err)
 
 			return
 		}
 
 		if !slices.Contains(aliases, alias) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template alias '%s' does not match the source template", alias))
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template alias '%s' does not match the target template", alias))
 			telemetry.ReportCriticalError(ctx, "template alias not matching the template", nil)
 
 			return

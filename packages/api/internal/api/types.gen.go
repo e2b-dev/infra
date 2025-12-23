@@ -114,6 +114,9 @@ type AdminSandboxKillResult struct {
 type AssignTemplateTagRequest struct {
 	// Names Names of the template
 	Names []string `json:"names"`
+
+	// Target Target template name in "alias:tag" format
+	Target string `json:"target"`
 }
 
 // BuildLogEntry defines model for BuildLogEntry.
@@ -885,7 +888,8 @@ type TemplateBuildRequestV2 struct {
 
 // TemplateBuildRequestV3 defines model for TemplateBuildRequestV3.
 type TemplateBuildRequestV3 struct {
-	// Alias Alias of the template
+	// Alias Alias of the template. Deprecated, use names instead.
+	// Deprecated:
 	Alias *string `json:"alias,omitempty"`
 
 	// CpuCount CPU cores for the sandbox
@@ -1241,8 +1245,8 @@ type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJ
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest
 
-// PostTemplatesTagsNameJSONRequestBody defines body for PostTemplatesTagsName for application/json ContentType.
-type PostTemplatesTagsNameJSONRequestBody = AssignTemplateTagRequest
+// PostTemplatesTagsJSONRequestBody defines body for PostTemplatesTags for application/json ContentType.
+type PostTemplatesTagsJSONRequestBody = AssignTemplateTagRequest
 
 // PatchTemplatesTemplateIDJSONRequestBody defines body for PatchTemplatesTemplateID for application/json ContentType.
 type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest

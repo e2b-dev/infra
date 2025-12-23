@@ -83,7 +83,7 @@ CREATE OR REPLACE FUNCTION sync_env_build_assignment()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.env_id IS NOT NULL THEN
-        IF TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND (OLD.env_id IS NULL OR OLD.env_id != NEW.env_id)) THEN
+        IF TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND OLD.env_id != NEW.env_id) THEN
             -- Note: ON CONFLICT refers to the partial index uq_legacy_assignments
             INSERT INTO env_build_assignments (env_id, build_id, tag, source, created_at)
             VALUES (NEW.env_id, NEW.id, 'default', 'trigger', CURRENT_TIMESTAMP)
