@@ -53,8 +53,8 @@ func (s *NodePassThroughServer) catalogCreateEventHandler(ctx context.Context, m
 		&catalog.SandboxInfo{
 			OrchestratorID: c.OrchestratorID,
 			OrchestratorIP: o.GetInfo().IP,
-			ExecutionID:    c.ExecutionID,
 
+			SandboxExecutionID:      c.ExecutionID,
 			SandboxStartedAt:        c.SandboxStartTime,
 			SandboxMaxLengthInHours: c.SandboxMaxLengthInHours,
 		},

@@ -36,9 +36,8 @@ type ServiceDiscoveryConfig struct {
 	StaticEndpoints []string `env:"STATIC"`
 
 	// when Provider == "NOMAD"
-	NomadEndpoint  string `env:"NOMAD_ENDPOINT"`
-	NomadToken     string `env:"NOMAD_TOKEN"`
-	NomadJobPrefix string `env:"NOMAD_JOB_PREFIX"`
+	NomadEndpoint string `env:"NOMAD_ENDPOINT"`
+	NomadToken    string `env:"NOMAD_TOKEN"`
 }
 
 func Parse() (Config, error) {

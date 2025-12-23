@@ -20,7 +20,7 @@ import (
 )
 
 type NodePassThroughServer struct {
-	nodes   *e2borchestrators.OrchestratorsPool
+	nodes   *e2borchestrators.InstancesPool
 	catalog catalog.SandboxesCatalog
 
 	info *e2binfo.ServiceInfo
@@ -36,7 +36,7 @@ const (
 var clientStreamDescForProxying = &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}
 
 func NewNodePassThroughServer(
-	nodes *e2borchestrators.OrchestratorsPool,
+	nodes *e2borchestrators.InstancesPool,
 	info *e2binfo.ServiceInfo,
 	authorization authorization.AuthorizationService,
 	catalog catalog.SandboxesCatalog,
@@ -83,7 +83,7 @@ func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn,
 		return nil, nil, status.Error(codes.NotFound, "service instance not found")
 	}
 
-	return serviceInstance.GetClient().Connection, md, nil
+	return serviceInstance.GetConnection(), md, nil
 }
 
 // Handler - following code implement a gRPC pass-through proxy that forwards requests to the appropriate node

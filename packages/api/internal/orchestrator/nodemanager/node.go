@@ -11,12 +11,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
@@ -41,8 +39,8 @@ type Node struct {
 	IPAddress     string
 	SandboxDomain *string
 
-	client *grpclient.GRPCClient
-	status api.NodeStatus
+	connection *clusters.GRPCClient
+	status     api.NodeStatus
 
 	metrics   Metrics
 	metricsMu sync.RWMutex
@@ -97,9 +95,9 @@ func New(
 		IPAddress:        discoveredNode.IPAddress,
 		SandboxDomain:    nil,
 
-		client: client,
-		status: nodeStatus,
-		meta:   nodeMetadata,
+		connection: client,
+		status:     nodeStatus,
+		meta:       nodeMetadata,
 
 		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
@@ -114,7 +112,7 @@ func New(
 	return n, nil
 }
 
-func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *edge.ClusterInstance) (*Node, error) {
+func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *clusters.Instance) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
 	if !ok {
 		logger.L().Error(ctx, "Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))
@@ -125,7 +123,7 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		ServiceInstanceID: i.ServiceInstanceID,
+		ServiceInstanceID: i.InstanceID,
 		Commit:            i.ServiceVersionCommit,
 		Version:           i.ServiceVersion,
 	}
@@ -137,17 +135,17 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 		// We can't connect directly to the node in the cluster
 		IPAddress:     "",
 		SandboxDomain: sandboxDomain,
-
-		client: client,
-		status: nodeStatus,
-		meta:   nodeMetadata,
-
-		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
 			createSuccess:       atomic.Uint64{},
 			createFails:         atomic.Uint64{},
 		},
+
+		connection: client,
+		status:     nodeStatus,
+		meta:       nodeMetadata,
+
+		buildCache: buildCache,
 	}
 
 	nodeClient, ctx := n.GetClient(ctx)
@@ -167,7 +165,7 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 func (n *Node) Close(ctx context.Context) error {
 	if n.IsNomadManaged() {
 		logger.L().Info(ctx, "Closing local node", logger.WithNodeID(n.ID))
-		err := n.client.Close()
+		err := n.connection.Close()
 		if err != nil {
 			logger.L().Error(ctx, "Error closing connection to node", zap.Error(err), logger.WithNodeID(n.ID))
 		}
@@ -180,9 +178,9 @@ func (n *Node) Close(ctx context.Context) error {
 	return nil
 }
 
-// Ensures that GRPC client request context always has the latest service instance ID
-func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
-	return n.client, metadata.NewOutgoingContext(ctx, n.getClientMetadata())
+// Ensures that GRPC connection request context always has the latest service instance ID
+func (n *Node) GetClient(ctx context.Context) (*clusters.GRPCClient, context.Context) {
+	return n.connection, ctx
 }
 
 func (n *Node) IsNomadManaged() bool {
