@@ -213,13 +213,32 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	return runBuild(ctx, l, buildContext, b)
 }
 
+func (b *Builder) useNFSCache(ctx context.Context) (string, bool) {
+	if b.config.SharedChunkCacheDir == "" {
+		// can't enable cache if we don't have a cache path
+		return "", false
+	}
+
+	flag, err := b.featureFlags.BoolFlag(ctx, featureflags.BuildingFeatureFlagName)
+	if err != nil {
+		logger.L().Error(ctx, "failed to get nfs cache feature flag", zap.Error(err))
+	}
+
+	return b.config.SharedChunkCacheDir, flag
+}
+
 func runBuild(
 	ctx context.Context,
 	userLogger logger.Logger,
 	bc buildcontext.BuildContext,
 	builder *Builder,
 ) (*Result, error) {
-	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
+	templateStorage := builder.templateStorage
+	if path, ok := builder.useNFSCache(ctx); ok {
+		templateStorage = storage.NewCachedProvider(path, templateStorage)
+	}
+
+	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, templateStorage)
 
 	layerExecutor := layer.NewLayerExecutor(
 		bc,
@@ -227,7 +246,7 @@ func runBuild(
 		builder.templateCache,
 		builder.proxy,
 		builder.sandboxes,
-		builder.templateStorage,
+		templateStorage,
 		builder.buildStorage,
 		index,
 	)
@@ -237,7 +256,7 @@ func runBuild(
 		builder.featureFlags,
 		builder.logger,
 		builder.proxy,
-		builder.templateStorage,
+		templateStorage,
 		builder.artifactRegistry,
 		builder.dockerhubRepository,
 		layerExecutor,
@@ -280,7 +299,7 @@ func runBuild(
 	postProcessingBuilder := finalize.New(
 		bc,
 		builder.sandboxFactory,
-		builder.templateStorage,
+		templateStorage,
 		builder.proxy,
 		layerExecutor,
 		builder.featureFlags,
