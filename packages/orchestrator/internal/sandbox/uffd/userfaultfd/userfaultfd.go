@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -35,6 +36,11 @@ type Userfaultfd struct {
 	settleRequests sync.RWMutex
 
 	wg errgroup.Group
+
+	// stopping is set to true when WaitForHandlers() is called.
+	// When stopping is true, ENOENT errors from UFFDIO_COPY are ignored
+	// since the memory regions may have been unregistered.
+	stopping atomic.Bool
 
 	logger logger.Logger
 }
@@ -252,12 +258,21 @@ func (u *Userfaultfd) handleMissing(
 			return nil
 		}
 
+		// HOTFIX: If we're stopping (Unregister may have been called), ignore ENOENT errors.
+		// This happens when a handler races with Unregister() - the memory region is
+		// unregistered before the handler can copy to it. This is benign during shutdown.
+		if u.stopping.Load() && errors.Is(copyErr, unix.ENOENT) {
+			u.logger.Error(ctx, "UFFD serve uffdio copy error got ENOENT during stopping, ignoring", zap.Int64("offset", offset), zap.String("error_hex", fmt.Sprintf("%x", copyErr)))
+
+			return nil
+		}
+
 		if copyErr != nil {
 			signalErr := onFailure()
 
 			joinedErr := errors.Join(copyErr, signalErr)
 
-			u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
+			u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr), zap.String("error_hex", fmt.Sprintf("%x", copyErr)))
 
 			return fmt.Errorf("failed uffdio copy %w", joinedErr)
 		}
@@ -289,4 +304,10 @@ func (u *Userfaultfd) Dirty() *block.Tracker {
 	defer u.settleRequests.Unlock()
 
 	return u.missingRequests.Clone()
+}
+
+// SetStopping signals that we're shutting down. Any in-flight handlers that get
+// ENOENT from UFFDIO_COPY will ignore the error (it's a benign race with Unregister).
+func (u *Userfaultfd) SetStopping() {
+	u.stopping.Store(true)
 }

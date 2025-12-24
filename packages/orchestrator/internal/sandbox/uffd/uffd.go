@@ -187,18 +187,22 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 //
 // After calling Disable(), this uffd is no longer usable—we won't be able to resume the sandbox via API.
 // The uffd itself is not closed though, as that should be done by the sandbox cleanup.
+//
+// IMPORTANT: This must be called AFTER Firecracker is paused.
 func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	// IMPORTANT: Wait for all in-flight page fault handlers to complete BEFORE unregistering.
-	// This prevents a race condition where handlers try to UFFDIO_COPY to memory regions
-	// that have already been unregistered (which would fail with ENOENT/"no such file or directory").
+	// Signal that we're stopping - any in-flight handlers that get ENOENT
+	// from UFFDIO_COPY will ignore the error (it's a benign race with Unregister)
+	uffd.SetStopping()
+
+	// Get the dirty tracker
 	tracker := uffd.Dirty()
 
-	// Now it's safe to unregister - no handlers are running
+	// Unregister memory regions - in-flight handlers may get ENOENT but will ignore it
 	err = uffd.Unregister()
 	if err != nil {
 		return nil, fmt.Errorf("failed to unregister uffd: %w", err)
