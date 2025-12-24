@@ -185,8 +185,6 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 // allowing us to create a "diff" snapshot via FC API without dirty tracking enabled,
 // and without pagefaulting all remaining missing pages.
 //
-// It should be called *after* Dirty().
-//
 // After calling Disable(), this uffd is no longer usable—we won't be able to resume the sandbox via API.
 // The uffd itself is not closed though, as that should be done by the sandbox cleanup.
 func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
@@ -195,22 +193,16 @@ func (u *Uffd) Disable(ctx context.Context) (*block.Tracker, error) {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
+	// IMPORTANT: Wait for all in-flight page fault handlers to complete BEFORE unregistering.
+	// This prevents a race condition where handlers try to UFFDIO_COPY to memory regions
+	// that have already been unregistered (which would fail with ENOENT/"no such file or directory").
+	tracker := uffd.Dirty()
+
+	// Now it's safe to unregister - no handlers are running
 	err = uffd.Unregister()
 	if err != nil {
 		return nil, fmt.Errorf("failed to unregister uffd: %w", err)
 	}
 
-	return u.dirty(ctx)
-}
-
-// Dirty waits for the current requests to finish and returns the dirty pages.
-//
-// It *MUST* be only called after the sandbox was successfully paused via API.
-func (u *Uffd) dirty(ctx context.Context) (*block.Tracker, error) {
-	uffd, err := u.handler.WaitWithContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get uffd: %w", err)
-	}
-
-	return uffd.Dirty(), nil
+	return tracker, nil
 }
