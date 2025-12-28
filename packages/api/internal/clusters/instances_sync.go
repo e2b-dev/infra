@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-// SynchronizationStore defines methods for synchronizing cluster instances
+// Instance sync store handles synchronization of instances in each cluster and checking its state
 type instancesSyncStore struct {
 	clusterID uuid.UUID
 
