@@ -64,6 +64,7 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	// generate the full endpoint URL
 	var endpointBaseUrl string
 	if endpointTLS {
+		
 		endpointBaseUrl = fmt.Sprintf("https://%s", endpoint)
 	} else {
 		endpointBaseUrl = fmt.Sprintf("http://%s", endpoint)
@@ -133,8 +134,12 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
-	var instances []*ClusterInstance
-	for _, instance := range c.instances.Items() {
+
+	// convert map to slice
+	mapItems := c.instances.Items()
+	instances:= make([]*ClusterInstance, 0, len(mapItems))
+
+	for _, instance := range mapItems {
 		instances = append(instances, instance)
 	}
 
