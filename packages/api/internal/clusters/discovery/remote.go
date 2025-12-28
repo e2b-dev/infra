@@ -26,7 +26,7 @@ func NewRemoteServiceDiscovery(clusterID uuid.UUID, client *api.ClientWithRespon
 }
 
 func (sd *RemoteServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
-	_, span := tracer.Start(ctx, "query-remote-cluster-nodes", trace.WithAttributes(telemetry.WithClusterID(sd.clusterID)))
+	ctx, span := tracer.Start(ctx, "query-remote-cluster-nodes", trace.WithAttributes(telemetry.WithClusterID(sd.clusterID)))
 	defer span.End()
 
 	res, err := sd.client.V1ServiceDiscoveryGetOrchestratorsWithResponse(ctx)

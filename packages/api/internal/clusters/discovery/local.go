@@ -30,7 +30,7 @@ func NewLocalDiscovery(clusterID uuid.UUID, nomad *nomadapi.Client) Discovery {
 }
 
 func (sd *LocalServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
-	_, span := tracer.Start(ctx, "query-local-cluster-nodes", trace.WithAttributes(telemetry.WithClusterID(sd.clusterID)))
+	ctx, span := tracer.Start(ctx, "query-local-cluster-nodes", trace.WithAttributes(telemetry.WithClusterID(sd.clusterID)))
 	defer span.End()
 
 	// Static discovery for local environment
