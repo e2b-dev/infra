@@ -75,24 +75,10 @@ func (d instancesSyncStore) PoolInsert(ctx context.Context, item discovery.Item)
 		return
 	}
 
-	err = instance.Sync(ctx)
-	if err != nil {
-		closeErr := instance.Close()
-		if closeErr != nil {
-			logger.L().Error(ctx, "Failed to close cluster instance after sync failure",
-				zap.Error(closeErr),
-				logger.WithClusterID(d.clusterID),
-				logger.WithNodeID(instance.NodeID),
-				logger.WithServiceInstanceID(instance.InstanceID),
-			)
-		}
-
-		logger.L().Error(ctx, "Failed to sync cluster instance during pool insert",
-			zap.Error(err),
-			logger.WithClusterID(d.clusterID),
-			logger.WithNodeID(instance.NodeID),
-			logger.WithServiceInstanceID(instance.InstanceID),
-		)
+	ok := d.tryToSyncInstance(ctx, instance)
+	if !ok {
+		// Try to gracefully close the instance
+		d.tryToCloseInstance(ctx, instance)
 
 		return
 	}
@@ -101,15 +87,7 @@ func (d instancesSyncStore) PoolInsert(ctx context.Context, item discovery.Item)
 }
 
 func (d instancesSyncStore) PoolUpdate(ctx context.Context, instance *Instance) {
-	err := instance.Sync(ctx)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to sync cluster instance during pool update",
-			zap.Error(err),
-			logger.WithClusterID(d.clusterID),
-			logger.WithNodeID(instance.NodeID),
-			logger.WithServiceInstanceID(instance.InstanceID),
-		)
-	}
+	_ = d.tryToSyncInstance(ctx, instance)
 }
 
 func (d instancesSyncStore) PoolRemove(ctx context.Context, instance *Instance) {
@@ -119,6 +97,13 @@ func (d instancesSyncStore) PoolRemove(ctx context.Context, instance *Instance) 
 		logger.WithServiceInstanceID(instance.InstanceID),
 	)
 
+	// Try to gracefully close the instance
+	d.tryToCloseInstance(ctx, instance)
+
+	d.instances.Remove(instance.NodeID)
+}
+
+func (d instancesSyncStore) tryToCloseInstance(ctx context.Context, instance *Instance) {
 	closeErr := instance.Close()
 	if closeErr != nil {
 		logger.L().Error(ctx, "Failed to close cluster instance after sync failure",
@@ -128,6 +113,20 @@ func (d instancesSyncStore) PoolRemove(ctx context.Context, instance *Instance) 
 			logger.WithServiceInstanceID(instance.InstanceID),
 		)
 	}
+}
 
-	d.instances.Remove(instance.NodeID)
+func (d instancesSyncStore) tryToSyncInstance(ctx context.Context, instance *Instance) bool {
+	err := instance.Sync(ctx)
+	if err != nil {
+		logger.L().Error(ctx, "Failed to sync cluster instance",
+			zap.Error(err),
+			logger.WithClusterID(d.clusterID),
+			logger.WithNodeID(instance.NodeID),
+			logger.WithServiceInstanceID(instance.InstanceID),
+		)
+
+		return false
+	}
+
+	return true
 }
