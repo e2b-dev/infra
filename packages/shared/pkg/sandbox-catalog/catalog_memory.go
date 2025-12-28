@@ -71,7 +71,7 @@ func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID stri
 	}
 
 	// Different execution is stored in the cache, we don't want to remove it
-	if item.Value().SandboxExecutionID != executionID {
+	if item.Value().ExecutionID != executionID {
 		return nil
 	}
 

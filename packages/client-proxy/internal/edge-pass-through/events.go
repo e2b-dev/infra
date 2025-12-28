@@ -54,9 +54,9 @@ func (s *NodePassThroughServer) catalogCreateEventHandler(ctx context.Context, m
 			OrchestratorID: c.OrchestratorID,
 			OrchestratorIP: o.GetInfo().IP,
 
-			SandboxExecutionID:      c.ExecutionID,
-			SandboxStartedAt:        c.SandboxStartTime,
-			SandboxMaxLengthInHours: c.SandboxMaxLengthInHours,
+			ExecutionID:      c.ExecutionID,
+			StartedAt:        c.SandboxStartTime,
+			MaxLengthInHours: c.SandboxMaxLengthInHours,
 		},
 		time.Duration(c.SandboxMaxLengthInHours)*time.Hour,
 	)

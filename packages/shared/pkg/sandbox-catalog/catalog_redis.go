@@ -118,7 +118,7 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 	}
 
 	// Different execution is stored in the cache, we don't want to remove it
-	if info.SandboxExecutionID != executionID {
+	if info.ExecutionID != executionID {
 		return nil
 	}
 
