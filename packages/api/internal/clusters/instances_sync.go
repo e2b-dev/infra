@@ -94,7 +94,7 @@ func (d instancesSyncStore) PoolRemove(ctx context.Context, instance *Instance) 
 	logger.L().Info(ctx, "Removing instance from cluster pool",
 		logger.WithClusterID(d.clusterID),
 		logger.WithNodeID(instance.NodeID),
-		logger.WithServiceInstanceID(instance.InstanceID),
+		logger.WithServiceInstanceID(instance.ServiceInstanceID),
 	)
 
 	// Try to gracefully close the instance
@@ -110,7 +110,7 @@ func (d instancesSyncStore) tryToCloseInstance(ctx context.Context, instance *In
 			zap.Error(closeErr),
 			logger.WithClusterID(d.clusterID),
 			logger.WithNodeID(instance.NodeID),
-			logger.WithServiceInstanceID(instance.InstanceID),
+			logger.WithServiceInstanceID(instance.ServiceInstanceID),
 		)
 	}
 }
@@ -122,7 +122,7 @@ func (d instancesSyncStore) tryToSyncInstance(ctx context.Context, instance *Ins
 			zap.Error(err),
 			logger.WithClusterID(d.clusterID),
 			logger.WithNodeID(instance.NodeID),
-			logger.WithServiceInstanceID(instance.InstanceID),
+			logger.WithServiceInstanceID(instance.ServiceInstanceID),
 		)
 
 		return false

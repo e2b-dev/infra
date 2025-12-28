@@ -157,7 +157,7 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*Instance, error) {
 
 func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*Instance, bool) {
 	for _, instance := range c.instances.Items() {
-		if instance.InstanceID == serviceInstanceID {
+		if instance.ServiceInstanceID == serviceInstanceID {
 			return instance, true
 		}
 	}

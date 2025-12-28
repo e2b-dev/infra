@@ -123,7 +123,7 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		ServiceInstanceID: i.InstanceID,
+		ServiceInstanceID: i.ServiceInstanceID,
 		Commit:            i.ServiceVersionCommit,
 		Version:           i.ServiceVersion,
 	}

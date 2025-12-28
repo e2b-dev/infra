@@ -23,10 +23,10 @@ type Instance struct {
 	// Depending on service discovery used, it can be combination of different parameters, what service discovery gives us.
 	UniqueIdentifier string
 
-	ClusterID  uuid.UUID
-	NodeID     string
-	InstanceID string
+	ClusterID uuid.UUID
+	NodeID    string
 
+	ServiceInstanceID    string
 	ServiceVersion       string
 	ServiceVersionCommit string
 
@@ -58,10 +58,10 @@ func newInstance(
 	// For case with local cluster we will not receive instance ID from service discovery, but its not needed for proxy routing,
 	// so it can be empty and will be filled after first sync.
 	i := &Instance{
-		UniqueIdentifier: sd.UniqueIdentifier,
-		NodeID:           sd.NodeID,
-		InstanceID:       sd.InstanceID,
-		ClusterID:        clusterID,
+		UniqueIdentifier:  sd.UniqueIdentifier,
+		NodeID:            sd.NodeID,
+		ServiceInstanceID: sd.InstanceID,
+		ClusterID:         clusterID,
 
 		grpc:  conn,
 		mutex: sync.RWMutex{},
@@ -76,7 +76,7 @@ func newInstance(
 				zap.Error(err),
 				logger.WithNodeID(i.NodeID),
 				logger.WithClusterID(i.ClusterID),
-				logger.WithServiceInstanceID(i.InstanceID),
+				logger.WithServiceInstanceID(i.ServiceInstanceID),
 			)
 		}
 
@@ -102,7 +102,7 @@ func (i *Instance) Sync(ctx context.Context) error {
 	i.roles = info.GetServiceRoles()
 	i.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
 
-	i.InstanceID = info.GetServiceId()
+	i.ServiceInstanceID = info.GetServiceId()
 	i.ServiceVersion = info.GetServiceVersion()
 	i.ServiceVersionCommit = info.GetServiceCommit()
 
