@@ -46,28 +46,28 @@ resource "google_compute_health_check" "nomad_check" {
 }
 
 resource "google_compute_region_autoscaler" "autoscaler" {
-  count = var.cluster_size == try(var.autoscaler.size_max, var.cluster_size) ? 0 : 1
+  count = try(var.autoscaler.size_max > var.cluster_size, false) ? 1 : 0
 
   name   = "${var.cluster_name}-autoscaler"
   region = var.gcp_region
   target = google_compute_region_instance_group_manager.pool.id
 
   autoscaling_policy {
-    max_replicas    = var.autoscaler.size_max
+    max_replicas    = try(var.autoscaler.size_max, null) != null ? var.autoscaler.size_max : var.cluster_size
     min_replicas    = var.cluster_size
     cooldown_period = 240
     # Turn off autoscaling when the cluster size is equal to the maximum size.
     mode = "ONLY_SCALE_OUT"
 
     dynamic "cpu_utilization" {
-      for_each = try(var.autoscaler.cpu_target, 1) < 1 ? [1] : []
+      for_each = try(var.autoscaler.cpu_target < 1, false) ? [1] : []
       content {
         target = var.autoscaler.cpu_target
       }
     }
 
     dynamic "metric" {
-      for_each = try(var.autoscaler.memory_target, 100) < 100 ? [1] : []
+      for_each = try(var.autoscaler.memory_target < 100, false) ? [1] : []
       content {
         name   = "agent.googleapis.com/memory/percent_used"
         type   = "GAUGE"
@@ -79,22 +79,22 @@ resource "google_compute_region_autoscaler" "autoscaler" {
 
   lifecycle {
     precondition {
-      condition     = var.autoscaler.memory_target == null || var.autoscaler.memory_target > var.base_hugepages_percentage
+      condition     = try(var.autoscaler.memory_target, null) == null || try(var.autoscaler.memory_target > var.base_hugepages_percentage, false)
       error_message = "Autoscaler memory target must be higher than ${var.base_hugepages_percentage} (preallocated hugepages), because those are counted as used memory in monitoring."
     }
 
     precondition {
-      condition     = var.autoscaler.size_max == null || (var.autoscaler.size_max >= var.cluster_size)
+      condition     = try(var.autoscaler.size_max, null) == null || try(var.autoscaler.size_max >= var.cluster_size, false)
       error_message = "Autoscaler size_max must be greater than or equal to the cluster_size."
     }
 
     precondition {
-      condition     = var.autoscaler.cpu_target == null || (var.autoscaler.cpu_target >= 0 && var.autoscaler.cpu_target <= 1)
+      condition     = try(var.autoscaler.cpu_target, null) == null || try(var.autoscaler.cpu_target >= 0 && var.autoscaler.cpu_target <= 1, false)
       error_message = "Autoscaler cpu_target must be between 0 and 1."
     }
 
     precondition {
-      condition     = var.autoscaler.memory_target == null || (var.autoscaler.memory_target >= 0 && var.autoscaler.memory_target <= 100)
+      condition     = try(var.autoscaler.memory_target, null) == null || try(var.autoscaler.memory_target >= 0 && var.autoscaler.memory_target <= 100, false)
       error_message = "Autoscaler memory_target must be between 0 and 100."
     }
   }
