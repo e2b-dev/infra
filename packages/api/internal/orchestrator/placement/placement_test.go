@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -19,12 +21,6 @@ import (
 
 type mockAlgorithm struct {
 	mock.Mock
-}
-
-func (m *mockAlgorithm) excludeNode(err error) bool {
-	args := m.Called(err)
-
-	return args.Bool(0)
 }
 
 func (m *mockAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, buildCPUInfo machineinfo.MachineInfo) (*nodemanager.Node, error) {
@@ -175,4 +171,39 @@ func TestPlaceSandbox_AllNodesExcluded(t *testing.T) {
 	assert.Nil(t, resultNode)
 	assert.Contains(t, err.Error(), "no nodes available")
 	algorithm.AssertExpectations(t)
+}
+
+func TestPlaceSandbox_ResourceExhausted(t *testing.T) {
+	ctx := t.Context()
+
+	// Create test nodes - node1 will return ResourceExhausted, node2 will succeed
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4,
+		nodemanager.WithSandboxCreateError(status.Error(codes.ResourceExhausted, "node exhausted")))
+	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 5, 4)
+	nodes := []*nodemanager.Node{node1, node2}
+
+	// Algorithm should be called twice - first returns node1 (exhausted), then node2 (succeeds)
+	algorithm := &mockAlgorithm{}
+	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything, mock.Anything).
+		Return(node1, nil).Once()
+	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything, mock.Anything).
+		Return(node2, nil).Once()
+
+	sbxRequest := &orchestrator.SandboxCreateRequest{
+		Sandbox: &orchestrator.SandboxConfig{
+			SandboxId: "test-sandbox",
+			Vcpu:      2,
+			RamMb:     1024,
+		},
+	}
+
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{})
+
+	require.NoError(t, err)
+	assert.NotNil(t, resultNode)
+	assert.Equal(t, node2, resultNode, "should succeed on node2 after node1 was exhausted")
+	algorithm.AssertExpectations(t)
+
+	// Verify node1 was NOT excluded (ResourceExhausted nodes should be retried)
+	algorithm.AssertNumberOfCalls(t, "chooseNode", 2)
 }

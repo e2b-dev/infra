@@ -105,14 +105,14 @@ var (
 	MaxSandboxesPerNode           = newIntFlag("max-sandboxes-per-node", 200)
 	GcloudConcurrentUploadLimit   = newIntFlag("gcloud-concurrent-upload-limit", 8)
 	GcloudMaxTasks                = newIntFlag("gcloud-max-tasks", 16)
-	ClickhouseBatcherMaxBatchSize = newIntFlag("clickhouse-batcher-max-batch-size", 64*1024) // 65536
-	ClickhouseBatcherMaxDelay     = newIntFlag("clickhouse-batcher-max-delay", 100)          // 100ms in milliseconds
-	ClickhouseBatcherQueueSize    = newIntFlag("clickhouse-batcher-queue-size", 8*1024)      // 8192
+	ClickhouseBatcherMaxBatchSize = newIntFlag("clickhouse-batcher-max-batch-size", 100)
+	ClickhouseBatcherMaxDelay     = newIntFlag("clickhouse-batcher-max-delay", 1000) // 1s in milliseconds
+	ClickhouseBatcherQueueSize    = newIntFlag("clickhouse-batcher-queue-size", 1000)
 	BestOfKSampleSize             = newIntFlag("best-of-k-sample-size", 3)                   // Default K=3
 	BestOfKMaxOvercommit          = newIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
 	BestOfKAlpha                  = newIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	PubsubQueueChannelSize        = newIntFlag("pubsub-queue-channel-size", 8*1024)          // size of the channel buffer used to queue incoming sandbox events
-	EnvdInitTimeoutSeconds        = newIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
+	EnvdInitTimeoutMilliseconds   = newIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
 	// that can be used before the cache starts evicting items.
@@ -141,5 +141,22 @@ func newStringFlag(name string, fallback string) StringFlag {
 	return flag
 }
 
+// The Firecracker version the last tag + the short SHA (so we can build our dev previews)
+// TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
+const (
+	DefaultFirecackerV1_10Version = "v1.10.1_fb257a1"
+	DefaultFirecackerV1_12Version = "v1.12.1_717921c"
+	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
+)
+
+var firecrackerVersions = map[string]string{
+	"v1.10": DefaultFirecackerV1_10Version,
+	"v1.12": DefaultFirecackerV1_12Version,
+}
+
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
-var BuildIoEngine = newStringFlag("build-io-engine", "Sync")
+var (
+	BuildFirecrackerVersion = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildIoEngine           = newStringFlag("build-io-engine", "Sync")
+	FirecrackerVersions     = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
+)

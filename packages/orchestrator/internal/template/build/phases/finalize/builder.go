@@ -157,13 +157,11 @@ func (ppb *PostProcessingBuilder) Build(
 	}
 
 	// Select the IO Engine to use for the rootfs drive
-	ioEngine, err := ppb.featureFlags.StringFlag(
+	ioEngine := ppb.featureFlags.StringFlag(
 		ctx,
 		featureflags.BuildIoEngine,
 	)
-	if err != nil {
-		ppb.logger.Debug(ctx, "getting io engine failed, using default value", zap.String("io_engine", featureflags.BuildIoEngine.Fallback()), zap.Error(err))
-	}
+
 	span.SetAttributes(attribute.String("io_engine", ioEngine))
 	ppb.logger.Debug(ctx, "using io engine", zap.String("io_engine", ioEngine))
 

@@ -14,11 +14,11 @@ receivers:
         - job_name: nomad
           scrape_interval: 15s
           scrape_timeout: 5s
-          metrics_path: '/v1/metrics'
+          metrics_path: "/v1/metrics"
           static_configs:
-            - targets: ['localhost:4646']
+            - targets: ["localhost:4646"]
           params:
-            format: ['prometheus']
+            format: ["prometheus"]
 
   hostmetrics:
     root_path: /hostfs
@@ -30,7 +30,7 @@ receivers:
     scrapers:
       cpu:
         metrics:
-          system.cpu.time:  # counter of seconds spent
+          system.cpu.time: # counter of seconds spent
             enabled: true
           system.cpu.frequency:
             enabled: false
@@ -38,7 +38,7 @@ receivers:
             enabled: true
           system.cpu.physical.count:
             enabled: true
-          system.cpu.utilization:  # percentage utilized in the moment
+          system.cpu.utilization: # percentage utilized in the moment
             enabled: false
 
       # entirely disabled, so we omit the module
@@ -89,7 +89,7 @@ receivers:
             enabled: true
           system.linux.memory.available: # free memory
             enabled: true
-          system.linux.memory.dirty:  # data waiting to be written to disk
+          system.linux.memory.dirty: # data waiting to be written to disk
             enabled: true
           system.memory.limit: # total memory
             enabled: true
@@ -156,42 +156,42 @@ receivers:
             enabled: true
 
       # entirely disabled, so we omit the module
-      #process:
-      #  metrics:
-      #    process.cpu.time:
-      #      enabled: false
-      #    process.disk.io:
-      #      enabled: false
-      #    process.memory.usage:
-      #      enabled: false
-      #    process.memory.virtual:
-      #      enabled: false
-      #    process.context_switches:
-      #      enabled: false
-      #    process.cpu.utilization:
-      #      enabled: false
-      #    process.disk.operations:
-      #      enabled: false
-      #    process.handles:
-      #      enabled: false
-      #    process.memory.utilization:
-      #      enabled: false
-      #    process.open_file_descriptors:
-      #      enabled: false
-      #    process.paging.faults:
-      #      enabled: false
-      #    process.signals_pending:
-      #      enabled: false
-      #    process.threads:
-      #      enabled: false
-      #    process.uptime:
-      #      enabled: false
-
-      # entirely disabled, so we omit the module
       #system:
       #  metrics:
       #    system.uptime:
       #      enabled: false
+
+      # process:
+      #   mute_process_all_errors: true
+      #   metrics:
+      #     process.cpu.time:
+      #       enabled: false
+      #     process.disk.io:
+      #       enabled: false
+      #     process.memory.usage:
+      #       enabled: false
+      #     process.memory.virtual:
+      #       enabled: false
+      #     process.context_switches:
+      #       enabled: true
+      #     process.cpu.utilization:
+      #       enabled: false
+      #     process.disk.operations:
+      #       enabled: false
+      #     process.handles:
+      #       enabled: false
+      #     process.memory.utilization:
+      #       enabled: false
+      #     process.open_file_descriptors:
+      #       enabled: false
+      #     process.paging.faults:
+      #       enabled: false
+      #     process.signals_pending:
+      #       enabled: false
+      #     process.threads:
+      #       enabled: false
+      #     process.uptime:
+      #       enabled: false
 
 processors:
   batch:
@@ -345,6 +345,7 @@ extensions:
 exporters:
   debug:
     verbosity: detailed
+    use_internal_logger: false
   otlphttp/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
     endpoint: "${grafana_otlp_url}/otlp"

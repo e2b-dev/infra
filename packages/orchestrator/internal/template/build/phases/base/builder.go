@@ -59,6 +59,7 @@ type BaseBuilder struct {
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 	featureFlags        *featureflags.Client
+	sandboxes           *sandbox.Map
 
 	layerExecutor *layer.LayerExecutor
 	index         cache.Index
@@ -77,6 +78,7 @@ func New(
 	index cache.Index,
 	metrics *metrics.BuildMetrics,
 	sandboxFactory *sandbox.Factory,
+	sandboxes *sandbox.Map,
 ) *BaseBuilder {
 	return &BaseBuilder{
 		BuildContext: buildContext,
@@ -89,6 +91,7 @@ func New(
 		dockerhubRepository: dockerhubRepository,
 		sandboxFactory:      sandboxFactory,
 		featureFlags:        featureFlags,
+		sandboxes:           sandboxes,
 
 		layerExecutor: layerExecutor,
 		index:         index,

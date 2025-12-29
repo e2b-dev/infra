@@ -263,6 +263,7 @@ func runBuild(
 		index,
 		builder.metrics,
 		builder.sandboxFactory,
+		builder.sandboxes,
 	)
 
 	commandExecutor := commands.NewCommandExecutor(

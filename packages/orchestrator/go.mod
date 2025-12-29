@@ -44,6 +44,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.25.6
 	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.11.1
+	github.com/tklauser/go-sysconf v0.3.14
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0
@@ -60,6 +61,7 @@ require (
 	golang.org/x/sys v0.38.0
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
+	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 )
 
@@ -219,7 +221,6 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
-	github.com/tklauser/go-sysconf v0.3.14 // indirect
 	github.com/tklauser/numcpus v0.9.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect

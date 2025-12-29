@@ -11,6 +11,12 @@ type Region struct {
 	PageSize uintptr `json:"page_size_kib"` // This is actually in bytes in the deprecated version.
 }
 
+// endOffset returns the end offset of the region in bytes.
+// The end offset is exclusive.
+func (r *Region) endOffset() int64 {
+	return int64(r.Offset + r.Size)
+}
+
 // endHostVirtAddr returns the end address of the region in host virtual address.
 // The end address is exclusive.
 func (r *Region) endHostVirtAddr() uintptr {
@@ -20,4 +26,9 @@ func (r *Region) endHostVirtAddr() uintptr {
 // shiftedOffset returns the offset of the given address in the region.
 func (r *Region) shiftedOffset(addr uintptr) int64 {
 	return int64(addr - r.BaseHostVirtAddr + r.Offset)
+}
+
+// shiftedHostVirtAddr returns the host virtual address of the given offset in the region.
+func (r *Region) shiftedHostVirtAddr(off int64) uintptr {
+	return uintptr(off) + r.BaseHostVirtAddr - r.Offset
 }

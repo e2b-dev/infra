@@ -2,7 +2,6 @@ package feature_flags
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
@@ -53,56 +52,66 @@ func NewClient() (*Client, error) {
 	return &Client{ld: ldClient}, nil
 }
 
-func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcontext.Context) (bool, error) {
+func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcontext.Context) bool {
 	if c.ld == nil {
-		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
+		logger.L().Info(ctx, "LaunchDarkly client is not initialized, returning fallback")
+
+		return flag.fallback
 	}
 
 	enabled, err := c.ld.BoolVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
 	if err != nil {
-		return enabled, fmt.Errorf("error evaluating %s: %w", flag, err)
+		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.name))
 	}
 
-	return enabled, nil
+	return enabled
 }
 
-func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) (ldvalue.Value, error) {
+func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) ldvalue.Value {
 	if c.ld == nil {
-		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
+		logger.L().Warn(ctx, "LaunchDarkly client is not initialized, returning fallback")
+
+		return flag.fallback
 	}
 
 	v, err := c.ld.JSONVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
 	if err != nil {
-		return v, fmt.Errorf("error evaluating %s: %w", flag, err)
+		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.name))
+
+		return v
 	}
 
-	return v, nil
+	return v
 }
 
-func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) (int, error) {
+func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) int {
 	if c.ld == nil {
-		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
+		logger.L().Warn(ctx, "LaunchDarkly client is not initialized, returning fallback")
+
+		return flag.fallback
 	}
 
 	value, err := c.ld.IntVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
 	if err != nil {
-		return value, fmt.Errorf("error evaluating %s: %w", flag, err)
+		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.name))
 	}
 
-	return value, nil
+	return value
 }
 
-func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ldcontext.Context) (string, error) {
+func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ldcontext.Context) string {
 	if c.ld == nil {
-		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
+		logger.L().Info(ctx, "LaunchDarkly client is not initialized, returning fallback")
+
+		return flag.fallback
 	}
 
 	value, err := c.ld.StringVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
 	if err != nil {
-		return value, fmt.Errorf("error evaluating %s: %w", flag, err)
+		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.name))
 	}
 
-	return value, nil
+	return value
 }
 
 func (c *Client) Close(ctx context.Context) error {

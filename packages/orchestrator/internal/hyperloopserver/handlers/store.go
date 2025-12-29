@@ -2,8 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
-	"net"
 	"net/http"
 	"time"
 
@@ -34,21 +32,6 @@ func NewHyperloopStore(logger logger.Logger, sandboxes *sandbox.Map, sandboxColl
 			Timeout: CollectorExporterTimeout,
 		},
 	}
-}
-
-func (h *APIStore) findSandbox(req *gin.Context) (*sandbox.Sandbox, error) {
-	reqIP, _, err := net.SplitHostPort(req.Request.RemoteAddr)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing remote address %s: %w", req.Request.RemoteAddr, err)
-	}
-
-	for _, sbx := range h.sandboxes.Items() {
-		if sbx.Slot.HostIPString() == reqIP {
-			return sbx, nil
-		}
-	}
-
-	return nil, fmt.Errorf("sandbox with IP %s not found", reqIP)
 }
 
 func (h *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
