@@ -13,7 +13,6 @@ variable "autoscaler" {
     cpu_target    = optional(number)
     memory_target = optional(number)
   })
-  default = {}
 }
 
 variable "machine_type" {
