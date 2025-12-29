@@ -8,10 +8,10 @@ import (
 	"os"
 	"sync"
 
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 )
 
