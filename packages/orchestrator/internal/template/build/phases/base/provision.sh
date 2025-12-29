@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 
+ARCH=$(uname -m)
 BUSYBOX="{{ .BusyBox }}"
 RESULT_PATH="{{ .ResultPath }}"
 
@@ -35,7 +36,19 @@ else
 fi
 
 # Install mount-s3 separately from URL if not already installed
-MOUNTPOINT_ARCH="x86_64"
+# Detect architecture and map to Mountpoint's supported architectures
+case "$ARCH" in
+    x86_64|amd64)
+        MOUNTPOINT_ARCH="x86_64"
+        ;;
+    aarch64|arm64)
+        MOUNTPOINT_ARCH="arm64"
+        ;;
+    *)
+        echo "Unsupported architecture: $ARCH"
+        exit 1
+        ;;
+esac
 MOUNTPOINT_URL="https://s3.amazonaws.com/mountpoint-s3-release/latest/$MOUNTPOINT_ARCH/mount-s3.deb"
 MOUNTPOINT_DOWNLOAD_PATH="/tmp/mount-s3.deb"
 
