@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"math/rand"
 	"os"
@@ -90,6 +91,24 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 		assert.Equal(t, int64(dataSize), bytesRead)
 		assert.Equal(t, actualData, buff.Bytes())
 	})
+}
+
+func TestCachedObjectProvider_WriteFileToCache(t *testing.T) {
+	c := CachedObjectProvider{
+		path: t.TempDir(),
+	}
+	errTarget := errors.New("find me")
+	reader := storagemocks.NewMockReader(t)
+	reader.EXPECT().Read(mock.Anything).Return(4, nil).Once()
+	reader.EXPECT().Read(mock.Anything).Return(0, errTarget).Once()
+
+	count, err := c.writeFileToCache(t.Context(), reader)
+	require.ErrorIs(t, err, errTarget)
+	assert.Equal(t, int64(0), count)
+
+	path := c.fullFilename()
+	_, err = os.Stat(path)
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func generateData(count int) []byte {

@@ -179,5 +179,9 @@ func (c CachedObjectProvider) writeFileToCache(ctx context.Context, input io.Rea
 		return 0, fmt.Errorf("failed to write to cache file %s: %w", path, err)
 	}
 
+	if err := output.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("failed to commit cache file %s: %w", path, err)
+	}
+
 	return count, nil
 }

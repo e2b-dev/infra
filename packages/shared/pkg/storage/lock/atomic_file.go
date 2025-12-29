@@ -52,7 +52,15 @@ func OpenFile(ctx context.Context, filename string) (*AtomicImmutableFile, error
 	}, nil
 }
 
+func (f *AtomicImmutableFile) Commit(ctx context.Context) error {
+	return f.close(ctx, true)
+}
+
 func (f *AtomicImmutableFile) Close(ctx context.Context) error {
+	return f.close(ctx, false)
+}
+
+func (f *AtomicImmutableFile) close(ctx context.Context, success bool) error {
 	var err error
 
 	f.closeOnce.Do(func() {
@@ -66,11 +74,13 @@ func (f *AtomicImmutableFile) Close(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("failed to close temp file: %w", err))
 		}
 
-		if err = utils.AtomicMove(f.tempFile.Name(), f.filename); err != nil {
-			// someone else may have written the file successfully
-			if !errors.Is(err, syscall.EEXIST) {
-				// if not, report the error
-				errs = append(errs, fmt.Errorf("failed to commit file: %w", err))
+		if success {
+			if err = utils.AtomicMove(f.tempFile.Name(), f.filename); err != nil {
+				// someone else may have written the file successfully
+				if !errors.Is(err, syscall.EEXIST) {
+					// if not, report the error
+					errs = append(errs, fmt.Errorf("failed to commit file: %w", err))
+				}
 			}
 		}
 

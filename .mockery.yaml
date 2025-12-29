@@ -20,6 +20,14 @@ packages:
           filename: mockseekableobjectprovider.go
           pkgname: storagemocks
 
+  io:
+    interfaces:
+      Reader:
+        config:
+          dir: packages/shared/pkg/storage/mocks
+          filename: mockioreader.go
+          pkgname: storagemocks
+
   github.com/e2b-dev/infra/packages/shared/pkg/utils:
     interfaces:
       fileOps:
