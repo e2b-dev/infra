@@ -408,3 +408,51 @@ func TestIsEgressAllowed(t *testing.T) {
 		})
 	}
 }
+
+func TestAlwaysDeniedCIDRs(t *testing.T) {
+	tests := []struct {
+		name string
+		ip   string
+		want bool
+	}{
+		// IPs in denied CIDRs (internal/private ranges)
+		{"10.0.0.1 is denied", "10.0.0.1", true},
+		{"10.255.255.255 is denied", "10.255.255.255", true},
+		{"192.168.1.1 is denied", "192.168.1.1", true},
+		{"172.16.0.1 is denied", "172.16.0.1", true},
+		{"172.31.255.255 is denied", "172.31.255.255", true},
+		{"169.254.1.1 is denied (link-local)", "169.254.1.1", true},
+		{"127.0.0.1 is denied (loopback)", "127.0.0.1", true},
+
+		// IPs NOT in denied CIDRs (public IPs)
+		{"8.8.8.8 is allowed (Google DNS)", "8.8.8.8", false},
+		{"1.1.1.1 is allowed (Cloudflare)", "1.1.1.1", false},
+		{"142.250.80.46 is allowed (Google)", "142.250.80.46", false},
+
+		// IPv6 denied ranges
+		{"::1 is denied (IPv6 loopback)", "::1", true},
+		{"fc00::1 is denied (IPv6 unique local)", "fc00::1", true},
+		{"fe80::1 is denied (IPv6 link-local)", "fe80::1", true},
+
+		// IPv6 allowed (public)
+		{"2001:4860:4860::8888 is allowed (Google IPv6 DNS)", "2001:4860:4860::8888", false},
+
+		// Edge cases around CIDR boundaries
+		{"172.15.255.255 is allowed (just before 172.16.0.0/12)", "172.15.255.255", false},
+		{"172.32.0.0 is allowed (just after 172.16.0.0/12)", "172.32.0.0", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ip := net.ParseIP(tt.ip)
+			if ip == nil {
+				t.Fatalf("Failed to parse IP: %s", tt.ip)
+			}
+
+			got := isIPInAlwaysDeniedCIDRs(ip)
+			if got != tt.want {
+				t.Errorf("isIPInDeniedCIDRs(%s) = %v, want %v", tt.ip, got, tt.want)
+			}
+		})
+	}
+}
