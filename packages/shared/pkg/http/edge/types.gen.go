@@ -271,7 +271,7 @@ type V1SandboxLogsParams struct {
 	// Limit Maximum number of logs that should be returned
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Direction Direction of the logs that should be returned. Defaults to backward
+	// Direction Direction of the logs that should be returned. Defaults to forward
 	Direction *V1SandboxLogsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
 }
 

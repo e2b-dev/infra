@@ -529,7 +529,7 @@ paths:
             enum:
               - forward
               - backward
-          description: Direction of the logs that should be returned. Defaults to backward
+          description: Direction of the logs that should be returned. Defaults to forward 
       responses:
         "200":
           description: Successfully returned the sandbox logs
