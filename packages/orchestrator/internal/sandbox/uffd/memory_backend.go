@@ -13,4 +13,6 @@ type MemoryBackend interface {
 	Stop() error
 	Ready() chan struct{}
 	Exit() *utils.ErrorOnce
+	// GetPageFaultTrace returns a map of timestamp (unix nano) to offset for all page faults.
+	GetPageFaultTrace() map[int64]int64
 }

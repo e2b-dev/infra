@@ -75,3 +75,8 @@ func (m *NoopMemory) Ready() chan struct{} {
 func (m *NoopMemory) Exit() *utils.ErrorOnce {
 	return m.exit
 }
+
+// GetPageFaultTrace returns an empty map as NoopMemory doesn't track page faults.
+func (m *NoopMemory) GetPageFaultTrace() map[int64]int64 {
+	return make(map[int64]int64)
+}

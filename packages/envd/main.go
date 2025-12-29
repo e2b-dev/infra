@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
-	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
@@ -227,14 +226,14 @@ func main() {
 	}
 
 	// Bind all open ports on 127.0.0.1 and localhost to the eth0 interface
-	portScanner := publicport.NewScanner(portScannerInterval)
-	defer portScanner.Destroy()
+	// portScanner := publicport.NewScanner(portScannerInterval)
+	// defer portScanner.Destroy()
 
-	portLogger := l.With().Str("logger", "port-forwarder").Logger()
-	portForwarder := publicport.NewForwarder(&portLogger, portScanner, cgroupManager)
-	go portForwarder.StartForwarding(ctx)
+	// portLogger := l.With().Str("logger", "port-forwarder").Logger()
+	// portForwarder := publicport.NewForwarder(&portLogger, portScanner, cgroupManager)
+	// go portForwarder.StartForwarding(ctx)
 
-	go portScanner.ScanAndBroadcast()
+	// go portScanner.ScanAndBroadcast()
 
 	err := s.ListenAndServe()
 	if err != nil {

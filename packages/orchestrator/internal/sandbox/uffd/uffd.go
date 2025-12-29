@@ -90,6 +90,9 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 }
 
 func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
+	ctx, span := tracer.Start(ctx, "handle uffd")
+	defer span.End()
+
 	err := u.lis.SetDeadline(time.Now().Add(uffdMsgListenerTimeout))
 	if err != nil {
 		return fmt.Errorf("failed setting listener deadline: %w", err)
@@ -181,6 +184,15 @@ func (u *Uffd) Ready() chan struct{} {
 
 func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
+}
+
+// GetPageFaultTrace returns a map of timestamp (unix nano) to offset for all page faults.
+func (u *Uffd) GetPageFaultTrace() map[int64]int64 {
+	handler, err := u.handler.Result()
+	if err != nil {
+		return make(map[int64]int64)
+	}
+	return handler.GetPageFaultTrace()
 }
 
 // DiffMetadata waits for the current requests to finish and returns the dirty pages.

@@ -98,7 +98,10 @@ func (d *Dispatch) Drain() {
  * Write a response...
  *
  */
-func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []byte) error {
+func (d *Dispatch) writeResponse(ctx context.Context, respError uint32, respHandle uint64, chunk []byte) error {
+	ctx, span := tracer.Start(ctx, "write response")
+	defer span.End()
+
 	d.writeLock.Lock()
 	defer d.writeLock.Unlock()
 
@@ -124,6 +127,9 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  *
  */
 func (d *Dispatch) Handle(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "handle nbd-dispatch")
+	defer span.End()
+
 	buffer := make([]byte, dispatchBufferSize)
 	wp := 0
 
@@ -216,7 +222,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				}
 			case NBDCmdTrim:
 				rp += 28
-				err := d.cmdTrim(request.Handle, request.From, request.Length)
+				err := d.cmdTrim(ctx, request.Handle, request.From, request.Length)
 				if err != nil {
 					return err
 				}
@@ -233,6 +239,8 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 }
 
 func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
+	ctx, span := tracer.Start(ctx, "dispatch read")
+
 	d.shuttingDownLock.Lock()
 	if d.shuttingDown {
 		d.shuttingDownLock.Unlock()
@@ -249,6 +257,9 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		data := make([]byte, length)
 
 		go func() {
+			ctx, span := tracer.Start(ctx, "read provider")
+			defer span.End()
+
 			_, err := d.prov.ReadAt(ctx, data, int64(from))
 			errchan <- err
 		}()
@@ -256,18 +267,20 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		// Wait until either the ReadAt completed, or our context is cancelled...
 		select {
 		case <-ctx.Done():
-			return d.writeResponse(1, handle, []byte{})
+			return d.writeResponse(ctx, 1, handle, []byte{})
 		case err := <-errchan:
 			if err != nil {
-				return d.writeResponse(1, handle, []byte{})
+				return d.writeResponse(ctx, 1, handle, []byte{})
 			}
 		}
 
 		// read was successful
-		return d.writeResponse(0, handle, data)
+		return d.writeResponse(ctx, 0, handle, data)
 	}
 
 	go func() {
+		defer span.End()
+
 		err := performRead(cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
 			select {
@@ -283,6 +296,8 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 }
 
 func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+	ctx, span := tracer.Start(ctx, "dispatch write")
+
 	d.shuttingDownLock.Lock()
 	if d.shuttingDown {
 		d.shuttingDownLock.Unlock()
@@ -297,6 +312,9 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
+			_, span := tracer.Start(ctx, "write provider")
+			defer span.End()
+
 			_, err := d.prov.WriteAt(data, int64(from))
 			errchan <- err
 		}()
@@ -304,18 +322,20 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		// Wait until either the WriteAt completed, or our context is cancelled...
 		select {
 		case <-ctx.Done():
-			return d.writeResponse(1, handle, []byte{})
+			return d.writeResponse(ctx, 1, handle, []byte{})
 		case err := <-errchan:
 			if err != nil {
-				return d.writeResponse(1, handle, []byte{})
+				return d.writeResponse(ctx, 1, handle, []byte{})
 			}
 		}
 
 		// write was successful
-		return d.writeResponse(0, handle, []byte{})
+		return d.writeResponse(ctx, 0, handle, []byte{})
 	}
 
 	go func() {
+		defer span.End()
+
 		err := performWrite(cmdHandle, cmdFrom, cmdData)
 		if err != nil {
 			select {
@@ -334,7 +354,10 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
  * cmdTrim
  *
  */
-func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
+func (d *Dispatch) cmdTrim(ctx context.Context, handle uint64, _ uint64, _ uint32) error {
+	ctx, span := tracer.Start(ctx, "dispatch trim")
+	defer span.End()
+
 	// TODO: Ask the provider
 	/*
 		e := d.prov.Trim(from, length)
@@ -345,7 +368,7 @@ func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
 			}
 		} else {
 	*/
-	err := d.writeResponse(0, handle, []byte{})
+	err := d.writeResponse(ctx, 0, handle, []byte{})
 	if err != nil {
 		return err
 	}

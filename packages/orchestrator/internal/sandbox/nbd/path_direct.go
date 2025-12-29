@@ -15,6 +15,8 @@ import (
 
 	"github.com/Merovius/nbd/nbdnl"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -59,6 +61,9 @@ func NewDirectPathMount(b block.Device, devicePool *DevicePool) *DirectPathMount
 }
 
 func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err error) {
+	ctx, span := tracer.Start(ctx, "open direct-path-mount")
+	defer span.End()
+
 	ctx, d.cancelfn = context.WithCancel(ctx)
 
 	defer func() {
@@ -108,6 +113,11 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			dispatch := NewDispatch(serverc, d.Backend)
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Go(func() {
+				ctx, span := tracer.Start(ctx, "go nbd-dispatch", trace.WithAttributes(
+					attribute.Int("socket_index", i),
+				))
+				defer span.End()
+
 				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
 				logger.L().Info(ctx, "closing handler for NBD commands",

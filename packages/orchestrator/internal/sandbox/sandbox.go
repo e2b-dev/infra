@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -578,7 +579,22 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	telemetry.ReportEvent(execCtx, "envd initialized")
+	// Get page fault trace and log it
+	pageFaultTrace := fcUffd.GetPageFaultTrace()
+	pageFaultTraceJSON, jsonErr := json.Marshal(pageFaultTrace)
+	if jsonErr != nil {
+		pageFaultTraceJSON = []byte("{}")
+	}
+
+	// Log the full page fault trace as JSON (logs have higher size limits than span attributes)
+	logger.L().Info(execCtx, "page fault trace",
+		zap.String("page_fault_trace", string(pageFaultTraceJSON)),
+		zap.Int("page_fault_count", len(pageFaultTrace)),
+	)
+
+	telemetry.ReportEvent(execCtx, "envd initialized",
+		attribute.Int("page_fault_count", len(pageFaultTrace)),
+	)
 
 	go sbx.Checks.Start(execCtx)
 
