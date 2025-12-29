@@ -169,7 +169,7 @@ module "build_cluster" {
   boot_disk        = each.value.boot_disk
   autoscaler       = each.value.autoscaler
 
-  cluster_name              = "${var.prefix}orch-build"
+  cluster_name              = "${var.prefix}${var.build_cluster_name}-${split("-", each.value.machine.type)[0]}"
   image_family              = var.build_image_family
   network_name              = var.network_name
   base_hugepages_percentage = var.build_base_hugepages_percentage

@@ -131,6 +131,11 @@ variable "client_clusters_config" {
   }))
 }
 
+variable "build_cluster_name" {
+  type    = string
+  default = "orch-build"
+}
+
 variable "build_clusters_config" {
   description = "Build cluster configuration object"
   type = list(object({
