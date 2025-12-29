@@ -139,12 +139,12 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 				return nil, fmt.Errorf("could not extract IP from remote address: %w", err)
 			}
 
-			if isIPInDeniedCIDRs(connectedIP) {
+			if isIPInAlwaysDeniedCIDRs(connectedIP) {
 				upstreamConn.Close()
 				logger.Warn(ctx, "Blocked connection to internal IP via hostname",
 					zap.String("upstream_addr", addr),
 					zap.String("connected_ip", connectedIP.String()))
-				metrics.RecordError(ctx, ErrorTypeDNSMismatch, protocol)
+				metrics.RecordError(ctx, ErrorTypeResolvedIPBlocked, protocol)
 
 				return nil, fmt.Errorf("hostname resolved to internal IP %s", connectedIP)
 			}
@@ -255,8 +255,8 @@ func extractIPFromAddr(addr net.Addr) (net.IP, error) {
 	}
 }
 
-// isIPInDeniedCIDRs checks if an IP is within the denied sandbox CIDRs (internal/private ranges).
-func isIPInDeniedCIDRs(ip net.IP) bool {
+// isIPInAlwaysDeniedCIDRs checks if an IP is within the denied sandbox CIDRs (internal/private ranges).
+func isIPInAlwaysDeniedCIDRs(ip net.IP) bool {
 	for _, cidr := range sandbox_network.DeniedSandboxCIDRs {
 		_, ipNet, err := net.ParseCIDR(cidr)
 		if err != nil {

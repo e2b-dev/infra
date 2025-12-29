@@ -409,7 +409,7 @@ func TestIsEgressAllowed(t *testing.T) {
 	}
 }
 
-func TestIsIPInDeniedCIDRs(t *testing.T) {
+func TestAlwaysDeniedCIDRs(t *testing.T) {
 	tests := []struct {
 		name string
 		ip   string
@@ -449,7 +449,7 @@ func TestIsIPInDeniedCIDRs(t *testing.T) {
 				t.Fatalf("Failed to parse IP: %s", tt.ip)
 			}
 
-			got := isIPInDeniedCIDRs(ip)
+			got := isIPInAlwaysDeniedCIDRs(ip)
 			if got != tt.want {
 				t.Errorf("isIPInDeniedCIDRs(%s) = %v, want %v", tt.ip, got, tt.want)
 			}

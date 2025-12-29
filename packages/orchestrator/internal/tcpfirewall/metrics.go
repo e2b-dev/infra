@@ -42,12 +42,12 @@ const (
 type ErrorType string
 
 const (
-	ErrorTypeOrigDst        ErrorType = "original_dst"
-	ErrorTypeSandboxLookup  ErrorType = "sandbox_lookup"
-	ErrorTypeEgressCheck    ErrorType = "egress_check"
-	ErrorTypeUpstreamDial   ErrorType = "upstream_dial"
-	ErrorTypeConnectionMeta ErrorType = "connection_meta"
-	ErrorTypeDNSMismatch    ErrorType = "dns_mismatch"
+	ErrorTypeOrigDst           ErrorType = "original_dst"
+	ErrorTypeSandboxLookup     ErrorType = "sandbox_lookup"
+	ErrorTypeEgressCheck       ErrorType = "egress_check"
+	ErrorTypeUpstreamDial      ErrorType = "upstream_dial"
+	ErrorTypeConnectionMeta    ErrorType = "connection_meta"
+	ErrorTypeResolvedIPBlocked ErrorType = "resolved_ip_blocked"
 )
 
 // Metrics holds all TCP firewall metrics.
