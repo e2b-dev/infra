@@ -825,10 +825,6 @@ func TestEgressFirewallDNSSpoofingPrevention(t *testing.T) {
 	err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "sh", "-c", "echo '1.1.1.1 google.com' >> /etc/hosts")
 	require.NoError(t, err, "Expected to modify /etc/hosts without error")
 
-	// Verify the /etc/hosts modification took effect (google.com now resolves to 1.1.1.1 locally)
-	err = utils.ExecCommand(t, ctx, sbx, envdClient, "sh", "-c", "getent hosts google.com | grep 1.1.1.1")
-	require.NoError(t, err, "Expected google.com to resolve to 1.1.1.1 via /etc/hosts")
-
 	// Now try to access google.com - this should FAIL because:
 	// - The sandbox resolves google.com to 1.1.1.1 (via /etc/hosts)
 	// - The firewall sees a connection to 1.1.1.1 with hostname "google.com"

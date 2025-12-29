@@ -25,6 +25,13 @@ const (
 	noHostnameValue = ""
 )
 
+// dnsResolver uses CGO's getaddrinfo which respects the system's DNS cache
+// (e.g., systemd-resolved, nscd). This provides caching and uses the host's
+// configured DNS infrastructure rather than Go's pure resolver.
+var dnsResolver = &net.Resolver{
+	PreferGo: false,
+}
+
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
 func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
 	// Get hostname from tcpproxy's wrapped connection
@@ -194,11 +201,12 @@ func verifyHostnameResolvesToIP(ctx context.Context, logger logger.Logger, hostn
 	lookupCtx, cancel := context.WithTimeout(ctx, dnsLookupTimeout)
 	defer cancel()
 
-	// Resolve the hostname to IP addresses
-	ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, hostname)
+	// Resolve the hostname to IP addresses using the system resolver (with caching)
+	ips, err := dnsResolver.LookupIPAddr(lookupCtx, hostname)
 	if err != nil {
 		// DNS lookup failed - could be network issue or non-existent domain
 		logger.Warn(ctx, "DNS lookup failed", zap.Error(err), zap.String("hostname", hostname), zap.String("expected_ip", expectedIP.String()))
+
 		return false
 	}
 
