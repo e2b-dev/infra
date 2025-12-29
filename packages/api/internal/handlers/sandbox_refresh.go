@@ -52,7 +52,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 	}
 
 	if sandboxData.TeamID != team.ID {
-		a.sendAPIStoreError(c, http.StatusForbidden, "Sandbox is not owned by this team")
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
 
 		return
 	}

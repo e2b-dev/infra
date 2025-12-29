@@ -59,7 +59,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 	if err == nil {
 		if sandboxData.TeamID != teamInfo.Team.ID {
-			a.sendAPIStoreError(c, http.StatusForbidden, "Sandbox is not owned by this team")
+			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
 
 			return
 		}
