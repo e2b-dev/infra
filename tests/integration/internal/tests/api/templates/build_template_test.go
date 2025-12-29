@@ -877,46 +877,35 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 	// Test that packages installed by provision.sh are available during template build
 	// These packages are: systemd, systemd-sysv, openssh-server, sudo, chrony, linuxptp,
 	// socat, curl, ca-certificates, fuse3, and mount-s3
-	testCases := []struct {
-		name         string
-		templateName string
-		buildConfig  api.TemplateBuildStartV2
-	}{
-		{
-			name:         "Verify installed packages are available during build",
-			templateName: "test-ubuntu-packages-available",
-			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type: "RUN",
-						Args: utils.ToPtr([]string{
-							// Verify packages are installed via dpkg-query
-							"dpkg-query -W -f='${Status}' systemd | grep -q 'install ok installed' || exit 1",
-							"dpkg-query -W -f='${Status}' systemd-sysv | grep -q 'install ok installed' || exit 2",
-							"dpkg-query -W -f='${Status}' openssh-server | grep -q 'install ok installed' || exit 3",
-							"dpkg-query -W -f='${Status}' sudo | grep -q 'install ok installed' || exit 4",
-							"dpkg-query -W -f='${Status}' chrony | grep -q 'install ok installed' || exit 5",
-							"dpkg-query -W -f='${Status}' linuxptp | grep -q 'install ok installed' || exit 6",
-							"dpkg-query -W -f='${Status}' socat | grep -q 'install ok installed' || exit 7",
-							"dpkg-query -W -f='${Status}' curl | grep -q 'install ok installed' || exit 8",
-							"dpkg-query -W -f='${Status}' ca-certificates | grep -q 'install ok installed' || exit 9",
-							"dpkg-query -W -f='${Status}' fuse3 | grep -q 'install ok installed' || exit 10",
-							"dpkg-query -W -f='${Status}' mount-s3 | grep -q 'install ok installed' || exit 11",
-							"echo 'All required packages are installed'",
-						}),
-					},
-				}),
-			},
-		},
+	packages := []string{
+		"systemd",
+		"systemd-sysv",
+		"openssh-server",
+		"sudo",
+		"chrony",
+		"linuxptp",
+		"socat",
+		"curl",
+		"ca-certificates",
+		"fuse3",
+		"mount-s3",
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			assert.True(t, buildTemplate(t, tc.templateName, tc.buildConfig, defaultBuildLogHandler(t)))
+	steps := make([]api.TemplateStep, 0, len(packages))
+	for _, pkg := range packages {
+		steps = append(steps, api.TemplateStep{
+			Type: "RUN",
+			Args: utils.ToPtr([]string{
+				"dpkg-query -W -f='${Status}' " + pkg + " | grep -q 'install ok installed'",
+			}),
 		})
 	}
+
+	buildConfig := api.TemplateBuildStartV2{
+		Force:     utils.ToPtr(ForceBaseBuild),
+		FromImage: utils.ToPtr("ubuntu:22.04"),
+		Steps:     utils.ToPtr(steps),
+	}
+
+	assert.True(t, buildTemplate(t, "test-ubuntu-packages-available", buildConfig, defaultBuildLogHandler(t)))
 }
