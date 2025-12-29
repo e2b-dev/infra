@@ -875,8 +875,6 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 	t.Parallel()
 
 	// Test that packages installed by provision.sh are available during template build
-	// These packages are: systemd, systemd-sysv, openssh-server, sudo, chrony, linuxptp,
-	// socat, curl, ca-certificates, fuse3, and mount-s3
 	packages := []string{
 		"systemd",
 		"systemd-sysv",
