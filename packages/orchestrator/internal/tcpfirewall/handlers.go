@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -106,50 +107,53 @@ func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Met
 }
 
 // proxyWithIPVerification dials the upstream hostname using Go's net.Dialer (which provides
-// built-in Happy Eyeballs / RFC 8305 for multi-IP fallback), then verifies the connected IP
-// is not internal/private before proxying. This prevents DNS rebinding attacks while
+// built-in Happy Eyeballs / RFC 8305 for multi-IP fallback), and verifies the resolved IP
+// is not internal/private BEFORE connecting. This prevents DNS rebinding attacks while
 // preserving multi-IP reliability.
+//
+// The ControlContext callback is called after DNS resolution but before the TCP connect()
+// syscall, so no TCP handshake occurs to internal IPs.
 func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr string, logger logger.Logger, metrics *Metrics, protocol Protocol) {
 	tracker := metrics.TrackConnection(protocol)
 	defer tracker.Close(ctx)
 
-	// Use tcpproxy.DialProxy with a custom DialContext that verifies the connected IP
+	// Use tcpproxy.DialProxy with a custom DialContext that verifies resolved IPs
 	dp := &tcpproxy.DialProxy{
 		Addr:        upstreamAddr,
 		DialTimeout: upstreamDialTimeout,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		DialContext: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
 			// Use Go's net.Dialer which has built-in Happy Eyeballs (RFC 8305)
 			// This automatically tries multiple IPs with proper fallback
 			dialer := &net.Dialer{
 				Timeout: upstreamDialTimeout,
-				// FallbackDelay controls Happy Eyeballs delay (default 300ms is good)
+				// ControlContext is called after DNS resolution but BEFORE the TCP connect() syscall.
+				// The 'address' parameter contains the resolved IP:port, allowing us to block
+				// connections to internal IPs before any TCP handshake occurs.
+				ControlContext: func(_ context.Context, _, address string, _ syscall.RawConn) error {
+					host, _, err := net.SplitHostPort(address)
+					if err != nil {
+						return fmt.Errorf("failed to parse resolved address %q: %w", address, err)
+					}
+
+					resolvedIP := net.ParseIP(host)
+					if resolvedIP == nil {
+						return fmt.Errorf("failed to parse IP from resolved address %q", host)
+					}
+
+					if isIPInAlwaysDeniedCIDRs(resolvedIP) {
+						logger.Warn(ctx, "Blocked connection to internal IP via hostname",
+							zap.String("upstream_addr", addr),
+							zap.String("resolved_ip", resolvedIP.String()))
+						metrics.RecordError(ctx, ErrorTypeResolvedIPBlocked, protocol)
+
+						return fmt.Errorf("hostname resolved to internal IP %s", resolvedIP)
+					}
+
+					return nil
+				},
 			}
 
-			upstreamConn, err := dialer.DialContext(ctx, network, addr)
-			if err != nil {
-				return nil, err
-			}
-
-			// Verify the connected IP is not internal/private (DNS rebinding protection)
-			connectedIP, err := extractIPFromAddr(upstreamConn.RemoteAddr())
-			if err != nil {
-				// Fail closed: if we can't verify the IP, reject the connection
-				upstreamConn.Close()
-
-				return nil, fmt.Errorf("could not extract IP from remote address: %w", err)
-			}
-
-			if isIPInAlwaysDeniedCIDRs(connectedIP) {
-				upstreamConn.Close()
-				logger.Warn(ctx, "Blocked connection to internal IP via hostname",
-					zap.String("upstream_addr", addr),
-					zap.String("connected_ip", connectedIP.String()))
-				metrics.RecordError(ctx, ErrorTypeResolvedIPBlocked, protocol)
-
-				return nil, fmt.Errorf("hostname resolved to internal IP %s", connectedIP)
-			}
-
-			return upstreamConn, nil
+			return dialer.DialContext(dialCtx, network, addr)
 		},
 	}
 	dp.HandleConn(conn)
@@ -230,29 +234,6 @@ func matchDomain(hostname, pattern string) bool {
 	}
 
 	return false
-}
-
-// extractIPFromAddr extracts the IP address from a net.Addr.
-// Works with *net.TCPAddr, *net.UDPAddr, and falls back to string parsing.
-func extractIPFromAddr(addr net.Addr) (net.IP, error) {
-	switch a := addr.(type) {
-	case *net.TCPAddr:
-		return a.IP, nil
-	case *net.UDPAddr:
-		return a.IP, nil
-	default:
-		// Fallback: try to parse the string representation "ip:port" or "[ipv6]:port"
-		host, _, err := net.SplitHostPort(addr.String())
-		if err != nil {
-			return nil, fmt.Errorf("failed to split host:port from %q: %w", addr.String(), err)
-		}
-		ip := net.ParseIP(host)
-		if ip == nil {
-			return nil, fmt.Errorf("failed to parse IP from %q", host)
-		}
-
-		return ip, nil
-	}
 }
 
 // isIPInAlwaysDeniedCIDRs checks if an IP is within the denied sandbox CIDRs (internal/private ranges).
