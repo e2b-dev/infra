@@ -793,3 +793,52 @@ func TestEgressFirewallUDPAllowedCIDR(t *testing.T) {
 	assertSuccessfulDNSQuery(t, ctx, sbx, envdClient, "8.8.8.8", "google.com", "Expected DNS query (UDP) to IP within allowed CIDR (8.8.8.0/24) to succeed")
 	assertBlockedDNSQuery(t, ctx, sbx, envdClient, "1.1.1.1", "google.com", "Expected DNS query (UDP) to IP outside allowed CIDR to fail")
 }
+
+// TestEgressFirewallDNSSpoofingPrevention tests that DNS spoofing attacks are prevented.
+// This simulates an attack where:
+// 1. The firewall allows traffic to "google.com"
+// 2. An attacker modifies /etc/hosts to make google.com resolve to 1.1.1.1 (Cloudflare's IP)
+// 3. The attacker tries to access 1.1.1.1 claiming the hostname is "google.com"
+// 4. The firewall should REJECT this because real DNS lookup shows google.com != 1.1.1.1
+func TestEgressFirewallDNSSpoofingPrevention(t *testing.T) {
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			// Block all internet but allow google.com domain
+			AllowOut: &[]string{"google.com"},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// First, verify normal access to google.com works
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed before DNS spoofing")
+
+	// Now simulate DNS spoofing by adding an /etc/hosts entry that maps google.com to 1.1.1.1 (Cloudflare's IP)
+	// This simulates what would happen if an attacker modified DNS resolution
+	err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "sh", "-c", "echo '1.1.1.1 google.com' >> /etc/hosts")
+	require.NoError(t, err, "Expected to modify /etc/hosts without error")
+
+	// Verify the /etc/hosts modification took effect (google.com now resolves to 1.1.1.1 locally)
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "sh", "-c", "getent hosts google.com | grep 1.1.1.1")
+	require.NoError(t, err, "Expected google.com to resolve to 1.1.1.1 via /etc/hosts")
+
+	// Now try to access google.com - this should FAIL because:
+	// - The sandbox resolves google.com to 1.1.1.1 (via /etc/hosts)
+	// - The firewall sees a connection to 1.1.1.1 with hostname "google.com"
+	// - The firewall's DNS verification checks if google.com actually resolves to 1.1.1.1
+	// - Since google.com doesn't resolve to 1.1.1.1, the connection is blocked
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://google.com",
+		"Expected curl to google.com to FAIL after DNS spoofing (firewall detects hostname doesn't resolve to destination IP)")
+
+	t.Log("SUCCESS: DNS spoofing attack prevented")
+	t.Log("  - google.com was allowed in the firewall rules")
+	t.Log("  - /etc/hosts was modified to make google.com resolve to 1.1.1.1")
+	t.Log("  - Firewall blocked the connection because real DNS shows google.com != 1.1.1.1")
+}

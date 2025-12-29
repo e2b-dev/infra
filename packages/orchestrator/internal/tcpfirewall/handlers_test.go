@@ -1,11 +1,17 @@
 package tcpfirewall
 
 import (
+	"context"
 	"net"
 	"testing"
+	"time"
+
+	"go.opentelemetry.io/otel/metric/noop"
+	"inet.af/tcpproxy"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
@@ -407,4 +413,111 @@ func TestIsEgressAllowed(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestVerifyHostnameResolvesToIP(t *testing.T) {
+	ctx := context.Background()
+	nopLogger := logger.NewNopLogger()
+
+	tests := []struct {
+		name       string
+		hostname   string
+		expectedIP net.IP
+		want       bool
+	}{
+		// Localhost tests - should work consistently
+		{
+			name:       "localhost resolves to 127.0.0.1",
+			hostname:   "localhost",
+			expectedIP: net.ParseIP("127.0.0.1"),
+			want:       true,
+		},
+		{
+			name:       "localhost does not resolve to random IP",
+			hostname:   "localhost",
+			expectedIP: net.ParseIP("8.8.8.8"),
+			want:       false,
+		},
+
+		// Invalid hostname tests
+		{
+			name:       "non-existent domain fails lookup",
+			hostname:   "this-domain-definitely-does-not-exist-12345.invalid",
+			expectedIP: net.ParseIP("1.2.3.4"),
+			want:       false,
+		},
+		{
+			name:       "empty hostname fails lookup",
+			hostname:   "",
+			expectedIP: net.ParseIP("1.2.3.4"),
+			want:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := verifyHostnameResolvesToIP(ctx, nopLogger, tt.hostname, tt.expectedIP)
+			if got != tt.want {
+				t.Errorf("verifyHostnameResolvesToIP(%q, %v) = %v, want %v",
+					tt.hostname, tt.expectedIP, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDNSSpoofingPrevention_Integration tests the full DNS spoofing prevention flow.
+// This simulates an attack where:
+// 1. The firewall allows traffic to "google.com"
+// 2. An attacker modifies /etc/hosts (or uses other DNS spoofing) to make google.com resolve to 1.1.1.1
+// 3. The attacker connects to 1.1.1.1 claiming the hostname is "google.com"
+// 4. The firewall should REJECT this because real DNS lookup shows google.com != 1.1.1.1
+func TestDNSSpoofingPrevention_Integration(t *testing.T) {
+	ctx := t.Context()
+	nopLogger := logger.NewNopLogger()
+	metrics := NewMetrics(noop.NewMeterProvider())
+
+	// Scenario: Attacker spoofed DNS to make google.com point to 1.1.1.1 (Cloudflare's IP)
+	// The client connects to 1.1.1.1 but claims hostname is "google.com"
+	spoofedIP := net.ParseIP("1.1.1.1")
+	claimedHostname := "google.com"
+
+	// Create a sandbox with google.com in the allowlist
+	sbx := &sandbox.Sandbox{
+		Metadata: &sandbox.Metadata{
+			Config: sandbox.Config{
+				Network: &orchestrator.SandboxNetworkConfig{
+					Egress: &orchestrator.SandboxNetworkEgressConfig{
+						AllowedDomains: []string{"google.com"},
+						DeniedCidrs:    []string{sandbox_network.AllInternetTrafficCIDR}, // Deny all except allowed
+					},
+				},
+			},
+		},
+	}
+
+	// Create a mock connection using net.Pipe, wrapped in tcpproxy.Conn with the spoofed hostname
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+
+	// Wrap in tcpproxy.Conn to provide the hostname (simulating TLS SNI or HTTP Host header)
+	tcpConn := &tcpproxy.Conn{
+		HostName: claimedHostname,
+		Conn:     serverConn,
+	}
+
+	// Call domainHandler directly - this should close the connection due to DNS mismatch
+	domainHandler(ctx, tcpConn, spoofedIP, 443, sbx, nopLogger, metrics, ProtocolTLS)
+
+	// Verify the connection was closed by trying to write to it
+	// Set a short deadline to avoid hanging
+	clientConn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+	_, err := clientConn.Write([]byte("test"))
+
+	if err == nil {
+		t.Errorf("Expected connection to be closed due to DNS spoofing, but write succeeded")
+	}
+
+	t.Log("SUCCESS: DNS spoofing attack prevented via domainHandler")
+	t.Log("  - Attacker connected to 1.1.1.1 claiming hostname google.com")
+	t.Log("  - domainHandler detected DNS mismatch and closed the connection")
 }

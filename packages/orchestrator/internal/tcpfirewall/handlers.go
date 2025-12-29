@@ -19,6 +19,9 @@ const (
 	// This prevents goroutine leaks from slow/unresponsive DNS or connections.
 	upstreamDialTimeout = 30 * time.Second
 
+	// dnsLookupTimeout is the maximum time to wait for DNS resolution.
+	dnsLookupTimeout = 5 * time.Second
+
 	noHostnameValue = ""
 )
 
@@ -49,13 +52,22 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
 
-	// We can't trust the client resolved the hostname correctly (can be spoofed), so we proxy to the hostname (if provided)
-	dstIPOrHostname := dstIP.String()
-	if hostname != noHostnameValue {
-		dstIPOrHostname = hostname
-	}
-	upstreamAddr := net.JoinHostPort(dstIPOrHostname, fmt.Sprintf("%d", dstPort))
+	// When allowed by domain match, verify hostname resolves to dstIP to prevent DNS spoofing attacks.
+	// A malicious client could claim a hostname that doesn't resolve to the IP they're connecting to.
+	// Once verified, we use the dstIP directly (avoids another DNS lookup for the upstream connection).
+	if matchType == MatchTypeDomain {
+		if !verifyHostnameResolvesToIP(ctx, logger, hostname, dstIP) {
+			logger.Warn(ctx, "Hostname does not resolve to the same destination IP",
+				zap.String("hostname", hostname),
+				zap.String("dst_ip", dstIP.String()))
+			metrics.RecordError(ctx, ErrorTypeDNSMismatch, protocol)
+			conn.Close()
 
+			return
+		}
+	}
+
+	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
 	proxy(ctx, conn, upstreamAddr, metrics, protocol)
 }
 
@@ -167,6 +179,32 @@ func matchDomain(hostname, pattern string) bool {
 	case strings.HasPrefix(pattern, "*."):
 		suffix := pattern[1:]
 		if strings.HasSuffix(strings.ToLower(hostname), strings.ToLower(suffix)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// verifyHostnameResolvesToIP checks if the hostname resolves to the given IP address.
+// This prevents DNS spoofing attacks where a client claims a hostname that doesn't
+// actually resolve to the IP they're connecting to.
+func verifyHostnameResolvesToIP(ctx context.Context, logger logger.Logger, hostname string, expectedIP net.IP) bool {
+	// Create a context with timeout for DNS lookup
+	lookupCtx, cancel := context.WithTimeout(ctx, dnsLookupTimeout)
+	defer cancel()
+
+	// Resolve the hostname to IP addresses
+	ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, hostname)
+	if err != nil {
+		// DNS lookup failed - could be network issue or non-existent domain
+		logger.Warn(ctx, "DNS lookup failed", zap.Error(err), zap.String("hostname", hostname), zap.String("expected_ip", expectedIP.String()))
+		return false
+	}
+
+	// Check if any resolved IP matches the expected IP
+	for _, ip := range ips {
+		if ip.IP.Equal(expectedIP) {
 			return true
 		}
 	}

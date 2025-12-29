@@ -47,6 +47,7 @@ const (
 	ErrorTypeEgressCheck    ErrorType = "egress_check"
 	ErrorTypeUpstreamDial   ErrorType = "upstream_dial"
 	ErrorTypeConnectionMeta ErrorType = "connection_meta"
+	ErrorTypeDNSMismatch    ErrorType = "dns_mismatch"
 )
 
 // Metrics holds all TCP firewall metrics.
