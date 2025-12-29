@@ -422,12 +422,12 @@ func TestResolveHostnameToPublicIP(t *testing.T) {
 		wantErr   bool
 		errSubstr string
 	}{
-		// Localhost resolves to 127.0.0.1 which is NOT in DeniedSandboxCIDRs
-		// (DeniedSandboxCIDRs are 10.0.0.0/8, 169.254.0.0/16, 192.168.0.0/16, 172.16.0.0/12)
+		// Localhost resolves to 127.0.0.1 which is in DeniedSandboxCIDRs (127.0.0.0/8)
 		{
-			name:     "localhost resolves to loopback (allowed - not in denied CIDRs)",
-			hostname: "localhost",
-			wantErr:  false,
+			name:      "localhost resolves to loopback (denied - in denied CIDRs)",
+			hostname:  "localhost",
+			wantErr:   true,
+			errSubstr: "only resolves to internal IPs",
 		},
 
 		// Invalid hostname tests
@@ -490,7 +490,15 @@ func TestIsIPInDeniedCIDRs(t *testing.T) {
 		{"8.8.8.8 is allowed (Google DNS)", "8.8.8.8", false},
 		{"1.1.1.1 is allowed (Cloudflare)", "1.1.1.1", false},
 		{"142.250.80.46 is allowed (Google)", "142.250.80.46", false},
-		{"127.0.0.1 is allowed (loopback - not in denied list)", "127.0.0.1", false},
+		{"127.0.0.1 is denied (loopback)", "127.0.0.1", true},
+
+		// IPv6 denied ranges
+		{"::1 is denied (IPv6 loopback)", "::1", true},
+		{"fc00::1 is denied (IPv6 unique local)", "fc00::1", true},
+		{"fe80::1 is denied (IPv6 link-local)", "fe80::1", true},
+
+		// IPv6 allowed (public)
+		{"2001:4860:4860::8888 is allowed (Google IPv6 DNS)", "2001:4860:4860::8888", false},
 
 		// Edge cases around CIDR boundaries
 		{"172.15.255.255 is allowed (just before 172.16.0.0/12)", "172.15.255.255", false},
