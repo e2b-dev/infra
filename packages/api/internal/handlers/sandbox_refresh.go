@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -19,6 +21,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 ) {
 	ctx := c.Request.Context()
 	sandboxID = utils.ShortID(sandboxID)
+	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	var duration time.Duration
 
@@ -39,6 +42,19 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 
 	if duration < sandbox.SandboxTimeoutDefault {
 		duration = sandbox.SandboxTimeoutDefault
+	}
+
+	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found")
+
+		return
+	}
+
+	if sandboxData.TeamID != team.ID {
+		a.sendAPIStoreError(c, http.StatusForbidden, "Sandbox is not owned by this team")
+
+		return
 	}
 
 	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, false)

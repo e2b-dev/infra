@@ -8,6 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -18,6 +20,8 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 ) {
 	ctx := c.Request.Context()
 	sandboxID = utils.ShortID(sandboxID)
+
+	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	var duration time.Duration
 
@@ -34,6 +38,19 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 		duration = 0
 	} else {
 		duration = time.Duration(body.Timeout) * time.Second
+	}
+
+	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found")
+
+		return
+	}
+
+	if sandboxData.TeamID != team.ID {
+		a.sendAPIStoreError(c, http.StatusForbidden, "Sandbox is not owned by this team")
+
+		return
 	}
 
 	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, true)

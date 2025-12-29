@@ -58,6 +58,12 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	sandboxID = utils.ShortID(sandboxID)
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 	if err == nil {
+		if sandboxData.TeamID != teamInfo.Team.ID {
+			a.sendAPIStoreError(c, http.StatusForbidden, "Sandbox is not owned by this team")
+
+			return
+		}
+
 		switch sandboxData.State {
 		case sandbox.StatePausing:
 			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
