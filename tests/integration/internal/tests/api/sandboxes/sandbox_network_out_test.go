@@ -96,7 +96,7 @@ func assertHTTPResponseFromServer(t *testing.T, ctx context.Context, sbx *api.Sa
 	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user", "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
 	require.NoError(t, err, msg)
 	require.Contains(t, strings.ToLower(output), strings.ToLower(expectedServerHeader),
-		fmt.Sprintf("%s - expected server header to contain %q, got response: %s", msg, expectedServerHeader, output))
+		"%s - expected server header to contain %q, got response: %s", msg, expectedServerHeader, output)
 }
 
 // =============================================================================

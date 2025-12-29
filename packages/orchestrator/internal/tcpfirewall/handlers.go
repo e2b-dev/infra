@@ -68,7 +68,7 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 	// an allowed domain to an arbitrary IP. We ignore the client's destination IP and
 	// connect to a legitimate IP that the hostname actually resolves to.
 	if matchType == MatchTypeDomain {
-		resolvedIP, err := resolveHostnameToPublicIP(ctx, logger, hostname)
+		resolvedIP, err := resolveHostnameToPublicIP(ctx, hostname)
 		if err != nil {
 			logger.Warn(ctx, "Failed to resolve hostname to public IP",
 				zap.String("hostname", hostname),
@@ -206,7 +206,7 @@ func matchDomain(hostname, pattern string) bool {
 // This prevents DNS spoofing attacks by ignoring the client's destination IP and resolving
 // the hostname ourselves. It also prevents DNS rebinding attacks by rejecting hostnames
 // that only resolve to internal/private IP addresses.
-func resolveHostnameToPublicIP(ctx context.Context, logger logger.Logger, hostname string) (net.IP, error) {
+func resolveHostnameToPublicIP(ctx context.Context, hostname string) (net.IP, error) {
 	// Create a context with timeout for DNS lookup
 	lookupCtx, cancel := context.WithTimeout(ctx, dnsLookupTimeout)
 	defer cancel()
