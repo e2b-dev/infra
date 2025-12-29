@@ -8,7 +8,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
@@ -414,7 +413,6 @@ func TestIsEgressAllowed(t *testing.T) {
 
 func TestResolveHostnameToPublicIP(t *testing.T) {
 	ctx := context.Background()
-	nopLogger := logger.NewNopLogger()
 
 	tests := []struct {
 		name      string
@@ -447,7 +445,7 @@ func TestResolveHostnameToPublicIP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ip, err := resolveHostnameToPublicIP(ctx, nopLogger, tt.hostname)
+			ip, err := resolveHostnameToPublicIP(ctx, tt.hostname)
 
 			if tt.wantErr {
 				if err == nil {
