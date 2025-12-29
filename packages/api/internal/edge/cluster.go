@@ -64,7 +64,6 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	// generate the full endpoint URL
 	var endpointBaseUrl string
 	if endpointTLS {
-		
 		endpointBaseUrl = fmt.Sprintf("https://%s", endpoint)
 	} else {
 		endpointBaseUrl = fmt.Sprintf("http://%s", endpoint)
