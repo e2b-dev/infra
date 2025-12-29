@@ -136,7 +136,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 
 	// convert map to slice
 	mapItems := c.instances.Items()
-	instances:= make([]*ClusterInstance, 0, len(mapItems))
+	instances := make([]*ClusterInstance, 0, len(mapItems))
 
 	for _, instance := range mapItems {
 		instances = append(instances, instance)
