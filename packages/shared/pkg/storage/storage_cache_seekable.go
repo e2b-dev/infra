@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var (
@@ -233,11 +234,18 @@ func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, off
 
 	tempPath := c.makeTempChunkFilename(offset)
 
+	defer func() {
+		// remove temporary file, no matter what happens
+		if err := os.Remove(tempPath); err != nil && !os.IsNotExist(err) {
+			logger.L().Warn(ctx, "failed to remove temp file", zap.Error(err))
+		}
+	}()
+
 	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
 		return fmt.Errorf("failed to write temp cache file: %w", err)
 	}
 
-	if err := moveWithoutReplace(ctx, tempPath, chunkPath); err != nil {
+	if err := utils.AtomicMove(tempPath, chunkPath); err != nil {
 		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
@@ -268,11 +276,17 @@ func (c CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size i
 
 	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
 
+	defer func() {
+		if err := os.Remove(tempFilename); err != nil && !os.IsNotExist(err) {
+			logger.L().Warn(ctx, "failed to remove temp file", zap.Error(err))
+		}
+	}()
+
 	if err := os.WriteFile(tempFilename, fmt.Appendf(nil, "%d", size), cacheFilePermissions); err != nil {
 		return fmt.Errorf("failed to write temp local size file: %w", err)
 	}
 
-	if err := moveWithoutReplace(ctx, tempFilename, finalFilename); err != nil {
+	if err := utils.AtomicMove(tempFilename, finalFilename); err != nil {
 		return fmt.Errorf("failed to rename local size temp file: %w", err)
 	}
 

@@ -125,27 +125,6 @@ func ignoreEOF(err error) error {
 	return err
 }
 
-// moveWithoutReplace tries to rename a file but will not replace the target if it already exists.
-// If the file already exists, the file will be deleted.
-func moveWithoutReplace(ctx context.Context, oldPath, newPath string) error {
-	defer func() {
-		if err := os.Remove(oldPath); err != nil {
-			logger.L().Warn(ctx, "failed to remove existing file", zap.Error(err))
-		}
-	}()
-
-	if err := os.Link(oldPath, newPath); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			// Someone else created newPath first. Treat as success.
-			return nil
-		}
-
-		return err
-	}
-
-	return nil
-}
-
 func recordError(span trace.Span, err error) {
 	if err == nil {
 		return

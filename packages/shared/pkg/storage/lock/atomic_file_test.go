@@ -57,10 +57,9 @@ func TestOpenFile(t *testing.T) {
 
 		f2, err = OpenFile(t.Context(), filename)
 		require.NoError(t, err)
-		t.Cleanup(func() {
-			err := f2.Close(t.Context())
-			assert.NoError(t, err)
-		})
+
+		err = f2.Close(t.Context())
+		assert.NoError(t, err)
 	})
 
 	t.Run("missing directory returns error", func(t *testing.T) {

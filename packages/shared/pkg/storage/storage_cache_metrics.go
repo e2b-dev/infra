@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -87,6 +88,13 @@ func recordCacheReadError[T ~string](ctx context.Context, t cacheType, op T, err
 }
 
 func recordCacheWriteError[T ~string](ctx context.Context, t cacheType, op T, err error) {
+	var errorType string
+	if errors.Is(err, lock.ErrLockAlreadyHeld) {
+		errorType = "write-lock"
+	} else {
+		errorType = "write"
+	}
+
 	logger.L().Warn(ctx, "failed to write to cache",
 		zap.Error(err),
 		zap.String("cache_type", string(t)),
@@ -96,6 +104,6 @@ func recordCacheWriteError[T ~string](ctx context.Context, t cacheType, op T, er
 	cacheErrorsCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("cache_type", string(t)),
 		attribute.String("op_type", string(op)),
-		attribute.String("error_type", "write"),
+		attribute.String("error_type", errorType),
 	))
 }

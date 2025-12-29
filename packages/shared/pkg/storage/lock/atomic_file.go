@@ -7,14 +7,16 @@ import (
 	"io"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-type AtomicFile struct {
+type AtomicImmutableFile struct {
 	lockFile *os.File
 	tempFile *os.File
 	filename string
@@ -22,13 +24,13 @@ type AtomicFile struct {
 	closeOnce sync.Once
 }
 
-func (f *AtomicFile) Write(p []byte) (n int, err error) {
+func (f *AtomicImmutableFile) Write(p []byte) (n int, err error) {
 	return f.tempFile.Write(p)
 }
 
-var _ io.Writer = (*AtomicFile)(nil)
+var _ io.Writer = (*AtomicImmutableFile)(nil)
 
-func OpenFile(ctx context.Context, filename string) (*AtomicFile, error) {
+func OpenFile(ctx context.Context, filename string) (*AtomicImmutableFile, error) {
 	lockFile, err := TryAcquireLock(ctx, filename)
 	if err != nil {
 		return nil, err
@@ -43,36 +45,40 @@ func OpenFile(ctx context.Context, filename string) (*AtomicFile, error) {
 		return nil, fmt.Errorf("failed to open temp file: %w", err)
 	}
 
-	return &AtomicFile{
+	return &AtomicImmutableFile{
 		lockFile: lockFile,
 		tempFile: tempFile,
 		filename: filename,
 	}, nil
 }
 
-func (f *AtomicFile) Close(ctx context.Context) error {
+func (f *AtomicImmutableFile) Close(ctx context.Context) error {
 	var err error
 
 	f.closeOnce.Do(func() {
+		var errs []error
+
 		defer cleanup(ctx, "failed to unlock file", func() error {
 			return ReleaseLock(ctx, f.lockFile)
 		})
 
 		if err = f.tempFile.Close(); err != nil {
-			err = fmt.Errorf("failed to close temp file: %w", err)
-
-			return
+			errs = append(errs, fmt.Errorf("failed to close temp file: %w", err))
 		}
 
-		if err = moveWithoutReplace(ctx, f.tempFile.Name(), f.filename); err != nil {
-			err = fmt.Errorf("failed to commit file: %w", err)
-
-			if rmErr := os.Remove(f.tempFile.Name()); rmErr != nil {
-				err = errors.Join(err, fmt.Errorf("failed to remove temp file: %w", rmErr))
+		if err = utils.AtomicMove(f.tempFile.Name(), f.filename); err != nil {
+			// someone else may have written the file successfully
+			if !errors.Is(err, syscall.EEXIST) {
+				// if not, report the error
+				errs = append(errs, fmt.Errorf("failed to commit file: %w", err))
 			}
-
-			return
 		}
+
+		if err := os.Remove(f.tempFile.Name()); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, fmt.Errorf("failed to remove temp file: %w", err))
+		}
+
+		err = errors.Join(errs...)
 	})
 
 	return err
@@ -82,25 +88,4 @@ func cleanup(ctx context.Context, msg string, fn func() error) {
 	if err := fn(); err != nil {
 		logger.L().Warn(ctx, msg, zap.Error(err))
 	}
-}
-
-// moveWithoutReplace tries to rename a file but will not replace the target if it already exists.
-// The old file is deleted if it can't be moved for any reason.
-func moveWithoutReplace(ctx context.Context, oldPath, newPath string) error {
-	defer func() {
-		if err := os.Remove(oldPath); err != nil {
-			logger.L().Warn(ctx, "failed to remove existing file", zap.Error(err))
-		}
-	}()
-
-	if err := os.Link(oldPath, newPath); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			// Someone else created newPath first. Treat as success.
-			return nil
-		}
-
-		return err
-	}
-
-	return nil
 }
