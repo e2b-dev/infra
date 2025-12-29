@@ -64,7 +64,7 @@ func createConnection(tel *telemetry.Client, auth *instanceAuthorization, endpoi
 
 	conn, err := grpc.NewClient(endpoint, grpcOptions...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create grpc client: %w", err)
+		return nil, fmt.Errorf("failed to create client client: %w", err)
 	}
 
 	return &GRPCClient{

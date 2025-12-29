@@ -148,8 +148,7 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*Instance, error) {
 		return nil, ErrTemplateBuilderNotFound
 	}
 
-	info := instance.GetInfo()
-	if info.Status == infogrpc.ServiceInfoStatus_Unhealthy || !instance.IsBuilder() {
+	if info := instance.GetInfo(); info.Status == infogrpc.ServiceInfoStatus_Unhealthy || !info.IsBuilder {
 		return nil, ErrTemplateBuilderNotFound
 	}
 
@@ -181,12 +180,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*Instance, e
 	rand.Shuffle(len(instances), func(i, j int) { instances[i], instances[j] = instances[j], instances[i] })
 
 	for _, instance := range instances {
-		info := instance.GetInfo()
-		if info.Status != infogrpc.ServiceInfoStatus_Healthy {
-			continue
-		}
-
-		if !instance.IsBuilder() {
+		if info := instance.GetInfo(); info.Status != infogrpc.ServiceInfoStatus_Healthy || !info.IsBuilder {
 			continue
 		}
 
@@ -199,7 +193,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*Instance, e
 func (c *Cluster) GetOrchestrators() []*Instance {
 	instances := make([]*Instance, 0)
 	for _, i := range c.instances.Items() {
-		if i.IsOrchestrator() {
+		if i.GetInfo().IsOrchestrator {
 			instances = append(instances, i)
 		}
 	}

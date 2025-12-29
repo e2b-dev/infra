@@ -30,12 +30,14 @@ type Instance struct {
 	serviceVersion       string
 	serviceVersionCommit string
 
-	roles       []infogrpc.ServiceInfoRole
-	machineInfo machineinfo.MachineInfo
-	grpc        *GRPCClient
+	client         *GRPCClient
+	status         infogrpc.ServiceInfoStatus
+	machine        machineinfo.MachineInfo
+	roles          []infogrpc.ServiceInfoRole
+	isBuilder      bool
+	isOrchestrator bool
 
-	status infogrpc.ServiceInfoStatus
-	mutex  sync.RWMutex
+	mutex sync.RWMutex
 }
 
 // InstanceInfo contains synchronized instance information
@@ -44,7 +46,8 @@ type InstanceInfo struct {
 	ServiceVersion       string
 	ServiceVersionCommit string
 	Status               infogrpc.ServiceInfoStatus
-	Roles                []infogrpc.ServiceInfoRole
+	IsOrchestrator       bool
+	IsBuilder            bool
 }
 
 func newInstance(
@@ -58,7 +61,7 @@ func newInstance(
 ) (*Instance, error) {
 	conn, err := createConnection(tel, clusterAuth, connAddr, connTls)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cluster instance grpc client: %w", err)
+		return nil, fmt.Errorf("failed to create cluster instance client client: %w", err)
 	}
 
 	// Create with default values that will be updated on sync before returning the instance,
@@ -68,12 +71,12 @@ func newInstance(
 	// so it can be empty and will be filled after first sync.
 	i := &Instance{
 		uniqueIdentifier:  sd.UniqueIdentifier,
+		serviceInstanceID: sd.InstanceID,
 		NodeID:            sd.NodeID,
 		ClusterID:         clusterID,
-		serviceInstanceID: sd.InstanceID,
 
-		grpc:  conn,
-		mutex: sync.RWMutex{},
+		client: conn,
+		mutex:  sync.RWMutex{},
 	}
 
 	err = i.Sync(ctx)
@@ -98,7 +101,7 @@ func newInstance(
 // Sync function can be called on freshly initialized instance to populate its data
 // In initial case its possible that service instance id needed for proper remote cluster routing is not yet set.
 func (i *Instance) Sync(ctx context.Context) error {
-	info, err := i.grpc.Info.ServiceInfo(ctx, &emptypb.Empty{})
+	info, err := i.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
 		return err
@@ -109,11 +112,16 @@ func (i *Instance) Sync(ctx context.Context) error {
 
 	i.status = info.GetServiceStatus()
 	i.roles = info.GetServiceRoles()
-	i.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
+	i.machine = machineinfo.FromGRPCInfo(info.GetMachineInfo())
 
 	i.serviceInstanceID = info.GetServiceId()
 	i.serviceVersion = info.GetServiceVersion()
 	i.serviceVersionCommit = info.GetServiceCommit()
+
+	// We don't want to check array every time,
+	// this is why we are caching value during instance sync.
+	i.isBuilder = slices.Contains(i.roles, infogrpc.ServiceInfoRole_TemplateBuilder)
+	i.isOrchestrator = slices.Contains(i.roles, infogrpc.ServiceInfoRole_Orchestrator)
 
 	return nil
 }
@@ -122,7 +130,7 @@ func (i *Instance) GetMachineInfo() machineinfo.MachineInfo {
 	i.mutex.RLock()
 	defer i.mutex.RUnlock()
 
-	return i.machineInfo
+	return i.machine
 }
 
 func (i *Instance) GetInfo() InstanceInfo {
@@ -134,29 +142,15 @@ func (i *Instance) GetInfo() InstanceInfo {
 		ServiceVersion:       i.serviceVersion,
 		ServiceVersionCommit: i.serviceVersionCommit,
 		Status:               i.status,
-		Roles:                slices.Clone(i.roles),
+		IsOrchestrator:       i.isOrchestrator,
+		IsBuilder:            i.isBuilder,
 	}
 }
 
-func (i *Instance) hasRole(r infogrpc.ServiceInfoRole) bool {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-
-	return slices.Contains(i.roles, r)
-}
-
-func (i *Instance) IsBuilder() bool {
-	return i.hasRole(infogrpc.ServiceInfoRole_TemplateBuilder)
-}
-
-func (i *Instance) IsOrchestrator() bool {
-	return i.hasRole(infogrpc.ServiceInfoRole_Orchestrator)
-}
-
 func (i *Instance) GetConnection() *GRPCClient {
-	return i.grpc
+	return i.client
 }
 
 func (i *Instance) Close() error {
-	return i.grpc.Close()
+	return i.client.Close()
 }
