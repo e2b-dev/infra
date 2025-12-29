@@ -1,9 +1,7 @@
 package tcpfirewall
 
 import (
-	"context"
 	"net"
-	"strings"
 	"testing"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -406,65 +404,6 @@ func TestIsEgressAllowed(t *testing.T) {
 
 			if got != tt.want {
 				t.Errorf("isEgressAllowed() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestResolveHostnameToPublicIP(t *testing.T) {
-	ctx := context.Background()
-
-	tests := []struct {
-		name      string
-		hostname  string
-		wantErr   bool
-		errSubstr string
-	}{
-		// Localhost resolves to 127.0.0.1 which is in DeniedSandboxCIDRs (127.0.0.0/8)
-		{
-			name:      "localhost resolves to loopback (denied - in denied CIDRs)",
-			hostname:  "localhost",
-			wantErr:   true,
-			errSubstr: "only resolves to internal IPs",
-		},
-
-		// Invalid hostname tests
-		{
-			name:      "non-existent domain fails lookup",
-			hostname:  "this-domain-definitely-does-not-exist-12345.invalid",
-			wantErr:   true,
-			errSubstr: "DNS lookup failed",
-		},
-		{
-			name:      "empty hostname fails lookup",
-			hostname:  "",
-			wantErr:   true,
-			errSubstr: "DNS lookup failed",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ip, err := resolveHostnameToPublicIP(ctx, tt.hostname)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("resolveHostnameToPublicIP(%q) expected error, got IP %v", tt.hostname, ip)
-				} else if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
-					t.Errorf("resolveHostnameToPublicIP(%q) error = %v, want error containing %q", tt.hostname, err, tt.errSubstr)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Errorf("resolveHostnameToPublicIP(%q) unexpected error: %v", tt.hostname, err)
-
-				return
-			}
-
-			if ip == nil {
-				t.Errorf("resolveHostnameToPublicIP(%q) returned nil IP", tt.hostname)
 			}
 		})
 	}

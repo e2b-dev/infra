@@ -20,18 +20,8 @@ const (
 	// This prevents goroutine leaks from slow/unresponsive DNS or connections.
 	upstreamDialTimeout = 30 * time.Second
 
-	// dnsLookupTimeout is the maximum time to wait for DNS resolution.
-	dnsLookupTimeout = 5 * time.Second
-
 	noHostnameValue = ""
 )
-
-// dnsResolver uses CGO's getaddrinfo which respects the system's DNS cache
-// (e.g., systemd-resolved, nscd). This provides caching and uses the host's
-// configured DNS infrastructure rather than Go's pure resolver.
-var dnsResolver = &net.Resolver{
-	PreferGo: false,
-}
 
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
 func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
@@ -60,30 +50,20 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
 
-	// Determine the upstream IP to use
-	upstreamIP := dstIP
-
-	// When allowed by domain match, resolve the hostname ourselves and use the resolved IP.
+	// When allowed by domain match, dial the hostname directly (not the sandbox's resolved IP).
 	// This prevents DNS spoofing attacks where the sandbox modifies /etc/hosts to redirect
-	// an allowed domain to an arbitrary IP. We ignore the client's destination IP and
-	// connect to a legitimate IP that the hostname actually resolves to.
+	// an allowed domain to an arbitrary IP. We use Go's net.Dialer which provides built-in
+	// Happy Eyeballs (RFC 8305) for multi-IP fallback when some IPs are unreachable.
+	// After connecting, we verify the connected IP is not internal/private.
 	if matchType == MatchTypeDomain {
-		resolvedIP, err := resolveHostnameToPublicIP(ctx, hostname)
-		if err != nil {
-			logger.Warn(ctx, "Failed to resolve hostname to public IP",
-				zap.String("hostname", hostname),
-				zap.String("original_dst_ip", dstIP.String()),
-				zap.Error(err))
-			metrics.RecordError(ctx, ErrorTypeDNSMismatch, protocol)
-			conn.Close()
+		upstreamAddr := net.JoinHostPort(hostname, fmt.Sprintf("%d", dstPort))
+		proxyWithIPVerification(ctx, conn, upstreamAddr, logger, metrics, protocol)
 
-			return
-		}
-
-		upstreamIP = resolvedIP
+		return
 	}
 
-	upstreamAddr := net.JoinHostPort(upstreamIP.String(), fmt.Sprintf("%d", dstPort))
+	// For non-domain matches, use the original destination IP
+	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
 	proxy(ctx, conn, upstreamAddr, metrics, protocol)
 }
 
@@ -121,6 +101,55 @@ func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Met
 	dp := &tcpproxy.DialProxy{
 		Addr:        upstreamAddr,
 		DialTimeout: upstreamDialTimeout,
+	}
+	dp.HandleConn(conn)
+}
+
+// proxyWithIPVerification dials the upstream hostname using Go's net.Dialer (which provides
+// built-in Happy Eyeballs / RFC 8305 for multi-IP fallback), then verifies the connected IP
+// is not internal/private before proxying. This prevents DNS rebinding attacks while
+// preserving multi-IP reliability.
+func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr string, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+	tracker := metrics.TrackConnection(protocol)
+	defer tracker.Close(ctx)
+
+	// Use tcpproxy.DialProxy with a custom DialContext that verifies the connected IP
+	dp := &tcpproxy.DialProxy{
+		Addr:        upstreamAddr,
+		DialTimeout: upstreamDialTimeout,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Use Go's net.Dialer which has built-in Happy Eyeballs (RFC 8305)
+			// This automatically tries multiple IPs with proper fallback
+			dialer := &net.Dialer{
+				Timeout: upstreamDialTimeout,
+				// FallbackDelay controls Happy Eyeballs delay (default 300ms is good)
+			}
+
+			upstreamConn, err := dialer.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+
+			// Verify the connected IP is not internal/private (DNS rebinding protection)
+			connectedIP, err := extractIPFromAddr(upstreamConn.RemoteAddr())
+			if err != nil {
+				// Fail closed: if we can't verify the IP, reject the connection
+				upstreamConn.Close()
+				return nil, fmt.Errorf("could not extract IP from remote address: %w", err)
+			}
+
+			if isIPInDeniedCIDRs(connectedIP) {
+				upstreamConn.Close()
+				logger.Warn(ctx, "Blocked connection to internal IP via hostname",
+					zap.String("upstream_addr", addr),
+					zap.String("connected_ip", connectedIP.String()))
+				metrics.RecordError(ctx, ErrorTypeDNSMismatch, protocol)
+
+				return nil, fmt.Errorf("hostname resolved to internal IP %s", connectedIP)
+			}
+
+			return upstreamConn, nil
+		},
 	}
 	dp.HandleConn(conn)
 }
@@ -202,34 +231,26 @@ func matchDomain(hostname, pattern string) bool {
 	return false
 }
 
-// resolveHostnameToPublicIP resolves a hostname and returns the first public (non-internal) IP.
-// This prevents DNS spoofing attacks by ignoring the client's destination IP and resolving
-// the hostname ourselves. It also prevents DNS rebinding attacks by rejecting hostnames
-// that only resolve to internal/private IP addresses.
-func resolveHostnameToPublicIP(ctx context.Context, hostname string) (net.IP, error) {
-	// Create a context with timeout for DNS lookup
-	lookupCtx, cancel := context.WithTimeout(ctx, dnsLookupTimeout)
-	defer cancel()
-
-	// Resolve the hostname to IP addresses using the system resolver (with caching)
-	ips, err := dnsResolver.LookupIPAddr(lookupCtx, hostname)
-	if err != nil {
-		return nil, fmt.Errorf("DNS lookup failed for %q: %w", hostname, err)
-	}
-
-	if len(ips) == 0 {
-		return nil, fmt.Errorf("DNS lookup returned no IPs for %q", hostname)
-	}
-
-	// Find the first IP that is NOT in the denied sandbox CIDRs (i.e., a public IP)
-	for _, ip := range ips {
-		if !isIPInDeniedCIDRs(ip.IP) {
-			return ip.IP, nil
+// extractIPFromAddr extracts the IP address from a net.Addr.
+// Works with *net.TCPAddr, *net.UDPAddr, and falls back to string parsing.
+func extractIPFromAddr(addr net.Addr) (net.IP, error) {
+	switch a := addr.(type) {
+	case *net.TCPAddr:
+		return a.IP, nil
+	case *net.UDPAddr:
+		return a.IP, nil
+	default:
+		// Fallback: try to parse the string representation "ip:port" or "[ipv6]:port"
+		host, _, err := net.SplitHostPort(addr.String())
+		if err != nil {
+			return nil, fmt.Errorf("failed to split host:port from %q: %w", addr.String(), err)
 		}
+		ip := net.ParseIP(host)
+		if ip == nil {
+			return nil, fmt.Errorf("failed to parse IP from %q", host)
+		}
+		return ip, nil
 	}
-
-	// All resolved IPs are in denied CIDRs (internal/private) - this could be a DNS rebinding attack
-	return nil, fmt.Errorf("hostname %q only resolves to internal IPs", hostname)
 }
 
 // isIPInDeniedCIDRs checks if an IP is within the denied sandbox CIDRs (internal/private ranges).
