@@ -422,12 +422,12 @@ func TestAlwaysDeniedCIDRs(t *testing.T) {
 		{"172.16.0.1 is denied", "172.16.0.1", true},
 		{"172.31.255.255 is denied", "172.31.255.255", true},
 		{"169.254.1.1 is denied (link-local)", "169.254.1.1", true},
+		{"127.0.0.1 is denied (loopback)", "127.0.0.1", true},
 
 		// IPs NOT in denied CIDRs (public IPs)
 		{"8.8.8.8 is allowed (Google DNS)", "8.8.8.8", false},
 		{"1.1.1.1 is allowed (Cloudflare)", "1.1.1.1", false},
 		{"142.250.80.46 is allowed (Google)", "142.250.80.46", false},
-		{"127.0.0.1 is denied (loopback)", "127.0.0.1", true},
 
 		// IPv6 denied ranges
 		{"::1 is denied (IPv6 loopback)", "::1", true},
