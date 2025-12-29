@@ -113,19 +113,20 @@ func New(
 }
 
 func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *clusters.Instance) (*Node, error) {
-	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
+	info := i.GetInfo()
+	status, ok := OrchestratorToApiNodeStateMapper[info.Status]
 	if !ok {
-		logger.L().Error(ctx, "Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))
-		nodeStatus = api.NodeStatusUnhealthy
+		logger.L().Error(ctx, "Unknown service info status", zap.String("status", info.Status.String()), logger.WithNodeID(i.NodeID))
+		status = api.NodeStatusUnhealthy
 	}
 
 	buildCache := ttlcache.New[string, any]()
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		ServiceInstanceID: i.ServiceInstanceID,
-		Commit:            i.ServiceVersionCommit,
-		Version:           i.ServiceVersion,
+		ServiceInstanceID: info.ServiceInstanceID,
+		Commit:            info.ServiceVersionCommit,
+		Version:           info.ServiceVersion,
 	}
 
 	n := &Node{
@@ -142,7 +143,7 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 		},
 
 		connection: client,
-		status:     nodeStatus,
+		status:     status,
 		meta:       nodeMetadata,
 
 		buildCache: buildCache,
@@ -165,13 +166,12 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 func (n *Node) Close(ctx context.Context) error {
 	if n.IsNomadManaged() {
 		logger.L().Info(ctx, "Closing local node", logger.WithNodeID(n.ID))
-		err := n.connection.Close()
-		if err != nil {
+		if err := n.connection.Close(); err != nil {
 			logger.L().Error(ctx, "Error closing connection to node", zap.Error(err), logger.WithNodeID(n.ID))
 		}
 	} else {
 		logger.L().Info(ctx, "Closing cluster node", logger.WithNodeID(n.ID), logger.WithClusterID(n.ClusterID))
-		// We are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
+		// We are not closing grpc connection, because it is managed by cluster instance
 	}
 	n.buildCache.Stop()
 

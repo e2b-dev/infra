@@ -33,7 +33,7 @@ func (d instancesSyncStore) SourceList(ctx context.Context) ([]discovery.Item, e
 func (d instancesSyncStore) SourceExists(_ context.Context, s []discovery.Item, p *Instance) bool {
 	for _, item := range s {
 		// With comparing unique identifier that should ensure we are not re-adding same instance again
-		if item.UniqueIdentifier == p.UniqueIdentifier {
+		if item.UniqueIdentifier == p.uniqueIdentifier {
 			return true
 		}
 	}
@@ -91,10 +91,11 @@ func (d instancesSyncStore) PoolUpdate(ctx context.Context, instance *Instance) 
 }
 
 func (d instancesSyncStore) PoolRemove(ctx context.Context, instance *Instance) {
+	info := instance.GetInfo()
 	logger.L().Info(ctx, "Removing instance from cluster pool",
 		logger.WithClusterID(d.clusterID),
 		logger.WithNodeID(instance.NodeID),
-		logger.WithServiceInstanceID(instance.ServiceInstanceID),
+		logger.WithServiceInstanceID(info.ServiceInstanceID),
 	)
 
 	// Try to gracefully close the instance
@@ -106,11 +107,12 @@ func (d instancesSyncStore) PoolRemove(ctx context.Context, instance *Instance) 
 func (d instancesSyncStore) tryToCloseInstance(ctx context.Context, instance *Instance) {
 	closeErr := instance.Close()
 	if closeErr != nil {
+		info := instance.GetInfo()
 		logger.L().Error(ctx, "Failed to close cluster instance after sync failure",
 			zap.Error(closeErr),
 			logger.WithClusterID(d.clusterID),
 			logger.WithNodeID(instance.NodeID),
-			logger.WithServiceInstanceID(instance.ServiceInstanceID),
+			logger.WithServiceInstanceID(info.ServiceInstanceID),
 		)
 	}
 }
@@ -118,11 +120,12 @@ func (d instancesSyncStore) tryToCloseInstance(ctx context.Context, instance *In
 func (d instancesSyncStore) tryToSyncInstance(ctx context.Context, instance *Instance) bool {
 	err := instance.Sync(ctx)
 	if err != nil {
+		info := instance.GetInfo()
 		logger.L().Error(ctx, "Failed to sync cluster instance",
 			zap.Error(err),
 			logger.WithClusterID(d.clusterID),
 			logger.WithNodeID(instance.NodeID),
-			logger.WithServiceInstanceID(instance.ServiceInstanceID),
+			logger.WithServiceInstanceID(info.ServiceInstanceID),
 		)
 
 		return false

@@ -148,7 +148,8 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*Instance, error) {
 		return nil, ErrTemplateBuilderNotFound
 	}
 
-	if instance.GetStatus() == infogrpc.ServiceInfoStatus_Unhealthy || !instance.IsBuilder() {
+	info := instance.GetInfo()
+	if info.Status == infogrpc.ServiceInfoStatus_Unhealthy || !instance.IsBuilder() {
 		return nil, ErrTemplateBuilderNotFound
 	}
 
@@ -157,7 +158,8 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*Instance, error) {
 
 func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*Instance, bool) {
 	for _, instance := range c.instances.Items() {
-		if instance.ServiceInstanceID == serviceInstanceID {
+		info := instance.GetInfo()
+		if info.ServiceInstanceID == serviceInstanceID {
 			return instance, true
 		}
 	}
@@ -179,7 +181,8 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*Instance, e
 	rand.Shuffle(len(instances), func(i, j int) { instances[i], instances[j] = instances[j], instances[i] })
 
 	for _, instance := range instances {
-		if instance.GetStatus() != infogrpc.ServiceInfoStatus_Healthy {
+		info := instance.GetInfo()
+		if info.Status != infogrpc.ServiceInfoStatus_Healthy {
 			continue
 		}
 

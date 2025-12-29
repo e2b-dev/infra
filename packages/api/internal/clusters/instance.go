@@ -21,14 +21,14 @@ import (
 type Instance struct {
 	// Identifier that uniquely identifies the instance so it will not be registered multiple times.
 	// Depending on service discovery used, it can be combination of different parameters, what service discovery gives us.
-	UniqueIdentifier string
+	uniqueIdentifier string
 
 	ClusterID uuid.UUID
 	NodeID    string
 
-	ServiceInstanceID    string
-	ServiceVersion       string
-	ServiceVersionCommit string
+	serviceInstanceID    string
+	serviceVersion       string
+	serviceVersionCommit string
 
 	roles       []infogrpc.ServiceInfoRole
 	machineInfo machineinfo.MachineInfo
@@ -36,6 +36,15 @@ type Instance struct {
 
 	status infogrpc.ServiceInfoStatus
 	mutex  sync.RWMutex
+}
+
+// InstanceInfo contains synchronized instance information
+type InstanceInfo struct {
+	ServiceInstanceID    string
+	ServiceVersion       string
+	ServiceVersionCommit string
+	Status               infogrpc.ServiceInfoStatus
+	Roles                []infogrpc.ServiceInfoRole
 }
 
 func newInstance(
@@ -58,10 +67,10 @@ func newInstance(
 	// For case with local cluster we will not receive instance ID from service discovery, but its not needed for proxy routing,
 	// so it can be empty and will be filled after first sync.
 	i := &Instance{
-		UniqueIdentifier:  sd.UniqueIdentifier,
+		uniqueIdentifier:  sd.UniqueIdentifier,
 		NodeID:            sd.NodeID,
-		ServiceInstanceID: sd.InstanceID,
 		ClusterID:         clusterID,
+		serviceInstanceID: sd.InstanceID,
 
 		grpc:  conn,
 		mutex: sync.RWMutex{},
@@ -76,7 +85,7 @@ func newInstance(
 				zap.Error(err),
 				logger.WithNodeID(i.NodeID),
 				logger.WithClusterID(i.ClusterID),
-				logger.WithServiceInstanceID(i.ServiceInstanceID),
+				logger.WithServiceInstanceID(i.serviceInstanceID),
 			)
 		}
 
@@ -102,18 +111,11 @@ func (i *Instance) Sync(ctx context.Context) error {
 	i.roles = info.GetServiceRoles()
 	i.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
 
-	i.ServiceInstanceID = info.GetServiceId()
-	i.ServiceVersion = info.GetServiceVersion()
-	i.ServiceVersionCommit = info.GetServiceCommit()
+	i.serviceInstanceID = info.GetServiceId()
+	i.serviceVersion = info.GetServiceVersion()
+	i.serviceVersionCommit = info.GetServiceCommit()
 
 	return nil
-}
-
-func (i *Instance) GetStatus() infogrpc.ServiceInfoStatus {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-
-	return i.status
 }
 
 func (i *Instance) GetMachineInfo() machineinfo.MachineInfo {
@@ -121,6 +123,19 @@ func (i *Instance) GetMachineInfo() machineinfo.MachineInfo {
 	defer i.mutex.RUnlock()
 
 	return i.machineInfo
+}
+
+func (i *Instance) GetInfo() InstanceInfo {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+
+	return InstanceInfo{
+		ServiceInstanceID:    i.serviceInstanceID,
+		ServiceVersion:       i.serviceVersion,
+		ServiceVersionCommit: i.serviceVersionCommit,
+		Status:               i.status,
+		Roles:                slices.Clone(i.roles),
+	}
 }
 
 func (i *Instance) hasRole(r infogrpc.ServiceInfoRole) bool {
