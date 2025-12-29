@@ -135,6 +135,7 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 			if err != nil {
 				// Fail closed: if we can't verify the IP, reject the connection
 				upstreamConn.Close()
+
 				return nil, fmt.Errorf("could not extract IP from remote address: %w", err)
 			}
 
@@ -249,6 +250,7 @@ func extractIPFromAddr(addr net.Addr) (net.IP, error) {
 		if ip == nil {
 			return nil, fmt.Errorf("failed to parse IP from %q", host)
 		}
+
 		return ip, nil
 	}
 }
