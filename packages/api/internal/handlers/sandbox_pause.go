@@ -17,7 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -68,8 +67,15 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 }
 
 func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sandboxID string, teamID uuid.UUID) api.APIError {
-	_, err := sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
+	snap, err := sqlcDB.GetLastSnapshot(ctx, sandboxID)
 	if err == nil {
+		if snap.Snapshot.TeamID != teamID {
+			return api.APIError{
+				Code:      http.StatusForbidden,
+				ClientMsg: fmt.Sprintf("You don't have access to sandbox '%s'", sandboxID),
+			}
+		}
+
 		logger.L().Warn(ctx, "Sandbox is already paused", logger.WithSandboxID(sandboxID))
 
 		return api.APIError{

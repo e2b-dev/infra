@@ -172,7 +172,30 @@ func TestSandboxConnect(t *testing.T) {
 	})
 }
 
-func TestSandboxConnect_CrossTeamAccess(t *testing.T) {
+func TestSandboxConnect_CrossTeamAccess_Paused(t *testing.T) {
+	c := setup.GetAPIClient()
+	db := setup.GetTestDBClient(t)
+
+	// Create a sandbox with the default team's API key
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+
+	// Create a second team with a different API key
+	foreignUserID := utils.CreateUser(t, db)
+	foreignTeamID := utils.CreateTeamWithUser(t, db, "foreign-team-connect", foreignUserID.String())
+	foreignAPIKey := utils.CreateAPIKey(t, t.Context(), c, foreignUserID.String(), foreignTeamID)
+
+	// Pause the sandbox
+	pauseSandbox(t, c, sbx.SandboxID)
+
+	// Try to connect to the first team's sandbox using the second team's API key
+	connectResp, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDConnectJSONRequestBody{
+		Timeout: 30,
+	}, setup.WithAPIKey(foreignAPIKey))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, connectResp.StatusCode(), "Should return 403 Forbidden when trying to connect to a sandbox owned by a different team")
+}
+
+func TestSandboxConnect_CrossTeamAccess_Running(t *testing.T) {
 	c := setup.GetAPIClient()
 	db := setup.GetTestDBClient(t)
 
