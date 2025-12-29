@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 const (
@@ -59,22 +60,30 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
 
-	// When allowed by domain match, verify hostname resolves to dstIP to prevent DNS spoofing attacks.
-	// A malicious client could claim a hostname that doesn't resolve to the IP they're connecting to.
-	// Once verified, we use the dstIP directly (avoids another DNS lookup for the upstream connection).
+	// Determine the upstream IP to use
+	upstreamIP := dstIP
+
+	// When allowed by domain match, resolve the hostname ourselves and use the resolved IP.
+	// This prevents DNS spoofing attacks where the sandbox modifies /etc/hosts to redirect
+	// an allowed domain to an arbitrary IP. We ignore the client's destination IP and
+	// connect to a legitimate IP that the hostname actually resolves to.
 	if matchType == MatchTypeDomain {
-		if !verifyHostnameResolvesToIP(ctx, logger, hostname, dstIP) {
-			logger.Warn(ctx, "Hostname does not resolve to the same destination IP",
+		resolvedIP, err := resolveHostnameToPublicIP(ctx, logger, hostname)
+		if err != nil {
+			logger.Warn(ctx, "Failed to resolve hostname to public IP",
 				zap.String("hostname", hostname),
-				zap.String("dst_ip", dstIP.String()))
+				zap.String("original_dst_ip", dstIP.String()),
+				zap.Error(err))
 			metrics.RecordError(ctx, ErrorTypeDNSMismatch, protocol)
 			conn.Close()
 
 			return
 		}
+
+		upstreamIP = resolvedIP
 	}
 
-	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
+	upstreamAddr := net.JoinHostPort(upstreamIP.String(), fmt.Sprintf("%d", dstPort))
 	proxy(ctx, conn, upstreamAddr, metrics, protocol)
 }
 
@@ -193,10 +202,11 @@ func matchDomain(hostname, pattern string) bool {
 	return false
 }
 
-// verifyHostnameResolvesToIP checks if the hostname resolves to the given IP address.
-// This prevents DNS spoofing attacks where a client claims a hostname that doesn't
-// actually resolve to the IP they're connecting to.
-func verifyHostnameResolvesToIP(ctx context.Context, logger logger.Logger, hostname string, expectedIP net.IP) bool {
+// resolveHostnameToPublicIP resolves a hostname and returns the first public (non-internal) IP.
+// This prevents DNS spoofing attacks by ignoring the client's destination IP and resolving
+// the hostname ourselves. It also prevents DNS rebinding attacks by rejecting hostnames
+// that only resolve to internal/private IP addresses.
+func resolveHostnameToPublicIP(ctx context.Context, logger logger.Logger, hostname string) (net.IP, error) {
 	// Create a context with timeout for DNS lookup
 	lookupCtx, cancel := context.WithTimeout(ctx, dnsLookupTimeout)
 	defer cancel()
@@ -204,15 +214,33 @@ func verifyHostnameResolvesToIP(ctx context.Context, logger logger.Logger, hostn
 	// Resolve the hostname to IP addresses using the system resolver (with caching)
 	ips, err := dnsResolver.LookupIPAddr(lookupCtx, hostname)
 	if err != nil {
-		// DNS lookup failed - could be network issue or non-existent domain
-		logger.Warn(ctx, "DNS lookup failed", zap.Error(err), zap.String("hostname", hostname), zap.String("expected_ip", expectedIP.String()))
-
-		return false
+		return nil, fmt.Errorf("DNS lookup failed for %q: %w", hostname, err)
 	}
 
-	// Check if any resolved IP matches the expected IP
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("DNS lookup returned no IPs for %q", hostname)
+	}
+
+	// Find the first IP that is NOT in the denied sandbox CIDRs (i.e., a public IP)
 	for _, ip := range ips {
-		if ip.IP.Equal(expectedIP) {
+		if !isIPInDeniedCIDRs(ip.IP) {
+			return ip.IP, nil
+		}
+	}
+
+	// All resolved IPs are in denied CIDRs (internal/private) - this could be a DNS rebinding attack
+	return nil, fmt.Errorf("hostname %q only resolves to internal IPs", hostname)
+}
+
+// isIPInDeniedCIDRs checks if an IP is within the denied sandbox CIDRs (internal/private ranges).
+func isIPInDeniedCIDRs(ip net.IP) bool {
+	for _, cidr := range sandbox_network.DeniedSandboxCIDRs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+
+		if ipNet.Contains(ip) {
 			return true
 		}
 	}

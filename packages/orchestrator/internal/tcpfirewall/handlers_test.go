@@ -3,11 +3,8 @@ package tcpfirewall
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
-	"time"
-
-	"go.opentelemetry.io/otel/metric/noop"
-	"inet.af/tcpproxy"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -415,109 +412,102 @@ func TestIsEgressAllowed(t *testing.T) {
 	}
 }
 
-func TestVerifyHostnameResolvesToIP(t *testing.T) {
+func TestResolveHostnameToPublicIP(t *testing.T) {
 	ctx := context.Background()
 	nopLogger := logger.NewNopLogger()
 
 	tests := []struct {
-		name       string
-		hostname   string
-		expectedIP net.IP
-		want       bool
+		name      string
+		hostname  string
+		wantErr   bool
+		errSubstr string
 	}{
-		// Localhost tests - should work consistently
+		// Localhost resolves to 127.0.0.1 which is NOT in DeniedSandboxCIDRs
+		// (DeniedSandboxCIDRs are 10.0.0.0/8, 169.254.0.0/16, 192.168.0.0/16, 172.16.0.0/12)
 		{
-			name:       "localhost resolves to 127.0.0.1",
-			hostname:   "localhost",
-			expectedIP: net.ParseIP("127.0.0.1"),
-			want:       true,
-		},
-		{
-			name:       "localhost does not resolve to random IP",
-			hostname:   "localhost",
-			expectedIP: net.ParseIP("8.8.8.8"),
-			want:       false,
+			name:     "localhost resolves to loopback (allowed - not in denied CIDRs)",
+			hostname: "localhost",
+			wantErr:  false,
 		},
 
 		// Invalid hostname tests
 		{
-			name:       "non-existent domain fails lookup",
-			hostname:   "this-domain-definitely-does-not-exist-12345.invalid",
-			expectedIP: net.ParseIP("1.2.3.4"),
-			want:       false,
+			name:      "non-existent domain fails lookup",
+			hostname:  "this-domain-definitely-does-not-exist-12345.invalid",
+			wantErr:   true,
+			errSubstr: "DNS lookup failed",
 		},
 		{
-			name:       "empty hostname fails lookup",
-			hostname:   "",
-			expectedIP: net.ParseIP("1.2.3.4"),
-			want:       false,
+			name:      "empty hostname fails lookup",
+			hostname:  "",
+			wantErr:   true,
+			errSubstr: "DNS lookup failed",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := verifyHostnameResolvesToIP(ctx, nopLogger, tt.hostname, tt.expectedIP)
-			if got != tt.want {
-				t.Errorf("verifyHostnameResolvesToIP(%q, %v) = %v, want %v",
-					tt.hostname, tt.expectedIP, got, tt.want)
+			ip, err := resolveHostnameToPublicIP(ctx, nopLogger, tt.hostname)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("resolveHostnameToPublicIP(%q) expected error, got IP %v", tt.hostname, ip)
+				} else if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
+					t.Errorf("resolveHostnameToPublicIP(%q) error = %v, want error containing %q", tt.hostname, err, tt.errSubstr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Errorf("resolveHostnameToPublicIP(%q) unexpected error: %v", tt.hostname, err)
+
+				return
+			}
+
+			if ip == nil {
+				t.Errorf("resolveHostnameToPublicIP(%q) returned nil IP", tt.hostname)
 			}
 		})
 	}
 }
 
-// TestDNSSpoofingPrevention_Integration tests the full DNS spoofing prevention flow.
-// This simulates an attack where:
-// 1. The firewall allows traffic to "google.com"
-// 2. An attacker modifies /etc/hosts (or uses other DNS spoofing) to make google.com resolve to 1.1.1.1
-// 3. The attacker connects to 1.1.1.1 claiming the hostname is "google.com"
-// 4. The firewall should REJECT this because real DNS lookup shows google.com != 1.1.1.1
-func TestDNSSpoofingPrevention_Integration(t *testing.T) {
-	ctx := t.Context()
-	nopLogger := logger.NewNopLogger()
-	metrics := NewMetrics(noop.NewMeterProvider())
+func TestIsIPInDeniedCIDRs(t *testing.T) {
+	tests := []struct {
+		name string
+		ip   string
+		want bool
+	}{
+		// IPs in denied CIDRs (internal/private ranges)
+		{"10.0.0.1 is denied", "10.0.0.1", true},
+		{"10.255.255.255 is denied", "10.255.255.255", true},
+		{"192.168.1.1 is denied", "192.168.1.1", true},
+		{"172.16.0.1 is denied", "172.16.0.1", true},
+		{"172.31.255.255 is denied", "172.31.255.255", true},
+		{"169.254.1.1 is denied (link-local)", "169.254.1.1", true},
 
-	// Scenario: Attacker spoofed DNS to make google.com point to 1.1.1.1 (Cloudflare's IP)
-	// The client connects to 1.1.1.1 but claims hostname is "google.com"
-	spoofedIP := net.ParseIP("1.1.1.1")
-	claimedHostname := "google.com"
+		// IPs NOT in denied CIDRs (public IPs)
+		{"8.8.8.8 is allowed (Google DNS)", "8.8.8.8", false},
+		{"1.1.1.1 is allowed (Cloudflare)", "1.1.1.1", false},
+		{"142.250.80.46 is allowed (Google)", "142.250.80.46", false},
+		{"127.0.0.1 is allowed (loopback - not in denied list)", "127.0.0.1", false},
 
-	// Create a sandbox with google.com in the allowlist
-	sbx := &sandbox.Sandbox{
-		Metadata: &sandbox.Metadata{
-			Config: sandbox.Config{
-				Network: &orchestrator.SandboxNetworkConfig{
-					Egress: &orchestrator.SandboxNetworkEgressConfig{
-						AllowedDomains: []string{"google.com"},
-						DeniedCidrs:    []string{sandbox_network.AllInternetTrafficCIDR}, // Deny all except allowed
-					},
-				},
-			},
-		},
+		// Edge cases around CIDR boundaries
+		{"172.15.255.255 is allowed (just before 172.16.0.0/12)", "172.15.255.255", false},
+		{"172.32.0.0 is allowed (just after 172.16.0.0/12)", "172.32.0.0", false},
 	}
 
-	// Create a mock connection using net.Pipe, wrapped in tcpproxy.Conn with the spoofed hostname
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ip := net.ParseIP(tt.ip)
+			if ip == nil {
+				t.Fatalf("Failed to parse IP: %s", tt.ip)
+			}
 
-	// Wrap in tcpproxy.Conn to provide the hostname (simulating TLS SNI or HTTP Host header)
-	tcpConn := &tcpproxy.Conn{
-		HostName: claimedHostname,
-		Conn:     serverConn,
+			got := isIPInDeniedCIDRs(ip)
+			if got != tt.want {
+				t.Errorf("isIPInDeniedCIDRs(%s) = %v, want %v", tt.ip, got, tt.want)
+			}
+		})
 	}
-
-	// Call domainHandler directly - this should close the connection due to DNS mismatch
-	domainHandler(ctx, tcpConn, spoofedIP, 443, sbx, nopLogger, metrics, ProtocolTLS)
-
-	// Verify the connection was closed by trying to write to it
-	// Set a short deadline to avoid hanging
-	clientConn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
-	_, err := clientConn.Write([]byte("test"))
-
-	if err == nil {
-		t.Errorf("Expected connection to be closed due to DNS spoofing, but write succeeded")
-	}
-
-	t.Log("SUCCESS: DNS spoofing attack prevented via domainHandler")
-	t.Log("  - Attacker connected to 1.1.1.1 claiming hostname google.com")
-	t.Log("  - domainHandler detected DNS mismatch and closed the connection")
 }

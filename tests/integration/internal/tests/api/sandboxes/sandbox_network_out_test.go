@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 
@@ -86,6 +87,16 @@ func assertBlockedDNSQuery(t *testing.T, ctx context.Context, sbx *api.Sandbox, 
 	t.Helper()
 	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=3", fmt.Sprintf("@%s", dnsServer), domain)
 	require.Error(t, err, msg)
+}
+
+// assertHTTPResponseFromServer asserts that an HTTPS request returns a response from the expected server
+// This is used to verify that DNS spoofing redirection worked correctly
+func assertHTTPResponseFromServer(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, expectedServerHeader, msg string) {
+	t.Helper()
+	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user", "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
+	require.NoError(t, err, msg)
+	require.Contains(t, strings.ToLower(output), strings.ToLower(expectedServerHeader),
+		fmt.Sprintf("%s - expected server header to contain %q, got response: %s", msg, expectedServerHeader, output))
 }
 
 // =============================================================================
@@ -794,13 +805,14 @@ func TestEgressFirewallUDPAllowedCIDR(t *testing.T) {
 	assertBlockedDNSQuery(t, ctx, sbx, envdClient, "1.1.1.1", "google.com", "Expected DNS query (UDP) to IP outside allowed CIDR to fail")
 }
 
-// TestEgressFirewallDNSSpoofingPrevention tests that DNS spoofing attacks are prevented.
+// TestEgressFirewallDNSSpoofingNeutralized tests that DNS spoofing attacks are neutralized.
 // This simulates an attack where:
 // 1. The firewall allows traffic to "google.com"
 // 2. An attacker modifies /etc/hosts to make google.com resolve to 1.1.1.1 (Cloudflare's IP)
 // 3. The attacker tries to access 1.1.1.1 claiming the hostname is "google.com"
-// 4. The firewall should REJECT this because real DNS lookup shows google.com != 1.1.1.1
-func TestEgressFirewallDNSSpoofingPrevention(t *testing.T) {
+// 4. The firewall IGNORES the spoofed IP and resolves google.com itself, redirecting to the real Google IP
+// 5. The connection SUCCEEDS to the real Google server (not to 1.1.1.1)
+func TestEgressFirewallDNSSpoofingNeutralized(t *testing.T) {
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -817,24 +829,32 @@ func TestEgressFirewallDNSSpoofingPrevention(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	// First, verify normal access to google.com works
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed before DNS spoofing")
+	// First, verify normal access to google.com works and response is from Google (server: gws)
+	assertHTTPResponseFromServer(t, ctx, sbx, envdClient, "https://google.com", "server: gws",
+		"Expected curl to google.com to succeed and return Google server header before DNS spoofing")
 
 	// Now simulate DNS spoofing by adding an /etc/hosts entry that maps google.com to 1.1.1.1 (Cloudflare's IP)
 	// This simulates what would happen if an attacker modified DNS resolution
+	// If the spoofing worked (i.e., if we connected to 1.1.1.1), we would see "server: cloudflare"
 	err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "sh", "-c", "echo '1.1.1.1 google.com' >> /etc/hosts")
 	require.NoError(t, err, "Expected to modify /etc/hosts without error")
 
-	// Now try to access google.com - this should FAIL because:
+	// Now try to access google.com - this should STILL SUCCEED and return Google's response because:
 	// - The sandbox resolves google.com to 1.1.1.1 (via /etc/hosts)
 	// - The firewall sees a connection to 1.1.1.1 with hostname "google.com"
-	// - The firewall's DNS verification checks if google.com actually resolves to 1.1.1.1
-	// - Since google.com doesn't resolve to 1.1.1.1, the connection is blocked
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://google.com",
-		"Expected curl to google.com to FAIL after DNS spoofing (firewall detects hostname doesn't resolve to destination IP)")
+	// - The firewall resolves google.com itself and gets the real Google IPs
+	// - The firewall REDIRECTS the connection to a real Google IP (ignoring 1.1.1.1)
+	// - The connection succeeds to the real Google server
+	//
+	// We verify this by checking the "server" header in the response:
+	// - If we reached Google: "server: gws"
+	// - If we reached Cloudflare (spoofing worked): "server: cloudflare"
+	assertHTTPResponseFromServer(t, ctx, sbx, envdClient, "https://google.com", "server: gws",
+		"Expected response from Google (server: gws), NOT Cloudflare - firewall should redirect to real Google IP")
 
-	t.Log("SUCCESS: DNS spoofing attack prevented")
+	t.Log("SUCCESS: DNS spoofing attack neutralized")
 	t.Log("  - google.com was allowed in the firewall rules")
-	t.Log("  - /etc/hosts was modified to make google.com resolve to 1.1.1.1")
-	t.Log("  - Firewall blocked the connection because real DNS shows google.com != 1.1.1.1")
+	t.Log("  - /etc/hosts was modified to make google.com resolve to 1.1.1.1 (Cloudflare)")
+	t.Log("  - Firewall resolved google.com itself and redirected to a real Google IP")
+	t.Log("  - Response came from Google (server: gws), NOT Cloudflare - spoofing was bypassed!")
 }
