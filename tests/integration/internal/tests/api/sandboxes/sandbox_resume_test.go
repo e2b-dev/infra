@@ -163,3 +163,22 @@ func TestSandboxResume(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestSandboxResume_CrossTeamAccess(t *testing.T) {
+	c := setup.GetAPIClient()
+	db := setup.GetTestDBClient(t)
+
+	// Create a sandbox with the default team's API key and pause it
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+	pauseSandbox(t, c, sbx.SandboxID)
+
+	// Create a second team with a different API key
+	foreignUserID := utils.CreateUser(t, db)
+	foreignTeamID := utils.CreateTeamWithUser(t, db, "foreign-team-resume", foreignUserID.String())
+	foreignAPIKey := utils.CreateAPIKey(t, t.Context(), c, foreignUserID.String(), foreignTeamID)
+
+	// Try to resume the first team's sandbox using the second team's API key
+	resumeResp, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey(foreignAPIKey))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, resumeResp.StatusCode(), "Should return 403 Forbidden when trying to resume a sandbox owned by a different team")
+}
