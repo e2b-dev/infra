@@ -7,11 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -45,6 +42,10 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 		return nil, fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode())
 	}
 
+	if res.JSON200 == nil {
+		return nil, errors.New("request returned nil response")
+	}
+
 	raw := *res.JSON200
 	items := make([]api.SandboxMetric, len(raw))
 	for i, m := range raw {
@@ -73,6 +74,10 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 		return nil, fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode())
 	}
 
+	if res.JSON200 == nil {
+		return nil, errors.New("request returned nil response")
+	}
+
 	raw := *res.JSON200
 	items := make(map[string]api.SandboxMetric, len(raw.Sandboxes))
 	for sbxID, v := range raw.Sandboxes {
@@ -99,6 +104,10 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 
 	if res.StatusCode() != http.StatusOK {
 		return api.SandboxLogs{}, fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode())
+	}
+
+	if res.JSON200 == nil {
+		return api.SandboxLogs{}, errors.New("request returned nil response")
 	}
 
 	raw := *res.JSON200
@@ -188,9 +197,11 @@ func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, 
 	}
 
 	if res.StatusCode() != 200 || res.JSON200 == nil {
-		logger.L().Error(ctx, "failed to get build logs in template manager", zap.String("body", string(res.Body)))
-
 		return nil, errors.New("failed to get build logs in template manager")
+	}
+
+	if res.JSON200 == nil {
+		return nil, errors.New("request returned nil response")
 	}
 
 	raw := *res.JSON200
