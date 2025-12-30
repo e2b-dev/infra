@@ -78,17 +78,12 @@ func TestWarmPool_Populate(t *testing.T) {
 		testFactory.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil)
 
 		// populate asynchronously
-		ctx, cancel := context.WithCancel(t.Context())
 		go func() {
-			err := wp.Populate(ctx)
+			err := wp.Populate(t.Context())
 			assert.ErrorIs(t, err, context.Canceled)
 		}()
 
 		item := <-wp.freshItems
-
-		cancel()
-
-		// verify the item has been released
 		assert.Equal(t, "test-1", item.Key)
 	})
 
