@@ -124,7 +124,12 @@ EOF
 fi
 
 # Allow other users to access the fuse device
-chmod 666 /dev/fuse
+# Create udev rule to ensure permissions are set when device is created at runtime
+mkdir -p /etc/udev/rules.d
+cat <<EOF >/etc/udev/rules.d/99-fuse-permissions.rules
+# Set permissions for FUSE device to allow non-root users
+KERNEL=="fuse", MODE="0666"
+EOF
 
 echo "Increasing inotify watch limit"
 echo 'fs.inotify.max_user_watches=65536' | tee -a /etc/sysctl.conf
