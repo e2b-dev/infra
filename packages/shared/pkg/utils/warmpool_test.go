@@ -87,6 +87,8 @@ func TestWarmPool_Populate(t *testing.T) {
 		assert.Equal(t, "test-1", item.Key)
 
 		<-done
+
+		wp.wg.Wait()
 	})
 
 	t.Run("populate quits on close", func(t *testing.T) {
@@ -129,6 +131,7 @@ func TestWarmPool_Populate(t *testing.T) {
 			1,
 			testFactory,
 		)
+		t.Cleanup(closePool(t, wp))
 
 		makeItems := newItemFactory(5)
 
@@ -160,6 +163,7 @@ func TestWarmPool_Populate(t *testing.T) {
 			5,
 			testFactory,
 		)
+		t.Cleanup(closePool(t, wp))
 
 		makeItems := newItemFactory(5)
 
@@ -195,6 +199,7 @@ func TestWarmPool_Populate(t *testing.T) {
 			1,
 			testFactory,
 		)
+		t.Cleanup(closePool(t, wp))
 
 		makeItems := newItemFactoryFn(func(index int) bool {
 			return index%2 == 0
@@ -218,7 +223,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		<-done
 
 		item, ok := <-wp.freshItems
-		assert.False(t, ok, "fresh channel should be closed, but got %s instead", item.Key)
+		assert.False(t, ok, "fresh channel should be closed, but got %v instead", item)
 	})
 
 	t.Run("populate keeps fresh items topped off", func(t *testing.T) {
