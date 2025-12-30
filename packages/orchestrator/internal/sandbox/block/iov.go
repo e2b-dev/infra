@@ -15,14 +15,14 @@ var (
 	IOV_MAX = utils.Must(getIOVMax())
 
 	PAGE_SIZE = os.Getpagesize()
-	PAGE_MASK = ^(PAGE_SIZE - 1)
-	INT_MAX   = math.MaxInt32
+	PAGE_MASK = ^(int64(PAGE_SIZE) - 1)
+	INT_MAX   = int64(math.MaxInt32)
 
 	// This is maximum bytes that can be read/written in a single operation.
 	//
 	// https://unix.stackexchange.com/questions/794316/why-linux-read-avoids-using-full-2-gib-in-one-call
 	// https://stackoverflow.com/questions/70368651/why-cant-linux-write-more-than-2147479552-bytes
-	MAX_RW_COUNT = int64(INT_MAX & PAGE_MASK)
+	MAX_RW_COUNT = INT_MAX & PAGE_MASK
 )
 
 func getIOVMax() (int, error) {

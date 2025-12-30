@@ -353,6 +353,8 @@ func TestSplitOversizedRanges(t *testing.T) {
 
 // This test is used to verify that the code correctly splits the ranges when the total size exceeds MAX_RW_COUNT.
 func TestCopyFromProcess_Exceed_MAX_RW_COUNT(t *testing.T) {
+	fmt.Println("MAX_RW_COUNT", MAX_RW_COUNT)
+	
 	t.Parallel()
 
 	pageSize := int64(header.PageSize)
