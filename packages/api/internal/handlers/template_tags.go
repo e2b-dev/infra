@@ -169,7 +169,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "assigned template tag",
 		properties.
 			Set("environment", template.ID).
-			Set("tags", maps.Keys(tags)),
+			Set("tags", slices.Collect(maps.Keys(tags))),
 	)
 
 	logger.L().Info(ctx, "Assigned template tag",
