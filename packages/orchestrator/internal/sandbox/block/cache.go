@@ -392,7 +392,7 @@ func (c *Cache) copyProcessMemory(
 			segmentSize += r.Size
 		}
 
-		if segmentSize == 0 {
+		if len(remote) == 0 {
 			break
 		}
 
