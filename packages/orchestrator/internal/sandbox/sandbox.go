@@ -663,10 +663,6 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (s *Sandbox) FirecrackerVersions() fc.Config {
-	return s.process.Versions
-}
-
 func (s *Sandbox) Shutdown(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "shutdown sandbox")
 	defer span.End()

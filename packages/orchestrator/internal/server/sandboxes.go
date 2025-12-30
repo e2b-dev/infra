@@ -425,11 +425,10 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, fmt.Errorf("no metadata found in template: %w", err)
 	}
 
-	fcVersions := sbx.FirecrackerVersions()
 	meta = meta.SameVersionTemplate(metadata.TemplateMetadata{
 		BuildID:            in.GetBuildId(),
-		KernelVersion:      fcVersions.KernelVersion,
-		FirecrackerVersion: fcVersions.FirecrackerVersion,
+		KernelVersion:      sbx.Config.FirecrackerConfig.KernelVersion,
+		FirecrackerVersion: sbx.Config.FirecrackerConfig.FirecrackerVersion,
 	})
 	snapshot, err := sbx.Pause(ctx, meta)
 	if err != nil {

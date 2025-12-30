@@ -130,11 +130,10 @@ func (lb *LayerExecutor) BuildLayer(
 	}
 
 	// Prepare metadata
-	fcVersions := sbx.FirecrackerVersions()
 	meta = meta.NewVersionTemplate(metadata.TemplateMetadata{
 		BuildID:            cmd.CurrentLayer.Template.BuildID,
-		KernelVersion:      fcVersions.KernelVersion,
-		FirecrackerVersion: fcVersions.FirecrackerVersion,
+		KernelVersion:      sbx.Config.FirecrackerConfig.KernelVersion,
+		FirecrackerVersion: sbx.Config.FirecrackerConfig.FirecrackerVersion,
 	})
 	err = lb.PauseAndUpload(
 		ctx,
