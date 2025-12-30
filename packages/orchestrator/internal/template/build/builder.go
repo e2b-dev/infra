@@ -232,7 +232,7 @@ func runBuild(
 ) (*Result, error) {
 	templateStorage := builder.templateStorage
 	if path, ok := builder.useNFSCache(ctx); ok {
-		templateStorage = storage.NewCachedProvider(path, templateStorage)
+		templateStorage = storage.NewCachedProvider(path, templateStorage, builder.featureFlags)
 	}
 
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, templateStorage)

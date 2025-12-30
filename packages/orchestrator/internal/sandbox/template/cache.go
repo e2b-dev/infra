@@ -131,7 +131,7 @@ func (c *Cache) GetTemplate(
 	// it will start working only for new orchestrators or new builds.
 	if c.useNFSCache(ctx, isBuilding, isSnapshot) {
 		logger.L().Info(ctx, "using local template cache", zap.String("path", c.rootCachePath))
-		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
+		persistence = storage.NewCachedProvider(c.rootCachePath, persistence, c.flags)
 	}
 
 	storageTemplate, err := newTemplateFromStorage(

@@ -117,6 +117,10 @@ func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e err
 
 func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
 	go func(ctx context.Context) {
+		if !c.flags.BoolFlag(ctx, featureflags.WriteToCacheOnWrites) {
+			return
+		}
+
 		input, err := os.Open(path)
 		if err != nil {
 			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteFromFileSystem, err)

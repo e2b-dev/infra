@@ -11,10 +11,12 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -29,10 +31,15 @@ var (
 
 const maxCacheWriterConcurrency = 10
 
+type featureFlagsClient interface {
+	BoolFlag(ctx context.Context, flag featureflags.BoolFlag, ldctx ...ldcontext.Context) bool
+}
+
 type CachedSeekableObjectProvider struct {
 	path      string
 	chunkSize int64
 	inner     SeekableObjectProvider
+	flags     featureFlagsClient
 }
 
 var _ SeekableObjectProvider = CachedSeekableObjectProvider{}
@@ -74,7 +81,7 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 	// read remote file
 	readCount, err := c.inner.ReadAt(ctx, buff, offset)
 	if err != nil {
-		return 0, fmt.Errorf("failed to perform uncached read: %w", err)
+		return readCount, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
 	shadowBuff := make([]byte, readCount)
@@ -103,7 +110,7 @@ func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 
 	size, err = c.inner.Size(ctx)
 	if err != nil {
-		return 0, err
+		return size, err
 	}
 
 	go func(ctx context.Context) {
@@ -129,6 +136,10 @@ func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, p
 	// this opens the file twice, but the API makes it difficult to use a MultiWriter
 
 	go func(ctx context.Context) {
+		if !c.flags.BoolFlag(ctx, featureflags.WriteToCacheOnWrites) {
+			return
+		}
+
 		size, err := c.createCacheBlocksFromFile(ctx, path)
 		if err != nil {
 			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to create cache blocks: %w", err))
@@ -216,7 +227,10 @@ func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, off
 	// Try to acquire lock for this chunk write to NFS cache
 	lockFile, err := lock.TryAcquireLock(ctx, chunkPath)
 	if err != nil {
-		return fmt.Errorf("failed to acquire lock on chunk path: %w", err)
+		// failed to acquire lock, which is a different category of failure than "write failed"
+		recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
+
+		return nil
 	}
 
 	// Release lock after write completes

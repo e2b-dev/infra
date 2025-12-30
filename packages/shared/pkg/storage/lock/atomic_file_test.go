@@ -29,12 +29,37 @@ func TestOpenFile(t *testing.T) {
 		require.Error(t, err)
 		assert.True(t, os.IsNotExist(err))
 
-		err = f.Close(t.Context())
+		err = f.Commit(t.Context())
 		require.NoError(t, err)
 
 		data, err := os.ReadFile(filename)
 		require.NoError(t, err)
 		assert.Equal(t, expected, data)
+	})
+
+	t.Run("close without commit drops new data", func(t *testing.T) {
+		expected := []byte("hello")
+
+		tempDir := t.TempDir()
+		filename := filepath.Join(tempDir, "test.bin")
+
+		f, err := OpenFile(t.Context(), filename)
+		require.NoError(t, err)
+		require.NotNil(t, f)
+
+		count, err := f.Write(expected)
+		require.NoError(t, err)
+		assert.Equal(t, len(expected), count)
+
+		_, err = os.Stat("test.bin")
+		require.Error(t, err)
+		assert.True(t, os.IsNotExist(err))
+
+		err = f.Close(t.Context())
+		require.NoError(t, err)
+
+		_, err = os.ReadFile(filename)
+		require.ErrorIs(t, err, os.ErrNotExist)
 	})
 
 	t.Run("two files cannot be opened at the same time", func(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -42,12 +43,13 @@ type CachedProvider struct {
 	rootPath  string
 	chunkSize int64
 	inner     StorageProvider
+	flags     *featureflags.Client
 }
 
 var _ StorageProvider = (*CachedProvider)(nil)
 
-func NewCachedProvider(rootPath string, inner StorageProvider) *CachedProvider {
-	return &CachedProvider{rootPath: rootPath, inner: inner, chunkSize: MemoryChunkSize}
+func NewCachedProvider(rootPath string, inner StorageProvider, flags *featureflags.Client) *CachedProvider {
+	return &CachedProvider{rootPath: rootPath, inner: inner, chunkSize: MemoryChunkSize, flags: flags}
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
@@ -73,7 +75,7 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string, objectType 
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &CachedObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
+	return &CachedObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject, flags: c.flags}, nil
 }
 
 func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, objectType SeekableObjectType) (SeekableObjectProvider, error) {
@@ -87,7 +89,7 @@ func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, obj
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &CachedSeekableObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
+	return &CachedSeekableObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject, flags: c.flags}, nil
 }
 
 func (c CachedProvider) GetDetails() string {

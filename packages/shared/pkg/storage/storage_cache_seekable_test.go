@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -66,7 +67,10 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 			WriteFromFileSystem(mock.Anything, mock.Anything).
 			Return(nil)
 
-		c := CachedSeekableObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024}
+		featureFlags := storagemocks.NewMockFeatureFlagsClient(t)
+		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
+
+		c := CachedSeekableObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags}
 
 		// write temp file
 		err = c.WriteFromFileSystem(t.Context(), tempFilename)
@@ -238,4 +242,19 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCachedSeekableObjectProvider_ReadAt(t *testing.T) {
+	t.Run("failed but returns count on short read", func(t *testing.T) {
+		c := CachedSeekableObjectProvider{chunkSize: 10}
+		errTarget := errors.New("find me")
+		mockSeeker := storagemocks.NewMockSeekableObjectProvider(t)
+		mockSeeker.EXPECT().ReadAt(mock.Anything, mock.Anything, mock.Anything).Return(5, errTarget)
+		c.inner = mockSeeker
+
+		buff := make([]byte, 10)
+		count, err := c.ReadAt(t.Context(), buff, 0)
+		require.ErrorIs(t, err, errTarget)
+		assert.Equal(t, 5, count)
+	})
 }
