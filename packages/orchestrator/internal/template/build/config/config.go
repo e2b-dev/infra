@@ -61,6 +61,7 @@ type TemplateConfig struct {
 
 	// Firecracker version to use
 	FirecrackerVersion string
+
 	// Kernel version to use
 	KernelVersion string
 }

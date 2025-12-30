@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -197,6 +198,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			Vars:        map[string]string{"HELLO": "WORLD"},
 			AccessToken: &accessToken,
 			Version:     "1.2.3",
+		},
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      kernelVersion,
+			FirecrackerVersion: fcVersion,
 		},
 	}
 
