@@ -522,16 +522,3 @@ func newItemFactory(count int) func(context.Context) (*testItem, error) {
 		return &testItem{Key: fmt.Sprintf("test-%d", current)}, nil
 	}
 }
-
-func newItemFactoryFn(shouldSucceed func(id int) bool) func(context.Context) (*testItem, error) {
-	current := 0
-
-	return func(_ context.Context) (*testItem, error) {
-		current++
-		if !shouldSucceed(current) {
-			return nil, fmt.Errorf("no more items")
-		}
-
-		return &testItem{Key: fmt.Sprintf("test-%d", current)}, nil
-	}
-}
