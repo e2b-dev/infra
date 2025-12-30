@@ -443,11 +443,11 @@ variable "client_clusters_config" {
       min_cpu_platform = string
     })
 
-    autoscaler = object({
-      size_max      = number
-      memory_target = number
-      cpu_target    = number
-    })
+    autoscaler = optional(object({
+      size_max      = optional(number)
+      memory_target = optional(number)
+      cpu_target    = optional(number)
+    }))
 
     boot_disk = object({
       disk_type = string
@@ -498,11 +498,11 @@ variable "build_clusters_config" {
       min_cpu_platform = string
     })
 
-    autoscaler = object({
-      size_max      = number
-      memory_target = number
-      cpu_target    = number
-    })
+    autoscaler = optional(object({
+      size_max      = optional(number)
+      memory_target = optional(number)
+      cpu_target    = optional(number)
+    }))
 
     boot_disk = object({
       disk_type = string
