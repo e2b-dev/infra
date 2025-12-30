@@ -181,3 +181,7 @@ tidy:
 .PHONY: local-infra
 local-infra:
 	docker compose --file ./packages/local-dev/docker-compose.yaml up --abort-on-container-failure
+
+.PHONY: migrate-build-cluster
+migrate-build-cluster:
+	$(MAKE) -C iac/provider-gcp migrate-build-cluster

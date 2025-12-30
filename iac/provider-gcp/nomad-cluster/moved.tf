@@ -17,8 +17,3 @@ moved {
   from = google_compute_health_check.client_nomad_check
   to   = module.client_cluster["0"].google_compute_health_check.nomad_check
 }
-
-moved {
-  from = google_compute_instance_template.build
-  to   = module.build_cluster["0"].google_compute_instance_template.template
-}
