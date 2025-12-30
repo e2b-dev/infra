@@ -5,29 +5,26 @@ import (
 	"fmt"
 
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 var _ SourceTemplateProvider = (*CacheSourceTemplateProvider)(nil)
 
 type CacheSourceTemplateProvider struct {
-	files storage.TemplateFiles
+	buildID string
 }
 
 func NewCacheSourceTemplateProvider(
-	files storage.TemplateFiles,
+	buildID string,
 ) *CacheSourceTemplateProvider {
 	return &CacheSourceTemplateProvider{
-		files: files,
+		buildID: buildID,
 	}
 }
 
 func (cstp *CacheSourceTemplateProvider) Get(ctx context.Context, templateCache *sbxtemplate.Cache) (sbxtemplate.Template, error) {
 	template, err := templateCache.GetTemplate(
 		ctx,
-		cstp.files.BuildID,
-		cstp.files.KernelVersion,
-		cstp.files.FirecrackerVersion,
+		cstp.buildID,
 		false,
 		true,
 	)

@@ -70,6 +70,8 @@ type Config struct {
 	Network *orchestrator.SandboxNetworkConfig
 
 	Envd EnvdMetadata
+
+	FirecrackerConfig fc.Config
 }
 
 type EnvdMetadata struct {
@@ -171,7 +173,6 @@ func (f *Factory) CreateSandbox(
 	ctx context.Context,
 	config Config,
 	runtime RuntimeMetadata,
-	fcVersions fc.FirecrackerVersions,
 	template template.Template,
 	sandboxTimeout time.Duration,
 	rootfsCachePath string,
@@ -262,7 +263,7 @@ func (f *Factory) CreateSandbox(
 		f.config,
 		ips.slot,
 		sandboxFiles,
-		fcVersions,
+		config.FirecrackerConfig,
 		rootfsPath,
 		fc.ConstantRootfsPaths,
 	)
@@ -480,10 +481,7 @@ func (f *Factory) ResumeSandbox(
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
-		fc.FirecrackerVersions{
-			KernelVersion:      sandboxFiles.KernelVersion,
-			FirecrackerVersion: sandboxFiles.FirecrackerVersion,
-		},
+		config.FirecrackerConfig,
 		rootfsPath,
 		fc.RootfsPaths{
 			TemplateVersion: meta.Version,
@@ -665,7 +663,7 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
+func (s *Sandbox) FirecrackerVersions() fc.Config {
 	return s.process.Versions
 }
 
@@ -682,9 +680,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 
 	// This is required because the FC API doesn't support passing /dev/null
 	tf, err := storage.TemplateFiles{
-		BuildID:            uuid.New().String(),
-		KernelVersion:      s.Template.Files().KernelVersion,
-		FirecrackerVersion: s.Template.Files().FirecrackerVersion,
+		BuildID: uuid.New().String(),
 	}.CacheFiles(s.config)
 	if err != nil {
 		return fmt.Errorf("failed to create template files: %w", err)
@@ -736,7 +732,7 @@ func (s *Sandbox) Pause(
 		}
 	}()
 
-	snapshotTemplateFiles, err := m.Template.CacheFiles(s.config)
+	snapshotTemplateFiles, err := s.Template.Files().CacheFiles(s.config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}

@@ -55,7 +55,7 @@ type ProcessOptions struct {
 }
 
 type Process struct {
-	Versions FirecrackerVersions
+	Versions Config
 
 	cmd *exec.Cmd
 
@@ -79,7 +79,7 @@ func NewProcess(
 	config cfg.BuilderConfig,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
-	versions FirecrackerVersions,
+	versions Config,
 	rootfsProviderPath string,
 	rootfsPaths RootfsPaths,
 ) (*Process, error) {

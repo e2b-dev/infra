@@ -131,7 +131,7 @@ func (lb *LayerExecutor) BuildLayer(
 
 	// Prepare metadata
 	fcVersions := sbx.FirecrackerVersions()
-	meta = meta.NewVersionTemplate(storage.TemplateFiles{
+	meta = meta.NewVersionTemplate(metadata.TemplateMetadata{
 		BuildID:            cmd.CurrentLayer.Template.BuildID,
 		KernelVersion:      fcVersions.KernelVersion,
 		FirecrackerVersion: fcVersions.FirecrackerVersion,
@@ -261,8 +261,6 @@ func (lb *LayerExecutor) PauseAndUpload(
 	err = lb.templateCache.AddSnapshot(
 		context.WithoutCancel(ctx),
 		meta.Template.BuildID,
-		meta.Template.KernelVersion,
-		meta.Template.FirecrackerVersion,
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
@@ -286,7 +284,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		err := snapshot.Upload(
 			ctx,
 			lb.templateStorage,
-			meta.Template,
+			storage.TemplateFiles{BuildID: meta.Template.BuildID},
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)

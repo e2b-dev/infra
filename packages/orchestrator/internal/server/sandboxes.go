@@ -19,6 +19,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -103,8 +105,6 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	template, err := s.templateCache.GetTemplate(
 		ctx,
 		req.GetSandbox().GetBuildId(),
-		req.GetSandbox().GetKernelVersion(),
-		req.GetSandbox().GetFirecrackerVersion(),
 		req.GetSandbox().GetSnapshot(),
 		false,
 	)
@@ -149,6 +149,11 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 				Version:     req.GetSandbox().GetEnvdVersion(),
 				AccessToken: req.GetSandbox().EnvdAccessToken,
 				Vars:        req.GetSandbox().GetEnvVars(),
+			},
+
+			FirecrackerConfig: fc.Config{
+				KernelVersion:      req.GetSandbox().GetKernelVersion(),
+				FirecrackerVersion: req.GetSandbox().GetFirecrackerVersion(),
 			},
 		},
 		sandbox.RuntimeMetadata{
@@ -421,7 +426,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	fcVersions := sbx.FirecrackerVersions()
-	meta = meta.SameVersionTemplate(storage.TemplateFiles{
+	meta = meta.SameVersionTemplate(metadata.TemplateMetadata{
 		BuildID:            in.GetBuildId(),
 		KernelVersion:      fcVersions.KernelVersion,
 		FirecrackerVersion: fcVersions.FirecrackerVersion,
@@ -436,8 +441,6 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	err = s.templateCache.AddSnapshot(
 		ctx,
 		meta.Template.BuildID,
-		meta.Template.KernelVersion,
-		meta.Template.FirecrackerVersion,
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
@@ -454,7 +457,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	go func(ctx context.Context) {
-		err := snapshot.Upload(ctx, s.persistence, meta.Template)
+		err := snapshot.Upload(ctx, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID})
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading sandbox snapshot", zap.Error(err))
 

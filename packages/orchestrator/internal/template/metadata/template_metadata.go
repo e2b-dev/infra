@@ -49,13 +49,19 @@ type Start struct {
 	Context  Context `json:"context"`
 }
 
+type TemplateMetadata struct {
+	BuildID            string `json:"build_id"`
+	KernelVersion      string `json:"kernel_version"`
+	FirecrackerVersion string `json:"firecracker_version"`
+}
+
 type Template struct {
-	Version      uint64                `json:"version"`
-	Template     storage.TemplateFiles `json:"template"`
-	Context      Context               `json:"context"`
-	Start        *Start                `json:"start,omitempty"`
-	FromImage    *string               `json:"from_image,omitempty"`
-	FromTemplate *FromTemplate         `json:"from_template,omitempty"`
+	Version      uint64           `json:"version"`
+	Template     TemplateMetadata `json:"template"`
+	Context      Context          `json:"context"`
+	Start        *Start           `json:"start,omitempty"`
+	FromImage    *string          `json:"from_image,omitempty"`
+	FromTemplate *FromTemplate    `json:"from_template,omitempty"`
 }
 
 func V1TemplateVersion() Template {
@@ -77,10 +83,10 @@ func (t Template) BasedOn(
 	}
 }
 
-func (t Template) NewVersionTemplate(files storage.TemplateFiles) Template {
+func (t Template) NewVersionTemplate(metadata TemplateMetadata) Template {
 	return Template{
 		Version:      CurrentVersion,
-		Template:     files,
+		Template:     metadata,
 		Context:      t.Context,
 		Start:        t.Start,
 		FromTemplate: t.FromTemplate,
@@ -88,10 +94,10 @@ func (t Template) NewVersionTemplate(files storage.TemplateFiles) Template {
 	}
 }
 
-func (t Template) SameVersionTemplate(files storage.TemplateFiles) Template {
+func (t Template) SameVersionTemplate(metadata TemplateMetadata) Template {
 	return Template{
 		Version:      t.Version,
-		Template:     files,
+		Template:     metadata,
 		Context:      t.Context,
 		Start:        t.Start,
 		FromTemplate: t.FromTemplate,
