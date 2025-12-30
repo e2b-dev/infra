@@ -116,28 +116,31 @@ DECLARE
     batch_size INT := 10000;
     rows_affected INT;
     total_migrated INT := 0;
+    last_created_at TIMESTAMP WITH TIME ZONE := '1970-01-01 00:00:00+00';
     last_id UUID := '00000000-0000-0000-0000-000000000000';
+    current_max_created_at TIMESTAMP WITH TIME ZONE;
     current_max_id UUID;
 BEGIN
     LOOP
-        -- Get the max ID for this batch (efficient index scan)
-        SELECT id INTO current_max_id
+        -- Get the max (created_at, id) for this batch
+        -- Using composite ordering: created_at for sequence, id as tie-breaker
+        SELECT created_at, id INTO current_max_created_at, current_max_id
         FROM (
-            SELECT id FROM env_builds 
+            SELECT created_at, id FROM env_builds 
             WHERE env_id IS NOT NULL 
-            AND id > last_id 
-            ORDER BY id 
+            AND (created_at, id) > (last_created_at, last_id)
+            ORDER BY created_at, id 
             LIMIT batch_size
         ) sub
-        ORDER BY id DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1;
         
         -- Exit if no more records
-        IF current_max_id IS NULL THEN
+        IF current_max_created_at IS NULL THEN
             EXIT;
         END IF;
         
-        -- Insert the batch using ID range (efficient)
+        -- Insert the batch using composite range (handles duplicate timestamps correctly)
         INSERT INTO env_build_assignments (env_id, build_id, tag, source, created_at)
         SELECT 
             eb.env_id,
@@ -147,16 +150,17 @@ BEGIN
             eb.created_at
         FROM env_builds eb
         WHERE eb.env_id IS NOT NULL
-        AND eb.id > last_id
-        AND eb.id <= current_max_id
+        AND (eb.created_at, eb.id) > (last_created_at, last_id)
+        AND (eb.created_at, eb.id) <= (current_max_created_at, current_max_id)
         ON CONFLICT (env_id, build_id, tag) WHERE source IN ('trigger', 'migration') DO NOTHING;
         
         GET DIAGNOSTICS rows_affected = ROW_COUNT;
         total_migrated := total_migrated + rows_affected;
+        last_created_at := current_max_created_at;
         last_id := current_max_id;
         
         COMMIT;
-        RAISE NOTICE 'Migrated batch, processed up to id: % (total rows: %)', last_id, total_migrated;
+        RAISE NOTICE 'Migrated batch, processed up to created_at: %, id: % (total rows: %)', last_created_at, last_id, total_migrated;
     END LOOP;
     
     RAISE NOTICE 'Migration complete. Total rows migrated: %', total_migrated;
