@@ -17,7 +17,11 @@ type testItem struct{ Key string }
 func (ti *testItem) String() string { return ti.Key }
 
 func TestWarmPool_Populate(t *testing.T) {
+	t.Parallel()
+
 	t.Run("items are destroyed on quit", func(t *testing.T) {
+		t.Parallel()
+
 		item := &testItem{Key: "key"}
 		released := make(map[string]struct{})
 
@@ -56,6 +60,8 @@ func TestWarmPool_Populate(t *testing.T) {
 	})
 
 	t.Run("items are populated on the fresh channel", func(t *testing.T) {
+		t.Parallel()
+
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
@@ -92,6 +98,8 @@ func TestWarmPool_Populate(t *testing.T) {
 	})
 
 	t.Run("populate quits on close", func(t *testing.T) {
+		t.Parallel()
+
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
@@ -123,6 +131,8 @@ func TestWarmPool_Populate(t *testing.T) {
 	})
 
 	t.Run("populate quits on context cancellation", func(t *testing.T) {
+		t.Parallel()
+
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
@@ -155,6 +165,8 @@ func TestWarmPool_Populate(t *testing.T) {
 	})
 
 	t.Run("populate closes the fresh channel on context cancellation", func(t *testing.T) {
+		t.Parallel()
+
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
@@ -191,6 +203,8 @@ func TestWarmPool_Populate(t *testing.T) {
 	})
 
 	t.Run("populate continues when the acquisition fails", func(t *testing.T) {
+		t.Parallel()
+
 		// return one error, one good item, then infinite bad items
 		testFactory := NewMockItemFactory[*testItem](t)
 		testFactory.EXPECT().Create(mock.Anything).Return(nil, errors.New("first failure")).Once()
@@ -231,6 +245,8 @@ func TestWarmPool_Populate(t *testing.T) {
 	})
 
 	t.Run("populate keeps fresh items topped off", func(t *testing.T) {
+		t.Parallel()
+
 		testFactory := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
@@ -276,7 +292,11 @@ func TestWarmPool_Populate(t *testing.T) {
 }
 
 func TestWarmPool_Get(t *testing.T) {
+	t.Parallel()
+
 	t.Run("get returns an item from the fresh channel", func(t *testing.T) {
+		t.Parallel()
+
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
@@ -293,6 +313,8 @@ func TestWarmPool_Get(t *testing.T) {
 	})
 
 	t.Run("prefer item from the reuse pool", func(t *testing.T) {
+		t.Parallel()
+
 		itemFactory := NewMockItemFactory[*testItem](t)
 		itemFactory.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil).Once()
 
@@ -319,6 +341,8 @@ func TestWarmPool_Get(t *testing.T) {
 	})
 
 	t.Run("get returns an item from the reuse pool", func(t *testing.T) {
+		t.Parallel()
+
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
@@ -335,6 +359,8 @@ func TestWarmPool_Get(t *testing.T) {
 	})
 
 	t.Run("get returns an error when the pool is closed", func(t *testing.T) {
+		t.Parallel()
+
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
@@ -346,11 +372,13 @@ func TestWarmPool_Get(t *testing.T) {
 		require.NoError(t, err)
 
 		item, err := wp.Get(t.Context())
-		require.ErrorIs(t, err, ErrClosed)
+		require.ErrorIs(t, err, ErrPoolClosed)
 		assert.Nil(t, item)
 	})
 
 	t.Run("get returns an error when the context has been canceled", func(t *testing.T) {
+		t.Parallel()
+
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
@@ -369,7 +397,11 @@ func TestWarmPool_Get(t *testing.T) {
 }
 
 func TestWarmPool_Return(t *testing.T) {
+	t.Parallel()
+
 	t.Run("return does nothing when already closed", func(t *testing.T) {
+		t.Parallel()
+
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
@@ -385,6 +417,8 @@ func TestWarmPool_Return(t *testing.T) {
 	})
 
 	t.Run("return does nothing when context already canceled", func(t *testing.T) {
+		t.Parallel()
+
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
@@ -401,6 +435,8 @@ func TestWarmPool_Return(t *testing.T) {
 	})
 
 	t.Run("return returns an item to the reuse pool", func(t *testing.T) {
+		t.Parallel()
+
 		f := NewMockItemFactory[*testItem](t)
 
 		wp := NewWarmPool[*testItem](
@@ -422,6 +458,8 @@ func TestWarmPool_Return(t *testing.T) {
 	})
 
 	t.Run("return destroys item if the pool is already full", func(t *testing.T) {
+		t.Parallel()
+
 		f := NewMockItemFactory[*testItem](t)
 		f.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil).Times(2)
 
@@ -447,7 +485,11 @@ func TestWarmPool_Return(t *testing.T) {
 }
 
 func TestWarmPool_Close(t *testing.T) {
+	t.Parallel()
+
 	t.Run("close does not return an error when the pool is already closed", func(t *testing.T) {
+		t.Parallel()
+
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
@@ -463,6 +505,8 @@ func TestWarmPool_Close(t *testing.T) {
 	})
 
 	t.Run("close destroys resusable items, even if some fail", func(t *testing.T) {
+		t.Parallel()
+
 		destroyed := make(map[string]struct{})
 
 		f := NewMockItemFactory[*testItem](t)

@@ -19,7 +19,7 @@ const (
 	defaultSleepOnCreateFailure = 1 * time.Second
 )
 
-var ErrClosed = errors.New("cannot read from a closed pool")
+var ErrPoolClosed = errors.New("cannot read from a closed pool")
 
 type Item interface {
 	String() string
@@ -93,11 +93,11 @@ func (wp *WarmPool[T]) Populate(ctx context.Context) error {
 
 		select {
 		case <-wp.done:
-			wp.beginDestroy(ctx, item, operationPopulate, reasonPoolClosed)
+			wp.destroyAsync(ctx, item, operationPopulate, reasonPoolClosed)
 
 			return nil
 		case <-ctx.Done():
-			wp.beginDestroy(ctx, item, operationPopulate, reasonContextDone)
+			wp.destroyAsync(ctx, item, operationPopulate, reasonContextDone)
 
 			return ctx.Err()
 		case wp.freshItems <- item:
@@ -112,11 +112,13 @@ func (wp *WarmPool[T]) create(ctx context.Context) (T, error) {
 	item, err := wp.acquisition.Create(ctx)
 	if err != nil {
 		timer.failure()
+
+		return item, err
 	}
 
 	timer.success()
 
-	return item, err
+	return item, nil
 }
 
 // Get an item from the pool.
@@ -145,12 +147,12 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (T, error) {
 	case <-wp.done:
 		timer.failure(reasonPoolClosed)
 
-		return item, ErrClosed
+		return item, ErrPoolClosed
 	case s, ok := <-wp.reusableItems:
 		if !ok {
 			timer.failure(reasonReusableClosed)
 
-			return item, ErrClosed
+			return item, ErrPoolClosed
 		}
 
 		telemetry.ReportEvent(ctx, fmt.Sprintf("reused %s", wp.name))
@@ -169,12 +171,12 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (T, error) {
 	case <-wp.done:
 		timer.failure(reasonPoolClosed)
 
-		return item, ErrClosed
+		return item, ErrPoolClosed
 	case s, ok := <-wp.reusableItems:
 		if !ok {
 			timer.failure(reasonReusableClosed)
 
-			return s, ErrClosed
+			return s, ErrPoolClosed
 		}
 
 		telemetry.ReportEvent(ctx, fmt.Sprintf("reused %s", wp.name))
@@ -185,7 +187,7 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (T, error) {
 		if !ok {
 			timer.failure(reasonFreshClosed)
 
-			return s, ErrClosed
+			return s, ErrPoolClosed
 		}
 
 		telemetry.ReportEvent(ctx, fmt.Sprintf("new %s", wp.name))
@@ -225,14 +227,14 @@ func (wp *WarmPool[T]) Return(ctx context.Context, item T) {
 			timer.success()
 
 		case <-ctx.Done():
-			wp.beginDestroy(ctx, item, operationReturn, reasonContextDone)
+			wp.destroyAsync(ctx, item, operationReturn, reasonContextDone)
 			timer.failure(reasonContextDone)
 
 		case <-wp.done:
-			wp.beginDestroy(ctx, item, operationReturn, reasonPoolClosed)
+			wp.destroyAsync(ctx, item, operationReturn, reasonPoolClosed)
 			timer.failure(reasonPoolClosed)
 		case <-time.After(wp.returnTimeout):
-			wp.beginDestroy(ctx, item, operationReturn, reasonReturnTimeout)
+			wp.destroyAsync(ctx, item, operationReturn, reasonReturnTimeout)
 			timer.failure(reasonReturnTimeout)
 		}
 	})
@@ -241,13 +243,11 @@ func (wp *WarmPool[T]) Return(ctx context.Context, item T) {
 // Close destroys all items and prevents the pool from creating/returning anymore.
 func (wp *WarmPool[T]) Close(ctx context.Context) error {
 	logger.L().Info(ctx, "Closing pool")
-
+	
 	var err error
 
 	wp.doneOnce.Do(func() {
 		close(wp.done)
-
-		wp.wg.Wait()
 
 		close(wp.reusableItems)
 
@@ -261,12 +261,14 @@ func (wp *WarmPool[T]) Close(ctx context.Context) error {
 		for item := range wp.freshItems {
 			wp.destroy(ctx, item, operationClose, reasonCleanupFresh)
 		}
+
+		wp.wg.Wait()
 	})
 
 	return err
 }
 
-func (wp *WarmPool[T]) beginDestroy(ctx context.Context, item T, operation operationType, reason failureReasonType) {
+func (wp *WarmPool[T]) destroyAsync(ctx context.Context, item T, operation operationType, reason failureReasonType) {
 	wp.wg.Go(func() {
 		wp.destroy(ctx, item, operation, reason)
 	})
@@ -301,14 +303,14 @@ func (wp *WarmPool[T]) isClosed(ctx context.Context) (failureReasonType, error) 
 	case <-ctx.Done():
 		return reasonContextDone, ctx.Err()
 	case <-wp.done:
-		return reasonPoolClosed, ErrClosed
+		return reasonPoolClosed, ErrPoolClosed
 	default:
 		return "", nil
 	}
 }
 
 func ignoreClosed(err error) error {
-	if errors.Is(err, ErrClosed) {
+	if errors.Is(err, ErrPoolClosed) {
 		return nil
 	}
 
