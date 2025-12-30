@@ -54,7 +54,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	names := utils.DerefOrDefault(body.Names, nil)
 
 	// Only alias or names can be used, not both
-	if len(names) > 1 && body.Alias != nil {
+	if len(names) > 0 && body.Alias != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Alias is deprecated, use names instead")
 		telemetry.ReportError(ctx, "alias is deprecated, use names instead", nil)
 
