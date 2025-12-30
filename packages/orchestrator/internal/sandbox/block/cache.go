@@ -360,7 +360,7 @@ func (c *Cache) copyProcessMemory(
 	pid int,
 	rs []Range,
 ) error {
-	// We need to split the ranges because the Kernel does not suppor reading/writing more than MAX_RW_COUNT bytes in a single operation.
+	// We need to split the ranges because the Kernel does not support reading/writing more than MAX_RW_COUNT bytes in a single operation.
 	ranges := splitOversizedRanges(rs, MAX_RW_COUNT)
 
 	var offset int64
