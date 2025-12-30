@@ -26,7 +26,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const layerTimeout = time.Hour
@@ -130,10 +129,10 @@ func (sb *StepBuilder) Layer(
 	}
 
 	finalMetadata := sourceLayer.Metadata
-	finalMetadata.Template = storage.TemplateFiles{
+	finalMetadata.Template = metadata.TemplateMetadata{
 		BuildID:            uuid.NewString(),
-		KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
-		FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
+		KernelVersion:      sb.Config.KernelVersion,
+		FirecrackerVersion: sb.Config.FirecrackerVersion,
 	}
 
 	return phases.LayerResult{
@@ -167,6 +166,11 @@ func (sb *StepBuilder) Build(
 		Envd: sandbox.EnvdMetadata{
 			Version: sb.EnvdVersion,
 		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      sb.Config.KernelVersion,
+			FirecrackerVersion: sb.Config.FirecrackerVersion,
+		},
 	}
 
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
@@ -176,10 +180,6 @@ func (sb *StepBuilder) Build(
 			sbxConfig,
 			sb.sandboxFactory,
 			layerTimeout,
-			fc.FirecrackerVersions{
-				KernelVersion:      sb.Template.KernelVersion,
-				FirecrackerVersion: sb.Template.FirecrackerVersion,
-			},
 		)
 	} else {
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig, sb.sandboxFactory, layerTimeout)
@@ -213,7 +213,7 @@ func (sb *StepBuilder) Build(
 		return meta, nil
 	})
 
-	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
+	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template.BuildID)
 
 	meta, err := sb.layerExecutor.BuildLayer(
 		ctx,
