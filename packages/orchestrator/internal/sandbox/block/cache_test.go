@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"os"
+	"syscall"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -223,4 +227,81 @@ func compareData(readBytes []byte, expectedBytes []byte) error {
 	}
 
 	return nil
+}
+
+func BenchmarkCopyFromHugepagesFile(b *testing.B) {
+	pageSize := int64(header.HugepageSize)
+	size := pageSize * 500
+
+	b.StopTimer()
+	for {
+		l := int(math.Ceil(float64(size)/float64(pageSize)) * float64(pageSize))
+		mem, err := syscall.Mmap(
+			-1,
+			0,
+			l,
+			syscall.PROT_READ|syscall.PROT_WRITE,
+			syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS|unix.MAP_HUGETLB|unix.MAP_HUGE_2MB,
+		)
+
+		require.NoError(b, err)
+
+		addr := uintptr(unsafe.Pointer(&mem[0]))
+
+		n, err := rand.Read(mem)
+		require.NoError(b, err)
+		require.Equal(b, len(mem), n)
+
+		var totalCovered int64
+		numRanges := 40
+		ranges := make([]Range, 0, numRanges)
+		cur := int64(addr)
+
+		for i := range numRanges {
+			sizePages := int64(1 + (i % 5)) // pseudo-random but deterministic
+			sizeR := sizePages * pageSize
+			if totalCovered+sizeR > size*8/10 && i > 0 { // Stop if we have covered ~80% total
+				break
+			}
+			ranges = append(ranges, Range{
+				Start: cur,
+				Size:  sizeR,
+			})
+			cur += sizeR + pageSize // GAP of 1 page between each range
+			totalCovered += sizeR
+		}
+
+		pid := os.Getpid()
+
+		filePath := b.TempDir() + "/cache"
+
+		size := GetSize(ranges)
+
+		cache, err := NewCache(size, header.PageSize, filePath, false)
+		require.NoError(b, err)
+
+		b.StartTimer()
+		if !b.Loop() {
+			b.StopTimer()
+			err = cache.Close()
+			require.NoError(b, err)
+			err = syscall.Munmap(mem)
+			require.NoError(b, err)
+
+			break
+		}
+
+		err = cache.copyProcessMemory(b.Context(), pid, ranges)
+		require.NoError(b, err)
+
+		b.StopTimer()
+
+		err = cache.Close()
+		require.NoError(b, err)
+
+		err = syscall.Munmap(mem)
+		require.NoError(b, err)
+
+		b.SetBytes(GetSize(ranges))
+	}
 }
