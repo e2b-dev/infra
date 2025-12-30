@@ -107,8 +107,11 @@ CREATE TRIGGER trigger_sync_env_build_assignment
     EXECUTE FUNCTION sync_env_build_assignment();
 -- +goose StatementEnd
 
+-- 5. Create index on env_builds.created_at to speed up migration
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_env_builds_created_at ON env_builds (created_at);
+
 -- +goose StatementBegin
--- 5. Create procedure to migrate existing data in batches
+-- 6. Create procedure to migrate existing data in batches
 CREATE OR REPLACE PROCEDURE migrate_env_builds_to_assignments()
 LANGUAGE plpgsql
 AS $$
@@ -169,12 +172,15 @@ $$;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
--- 6. Run the migration procedure
+-- 7. Run the migration procedure
 CALL migrate_env_builds_to_assignments();
 -- +goose StatementEnd
 
+-- 8. Drop temporary index after migration
+DROP INDEX CONCURRENTLY IF EXISTS idx_env_builds_created_at;
+
 -- +goose StatementBegin
--- 7. Clean up the migration procedure
+-- 9. Clean up the migration procedure
 DROP PROCEDURE IF EXISTS migrate_env_builds_to_assignments();
 -- +goose StatementEnd
 
