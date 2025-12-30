@@ -161,5 +161,11 @@ provider-login:
 migrate-clusters-terraform:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -target=module.cluster.module.build_cluster -target=module.cluster.module.client_cluster  -target="module.cluster.google_compute_health_check.client_nomad_check" -target="module.cluster.google_compute_instance_template.client" -target="module.cluster.google_compute_region_instance_group_manager.client_pool"
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings \
+		 -target="module.cluster.module.build_cluster" \
+		 -target="module.cluster.module.client_cluster" \
+		 -target="module.cluster.google_compute_health_check.client_nomad_check" \
+		 -target="module.cluster.google_compute_instance_template.client" \
+		 -target="module.cluster.google_compute_region_instance_group_manager.client_pool" \
+		 -target="module.cluster.google_compute_region_autoscaler.client"
 
