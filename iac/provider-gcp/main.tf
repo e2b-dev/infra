@@ -39,12 +39,10 @@ data "google_secret_manager_secret_version" "routing_domains" {
 }
 
 locals {
-  additional_domains     = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
-  build_clusters_config  = jsondecode(var.build_clusters_config_json)
-  client_clusters_config = jsondecode(var.client_clusters_config_json)
+  additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
 
   // Check if all clusters has size greater than 1
-  template_manages_clusters_size_gt_1 = alltrue([for c in local.build_clusters_config : c.cluster_size > 1])
+  template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : c.cluster_size > 1])
 }
 
 module "init" {
@@ -71,8 +69,8 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  build_clusters_config  = local.build_clusters_config
-  client_clusters_config = local.client_clusters_config
+  build_clusters_config  = var.build_clusters_config
+  client_clusters_config = var.client_clusters_config
 
   api_cluster_size        = var.api_cluster_size
   clickhouse_cluster_size = var.clickhouse_cluster_size
