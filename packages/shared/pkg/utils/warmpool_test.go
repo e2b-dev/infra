@@ -218,9 +218,7 @@ func TestWarmPool_Populate(t *testing.T) {
 		<-done
 
 		item, ok := <-wp.freshItems
-		if ok {
-			assert.False(t, ok, "fresh channel should be closed, but got %s instead", item.Key)
-		}
+		assert.False(t, ok, "fresh channel should be closed, but got %s instead", item.Key)
 	})
 
 	t.Run("populate keeps fresh items topped off", func(t *testing.T) {
