@@ -85,7 +85,7 @@ func newInstance(
 		if closeErr != nil {
 			logger.L().Error(
 				ctx, "Failed to close gRPC Connection after instance sync failure",
-				zap.Error(err),
+				zap.Error(closeErr),
 				logger.WithNodeID(i.NodeID),
 				logger.WithClusterID(i.ClusterID),
 				logger.WithServiceInstanceID(i.serviceInstanceID),
