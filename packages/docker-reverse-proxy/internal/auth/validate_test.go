@@ -90,20 +90,20 @@ func TestValidate(t *testing.T) {
 			error:            true,
 		},
 	}
-	for _, tc := range testcases { //nolint:paralleltest // false positive
-		t.Run(tc.name, func(tb *testing.T) {
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			dbClient := testutils.SetupDatabase(tb)
-			setupValidateTest(tb, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
+			dbClient := testutils.SetupDatabase(t)
+			setupValidateTest(t, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
 
-			valid, err := Validate(tb.Context(), dbClient, tc.accessTokenUsed, tc.validateEnvId)
+			valid, err := Validate(t.Context(), dbClient, tc.accessTokenUsed, tc.validateEnvId)
 			if tc.error {
-				require.Error(tb, err)
+				require.Error(t, err)
 			} else {
-				require.NoError(tb, err)
+				require.NoError(t, err)
 			}
-			assert.Equal(tb, tc.valid, valid)
+			assert.Equal(t, tc.valid, valid)
 		})
 	}
 }

@@ -7,8 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetTargetFromRequest(t *testing.T) {
-	t.Parallel()
+func TestGetTargetFromRequest(t *testing.T) { //nolint:tparallel // cannot call t.Setenv with t.Parallel
 	t.Setenv("ENVIRONMENT", "local")
 
 	getTargetFromRequest := GetTargetFromRequest(true)

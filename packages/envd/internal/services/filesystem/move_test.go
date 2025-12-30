@@ -299,8 +299,7 @@ func TestMove_Symlinks(t *testing.T) { //nolint:tparallel // this test cannot be
 		assert.NoError(t, err)
 	})
 
-	t.Run("move symlink to file", func(t *testing.T) {
-		t.Parallel()
+	t.Run("move symlink to file", func(t *testing.T) { //nolint:paralleltest
 		destPath := filepath.Join(destRoot, "moved-link-file")
 
 		req := connect.NewRequest(&filesystem.MoveRequest{
