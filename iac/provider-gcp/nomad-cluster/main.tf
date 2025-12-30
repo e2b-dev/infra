@@ -1,6 +1,9 @@
 # Server cluster instances are not currently automatically updated when you create a new
 # orchestrator image with Packer.
 locals {
+  build_base_hugepages_percentage  = 60
+  client_base_hugepages_percentage = 80
+
   nfs_mount_path   = "/orchestrator/shared-store"
   nfs_mount_subdir = "chunks-cache"
   nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
@@ -172,7 +175,7 @@ module "build_cluster" {
   cluster_name              = "${var.prefix}${var.build_cluster_name}-${split("-", each.value.machine.type)[0]}"
   image_family              = var.build_image_family
   network_name              = var.network_name
-  base_hugepages_percentage = var.build_base_hugepages_percentage
+  base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.build_base_hugepages_percentage)
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.build_node_pool
@@ -229,7 +232,7 @@ module "client_cluster" {
   cluster_name              = each.key == "0" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${split("-", each.value.machine.type)[0]}"
   image_family              = var.client_image_family
   network_name              = var.network_name
-  base_hugepages_percentage = var.client_base_hugepages_percentage
+  base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.orchestrator_node_pool

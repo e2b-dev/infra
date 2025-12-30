@@ -123,9 +123,6 @@ module "cluster" {
   filestore_cache_tier        = var.filestore_cache_tier
   filestore_cache_capacity_gb = var.filestore_cache_capacity_gb
 
-  build_base_hugepages_percentage  = var.build_base_hugepages_percentage
-  client_base_hugepages_percentage = var.orchestrator_base_hugepages_percentage
-
   labels = var.labels
   prefix = var.prefix
 

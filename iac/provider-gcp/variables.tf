@@ -416,18 +416,6 @@ variable "min_cpu_platform" {
   default = "Intel Skylake"
 }
 
-variable "build_base_hugepages_percentage" {
-  description = "The percentage of memory to use for preallocated hugepages."
-  type        = number
-  default     = 60
-}
-
-variable "orchestrator_base_hugepages_percentage" {
-  description = "The percentage of memory to use for preallocated hugepages."
-  type        = number
-  default     = 80
-}
-
 variable "remote_repository_enabled" {
   type        = bool
   description = "Set to true to enable remote repository cache. Can be set via TF_VAR_remote_repository_enabled or REMOTE_REPOSITORY_ENABLED env var."
@@ -459,6 +447,8 @@ variable "client_clusters_config" {
       size_gb   = number
       count     = number
     })
+
+    hugepages_percentage = optional(number)
   }))
 
   description = <<EOT
@@ -483,7 +473,8 @@ Format: [
           "disk_type": "local-ssd",  // Cache disk type
           "size_gb": 375,  // Cache disk size in GB
           "count": 3  // Number of cache disks
-      }
+      },
+      "hugepages_percentage": 80
   }
 ]
 EOT
@@ -514,6 +505,8 @@ variable "build_clusters_config" {
       size_gb   = string
       count     = number
     })
+
+    hugepages_percentage = optional(number)
   }))
   description = <<EOT
 JSON configuration for the build cluster.
@@ -538,7 +531,8 @@ Format:
         "disk_type": "local-ssd",  // Cache disk type
         "size_gb": 375,  // Cache disk size in GB
         "count": 3  // Number of cache disks
-    }
+    },
+    "hugepages_percentage": 60
   }
 ]
 EOT

@@ -128,6 +128,7 @@ variable "client_clusters_config" {
       size_gb   = number
       count     = number
     })
+    hugepages_percentage = optional(number)
   }))
 }
 
@@ -158,6 +159,7 @@ variable "build_clusters_config" {
       size_gb   = number
       count     = number
     })
+    hugepages_percentage = optional(number)
   }))
 }
 
@@ -321,16 +323,6 @@ variable "loki_node_pool" {
 variable "orchestrator_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
-}
-
-variable "build_base_hugepages_percentage" {
-  description = "The percentage of memory to use for preallocated hugepages."
-  type        = number
-}
-
-variable "client_base_hugepages_percentage" {
-  description = "The percentage of memory to use for preallocated hugepages."
-  type        = number
 }
 
 variable "api_use_nat" {
