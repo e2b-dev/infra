@@ -1,9 +1,7 @@
 package block
 
 import (
-	"bytes"
 	"crypto/rand"
-	"fmt"
 	"os"
 	"testing"
 
@@ -56,7 +54,7 @@ func TestCopyFromProcess_FullRange(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int(size), n)
 
-	require.NoError(t, compareData(data[:n], mem[:n]))
+	require.NoError(t, testutils.ErrorFromByteSlicesDifference(mem[:n], data[:n]))
 }
 
 func TestCopyFromProcess_LargeRanges(t *testing.T) {
@@ -90,19 +88,19 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 	n, err := cache.ReadAt(data1, 0)
 	require.NoError(t, err)
 	require.Equal(t, int(pageSize), n)
-	require.NoError(t, compareData(data1[:n], mem[0:pageSize]))
+	require.NoError(t, testutils.ErrorFromByteSlicesDifference(mem[0:pageSize], data1[:n]))
 
 	data2 := make([]byte, pageSize)
 	n, err = cache.ReadAt(data2, int64(pageSize))
 	require.NoError(t, err)
 	require.Equal(t, int(pageSize), n)
-	require.NoError(t, compareData(data2[:n], mem[pageSize*3:pageSize*4]))
+	require.NoError(t, testutils.ErrorFromByteSlicesDifference(mem[pageSize*3:pageSize*4], data2[:n]))
 
 	data3 := make([]byte, pageSize)
 	n, err = cache.ReadAt(data3, int64(pageSize*2))
 	require.NoError(t, err)
 	require.Equal(t, int(pageSize), n)
-	require.NoError(t, compareData(data3[:n], mem[pageSize:pageSize*2]))
+	require.NoError(t, testutils.ErrorFromByteSlicesDifference(mem[pageSize:pageSize*2], data3[:n]))
 }
 
 func TestCopyFromProcess_MultipleRanges(t *testing.T) {
@@ -148,7 +146,7 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, int(pageSize), n)
 
-		require.NoError(t, compareData(data[:n], mem[alignedOffset:alignedOffset+int64(pageSize)]))
+		require.NoError(t, testutils.ErrorFromByteSlicesDifference(mem[alignedOffset:alignedOffset+int64(pageSize)], data[:n]))
 	}
 }
 
@@ -188,13 +186,13 @@ func TestCopyFromProcess_HugepageToRegularPage(t *testing.T) {
 	n, err = cache.ReadAt(data, 0)
 	require.NoError(t, err)
 	require.Equal(t, int(pageSize*2), n)
-	require.NoError(t, compareData(data[:n], mem[0:pageSize*2]))
+	require.NoError(t, testutils.ErrorFromByteSlicesDifference(mem[0:pageSize*2], data[:n]))
 
 	data = make([]byte, pageSize*4)
 	n, err = cache.ReadAt(data, pageSize*2)
 	require.NoError(t, err)
 	require.Equal(t, int(pageSize*4), n)
-	require.NoError(t, compareData(data[:n], mem[pageSize*4:pageSize*8]))
+	require.NoError(t, testutils.ErrorFromByteSlicesDifference(mem[pageSize*4:pageSize*8], data[:n]))
 }
 
 func TestEmptyRanges(t *testing.T) {
@@ -212,15 +210,4 @@ func TestEmptyRanges(t *testing.T) {
 	t.Cleanup(func() {
 		c.Close()
 	})
-}
-
-func compareData(readBytes []byte, expectedBytes []byte) error {
-	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
-	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-
-		return fmt.Errorf("content mismatch: want '%x, got %x at index %d", want, got, idx)
-	}
-
-	return nil
 }
