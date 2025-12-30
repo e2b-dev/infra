@@ -216,6 +216,175 @@ func TestEmptyRanges(t *testing.T) {
 	})
 }
 
+func TestSplitOversizedRanges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		ranges   []Range
+		maxSize  int64
+		expected []Range
+	}{
+		{
+			name:     "empty input",
+			ranges:   nil,
+			maxSize:  100,
+			expected: nil,
+		},
+		{
+			name: "all ranges within limit",
+			ranges: []Range{
+				{Start: 0, Size: 50},
+				{Start: 100, Size: 50},
+			},
+			maxSize: 100,
+			expected: []Range{
+				{Start: 0, Size: 50},
+				{Start: 100, Size: 50},
+			},
+		},
+		{
+			name: "range exactly at limit",
+			ranges: []Range{
+				{Start: 0, Size: 100},
+			},
+			maxSize: 100,
+			expected: []Range{
+				{Start: 0, Size: 100},
+			},
+		},
+		{
+			name: "single oversized range splits evenly",
+			ranges: []Range{
+				{Start: 0, Size: 300},
+			},
+			maxSize: 100,
+			expected: []Range{
+				{Start: 0, Size: 100},
+				{Start: 100, Size: 100},
+				{Start: 200, Size: 100},
+			},
+		},
+		{
+			name: "single oversized range with remainder",
+			ranges: []Range{
+				{Start: 0, Size: 250},
+			},
+			maxSize: 100,
+			expected: []Range{
+				{Start: 0, Size: 100},
+				{Start: 100, Size: 100},
+				{Start: 200, Size: 50},
+			},
+		},
+		{
+			name: "mixed ranges - some need splitting",
+			ranges: []Range{
+				{Start: 0, Size: 50},
+				{Start: 100, Size: 250},
+				{Start: 400, Size: 80},
+			},
+			maxSize: 100,
+			expected: []Range{
+				{Start: 0, Size: 50},
+				{Start: 100, Size: 100},
+				{Start: 200, Size: 100},
+				{Start: 300, Size: 50},
+				{Start: 400, Size: 80},
+			},
+		},
+		{
+			name: "range just over limit",
+			ranges: []Range{
+				{Start: 0, Size: 101},
+			},
+			maxSize: 100,
+			expected: []Range{
+				{Start: 0, Size: 100},
+				{Start: 100, Size: 1},
+			},
+		},
+		{
+			name: "preserves start addresses correctly",
+			ranges: []Range{
+				{Start: 1000, Size: 250},
+			},
+			maxSize: 100,
+			expected: []Range{
+				{Start: 1000, Size: 100},
+				{Start: 1100, Size: 100},
+				{Start: 1200, Size: 50},
+			},
+		},
+		{
+			name: "demonstrate unoptimal split",
+			ranges: []Range{
+				{Start: 1000, Size: 250},
+				{Start: 1250, Size: 250},
+			},
+			maxSize: 240,
+			expected: []Range{
+				{Start: 1000, Size: 240},
+				{Start: 1240, Size: 10},
+				{Start: 1250, Size: 240},
+				{Start: 1490, Size: 10},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := splitOversizedRanges(tt.ranges, tt.maxSize)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// This test is used to verify that the code correctly splits the ranges when the total size exceeds MAX_RW_COUNT.
+func TestCopyFromProcess_Exceed_MAX_RW_COUNT(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	// We allocate more than MAX_RW_COUNT to trigger the MAX_RW_COUNT error if the ranges are not split correctly.
+	size := ((MAX_RW_COUNT + 4*pageSize + pageSize - 1) / pageSize) * pageSize
+
+	// Initialize the memory we will copy from.
+	mem, addr, err := testutils.NewPageMmap(t, uint64(size), uint64(pageSize))
+	require.NoError(t, err)
+
+	n, err := rand.Read(mem)
+	require.NoError(t, err)
+	require.Equal(t, len(mem), n)
+
+	ranges := []Range{
+		// We make it so that at least one of the ranges is larger than MAX_RW_COUNT.
+		{Start: int64(addr), Size: ((MAX_RW_COUNT + 2*pageSize + pageSize - 1) / pageSize) * pageSize},
+		{Start: int64(addr) + ((MAX_RW_COUNT+2*pageSize+pageSize-1)/pageSize)*pageSize, Size: ((2*pageSize + pageSize - 1) / pageSize) * pageSize},
+	}
+
+	cache, err := NewCacheFromProcessMemory(
+		t.Context(),
+		// Regular 4KiB pages for the cache/mmap we will copy to.
+		header.PageSize,
+		t.TempDir()+"/cache",
+		os.Getpid(),
+		ranges,
+	)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		cache.Close()
+	})
+
+	data := make([]byte, size)
+	n, err = cache.ReadAt(data, 0)
+	require.NoError(t, err)
+	require.Equal(t, int(size), n)
+	require.NoError(t, testutils.ErrorFromByteSlicesDifference(mem[0:size], data[:n]))
+}
+
 func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 	pageSize := int64(header.HugepageSize)
 	size := pageSize * 500
