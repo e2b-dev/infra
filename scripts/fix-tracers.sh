@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script to find and replace otel.Tracer declarations with file paths
-# Usage: ./replace_tracer.sh [directory]
+# Usage: ./fix-tracers.sh [directory]
 
 # Set the search directory (default to current directory if not provided)
 SEARCH_DIR="packages/"
@@ -11,7 +11,7 @@ processed=0
 skipped=0
 
 readonly prefix="github.com/e2b-dev/infra/packages"
-readonly search_pattern='var tracer = otel\.Tracer(.*'
+readonly search_pattern='tracer\s\+=\s\+otel\.Tracer(.*'
 
 echo "Starting tracer replacement in directory: $SEARCH_DIR"
 echo "----------------------------------------"
@@ -27,8 +27,9 @@ while IFS= read -r -d '' file; do
 
         # Perform the replacement
         # Using sed with proper escaping
-        full_replace='s/'"${search_pattern}"'/var tracer = otel.Tracer("'"${relative_path//\//\\/}"'")/'
+        full_replace='s/'"${search_pattern}"'/tracer = otel.Tracer("'"${relative_path//\//\\/}"'")/'
         sed -i "$full_replace" "$file"
+        go fmt "$file"
 
         # Check if replacement was successful
         if [ $? -eq 0 ]; then

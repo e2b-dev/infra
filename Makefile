@@ -165,6 +165,8 @@ connect-orchestrator:
 fmt:
 	golangci-lint fmt
 	terraform fmt -recursive
+	./scripts/fix-tracers.sh
+	./scripts/fix-meters.sh
 
 .PHONY: lint
 lint:

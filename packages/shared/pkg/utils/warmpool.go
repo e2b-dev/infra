@@ -104,14 +104,6 @@ func (wp *WarmPool[T]) Populate(ctx context.Context) error {
 		}
 		wp.createdCounter.Add(ctx, 1, metric.WithAttributes(successAttr()))
 
-		// try to push to the channel first
-		select {
-		case wp.freshItems <- item:
-			continue
-		default:
-		}
-
-		// if that didn't work, try to push, but check for done/cancellation
 		select {
 		case <-wp.done:
 			wp.beginDestroy(ctx, item, "populate while closed")
@@ -177,12 +169,22 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (T, error) {
 		recordFailure("closed")
 
 		return item, ErrClosed
-	case s := <-wp.reusableItems:
+	case s, ok := <-wp.reusableItems:
+		if !ok {
+			recordFailure("reusable closed")
+			return s, ErrClosed
+		}
+
 		telemetry.ReportEvent(ctx, fmt.Sprintf("reused %s", wp.name))
 		recordSuccess("used")
 
 		return s, nil
-	case s := <-wp.freshItems:
+	case s, ok := <-wp.freshItems:
+		if !ok {
+			recordFailure("fresh closed")
+			return s, ErrClosed
+		}
+
 		telemetry.ReportEvent(ctx, fmt.Sprintf("new %s", wp.name))
 		recordSuccess("fresh")
 
@@ -196,30 +198,22 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (T, error) {
 // - if the item fails to be pushed back into the channel for any reason, destroy it.
 func (wp *WarmPool[T]) Return(ctx context.Context, item T) {
 	wp.wg.Go(func() {
-		recordSuccess := func(attrs ...attribute.KeyValue) {
-			attrs = append(attrs, successAttr())
-			wp.returnedCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
+		recordSuccess := func() {
+			wp.returnedCounter.Add(ctx, 1, metric.WithAttributes(
+				successAttr()),
+			)
 		}
 
-		recordFailure := func(reason string, attrs ...attribute.KeyValue) {
-			attrs = append(attrs, failureAttr(), reasonAttr(reason))
-			wp.returnedCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
+		recordFailure := func(reason string) {
+			wp.returnedCounter.Add(ctx, 1, metric.WithAttributes(
+				failureAttr(), reasonAttr(reason)),
+			)
 		}
 
 		if err := wp.isClosed(ctx); err != nil {
 			recordFailure("closed")
 
 			return
-		}
-
-		// try to push item in to reusable pool first
-		select {
-		case wp.reusableItems <- item:
-			telemetry.ReportEvent(ctx, fmt.Sprintf("returned %s", wp.name))
-			recordSuccess()
-
-			return
-		default:
 		}
 
 		// if that didn't work, keep trying to push, but listen for failures as well
@@ -243,22 +237,21 @@ func (wp *WarmPool[T]) Return(ctx context.Context, item T) {
 func (wp *WarmPool[T]) Close(ctx context.Context) error {
 	logger.L().Info(ctx, "Closing pool")
 
-	if err := wp.isClosed(ctx); err != nil {
-		return err
-	}
+	var err error
 
 	wp.doneOnce.Do(func() {
 		close(wp.done)
+
+		wp.wg.Wait()
+
 		close(wp.reusableItems)
+
+		for item := range wp.reusableItems {
+			wp.destroy(ctx, item, "close and destroy reusable items")
+		}
 	})
 
-	for item := range wp.reusableItems {
-		wp.destroy(ctx, item, "close and destroy reusable items")
-	}
-
-	wp.wg.Wait()
-
-	return nil
+	return err
 }
 
 func (wp *WarmPool[T]) beginDestroy(ctx context.Context, item T, reason string) {

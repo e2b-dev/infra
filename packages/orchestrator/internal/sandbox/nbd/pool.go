@@ -27,9 +27,8 @@ const (
 	devicePoolCloseReleaseTimeout = 10 * time.Minute
 )
 
-var meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd")
-
 var (
+	meter       = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd")
 	slotCounter = utils.Must(meter.Int64UpDownCounter("orchestrator.nbd.slots_pool.ready",
 		metric.WithDescription("Number of nbd slots ready to be used."),
 		metric.WithUnit("{slot}"),

@@ -405,7 +405,7 @@ func TestWarmPool_Return(t *testing.T) {
 }
 
 func TestWarmPool_Close(t *testing.T) {
-	t.Run("close returns an error when the pool is already closed", func(t *testing.T) {
+	t.Run("close does not return an error when the pool is already closed", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
@@ -417,22 +417,7 @@ func TestWarmPool_Close(t *testing.T) {
 		require.NoError(t, err)
 
 		err = wp.Close(t.Context())
-		assert.ErrorIs(t, err, ErrClosed)
-	})
-
-	t.Run("close returns an error when the context has been canceled", func(t *testing.T) {
-		wp := NewWarmPool[*testItem](
-			"test", "prefix",
-			1,
-			1,
-			nil,
-		)
-
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel()
-
-		err := wp.Close(ctx)
-		assert.ErrorIs(t, err, context.Canceled)
+		require.NoError(t, err)
 	})
 
 	t.Run("close destroys resusable items, even if some fail", func(t *testing.T) {

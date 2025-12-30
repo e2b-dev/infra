@@ -25,9 +25,6 @@ jobs:
       - name: Run integrity check
         run: make tidy
 
-      - name: Fix tracers
-        run: ./scripts/fix-tracers.sh
-
       - name: Generate all code
         run: make --jobs=4 generate
 

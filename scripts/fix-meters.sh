@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Script to find and replace otel.Tracer declarations with file paths
-# Usage: ./replace_tracer.sh [directory]
+# Script to find and replace otel.Meter declarations with file paths
+# Usage: ./fix-meters.sh [directory]
 
 # Set the search directory (default to current directory if not provided)
 SEARCH_DIR="packages/"
@@ -11,9 +11,9 @@ processed=0
 skipped=0
 
 readonly prefix="github.com/e2b-dev/infra/packages"
-readonly search_pattern='var meter = otel\.Meter(.*'
+readonly search_pattern='meter\s\+=\s\+otel\.Meter(.*'
 
-echo "Starting tracer replacement in directory: $SEARCH_DIR"
+echo "Starting meter replacement in directory: $SEARCH_DIR"
 echo "----------------------------------------"
 
 # Find all files containing the pattern
@@ -27,8 +27,9 @@ while IFS= read -r -d '' file; do
 
         # Perform the replacement
         # Using sed with proper escaping
-        full_replace='s/'"${search_pattern}"'/var meter = otel.Meter("'"${relative_path//\//\\/}"'")/'
+        full_replace='s/'"${search_pattern}"'/meter = otel.Meter("'"${relative_path//\//\\/}"'")/'
         sed -i "$full_replace" "$file"
+        go fmt "$file"
 
         # Check if replacement was successful
         if [ $? -eq 0 ]; then
