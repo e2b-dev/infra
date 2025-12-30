@@ -23,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -323,7 +322,6 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 		ctx,
 		tc.tmpl,
 		tc.sandboxConfig,
-		tc.fcVersions,
 		tc.runtime,
 		time.Now(),
 		time.Now().Add(time.Second*15),
@@ -360,7 +358,7 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 	}
 
 	// resume sandbox
-	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.fcVersions, tc.runtime, time.Now(), time.Now().Add(time.Second*15), nil)
+	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.runtime, time.Now(), time.Now().Add(time.Second*15), nil)
 	require.NoError(b, err)
 
 	// close sandbox
