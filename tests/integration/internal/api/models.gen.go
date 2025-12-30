@@ -773,9 +773,6 @@ type Template struct {
 	// SpawnCount Number of times the template was used
 	SpawnCount int64 `json:"spawnCount"`
 
-	// Tags Tags of the template
-	Tags []string `json:"tags"`
-
 	// TemplateID Identifier of the template
 	TemplateID string `json:"templateID"`
 

@@ -617,7 +617,6 @@ components:
         - buildCount
         - envdVersion
         - aliases
-        - tags
         - buildStatus
       properties:
         templateID:
@@ -638,11 +637,6 @@ components:
         aliases:
           type: array
           description: Aliases of the template
-          items:
-            type: string
-        tags:
-          type: array
-          description: Tags of the template
           items:
             type: string
         createdAt:
