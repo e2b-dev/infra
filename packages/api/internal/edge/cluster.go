@@ -64,7 +64,6 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	// generate the full endpoint URL
 	var endpointBaseUrl string
 	if endpointTLS {
-		
 		endpointBaseUrl = fmt.Sprintf("https://%s", endpoint)
 	} else {
 		endpointBaseUrl = fmt.Sprintf("http://%s", endpoint)
@@ -74,7 +73,6 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	if err != nil {
 		return nil, fmt.Errorf("failed to create http client: %w", err)
 	}
-
 	grpcAuthorization := clientAuthorization{secret: secret, tls: endpointTLS}
 	grpcClient, err := createClusterClient(tel, grpcAuthorization, endpoint, endpointTLS)
 	if err != nil {
@@ -95,6 +93,7 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 
 	// periodically sync cluster instances
 	go c.startSync(ctx)
+	
 
 	return c, nil
 }
@@ -172,14 +171,18 @@ func (c *Cluster) GetHTTP() *ClusterHTTP {
 }
 
 func (c *Cluster) GetOrchestrators() []*ClusterInstance {
-	instances := make([]*ClusterInstance, 0)
-	for _, i := range c.instances.Items() {
-		if i.IsOrchestrator() {
-			instances = append(instances, i)
+
+
+	//  convert map to slice
+	mapItems := c.instances.Items()
+	instances := make([]*ClusterInstance, 0 , len(mapItems))
+	for _, instance := range mapItems {
+		if instance.IsOrchestrator() {
+			instances = append(instances, instance)
 		}
 	}
-
 	return instances
+
 }
 
 func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
