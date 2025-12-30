@@ -24,7 +24,7 @@ type CachedObjectProvider struct {
 	path      string
 	chunkSize int64
 	inner     ObjectProvider
-	flags     *featureflags.Client
+	flags     featureFlagsClient
 }
 
 var _ ObjectProvider = CachedObjectProvider{}

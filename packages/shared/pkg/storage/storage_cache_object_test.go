@@ -36,7 +36,10 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 			WriteFromFileSystem(mock.Anything, mock.Anything).
 			Return(nil)
 
-		c := CachedObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024}
+		featureFlags := storagemocks.NewMockFeatureFlagsClient(t)
+		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
+
+		c := CachedObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags}
 
 		// write temp file
 		err = c.WriteFromFileSystem(t.Context(), tempFilename)
