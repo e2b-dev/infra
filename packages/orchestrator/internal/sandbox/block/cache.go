@@ -451,10 +451,7 @@ func splitRanges(ranges []Range, maxSplitSize int64) (groups [][]Range, err erro
 			remaining := r.Size
 
 			for remaining > 0 {
-				chunkSize := maxSplitSize
-				if remaining < maxSplitSize {
-					chunkSize = remaining
-				}
+				chunkSize := min(remaining, maxSplitSize)
 
 				chunk := Range{Start: start, Size: chunkSize}
 
