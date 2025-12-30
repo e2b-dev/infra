@@ -434,8 +434,33 @@ variable "remote_repository_enabled" {
   default     = false
 }
 
-variable "client_clusters_config_json" {
-  type        = string
+variable "client_clusters_config" {
+  type = list(object({
+    cluster_size = number
+
+    machine = object({
+      type             = string
+      min_cpu_platform = string
+    })
+
+    autoscaler = object({
+      size_max      = number
+      memory_target = number
+      cpu_target    = number
+    })
+
+    boot_disk = object({
+      disk_type = string
+      size_gb   = number
+    })
+
+    cache_disks = object({
+      disk_type = string
+      size_gb   = number
+      count     = number
+    })
+  }))
+
   description = <<EOT
 JSON configuration for the client clusters.
 Format: [
@@ -462,14 +487,34 @@ Format: [
   }
 ]
 EOT
-  validation {
-    condition     = can(jsondecode(var.client_clusters_config_json))
-    error_message = "client_cluster_config_json must be a valid JSON"
-  }
 }
 
-variable "build_clusters_config_json" {
-  type        = string
+variable "build_clusters_config" {
+  type = list(object({
+    cluster_size = number
+
+    machine = object({
+      type             = string
+      min_cpu_platform = string
+    })
+
+    autoscaler = object({
+      size_max      = number
+      memory_target = number
+      cpu_target    = number
+    })
+
+    boot_disk = object({
+      disk_type = string
+      size_gb   = number
+    })
+
+    cache_disks = object({
+      disk_type = string
+      size_gb   = string
+      count     = number
+    })
+  }))
   description = <<EOT
 JSON configuration for the build cluster.
 Format:
@@ -497,10 +542,6 @@ Format:
   }
 ]
 EOT
-  validation {
-    condition     = can(jsondecode(var.build_clusters_config_json))
-    error_message = "build_clusters_config_json must be a valid JSON"
-  }
 }
 
 # Boot disk type variables

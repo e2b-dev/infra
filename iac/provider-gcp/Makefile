@@ -14,8 +14,8 @@ $(if $(value $(strip $(1))), TF_VAR_$(shell echo $(strip $(1)) | tr A-Z a-z)=$($
 endef
 
 tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
-	$(call tfvar, BUILD_CLUSTERS_CONFIG_JSON) \
-	$(call tfvar, CLIENT_CLUSTERS_CONFIG_JSON) \
+	$(call tfvar, BUILD_CLUSTERS_CONFIG) \
+	$(call tfvar, CLIENT_CLUSTERS_CONFIG) \
 	$(call tfvar, API_MACHINE_TYPE) \
 	$(call tfvar, API_CLUSTER_SIZE) \
 	$(call tfvar, API_USE_NAT) \
