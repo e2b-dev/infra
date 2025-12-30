@@ -78,6 +78,20 @@ func NewWarmPool[T Item](
 // - When done, destroys all items in the `freshItems` channel before returning
 // - When an error is encountered, continue trying to create more entries
 func (wp *WarmPool[T]) Populate(ctx context.Context) error {
+	wp.wg.Go(func() {
+		// wait for done
+		<-wp.done
+
+		// close freshItems
+		close(wp.freshItems)
+
+		// destroy all fresh items
+		ctx := context.WithoutCancel(ctx)
+		for item := range wp.freshItems {
+			wp.destroy(ctx, item, operationClose, reasonCleanupFresh)
+		}
+	})
+
 	for {
 		if _, err := wp.isClosed(ctx); err != nil {
 			return ignoreClosed(err)
@@ -239,21 +253,17 @@ func (wp *WarmPool[T]) Close(ctx context.Context) error {
 	var err error
 
 	wp.doneOnce.Do(func() {
+		// signal that the pool is closed
+		// this will trigger Populate to clean up
 		close(wp.done)
 
+		// destroy all items in the reusable pool
 		close(wp.reusableItems)
-
 		for item := range wp.reusableItems {
 			wp.destroy(ctx, item, operationClose, reasonCleanupReusable)
 		}
 
-		close(wp.freshItems)
-
-		// closing this channel is done in Populate
-		for item := range wp.freshItems {
-			wp.destroy(ctx, item, operationClose, reasonCleanupFresh)
-		}
-
+		// populate cleans up in a goroutine, wait for it to finish
 		wp.wg.Wait()
 	})
 

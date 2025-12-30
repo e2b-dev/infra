@@ -70,6 +70,7 @@ func TestWarmPool_Populate(t *testing.T) {
 			1,
 			testFactory,
 		)
+		t.Cleanup(closePool(t, wp))
 
 		makeItems := newItemFactory(5)
 
@@ -78,11 +79,9 @@ func TestWarmPool_Populate(t *testing.T) {
 
 		// populate asynchronously
 		ctx, cancel := context.WithCancel(t.Context())
-		done := make(chan struct{})
 		go func() {
 			err := wp.Populate(ctx)
 			assert.ErrorIs(t, err, context.Canceled)
-			close(done)
 		}()
 
 		item := <-wp.freshItems
@@ -91,10 +90,6 @@ func TestWarmPool_Populate(t *testing.T) {
 
 		// verify the item has been released
 		assert.Equal(t, "test-1", item.Key)
-
-		<-done
-
-		wp.wg.Wait()
 	})
 
 	t.Run("populate quits on close", func(t *testing.T) {
@@ -316,7 +311,6 @@ func TestWarmPool_Get(t *testing.T) {
 		t.Parallel()
 
 		itemFactory := NewMockItemFactory[*testItem](t)
-		itemFactory.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil).Once()
 
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
