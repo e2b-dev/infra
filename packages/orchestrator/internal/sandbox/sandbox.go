@@ -732,7 +732,7 @@ func (s *Sandbox) Pause(
 		}
 	}()
 
-	snapshotTemplateFiles, err := s.Template.Files().CacheFiles(s.config)
+	snapshotTemplateFiles, err := storage.TemplateFiles{BuildID: m.Template.BuildID}.CacheFiles(s.config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
