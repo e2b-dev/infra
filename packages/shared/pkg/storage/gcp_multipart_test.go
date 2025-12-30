@@ -586,7 +586,6 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 				if current <= maxObserved || maxObservedConcurrency.CompareAndSwap(maxObserved, current) {
 					break
 				}
-				current = activeConcurrency.Load()
 			}
 
 			// Simulate work that takes time
