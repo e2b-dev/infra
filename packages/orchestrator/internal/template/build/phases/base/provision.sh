@@ -123,7 +123,14 @@ user_allow_other
 EOF
 fi
 
-# Allow other users to access the fuse device
+# Create /dev/fuse if it doesn't exist (needed for build context)
+if [ ! -e /dev/fuse ]; then
+    mknod /dev/fuse c 10 229 2>/dev/null || true
+fi
+# Set permissions if the device exists
+if [ -e /dev/fuse ]; then
+    chmod 666 /dev/fuse
+fi
 # Create udev rule to ensure permissions are set when device is created at runtime
 mkdir -p /etc/udev/rules.d
 cat <<EOF >/etc/udev/rules.d/99-fuse-permissions.rules
