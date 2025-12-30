@@ -233,7 +233,8 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 	pageSize := int64(header.HugepageSize)
 	size := pageSize * 500
 
-	for b.Loop() {
+	b.StopTimer()
+	for {
 		l := int(math.Ceil(float64(size)/float64(pageSize)) * float64(pageSize))
 		mem, err := syscall.Mmap(
 			-1,
@@ -259,7 +260,7 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 		for i := range numRanges {
 			sizePages := int64(1 + (i % 5)) // pseudo-random but deterministic
 			sizeR := sizePages * pageSize
-			if totalCovered+sizeR > size*int64(numRanges)*8/10 && i > 0 { // Stop if we have covered ~80% total
+			if totalCovered+sizeR > size*8/10 && i > 0 { // Stop if we have covered ~80% total
 				break
 			}
 			ranges = append(ranges, Range{
@@ -280,13 +281,20 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 		require.NoError(b, err)
 
 		b.StartTimer()
+		if !b.Loop() {
+			b.StopTimer()
+			err = cache.Close()
+			require.NoError(b, err)
+			err = syscall.Munmap(mem)
+			require.NoError(b, err)
+
+			break
+		}
 
 		err = cache.copyProcessMemory(b.Context(), pid, ranges)
 		require.NoError(b, err)
 
 		b.StopTimer()
-
-		require.NoError(b, err)
 
 		err = cache.Close()
 		require.NoError(b, err)
