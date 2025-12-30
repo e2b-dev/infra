@@ -79,6 +79,17 @@ func (p *Pool) Populate(ctx context.Context) {
 	}
 }
 
+func (p *Pool) destroyBadSlot(ctx context.Context, slot *Slot, operation string) {
+	// destroy the namespace, assume it's bad
+	if err := p.factory.Destroy(context.WithoutCancel(ctx), slot); err != nil {
+		logger.L().Error(ctx, "failed to destroy slot",
+			zap.String("operation", operation),
+			zap.Int("slot_index", slot.Idx),
+			zap.Error(err),
+		)
+	}
+}
+
 func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (*Slot, error) {
 	slot, err := p.wp.Get(ctx)
 	if err != nil {
@@ -87,8 +98,7 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 
 	err = slot.ConfigureInternet(ctx, network)
 	if err != nil {
-		// Return the slot to the pool if configuring internet fails
-		p.wp.Return(context.WithoutCancel(ctx), slot)
+		go p.destroyBadSlot(context.WithoutCancel(ctx), slot, "setting internet access")
 
 		return nil, fmt.Errorf("error setting slot internet access: %w", err)
 	}
@@ -99,9 +109,7 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	err := slot.ResetInternet(ctx)
 	if err != nil {
-		if cerr := p.factory.Destroy(ctx, slot); cerr != nil {
-			return fmt.Errorf("reset internet: %w; cleanup: %w", err, cerr)
-		}
+		go p.destroyBadSlot(context.WithoutCancel(ctx), slot, "resetting internet access")
 
 		return fmt.Errorf("error resetting slot internet access: %w", err)
 	}

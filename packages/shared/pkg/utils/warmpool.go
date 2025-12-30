@@ -151,7 +151,13 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (T, error) {
 		recordFailure("closed")
 
 		return item, ErrClosed
-	case s := <-wp.reusableItems:
+	case s, ok := <-wp.reusableItems:
+		if !ok {
+			recordFailure("reusable closed")
+
+			return item, ErrClosed
+		}
+
 		telemetry.ReportEvent(ctx, fmt.Sprintf("reused %s", wp.name))
 		recordSuccess("used")
 
