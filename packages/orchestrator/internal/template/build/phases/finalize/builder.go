@@ -109,8 +109,8 @@ func (ppb *PostProcessingBuilder) Layer(
 	// The final template is the one from the configuration
 	result.Template = metadata.TemplateMetadata{
 		BuildID:            ppb.Template.BuildID,
-		KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
-		FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
+		KernelVersion:      ppb.Config.KernelVersion,
+		FirecrackerVersion: ppb.Config.FirecrackerVersion,
 	}
 
 	return phases.LayerResult{
