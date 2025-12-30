@@ -360,144 +360,118 @@ func (c *Cache) copyProcessMemory(
 	pid int,
 	rs []Range,
 ) error {
-	splittedRanges, err := splitRanges(rs, MAX_RW_COUNT)
-	if err != nil {
-		return fmt.Errorf("failed to split ranges: %w", err)
-	}
-
-	var start int64
-
 	// We need to split the ranges because the Kernel does not suppor reading/writing more than MAX_RW_COUNT bytes in a single operation.
-	for _, ranges := range splittedRanges {
-		for i := 0; i < len(ranges); i += IOV_MAX {
-			segmentRanges := ranges[i:min(i+IOV_MAX, len(ranges))]
+	ranges := splitOversizedRanges(rs, MAX_RW_COUNT)
 
-			remote := make([]unix.RemoteIovec, len(segmentRanges))
+	var offset int64
+	var rangeIdx int64
 
-			var segmentSize int64
+	for {
+		var remote []unix.RemoteIovec
 
-			for j, r := range segmentRanges {
-				remote[j] = unix.RemoteIovec{
-					Base: uintptr(r.Start),
-					Len:  int(r.Size),
-				}
+		var segmentSize int64
 
-				segmentSize += r.Size
-			}
-
-			local := []unix.Iovec{
-				{
-					Base: c.address(start),
-					// We could keep this as full cache length, but we might as well be exact here.
-					Len: uint64(segmentSize),
-				},
-			}
-
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				default:
-				}
-
-				// We could retry only on the remaining segment size, but for simplicity we retry the whole segment.
-				n, err := unix.ProcessVMReadv(pid,
-					local,
-					remote,
-					0,
-				)
-				if errors.Is(err, unix.EAGAIN) {
-					continue
-				}
-				if errors.Is(err, unix.EINTR) {
-					continue
-				}
-				if errors.Is(err, unix.ENOMEM) {
-					time.Sleep(oomMinBackoff + time.Duration(rand.Intn(int(oomMaxJitter.Milliseconds())))*time.Millisecond)
-
-					continue
-				}
-
-				if err != nil {
-					return fmt.Errorf("failed to read memory: %w", err)
-				}
-
-				if int64(n) != segmentSize {
-					return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
-				}
-
-				for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-					c.dirty.Store(start+blockOff, struct{}{})
-				}
-
-				start += segmentSize
-
+		for {
+			if len(remote) == IOV_MAX {
 				break
 			}
+
+			if rangeIdx >= int64(len(ranges)) {
+				break
+			}
+
+			r := ranges[rangeIdx]
+
+			if segmentSize + r.Size > MAX_RW_COUNT {
+				break
+			}
+
+			remote = append(remote, unix.RemoteIovec{
+				Base: uintptr(r.Start),
+				Len:  int(r.Size),
+			})
+
+			segmentSize += r.Size
+
+			rangeIdx++
+		}
+
+		if segmentSize == 0 {
+			break
+		}
+
+		local := []unix.Iovec{
+			{
+				Base: c.address(offset),
+				// We could keep this as full cache length, but we might as well be exact here.
+				Len: uint64(segmentSize),
+			},
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			// We could retry only on the remaining segment size, but for simplicity we retry the whole segment.
+			n, err := unix.ProcessVMReadv(pid,
+				local,
+				remote,
+				0,
+			)
+			if errors.Is(err, unix.EAGAIN) {
+				continue
+			}
+			if errors.Is(err, unix.EINTR) {
+				continue
+			}
+			if errors.Is(err, unix.ENOMEM) {
+				time.Sleep(oomMinBackoff + time.Duration(rand.Intn(int(oomMaxJitter.Milliseconds())))*time.Millisecond)
+
+				continue
+			}
+
+			if err != nil {
+				return fmt.Errorf("failed to read memory: %w", err)
+			}
+
+			if int64(n) != segmentSize {
+				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
+			}
+
+			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
+				c.dirty.Store(offset+blockOff, struct{}{})
+			}
+
+			offset += segmentSize
+
+			break
 		}
 	}
 
 	return nil
 }
 
-func splitRanges(ranges []Range, maxSplitSize int64) (groups [][]Range, err error) {
-	var group []Range
-	var groupSize int64
-
+// Split ranges so there are no ranges larger than maxSize.
+// This is not an optimal split—ideally we would split the ranges so that we can fill each call to unix.ProcessVMReadv to the max size.
+// This is though a very simple split that will work and the syscalls overhead here is not very high as opposed to the other things.
+func splitOversizedRanges(ranges []Range, maxSize int64) (result []Range) {
 	for _, r := range ranges {
-		if r.Size > maxSplitSize {
-			// If single range is bigger than maxSplitSize, split it into chunks.
-			start := r.Start
-			remaining := r.Size
-
-			for remaining > 0 {
-				chunkSize := min(remaining, maxSplitSize)
-
-				chunk := Range{Start: start, Size: chunkSize}
-
-				if groupSize+chunk.Size > maxSplitSize {
-					if len(group) > 0 {
-						groups = append(groups, group)
-						group = nil
-						groupSize = 0
-					}
-				}
-
-				group = append(group, chunk)
-				groupSize += chunk.Size
-
-				if groupSize == maxSplitSize {
-					groups = append(groups, group)
-					group = nil
-					groupSize = 0
-				}
-
-				start += chunkSize
-				remaining -= chunkSize
-			}
+		if r.Size <= maxSize {
+			result = append(result, r)
 
 			continue
 		}
 
-		if groupSize+r.Size > maxSplitSize && len(group) > 0 {
-			groups = append(groups, group)
-			group = nil
-			groupSize = 0
-		}
-
-		group = append(group, r)
-		groupSize += r.Size
-
-		if groupSize == maxSplitSize {
-			groups = append(groups, group)
-			group = nil
-			groupSize = 0
+		for offset := int64(0); offset < r.Size; offset += maxSize {
+			result = append(result, Range{
+				Start: r.Start + offset,
+				Size:  min(r.Size-offset, maxSize),
+			})
 		}
 	}
 
-	if len(group) > 0 {
-		groups = append(groups, group)
-	}
-
-	return groups, nil
+	return result
 }
