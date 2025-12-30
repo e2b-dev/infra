@@ -140,14 +140,6 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (T, error) {
 
 	// get from the reusable pool first
 	select {
-	case <-ctx.Done():
-		timer.failure(reasonContextDone)
-
-		return item, ctx.Err()
-	case <-wp.done:
-		timer.failure(reasonPoolClosed)
-
-		return item, ErrPoolClosed
 	case s, ok := <-wp.reusableItems:
 		if !ok {
 			timer.failure(reasonReusableClosed)
@@ -243,7 +235,7 @@ func (wp *WarmPool[T]) Return(ctx context.Context, item T) {
 // Close destroys all items and prevents the pool from creating/returning anymore.
 func (wp *WarmPool[T]) Close(ctx context.Context) error {
 	logger.L().Info(ctx, "Closing pool")
-	
+
 	var err error
 
 	wp.doneOnce.Do(func() {
