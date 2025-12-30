@@ -411,11 +411,6 @@ variable "filestore_cache_cleanup_deletions_per_loop" {
   default = 900
 }
 
-variable "min_cpu_platform" {
-  type    = string
-  default = "Intel Skylake"
-}
-
 variable "remote_repository_enabled" {
   type        = bool
   description = "Set to true to enable remote repository cache. Can be set via TF_VAR_remote_repository_enabled or REMOTE_REPOSITORY_ENABLED env var."

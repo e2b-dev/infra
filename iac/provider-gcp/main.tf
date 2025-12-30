@@ -126,8 +126,6 @@ module "cluster" {
   labels = var.labels
   prefix = var.prefix
 
-  min_cpu_platform = var.min_cpu_platform
-
   # Boot disk types
   api_boot_disk_type        = var.api_boot_disk_type
   server_boot_disk_type     = var.server_boot_disk_type

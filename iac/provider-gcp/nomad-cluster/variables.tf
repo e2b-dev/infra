@@ -297,10 +297,6 @@ variable "filestore_cache_capacity_gb" {
   default = 0
 }
 
-variable "min_cpu_platform" {
-  type = string
-}
-
 variable "api_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
