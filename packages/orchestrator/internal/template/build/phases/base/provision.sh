@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 
+ARCH=$(uname -m)
 BUSYBOX="{{ .BusyBox }}"
 RESULT_PATH="{{ .ResultPath }}"
 
@@ -9,14 +10,18 @@ echo "Starting provisioning script"
 echo "Making configuration immutable"
 $BUSYBOX chattr +i /etc/resolv.conf
 
+# Helper function to check if a package is installed
+is_package_installed() {
+    dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"
+}
+
 # Install required packages if not already installed
-PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp socat curl ca-certificates"
+PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp socat curl ca-certificates fuse3"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=""
-
 for pkg in $PACKAGES; do
-    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+    if ! is_package_installed "$pkg"; then
         echo "Package $pkg is missing, will install it."
         MISSING="$MISSING $pkg"
     fi
@@ -28,6 +33,32 @@ if [ -n "$MISSING" ]; then
     DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends $MISSING
 else
     echo "All required packages are already installed."
+fi
+
+# Install mount-s3 separately from URL if not already installed
+# Detect architecture and map to Mountpoint's supported architectures
+case "$ARCH" in
+    x86_64|amd64)
+        MOUNTPOINT_ARCH="x86_64"
+        ;;
+    aarch64|arm64)
+        MOUNTPOINT_ARCH="arm64"
+        ;;
+    *)
+        echo "Unsupported architecture: $ARCH"
+        exit 1
+        ;;
+esac
+MOUNTPOINT_URL="https://s3.amazonaws.com/mountpoint-s3-release/latest/$MOUNTPOINT_ARCH/mount-s3.deb"
+MOUNTPOINT_DOWNLOAD_PATH="/tmp/mount-s3.deb"
+
+if ! is_package_installed "mount-s3"; then
+    echo "mount-s3 is missing, installing from URL"
+    curl -fsSL "$MOUNTPOINT_URL" -o "$MOUNTPOINT_DOWNLOAD_PATH"
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends "$MOUNTPOINT_DOWNLOAD_PATH"
+    rm -f "$MOUNTPOINT_DOWNLOAD_PATH"
+else
+    echo "mount-s3 is already installed."
 fi
 
 echo "Setting up shell"
