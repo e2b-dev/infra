@@ -388,8 +388,7 @@ func TestParseCopyArgs(t *testing.T) {
 	}
 }
 
-func TestCopyScriptBehavior(t *testing.T) {
-	t.Parallel()
+func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why this one doesn't work, but it doesn't
 	uid, gid := getCurrentUser()
 	currentUser := fmt.Sprintf("%d:%d", uid, gid)
 
@@ -637,9 +636,8 @@ func TestCopyScriptBehavior(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range tests { //nolint:paralleltest // no idea why this one doesn't work, but it doesn't
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			sourceDir, targetBaseDir, workDir := setupTestEnvironment(t)
 
 			// Internal: create the hash/unpack directory structure (mimics tar extraction)

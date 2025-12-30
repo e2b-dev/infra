@@ -561,8 +561,8 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 	err := os.WriteFile(testFile, []byte(testContent), 0o644)
 	require.NoError(t, err)
 
-	var activeConcurrency int32
-	var maxObservedConcurrency int32
+	var activeConcurrency atomic.Int32
+	var maxObservedConcurrency atomic.Int32
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -577,15 +577,16 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 			w.Write(xmlData)
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
-			current := atomic.AddInt32(&activeConcurrency, 1)
-			defer atomic.AddInt32(&activeConcurrency, -1)
+			current := activeConcurrency.Add(1)
+			defer activeConcurrency.Add(-1)
 
 			// Track max observed concurrency
 			for {
-				maxObserved := atomic.LoadInt32(&maxObservedConcurrency)
-				if current <= maxObserved || atomic.CompareAndSwapInt32(&maxObservedConcurrency, maxObserved, current) {
+				maxObserved := maxObservedConcurrency.Load()
+				if current <= maxObserved || maxObservedConcurrency.CompareAndSwap(maxObserved, current) {
 					break
 				}
+				current = activeConcurrency.Load()
 			}
 
 			// Simulate work that takes time
@@ -608,8 +609,8 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 
 	// Should have observed significant concurrency but not necessarily 1000
 	// (due to file size and chunk limitations)
-	t.Logf("Max observed concurrency: %d", atomic.LoadInt32(&maxObservedConcurrency))
-	require.Greater(t, atomic.LoadInt32(&maxObservedConcurrency), int32(1))
+	t.Logf("Max observed concurrency: %d", maxObservedConcurrency.Load())
+	require.Greater(t, maxObservedConcurrency.Load(), int32(1))
 }
 
 func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
