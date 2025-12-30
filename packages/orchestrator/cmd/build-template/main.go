@@ -239,22 +239,22 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
-		Version:    templates.TemplateV2LatestVersion,
-		TeamID:     "",
-		TemplateID: templateID,
-		FromImage:  baseImage,
-		Force:      &force,
-		VCpuCount:  2,
-		MemoryMB:   1024,
-		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
-		DiskSizeMB: 1024,
-		HugePages:  true,
+		Version:            templates.TemplateV2LatestVersion,
+		TeamID:             "",
+		TemplateID:         templateID,
+		FromImage:          baseImage,
+		Force:              &force,
+		VCpuCount:          2,
+		MemoryMB:           1024,
+		StartCmd:           "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+		DiskSizeMB:         1024,
+		HugePages:          true,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: fcVersion,
 	}
 
 	metadata := storage.TemplateFiles{
-		BuildID:            buildID,
-		KernelVersion:      kernelVersion,
-		FirecrackerVersion: fcVersion,
+		BuildID: buildID,
 	}
 	_, err = builder.Build(ctx, metadata, template, log.Detach(ctx).Core())
 	if err != nil {

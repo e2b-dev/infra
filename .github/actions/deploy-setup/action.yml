@@ -28,7 +28,11 @@ runs:
       run: |
         echo ${{ inputs.environment }} > .last_used_env
         cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > .env.${{ inputs.environment }}
-        export $(cat ".env.${{ inputs.environment }}" | xargs)
+
+        # Load environment variables from .env
+        set -a
+        . .env.${{ inputs.environment }}
+        set +a
 
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
         echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> $GITHUB_ENV

@@ -107,7 +107,11 @@ func (ppb *PostProcessingBuilder) Layer(
 	}
 
 	// The final template is the one from the configuration
-	result.Template = ppb.Template
+	result.Template = metadata.TemplateMetadata{
+		BuildID:            ppb.Template.BuildID,
+		KernelVersion:      ppb.Config.KernelVersion,
+		FirecrackerVersion: ppb.Config.FirecrackerVersion,
+	}
 
 	return phases.LayerResult{
 		Metadata: result,
@@ -154,6 +158,11 @@ func (ppb *PostProcessingBuilder) Build(
 			DefaultUser:    defaultUser,
 			DefaultWorkdir: defaultWorkdir,
 		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      ppb.Config.KernelVersion,
+			FirecrackerVersion: ppb.Config.FirecrackerVersion,
+		},
 	}
 
 	// Select the IO Engine to use for the rootfs drive
@@ -170,16 +179,12 @@ func (ppb *PostProcessingBuilder) Build(
 		sbxConfig,
 		ppb.sandboxFactory,
 		finalizeTimeout,
-		fc.FirecrackerVersions{
-			KernelVersion:      currentLayer.Metadata.Template.KernelVersion,
-			FirecrackerVersion: currentLayer.Metadata.Template.FirecrackerVersion,
-		},
 		layer.WithIoEngine(ioEngine),
 	)
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(userLogger))
 
-	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
+	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template.BuildID)
 
 	finalLayer, err := ppb.layerExecutor.BuildLayer(
 		ctx,
