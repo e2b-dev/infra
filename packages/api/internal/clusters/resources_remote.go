@@ -196,7 +196,7 @@ func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, 
 		return nil, fmt.Errorf("failed to get build logs in template manager: %w", err)
 	}
 
-	if res.StatusCode() != 200 || res.JSON200 == nil {
+	if res.StatusCode() != 200 {
 		return nil, errors.New("failed to get build logs in template manager")
 	}
 
