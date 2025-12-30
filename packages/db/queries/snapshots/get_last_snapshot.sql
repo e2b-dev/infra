@@ -8,6 +8,6 @@ LEFT JOIN LATERAL (
     FROM "public"."env_aliases"
     WHERE env_id = s.base_env_id
 ) ea ON TRUE
-WHERE s.sandbox_id = $1 AND eb.status = 'success' AND e.team_id = $2
+WHERE s.sandbox_id = $1 AND eb.status = 'success'
 ORDER BY eb.finished_at DESC
 LIMIT 1;

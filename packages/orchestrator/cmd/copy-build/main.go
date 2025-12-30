@@ -129,9 +129,7 @@ func getReferencedData(h *header.Header, objectType storage.ObjectType) ([]strin
 
 	for build := range builds {
 		template := storage.TemplateFiles{
-			BuildID:            build,
-			KernelVersion:      "",
-			FirecrackerVersion: "",
+			BuildID: build,
 		}
 
 		switch objectType {
@@ -197,9 +195,7 @@ func main() {
 	fmt.Printf("Copying build '%s' from '%s' to '%s'\n", *buildId, *from, *to)
 
 	template := storage.TemplateFiles{
-		BuildID:            *buildId,
-		KernelVersion:      "",
-		FirecrackerVersion: "",
+		BuildID: *buildId,
 	}
 
 	ctx := context.Background()

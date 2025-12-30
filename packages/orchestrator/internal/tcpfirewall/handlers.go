@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 const (
@@ -49,13 +51,20 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
 
-	// We can't trust the client resolved the hostname correctly (can be spoofed), so we proxy to the hostname (if provided)
-	dstIPOrHostname := dstIP.String()
-	if hostname != noHostnameValue {
-		dstIPOrHostname = hostname
-	}
-	upstreamAddr := net.JoinHostPort(dstIPOrHostname, fmt.Sprintf("%d", dstPort))
+	// When allowed by domain match, dial the hostname directly (not the sandbox's resolved IP).
+	// This prevents DNS spoofing attacks where the sandbox modifies /etc/hosts to redirect
+	// an allowed domain to an arbitrary IP. We use Go's net.Dialer which provides built-in
+	// Happy Eyeballs (RFC 8305) for multi-IP fallback when some IPs are unreachable.
+	// After connecting, we verify the connected IP is not internal/private.
+	if matchType == MatchTypeDomain {
+		upstreamAddr := net.JoinHostPort(hostname, fmt.Sprintf("%d", dstPort))
+		proxyWithIPVerification(ctx, conn, upstreamAddr, logger, metrics, protocol)
 
+		return
+	}
+
+	// For non-domain matches, use the original destination IP
+	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
 	proxy(ctx, conn, upstreamAddr, metrics, protocol)
 }
 
@@ -93,6 +102,59 @@ func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Met
 	dp := &tcpproxy.DialProxy{
 		Addr:        upstreamAddr,
 		DialTimeout: upstreamDialTimeout,
+	}
+	dp.HandleConn(conn)
+}
+
+// proxyWithIPVerification dials the upstream hostname using Go's net.Dialer (which provides
+// built-in Happy Eyeballs / RFC 8305 for multi-IP fallback), and verifies the resolved IP
+// is not internal/private BEFORE connecting. This prevents DNS rebinding attacks while
+// preserving multi-IP reliability.
+//
+// The ControlContext callback is called after DNS resolution but before the TCP connect()
+// syscall, so no TCP handshake occurs to internal IPs.
+func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr string, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+	tracker := metrics.TrackConnection(protocol)
+	defer tracker.Close(ctx)
+
+	// Use tcpproxy.DialProxy with a custom DialContext that verifies resolved IPs
+	dp := &tcpproxy.DialProxy{
+		Addr:        upstreamAddr,
+		DialTimeout: upstreamDialTimeout,
+		DialContext: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
+			// Use Go's net.Dialer which has built-in Happy Eyeballs (RFC 8305)
+			// This automatically tries multiple IPs with proper fallback
+			dialer := &net.Dialer{
+				Timeout: upstreamDialTimeout,
+				// ControlContext is called after DNS resolution but BEFORE the TCP connect() syscall.
+				// The 'address' parameter contains the resolved IP:port, allowing us to block
+				// connections to internal IPs before any TCP handshake occurs.
+				ControlContext: func(_ context.Context, _, address string, _ syscall.RawConn) error {
+					host, _, err := net.SplitHostPort(address)
+					if err != nil {
+						return fmt.Errorf("failed to parse resolved address %q: %w", address, err)
+					}
+
+					resolvedIP := net.ParseIP(host)
+					if resolvedIP == nil {
+						return fmt.Errorf("failed to parse IP from resolved address %q", host)
+					}
+
+					if isIPInAlwaysDeniedCIDRs(resolvedIP) {
+						logger.Warn(ctx, "Blocked connection to internal IP via hostname",
+							zap.String("upstream_addr", addr),
+							zap.String("resolved_ip", resolvedIP.String()))
+						metrics.RecordError(ctx, ErrorTypeResolvedIPBlocked, protocol)
+
+						return fmt.Errorf("hostname resolved to internal IP %s", resolvedIP)
+					}
+
+					return nil
+				},
+			}
+
+			return dialer.DialContext(dialCtx, network, addr)
+		},
 	}
 	dp.HandleConn(conn)
 }
@@ -167,6 +229,22 @@ func matchDomain(hostname, pattern string) bool {
 	case strings.HasPrefix(pattern, "*."):
 		suffix := pattern[1:]
 		if strings.HasSuffix(strings.ToLower(hostname), strings.ToLower(suffix)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isIPInAlwaysDeniedCIDRs checks if an IP is within the denied sandbox CIDRs (internal/private ranges).
+func isIPInAlwaysDeniedCIDRs(ip net.IP) bool {
+	for _, cidr := range sandbox_network.DeniedSandboxCIDRs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+
+		if ipNet.Contains(ip) {
 			return true
 		}
 	}
