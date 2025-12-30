@@ -124,3 +124,23 @@ func TestSandboxSetTimeoutPausingSandbox(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestSandboxTimeout_CrossTeamAccess(t *testing.T) {
+	c := setup.GetAPIClient()
+	db := setup.GetTestDBClient(t)
+
+	// Create a sandbox with the default team's API key
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+
+	// Create a second team with a different API key
+	foreignUserID := utils.CreateUser(t, db)
+	foreignTeamID := utils.CreateTeamWithUser(t, db, "foreign-team-timeout", foreignUserID.String())
+	foreignAPIKey := utils.CreateAPIKey(t, t.Context(), c, foreignUserID.String(), foreignTeamID)
+
+	// Try to set timeout on the first team's sandbox using the second team's API key
+	timeoutResp, err := c.PostSandboxesSandboxIDTimeoutWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
+		Timeout: 120,
+	}, setup.WithAPIKey(foreignAPIKey))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, timeoutResp.StatusCode(), "Should return 403 Forbidden when trying to set timeout on a sandbox owned by a different team")
+}
