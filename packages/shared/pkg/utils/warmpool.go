@@ -172,6 +172,7 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (T, error) {
 	case s, ok := <-wp.reusableItems:
 		if !ok {
 			recordFailure("reusable closed")
+
 			return s, ErrClosed
 		}
 
@@ -182,6 +183,7 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (T, error) {
 	case s, ok := <-wp.freshItems:
 		if !ok {
 			recordFailure("fresh closed")
+
 			return s, ErrClosed
 		}
 
