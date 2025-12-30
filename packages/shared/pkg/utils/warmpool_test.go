@@ -103,6 +103,7 @@ func TestWarmPool_Populate(t *testing.T) {
 			1,
 			testFactory,
 		)
+		t.Cleanup(closePool(t, wp))
 
 		makeItems := newItemFactory(5)
 
@@ -110,19 +111,15 @@ func TestWarmPool_Populate(t *testing.T) {
 		testFactory.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil)
 
 		// populate asynchronously
-		done := make(chan struct{})
 		go func() {
 			err := wp.Populate(t.Context())
 			assert.NoError(t, err)
-			close(done)
 		}()
 
 		time.Sleep(10 * time.Millisecond) // give it some time to populate
 
 		err := wp.Close(t.Context())
 		require.NoError(t, err)
-
-		<-done
 	})
 
 	t.Run("populate quits on context cancellation", func(t *testing.T) {
