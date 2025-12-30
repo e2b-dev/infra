@@ -94,15 +94,13 @@ func (p *Pool) Close(ctx context.Context) {
 
 	wg := &sync.WaitGroup{}
 	for _, cluster := range p.clusters.Items() {
-		wg.Add(1)
-		go func(c *Cluster) {
-			defer wg.Done()
-			logger.L().Info(ctx, "Closing cluster", logger.WithClusterID(c.ID))
-			err := c.Close()
+		wg.Go(func() {
+			logger.L().Info(ctx, "Closing cluster", logger.WithClusterID(cluster.ID))
+			err := cluster.Close(ctx)
 			if err != nil {
-				logger.L().Error(ctx, "Error closing cluster", zap.Error(err), logger.WithClusterID(c.ID))
+				logger.L().Error(ctx, "Error closing cluster", zap.Error(err), logger.WithClusterID(cluster.ID))
 			}
-		}(cluster)
+		})
 	}
 	wg.Wait()
 }
@@ -204,7 +202,7 @@ func (d clustersSyncStore) PoolUpdate(_ context.Context, _ *Cluster) {
 func (d clustersSyncStore) PoolRemove(ctx context.Context, cluster *Cluster) {
 	logger.L().Info(ctx, "Removing cluster from pool", logger.WithClusterID(cluster.ID))
 
-	err := cluster.Close()
+	err := cluster.Close(ctx)
 	if err != nil {
 		logger.L().Error(ctx, "Error during removing cluster from pool", zap.Error(err), logger.WithClusterID(cluster.ID))
 	}

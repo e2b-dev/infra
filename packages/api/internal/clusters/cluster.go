@@ -6,17 +6,20 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
@@ -136,8 +139,26 @@ func newRemoteCluster(
 	return c, nil
 }
 
-func (c *Cluster) Close() error {
+func (c *Cluster) Close(ctx context.Context) error {
 	c.synchronization.Close()
+
+	instances := c.instances.Items()
+	wg := sync.WaitGroup{}
+
+	for _, instance := range instances {
+		wg.Go(func() {
+			if closeErr := instance.Close(); closeErr != nil {
+				logger.L().Error(ctx, "Failed to close cluster instance during cluster closing",
+					zap.Error(closeErr),
+					logger.WithClusterID(c.ID),
+					logger.WithNodeID(instance.NodeID),
+				)
+			}
+		})
+	}
+
+	// Wait for all instances to be closed
+	wg.Wait()
 
 	return nil
 }
