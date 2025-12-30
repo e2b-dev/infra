@@ -102,6 +102,12 @@ plan:
 	@ $(TF) fmt -recursive
 	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings
 
+.PHONY: terraform
+terraform:
+	@ printf "Terraform command for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(TF) fmt -recursive
+	@ $(tf_vars) $(TF) $(ARGS)
+
 # Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
 plan-only-jobs:
