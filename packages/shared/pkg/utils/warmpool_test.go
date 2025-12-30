@@ -282,6 +282,28 @@ func TestWarmPool_Get(t *testing.T) {
 		assert.Equal(t, "test-1", item.Key)
 	})
 
+	t.Run("prefer item from the reuse pool", func(t *testing.T) {
+		wp := NewWarmPool[*testItem](
+			"test", "prefix",
+			1,
+			1,
+			nil,
+		)
+		t.Cleanup(closePool(t, wp))
+
+		// Add items to both pools
+		wp.reusableItems <- &testItem{Key: "reusable-1"}
+		wp.freshItems <- &testItem{Key: "fresh-1"}
+
+		// Get should return the reusable item first
+		item, err := wp.Get(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, "reusable-1", item.Key)
+
+		// Verify fresh item is still in the fresh channel
+		assert.Len(t, wp.freshItems, 1)
+	})
+
 	t.Run("get returns an item from the reuse pool", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
