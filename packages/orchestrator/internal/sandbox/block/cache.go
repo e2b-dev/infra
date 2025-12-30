@@ -371,12 +371,14 @@ func (c *Cache) copyProcessMemory(
 
 		var segmentSize int64
 
-		for len(remote) != IOV_MAX {
-			if rangeIdx >= int64(len(ranges)) {
+		// We iterate over the range of all ranges until we have reached the limit of the IOV_MAX,
+		// or until the next range would overflow the MAX_RW_COUNT.
+		for ; rangeIdx < int64(len(ranges)); rangeIdx++ {
+			r := ranges[rangeIdx]
+
+			if len(remote) == IOV_MAX {
 				break
 			}
-
-			r := ranges[rangeIdx]
 
 			if segmentSize+r.Size > MAX_RW_COUNT {
 				break
@@ -388,8 +390,6 @@ func (c *Cache) copyProcessMemory(
 			})
 
 			segmentSize += r.Size
-
-			rangeIdx++
 		}
 
 		if segmentSize == 0 {
