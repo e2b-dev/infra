@@ -104,7 +104,7 @@ resource "google_compute_region_instance_group_manager" "pool" {
   name   = "${var.cluster_name}-rig"
   region = var.gcp_region
 
-  target_size = var.cluster_size == try(var.autoscaler.size_max, var.cluster_size) ? null : var.cluster_size
+  target_size = var.cluster_size == try(var.autoscaler.size_max, var.cluster_size) ? var.cluster_size : null
 
   version {
     name              = google_compute_instance_template.template.id

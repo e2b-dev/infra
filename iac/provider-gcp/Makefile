@@ -109,7 +109,6 @@ migrate-build-cluster:
 	@ $(TF) fmt -recursive
 	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -target=module.cluster.module.build_cluster -target=module.cluster.module.client_cluster  -target="module.cluster.google_compute_health_check.client_nomad_check" -target="module.cluster.google_compute_instance_template.client" -target="module.cluster.google_compute_region_instance_group_manager.client_pool"
 
-
 # Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
 plan-only-jobs:

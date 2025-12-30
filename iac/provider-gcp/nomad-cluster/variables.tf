@@ -320,6 +320,7 @@ variable "loki_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
 }
+
 variable "orchestrator_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
