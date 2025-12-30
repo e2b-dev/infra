@@ -18,6 +18,8 @@ import (
 
 var meter = otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/utils")
 
+const defaultReturnTimeout = 5 * time.Minute
+
 var ErrClosed = errors.New("cannot read from a closed pool")
 
 type Item interface {
@@ -36,9 +38,10 @@ type WarmPool[T Item] struct {
 	freshItems    chan T
 	reusableItems chan T
 
-	name     string
-	done     chan struct{}
-	doneOnce sync.Once
+	returnTimeout time.Duration
+	name          string
+	done          chan struct{}
+	doneOnce      sync.Once
 
 	// measure pool performance
 	getCounter      metric.Int64Counter
@@ -55,6 +58,8 @@ func NewWarmPool[T Item](name, metricPrefix string, maxPoolSize, warmCount int, 
 	pool := &WarmPool[T]{
 		acquisition:   a,
 		name:          name,
+		returnTimeout: defaultReturnTimeout,
+
 		freshItems:    make(chan T, warmCount),
 		reusableItems: make(chan T, maxPoolSize),
 		done:          make(chan struct{}),
@@ -241,7 +246,7 @@ func (wp *WarmPool[T]) Return(ctx context.Context, item T) {
 		case <-wp.done:
 			wp.beginDestroy(ctx, item, "return failed due to closed pool")
 			recordFailure("closed")
-		case <-time.After(time.Minute * 5):
+		case <-time.After(wp.returnTimeout):
 			wp.beginDestroy(ctx, item, "return failed due to closed pool")
 			recordFailure("return timeout")
 		}

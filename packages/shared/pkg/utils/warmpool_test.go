@@ -355,7 +355,7 @@ func TestWarmPool_Get(t *testing.T) {
 }
 
 func TestWarmPool_Return(t *testing.T) {
-	t.Run("return ends when already closed", func(t *testing.T) {
+	t.Run("return does nothing when already closed", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
@@ -370,7 +370,7 @@ func TestWarmPool_Return(t *testing.T) {
 		assert.Empty(t, wp.reusableItems) // ensure the item did not make it to the reuse pool
 	})
 
-	t.Run("return ends in error when context already canceled", func(t *testing.T) {
+	t.Run("return does nothing when context already canceled", func(t *testing.T) {
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
@@ -407,9 +407,9 @@ func TestWarmPool_Return(t *testing.T) {
 		f.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil).Once()
 	})
 
-	t.Run("return waits if the pool is already full", func(t *testing.T) {
+	t.Run("return destroys item if the pool is already full", func(t *testing.T) {
 		f := NewMockItemFactory[*testItem](t)
-		f.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil)
+		f.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil).Times(2)
 
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
@@ -423,7 +423,10 @@ func TestWarmPool_Return(t *testing.T) {
 		wp.reusableItems <- &testItem{}
 
 		// try to return an item
+		wp.returnTimeout = time.Millisecond * 10
 		wp.Return(t.Context(), &testItem{})
+
+		wp.wg.Wait()
 
 		assert.Len(t, wp.reusableItems, 1) // ensure the item did not make it to the reuse pool
 	})
