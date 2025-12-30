@@ -954,7 +954,7 @@ func TestTemplateBuildFuseConfiguration(t *testing.T) {
 			{
 				Type: "RUN",
 				Args: utils.ToPtr([]string{
-					"ls -l /dev/fuse | grep -q 'rw-rw-rw-'",
+					"ls -l /dev/fuse | grep -q 'crw-rw-rw-'",
 				}),
 			},
 		}),
