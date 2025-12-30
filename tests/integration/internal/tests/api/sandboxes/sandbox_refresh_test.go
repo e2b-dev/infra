@@ -13,6 +13,7 @@ import (
 )
 
 func TestSandboxRefresh(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	testCases := []struct {
 		name   string
@@ -41,6 +42,7 @@ func TestSandboxRefresh(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(int32(tc.initialDuration)))
 
 			// Get initial sandbox details
@@ -71,6 +73,7 @@ func TestSandboxRefresh(t *testing.T) {
 }
 
 func TestSandboxRefresh_NotFound(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	timeoutResp, err := c.PostSandboxesSandboxIDRefreshesWithResponse(t.Context(), "nonexistent-sandbox-id", api.PostSandboxesSandboxIDRefreshesJSONRequestBody{}, setup.WithAPIKey())
@@ -79,6 +82,7 @@ func TestSandboxRefresh_NotFound(t *testing.T) {
 }
 
 func TestSandboxRefresh_CrossTeamAccess(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	db := setup.GetTestDBClient(t)
 

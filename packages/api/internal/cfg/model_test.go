@@ -9,10 +9,13 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	t.Parallel()
+
 	// set base required values
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres-connection-string")
 
 	t.Run("postgres connection string is required", func(t *testing.T) {
+		t.Parallel()
 		removeEnv(t, "POSTGRES_CONNECTION_STRING")
 
 		_, err := Parse()
@@ -20,6 +23,7 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("postgres connection string cannot be empty", func(t *testing.T) {
+		t.Parallel()
 		t.Setenv("POSTGRES_CONNECTION_STRING", "")
 
 		_, err := Parse()
@@ -27,6 +31,7 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("supabase secrets are comma separated", func(t *testing.T) {
+		t.Parallel()
 		t.Setenv("SUPABASE_JWT_SECRETS", "aaa,bbb")
 		result, err := Parse()
 		require.NoError(t, err)

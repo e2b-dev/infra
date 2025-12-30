@@ -14,6 +14,7 @@ import (
 )
 
 func TestDirSort(t *testing.T) {
+	t.Parallel()
 	d := &Dir{
 		Name: "testdir",
 		Dirs: []*Dir{
@@ -43,6 +44,7 @@ func TestDirSort(t *testing.T) {
 }
 
 func TestCleanDeletesTwoFiles(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	defer os.RemoveAll(root)
 

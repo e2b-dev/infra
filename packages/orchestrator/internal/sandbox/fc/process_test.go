@@ -10,7 +10,9 @@ import (
 )
 
 func TestHasProcessExited(t *testing.T) {
+	t.Parallel()
 	t.Run("process has not exited", func(t *testing.T) {
+		t.Parallel()
 		cmd := exec.CommandContext(t.Context(), "sleep", "infinity")
 
 		// start the process
@@ -27,6 +29,7 @@ func TestHasProcessExited(t *testing.T) {
 	})
 
 	t.Run("process has exited successfully", func(t *testing.T) {
+		t.Parallel()
 		cmd := exec.CommandContext(t.Context(), "bash", "-c", "exit 0")
 
 		// start the process
@@ -43,6 +46,7 @@ func TestHasProcessExited(t *testing.T) {
 	})
 
 	t.Run("process has exited with failure", func(t *testing.T) {
+		t.Parallel()
 		cmd := exec.CommandContext(t.Context(), "bash", "-c", "exit 1")
 
 		// start the process
@@ -61,11 +65,13 @@ func TestHasProcessExited(t *testing.T) {
 	})
 
 	t.Run("process is nil", func(t *testing.T) {
+		t.Parallel()
 		isExited := hasProcessExited(nil)
 		assert.True(t, isExited)
 	})
 
 	t.Run("process has exited via signal", func(t *testing.T) {
+		t.Parallel()
 		cmd := exec.CommandContext(t.Context(), "sleep", "infinity")
 
 		// start the process

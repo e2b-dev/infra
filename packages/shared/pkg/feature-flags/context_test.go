@@ -10,6 +10,7 @@ import (
 )
 
 func TestFlattenContexts(t *testing.T) {
+	t.Parallel()
 	one := ldcontext.NewWithKind("one", "one")
 	two := ldcontext.NewWithKind("two", "two")
 	three := ldcontext.NewWithKind("three", "three")
@@ -32,6 +33,7 @@ func ldValueToText(value ldvalue.Value) string {
 }
 
 func TestMergeContextsSameKind(t *testing.T) {
+	t.Parallel()
 	kind := ldcontext.Kind("test")
 	testKey := "test"
 	emptyName := "[none]"
@@ -121,6 +123,7 @@ func TestMergeContextsSameKind(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			result := mergeSameKind(tc.firstContext, tc.secondContext)
 			assert.Equal(t, tc.expectedKey, result.Key(), "expected key to match")
 			assert.Equal(t, tc.expectedName, result.Name().String(), "expected name to match")

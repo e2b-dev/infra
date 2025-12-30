@@ -169,6 +169,7 @@ type testCase struct {
 }
 
 func TestParseCopyArgs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		args          []string
@@ -368,6 +369,7 @@ func TestParseCopyArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := parseCopyArgs(tt.args, tt.defaultUser)
 
 			if tt.expectedError != "" {
@@ -387,6 +389,7 @@ func TestParseCopyArgs(t *testing.T) {
 }
 
 func TestCopyScriptBehavior(t *testing.T) {
+	t.Parallel()
 	uid, gid := getCurrentUser()
 	currentUser := fmt.Sprintf("%d:%d", uid, gid)
 
@@ -636,6 +639,7 @@ func TestCopyScriptBehavior(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			sourceDir, targetBaseDir, workDir := setupTestEnvironment(t)
 
 			// Internal: create the hash/unpack directory structure (mimics tar extraction)

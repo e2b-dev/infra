@@ -105,6 +105,8 @@ func assertHTTPResponseFromServer(t *testing.T, ctx context.Context, sbx *api.Sa
 
 // TestEgressFirewallAllowSpecificIP tests that only allowed IPs can be accessed
 func TestEgressFirewallAllowSpecificIP(t *testing.T) {
+	t.Parallel()
+
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -129,6 +131,8 @@ func TestEgressFirewallAllowSpecificIP(t *testing.T) {
 
 // TestEgressFirewallBlockSpecificIP tests that blocked IPs cannot be accessed
 func TestEgressFirewallBlockSpecificIP(t *testing.T) {
+	t.Parallel()
+
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -152,6 +156,8 @@ func TestEgressFirewallBlockSpecificIP(t *testing.T) {
 
 // TestEgressFirewallAllowCIDRRange tests that CIDR ranges work for allowing IPs
 func TestEgressFirewallAllowCIDRRange(t *testing.T) {
+	t.Parallel()
+
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -176,6 +182,7 @@ func TestEgressFirewallAllowCIDRRange(t *testing.T) {
 
 // TestEgressFirewallBlockCIDRRange tests that CIDR ranges work for blocking IPs
 func TestEgressFirewallBlockCIDRRange(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -200,6 +207,7 @@ func TestEgressFirewallBlockCIDRRange(t *testing.T) {
 
 // TestEgressFirewallAllowAndBlockCombination tests that allowOut takes precedence over blockOut
 func TestEgressFirewallAllowAndBlockCombination(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -225,6 +233,7 @@ func TestEgressFirewallAllowAndBlockCombination(t *testing.T) {
 
 // TestEgressFirewallPersistsAfterResume tests that network config persists after pause/resume
 func TestEgressFirewallPersistsAfterResume(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	sbxTimeout := int32(60)
@@ -267,6 +276,7 @@ func TestEgressFirewallPersistsAfterResume(t *testing.T) {
 
 // TestEgressFirewallEmptyConfig tests that empty allowOut list is treated as no restriction
 func TestEgressFirewallEmptyConfig(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -289,6 +299,7 @@ func TestEgressFirewallEmptyConfig(t *testing.T) {
 
 // TestEgressFirewallAllowAll tests that 0.0.0.0/0 allows all traffic
 func TestEgressFirewallAllowAll(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -313,6 +324,7 @@ func TestEgressFirewallAllowAll(t *testing.T) {
 
 // TestEgressFirewallAllowOverridesBlock tests that allowOut takes precedence over blockOut
 func TestEgressFirewallAllowOverridesBlock(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -338,6 +350,7 @@ func TestEgressFirewallAllowOverridesBlock(t *testing.T) {
 
 // TestEgressFirewallMultipleAllowedIPs tests multiple allowed IPs
 func TestEgressFirewallMultipleAllowedIPs(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -364,6 +377,7 @@ func TestEgressFirewallMultipleAllowedIPs(t *testing.T) {
 
 // TestEgressFirewallWithInternetAccessFalse tests that network config takes precedence over allow_internet_access
 func TestEgressFirewallWithInternetAccessFalse(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -392,6 +406,7 @@ func TestEgressFirewallWithInternetAccessFalse(t *testing.T) {
 // by the orchestrator for security reasons. Attempting to specify them in allowOut should result in
 // a sandbox creation failure.
 func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	client := setup.GetAPIClient()
 	timeout := int32(60)
@@ -430,6 +445,7 @@ func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ctx := t.Context()
 			// Try to create a sandbox with a private IP range in allowOut
 			allowedIPs := []string{tc.allowedIP}
@@ -451,6 +467,7 @@ func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
 
 // TestEgressFirewallAllowAllDuplicate tests that adding 0.0.0.0/0 twice works correctly
 func TestEgressFirewallAllowAllDuplicate(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -475,6 +492,7 @@ func TestEgressFirewallAllowAllDuplicate(t *testing.T) {
 
 // TestEgressFirewallRegularIPThenAllowAll tests that adding a regular IP and then 0.0.0.0/0 works correctly
 func TestEgressFirewallRegularIPThenAllowAll(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -500,6 +518,7 @@ func TestEgressFirewallRegularIPThenAllowAll(t *testing.T) {
 // TestEgressFirewallAllowDomainThroughBlockedInternet tests that a specific domain can be allowed
 // when all internet traffic is blocked via 0.0.0.0/0
 func TestEgressFirewallAllowDomainThroughBlockedInternet(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -525,6 +544,7 @@ func TestEgressFirewallAllowDomainThroughBlockedInternet(t *testing.T) {
 
 // TestEgressFirewallAllowWildcardDomainThroughBlockedInternet tests that wildcard domain patterns work
 func TestEgressFirewallAllowWildcardDomainThroughBlockedInternet(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -551,6 +571,7 @@ func TestEgressFirewallAllowWildcardDomainThroughBlockedInternet(t *testing.T) {
 
 // TestEgressFirewallExactDomainMatchVsSubdomain tests that exact domain match does not include subdomains
 func TestEgressFirewallExactDomainMatchVsSubdomain(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -576,6 +597,7 @@ func TestEgressFirewallExactDomainMatchVsSubdomain(t *testing.T) {
 
 // TestEgressFirewallAllowAllDomainsWildcard tests that "*" wildcard allows all domains
 func TestEgressFirewallAllowAllDomainsWildcard(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -602,6 +624,7 @@ func TestEgressFirewallAllowAllDomainsWildcard(t *testing.T) {
 
 // TestEgressFirewallDomainCaseInsensitive tests that domain matching is case-insensitive
 func TestEgressFirewallDomainCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -627,6 +650,7 @@ func TestEgressFirewallDomainCaseInsensitive(t *testing.T) {
 
 // TestEgressFirewallAllowDomainAndIP tests mixed domain and IP allowlist
 func TestEgressFirewallAllowDomainAndIP(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -655,6 +679,7 @@ func TestEgressFirewallAllowDomainAndIP(t *testing.T) {
 // TestEgressFirewallHTTPSByIPNoHostname tests that HTTPS requests by IP (no SNI hostname)
 // fall back to CIDR rules when domain filtering is configured
 func TestEgressFirewallHTTPSByIPNoHostname(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -681,6 +706,7 @@ func TestEgressFirewallHTTPSByIPNoHostname(t *testing.T) {
 
 // TestEgressFirewallDomainPersistsAfterResume tests that domain-based network config persists after pause/resume
 func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	sbxTimeout := int32(60)
@@ -728,6 +754,7 @@ func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
 
 // TestEgressFirewallHTTPDomainFiltering tests that HTTP (non-HTTPS) traffic is filtered by Host header
 func TestEgressFirewallHTTPDomainFiltering(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -757,6 +784,7 @@ func TestEgressFirewallHTTPDomainFiltering(t *testing.T) {
 
 // TestEgressFirewallUDPAllowedIP tests that UDP traffic (DNS) to allowed IPs works
 func TestEgressFirewallUDPAllowedIP(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -782,6 +810,7 @@ func TestEgressFirewallUDPAllowedIP(t *testing.T) {
 
 // TestEgressFirewallUDPAllowedCIDR tests that UDP traffic to allowed CIDR range works
 func TestEgressFirewallUDPAllowedCIDR(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -813,6 +842,7 @@ func TestEgressFirewallUDPAllowedCIDR(t *testing.T) {
 // 4. The firewall IGNORES the spoofed IP and resolves google.com itself, redirecting to the real Google IP
 // 5. The connection SUCCEEDS to the real Google server (not to 1.1.1.1)
 func TestEgressFirewallDNSSpoofingNeutralized(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()

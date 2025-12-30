@@ -130,6 +130,7 @@ func deleteBuild(t *testing.T, db *client.Client, envID string) {
 }
 
 func TestGetSnapshotWithBuilds_Success(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
 
@@ -162,6 +163,7 @@ func TestGetSnapshotWithBuilds_Success(t *testing.T) {
 }
 
 func TestGetSnapshotWithBuilds_NoAdditionalBuilds(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
 
@@ -185,6 +187,7 @@ func TestGetSnapshotWithBuilds_NoAdditionalBuilds(t *testing.T) {
 }
 
 func TestGetSnapshotWithBuilds_NotFound(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
 
@@ -201,6 +204,7 @@ func TestGetSnapshotWithBuilds_NotFound(t *testing.T) {
 }
 
 func TestGetSnapshotWithBuilds_WrongTeamID(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
 
@@ -221,6 +225,7 @@ func TestGetSnapshotWithBuilds_WrongTeamID(t *testing.T) {
 }
 
 func TestGetSnapshotWithBuilds_NoBuilds(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
 

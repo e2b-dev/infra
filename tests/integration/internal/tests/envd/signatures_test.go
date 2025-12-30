@@ -19,6 +19,7 @@ import (
 )
 
 func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -54,6 +55,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 }
 
 func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -96,6 +98,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 }
 
 func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -139,6 +142,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 }
 
 func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -172,6 +176,7 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 }
 
 func TestDownloadWithHealthyToken(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -205,6 +210,7 @@ func TestDownloadWithHealthyToken(t *testing.T) {
 }
 
 func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

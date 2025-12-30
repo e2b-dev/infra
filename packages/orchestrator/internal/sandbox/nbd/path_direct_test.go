@@ -20,6 +20,7 @@ import (
 )
 
 func TestPathDirect_Direct4MBWrite(t *testing.T) {
+	t.Parallel()
 	size := int64(10 * 1024 * 1024)
 
 	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, unix.O_DIRECT|unix.O_RDWR)
@@ -47,6 +48,8 @@ func TestPathDirect_Direct4MBWrite(t *testing.T) {
 
 // We usually see the 32MB write be split into smaller writes, even on O_DIRECT.
 func TestPathDirect_Direct32MBWrite(t *testing.T) {
+	t.Parallel()
+
 	size := int64(256 * 1024 * 1024)
 
 	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, unix.O_DIRECT|unix.O_RDWR)
@@ -71,6 +74,7 @@ func TestPathDirect_Direct32MBWrite(t *testing.T) {
 }
 
 func TestPathDirect_Write(t *testing.T) {
+	t.Parallel()
 	size := int64(5 * 1024 * 1024)
 
 	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, os.O_RDWR)
@@ -92,6 +96,7 @@ func TestPathDirect_Write(t *testing.T) {
 }
 
 func TestPathDirect_WriteAtOffset(t *testing.T) {
+	t.Parallel()
 	size := int64(5 * 1024 * 1024)
 
 	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, os.O_RDWR)
@@ -114,6 +119,7 @@ func TestPathDirect_WriteAtOffset(t *testing.T) {
 }
 
 func TestPathDirect_LargeWrite(t *testing.T) {
+	t.Parallel()
 	size := int64(1200 * 1024 * 1024)
 
 	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, os.O_RDWR)
@@ -128,6 +134,7 @@ func TestPathDirect_LargeWrite(t *testing.T) {
 }
 
 func TestPathLargeRead(t *testing.T) {
+	t.Parallel()
 	size := int64(1200 * 1024 * 1024)
 
 	deviceFile := setupNBDDevice(t, size, header.RootfsBlockSize, os.O_RDONLY)

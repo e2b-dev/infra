@@ -16,6 +16,8 @@ import (
 )
 
 func TestValidate(t *testing.T) {
+	t.Parallel()
+
 	// Generate a valid access token
 	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
 	require.NoError(t, err)
@@ -88,8 +90,10 @@ func TestValidate(t *testing.T) {
 			error:            true,
 		},
 	}
-	for _, tc := range testcases {
+	for _, tc := range testcases { //nolint:paralleltest // false positive
 		t.Run(tc.name, func(tb *testing.T) {
+			t.Parallel()
+
 			dbClient := testutils.SetupDatabase(tb)
 			setupValidateTest(tb, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
 

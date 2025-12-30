@@ -20,6 +20,7 @@ func createSource(blockSize int, blocksData []byte) []byte {
 }
 
 func TestCreateDiff_Hugepage(t *testing.T) {
+	t.Parallel()
 	blockSize := HugepageSize
 	sourceSlice := createSource(blockSize, []byte{1, 0, 3, 4, 5})
 
@@ -40,6 +41,7 @@ func TestCreateDiff_Hugepage(t *testing.T) {
 }
 
 func TestCreateDiff_RootfsBlock(t *testing.T) {
+	t.Parallel()
 	blockSize := RootfsBlockSize
 	sourceSlice := createSource(blockSize, []byte{1, 0, 3, 4, 5})
 
@@ -60,6 +62,7 @@ func TestCreateDiff_RootfsBlock(t *testing.T) {
 }
 
 func TestCreateDiff_UnsupportedBlockSize(t *testing.T) {
+	t.Parallel()
 	blockSize := 42
 	sourceSlice := createSource(blockSize, []byte{1, 0, 3, 4, 5})
 
@@ -76,6 +79,7 @@ func TestCreateDiff_UnsupportedBlockSize(t *testing.T) {
 }
 
 func TestCreateDiff_AllEmptyBlocks(t *testing.T) {
+	t.Parallel()
 	blockSize := HugepageSize
 	sourceSlice := createSource(blockSize, []byte{0, 0, 0, 0, 0})
 
@@ -95,6 +99,7 @@ func TestCreateDiff_AllEmptyBlocks(t *testing.T) {
 }
 
 func TestCreateDiff_EmptyDirtyBitset(t *testing.T) {
+	t.Parallel()
 	blockSize := HugepageSize
 	sourceSlice := createSource(blockSize, []byte{1, 2, 3})
 
@@ -120,6 +125,7 @@ func (e errorReader) ReadAt(_ []byte, _ int64) (n int, err error) {
 }
 
 func TestCreateDiff_ReadError(t *testing.T) {
+	t.Parallel()
 	blockSize := HugepageSize
 	source := errorReader{}
 
@@ -143,6 +149,7 @@ func (e errorWriter) Write(_ []byte) (n int, err error) {
 }
 
 func TestCreateDiff_WriteError(t *testing.T) {
+	t.Parallel()
 	blockSize := HugepageSize
 	// Create a source with non-empty data to ensure Write is called
 	sourceSlice := createSource(blockSize, []byte{1, 2, 3})
@@ -161,6 +168,7 @@ func TestCreateDiff_WriteError(t *testing.T) {
 }
 
 func TestCreateDiff_LargeIndex(t *testing.T) {
+	t.Parallel()
 	blockSize := RootfsBlockSize
 	// Create a source that can handle large offsets
 	largeSource := &largeOffsetReader{

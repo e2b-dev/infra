@@ -12,9 +12,11 @@ import (
 )
 
 func TestSandboxKill(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	t.Run("kill a non-existing sandbox", func(t *testing.T) {
+		t.Parallel()
 		killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), "non-existing", setup.WithAPIKey())
 
 		require.NoError(t, err)
@@ -22,6 +24,7 @@ func TestSandboxKill(t *testing.T) {
 	})
 
 	t.Run("start and kill a sandbox", func(t *testing.T) {
+		t.Parallel()
 		// create a new samdbox
 		createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
 			TemplateID: setup.SandboxTemplateID,
@@ -50,6 +53,7 @@ func TestSandboxKill(t *testing.T) {
 	})
 
 	t.Run("start and kill a paused sandbox", func(t *testing.T) {
+		t.Parallel()
 		// create a new sandbox
 		createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
 			TemplateID: setup.SandboxTemplateID,
@@ -84,6 +88,7 @@ func TestSandboxKill(t *testing.T) {
 	})
 
 	t.Run("start and kill a subsequently paused sandbox", func(t *testing.T) {
+		t.Parallel()
 		// create a new sandbox
 		createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
 			TemplateID: setup.SandboxTemplateID,

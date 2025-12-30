@@ -13,6 +13,7 @@ const (
 )
 
 func TestOfflineDatastore(t *testing.T) {
+	t.Parallel()
 	clientCtx := ldcontext.NewBuilder(flagName).Build()
 	client, err := NewClient()
 	defer func() {

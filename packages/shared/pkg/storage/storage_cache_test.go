@@ -17,13 +17,16 @@ import (
 )
 
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
+	t.Parallel()
 	c := CachedSeekableObjectProvider{path: "/a/b/c", chunkSize: 1024}
 	filename := c.makeChunkFilename(1024 * 4)
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
 }
 
 func TestCachedFileObjectProvider_Size(t *testing.T) {
+	t.Parallel()
 	t.Run("can be cached successfully", func(t *testing.T) {
+		t.Parallel()
 		const expectedSize int64 = 1024
 
 		inner := storagemocks.NewMockSeekableObjectProvider(t)
@@ -49,7 +52,9 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 }
 
 func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
+	t.Parallel()
 	t.Run("read from cache when the file exists", func(t *testing.T) {
+		t.Parallel()
 		tempDir := t.TempDir()
 
 		tempPath := filepath.Join(tempDir, "a", "b", "c")
@@ -71,6 +76,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 	})
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
+		t.Parallel()
 		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 		fakeStorageObjectProvider := storagemocks.NewMockSeekableObjectProvider(t)
 
@@ -112,6 +118,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 	})
 
 	t.Run("WriteTo calls should read from cache", func(t *testing.T) {
+		t.Parallel()
 		fakeData := []byte{1, 2, 3}
 
 		fakeStorageObjectProvider := storagemocks.NewMockObjectProvider(t)
@@ -149,6 +156,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 }
 
 func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
+	t.Parallel()
 	testcases := map[string]struct {
 		chunkSize, bufferSize, offset int64
 		expected                      error
@@ -184,6 +192,7 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			c := CachedSeekableObjectProvider{
 				chunkSize: tc.chunkSize,
 			}
@@ -198,6 +207,7 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 }
 
 func TestMoveWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	td := t.TempDir()
 	content := []byte("alpha")
@@ -218,6 +228,7 @@ func TestMoveWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
 }
 
 func TestMoveWithoutReplace_FailWhenExists(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	td := t.TempDir()
 	content := []byte("alpha")

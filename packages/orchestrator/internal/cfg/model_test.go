@@ -8,7 +8,9 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	t.Parallel()
 	t.Run("embedded structs get defaults", func(t *testing.T) {
+		t.Parallel()
 		config, err := Parse()
 		require.NoError(t, err)
 
@@ -25,6 +27,7 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("network config local flag defaults to false", func(t *testing.T) {
+		t.Parallel()
 		config, err := Parse()
 		require.NoError(t, err)
 
@@ -50,6 +53,7 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("env defaults get defaults before expansion", func(t *testing.T) {
+		t.Parallel()
 		config, err := Parse()
 		require.NoError(t, err)
 		assert.Equal(t, "/orchestrator/build", config.DefaultCacheDir)

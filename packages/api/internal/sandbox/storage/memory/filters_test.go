@@ -29,6 +29,8 @@ func createFilterTestSandbox(state sandbox.State, endTime time.Time) sandbox.San
 
 // TestApplyFilter_ExpiredFiltering tests the expiration filter logic used by the evictor
 func TestApplyFilter_ExpiredFiltering(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		onlyExpired   bool
@@ -82,6 +84,8 @@ func TestApplyFilter_ExpiredFiltering(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			filter := sandbox.NewItemsFilter()
 			sandbox.WithOnlyExpired(tt.onlyExpired)(filter)
 
