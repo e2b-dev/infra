@@ -205,6 +205,10 @@ func (wp *WarmPool[T]) Get(ctx context.Context) (T, error) {
 // - destroy the item and return if the pool has already been closed.
 // - if the item fails to be pushed back into the channel for any reason, destroy it.
 func (wp *WarmPool[T]) Return(ctx context.Context, item T) {
+	if err := wp.isClosed(ctx); err != nil {
+		return
+	}
+
 	wp.wg.Go(func() {
 		recordSuccess := func() {
 			wp.returnedCounter.Add(ctx, 1, metric.WithAttributes(
