@@ -14,23 +14,12 @@ $(if $(value $(strip $(1))), TF_VAR_$(shell echo $(strip $(1)) | tr A-Z a-z)=$($
 endef
 
 tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
-	$(call tfvar, CLIENT_MACHINE_TYPE) \
-	$(call tfvar, CLIENT_CLUSTER_SIZE) \
-	$(call tfvar, CLIENT_CLUSTER_SIZE_MAX) \
-	$(call tfvar, CLIENT_CLUSTER_AUTOSCALING_CPU_TARGET) \
-	$(call tfvar, CLIENT_CLUSTER_AUTOSCALING_MEMORY_TARGET) \
-	$(call tfvar, CLIENT_CLUSTER_ROOT_DISK_SIZE_GB) \
-	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
-	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_COUNT) \
+	$(call tfvar, BUILD_CLUSTERS_CONFIG) \
+	$(call tfvar, CLIENT_CLUSTERS_CONFIG) \
 	$(call tfvar, API_MACHINE_TYPE) \
 	$(call tfvar, API_CLUSTER_SIZE) \
 	$(call tfvar, API_USE_NAT) \
 	$(call tfvar, API_NAT_IPS) \
-	$(call tfvar, BUILD_MACHINE_TYPE) \
-	$(call tfvar, BUILD_CLUSTER_SIZE) \
-	$(call tfvar, BUILD_CLUSTER_ROOT_DISK_SIZE_GB) \
-	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_SIZE_GB) \
-	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_COUNT) \
 	$(call tfvar, SERVER_MACHINE_TYPE) \
 	$(call tfvar, SERVER_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
@@ -67,12 +56,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, FILESTORE_CACHE_TIER) \
 	$(call tfvar, FILESTORE_CACHE_CAPACITY_GB) \
 	$(call tfvar, FILESTORE_MAX_DISK_USAGE_TARGET) \
-	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_TYPE) \
-	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_TYPE) \
-	$(call tfvar, MIN_CPU_PLATFORM) \
 	$(call tfvar, REMOTE_REPOSITORY_ENABLED) \
-	$(call tfvar, CLIENT_BOOT_DISK_TYPE) \
-	$(call tfvar, BUILD_BOOT_DISK_TYPE) \
 	$(call tfvar, API_BOOT_DISK_TYPE) \
 	$(call tfvar, SERVER_BOOT_DISK_TYPE) \
 	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
@@ -171,3 +155,17 @@ provider-login:
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
 	gcloud --quiet auth application-default login
+
+# TODO 2025-12-29: [ENG-3410] - Remove after migration period (14 days)
+.PHONY: migrate-clusters-terraform
+migrate-clusters-terraform:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings \
+		 -target="module.cluster.module.build_cluster" \
+		 -target="module.cluster.module.client_cluster" \
+		 -target="module.cluster.google_compute_health_check.client_nomad_check" \
+		 -target="module.cluster.google_compute_instance_template.client" \
+		 -target="module.cluster.google_compute_region_instance_group_manager.client_pool" \
+		 -target="module.cluster.google_compute_region_autoscaler.client"
+
