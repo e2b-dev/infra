@@ -366,7 +366,6 @@ func TestWarmPool_Return(t *testing.T) {
 
 	t.Run("return returns an item to the reuse pool", func(t *testing.T) {
 		f := NewMockItemFactory[*testItem](t)
-		f.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil)
 
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
@@ -381,6 +380,9 @@ func TestWarmPool_Return(t *testing.T) {
 		wp.wg.Wait()
 
 		assert.Len(t, wp.reusableItems, 1) // ensure the item did not make it to the reuse pool
+
+		// only used during clean up to close the pool
+		f.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil).Once()
 	})
 
 	t.Run("return waits if the pool is already full", func(t *testing.T) {
