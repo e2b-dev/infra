@@ -224,3 +224,42 @@ func compareData(readBytes []byte, expectedBytes []byte) error {
 
 	return nil
 }
+
+func TestCopyFromProcess_Exceed_MAX_RW_COUNT(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.HugepageSize)
+	size := ((MAX_RW_COUNT + 4*pageSize + pageSize - 1) / pageSize) * pageSize
+
+	mem, addr, err := testutils.NewPageMmap(t, uint64(size), uint64(pageSize))
+	require.NoError(t, err)
+
+	n, err := rand.Read(mem)
+	require.NoError(t, err)
+	require.Equal(t, len(mem), n)
+
+	ranges := []Range{
+		{Start: int64(addr), Size: ((MAX_RW_COUNT + 2*pageSize + pageSize - 1) / pageSize) * pageSize},
+		{Start: int64(addr) + ((MAX_RW_COUNT+2*pageSize+pageSize-1)/pageSize)*pageSize, Size: ((2*pageSize + pageSize - 1) / pageSize) * pageSize},
+	}
+
+	cache, err := NewCacheFromProcessMemory(
+		t.Context(),
+		// Regular 4KiB pages.
+		header.PageSize,
+		t.TempDir()+"/cache",
+		os.Getpid(),
+		ranges,
+	)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		cache.Close()
+	})
+
+	data := make([]byte, size)
+	n, err = cache.ReadAt(data, 0)
+	require.NoError(t, err)
+	require.Equal(t, int(size), n)
+	require.NoError(t, compareData(data[:n], mem[0:size]))
+}

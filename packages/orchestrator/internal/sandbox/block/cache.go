@@ -358,76 +358,149 @@ func NewCacheFromProcessMemory(
 func (c *Cache) copyProcessMemory(
 	ctx context.Context,
 	pid int,
-	ranges []Range,
+	rs []Range,
 ) error {
+	splittedRanges, err := splitRanges(rs, MAX_RW_COUNT)
+	if err != nil {
+		return fmt.Errorf("failed to split ranges: %w", err)
+	}
+
 	var start int64
 
-	for i := 0; i < len(ranges); i += IOV_MAX {
-		segmentRanges := ranges[i:min(i+IOV_MAX, len(ranges))]
+	// We need to split the ranges because the Kernel does not suppor reading/writing more than MAX_RW_COUNT bytes in a single operation.
+	for _, ranges := range splittedRanges {
+		for i := 0; i < len(ranges); i += IOV_MAX {
+			segmentRanges := ranges[i:min(i+IOV_MAX, len(ranges))]
 
-		remote := make([]unix.RemoteIovec, len(segmentRanges))
+			remote := make([]unix.RemoteIovec, len(segmentRanges))
 
-		var segmentSize int64
+			var segmentSize int64
 
-		for j, r := range segmentRanges {
-			remote[j] = unix.RemoteIovec{
-				Base: uintptr(r.Start),
-				Len:  int(r.Size),
+			for j, r := range segmentRanges {
+				remote[j] = unix.RemoteIovec{
+					Base: uintptr(r.Start),
+					Len:  int(r.Size),
+				}
+
+				segmentSize += r.Size
 			}
 
-			segmentSize += r.Size
-		}
-
-		local := []unix.Iovec{
-			{
-				Base: c.address(start),
-				// We could keep this as full cache length, but we might as well be exact here.
-				Len: uint64(segmentSize),
-			},
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
+			local := []unix.Iovec{
+				{
+					Base: c.address(start),
+					// We could keep this as full cache length, but we might as well be exact here.
+					Len: uint64(segmentSize),
+				},
 			}
 
-			// We could retry only on the remaining segment size, but for simplicity we retry the whole segment.
-			n, err := unix.ProcessVMReadv(pid,
-				local,
-				remote,
-				0,
-			)
-			if errors.Is(err, unix.EAGAIN) {
-				continue
-			}
-			if errors.Is(err, unix.EINTR) {
-				continue
-			}
-			if errors.Is(err, unix.ENOMEM) {
-				time.Sleep(oomMinBackoff + time.Duration(rand.Intn(int(oomMaxJitter.Milliseconds())))*time.Millisecond)
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
 
-				continue
+				// We could retry only on the remaining segment size, but for simplicity we retry the whole segment.
+				n, err := unix.ProcessVMReadv(pid,
+					local,
+					remote,
+					0,
+				)
+				if errors.Is(err, unix.EAGAIN) {
+					continue
+				}
+				if errors.Is(err, unix.EINTR) {
+					continue
+				}
+				if errors.Is(err, unix.ENOMEM) {
+					time.Sleep(oomMinBackoff + time.Duration(rand.Intn(int(oomMaxJitter.Milliseconds())))*time.Millisecond)
+
+					continue
+				}
+
+				if err != nil {
+					return fmt.Errorf("failed to read memory: %w", err)
+				}
+
+				if int64(n) != segmentSize {
+					return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
+				}
+
+				for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
+					c.dirty.Store(start+blockOff, struct{}{})
+				}
+
+				start += segmentSize
+
+				break
 			}
-
-			if err != nil {
-				return fmt.Errorf("failed to read memory: %w", err)
-			}
-
-			if int64(n) != segmentSize {
-				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
-			}
-
-			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				c.dirty.Store(start+blockOff, struct{}{})
-			}
-
-			start += segmentSize
-
-			break
 		}
 	}
 
 	return nil
+}
+
+func splitRanges(ranges []Range, maxSplitSize int64) (groups [][]Range, err error) {
+	var group []Range
+	var groupSize int64
+
+	for _, r := range ranges {
+		if r.Size > maxSplitSize {
+			// If single range is bigger than maxSplitSize, split it into chunks.
+			start := r.Start
+			remaining := r.Size
+
+			for remaining > 0 {
+				chunkSize := maxSplitSize
+				if remaining < maxSplitSize {
+					chunkSize = remaining
+				}
+
+				chunk := Range{Start: start, Size: chunkSize}
+
+				if groupSize+chunk.Size > maxSplitSize {
+					if len(group) > 0 {
+						groups = append(groups, group)
+						group = nil
+						groupSize = 0
+					}
+				}
+
+				group = append(group, chunk)
+				groupSize += chunk.Size
+
+				if groupSize == maxSplitSize {
+					groups = append(groups, group)
+					group = nil
+					groupSize = 0
+				}
+
+				start += chunkSize
+				remaining -= chunkSize
+			}
+
+			continue
+		}
+
+		if groupSize+r.Size > maxSplitSize && len(group) > 0 {
+			groups = append(groups, group)
+			group = nil
+			groupSize = 0
+		}
+
+		group = append(group, r)
+		groupSize += r.Size
+
+		if groupSize == maxSplitSize {
+			groups = append(groups, group)
+			group = nil
+			groupSize = 0
+		}
+	}
+
+	if len(group) > 0 {
+		groups = append(groups, group)
+	}
+
+	return groups, nil
 }
