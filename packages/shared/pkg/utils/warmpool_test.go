@@ -48,6 +48,9 @@ func TestWarmPool_Populate(t *testing.T) {
 		err := wp.Populate(ctx)
 		require.ErrorIs(t, err, context.Canceled)
 
+		err = wp.Close(t.Context())
+		require.NoError(t, err)
+
 		// verify the item has been released
 		assert.Contains(t, released, item.Key)
 	})
