@@ -191,7 +191,11 @@ func TestWarmPool_Populate(t *testing.T) {
 	})
 
 	t.Run("populate continues when the acquisition fails", func(t *testing.T) {
+		// return one error, one good item, then infinite bad items
 		testFactory := NewMockItemFactory[*testItem](t)
+		testFactory.EXPECT().Create(mock.Anything).Return(nil, errors.New("first failure")).Once()
+		testFactory.EXPECT().Create(mock.Anything).Return(&testItem{Key: "good-item"}, nil).Once()
+		testFactory.EXPECT().Create(mock.Anything).Return(nil, errors.New("failed to create"))
 
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
@@ -199,13 +203,7 @@ func TestWarmPool_Populate(t *testing.T) {
 			1,
 			testFactory,
 		)
-		t.Cleanup(closePool(t, wp))
-
-		makeItems := newItemFactoryFn(func(index int) bool {
-			return index%2 == 0
-		})
-
-		testFactory.EXPECT().Create(mock.Anything).RunAndReturn(makeItems)
+		wp.sleepOnCreateError = time.Millisecond
 
 		// populate asynchronously
 		ctx, cancel := context.WithCancel(t.Context())
@@ -222,8 +220,14 @@ func TestWarmPool_Populate(t *testing.T) {
 
 		<-done
 
-		item, ok := <-wp.freshItems
-		assert.False(t, ok, "fresh channel should be closed, but got %v instead", item)
+		close(wp.freshItems) // to avoid hanging forever
+
+		item1, ok := <-wp.freshItems
+		require.True(t, ok, "fresh channel should have one item")
+		assert.Equal(t, "good-item", item1.Key)
+
+		item2, ok := <-wp.freshItems
+		require.False(t, ok, "fresh channel should be closed, but got %v instead", item2)
 	})
 
 	t.Run("populate keeps fresh items topped off", func(t *testing.T) {
@@ -235,6 +239,7 @@ func TestWarmPool_Populate(t *testing.T) {
 			1, // only 1 item can be created before stalling
 			testFactory,
 		)
+		t.Cleanup(closePool(t, wp))
 
 		makeItems := newItemFactory(3)
 
@@ -288,12 +293,16 @@ func TestWarmPool_Get(t *testing.T) {
 	})
 
 	t.Run("prefer item from the reuse pool", func(t *testing.T) {
+		itemFactory := NewMockItemFactory[*testItem](t)
+		itemFactory.EXPECT().Destroy(mock.Anything, mock.Anything).Return(nil).Once()
+
 		wp := NewWarmPool[*testItem](
 			"test", "prefix",
 			1,
 			1,
-			nil,
+			itemFactory,
 		)
+
 		t.Cleanup(closePool(t, wp))
 
 		// Add items to both pools

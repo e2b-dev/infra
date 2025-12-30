@@ -78,8 +78,6 @@ func NewWarmPool[T Item](
 // - When done, destroys all items in the `freshItems` channel before returning
 // - When an error is encountered, continue trying to create more entries
 func (wp *WarmPool[T]) Populate(ctx context.Context) error {
-	defer close(wp.freshItems)
-
 	for {
 		if _, err := wp.isClosed(ctx); err != nil {
 			return ignoreClosed(err)
@@ -256,6 +254,8 @@ func (wp *WarmPool[T]) Close(ctx context.Context) error {
 		for item := range wp.reusableItems {
 			wp.destroy(ctx, item, operationClose, reasonCleanupReusable)
 		}
+
+		close(wp.freshItems)
 
 		// closing this channel is done in Populate
 		for item := range wp.freshItems {
