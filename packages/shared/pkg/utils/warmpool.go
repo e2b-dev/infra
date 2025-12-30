@@ -237,6 +237,9 @@ func (wp *WarmPool[T]) Return(ctx context.Context, item T) {
 		case <-wp.done:
 			wp.beginDestroy(ctx, item, "return failed due to closed pool")
 			recordFailure("closed")
+		case <-time.After(time.Minute * 5):
+			wp.beginDestroy(ctx, item, "return failed due to closed pool")
+			recordFailure("return timeout")
 		}
 	})
 }
