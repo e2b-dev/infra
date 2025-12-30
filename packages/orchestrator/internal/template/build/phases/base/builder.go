@@ -340,7 +340,9 @@ func (bb *BaseBuilder) Layer(
 		meta := metadata.Template{
 			Version: metadata.CurrentVersion,
 			Template: metadata.TemplateMetadata{
-				BuildID: uuid.New().String(),
+				BuildID:            uuid.New().String(),
+				KernelVersion:      bb.Config.KernelVersion,
+				FirecrackerVersion: bb.Config.FirecrackerVersion,
 			},
 			Context:      cmdMeta,
 			FromImage:    &bb.Config.FromImage,
