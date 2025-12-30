@@ -372,7 +372,6 @@ func (c *Cache) copyProcessMemory(
 		var segmentSize int64
 
 		for len(remote) != IOV_MAX {
-
 			if rangeIdx >= int64(len(ranges)) {
 				break
 			}
