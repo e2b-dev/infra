@@ -93,7 +93,6 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 
 	// periodically sync cluster instances
 	go c.startSync(ctx)
-	
 
 	return c, nil
 }
@@ -133,7 +132,6 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
-
 	// convert map to slice
 	mapItems := c.instances.Items()
 	instances := make([]*ClusterInstance, 0, len(mapItems))
@@ -172,10 +170,9 @@ func (c *Cluster) GetHTTP() *ClusterHTTP {
 
 func (c *Cluster) GetOrchestrators() []*ClusterInstance {
 
-
 	//  convert map to slice
 	mapItems := c.instances.Items()
-	instances := make([]*ClusterInstance, 0 , len(mapItems))
+	instances := make([]*ClusterInstance, 0, len(mapItems))
 	for _, instance := range mapItems {
 		if instance.IsOrchestrator() {
 			instances = append(instances, instance)
