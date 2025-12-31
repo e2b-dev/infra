@@ -212,9 +212,9 @@ func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot boo
 
 	var flagName featureflags.BoolFlag
 	if isSnapshot {
-		flagName = featureflags.SnapshotFeatureFlagName
+		flagName = featureflags.SnapshotFeatureFlag
 	} else {
-		flagName = featureflags.TemplateFeatureFlagName
+		flagName = featureflags.TemplateFeatureFlag
 	}
 
 	flag := c.flags.BoolFlag(ctx, flagName)

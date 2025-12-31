@@ -69,6 +69,7 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 
 		featureFlags := storagemocks.NewMockFeatureFlagsClient(t)
 		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
+		featureFlags.EXPECT().IntFlag(mock.Anything, mock.Anything).Return(10)
 
 		c := CachedSeekableObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags}
 

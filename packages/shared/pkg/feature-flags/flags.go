@@ -70,15 +70,15 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 }
 
 var (
-	MetricsWriteFlagName               = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
-	MetricsReadFlagName                = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
-	SnapshotFeatureFlagName            = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
-	TemplateFeatureFlagName            = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
-	WriteToCacheOnWrites               = newBoolFlag("write-to-cache-on-writes", false)
-	BuildingFeatureFlagName            = newBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
-	BestOfKCanFit                      = newBoolFlag("best-of-k-can-fit", true)
-	BestOfKTooManyStarting             = newBoolFlag("best-of-k-too-many-starting", false)
-	EdgeProvidedSandboxMetricsFlagName = newBoolFlag("edge-provided-sandbox-metrics", false)
+	MetricsWriteFlag                    = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
+	MetricsReadFlag                     = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
+	SnapshotFeatureFlag                 = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
+	TemplateFeatureFlag                 = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
+	EnableWriteThroughCacheFlag         = newBoolFlag("write-to-cache-on-writes", false)
+	UseNFSCacheForBuildingTemplatesFlag = newBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
+	BestOfKCanFitFlag                   = newBoolFlag("best-of-k-can-fit", true)
+	BestOfKTooManyStartingFlag          = newBoolFlag("best-of-k-too-many-starting", false)
+	EdgeProvidedSandboxMetricsFlag      = newBoolFlag("edge-provided-sandbox-metrics", false)
 )
 
 type IntFlag struct {
@@ -114,6 +114,7 @@ var (
 	BestOfKAlpha                  = newIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	PubsubQueueChannelSize        = newIntFlag("pubsub-queue-channel-size", 8*1024)          // size of the channel buffer used to queue incoming sandbox events
 	EnvdInitTimeoutMilliseconds   = newIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
+	MaxCacheWriterConcurrencyFlag = newIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
 	// that can be used before the cache starts evicting items.

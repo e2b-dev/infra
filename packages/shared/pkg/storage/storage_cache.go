@@ -53,8 +53,9 @@ func NewCachedProvider(rootPath string, inner StorageProvider, flags *featurefla
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+	// no need to wait for cache deletion before returning
 	go func(ctx context.Context) {
-		c.deleteObjectsWithPrefix(ctx, prefix)
+		c.deleteCachedObjectsWithPrefix(ctx, prefix)
 	}(context.WithoutCancel(ctx))
 
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
@@ -97,25 +98,13 @@ func (c CachedProvider) GetDetails() string {
 		c.rootPath, c.inner.GetDetails())
 }
 
-func (c CachedProvider) deleteObjectsWithPrefix(ctx context.Context, prefix string) {
+func (c CachedProvider) deleteCachedObjectsWithPrefix(ctx context.Context, prefix string) {
 	fullPrefix := filepath.Join(c.rootPath, prefix)
 	if err := os.RemoveAll(fullPrefix); err != nil {
 		logger.L().Error(ctx, "failed to remove object with prefix",
 			zap.String("prefix", prefix),
 			zap.String("path", fullPrefix),
 			zap.Error(err))
-	}
-}
-
-func cleanupCtx(ctx context.Context, msg string, fn func(ctx context.Context) error) {
-	if err := fn(ctx); err != nil {
-		logger.L().Warn(ctx, msg, zap.Error(err))
-	}
-}
-
-func cleanup(ctx context.Context, msg string, fn func() error) {
-	if err := fn(); err != nil {
-		logger.L().Warn(ctx, msg, zap.Error(err))
 	}
 }
 

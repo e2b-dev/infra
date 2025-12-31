@@ -10,9 +10,7 @@ import (
 	"syscall"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -39,7 +37,7 @@ func OpenFile(ctx context.Context, filename string) (*AtomicImmutableFile, error
 	tempFilename := fmt.Sprintf("%s.temp.%s", filename, uuid.NewString())
 	tempFile, err := os.OpenFile(tempFilename, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
-		cleanup(ctx, "failed to release lock",
+		utils.Cleanup(ctx, "failed to release lock",
 			func() error { return ReleaseLock(ctx, lockFile) })
 
 		return nil, fmt.Errorf("failed to open temp file: %w", err)
@@ -66,7 +64,7 @@ func (f *AtomicImmutableFile) close(ctx context.Context, success bool) error {
 	f.closeOnce.Do(func() {
 		var errs []error
 
-		defer cleanup(ctx, "failed to unlock file", func() error {
+		defer utils.Cleanup(ctx, "failed to unlock file", func() error {
 			return ReleaseLock(ctx, f.lockFile)
 		})
 
@@ -75,7 +73,7 @@ func (f *AtomicImmutableFile) close(ctx context.Context, success bool) error {
 		}
 
 		if success {
-			if err = utils.AtomicMove(f.tempFile.Name(), f.filename); err != nil {
+			if err = utils.RenameOrDeleteFile(ctx, f.tempFile.Name(), f.filename); err != nil {
 				// someone else may have written the file successfully
 				if !errors.Is(err, syscall.EEXIST) {
 					// if not, report the error
@@ -84,18 +82,8 @@ func (f *AtomicImmutableFile) close(ctx context.Context, success bool) error {
 			}
 		}
 
-		if err := os.Remove(f.tempFile.Name()); err != nil && !os.IsNotExist(err) {
-			errs = append(errs, fmt.Errorf("failed to remove temp file: %w", err))
-		}
-
 		err = errors.Join(errs...)
 	})
 
 	return err
-}
-
-func cleanup(ctx context.Context, msg string, fn func() error) {
-	if err := fn(); err != nil {
-		logger.L().Warn(ctx, msg, zap.Error(err))
-	}
 }

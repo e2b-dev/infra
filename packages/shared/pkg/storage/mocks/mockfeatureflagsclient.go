@@ -110,3 +110,75 @@ func (_c *MockFeatureFlagsClient_BoolFlag_Call) RunAndReturn(run func(ctx contex
 	_c.Call.Return(run)
 	return _c
 }
+
+// IntFlag provides a mock function for the type MockFeatureFlagsClient
+func (_mock *MockFeatureFlagsClient) IntFlag(ctx context.Context, flag feature_flags.IntFlag, ldctx ...ldcontext.Context) int {
+	var tmpRet mock.Arguments
+	if len(ldctx) > 0 {
+		tmpRet = _mock.Called(ctx, flag, ldctx)
+	} else {
+		tmpRet = _mock.Called(ctx, flag)
+	}
+	ret := tmpRet
+
+	if len(ret) == 0 {
+		panic("no return value specified for IntFlag")
+	}
+
+	var r0 int
+	if returnFunc, ok := ret.Get(0).(func(context.Context, feature_flags.IntFlag, ...ldcontext.Context) int); ok {
+		r0 = returnFunc(ctx, flag, ldctx...)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	return r0
+}
+
+// MockFeatureFlagsClient_IntFlag_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IntFlag'
+type MockFeatureFlagsClient_IntFlag_Call struct {
+	*mock.Call
+}
+
+// IntFlag is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flag feature_flags.IntFlag
+//   - ldctx ...ldcontext.Context
+func (_e *MockFeatureFlagsClient_Expecter) IntFlag(ctx interface{}, flag interface{}, ldctx ...interface{}) *MockFeatureFlagsClient_IntFlag_Call {
+	return &MockFeatureFlagsClient_IntFlag_Call{Call: _e.mock.On("IntFlag",
+		append([]interface{}{ctx, flag}, ldctx...)...)}
+}
+
+func (_c *MockFeatureFlagsClient_IntFlag_Call) Run(run func(ctx context.Context, flag feature_flags.IntFlag, ldctx ...ldcontext.Context)) *MockFeatureFlagsClient_IntFlag_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 feature_flags.IntFlag
+		if args[1] != nil {
+			arg1 = args[1].(feature_flags.IntFlag)
+		}
+		var arg2 []ldcontext.Context
+		var variadicArgs []ldcontext.Context
+		if len(args) > 2 {
+			variadicArgs = args[2].([]ldcontext.Context)
+		}
+		arg2 = variadicArgs
+		run(
+			arg0,
+			arg1,
+			arg2...,
+		)
+	})
+	return _c
+}
+
+func (_c *MockFeatureFlagsClient_IntFlag_Call) Return(n int) *MockFeatureFlagsClient_IntFlag_Call {
+	_c.Call.Return(n)
+	return _c
+}
+
+func (_c *MockFeatureFlagsClient_IntFlag_Call) RunAndReturn(run func(ctx context.Context, flag feature_flags.IntFlag, ldctx ...ldcontext.Context) int) *MockFeatureFlagsClient_IntFlag_Call {
+	_c.Call.Return(run)
+	return _c
+}

@@ -29,10 +29,9 @@ var (
 	ErrBufferTooLarge  = errors.New("buffer is too large")
 )
 
-const maxCacheWriterConcurrency = 10
-
 type featureFlagsClient interface {
 	BoolFlag(ctx context.Context, flag featureflags.BoolFlag, ldctx ...ldcontext.Context) bool
+	IntFlag(ctx context.Context, flag featureflags.IntFlag, ldctx ...ldcontext.Context) int
 }
 
 type CachedSeekableObjectProvider struct {
@@ -45,7 +44,7 @@ type CachedSeekableObjectProvider struct {
 var _ SeekableObjectProvider = CachedSeekableObjectProvider{}
 
 func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.ReadAt", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "read object into buffer at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int("buff_len", len(buff)),
 	))
@@ -125,7 +124,7 @@ func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 }
 
 func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (err error) {
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteFromFileSystem",
+	ctx, span := tracer.Start(ctx, "write object from file system",
 		trace.WithAttributes(attribute.String("path", path)))
 	defer func() {
 		recordError(span, err)
@@ -136,7 +135,7 @@ func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, p
 	// this opens the file twice, but the API makes it difficult to use a MultiWriter
 
 	go func(ctx context.Context) {
-		if !c.flags.BoolFlag(ctx, featureflags.WriteToCacheOnWrites) {
+		if !c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 			return
 		}
 
@@ -177,7 +176,7 @@ func (c CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunk
 		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
 
-	defer cleanup(ctx, "failed to close chunk", fp.Close)
+	defer utils.Cleanup(ctx, "failed to close chunk", fp.Close)
 
 	count, err := fp.ReadAt(buff, 0) // offset is in the filename
 	if ignoreEOF(err) != nil {
@@ -248,18 +247,11 @@ func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, off
 
 	tempPath := c.makeTempChunkFilename(offset)
 
-	defer func() {
-		// remove temporary file, no matter what happens
-		if err := os.Remove(tempPath); err != nil && !os.IsNotExist(err) {
-			logger.L().Warn(ctx, "failed to remove temp file", zap.Error(err))
-		}
-	}()
-
 	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
 		return fmt.Errorf("failed to write temp cache file: %w", err)
 	}
 
-	if err := utils.AtomicMove(tempPath, chunkPath); err != nil {
+	if err := utils.RenameOrDeleteFile(ctx, tempPath, chunkPath); err != nil {
 		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
@@ -290,17 +282,11 @@ func (c CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size i
 
 	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
 
-	defer func() {
-		if err := os.Remove(tempFilename); err != nil && !os.IsNotExist(err) {
-			logger.L().Warn(ctx, "failed to remove temp file", zap.Error(err))
-		}
-	}()
-
 	if err := os.WriteFile(tempFilename, fmt.Appendf(nil, "%d", size), cacheFilePermissions); err != nil {
 		return fmt.Errorf("failed to write temp local size file: %w", err)
 	}
 
-	if err := utils.AtomicMove(tempFilename, finalFilename); err != nil {
+	if err := utils.RenameOrDeleteFile(ctx, tempFilename, finalFilename); err != nil {
 		return fmt.Errorf("failed to rename local size temp file: %w", err)
 	}
 
@@ -308,7 +294,7 @@ func (c CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size i
 }
 
 func (c CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Context, inputPath string) (count int64, err error) {
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.createCacheBlocksFromFile")
+	ctx, span := tracer.Start(ctx, "create cache blocks from filesystem")
 	defer func() {
 		recordError(span, err)
 		span.End()
@@ -318,7 +304,7 @@ func (c CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Cont
 	if err != nil {
 		return 0, fmt.Errorf("failed to open input file: %w", err)
 	}
-	defer cleanup(ctx, "failed to close file", input.Close)
+	defer utils.Cleanup(ctx, "failed to close file", input.Close)
 
 	stat, err := input.Stat()
 	if err != nil {
@@ -328,7 +314,7 @@ func (c CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Cont
 	totalSize := stat.Size()
 	var wg sync.WaitGroup
 
-	workers := make(chan struct{}, maxCacheWriterConcurrency)
+	workers := make(chan struct{}, c.flags.IntFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag))
 	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
 		wg.Add(1)
 		go func(offset int64) {
@@ -372,7 +358,7 @@ func newOffsetReader(file *os.File, offset int64) *offsetReader {
 // writeChunkFromFile writes a piece of a local file. It does not need to worry about race conditions, as it will only
 // be called when building templates, and templates cannot be built on multiple machines at the same time.x
 func (c CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, input *os.File) (err error) {
-	_, span := tracer.Start(ctx, "write chunk-from-file", trace.WithAttributes(
+	_, span := tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 	))
 	defer func() {
@@ -387,7 +373,7 @@ func (c CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, of
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", chunkPath, err)
 	}
-	defer cleanup(ctx, "failed to close file", output.Close)
+	defer utils.Cleanup(ctx, "failed to close file", output.Close)
 
 	offsetReader := newOffsetReader(input, offset)
 	if _, err := io.CopyN(output, offsetReader, c.chunkSize); ignoreEOF(err) != nil {

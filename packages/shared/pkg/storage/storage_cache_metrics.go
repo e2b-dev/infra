@@ -93,13 +93,13 @@ func recordCacheWriteError[T ~string](ctx context.Context, t cacheType, op T, er
 		errorType = "write-lock"
 	} else {
 		errorType = "write"
-	}
 
-	logger.L().Warn(ctx, "failed to write to cache",
-		zap.Error(err),
-		zap.String("cache_type", string(t)),
-		zap.String("op_type", string(op)),
-	)
+		logger.L().Warn(ctx, "failed to write to cache",
+			zap.Error(err),
+			zap.String("cache_type", string(t)),
+			zap.String("op_type", string(op)),
+		)
+	}
 
 	cacheErrorsCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("cache_type", string(t)),

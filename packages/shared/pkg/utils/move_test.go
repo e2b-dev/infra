@@ -18,7 +18,7 @@ func TestAtomicMove_SuccessWhenDestMissing(t *testing.T) {
 		dst := filepath.Join(td, "dst")
 
 		require.NoError(t, os.WriteFile(src, content, 0o644))
-		err := AtomicMove(src, dst)
+		err := RenameOrDeleteFile(t.Context(), src, dst)
 		require.NoError(t, err)
 
 		// Dest has original content.
@@ -36,10 +36,10 @@ func TestAtomicMove_SuccessWhenDestMissing(t *testing.T) {
 		dst := filepath.Join(td, "dst")
 
 		// Operation fails
-		err := AtomicMove(src, dst)
+		err := RenameOrDeleteFile(t.Context(), src, dst)
 		require.ErrorIs(t, err, os.ErrNotExist)
 
-		// Destination is not created when AtomicMove fails
+		// Destination is not created when RenameOrDeleteFile fails
 		_, err = os.Stat(dst)
 		require.ErrorIs(t, err, os.ErrNotExist)
 	})
@@ -53,7 +53,7 @@ func TestAtomicMove_SuccessWhenDestMissing(t *testing.T) {
 
 		require.NoError(t, os.WriteFile(src, content, 0o644))
 		require.NoError(t, os.WriteFile(dst, secondContent, 0o644))
-		err := AtomicMove(src, dst)
+		err := RenameOrDeleteFile(t.Context(), src, dst)
 		require.ErrorIs(t, err, os.ErrExist)
 
 		// Dest has original content.
@@ -61,12 +61,12 @@ func TestAtomicMove_SuccessWhenDestMissing(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, secondContent, got)
 
-		// Source is not removed when AtomicMove fails
+		// Source is removed when RenameOrDeleteFile fails
 		_, err = os.Stat(src)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, os.ErrNotExist)
 	})
 
-	t.Run("fail when source cannot be removed", func(t *testing.T) {
+	t.Run("succeed when source cannot be removed", func(t *testing.T) {
 		errTarget := errors.New("target error")
 
 		td := t.TempDir()
@@ -84,7 +84,7 @@ func TestAtomicMove_SuccessWhenDestMissing(t *testing.T) {
 		require.NoError(t, err)
 
 		// should fail
-		err = atomicMove(src, dst, mocks)
-		require.ErrorIs(t, err, errTarget)
+		err = removeOrDeleteFile(t.Context(), src, dst, mocks)
+		require.NoError(t, err)
 	})
 }

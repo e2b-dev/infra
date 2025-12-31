@@ -9,10 +9,12 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -34,7 +36,7 @@ func (c CachedObjectProvider) Exists(ctx context.Context) (bool, error) {
 }
 
 func (c CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int64, err error) {
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteTo")
+	ctx, span := tracer.Start(ctx, "read object into writer")
 	defer span.End()
 
 	bytesRead, err := c.copyFullFileFromCache(ctx, dst)
@@ -79,7 +81,7 @@ func (c CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int
 }
 
 func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e error) {
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.Write", trace.WithAttributes(attribute.Int("size", len(p))))
+	ctx, span := tracer.Start(ctx, "write data to object", trace.WithAttributes(attribute.Int("size", len(p))))
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -88,7 +90,7 @@ func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e err
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
-		if !c.flags.BoolFlag(ctx, featureflags.WriteToCacheOnWrites) {
+		if !c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 			return
 		}
 
@@ -116,22 +118,31 @@ func (c CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e err
 }
 
 func (c CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+	ctx, span := tracer.Start(ctx, "write from filesystem to cache",
+		trace.WithAttributes(attribute.String("path", path)))
+	defer span.End()
+
 	go func(ctx context.Context) {
-		if !c.flags.BoolFlag(ctx, featureflags.WriteToCacheOnWrites) {
+		if !c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 			return
 		}
 
 		input, err := os.Open(path)
 		if err != nil {
 			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteFromFileSystem, err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 
 			return
 		}
-		defer cleanup(ctx, "failed to close file", input.Close)
+		defer utils.Cleanup(ctx, "failed to close file", input.Close)
 
 		count, err := c.writeFileToCache(ctx, input)
 		if err != nil {
 			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteFromFileSystem, err)
+
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 
 			return
 		}
@@ -157,7 +168,7 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 		return 0, fmt.Errorf("failed to open cached file %s: %w", path, err)
 	}
 
-	defer cleanup(ctx, "failed to close full cached file", fp.Close)
+	defer utils.Cleanup(ctx, "failed to close full cached file", fp.Close)
 
 	count, err := io.Copy(dst, fp)
 	if ignoreEOF(err) != nil {
@@ -170,20 +181,32 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 }
 
 func (c CachedObjectProvider) writeFileToCache(ctx context.Context, input io.Reader) (int64, error) {
+	ctx, span := tracer.Start(ctx, "write file to cache")
+	defer span.End()
+
 	path := c.fullFilename()
 
 	output, err := lock.OpenFile(ctx, path)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+
 		return 0, fmt.Errorf("failed to acquire lock on file %s: %w", path, err)
 	}
-	defer cleanupCtx(ctx, "failed to unlock file", output.Close)
+	defer utils.CleanupCtx(ctx, "failed to unlock file", output.Close)
 
 	count, err := io.Copy(output, input)
 	if ignoreEOF(err) != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+
 		return 0, fmt.Errorf("failed to write to cache file %s: %w", path, err)
 	}
 
 	if err := output.Commit(ctx); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+
 		return 0, fmt.Errorf("failed to commit cache file %s: %w", path, err)
 	}
 
