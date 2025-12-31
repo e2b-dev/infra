@@ -48,9 +48,9 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	// we are taking service info directly from the instance to avoid timing delays in service discovery
 	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
-	info, err := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
+	info, grpcError := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
 
-	err = utils.UnwrapGRPCError(err)
+	err := utils.UnwrapGRPCError(grpcError)
 	if err != nil {
 		logger.L().Error(ctx, "Failed to get instance info",
 			zap.Error(err),
@@ -135,8 +135,11 @@ func (d clusterSynchronizationStore) SourceExists(_ context.Context, s []api.Clu
 }
 
 func (d clusterSynchronizationStore) PoolList(_ context.Context) []*ClusterInstance {
-	mapped := make([]*ClusterInstance, 0)
-	for _, item := range d.cluster.instances.Items() {
+	// preallocate slice with exact length
+	items := d.cluster.instances.Items()
+
+	mapped := make([]*ClusterInstance, 0, len(items))
+	for _, item := range items {
 		mapped = append(mapped, item)
 	}
 
@@ -165,9 +168,9 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 
 		// initial values before first sync
 		status: infogrpc.ServiceInfoStatus_Unhealthy,
-		roles:  make([]infogrpc.ServiceInfoRole, 0),
+		// preallocating zero-length isnt needed
+		roles: nil,
 
-		mutex: sync.RWMutex{},
 	}
 
 	d.cluster.syncInstance(ctx, instance)
