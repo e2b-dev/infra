@@ -170,7 +170,6 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 		status: infogrpc.ServiceInfoStatus_Unhealthy,
 		// preallocating zero-length isnt needed
 		roles: nil,
-
 	}
 
 	d.cluster.syncInstance(ctx, instance)
