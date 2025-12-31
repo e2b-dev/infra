@@ -4,8 +4,8 @@ description: |
   necessary for each job.
 
 inputs:
-  package:
-    description: Path to the package directory
+  cache-dependency-paths:
+    description: Paths to the package directory
     required: true
 
 runs:
@@ -16,6 +16,4 @@ runs:
       with:
         go-version-file: go.work
         cache-dependency-path: |
-          go.work
-          ${{ input.package }}/go.mod
-          ${{ input.package }}/go.mod.sum
+          ${{ inputs.cache-dependency-paths }}

@@ -40,7 +40,10 @@ jobs:
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
         with:
-          package: ${{ matrix.package }}
+          cache-dependency-paths: |
+            go.work
+            ${{ matrix.package }}/go.mod
+            ${{ matrix.package }}/go.mod.sum
 
       - name: Setup orchestrator tests
         run: |
