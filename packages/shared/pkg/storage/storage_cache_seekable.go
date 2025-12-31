@@ -39,11 +39,13 @@ type CachedSeekableObjectProvider struct {
 	chunkSize int64
 	inner     SeekableObjectProvider
 	flags     featureFlagsClient
+
+	wg sync.WaitGroup
 }
 
-var _ SeekableObjectProvider = CachedSeekableObjectProvider{}
+var _ SeekableObjectProvider = (*CachedSeekableObjectProvider)(nil)
 
-func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
+func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
 	ctx, span := tracer.Start(ctx, "read object into buffer at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int("buff_len", len(buff)),
@@ -86,18 +88,18 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 	shadowBuff := make([]byte, readCount)
 	copy(shadowBuff, buff[:readCount])
 
-	go func(ctx context.Context) {
+	c.goCtx(ctx, func(ctx context.Context) {
 		if err := c.writeChunkToCache(ctx, offset, chunkPath, shadowBuff); err != nil {
 			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
 		}
-	}(context.WithoutCancel(ctx))
+	})
 
 	recordCacheRead(ctx, false, int64(readCount), cacheTypeSeekable, cacheOpReadAt)
 
 	return readCount, nil
 }
 
-func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
+func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 	size, err := c.readLocalSize(ctx)
 	if err == nil {
 		recordCacheRead(ctx, true, 8, cacheTypeSeekable, cacheOpSize)
@@ -112,18 +114,18 @@ func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 		return size, err
 	}
 
-	go func(ctx context.Context) {
+	c.goCtx(ctx, func(ctx context.Context) {
 		if err := c.writeLocalSize(ctx, size); err != nil {
 			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpSize, err)
 		}
-	}(context.WithoutCancel(ctx))
+	})
 
 	recordCacheRead(ctx, false, 8, cacheTypeSeekable, cacheOpSize)
 
 	return size, nil
 }
 
-func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (err error) {
+func (c *CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (err error) {
 	ctx, span := tracer.Start(ctx, "write object from file system",
 		trace.WithAttributes(attribute.String("path", path)))
 	defer func() {
@@ -134,24 +136,22 @@ func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, p
 	// write the file to the disk and the remote system at the same time.
 	// this opens the file twice, but the API makes it difficult to use a MultiWriter
 
-	go func(ctx context.Context) {
-		if !c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
-			return
-		}
+	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
+		c.goCtx(ctx, func(ctx context.Context) {
+			size, err := c.createCacheBlocksFromFile(ctx, path)
+			if err != nil {
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to create cache blocks: %w", err))
 
-		size, err := c.createCacheBlocksFromFile(ctx, path)
-		if err != nil {
-			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to create cache blocks: %w", err))
+				return
+			}
 
-			return
-		}
+			recordCacheWrite(ctx, size, cacheTypeSeekable, cacheOpWriteFromFileSystem)
 
-		recordCacheWrite(ctx, size, cacheTypeSeekable, cacheOpWriteFromFileSystem)
-
-		if err := c.writeLocalSize(ctx, size); err != nil {
-			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to write local file size: %w", err))
-		}
-	}(context.WithoutCancel(ctx))
+			if err := c.writeLocalSize(ctx, size); err != nil {
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to write local file size: %w", err))
+			}
+		})
+	}
 
 	if err := c.inner.WriteFromFileSystem(ctx, path); err != nil {
 		return fmt.Errorf("failed to write to remote storage: %w", err)
@@ -160,17 +160,23 @@ func (c CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, p
 	return nil
 }
 
-func (c CachedSeekableObjectProvider) makeChunkFilename(offset int64) string {
+func (c *CachedSeekableObjectProvider) goCtx(ctx context.Context, fn func(context.Context)) {
+	c.wg.Go(func() {
+		fn(context.WithoutCancel(ctx))
+	})
+}
+
+func (c *CachedSeekableObjectProvider) makeChunkFilename(offset int64) string {
 	return fmt.Sprintf("%s/%012d-%d.bin", c.path, offset/c.chunkSize, c.chunkSize)
 }
 
-func (c CachedSeekableObjectProvider) makeTempChunkFilename(offset int64) string {
+func (c *CachedSeekableObjectProvider) makeTempChunkFilename(offset int64) string {
 	tempFilename := uuid.NewString()
 
 	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
 }
 
-func (c CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (int, error) {
+func (c *CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (int, error) {
 	fp, err := os.Open(chunkPath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %w", err)
@@ -186,11 +192,11 @@ func (c CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunk
 	return count, err // return `err` in case it's io.EOF
 }
 
-func (c CachedSeekableObjectProvider) sizeFilename() string {
+func (c *CachedSeekableObjectProvider) sizeFilename() string {
 	return filepath.Join(c.path, "size.txt")
 }
 
-func (c CachedSeekableObjectProvider) readLocalSize(context.Context) (int64, error) {
+func (c *CachedSeekableObjectProvider) readLocalSize(context.Context) (int64, error) {
 	filename := c.sizeFilename()
 	content, err := os.ReadFile(filename)
 	if err != nil {
@@ -205,7 +211,7 @@ func (c CachedSeekableObjectProvider) readLocalSize(context.Context) (int64, err
 	return size, nil
 }
 
-func (c CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int64) error {
+func (c *CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int64) error {
 	if buffSize == 0 {
 		return ErrBufferTooSmall
 	}
@@ -222,7 +228,7 @@ func (c CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int6
 	return nil
 }
 
-func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) error {
+func (c *CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) error {
 	// Try to acquire lock for this chunk write to NFS cache
 	lockFile, err := lock.TryAcquireLock(ctx, chunkPath)
 	if err != nil {
@@ -260,7 +266,7 @@ func (c CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, off
 	return nil
 }
 
-func (c CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size int64) error {
+func (c *CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size int64) error {
 	finalFilename := c.sizeFilename()
 
 	// Try to acquire lock for this chunk write to NFS cache
@@ -293,7 +299,7 @@ func (c CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size i
 	return nil
 }
 
-func (c CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Context, inputPath string) (count int64, err error) {
+func (c *CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Context, inputPath string) (count int64, err error) {
 	ctx, span := tracer.Start(ctx, "create cache blocks from filesystem")
 	defer func() {
 		recordError(span, err)
@@ -314,12 +320,16 @@ func (c CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Cont
 	totalSize := stat.Size()
 	var wg sync.WaitGroup
 
-	workers := make(chan struct{}, c.flags.IntFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag))
-	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
-		wg.Add(1)
-		go func(offset int64) {
-			defer wg.Done()
+	maxConcurrency := c.flags.IntFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag)
+	if maxConcurrency <= 0 {
+		logger.L().Warn(ctx, "max cache writer concurrency is too low, falling back to 1",
+			zap.Int("max_concurrency", maxConcurrency))
+		maxConcurrency = 1
+	}
 
+	workers := make(chan struct{}, maxConcurrency)
+	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
+		wg.Go(func() {
 			// limit concurrency
 			workers <- struct{}{}
 			defer func() { <-workers }()
@@ -330,34 +340,16 @@ func (c CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Cont
 					zap.Int64("offset", offset),
 					zap.Error(err))
 			}
-		}(offset)
+		})
 	}
 	wg.Wait()
 
 	return totalSize, nil
 }
 
-type offsetReader struct {
-	wrapped io.ReaderAt
-	offset  int64
-}
-
-var _ io.Reader = (*offsetReader)(nil)
-
-func (r *offsetReader) Read(p []byte) (n int, err error) {
-	n, err = r.wrapped.ReadAt(p, r.offset)
-	r.offset += int64(n)
-
-	return
-}
-
-func newOffsetReader(file *os.File, offset int64) *offsetReader {
-	return &offsetReader{file, offset}
-}
-
 // writeChunkFromFile writes a piece of a local file. It does not need to worry about race conditions, as it will only
 // be called when building templates, and templates cannot be built on multiple machines at the same time.
-func (c CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, input *os.File) (err error) {
+func (c *CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, input *os.File) (err error) {
 	_, span := tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 	))

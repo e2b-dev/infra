@@ -216,7 +216,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 func (b *Builder) useNFSCache(ctx context.Context) (string, bool) {
 	flag := b.featureFlags.BoolFlag(ctx, featureflags.UseNFSCacheForBuildingTemplatesFlag)
 
-	if b.config.SharedChunkCacheDir == "" {
+	if flag && b.config.SharedChunkCacheDir == "" {
 		logger.L().Warn(ctx, "NFSCache feature flag is enabled but cache path is not set")
 
 		return "", false

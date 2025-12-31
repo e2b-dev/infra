@@ -19,8 +19,10 @@ func RenameOrDeleteFile(ctx context.Context, oldPath, newPath string) error {
 func removeOrDeleteFile(ctx context.Context, oldPath, newPath string, os fileOps) error {
 	defer func() {
 		if err := os.Remove(oldPath); err != nil {
-			logger.L().Warn(ctx, "failed to remove existing file", zap.Error(err))
-			// return fmt.Errorf("failed to remove existing file: %w", err)
+			logger.L().Warn(ctx, "failed to remove existing file",
+				zap.Error(err),
+				zap.String("path", oldPath),
+			)
 		}
 	}()
 

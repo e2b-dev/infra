@@ -52,13 +52,17 @@ func TestOpenFile(t *testing.T) {
 		assert.Equal(t, len(expected), count)
 
 		_, err = os.Stat("test.bin")
-		require.Error(t, err)
-		assert.True(t, os.IsNotExist(err))
+		require.ErrorIs(t, err, os.ErrNotExist)
 
 		err = f.Close(t.Context())
 		require.NoError(t, err)
 
-		_, err = os.ReadFile(filename)
+		// destination file does not exist
+		_, err = os.Stat(filename)
+		require.ErrorIs(t, err, os.ErrNotExist)
+
+		// temp file also does not exist
+		_, err = os.Stat(f.tempFile.Name())
 		require.ErrorIs(t, err, os.ErrNotExist)
 	})
 

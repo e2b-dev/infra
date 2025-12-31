@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -46,7 +45,7 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 		require.NoError(t, err)
 
 		// file is written asynchronously, wait for it to finish
-		time.Sleep(20 * time.Millisecond)
+		c.wg.Wait()
 
 		// prevent the provider from falling back to cache
 		c.inner = nil
@@ -84,7 +83,7 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 		assert.Equal(t, int64(dataSize), bytesRead)
 		assert.Equal(t, actualData, buff.Bytes())
 
-		time.Sleep(20 * time.Millisecond)
+		c.wg.Wait()
 
 		c.inner = nil
 

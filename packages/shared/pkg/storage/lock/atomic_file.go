@@ -80,6 +80,8 @@ func (f *AtomicImmutableFile) close(ctx context.Context, success bool) error {
 					errs = append(errs, fmt.Errorf("failed to commit file: %w", err))
 				}
 			}
+		} else {
+			errs = append(errs, os.Remove(f.tempFile.Name()))
 		}
 
 		err = errors.Join(errs...)

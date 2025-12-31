@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -18,13 +17,19 @@ import (
 )
 
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
+	t.Parallel()
+
 	c := CachedSeekableObjectProvider{path: "/a/b/c", chunkSize: 1024}
 	filename := c.makeChunkFilename(1024 * 4)
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
 }
 
 func TestCachedFileObjectProvider_Size(t *testing.T) {
+	t.Parallel()
+
 	t.Run("can be cached successfully", func(t *testing.T) {
+		t.Parallel()
+
 		const expectedSize int64 = 1024
 
 		inner := storagemocks.NewMockSeekableObjectProvider(t)
@@ -38,7 +43,7 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 		assert.Equal(t, expectedSize, size)
 
 		// sleep, cache writing is async
-		time.Sleep(20 * time.Millisecond)
+		c.wg.Wait()
 
 		// second call must come from cache
 		c.inner = nil
@@ -50,7 +55,11 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 }
 
 func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
+	t.Parallel()
+
 	t.Run("can be cached successfully", func(t *testing.T) {
+		t.Parallel()
+
 		tempDir := t.TempDir()
 		cacheDir := filepath.Join(tempDir, "cache")
 		tempFilename := filepath.Join(tempDir, "temp.bin")
@@ -78,7 +87,7 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 		require.NoError(t, err)
 
 		// file is written asynchronously, wait for it to finish
-		time.Sleep(20 * time.Millisecond)
+		c.wg.Wait()
 
 		c.inner = nil
 
@@ -97,7 +106,11 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 }
 
 func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
+	t.Parallel()
+
 	t.Run("read from cache when the file exists", func(t *testing.T) {
+		t.Parallel()
+
 		tempDir := t.TempDir()
 
 		tempPath := filepath.Join(tempDir, "a", "b", "c")
@@ -119,6 +132,8 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 	})
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
+		t.Parallel()
+
 		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 		fakeStorageObjectProvider := storagemocks.NewMockSeekableObjectProvider(t)
 
@@ -148,7 +163,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		assert.Equal(t, 3, read)
 
 		// we write asynchronously, so let's wait until we're done
-		time.Sleep(time.Millisecond * 20)
+		c.wg.Wait()
 
 		// second read pulls from cache
 		c.inner = nil // prevent remote reads, force cache read
@@ -160,6 +175,8 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 	})
 
 	t.Run("WriteTo calls should read from cache", func(t *testing.T) {
+		t.Parallel()
+
 		fakeData := []byte{1, 2, 3}
 
 		fakeStorageObjectProvider := storagemocks.NewMockObjectProvider(t)
@@ -185,7 +202,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		assert.Equal(t, int64(len(fakeData)), count)
 
 		// WriteTo is async, wait for the write to finish
-		time.Sleep(time.Millisecond * 20)
+		c.wg.Wait()
 
 		// second read should go straight to local
 		c.inner = nil
@@ -197,6 +214,8 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 }
 
 func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
+	t.Parallel()
+
 	testcases := map[string]struct {
 		chunkSize, bufferSize, offset int64
 		expected                      error
@@ -232,6 +251,8 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			c := CachedSeekableObjectProvider{
 				chunkSize: tc.chunkSize,
 			}
@@ -246,7 +267,11 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 }
 
 func TestCachedSeekableObjectProvider_ReadAt(t *testing.T) {
+	t.Parallel()
+
 	t.Run("failed but returns count on short read", func(t *testing.T) {
+		t.Parallel()
+
 		c := CachedSeekableObjectProvider{chunkSize: 10}
 		errTarget := errors.New("find me")
 		mockSeeker := storagemocks.NewMockSeekableObjectProvider(t)
