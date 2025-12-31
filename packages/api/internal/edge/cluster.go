@@ -73,6 +73,7 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	if err != nil {
 		return nil, fmt.Errorf("failed to create http client: %w", err)
 	}
+
 	grpcAuthorization := clientAuthorization{secret: secret, tls: endpointTLS}
 	grpcClient, err := createClusterClient(tel, grpcAuthorization, endpoint, endpointTLS)
 	if err != nil {
