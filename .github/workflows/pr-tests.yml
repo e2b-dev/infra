@@ -14,16 +14,22 @@ jobs:
         include:
           - package: packages/api
             test_path: ./...
+            sudo: false
           - package: packages/client-proxy
             test_path: ./...
+            sudo: false
           - package: packages/docker-reverse-proxy
             test_path: ./...
+            sudo: false
           - package: packages/envd
             test_path: ./...
+            sudo: true
           - package: packages/orchestrator
             test_path: ./...
+            sudo: true
           - package: packages/shared
             test_path: ./pkg/...
+            sudo: false
       fail-fast: false
     steps:
       - name: Checkout repository
@@ -34,10 +40,9 @@ jobs:
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
         with:
-          job_key: unit-tests-${{ matrix.package }}
+          package: ${{ matrix.package }}
 
-      - name: Run orchestrator tests
-        working-directory: ${{ matrix.package }}
+      - name: Setup orchestrator tests
         run: |
           # Enable unprivileged uffd mode
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
@@ -55,14 +60,19 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger
           
-          # Run tests. The '-E' flag is required to allow root to use the correct cache path.
-          sudo -E go test -v -race ${{ matrix.test_path }}
         if: matrix.package == 'packages/orchestrator'
+
+      - name: Run tests that require sudo
+        working-directory: ${{ matrix.package }}
+        run: |
+          # Run tests. The '-E' flag is required to allow root to use the correct cache path.
+          sudo -E `which go` test -v -race ${{ matrix.test_path }}
+        if: matrix.sudo == true
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: go test -v -race ${{ matrix.test_path }}
-        if: matrix.package != 'packages/orchestrator'
+        if: matrix.sudo == false
 
   validate-iac:
     name: Validate terraform

@@ -4,8 +4,8 @@ description: |
   necessary for each job.
 
 inputs:
-  job_key:
-    description: A unique key that describes your job.
+  package:
+    description: Path to the package directory
     required: true
 
 runs:
@@ -17,7 +17,5 @@ runs:
         go-version-file: go.work
         cache-dependency-path: |
           go.work
-          packages/**/go.mod
-          packages/**/go.mod.sum
-          tests/**/go.mod
-          tests/**/go.mod.sum
+          ${{ input.package }}/go.mod
+          ${{ input.package }}/go.mod.sum
