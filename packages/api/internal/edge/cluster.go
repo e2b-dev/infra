@@ -179,7 +179,6 @@ func (c *Cluster) GetOrchestrators() []*ClusterInstance {
 		}
 	}
 	return instances
-
 }
 
 func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
