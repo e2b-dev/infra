@@ -36,29 +36,33 @@ jobs:
         with:
           job_key: unit-tests-${{ matrix.package }}
 
-      - name: Enable unprivileged uffd mode
+      - name: Run orchestrator tests
+        working-directory: ${{ matrix.package }}
         run: |
+          # Enable unprivileged uffd mode
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
 
-      - name: Enable hugepages
-        run: |
+          # Enable hugepages
           sudo mkdir -p /mnt/hugepages
           sudo mount -t hugetlbfs none /mnt/hugepages
           echo 128 | sudo tee /proc/sys/vm/nr_hugepages
-
-      - name: Enable NBD
-        run: |
+          
+          # Enable NBD
           sudo modprobe nbd nbds_max=256
-
-      - name: Disable inotify watching of change events for NBD devices
-        run: |
+          
+          # Disable inotify watching of change events for NBD devices
           echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger
+          
+          # Run tests
+          sudo go test -v ${{ matrix.test_path }}
+        if: matrix.package == 'packages/orchestrator'
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: sudo go test -v ${{ matrix.test_path }}
+        run: go test -v ${{ matrix.test_path }}
+        if: matrix.package != 'packages/orchestrator'
 
   validate-iac:
     name: Validate terraform
