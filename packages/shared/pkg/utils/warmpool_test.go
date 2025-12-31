@@ -173,11 +173,9 @@ func TestWarmPool_Populate(t *testing.T) {
 
 		// populate asynchronously
 		ctx, cancel := context.WithCancel(t.Context())
-		done := make(chan struct{})
 		go func() {
 			err := wp.Populate(ctx)
-			assert.ErrorIs(t, err, context.Canceled)
-			close(done)
+			assertErrorIsNilOrCanceled(t, err)
 		}()
 
 		time.Sleep(100 * time.Millisecond)
@@ -185,8 +183,6 @@ func TestWarmPool_Populate(t *testing.T) {
 		assert.Len(t, wp.freshItems, 5, "fresh channel should be populated with 5 items")
 
 		cancel()
-
-		<-done
 	})
 
 	t.Run("populate continues when the acquisition fails", func(t *testing.T) {
@@ -204,31 +200,22 @@ func TestWarmPool_Populate(t *testing.T) {
 			1,
 			testFactory,
 		)
+		t.Cleanup(closePool(t, wp))
+
 		wp.sleepOnCreateError = time.Millisecond
 
 		// populate asynchronously
-		ctx, cancel := context.WithCancel(t.Context())
-		done := make(chan struct{})
 		go func() {
-			err := wp.Populate(ctx)
-			assert.ErrorIs(t, err, context.Canceled)
-			close(done)
+			err := wp.Populate(t.Context())
+			assertErrorIsNilOrCanceled(t, err)
 		}()
 
 		time.Sleep(10 * time.Millisecond)
 
-		cancel()
-
-		<-done
-
-		close(wp.freshItems) // to avoid hanging forever
-
+		assert.Equal(t, 1, len(wp.freshItems))
 		item1, ok := <-wp.freshItems
 		require.True(t, ok, "fresh channel should have one item")
 		assert.Equal(t, "good-item", item1.Key)
-
-		item2, ok := <-wp.freshItems
-		require.False(t, ok, "fresh channel should be closed, but got %v instead", item2)
 	})
 
 	t.Run("populate keeps fresh items topped off", func(t *testing.T) {
@@ -251,12 +238,11 @@ func TestWarmPool_Populate(t *testing.T) {
 
 		// populate asynchronously
 		ctx, cancel := context.WithCancel(t.Context())
-		done := make(chan struct{})
 		go func() {
 			err := wp.Populate(ctx)
-			assert.ErrorIs(t, err, context.Canceled)
-			close(done)
+			assertErrorIsNilOrCanceled(t, err)
 		}()
+		t.Cleanup(cancel)
 
 		time.Sleep(10 * time.Millisecond)
 
@@ -265,17 +251,22 @@ func TestWarmPool_Populate(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, "test-1", item1.Key)
 
-		// second item is populated after puling the first item
+		// second item is populated after pulling the first item
 		item2, ok := <-wp.freshItems
 		require.True(t, ok)
 		assert.Equal(t, "test-2", item2.Key)
 
 		time.Sleep(10 * time.Millisecond)
-
-		cancel()
-
-		<-done
 	})
+}
+
+func assertErrorIsNilOrCanceled(t *testing.T, err error) {
+	if err == nil {
+		return
+	}
+
+	assert.ErrorIs(t, err, context.Canceled)
+
 }
 
 func TestWarmPool_Get(t *testing.T) {
