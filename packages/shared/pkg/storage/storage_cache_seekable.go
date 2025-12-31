@@ -356,7 +356,7 @@ func newOffsetReader(file *os.File, offset int64) *offsetReader {
 }
 
 // writeChunkFromFile writes a piece of a local file. It does not need to worry about race conditions, as it will only
-// be called when building templates, and templates cannot be built on multiple machines at the same time.x
+// be called when building templates, and templates cannot be built on multiple machines at the same time.
 func (c CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, input *os.File) (err error) {
 	_, span := tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
