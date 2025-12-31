@@ -178,6 +178,7 @@ func (c *Cluster) GetOrchestrators() []*ClusterInstance {
 			instances = append(instances, instance)
 		}
 	}
+
 	return instances
 }
 
