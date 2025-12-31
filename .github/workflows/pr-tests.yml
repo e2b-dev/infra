@@ -55,13 +55,13 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger
           
-          # Run tests
-          sudo go test -v ${{ matrix.test_path }}
+          # Run tests. The '-E' flag is required to allow root to use the correct cache path.
+          sudo -E go test -v -race ${{ matrix.test_path }}
         if: matrix.package == 'packages/orchestrator'
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v ${{ matrix.test_path }}
+        run: go test -v -race ${{ matrix.test_path }}
         if: matrix.package != 'packages/orchestrator'
 
   validate-iac:
