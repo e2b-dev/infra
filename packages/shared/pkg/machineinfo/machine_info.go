@@ -1,12 +1,15 @@
 package machineinfo
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/db/queries"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -46,14 +49,19 @@ func FromDB(build queries.EnvBuild) MachineInfo {
 	}
 }
 
-func FromLDValue(value ldvalue.Value) MachineInfo {
+func FromLDValue(ctx context.Context, value ldvalue.Value) MachineInfo {
 	if value.IsNull() {
 		return MachineInfo{}
 	}
 
 	// Parse as JSON
 	var info MachineInfo
-	_ = json.Unmarshal([]byte(value.String()), &info)
+	err := json.Unmarshal([]byte(value.String()), &info)
+	if err != nil {
+		logger.L().Error(ctx, "failed to unmarshal machine info", zap.Error(err))
+
+		return MachineInfo{}
+	}
 
 	return info
 }

@@ -115,8 +115,9 @@ func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterI
 		return nil, fmt.Errorf("cluster with ID '%s' not found", clusterID)
 	}
 
-	nodeInfo := tm.featureFlags.JSONFlag(ctx, featureflags.BuildNodeInfo)
-	builder, err := cluster.GetAvailableTemplateBuilder(ctx, machineinfo.FromLDValue(nodeInfo))
+	nodeInfoJSON := tm.featureFlags.JSONFlag(ctx, featureflags.BuildNodeInfo)
+	nodeInfo := machineinfo.FromLDValue(ctx, nodeInfoJSON)
+	builder, err := cluster.GetAvailableTemplateBuilder(ctx, nodeInfo)
 	if err != nil {
 		if errors.Is(err, edge.ErrAvailableTemplateBuilderNotFound) {
 			// Fallback to any template builder
