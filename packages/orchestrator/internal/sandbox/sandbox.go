@@ -70,6 +70,8 @@ type Config struct {
 	Network *orchestrator.SandboxNetworkConfig
 
 	Envd EnvdMetadata
+
+	FirecrackerConfig fc.Config
 }
 
 type EnvdMetadata struct {
@@ -127,6 +129,8 @@ type Sandbox struct {
 	APIStoredConfig *orchestrator.SandboxConfig
 
 	exit *utils.ErrorOnce
+
+	stop utils.Lazy[error]
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -169,7 +173,6 @@ func (f *Factory) CreateSandbox(
 	ctx context.Context,
 	config Config,
 	runtime RuntimeMetadata,
-	fcVersions fc.FirecrackerVersions,
 	template template.Template,
 	sandboxTimeout time.Duration,
 	rootfsCachePath string,
@@ -260,7 +263,7 @@ func (f *Factory) CreateSandbox(
 		f.config,
 		ips.slot,
 		sandboxFiles,
-		fcVersions,
+		config.FirecrackerConfig,
 		rootfsPath,
 		fc.ConstantRootfsPaths,
 	)
@@ -290,7 +293,7 @@ func (f *Factory) CreateSandbox(
 	resources := &Resources{
 		Slot:   ips.slot,
 		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
+		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize(), fcHandle.MemoryInfo),
 	}
 
 	metadata := &Metadata{
@@ -478,10 +481,7 @@ func (f *Factory) ResumeSandbox(
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
-		fc.FirecrackerVersions{
-			KernelVersion:      sandboxFiles.KernelVersion,
-			FirecrackerVersion: sandboxFiles.FirecrackerVersion,
-		},
+		config.FirecrackerConfig,
 		rootfsPath,
 		fc.RootfsPaths{
 			TemplateVersion: meta.Version,
@@ -628,8 +628,16 @@ func (s *Sandbox) Close(ctx context.Context) error {
 	return nil
 }
 
-// Stop kills the sandbox.
+// Stop kills the sandbox. It is safe to call multiple times; only the first
+// call will actually perform the stop operation.
 func (s *Sandbox) Stop(ctx context.Context) error {
+	return s.stop.GetOrInit(func() error {
+		return s.doStop(ctx)
+	})
+}
+
+// doStop performs the actual stop operation.
+func (s *Sandbox) doStop(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sandbox-close")
 	defer span.End()
 
@@ -655,10 +663,6 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
-	return s.process.Versions
-}
-
 func (s *Sandbox) Shutdown(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "shutdown sandbox")
 	defer span.End()
@@ -670,15 +674,9 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if _, err := s.memory.Disable(ctx); err != nil {
-		return fmt.Errorf("failed to disable uffd: %w", err)
-	}
-
 	// This is required because the FC API doesn't support passing /dev/null
 	tf, err := storage.TemplateFiles{
-		BuildID:            uuid.New().String(),
-		KernelVersion:      s.Template.Files().KernelVersion,
-		FirecrackerVersion: s.Template.Files().FirecrackerVersion,
+		BuildID: uuid.New().String(),
 	}.CacheFiles(s.config.StorageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create template files: %w", err)
@@ -689,26 +687,9 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	snapfile := template.NewLocalFileLink(tf.CacheSnapfilePath())
 	defer snapfile.Close()
 
-	// The memfile is required only because the FC API doesn't support passing /dev/null
-	memfile, err := storage.AcquireTmpMemfile(ctx, s.config.StorageConfig, tf.BuildID)
-	if err != nil {
-		return fmt.Errorf("failed to acquire memfile snapshot: %w", err)
-	}
-	defer memfile.Close()
-
-	err = s.process.CreateSnapshot(
-		ctx,
-		snapfile.Path(),
-		memfile.Path(),
-	)
+	err = s.process.CreateSnapshot(ctx, snapfile.Path())
 	if err != nil {
 		return fmt.Errorf("error creating snapshot: %w", err)
-	}
-
-	// Close the memfile right after the snapshot to release the lock.
-	err = memfile.Close()
-	if err != nil {
-		return fmt.Errorf("error closing memfile: %w", err)
 	}
 
 	// This should properly flush rootfs to the underlying device.
@@ -720,6 +701,17 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// Pause creates a snapshot of the sandbox.
+//
+// Currently the memory snapshotting works like this:
+//  1. We pause FC VM
+//  2. We call FC snapshot endpoint without specifying memfile path. With our custom FC,
+//     this only creates the snapfile and drains and flushes the disk.
+//  3. We call custom FC endpoint that returns memory addresses of the sandbox memory, that we will process after.
+//  4. In case of NoopMemory (the sandbox was not a resume) we also call the custom FC endpoint,
+//     that returns info about resident memory pages and about empty memory pages.
+//  5. Base on the info from the custom FC endpoint or from Uffd we copy the pages directly from the FC process to a local cache.
+//  6. We then can either close the sandbox or resume it.
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	m metadata.Template,
@@ -736,7 +728,7 @@ func (s *Sandbox) Pause(
 		}
 	}()
 
-	snapshotTemplateFiles, err := m.Template.CacheFiles(s.config.StorageConfig)
+	snapshotTemplateFiles, err := storage.TemplateFiles{BuildID: m.Template.BuildID}.CacheFiles(s.config.StorageConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
@@ -754,37 +746,11 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	// This disables the uffd and returns the dirty pages.
-	// With FC async io engine, there can be some further writes to the memory during the actual create snapshot process,
-	// but as we are still including even read pages as dirty so this should not introduce more bugs right now.
-	dirty, err := s.memory.Disable(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
-	}
-
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
 	cleanup.AddNoContext(ctx, snapfile.Close)
-	// Memfile is also closed on diff creation processing
-	/* The process of snapshotting memory is as follows:
-	1. Pause FC via API
-	2. Snapshot FC via API—memory dump to “file on disk” that is actually tmpfs, because it is too slow
-	3. Create the diff - copy the diff pages from tmpfs to normal disk file
-	4. Delete tmpfs file
-	5. Unlock so another snapshot can use tmpfs space
-	*/
-	memfile, err := storage.AcquireTmpMemfile(ctx, s.config.StorageConfig, buildID.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
-	}
-	// Close the file even if an error occurs
-	defer memfile.Close()
 
-	err = s.process.CreateSnapshot(
-		ctx,
-		snapfile.Path(),
-		memfile.Path(),
-	)
+	err = s.process.CreateSnapshot(ctx, snapfile.Path())
 	if err != nil {
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
@@ -794,9 +760,15 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
+
 	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
+	}
+
+	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}
 
 	// Start POSTPROCESSING
@@ -804,15 +776,9 @@ func (s *Sandbox) Pause(
 		ctx,
 		buildID,
 		originalMemfile.Header(),
-		&MemoryDiffCreator{
-			memfile:    memfile,
-			dirtyPages: dirty.BitSet(),
-			blockSize:  originalMemfile.BlockSize(),
-			doneHook: func(context.Context) error {
-				return memfile.Close()
-			},
-		},
+		memfileDiffMetadata,
 		s.config.DefaultCacheDir,
+		s.process,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -856,45 +822,42 @@ func (s *Sandbox) Pause(
 
 func pauseProcessMemory(
 	ctx context.Context,
-	buildId uuid.UUID,
+	buildID uuid.UUID,
 	originalHeader *header.Header,
-	diffCreator DiffCreator,
+	diffMetadata *header.DiffMetadata,
 	cacheDir string,
+	fc *fc.Process,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	memfileDiffFile, err := build.NewLocalDiffFile(
-		cacheDir,
-		buildId.String(),
-		build.Memfile,
-	)
+	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile diff file: %w", err)
-	}
-
-	m, err := diffCreator.process(ctx, memfileDiffFile)
-	if err != nil {
-		err = errors.Join(err, memfileDiffFile.Close())
-
-		return nil, nil, fmt.Errorf("error creating diff: %w", err)
-	}
-	telemetry.ReportEvent(ctx, "created diff")
-
-	memfileDiff, err := memfileDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
-	}
-	telemetry.ReportEvent(ctx, "converted memfile diff file to local diff")
-
-	memfileHeader, err := m.ToDiffHeader(ctx, originalHeader, buildId)
-	if err != nil {
-		err = errors.Join(err, memfileDiff.Close())
-
 		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
 	}
 
-	return memfileDiff, memfileHeader, nil
+	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
+
+	cache, err := fc.ExportMemory(
+		ctx,
+		diffMetadata.Dirty,
+		memfileDiffPath,
+		diffMetadata.BlockSize,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
+	}
+
+	diff, err := build.NewLocalDiffFromCache(
+		build.GetDiffStoreKey(buildID.String(), build.Memfile),
+		cache,
+	)
+	if err != nil {
+		// Close the cache even if the diff creation fails.
+		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
+	}
+
+	return diff, header, nil
 }
 
 func pauseProcessRootfs(
@@ -1082,10 +1045,7 @@ func (s *Sandbox) WaitForEnvd(
 }
 
 func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
-	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
-	if err != nil {
-		logger.L().Warn(ctx, "failed to get envd timeout from feature flag, using default", zap.Error(err))
-	}
+	envdInitRequestTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutMilliseconds)
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
 }

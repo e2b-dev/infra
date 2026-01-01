@@ -38,9 +38,7 @@ type storageTemplate struct {
 
 func newTemplateFromStorage(
 	config cfg.BuilderConfig,
-	buildId,
-	kernelVersion,
-	firecrackerVersion string,
+	buildId string,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
 	persistence storage.StorageProvider,
@@ -49,9 +47,7 @@ func newTemplateFromStorage(
 	localMetafile File,
 ) (*storageTemplate, error) {
 	files, err := storage.TemplateFiles{
-		BuildID:            buildId,
-		KernelVersion:      kernelVersion,
-		FirecrackerVersion: firecrackerVersion,
+		BuildID: buildId,
 	}.CacheFiles(config.StorageConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)

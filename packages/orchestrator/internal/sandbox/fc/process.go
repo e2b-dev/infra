@@ -55,7 +55,7 @@ type ProcessOptions struct {
 }
 
 type Process struct {
-	Versions FirecrackerVersions
+	Versions Config
 
 	cmd *exec.Cmd
 
@@ -79,7 +79,7 @@ func NewProcess(
 	config cfg.BuilderConfig,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
-	versions FirecrackerVersions,
+	versions Config,
 	rootfsProviderPath string,
 	rootfsPaths RootfsPaths,
 ) (*Process, error) {
@@ -503,9 +503,9 @@ func (p *Process) Pause(ctx context.Context) error {
 }
 
 // CreateSnapshot VM needs to be paused before creating a snapshot.
-func (p *Process) CreateSnapshot(ctx context.Context, snapfilePath string, memfilePath string) error {
+func (p *Process) CreateSnapshot(ctx context.Context, snapfilePath string) error {
 	ctx, childSpan := tracer.Start(ctx, "create-snapshot-fc")
 	defer childSpan.End()
 
-	return p.client.createSnapshot(ctx, snapfilePath, memfilePath)
+	return p.client.createSnapshot(ctx, snapfilePath)
 }

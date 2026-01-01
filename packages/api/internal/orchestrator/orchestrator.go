@@ -144,13 +144,10 @@ func New(
 	o.sandboxStore = sandbox.NewStore(
 		sandboxStorage,
 		reservationStorage,
-		[]sandbox.InsertCallback{
-			o.addToNode,
-		},
-		[]sandbox.InsertCallback{
-			o.observeTeamSandbox,
-			o.countersInsert,
-			o.analyticsInsert,
+		sandbox.Callbacks{
+			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
+			AsyncSandboxCounter:      o.sandboxCounterInsert,
+			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
 		},
 	)
 
@@ -275,21 +272,11 @@ func (o *Orchestrator) updateBestOfKConfig(ctx context.Context) {
 }
 
 func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Client) placement.BestOfKConfig {
-	k, err := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKSampleSize)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to get BestOfKSampleSize flag", zap.Error(err))
-		k = 3 // fallback to default
-	}
+	k := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKSampleSize)
 
-	maxOvercommitPercent, err := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKMaxOvercommit)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to get BestOfKMaxOvercommit flag", zap.Error(err))
-	}
+	maxOvercommitPercent := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKMaxOvercommit)
 
-	alphaPercent, err := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKAlpha)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to get BestOfKAlpha flag", zap.Error(err))
-	}
+	alphaPercent := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKAlpha)
 
 	canFit := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFit)
 

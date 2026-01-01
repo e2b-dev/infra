@@ -86,11 +86,11 @@ resource "nomad_job" "api" {
     port_number                    = var.api_port.port
     api_docker_image               = data.google_artifact_registry_docker_image.api_image.self_link
     postgres_connection_string     = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-    supabase_jwt_secrets           = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
-    posthog_api_key                = data.google_secret_manager_secret_version.posthog_api_key.secret_data
+    supabase_jwt_secrets           = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+    posthog_api_key                = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
     environment                    = var.environment
-    analytics_collector_host       = data.google_secret_manager_secret_version.analytics_collector_host.secret_data
-    analytics_collector_api_token  = data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data
+    analytics_collector_host       = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
+    analytics_collector_api_token  = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
     otel_tracing_print             = var.otel_tracing_print
     nomad_acl_token                = var.nomad_acl_token_secret
     admin_token                    = var.api_admin_token
@@ -464,7 +464,7 @@ data "external" "template_manager" {
 
 resource "nomad_job" "template_manager" {
   jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
-    update_stanza = var.template_manager_machine_count > 1
+    update_stanza = var.template_manages_clusters_size_gt_1
     node_pool     = var.builder_node_pool
 
     gcp_project      = var.gcp_project_id

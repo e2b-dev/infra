@@ -143,11 +143,7 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 	}
 	defer ffc.Close(ctx)
 
-	v, err := ffc.JSONFlag(ctx, featureflags.CleanNFSCacheExperimental)
-	if err != nil {
-		return opts, nil, err
-	}
-
+	v := ffc.JSONFlag(ctx, featureflags.CleanNFSCacheExperimental)
 	if v.Type() == ldvalue.ObjectType {
 		m := v.AsValueMap()
 		if m.Get("experimental").IsBool() {

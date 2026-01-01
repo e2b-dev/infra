@@ -169,6 +169,13 @@ type Tier struct {
 	ConcurrentTemplateBuilds int64
 }
 
+type User struct {
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	ID        uuid.UUID
+	Email     string
+}
+
 type UsersTeam struct {
 	ID        int64
 	UserID    uuid.UUID
