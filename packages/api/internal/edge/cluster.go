@@ -48,10 +48,6 @@ var (
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
 
-func isHealthyBuilder(i *ClusterInstance) bool {
-	return i.GetStatus() == infogrpc.ServiceInfoStatus_Healthy && i.IsBuilder()
-}
-
 func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, endpointTLS bool, secret string, clusterID uuid.UUID, sandboxDomain *string) (*Cluster, error) {
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
@@ -120,7 +116,7 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterInstance, e
 	if !found {
 		return nil, ErrTemplateBuilderNotFound
 	}
-	if !isHealthyBuilder(instance) {
+	if instance.GetStatus() == infogrpc.ServiceInfoStatus_Unhealthy || !instance.IsBuilder() {
 		return nil, ErrTemplateBuilderNotFound
 	}
 	return instance, nil
@@ -154,7 +150,10 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 	})
 
 	for _, instance := range instances {
-		if !isHealthyBuilder(instance) {
+		if instance.GetStatus() == infogrpc.ServiceInfoStatus_Healthy {
+			continue
+		}
+		if !instance.IsBuilder() {
 			continue
 		}
 
