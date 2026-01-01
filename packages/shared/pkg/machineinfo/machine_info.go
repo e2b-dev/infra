@@ -50,13 +50,8 @@ func FromDB(build queries.EnvBuild) MachineInfo {
 }
 
 func FromLDValue(ctx context.Context, value ldvalue.Value) MachineInfo {
-	if value.IsNull() {
-		return MachineInfo{}
-	}
-
-	// Parse as JSON
 	var info MachineInfo
-	err := json.Unmarshal([]byte(value.String()), &info)
+	err := json.Unmarshal([]byte(value.JSONString()), &info)
 	if err != nil {
 		logger.L().Error(ctx, "failed to unmarshal machine info", zap.Error(err))
 
