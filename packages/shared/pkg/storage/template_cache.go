@@ -14,10 +14,10 @@ type TemplateCacheFiles struct {
 	// CacheIdentifier is used to distinguish between each entry in the cache to prevent deleting the cache files when the template cache entry is being closed and a new one is being created.
 	CacheIdentifier string
 
-	config BuilderConfig
+	config Config
 }
 
-func (t TemplateFiles) CacheFiles(config BuilderConfig) (TemplateCacheFiles, error) {
+func (t TemplateFiles) CacheFiles(config Config) (TemplateCacheFiles, error) {
 	identifier, err := uuid.NewRandom()
 	if err != nil {
 		return TemplateCacheFiles{}, fmt.Errorf("failed to generate identifier: %w", err)
@@ -48,7 +48,7 @@ func (c TemplateCacheFiles) CacheMetadataPath() string {
 }
 
 func (c TemplateCacheFiles) cacheDir() string {
-	return filepath.Join(c.config.GetTemplateCacheDir(), c.BuildID, "cache", c.CacheIdentifier)
+	return filepath.Join(c.config.TemplateCacheDir, c.BuildID, "cache", c.CacheIdentifier)
 }
 
 func (c TemplateCacheFiles) Close() error {
