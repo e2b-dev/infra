@@ -31,6 +31,7 @@ type Cluster struct {
 	instances       *smap.Map[*ClusterInstance]
 	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterInstance]
 	SandboxDomain   *string
+	cancel          context.CancelFunc
 }
 
 type ClusterGRPC struct {
@@ -47,6 +48,10 @@ var (
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
 
+func isHealthyBuilder(i *ClusterInstance) bool {
+	return i.GetStatus() == infogrpc.ServiceInfoStatus_Healthy && i.IsBuilder()
+}
+
 func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, endpointTLS bool, secret string, clusterID uuid.UUID, sandboxDomain *string) (*Cluster, error) {
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
@@ -62,12 +67,11 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	}
 
 	// generate the full endpoint URL
-	var endpointBaseUrl string
+	scheme := "http"
 	if endpointTLS {
-		endpointBaseUrl = fmt.Sprintf("https://%s", endpoint)
-	} else {
-		endpointBaseUrl = fmt.Sprintf("http://%s", endpoint)
+		scheme = "https"
 	}
+	endpointBaseUrl := scheme + "://" + endpoint
 
 	httpClient, err := api.NewClientWithResponses(endpointBaseUrl, clientAuthMiddleware)
 	if err != nil {
@@ -79,6 +83,8 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	if err != nil {
 		return nil, fmt.Errorf("failed to create grpc client: %w", err)
 	}
+
+	ctxWithCancel, cancel := context.WithCancel(ctx)
 
 	c := &Cluster{
 		ID:            clusterID,
@@ -93,12 +99,16 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	c.synchronization = synchronization.NewSynchronize("cluster-instances", "Cluster instances", store)
 
 	// periodically sync cluster instances
-	go c.startSync(ctx)
+	c.cancel = cancel
+	go c.startSync(ctxWithCancel)
 
 	return c, nil
 }
 
 func (c *Cluster) Close() error {
+	if c.cancel != nil {
+		c.cancel() // stop startSync goroutine
+	}
 	c.synchronization.Close()
 	err := c.grpcClient.Close()
 
@@ -110,11 +120,9 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterInstance, e
 	if !found {
 		return nil, ErrTemplateBuilderNotFound
 	}
-
-	if instance.GetStatus() == infogrpc.ServiceInfoStatus_Unhealthy || !instance.IsBuilder() {
+	if !isHealthyBuilder(instance) {
 		return nil, ErrTemplateBuilderNotFound
 	}
-
 	return instance, nil
 }
 
@@ -133,8 +141,10 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
-	var instances []*ClusterInstance
-	for _, instance := range c.instances.Items() {
+	// convert map to slice
+	mapItems := c.instances.Items()
+	instances := make([]*ClusterInstance, 0, len(mapItems))
+	for _, instance := range mapItems {
 		instances = append(instances, instance)
 	}
 
@@ -144,11 +154,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 	})
 
 	for _, instance := range instances {
-		if instance.GetStatus() != infogrpc.ServiceInfoStatus_Healthy {
-			continue
-		}
-
-		if !instance.IsBuilder() {
+		if !isHealthyBuilder(instance) {
 			continue
 		}
 
@@ -167,10 +173,11 @@ func (c *Cluster) GetHTTP() *ClusterHTTP {
 }
 
 func (c *Cluster) GetOrchestrators() []*ClusterInstance {
-	instances := make([]*ClusterInstance, 0)
-	for _, i := range c.instances.Items() {
-		if i.IsOrchestrator() {
-			instances = append(instances, i)
+	mapItems := c.instances.Items()
+	instances := make([]*ClusterInstance, 0, len(mapItems))
+	for _, instance := range mapItems {
+		if instance.IsOrchestrator() {
+			instances = append(instances, instance)
 		}
 	}
 
