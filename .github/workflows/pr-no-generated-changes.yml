@@ -15,13 +15,6 @@ jobs:
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
-        with:
-          cache-dependency-paths: |
-            go.work
-            packages/*/go.mod
-            packages/*/go.mod.sum
-            tests/integration/go.mod
-            tests/integration/go.mod.sum
 
       - uses: hashicorp/setup-terraform@v3
         with:

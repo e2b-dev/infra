@@ -7,6 +7,12 @@ inputs:
   cache-dependency-paths:
     description: Paths to the package directory
     required: true
+    default: |
+      go.work
+      packages/*/go.mod
+      packages/*/go.mod.sum
+      tests/integration/go.mod
+      tests/integration/go.mod.sum
 
 runs:
   using: "composite"
