@@ -10,9 +10,9 @@ inputs:
     default: |
       go.work
       packages/*/go.mod
-      packages/*/go.mod.sum
+      packages/*/go.sum
       tests/integration/go.mod
-      tests/integration/go.mod.sum
+      tests/integration/go.sum
 
 runs:
   using: "composite"
