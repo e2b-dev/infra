@@ -349,6 +349,7 @@ func getExtensionForLanguage(lang string) string {
 		"unlambda":     ".unl",
 		"vala":         ".vala",
 		"verilog":      ".v",
+		"iverilog":     ".v",
 		"vhdl":         ".vhd",
 		"wren":         ".wren",
 		"x10":          ".x10",
@@ -401,6 +402,7 @@ func (h *Handler) isCompiledLanguage(lang string) bool {
 		"basic.net":  true,
 		"csharp":     true,
 		"csharp.net": true,
+		"fsharp":     true,
 		"fsharp.net": true,
 		"pascal":     true,
 		"kotlin":     true,
@@ -428,6 +430,15 @@ func (h *Handler) isCompiledLanguage(lang string) bool {
 		"fortran":    true,
 		"cobol":      true,
 		"swift":      true,
+		"vala":       true,
+		"verilog":    true,
+		"iverilog":   true,
+		"vhdl":       true,
+		"boo":        true,
+		"ceylon":     true,
+		"groovy":     true,
+		"red":        true,
+		"wren":       true,
 	}
 	return compiledLanguages[lang]
 }
