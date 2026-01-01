@@ -333,7 +333,7 @@ func runBuild(
 	// Get the base rootfs size from the template files
 	// This is the size of the rootfs after provisioning and before building the layers
 	// (as they don't change the rootfs size)
-	rootfsSize, err := getRootfsSize(ctx, builder.templateStorage, lastLayerResult.Metadata.Template)
+	rootfsSize, err := getRootfsSize(ctx, builder.templateStorage, storage.TemplateFiles{BuildID: lastLayerResult.Metadata.Template.BuildID})
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}

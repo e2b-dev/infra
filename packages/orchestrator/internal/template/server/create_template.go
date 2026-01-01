@@ -46,9 +46,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	metadata := storage.TemplateFiles{
-		BuildID:            cfg.GetBuildID(),
-		KernelVersion:      cfg.GetKernelVersion(),
-		FirecrackerVersion: cfg.GetFirecrackerVersion(),
+		BuildID: cfg.GetBuildID(),
 	}
 
 	// default to scope by template ID
@@ -86,6 +84,8 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		RegistryAuthProvider: authProvider,
 		Force:                cfg.Force,
 		Steps:                cfg.GetSteps(),
+		KernelVersion:        cfg.GetKernelVersion(),
+		FirecrackerVersion:   cfg.GetFirecrackerVersion(),
 	}
 
 	logs := buildlogger.NewLogEntryLogger()

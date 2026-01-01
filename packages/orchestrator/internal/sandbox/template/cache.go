@@ -117,9 +117,7 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 
 func (c *Cache) GetTemplate(
 	ctx context.Context,
-	buildID,
-	kernelVersion,
-	firecrackerVersion string,
+	buildID string,
 	isSnapshot bool,
 	isBuilding bool,
 ) (Template, error) {
@@ -137,8 +135,6 @@ func (c *Cache) GetTemplate(
 	storageTemplate, err := newTemplateFromStorage(
 		c.config,
 		buildID,
-		kernelVersion,
-		firecrackerVersion,
 		nil,
 		nil,
 		persistence,
@@ -155,9 +151,7 @@ func (c *Cache) GetTemplate(
 
 func (c *Cache) AddSnapshot(
 	ctx context.Context,
-	buildId,
-	kernelVersion,
-	firecrackerVersion string,
+	buildId string,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
 	localSnapfile File,
@@ -180,8 +174,6 @@ func (c *Cache) AddSnapshot(
 	storageTemplate, err := newTemplateFromStorage(
 		c.config,
 		buildId,
-		kernelVersion,
-		firecrackerVersion,
 		memfileHeader,
 		rootfsHeader,
 		c.persistence,
