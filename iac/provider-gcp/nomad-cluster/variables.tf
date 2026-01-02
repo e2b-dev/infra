@@ -108,7 +108,7 @@ variable "client_cluster_name" {
 
 variable "client_clusters_config" {
   description = "List of client cluster configuration object"
-  type = list(object({
+  type = map(object({
     cluster_size = number
     autoscaler = optional(object({
       size_max      = optional(number)
@@ -139,7 +139,7 @@ variable "build_cluster_name" {
 
 variable "build_clusters_config" {
   description = "Build cluster configuration object"
-  type = list(object({
+  type = map(object({
     cluster_size = number
     autoscaler = optional(object({
       size_max      = optional(number)

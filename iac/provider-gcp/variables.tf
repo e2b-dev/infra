@@ -418,7 +418,7 @@ variable "remote_repository_enabled" {
 }
 
 variable "client_clusters_config" {
-  type = list(object({
+  type = map(object({
     cluster_size = number
 
     machine = object({
@@ -476,7 +476,7 @@ EOT
 }
 
 variable "build_clusters_config" {
-  type = list(object({
+  type = map(object({
     cluster_size = number
 
     machine = object({
