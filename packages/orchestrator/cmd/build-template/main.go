@@ -31,6 +31,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -52,9 +53,12 @@ func main() {
 
 	templateID := flag.String("template", "local-template", "template id")
 	buildID := flag.String("build", "", "build id (UUID required)")
+	fromBuild := flag.String("from-build", "", "base build ID to build from (rebuilds last layer only)")
 	kernelVersion := flag.String("kernel", defaultKernel, "kernel version")
 	fcVersion := flag.String("firecracker", defaultFirecracker, "firecracker version")
 	startCmd := flag.String("start-cmd", "", "start command to run in sandbox")
+	readyCmd := flag.String("ready-cmd", "", "command to check if sandbox is ready")
+	layers := flag.Int("layers", 0, "number of extra RUN layers to add (for testing)")
 	local := flag.Bool("local", false, "use local storage (no remote resources needed)")
 	dataDir := flag.String("data-dir", "", "data directory for local mode (default: .local-build)")
 	flag.Parse()
@@ -79,7 +83,7 @@ func main() {
 		log.Fatalf("error parsing network config: %v", err)
 	}
 
-	err = buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID, *startCmd, *local, builderConfig, networkConfig)
+	err = buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID, *fromBuild, *startCmd, *readyCmd, *layers, *local, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatalf("error building template: %v", err)
 	}
@@ -91,7 +95,10 @@ func buildTemplate(
 	fcVersion,
 	templateID,
 	buildID,
-	startCmd string,
+	fromBuild,
+	startCmd,
+	readyCmd string,
+	extraLayers int,
 	localMode bool,
 	builderConfig cfg.BuilderConfig,
 	networkConfig network.Config,
@@ -276,19 +283,38 @@ func buildTemplate(
 	if templateStartCmd == "" {
 		templateStartCmd = "echo 'sandbox ready'"
 	}
+
+	// Generate extra layers (RUN steps)
+	var steps []*templatemanager.TemplateStep
+	for i := 0; i < extraLayers; i++ {
+		steps = append(steps, &templatemanager.TemplateStep{
+			Type: "RUN",
+			Args: []string{fmt.Sprintf("echo 'layer %d' > /tmp/layer_%d.txt && date >> /tmp/layer_%d.txt", i, i, i)},
+		})
+	}
+
 	template := config.TemplateConfig{
 		Version:            templates.TemplateV2LatestVersion,
 		TeamID:             "",
 		TemplateID:         templateID,
-		FromImage:          baseImage,
 		Force:              &force,
 		VCpuCount:          2,
-		MemoryMB:           1024,
+		MemoryMB:           4096,
 		StartCmd:           templateStartCmd,
-		DiskSizeMB:         1024,
+		ReadyCmd:           readyCmd,
+		Steps:              steps,
+		DiskSizeMB:         20000,
 		HugePages:          true,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: fcVersion,
+	}
+	if fromBuild != "" {
+		template.FromTemplate = &templatemanager.FromTemplateConfig{
+			BuildID: fromBuild,
+		}
+		fmt.Printf("Building from existing build: %s\n", fromBuild)
+	} else {
+		template.FromImage = baseImage
 	}
 
 	metadata := storage.TemplateFiles{

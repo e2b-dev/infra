@@ -30,6 +30,7 @@ Options:
 - `-local` sets up `.local-build` directory with all artifacts
 - `-template` defaults to `local-template`
 - `-start-cmd "command"` optional start command to run in sandbox
+- `-from-build <uuid>` build from existing template (rebuilds last layer only)
 
 ### Resume Sandbox
 
