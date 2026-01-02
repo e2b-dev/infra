@@ -31,7 +31,6 @@ type Cluster struct {
 	instances       *smap.Map[*ClusterInstance]
 	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterInstance]
 	SandboxDomain   *string
-	cancel          context.CancelFunc
 }
 
 type ClusterGRPC struct {
@@ -80,8 +79,6 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 		return nil, fmt.Errorf("failed to create grpc client: %w", err)
 	}
 
-	ctxWithCancel, cancel := context.WithCancel(ctx)
-
 	c := &Cluster{
 		ID:            clusterID,
 		SandboxDomain: sandboxDomain,
@@ -95,16 +92,12 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	c.synchronization = synchronization.NewSynchronize("cluster-instances", "Cluster instances", store)
 
 	// periodically sync cluster instances
-	c.cancel = cancel
-	go c.startSync(ctxWithCancel)
+	go c.startSync(ctx)
 
 	return c, nil
 }
 
 func (c *Cluster) Close() error {
-	if c.cancel != nil {
-		c.cancel() // stop startSync goroutine
-	}
 	c.synchronization.Close()
 	err := c.grpcClient.Close()
 
@@ -119,6 +112,7 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterInstance, e
 	if instance.GetStatus() == infogrpc.ServiceInfoStatus_Unhealthy || !instance.IsBuilder() {
 		return nil, ErrTemplateBuilderNotFound
 	}
+
 	return instance, nil
 }
 
