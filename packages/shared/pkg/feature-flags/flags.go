@@ -60,6 +60,7 @@ type BoolFlag struct {
 func (f BoolFlag) Key() string {
 	return f.name
 }
+
 func (f BoolFlag) String() string {
 	return f.name
 }
@@ -96,6 +97,7 @@ type IntFlag struct {
 func (f IntFlag) Key() string {
 	return f.name
 }
+
 func (f IntFlag) String() string {
 	return f.name
 }
@@ -140,9 +142,11 @@ type StringFlag struct {
 func (f StringFlag) Key() string {
 	return f.name
 }
+
 func (f StringFlag) String() string {
 	return f.name
 }
+
 func (f StringFlag) Fallback() string {
 	return f.fallback
 }

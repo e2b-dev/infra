@@ -81,7 +81,7 @@ func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, 
 
 	// read remote file
 	readCount, err := c.inner.ReadAt(ctx, buff, offset)
-	if err != nil {
+	if ignoreEOF(err) != nil {
 		return readCount, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
@@ -96,7 +96,7 @@ func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, 
 
 	recordCacheRead(ctx, false, int64(readCount), cacheTypeSeekable, cacheOpReadAt)
 
-	return readCount, nil
+	return readCount, err
 }
 
 func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
@@ -254,6 +254,8 @@ func (c *CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, of
 	tempPath := c.makeTempChunkFilename(offset)
 
 	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
+		go safelyRemoveFile(ctx, tempPath)
+
 		return fmt.Errorf("failed to write temp cache file: %w", err)
 	}
 
@@ -289,6 +291,8 @@ func (c *CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size 
 	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
 
 	if err := os.WriteFile(tempFilename, fmt.Appendf(nil, "%d", size), cacheFilePermissions); err != nil {
+		go safelyRemoveFile(ctx, tempFilename)
+
 		return fmt.Errorf("failed to write temp local size file: %w", err)
 	}
 
