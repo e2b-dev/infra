@@ -447,7 +447,7 @@ variable "client_clusters_config" {
   }))
 
   description = <<EOT
-JSON configuration for the client clusters.
+Configuration for the client clusters.
 Format: [
   {
       "cluster_size": 1,  // Number of nodes (the actual number of nodes may be higher due to autoscaling)
@@ -504,7 +504,7 @@ variable "build_clusters_config" {
     hugepages_percentage = optional(number)
   }))
   description = <<EOT
-JSON configuration for the build cluster.
+Configuration for the build clusters.
 Format:
 [
   {
