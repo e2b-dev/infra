@@ -25,6 +25,11 @@ type Client struct {
 	ld *ldclient.LDClient
 }
 
+// WrapLDClient wraps an existing LaunchDarkly client.
+func WrapLDClient(ld *ldclient.LDClient) *Client {
+	return &Client{ld: ld}
+}
+
 func NewClient() (*Client, error) {
 	var ldClient *ldclient.LDClient
 	var err error
