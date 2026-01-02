@@ -348,7 +348,8 @@ func (c *CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Con
 }
 
 // writeChunkFromFile writes a piece of a local file. It does not need to worry about race conditions, as it will only
-// be called when building templates, and templates cannot be built on multiple machines at the same time.
+// be called in the build layer, which cannot be built on multiple machines at the same time, or multiple times on the
+// same machine..
 func (c *CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, input *os.File) (err error) {
 	_, span := tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),

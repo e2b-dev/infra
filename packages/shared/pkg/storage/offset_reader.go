@@ -2,7 +2,6 @@ package storage
 
 import (
 	"io"
-	"os"
 )
 
 type offsetReader struct {
@@ -19,6 +18,6 @@ func (r *offsetReader) Read(p []byte) (n int, err error) {
 	return
 }
 
-func newOffsetReader(file *os.File, offset int64) *offsetReader {
-	return &offsetReader{file, offset}
+func newOffsetReader(reader io.ReaderAt, offset int64) *offsetReader {
+	return &offsetReader{reader, offset}
 }

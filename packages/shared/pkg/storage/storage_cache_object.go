@@ -64,7 +64,7 @@ func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n in
 	// store the byte slice before calling `buffer.Read`, which moves the offset.
 	data := buffer.Bytes()
 
-	c.goCtx(ctx, func(ctx context.Context) {
+	c.goCtxWithoutCancel(ctx, func(ctx context.Context) {
 		count, err := c.writeFileToCache(ctx, buffer)
 		if err != nil {
 			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteTo, err)
@@ -95,7 +95,7 @@ func (c *CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e er
 	}()
 
 	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
-		c.goCtx(ctx, func(ctx context.Context) {
+		c.goCtxWithoutCancel(ctx, func(ctx context.Context) {
 			count, err := c.writeFileToCache(
 				context.WithoutCancel(ctx),
 				bytes.NewReader(p),
@@ -120,7 +120,7 @@ func (c *CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path str
 	}()
 
 	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
-		c.goCtx(ctx, func(ctx context.Context) {
+		c.goCtxWithoutCancel(ctx, func(ctx context.Context) {
 			ctx, span := tracer.Start(ctx, "write from filesystem to cache",
 				trace.WithAttributes(attribute.String("path", path)))
 			defer span.End()
@@ -152,7 +152,7 @@ func (c *CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path str
 	return c.inner.WriteFromFileSystem(ctx, path)
 }
 
-func (c *CachedObjectProvider) goCtx(ctx context.Context, fn func(context.Context)) {
+func (c *CachedObjectProvider) goCtxWithoutCancel(ctx context.Context, fn func(context.Context)) {
 	c.wg.Go(func() {
 		fn(context.WithoutCancel(ctx))
 	})
