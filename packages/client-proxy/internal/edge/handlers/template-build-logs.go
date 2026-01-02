@@ -43,7 +43,7 @@ func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params ap
 	}
 
 	direction := defaultDirection
-	if params.Direction != nil && *params.Direction == api.Backward {
+	if params.Direction != nil && *params.Direction == api.V1TemplateBuildLogsParamsDirectionBackward {
 		direction = logproto.BACKWARD
 	}
 
