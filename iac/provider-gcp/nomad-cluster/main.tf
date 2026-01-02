@@ -169,7 +169,7 @@ module "build_cluster" {
   boot_disk        = each.value.boot_disk
   autoscaler       = each.value.autoscaler
 
-  cluster_name              = "${var.prefix}orch-build-${each.key}"
+  cluster_name              = "${var.prefix}${var.build_cluster_name}-${each.key}"
   image_family              = var.build_image_family
   network_name              = var.network_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.build_base_hugepages_percentage)
@@ -223,7 +223,7 @@ module "client_cluster" {
   autoscaler       = each.value.autoscaler
 
   // This is here for backwards compatibility
-  cluster_name              = "${var.prefix}orch-client-${each.key}"
+  cluster_name              = "${var.prefix}${var.client_cluster_name}-${each.key}"
   image_family              = var.client_image_family
   network_name              = var.network_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
