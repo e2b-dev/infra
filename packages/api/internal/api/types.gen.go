@@ -110,6 +110,15 @@ type AdminSandboxKillResult struct {
 	KilledCount int `json:"killedCount"`
 }
 
+// AssignTemplateTagRequest defines model for AssignTemplateTagRequest.
+type AssignTemplateTagRequest struct {
+	// Names Names of the template
+	Names []string `json:"names"`
+
+	// Target Target template name in "alias:tag" format
+	Target string `json:"target"`
+}
+
 // BuildLogEntry defines model for BuildLogEntry.
 type BuildLogEntry struct {
 	// Level State of the sandbox
@@ -876,14 +885,18 @@ type TemplateBuildRequestV2 struct {
 
 // TemplateBuildRequestV3 defines model for TemplateBuildRequestV3.
 type TemplateBuildRequestV3 struct {
-	// Alias Alias of the template
-	Alias string `json:"alias"`
+	// Alias Alias of the template. Deprecated, use names instead.
+	// Deprecated:
+	Alias *string `json:"alias,omitempty"`
 
 	// CpuCount CPU cores for the sandbox
 	CpuCount *CPUCount `json:"cpuCount,omitempty"`
 
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
+
+	// Names Names of the template
+	Names *[]string `json:"names,omitempty"`
 
 	// TeamID Identifier of the team
 	TeamID *string `json:"teamID,omitempty"`
@@ -985,6 +998,15 @@ type TemplateStep struct {
 
 	// Type Type of the step
 	Type string `json:"type"`
+}
+
+// TemplateTag defines model for TemplateTag.
+type TemplateTag struct {
+	// BuildID Identifier of the build associated with this tag
+	BuildID openapi_types.UUID `json:"buildID"`
+
+	// Tags Tags of the template
+	Tags []string `json:"tags"`
 }
 
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.
@@ -1219,6 +1241,9 @@ type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJ
 
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest
+
+// PostTemplatesTagsJSONRequestBody defines body for PostTemplatesTags for application/json ContentType.
+type PostTemplatesTagsJSONRequestBody = AssignTemplateTagRequest
 
 // PatchTemplatesTemplateIDJSONRequestBody defines body for PatchTemplatesTemplateID for application/json ContentType.
 type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -43,7 +44,7 @@ const minSupabaseJWTSecretLength = 16
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	Healthy              bool
+	Healthy              atomic.Bool
 	config               cfg.Config
 	posthog              *analyticscollector.PosthogClient
 	Telemetry            *telemetry.Client
@@ -145,7 +146,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 
 	a := &APIStore{
 		config:               config,
-		Healthy:              false,
 		orchestrator:         orch,
 		templateManager:      templateManager,
 		sqlcDB:               sqlcDB,
@@ -172,7 +172,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 			case <-ticker.C:
 				if orch.NodeCount() != 0 {
 					logger.L().Info(ctx, "Nodes are ready, setting API as healthy")
-					a.Healthy = true
+					a.Healthy.Store(true)
 
 					return
 				}
@@ -233,7 +233,7 @@ func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
 }
 
 func (a *APIStore) GetHealth(c *gin.Context) {
-	if a.Healthy == true {
+	if a.Healthy.Load() {
 		c.String(http.StatusOK, "Health check successful")
 
 		return
