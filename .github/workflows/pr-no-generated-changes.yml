@@ -15,8 +15,6 @@ jobs:
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
-        with:
-          job_key: generated-code-check
 
       - uses: hashicorp/setup-terraform@v3
         with:

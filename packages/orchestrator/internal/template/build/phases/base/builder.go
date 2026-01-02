@@ -184,7 +184,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error building environment: %w", err)
 	}
 
-	cacheFiles, err := storage.TemplateFiles{BuildID: baseMetadata.Template.BuildID}.CacheFiles(bb.BuildContext.BuilderConfig)
+	cacheFiles, err := storage.TemplateFiles{BuildID: baseMetadata.Template.BuildID}.CacheFiles(bb.BuildContext.BuilderConfig.StorageConfig)
 	if err != nil {
 		err = errors.Join(err, rootfs.Close(), memfile.Close())
 

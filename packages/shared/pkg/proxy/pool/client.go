@@ -206,7 +206,7 @@ func (p *ProxyClient) resetAllConnections() error {
 
 	for _, conn := range p.activeConnections.Items() {
 		err := conn.Reset()
-		if err != nil {
+		if err != nil && !errors.Is(err, net.ErrClosed) {
 			errs = append(errs, err)
 		}
 	}
