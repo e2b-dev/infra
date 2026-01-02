@@ -48,7 +48,7 @@ func newTemplateFromStorage(
 ) (*storageTemplate, error) {
 	files, err := storage.TemplateFiles{
 		BuildID: buildId,
-	}.CacheFiles(config)
+	}.CacheFiles(config.StorageConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
 	}

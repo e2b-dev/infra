@@ -215,7 +215,7 @@ func (f *Factory) CreateSandbox(
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
 			rootFS,
-			sandboxFiles.SandboxCacheRootfsPath(f.config),
+			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 			f.devicePool,
 		)
 	} else {
@@ -403,7 +403,7 @@ func (f *Factory) ResumeSandbox(
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		readonlyRootfs,
-		sandboxFiles.SandboxCacheRootfsPath(f.config),
+		sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 		f.devicePool,
 	)
 	if err != nil {
@@ -677,7 +677,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	// This is required because the FC API doesn't support passing /dev/null
 	tf, err := storage.TemplateFiles{
 		BuildID: uuid.New().String(),
-	}.CacheFiles(s.config)
+	}.CacheFiles(s.config.StorageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create template files: %w", err)
 	}
@@ -728,7 +728,7 @@ func (s *Sandbox) Pause(
 		}
 	}()
 
-	snapshotTemplateFiles, err := storage.TemplateFiles{BuildID: m.Template.BuildID}.CacheFiles(s.config)
+	snapshotTemplateFiles, err := storage.TemplateFiles{BuildID: m.Template.BuildID}.CacheFiles(s.config.StorageConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
