@@ -57,8 +57,15 @@ type BoolFlag struct {
 	fallback bool
 }
 
+func (f BoolFlag) Key() string {
+	return f.name
+}
 func (f BoolFlag) String() string {
 	return f.name
+}
+
+func (f BoolFlag) Fallback() bool {
+	return f.fallback
 }
 
 func newBoolFlag(name string, fallback bool) BoolFlag {
@@ -86,6 +93,9 @@ type IntFlag struct {
 	fallback int
 }
 
+func (f IntFlag) Key() string {
+	return f.name
+}
 func (f IntFlag) String() string {
 	return f.name
 }
@@ -127,10 +137,12 @@ type StringFlag struct {
 	fallback string
 }
 
+func (f StringFlag) Key() string {
+	return f.name
+}
 func (f StringFlag) String() string {
 	return f.name
 }
-
 func (f StringFlag) Fallback() string {
 	return f.fallback
 }

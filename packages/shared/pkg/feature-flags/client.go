@@ -53,18 +53,7 @@ func NewClient() (*Client, error) {
 }
 
 func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcontext.Context) bool {
-	if c.ld == nil {
-		logger.L().Info(ctx, "LaunchDarkly client is not initialized, returning fallback")
-
-		return flag.fallback
-	}
-
-	enabled, err := c.ld.BoolVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
-	if err != nil {
-		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.name))
-	}
-
-	return enabled
+	return getFlag(ctx, c.ld, c.ld.BoolVariationCtx, flag, contexts...)
 }
 
 func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) ldvalue.Value {
@@ -85,30 +74,28 @@ func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcont
 }
 
 func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) int {
-	if c.ld == nil {
-		logger.L().Warn(ctx, "LaunchDarkly client is not initialized, returning fallback")
-
-		return flag.fallback
-	}
-
-	value, err := c.ld.IntVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
-	if err != nil {
-		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.name))
-	}
-
-	return value
+	return getFlag(ctx, c.ld, c.ld.IntVariationCtx, flag, contexts...)
 }
 
 func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ldcontext.Context) string {
-	if c.ld == nil {
+	return getFlag(ctx, c.ld, c.ld.StringVariationCtx, flag, contexts...)
+}
+
+type typedFlag[T any] interface {
+	Key() string
+	Fallback() T
+}
+
+func getFlag[T any](ctx context.Context, ld *ldclient.LDClient, getFromLD func(ctx context.Context, key string, context ldcontext.Context, defaultVal T) (T, error), flag typedFlag[T], contexts ...ldcontext.Context) T {
+	if ld == nil {
 		logger.L().Info(ctx, "LaunchDarkly client is not initialized, returning fallback")
 
-		return flag.fallback
+		return flag.Fallback()
 	}
 
-	value, err := c.ld.StringVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
+	value, err := getFromLD(ctx, flag.Key(), mergeContexts(ctx, contexts), flag.Fallback())
 	if err != nil {
-		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.name))
+		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.Key()))
 	}
 
 	return value
