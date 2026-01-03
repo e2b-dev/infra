@@ -66,7 +66,7 @@ func (tm *TemplateManager) CreateTemplate(
 			return
 		}
 
-		// Report build failur status on any error while creating the template
+		// Report build failure status on any error while creating the template
 		telemetry.ReportCriticalError(ctx, "build failed", e, telemetry.WithTemplateID(templateID))
 		err := tm.SetStatus(
 			ctx,

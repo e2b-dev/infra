@@ -9,6 +9,12 @@ packages:
 
   github.com/e2b-dev/infra/packages/shared/pkg/storage:
     interfaces:
+      featureFlagsClient:
+        config:
+          dir: packages/shared/pkg/storage/mocks
+          filename: mockfeatureflagsclient.go
+          pkgname: storagemocks
+          structname: MockFeatureFlagsClient
       ObjectProvider:
         config:
           dir: packages/shared/pkg/storage/mocks
@@ -19,3 +25,19 @@ packages:
           dir: packages/shared/pkg/storage/mocks
           filename: mockseekableobjectprovider.go
           pkgname: storagemocks
+
+  io:
+    interfaces:
+      Reader:
+        config:
+          dir: packages/shared/pkg/storage/mocks
+          filename: mockioreader.go
+          pkgname: storagemocks
+
+  github.com/e2b-dev/infra/packages/shared/pkg/utils:
+    interfaces:
+      fileOps:
+        config:
+          dir: packages/shared/pkg/utils
+          filename: mocks_test.go
+          pkgname: utils

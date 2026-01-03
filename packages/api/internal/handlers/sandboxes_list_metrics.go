@@ -41,7 +41,7 @@ func (a *APIStore) getSandboxesMetrics(
 		attribute.Int("sandboxes.count", len(sandboxIDs)),
 	)
 
-	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
+	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlag)
 
 	// Get metrics for all sandboxes
 	if !metricsReadFlag {
@@ -52,7 +52,7 @@ func (a *APIStore) getSandboxesMetrics(
 	}
 
 	// TODO: Remove in [ENG-3377], once edge is migrated
-	edgeProvidedMetrics := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlagName)
+	edgeProvidedMetrics := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlag)
 
 	var metrics map[string]api.SandboxMetric
 	var apiErr *api.APIError
