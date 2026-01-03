@@ -1,17 +1,24 @@
 package machineinfo
 
 import (
+	"context"
+	"encoding/json"
+
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/db/queries"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type MachineInfo struct {
-	CPUArchitecture string
-	CPUFamily       string
-	CPUModel        string
-	CPUModelName    string
-	CPUFlags        []string
+	CPUArchitecture string   `json:"cpu_architecture"`
+	CPUFamily       string   `json:"cpu_family"`
+	CPUModel        string   `json:"cpu_model"`
+	CPUModelName    string   `json:"cpu_model_name"`
+	CPUFlags        []string `json:"cpu_flags"`
 }
 
 func (m MachineInfo) IsCompatibleWith(other MachineInfo) bool {
@@ -40,4 +47,16 @@ func FromDB(build queries.EnvBuild) MachineInfo {
 		CPUModelName:    utils.FromPtr(build.CpuModelName),
 		CPUFlags:        build.CpuFlags,
 	}
+}
+
+func FromLDValue(ctx context.Context, value ldvalue.Value) MachineInfo {
+	var info MachineInfo
+	err := json.Unmarshal([]byte(value.JSONString()), &info)
+	if err != nil {
+		logger.L().Error(ctx, "failed to unmarshal machine info", zap.Error(err))
+
+		return MachineInfo{}
+	}
+
+	return info
 }
