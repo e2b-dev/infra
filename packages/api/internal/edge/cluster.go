@@ -148,6 +148,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 		if instance.GetStatus() != infogrpc.ServiceInfoStatus_Healthy {
 			continue
 		}
+
 		if !instance.IsBuilder() {
 			continue
 		}
