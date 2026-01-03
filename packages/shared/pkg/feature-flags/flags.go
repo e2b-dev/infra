@@ -30,12 +30,16 @@ type JSONFlag struct {
 	fallback ldvalue.Value
 }
 
+func (f JSONFlag) Key() string {
+	return f.name
+}
+
 func (f JSONFlag) String() string {
 	return f.name
 }
 
-func (f JSONFlag) Fallback() *ldvalue.Value {
-	return &f.fallback
+func (f JSONFlag) Fallback() ldvalue.Value {
+	return f.fallback
 }
 
 func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {

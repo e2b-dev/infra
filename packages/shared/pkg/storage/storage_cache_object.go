@@ -38,7 +38,7 @@ func (c *CachedObjectProvider) Exists(ctx context.Context) (bool, error) {
 
 func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int64, e error) {
 	ctx, span := tracer.Start(ctx, "read object into writer")
-	func() {
+	defer func() {
 		recordError(span, e)
 		span.End()
 	}()
