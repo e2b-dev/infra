@@ -109,6 +109,7 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterInstance, e
 	if !found {
 		return nil, ErrTemplateBuilderNotFound
 	}
+
 	if instance.GetStatus() == infogrpc.ServiceInfoStatus_Unhealthy || !instance.IsBuilder() {
 		return nil, ErrTemplateBuilderNotFound
 	}
