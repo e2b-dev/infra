@@ -295,7 +295,13 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (e error) {
+	ctx, span := tracer.Start(ctx, "write to gcp from file system")
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
+
 	timer := googleWriteTimerFactory.Begin()
 
 	bucketName := g.storage.bucket.BucketName()

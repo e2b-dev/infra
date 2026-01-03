@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/sync/errgroup"
@@ -79,6 +80,10 @@ func createRetryableClient(ctx context.Context, config RetryConfig) *retryableht
 
 		return backoff
 	}
+
+	// add otel instrumentation
+	originalTransport := client.HTTPClient.Transport
+	client.HTTPClient.Transport = otelhttp.NewTransport(originalTransport)
 
 	// Use zap logger
 	client.Logger = &leveledLogger{
