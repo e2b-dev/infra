@@ -33,6 +33,13 @@ const (
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
 	gcloudDefaultUploadConcurrency = 16
+
+	gcsOperationAttr                           = "operation"
+	gcsOperationAttrReadAt                     = "ReadAt"
+	gcsOperationAttrWrite                      = "Write"
+	gcsOperationAttrWriteFromFileSystem        = "WriteFromFileSystem"
+	gcsOperationAttrWriteFromFileSystemOneShot = "WriteFromFileSystemOneShot"
+	gcsOperationAttrWriteTo                    = "WriteTo"
 )
 
 var (
@@ -225,21 +232,21 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	defer reader.Close()
 
 	for reader.Remain() > 0 {
-		nr, readErr := reader.Read(buff[n:])
+		nr, err := reader.Read(buff[n:])
 		n += nr
 
-		if readErr == nil {
+		if err == nil {
 			continue
 		}
 
-		if errors.Is(readErr, io.EOF) {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 
-		return n, fmt.Errorf("failed to read %q: %w", g.path, readErr)
+		return n, fmt.Errorf("failed to read %q: %w", g.path, err)
 	}
 
-	timer.End(ctx, int64(n))
+	timer.End(ctx, int64(n), attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
 
 	return n, nil
 }
@@ -248,7 +255,7 @@ func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte)
 	timer := googleWriteTimerFactory.Begin()
 	defer func() {
 		if e == nil {
-			timer.End(ctx, int64(n))
+			timer.End(ctx, int64(n), attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 		}
 	}()
 
@@ -290,7 +297,7 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 		return n, fmt.Errorf("failed to copy %q to buffer: %w", g.path, err)
 	}
 
-	timer.End(ctx, n)
+	timer.End(ctx, n, attribute.String(gcsOperationAttr, gcsOperationAttrWriteTo))
 
 	return n, nil
 }
@@ -325,7 +332,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 			return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
 		}
 
-		timer.End(ctx, int64(len(data)), attribute.String("method", "one-shot"))
+		timer.End(ctx, int64(len(data)), attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystemOneShot))
 
 		return nil
 	}
@@ -368,7 +375,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		zap.Int64("duration", time.Since(start).Milliseconds()),
 	)
 
-	timer.End(ctx, fileInfo.Size(), attribute.String("method", "multipart"))
+	timer.End(ctx, fileInfo.Size(), attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem))
 
 	return nil
 }
