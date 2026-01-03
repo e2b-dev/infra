@@ -175,8 +175,6 @@ func (c *CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io
 		span.End()
 	}()
 
-	cachedRead := cacheReadTimerFactory.Begin()
-
 	path := c.fullFilename()
 
 	var fp *os.File
@@ -191,8 +189,6 @@ func (c *CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io
 	if ignoreEOF(err) != nil {
 		return 0, fmt.Errorf("failed to copy cached file %s: %w", path, err)
 	}
-
-	cachedRead.End(ctx, count)
 
 	return count, nil
 }

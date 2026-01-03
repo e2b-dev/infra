@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
@@ -27,6 +28,21 @@ var (
 	ErrBufferTooSmall  = errors.New("buffer is too small")
 	ErrMultipleChunks  = errors.New("cannot read multiple chunks")
 	ErrBufferTooLarge  = errors.New("buffer is too large")
+)
+
+var (
+	cacheSlabReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
+		"orchestrator.storage.slab.nfs.read",
+		"Duration of NFS reads",
+		"Total NFS bytes read",
+		"Total NFS reads",
+	))
+	cacheSlabWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
+		"orchestrator.storage.slab.nfs.write",
+		"Duration of NFS writes",
+		"Total bytes written to NFS",
+		"Total writes to NFS",
+	))
 )
 
 type featureFlagsClient interface {
@@ -62,7 +78,7 @@ func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, 
 	// try to read from cache first
 	chunkPath := c.makeChunkFilename(offset)
 
-	readTimer := cacheReadTimerFactory.Begin()
+	readTimer := cacheSlabReadTimerFactory.Begin()
 	count, err := c.readAtFromCache(ctx, chunkPath, buff)
 	if ignoreEOF(err) == nil {
 		recordCacheRead(ctx, true, int64(count), cacheTypeSeekable, cacheOpReadAt)
@@ -253,6 +269,8 @@ func (c *CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int
 }
 
 func (c *CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) error {
+	writeTimer := cacheSlabWriteTimerFactory.Begin()
+
 	// Try to acquire lock for this chunk write to NFS cache
 	lockFile, err := lock.TryAcquireLock(ctx, chunkPath)
 	if err != nil {
@@ -272,8 +290,6 @@ func (c *CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, of
 				zap.Error(err))
 		}
 	}()
-
-	writeTimer := cacheWriteTimerFactory.Begin()
 
 	tempPath := c.makeTempChunkFilename(offset)
 
@@ -387,6 +403,8 @@ func (c *CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, o
 		span.End()
 	}()
 
+	writeTimer := cacheSlabWriteTimerFactory.Begin()
+
 	chunkPath := c.makeChunkFilename(offset)
 	span.SetAttributes(attribute.String("chunk_path", chunkPath))
 
@@ -397,11 +415,14 @@ func (c *CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, o
 	defer utils.Cleanup(ctx, "failed to close file", output.Close)
 
 	offsetReader := newOffsetReader(input, offset)
-	if _, err := io.CopyN(output, offsetReader, c.chunkSize); ignoreEOF(err) != nil {
+	count, err := io.CopyN(output, offsetReader, c.chunkSize)
+	if ignoreEOF(err) != nil {
 		safelyRemoveFile(ctx, chunkPath)
 
 		return fmt.Errorf("failed to copy chunk: %w", err)
 	}
+
+	writeTimer.End(ctx, count)
 
 	return nil
 }

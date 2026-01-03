@@ -15,28 +15,11 @@ import (
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
 	cacheFilePermissions = 0o600
 	cacheDirPermissions  = 0o700
-)
-
-var (
-	cacheReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
-		"orchestrator.storage.cache.read",
-		"Duration of cached reads",
-		"Total cached bytes read",
-		"Total cached reads",
-	))
-	cacheWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
-		"orchestrator.storage.cache.write",
-		"Duration of cache writes",
-		"Total bytes written to the cache",
-		"Total writes to the cache",
-	))
 )
 
 type CachedProvider struct {
