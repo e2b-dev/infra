@@ -36,7 +36,7 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 				Steps: sharedutils.ToPtr([]api.TemplateStep{
 					{
 						Type: "RUN",
-						Args: sharedutils.ToPtr([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils && sudo rm -rf /var/lib/apt/lists/*"}),
+						Args: sharedutils.ToPtr([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils openssh-client && sudo rm -rf /var/lib/apt/lists/*"}),
 					},
 				}),
 			},
@@ -857,4 +857,36 @@ func TestEgressFirewallDNSSpoofingNeutralized(t *testing.T) {
 	t.Log("  - /etc/hosts was modified to make google.com resolve to 1.1.1.1 (Cloudflare)")
 	t.Log("  - Firewall resolved google.com itself and redirected to a real Google IP")
 	t.Log("  - Response came from Google (server: gws), NOT Cloudflare - spoofing was bypassed!")
+}
+
+// TestNoNetworkConfig_SSHWorks tests that SSH connections work when no network config is set.
+// This is a regression test for the issue where the TCP firewall redirect rule would
+// break SSH connections even when no egress filtering was configured.
+// Expected: SSH connection to GitHub should succeed (TCP handshake completes),
+// though we'll get "Permission denied (publickey)" since we don't have valid credentials.
+func TestNoNetworkConfig_SSHWorks(t *testing.T) {
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	// Create sandbox WITHOUT any network configuration
+	// This tests the default behavior - all traffic should be allowed
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		// No network config - this is the key part of the test
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Test SSH connection to GitHub
+	// Expected output: "git@github.com: Permission denied (publickey)."
+	// This shows the TCP connection succeeded (SSH handshake completed),
+	// even though we don't have valid credentials for authentication.
+	t.Log("Testing SSH connection to github.com (port 22)...")
+	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+		"ssh", "-T", "-o", "StrictHostKeyChecking=accept-new",
+		"-o", "ConnectTimeout=5", "git@github.com")
+	require.Error(t, err, "Expected SSH command to exit with non-zero status due to lack of credentials")
+	require.Contains(t, output, "Permission denied (publickey)")
 }
