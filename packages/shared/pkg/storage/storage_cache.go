@@ -117,7 +117,7 @@ func ignoreEOF(err error) error {
 }
 
 func recordError(span trace.Span, err error) {
-	if err == nil {
+	if ignoreEOF(err) == nil {
 		return
 	}
 

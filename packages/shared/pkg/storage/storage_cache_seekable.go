@@ -46,7 +46,7 @@ type CachedSeekableObjectProvider struct {
 var _ SeekableObjectProvider = (*CachedSeekableObjectProvider)(nil)
 
 func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
-	ctx, span := tracer.Start(ctx, "read object into buffer at offset", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "read object at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int("buff_len", len(buff)),
 	))
@@ -54,6 +54,7 @@ func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, 
 		recordError(span, err)
 		span.End()
 	}()
+
 	if err := c.validateReadAtParams(int64(len(buff)), offset); err != nil {
 		return 0, err
 	}
@@ -89,7 +90,11 @@ func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, 
 	copy(shadowBuff, buff[:readCount])
 
 	c.goCtx(ctx, func(ctx context.Context) {
+		ctx, span := tracer.Start(ctx, "write chunk at offset back to cache")
+		defer span.End()
+
 		if err := c.writeChunkToCache(ctx, offset, chunkPath, shadowBuff); err != nil {
+			recordError(span, err)
 			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
 		}
 	})
@@ -99,7 +104,13 @@ func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, 
 	return readCount, err
 }
 
-func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
+func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (n int64, e error) {
+	ctx, span := tracer.Start(ctx, "get size of object")
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
+
 	size, err := c.readLocalSize(ctx)
 	if err == nil {
 		recordCacheRead(ctx, true, 8, cacheTypeSeekable, cacheOpSize)
@@ -115,7 +126,11 @@ func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) 
 	}
 
 	c.goCtx(ctx, func(ctx context.Context) {
+		ctx, span := tracer.Start(ctx, "write size of object to cache")
+		defer span.End()
+
 		if err := c.writeLocalSize(ctx, size); err != nil {
+			recordError(span, err)
 			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpSize, err)
 		}
 	})
@@ -125,11 +140,12 @@ func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) 
 	return size, nil
 }
 
-func (c *CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (err error) {
+func (c *CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (e error) {
 	ctx, span := tracer.Start(ctx, "write object from file system",
-		trace.WithAttributes(attribute.String("path", path)))
+		trace.WithAttributes(attribute.String("path", path)),
+	)
 	defer func() {
-		recordError(span, err)
+		recordError(span, e)
 		span.End()
 	}()
 
@@ -138,8 +154,13 @@ func (c *CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, 
 
 	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 		c.goCtx(ctx, func(ctx context.Context) {
+			ctx, span := tracer.Start(ctx, "write cache object from file system",
+				trace.WithAttributes(attribute.String("path", path)))
+			defer span.End()
+
 			size, err := c.createCacheBlocksFromFile(ctx, path)
 			if err != nil {
+				recordError(span, err)
 				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to create cache blocks: %w", err))
 
 				return
@@ -148,16 +169,13 @@ func (c *CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, 
 			recordCacheWrite(ctx, size, cacheTypeSeekable, cacheOpWriteFromFileSystem)
 
 			if err := c.writeLocalSize(ctx, size); err != nil {
+				recordError(span, err)
 				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to write local file size: %w", err))
 			}
 		})
 	}
 
-	if err := c.inner.WriteFromFileSystem(ctx, path); err != nil {
-		return fmt.Errorf("failed to write to remote storage: %w", err)
-	}
-
-	return nil
+	return c.inner.WriteFromFileSystem(ctx, path)
 }
 
 func (c *CachedSeekableObjectProvider) goCtx(ctx context.Context, fn func(context.Context)) {
@@ -176,7 +194,13 @@ func (c *CachedSeekableObjectProvider) makeTempChunkFilename(offset int64) strin
 	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
 }
 
-func (c *CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (int, error) {
+func (c *CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (n int, e error) {
+	ctx, span := tracer.Start(ctx, "read chunk at offset from cache")
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
+
 	fp, err := os.Open(chunkPath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %w", err)

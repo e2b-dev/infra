@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -37,9 +36,12 @@ func (c *CachedObjectProvider) Exists(ctx context.Context) (bool, error) {
 	return c.inner.Exists(ctx)
 }
 
-func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int64, err error) {
+func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int64, e error) {
 	ctx, span := tracer.Start(ctx, "read object into writer")
-	defer span.End()
+	func() {
+		recordError(span, e)
+		span.End()
+	}()
 
 	bytesRead, err := c.copyFullFileFromCache(ctx, dst)
 	if err == nil {
@@ -65,9 +67,13 @@ func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n in
 	data := buffer.Bytes()
 
 	c.goCtxWithoutCancel(ctx, func(ctx context.Context) {
+		ctx, span := tracer.Start(ctx, "write file back to cache")
+		defer span.End()
+
 		count, err := c.writeFileToCache(ctx, buffer)
 		if err != nil {
 			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteTo, err)
+			recordError(span, err)
 
 			return
 		}
@@ -88,7 +94,7 @@ func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n in
 // Write pushes data to the wrapped object provider, and optionally pushes the data to a fast ephemeral cache as well.
 // `p` is considered immutable, and won't change if we access it after the function returns.
 func (c *CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e error) {
-	ctx, span := tracer.Start(ctx, "write data to object", trace.WithAttributes(attribute.Int("size", len(p))))
+	ctx, span := tracer.Start(ctx, "write data to object")
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -96,11 +102,15 @@ func (c *CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e er
 
 	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 		c.goCtxWithoutCancel(ctx, func(ctx context.Context) {
+			ctx, span := tracer.Start(ctx, "write data to cache")
+			defer span.End()
+
 			count, err := c.writeFileToCache(
 				context.WithoutCancel(ctx),
 				bytes.NewReader(p),
 			)
 			if err != nil {
+				recordError(span, err)
 				recordCacheWriteError(ctx, cacheTypeObject, cacheOpWrite, err)
 			} else {
 				recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWrite)
@@ -112,8 +122,7 @@ func (c *CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e er
 }
 
 func (c *CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (e error) {
-	ctx, span := tracer.Start(ctx, "write to remote from filesystem",
-		trace.WithAttributes(attribute.String("path", path)))
+	ctx, span := tracer.Start(ctx, "write from filesystem to object")
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -128,8 +137,7 @@ func (c *CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path str
 			input, err := os.Open(path)
 			if err != nil {
 				recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteFromFileSystem, err)
-				span.RecordError(err)
-				span.SetStatus(codes.Error, err.Error())
+				recordError(span, err)
 
 				return
 			}
@@ -138,9 +146,7 @@ func (c *CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path str
 			count, err := c.writeFileToCache(ctx, input)
 			if err != nil {
 				recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteFromFileSystem, err)
-
-				span.RecordError(err)
-				span.SetStatus(codes.Error, err.Error())
+				recordError(span, err)
 
 				return
 			}
@@ -162,7 +168,13 @@ func (c *CachedObjectProvider) fullFilename() string {
 	return fmt.Sprintf("%s/content.bin", c.path)
 }
 
-func (c *CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.Writer) (int64, error) {
+func (c *CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.Writer) (n int64, e error) {
+	ctx, span := tracer.Start(ctx, "read cached object into writer")
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
+
 	cachedRead := cacheReadTimerFactory.Begin()
 
 	path := c.fullFilename()
@@ -186,32 +198,20 @@ func (c *CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io
 }
 
 func (c *CachedObjectProvider) writeFileToCache(ctx context.Context, input io.Reader) (int64, error) {
-	ctx, span := tracer.Start(ctx, "write file to cache")
-	defer span.End()
-
 	path := c.fullFilename()
 
 	output, err := lock.OpenFile(ctx, path)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-
 		return 0, fmt.Errorf("failed to acquire lock on file %s: %w", path, err)
 	}
 	defer utils.CleanupCtx(ctx, "failed to unlock file", output.Close)
 
 	count, err := io.Copy(output, input)
 	if ignoreEOF(err) != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-
 		return 0, fmt.Errorf("failed to write to cache file %s: %w", path, err)
 	}
 
 	if err := output.Commit(ctx); err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-
 		return 0, fmt.Errorf("failed to commit cache file %s: %w", path, err)
 	}
 
