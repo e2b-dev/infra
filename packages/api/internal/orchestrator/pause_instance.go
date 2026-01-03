@@ -70,7 +70,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return err
 	}
 
-	err = snapshotInstance(ctx, o, node, sbx, result.TemplateID, result.BuildID.String())
+	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
 	if errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
@@ -100,18 +100,13 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
+func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	client, childCtx, err := orch.GetClient(childCtx, sbx.ClusterID, sbx.NodeID)
-	if err != nil {
-		return fmt.Errorf("failed to get client '%s': %w", sbx.NodeID, err)
-	}
-
-	_, err = client.Sandbox.Pause(
-		node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID),
-		&orchestrator.SandboxPauseRequest{
+	client, childCtx := node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID)
+	_, err := client.Sandbox.Pause(
+		childCtx, &orchestrator.SandboxPauseRequest{
 			SandboxId:  sbx.SandboxID,
 			TemplateId: templateID,
 			BuildId:    buildID,

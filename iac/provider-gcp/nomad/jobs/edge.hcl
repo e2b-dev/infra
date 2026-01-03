@@ -110,10 +110,9 @@ job "client-proxy" {
         PROXY_PORT        = "${proxy_port}"
         ORCHESTRATOR_PORT = "${orchestrator_port}"
 
-        SD_ORCHESTRATOR_PROVIDER         = "NOMAD"
-        SD_ORCHESTRATOR_NOMAD_ENDPOINT   = "${nomad_endpoint}"
-        SD_ORCHESTRATOR_NOMAD_TOKEN      = "${nomad_token}"
-        SD_ORCHESTRATOR_NOMAD_JOB_PREFIX = "template-manager"
+        SD_ORCHESTRATOR_PROVIDER       = "NOMAD"
+        SD_ORCHESTRATOR_NOMAD_ENDPOINT = "${nomad_endpoint}"
+        SD_ORCHESTRATOR_NOMAD_TOKEN    = "${nomad_token}"
 
         ENVIRONMENT = "${environment}"
 

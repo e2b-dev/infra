@@ -1,4 +1,4 @@
-package logsloki
+package loki
 
 import (
 	"context"

@@ -21,9 +21,9 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -34,6 +34,7 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -59,7 +60,7 @@ type APIStore struct {
 	clickhouseStore      clickhouse.Clickhouse
 	accessTokenGenerator *sandbox.AccessTokenGenerator
 	featureFlags         *featureflags.Client
-	clustersPool         *edge.Pool
+	clusters             *clusters.Pool
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
@@ -111,7 +112,12 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		}
 	}
 
-	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, config)
+	queryLogsProvider, err := loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
+	if err != nil {
+		logger.L().Fatal(ctx, "error when getting logs query provider", zap.Error(err))
+	}
+
+	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, nomadClient, clickhouseStore, queryLogsProvider)
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}
@@ -126,7 +132,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		logger.L().Fatal(ctx, "Initializing access token generator failed", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clustersPool, featureFlags, accessTokenGenerator)
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
@@ -136,7 +142,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
-	templateManager, err := template_manager.New(sqlcDB, clustersPool, templateBuildsCache, templateCache, featureFlags)
+	templateManager, err := template_manager.New(sqlcDB, clusters, templateBuildsCache, templateCache, featureFlags)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Template manager client", zap.Error(err))
 	}
@@ -157,7 +163,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		templateSpawnCounter: templateSpawnCounter,
 		clickhouseStore:      clickhouseStore,
 		accessTokenGenerator: accessTokenGenerator,
-		clustersPool:         clustersPool,
+		clusters:             clusters,
 		featureFlags:         featureFlags,
 		redisClient:          redisClient,
 	}
@@ -206,6 +212,8 @@ func (a *APIStore) Close(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("closing auth cache: %w", err))
 		}
 	}
+
+	a.clusters.Close(ctx)
 
 	if err := a.sqlcDB.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))

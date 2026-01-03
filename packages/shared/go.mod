@@ -45,6 +45,7 @@ require (
 	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/hashicorp/go-retryablehttp v0.7.7
+	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/launchdarkly/go-sdk-common/v3 v3.3.0
 	github.com/launchdarkly/go-server-sdk/v7 v7.13.0
@@ -191,6 +192,7 @@ require (
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
 	github.com/hashicorp/consul/api v1.30.0 // indirect
+	github.com/hashicorp/cronexpr v1.1.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
@@ -203,7 +205,6 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hashicorp/memberlist v0.5.0 // indirect
-	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c // indirect
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect

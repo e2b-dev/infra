@@ -1,4 +1,4 @@
-package logger_provider
+package loki
 
 import (
 	"context"
@@ -10,10 +10,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs/logsloki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -21,11 +19,11 @@ type LokiQueryProvider struct {
 	client *loki.DefaultClient
 }
 
-func NewLokiQueryProvider(config cfg.Config) (*LokiQueryProvider, error) {
+func NewLokiQueryProvider(lokiURL string, lokiUser string, lokiPassword string) (*LokiQueryProvider, error) {
 	lokiClient := &loki.DefaultClient{
-		Address:  config.LokiURL,
-		Username: config.LokiUser,
-		Password: config.LokiPassword,
+		Address:  lokiURL,
+		Username: lokiUser,
+		Password: lokiPassword,
 	}
 
 	return &LokiQueryProvider{client: lokiClient}, nil
@@ -47,7 +45,7 @@ func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID strin
 		return make([]logs.LogEntry, 0), nil
 	}
 
-	lm, err := logsloki.ResponseMapper(ctx, res, offset, level)
+	lm, err := ResponseMapper(ctx, res, offset, level)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping build logs", err)
 		logger.L().Error(ctx, "error when mapping logs for template build", zap.Error(err), logger.WithBuildID(buildID))
@@ -73,7 +71,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string,
 		return make([]logs.LogEntry, 0), nil
 	}
 
-	lm, err := logsloki.ResponseMapper(ctx, res, 0, nil)
+	lm, err := ResponseMapper(ctx, res, 0, nil)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		logger.L().Error(ctx, "error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))

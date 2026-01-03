@@ -11,10 +11,10 @@ import (
 type SandboxInfo struct {
 	OrchestratorID string `json:"orchestrator_id"`
 	OrchestratorIP string `json:"orchestrator_ip"` // used only for cases where orchestrator is not registered in edge pool
-	ExecutionID    string `json:"execution_id"`
 
-	SandboxStartedAt        time.Time `json:"sandbox_started_at"`          // when sandbox was started
-	SandboxMaxLengthInHours int64     `json:"sandbox_max_length_in_hours"` // how long can sandbox can possibly run (in hours)
+	ExecutionID      string    `json:"execution_id"`
+	StartedAt        time.Time `json:"sandbox_started_at"`          // when sandbox was started
+	MaxLengthInHours int64     `json:"sandbox_max_length_in_hours"` // how long can sandbox can possibly run (in hours)
 }
 
 type SandboxesCatalog interface {

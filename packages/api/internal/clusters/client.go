@@ -1,4 +1,4 @@
-package grpc
+package clusters
 
 import (
 	"fmt"
@@ -21,7 +21,7 @@ type GRPCClient struct {
 func (a *GRPCClient) Close() error {
 	err := a.Connection.Close()
 	if err != nil {
-		return fmt.Errorf("failed to close connection: %w", err)
+		return fmt.Errorf("failed to close Connection: %w", err)
 	}
 
 	return nil

@@ -62,7 +62,7 @@ func (a *APIStore) sendOrchestratorRequest(ctx context.Context, serviceInstanceI
 	logger := a.logger.With(l.WithServiceInstanceID(serviceInstanceID))
 
 	// try to find orchestrator node first
-	o, ok := a.orchestratorPool.GetOrchestrator(serviceInstanceID)
+	o, ok := a.instancesPool.GetOrchestrator(serviceInstanceID)
 	if !ok {
 		return errors.New("orchestrator instance doesn't found")
 	}
@@ -73,7 +73,7 @@ func (a *APIStore) sendOrchestratorRequest(ctx context.Context, serviceInstanceI
 	defer findCtxCancel()
 
 	orchestratorStatus := ApiNodeToOrchestratorStateMapper[status]
-	_, err := o.GetClient().Info.ServiceStatusOverride(
+	_, err := o.GetClient().ServiceStatusOverride(
 		findCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: orchestratorStatus},
 	)
 	if err != nil {

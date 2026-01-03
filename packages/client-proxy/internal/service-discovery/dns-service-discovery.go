@@ -14,7 +14,7 @@ import (
 
 type DnsServiceDiscovery struct {
 	logger   logger.Logger
-	entries  *smap.Map[ServiceDiscoveryItem]
+	entries  *smap.Map[DiscoveredInstance]
 	resolver string
 
 	hosts       []string
@@ -40,7 +40,7 @@ func NewDnsServiceDiscovery(ctx context.Context, logger logger.Logger, hosts []s
 		resolver:    resolver,
 		servicePort: servicePort,
 
-		entries: smap.New[ServiceDiscoveryItem](),
+		entries: smap.New[DiscoveredInstance](),
 	}
 
 	go func() { sd.keepInSync(ctx) }()
@@ -48,9 +48,9 @@ func NewDnsServiceDiscovery(ctx context.Context, logger logger.Logger, hosts []s
 	return sd
 }
 
-func (sd *DnsServiceDiscovery) ListNodes(_ context.Context) ([]ServiceDiscoveryItem, error) {
+func (sd *DnsServiceDiscovery) ListInstances(_ context.Context) ([]DiscoveredInstance, error) {
 	entries := sd.entries.Items()
-	items := make([]ServiceDiscoveryItem, 0)
+	items := make([]DiscoveredInstance, 0)
 
 	for _, item := range entries {
 		items = append(items, item)
@@ -118,13 +118,13 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 	for ip := range ips {
 		key := fmt.Sprintf("%s:%d", ip, sd.servicePort)
 		sd.entries.Insert(
-			key, ServiceDiscoveryItem{NodeIP: ip, NodePort: sd.servicePort},
+			key, DiscoveredInstance{InstanceIPAddress: ip, InstancePort: sd.servicePort},
 		)
 	}
 
 	// remove entries that are no longer in DNS response
 	for key, item := range sd.entries.Items() {
-		if _, ok := ips[item.NodeIP]; !ok {
+		if _, ok := ips[item.InstanceIPAddress]; !ok {
 			sd.entries.Remove(key)
 		}
 	}

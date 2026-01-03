@@ -26,7 +26,7 @@ func (n *Node) Status() api.NodeStatus {
 		return n.status
 	}
 
-	switch n.client.Connection.GetState() {
+	switch n.connection.Connection.GetState() {
 	case connectivity.Shutdown:
 		return api.NodeStatusUnhealthy
 	case connectivity.TransientFailure:
