@@ -59,8 +59,8 @@ func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n in
 
 	buffer := bytes.NewBuffer(make([]byte, 0, writeToInitialBufferSize))
 
-	if _, err := c.inner.WriteTo(ctx, buffer); ignoreEOF(err) != nil {
-		return 0, err
+	if count, err := c.inner.WriteTo(ctx, buffer); ignoreEOF(err) != nil {
+		return count, err
 	}
 
 	// store the byte slice before calling `buffer.Read`, which moves the offset.
@@ -83,7 +83,7 @@ func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n in
 
 	written, err := dst.Write(data)
 	if ignoreEOF(err) != nil {
-		return 0, fmt.Errorf("failed to write object: %w", err)
+		return int64(written), fmt.Errorf("failed to write object: %w", err)
 	}
 
 	recordCacheRead(ctx, false, int64(written), cacheTypeObject, cacheOpWriteTo)
