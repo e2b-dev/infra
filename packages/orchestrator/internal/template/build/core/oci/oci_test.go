@@ -52,6 +52,7 @@ func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
 }
 
 func TestCreateExportLayersOrder(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 
 	logger := logger.NewNopLogger()
@@ -130,6 +131,7 @@ func authHandler(handler http.Handler, username, password string) http.Handler {
 }
 
 func TestGetPublicImageWithGeneralAuth(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 
 	// Create a test image
@@ -166,6 +168,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 	})
 
 	t.Run("successful auth and pull", func(t *testing.T) {
+		t.Parallel()
 		reg := registry.New()
 
 		// Wrap the registry with authentication handler
@@ -216,6 +219,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 	})
 
 	t.Run("incorrect auth", func(t *testing.T) {
+		t.Parallel()
 		reg := registry.New()
 
 		// Wrap the registry with authentication handler
@@ -261,6 +265,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 	})
 
 	t.Run("works without auth for public registry", func(t *testing.T) {
+		t.Parallel()
 		// Create a mock registry without authentication (public)
 		reg := registry.New()
 

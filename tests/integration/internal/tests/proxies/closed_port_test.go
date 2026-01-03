@@ -21,6 +21,7 @@ import (
 )
 
 func TestSandboxProxyWorkingPort(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -66,6 +67,7 @@ func TestSandboxProxyWorkingPort(t *testing.T) {
 }
 
 func TestSandboxProxyClosedPort(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 

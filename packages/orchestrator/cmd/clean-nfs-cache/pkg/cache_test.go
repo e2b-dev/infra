@@ -11,6 +11,7 @@ import (
 )
 
 func TestGetRandomFile(t *testing.T) {
+	t.Parallel()
 	testCases := map[string]struct {
 		file   string
 		dirs   []string
@@ -34,6 +35,7 @@ func TestGetRandomFile(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			tempDir := t.TempDir()
 
 			fullFilePath := filepath.Join(tempDir, tc.file)
@@ -67,6 +69,7 @@ func TestGetRandomFile(t *testing.T) {
 	}
 
 	t.Run("empty dir", func(t *testing.T) {
+		t.Parallel()
 		tempDir := t.TempDir()
 
 		c := NewListingCache(tempDir)

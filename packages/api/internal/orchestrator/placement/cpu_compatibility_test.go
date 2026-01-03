@@ -13,6 +13,7 @@ import (
 // Tests for isNodeCPUCompatible
 
 func TestIsNodeCPUCompatible_NoBuildRequirements(t *testing.T) {
+	t.Parallel()
 	// When build has no CPU requirements, all nodes should be compatible
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "6"))
 	buildCPU := machineinfo.MachineInfo{} // Empty - no requirements
@@ -22,6 +23,7 @@ func TestIsNodeCPUCompatible_NoBuildRequirements(t *testing.T) {
 }
 
 func TestIsNodeCPUCompatible_ExactMatch(t *testing.T) {
+	t.Parallel()
 	// Node and build have matching CPU info
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "6"))
 	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "6"}
@@ -31,6 +33,7 @@ func TestIsNodeCPUCompatible_ExactMatch(t *testing.T) {
 }
 
 func TestIsNodeCPUCompatible_ArchitectureMismatch(t *testing.T) {
+	t.Parallel()
 	// Different CPU architectures
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("aarch64", "ARM", "8"))
 	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "6"}
@@ -40,6 +43,7 @@ func TestIsNodeCPUCompatible_ArchitectureMismatch(t *testing.T) {
 }
 
 func TestIsNodeCPUCompatible_FamilyMismatch(t *testing.T) {
+	t.Parallel()
 	// Same architecture but different family
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "AMD", "23"))
 	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "6"}
@@ -49,6 +53,7 @@ func TestIsNodeCPUCompatible_FamilyMismatch(t *testing.T) {
 }
 
 func TestIsNodeCPUCompatible_NodeHasNoCPUInfo(t *testing.T) {
+	t.Parallel()
 	// Node without CPU info, build requires specific CPU
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4) // No CPU info
 	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "6"}
@@ -58,6 +63,7 @@ func TestIsNodeCPUCompatible_NodeHasNoCPUInfo(t *testing.T) {
 }
 
 func TestIsNodeCPUCompatible_BothEmpty(t *testing.T) {
+	t.Parallel()
 	// Both node and build have no CPU info
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4) // No CPU info
 	buildCPU := machineinfo.MachineInfo{}                               // No requirements
@@ -67,6 +73,7 @@ func TestIsNodeCPUCompatible_BothEmpty(t *testing.T) {
 }
 
 func TestIsNodeCPUCompatible_ModelMismatch(t *testing.T) {
+	t.Parallel()
 	// Same architecture and family but different CPU model
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "6"))
 	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "7"}
@@ -76,6 +83,7 @@ func TestIsNodeCPUCompatible_ModelMismatch(t *testing.T) {
 }
 
 func TestIsNodeCPUCompatible_ModelMatch_DifferentGenerations(t *testing.T) {
+	t.Parallel()
 	// Test that different Intel generations (model numbers) are incompatible
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "85")) // Skylake
 	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "143"}                   // Alder Lake
@@ -85,6 +93,7 @@ func TestIsNodeCPUCompatible_ModelMatch_DifferentGenerations(t *testing.T) {
 }
 
 func TestIsNodeCPUCompatible_AllFieldsMatch(t *testing.T) {
+	t.Parallel()
 	// Complete match including architecture, family, and model
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "85"))
 	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "85"}

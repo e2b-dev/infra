@@ -37,6 +37,7 @@ var simpleBase = []*BuildMap{
 }
 
 func TestMergeMappingsRemoveEmpty(t *testing.T) {
+	t.Parallel()
 	diff := []*BuildMap{
 		{
 			Offset:  0,
@@ -55,6 +56,7 @@ func TestMergeMappingsRemoveEmpty(t *testing.T) {
 }
 
 func TestMergeMappingsBaseBeforeDiffNoOverlap(t *testing.T) {
+	t.Parallel()
 	diff := []*BuildMap{
 		{
 			Offset:  7 * blockSize,
@@ -94,6 +96,7 @@ func TestMergeMappingsBaseBeforeDiffNoOverlap(t *testing.T) {
 }
 
 func TestMergeMappingsDiffBeforeBaseNoOverlap(t *testing.T) {
+	t.Parallel()
 	diff := []*BuildMap{
 		{
 			Offset:  0,
@@ -133,6 +136,7 @@ func TestMergeMappingsDiffBeforeBaseNoOverlap(t *testing.T) {
 }
 
 func TestMergeMappingsBaseInsideDiff(t *testing.T) {
+	t.Parallel()
 	diff := []*BuildMap{
 		{
 			Offset:  1 * blockSize,
@@ -167,6 +171,7 @@ func TestMergeMappingsBaseInsideDiff(t *testing.T) {
 }
 
 func TestMergeMappingsDiffInsideBase(t *testing.T) {
+	t.Parallel()
 	diff := []*BuildMap{
 		{
 			Offset:  3 * blockSize,
@@ -211,6 +216,7 @@ func TestMergeMappingsDiffInsideBase(t *testing.T) {
 }
 
 func TestMergeMappingsBaseAfterDiffWithOverlap(t *testing.T) {
+	t.Parallel()
 	diff := []*BuildMap{
 		{
 			Offset:  1 * blockSize,
@@ -250,6 +256,7 @@ func TestMergeMappingsBaseAfterDiffWithOverlap(t *testing.T) {
 }
 
 func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
+	t.Parallel()
 	diff := []*BuildMap{
 		{
 			Offset:  3 * blockSize,
@@ -289,11 +296,13 @@ func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 }
 
 func TestNormalizeMappingsEmptySlice(t *testing.T) {
+	t.Parallel()
 	m := NormalizeMappings([]*BuildMap{})
 	assert.Empty(t, m)
 }
 
 func TestNormalizeMappingsSingleMapping(t *testing.T) {
+	t.Parallel()
 	input := []*BuildMap{
 		{
 			Offset:             0,
@@ -315,6 +324,7 @@ func TestNormalizeMappingsSingleMapping(t *testing.T) {
 }
 
 func TestNormalizeMappingsNoAdjacentSameBuildId(t *testing.T) {
+	t.Parallel()
 	id1 := uuid.New()
 	id2 := uuid.New()
 	id3 := uuid.New()
@@ -352,6 +362,7 @@ func TestNormalizeMappingsNoAdjacentSameBuildId(t *testing.T) {
 }
 
 func TestNormalizeMappingsTwoAdjacentSameBuildId(t *testing.T) {
+	t.Parallel()
 	input := []*BuildMap{
 		{
 			Offset:             0,
@@ -380,6 +391,7 @@ func TestNormalizeMappingsTwoAdjacentSameBuildId(t *testing.T) {
 }
 
 func TestNormalizeMappingsAllSameBuildId(t *testing.T) {
+	t.Parallel()
 	input := []*BuildMap{
 		{
 			Offset:             0,
@@ -420,6 +432,7 @@ func TestNormalizeMappingsAllSameBuildId(t *testing.T) {
 }
 
 func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
+	t.Parallel()
 	id1 := uuid.New()
 	id2 := uuid.New()
 
@@ -465,6 +478,7 @@ func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
 }
 
 func TestNormalizeMappingsAlternatingBuildIds(t *testing.T) {
+	t.Parallel()
 	id1 := uuid.New()
 	id2 := uuid.New()
 
@@ -509,6 +523,7 @@ func TestNormalizeMappingsAlternatingBuildIds(t *testing.T) {
 }
 
 func TestNormalizeMappingsThreeConsecutiveSameBuildId(t *testing.T) {
+	t.Parallel()
 	input := []*BuildMap{
 		{
 			Offset:             0,
@@ -543,6 +558,7 @@ func TestNormalizeMappingsThreeConsecutiveSameBuildId(t *testing.T) {
 }
 
 func TestNormalizeMappingsMixedPattern(t *testing.T) {
+	t.Parallel()
 	id1 := uuid.New()
 	id2 := uuid.New()
 	id3 := uuid.New()
@@ -607,6 +623,7 @@ func TestNormalizeMappingsMixedPattern(t *testing.T) {
 }
 
 func TestNormalizeMappingsZeroLengthMapping(t *testing.T) {
+	t.Parallel()
 	input := []*BuildMap{
 		{
 			Offset:             0,
@@ -641,6 +658,7 @@ func TestNormalizeMappingsZeroLengthMapping(t *testing.T) {
 }
 
 func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
+	t.Parallel()
 	input := []*BuildMap{
 		{
 			Offset:             0,

@@ -13,6 +13,7 @@ import (
 )
 
 func TestKeyGenerationAlgorithmIsStable(t *testing.T) {
+	t.Parallel()
 	apiToken := "secret-access-token"
 	api := &API{accessToken: &apiToken}
 
@@ -34,6 +35,7 @@ func TestKeyGenerationAlgorithmIsStable(t *testing.T) {
 }
 
 func TestKeyGenerationAlgorithmWithoutExpirationIsStable(t *testing.T) {
+	t.Parallel()
 	apiToken := "secret-access-token"
 	api := &API{accessToken: &apiToken}
 

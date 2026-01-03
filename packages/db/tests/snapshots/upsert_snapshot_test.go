@@ -170,6 +170,7 @@ func getEnvBuildByID(t *testing.T, ctx context.Context, db *client.Client, build
 }
 
 func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	client := testutils.SetupDatabase(t)
 	ctx := context.Background()
@@ -253,6 +254,7 @@ func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 }
 
 func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	client := testutils.SetupDatabase(t)
 	ctx := context.Background()

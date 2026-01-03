@@ -8,7 +8,9 @@ import (
 )
 
 func TestParseFilters(t *testing.T) {
+	t.Parallel()
 	t.Run("happy path", func(t *testing.T) {
+		t.Parallel()
 		testCases := map[string]struct {
 			input    string
 			expected map[string]string
@@ -30,6 +32,8 @@ func TestParseFilters(t *testing.T) {
 
 		for name, testCase := range testCases {
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
 				actual, err := parseFilters(testCase.input)
 				require.NoError(t, err)
 				assert.Equal(t, testCase.expected, actual)
@@ -38,6 +42,8 @@ func TestParseFilters(t *testing.T) {
 	})
 
 	t.Run("sad path", func(t *testing.T) {
+		t.Parallel()
+
 		testCases := map[string]struct {
 			input  string
 			errMsg string
@@ -62,6 +68,8 @@ func TestParseFilters(t *testing.T) {
 
 		for name, testCase := range testCases {
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
 				_, err := parseFilters(testCase.input)
 				assert.EqualError(t, err, testCase.errMsg)
 			})

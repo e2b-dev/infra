@@ -12,6 +12,7 @@ import (
 )
 
 func TestDeserialize(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		input          string
@@ -122,6 +123,7 @@ func TestDeserialize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			reader := strings.NewReader(tt.input)
 			result, err := deserialize(reader)
 
@@ -148,6 +150,7 @@ func TestDeserialize(t *testing.T) {
 }
 
 func TestDeserialize_ReadError(t *testing.T) {
+	t.Parallel()
 	// Create a reader that always returns an error
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 
@@ -158,6 +161,7 @@ func TestDeserialize_ReadError(t *testing.T) {
 }
 
 func TestDeserialize_VersionEdgeCases(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		input           string
@@ -193,6 +197,7 @@ func TestDeserialize_VersionEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			reader := strings.NewReader(tt.input)
 			result, err := deserialize(reader)
 

@@ -16,9 +16,11 @@ import (
 )
 
 func TestSandboxResume(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	t.Run("regular resume", func(t *testing.T) {
+		t.Parallel()
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
 		sbxId := sbx.SandboxID
@@ -43,6 +45,7 @@ func TestSandboxResume(t *testing.T) {
 	})
 
 	t.Run("concurrent resumes", func(t *testing.T) {
+		t.Parallel()
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 		sbxId := sbx.SandboxID
 
@@ -78,6 +81,7 @@ func TestSandboxResume(t *testing.T) {
 	})
 
 	t.Run("resume killed sandbox", func(t *testing.T) {
+		t.Parallel()
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 		sbxId := sbx.SandboxID
@@ -94,6 +98,7 @@ func TestSandboxResume(t *testing.T) {
 	})
 
 	t.Run("resume killed sandbox", func(t *testing.T) {
+		t.Parallel()
 		c := setup.GetAPIClient()
 
 		// Create a sandbox with auto-pause disabled
@@ -117,6 +122,7 @@ func TestSandboxResume(t *testing.T) {
 	})
 
 	t.Run("concurrent resumes - not returning early", func(t *testing.T) {
+		t.Parallel()
 		c := setup.GetAPIClient()
 
 		// Create a sandbox with auto-pause disabled
@@ -165,6 +171,7 @@ func TestSandboxResume(t *testing.T) {
 }
 
 func TestSandboxResume_CrossTeamAccess_Paused(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	db := setup.GetTestDBClient(t)
 
@@ -184,6 +191,7 @@ func TestSandboxResume_CrossTeamAccess_Paused(t *testing.T) {
 }
 
 func TestSandboxResume_CrossTeamAccess_Running(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	db := setup.GetTestDBClient(t)
 

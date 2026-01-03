@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetTargetFromRequest(t *testing.T) {
+func TestGetTargetFromRequest(t *testing.T) { //nolint:tparallel // cannot call t.Setenv with t.Parallel
 	t.Setenv("ENVIRONMENT", "local")
 
 	getTargetFromRequest := GetTargetFromRequest(true)
@@ -128,6 +128,7 @@ func TestGetTargetFromRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := &http.Request{
 				Host:   tt.host,
 				Header: tt.headers,

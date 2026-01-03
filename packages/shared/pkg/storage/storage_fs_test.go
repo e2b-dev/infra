@@ -22,6 +22,7 @@ func newTempProvider(t *testing.T) *FileSystemStorageProvider {
 }
 
 func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
+	t.Parallel()
 	p := newTempProvider(t)
 	ctx := t.Context()
 
@@ -48,6 +49,7 @@ func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
 }
 
 func TestWriteFromFileSystem(t *testing.T) {
+	t.Parallel()
 	p := newTempProvider(t)
 	ctx := t.Context()
 
@@ -67,6 +69,7 @@ func TestWriteFromFileSystem(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
+	t.Parallel()
 	p := newTempProvider(t)
 	ctx := t.Context()
 
@@ -90,6 +93,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestDeleteObjectsWithPrefix(t *testing.T) {
+	t.Parallel()
 	p := newTempProvider(t)
 	ctx := t.Context()
 
@@ -116,6 +120,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 }
 
 func TestWriteToNonExistentObject(t *testing.T) {
+	t.Parallel()
 	p := newTempProvider(t)
 
 	ctx := t.Context()

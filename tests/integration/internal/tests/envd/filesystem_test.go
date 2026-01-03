@@ -24,8 +24,9 @@ const (
 )
 
 func TestListDir(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	t.Cleanup(cancel)
 
 	c := setup.GetAPIClient()
 	sbx := utils.SetupSandboxWithCleanup(t, c)
@@ -81,6 +82,7 @@ func TestListDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := connect.NewRequest(&filesystem.ListDirRequest{
 				Path:  testFolder,
 				Depth: tt.depth,
@@ -103,6 +105,7 @@ func TestListDir(t *testing.T) {
 }
 
 func TestFilePermissions(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -144,6 +147,7 @@ func TestFilePermissions(t *testing.T) {
 }
 
 func TestStat(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -186,6 +190,7 @@ func TestStat(t *testing.T) {
 }
 
 func TestListDirFileEntry(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -232,6 +237,7 @@ func TestListDirFileEntry(t *testing.T) {
 }
 
 func TestListDirEntry(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -275,6 +281,7 @@ func TestListDirEntry(t *testing.T) {
 }
 
 func TestListDirMixedEntries(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -338,6 +345,7 @@ func TestListDirMixedEntries(t *testing.T) {
 }
 
 func TestRelativePath(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

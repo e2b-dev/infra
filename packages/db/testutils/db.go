@@ -43,11 +43,10 @@ func SetupDatabase(t *testing.T) *db.Client {
 	require.NoError(t, err, "Failed to get connection string")
 
 	// Setup environment and run migrations
-	t.Setenv("POSTGRES_CONNECTION_STRING", connStr)
 	runDatabaseMigrations(t, connStr)
 
 	// Create database client
-	sqlcClient, err := db.NewClient(t.Context())
+	sqlcClient, err := db.NewClientFromConnectionString(t.Context(), connStr)
 	require.NoError(t, err, "Failed to create sqlc client")
 
 	// Register cleanup

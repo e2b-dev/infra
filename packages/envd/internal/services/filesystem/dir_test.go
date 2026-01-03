@@ -124,6 +124,8 @@ func TestListDirNonExistingPath(t *testing.T) {
 }
 
 func TestListDirRelativePath(t *testing.T) {
+	t.Parallel()
+
 	// Setup temp root and user
 	u, err := user.Current()
 	require.NoError(t, err)

@@ -36,6 +36,10 @@ func WithMinIdle(minIdle int32) Option {
 func NewClient(ctx context.Context, options ...Option) (*Client, error) {
 	databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
 
+	return NewClientFromConnectionString(ctx, databaseURL, options...)
+}
+
+func NewClientFromConnectionString(ctx context.Context, databaseURL string, options ...Option) (*Client, error) {
 	// Parse the connection pool configuration
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {

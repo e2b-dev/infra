@@ -10,7 +10,9 @@ import (
 )
 
 func TestMaskKey(t *testing.T) {
+	t.Parallel()
 	t.Run("succeeds: value longer than suffix length", func(t *testing.T) {
+		t.Parallel()
 		masked, err := MaskKey("test_", "1234567890")
 		require.NoError(t, err)
 		assert.Equal(t, "test_", masked.Prefix)
@@ -19,6 +21,7 @@ func TestMaskKey(t *testing.T) {
 	})
 
 	t.Run("succeeds: empty prefix, value longer than suffix length", func(t *testing.T) {
+		t.Parallel()
 		masked, err := MaskKey("", "1234567890")
 		require.NoError(t, err)
 		assert.Empty(t, masked.Prefix)
@@ -27,12 +30,14 @@ func TestMaskKey(t *testing.T) {
 	})
 
 	t.Run("error: value length less than suffix length", func(t *testing.T) {
+		t.Parallel()
 		_, err := MaskKey("test", "123")
 		require.Error(t, err)
 		assert.EqualError(t, err, fmt.Sprintf("mask value length is less than identifier suffix length (%d)", identifierValueSuffixLength))
 	})
 
 	t.Run("error: value length equals suffix length", func(t *testing.T) {
+		t.Parallel()
 		_, err := MaskKey("test", "1234")
 		require.Error(t, err)
 		assert.EqualError(t, err, fmt.Sprintf("mask value length is equal to identifier suffix length (%d), which would expose the entire identifier in the mask", identifierValueSuffixLength))
@@ -40,9 +45,11 @@ func TestMaskKey(t *testing.T) {
 }
 
 func TestGenerateKey(t *testing.T) {
+	t.Parallel()
 	keyLength := 40
 
 	t.Run("succeeds", func(t *testing.T) {
+		t.Parallel()
 		key, err := GenerateKey("test_")
 		require.NoError(t, err)
 		assert.Regexp(t, "^test_.*", key.PrefixedRawValue)
@@ -54,6 +61,7 @@ func TestGenerateKey(t *testing.T) {
 	})
 
 	t.Run("no prefix", func(t *testing.T) {
+		t.Parallel()
 		key, err := GenerateKey("")
 		require.NoError(t, err)
 		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(keyLength)+"}$", key.PrefixedRawValue)
@@ -66,6 +74,7 @@ func TestGenerateKey(t *testing.T) {
 }
 
 func TestGetMaskedIdentifierProperties(t *testing.T) {
+	t.Parallel()
 	type testCase struct {
 		name              string
 		prefix            string
@@ -136,6 +145,7 @@ func TestGetMaskedIdentifierProperties(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := MaskKey(tc.prefix, tc.value)
 
 			if tc.expectedErrString != "" {

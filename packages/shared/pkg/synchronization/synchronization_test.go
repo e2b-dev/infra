@@ -91,6 +91,7 @@ func newSynchronizer(ctx context.Context, store Store[string, string]) *Synchron
 }
 
 func TestSynchronize_InsertAndRemove(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 
 	// Start with empty pool; source has a & b.

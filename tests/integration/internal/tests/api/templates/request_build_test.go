@@ -14,6 +14,7 @@ import (
 )
 
 func TestRequestTemplateBuild(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
@@ -25,6 +26,7 @@ func TestRequestTemplateBuild(t *testing.T) {
 }
 
 func TestRequestTemplateTooLowCPU(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
@@ -37,6 +39,7 @@ func TestRequestTemplateTooLowCPU(t *testing.T) {
 }
 
 func TestRequestTemplateTooLowRAM(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
@@ -49,6 +52,7 @@ func TestRequestTemplateTooLowRAM(t *testing.T) {
 }
 
 func TestRequestTemplateTooHighCPU(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
@@ -61,6 +65,7 @@ func TestRequestTemplateTooHighCPU(t *testing.T) {
 }
 
 func TestRequestTemplateTooHighMemory(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
@@ -73,6 +78,7 @@ func TestRequestTemplateTooHighMemory(t *testing.T) {
 }
 
 func TestRequestTemplateMemoryNonDivisibleBy2(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{

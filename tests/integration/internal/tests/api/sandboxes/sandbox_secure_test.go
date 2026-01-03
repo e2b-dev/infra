@@ -14,6 +14,7 @@ import (
 )
 
 func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -52,6 +53,7 @@ func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
 }
 
 func TestCreateSandboxWithDisabledPublicTrafficAndDisabledEnvdSecure(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

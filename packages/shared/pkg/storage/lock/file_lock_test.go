@@ -11,6 +11,7 @@ import (
 )
 
 func TestTryAcquireLock_Success(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	tmpDir := t.TempDir()
 	testPath := filepath.Join(tmpDir, "test-resource-1")
@@ -39,6 +40,7 @@ func TestTryAcquireLock_Success(t *testing.T) {
 }
 
 func TestTryAcquireLock_AlreadyHeld(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	tmpDir := t.TempDir()
 	testPath := filepath.Join(tmpDir, "test-resource-2")
@@ -60,6 +62,7 @@ func TestTryAcquireLock_AlreadyHeld(t *testing.T) {
 }
 
 func TestTryAcquireLock_StaleLock(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	tmpDir := t.TempDir()
 	testPath := filepath.Join(tmpDir, "test-resource-3")
@@ -91,12 +94,14 @@ func TestTryAcquireLock_StaleLock(t *testing.T) {
 }
 
 func TestReleaseLock_NilFile(t *testing.T) {
+	t.Parallel()
 	// Should not panic or error when releasing nil file
 	err := ReleaseLock(t.Context(), nil)
 	require.NoError(t, err)
 }
 
 func TestGetLockFilePath_Consistency(t *testing.T) {
+	t.Parallel()
 	testPath := "/tmp/test-key"
 
 	// Same path should always produce the same lock file path
@@ -109,6 +114,7 @@ func TestGetLockFilePath_Consistency(t *testing.T) {
 }
 
 func TestGetLockFilePath_DifferentPaths(t *testing.T) {
+	t.Parallel()
 	path1 := "/tmp/resource-1"
 	path2 := "/tmp/resource-2"
 

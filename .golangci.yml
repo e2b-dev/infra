@@ -45,7 +45,6 @@ linters:
     - noinlineerr
     - nonamedreturns
     - nosprintfhostport
-    - paralleltest
     - perfsprint
     - prealloc
     - predeclared

@@ -12,6 +12,7 @@ import (
 )
 
 func TestSimpleCases(t *testing.T) {
+	t.Parallel()
 	testCases := map[string]func(string) string{
 		"both newlines":               func(s string) string { return s },
 		"no newline prefix":           func(s string) string { return strings.TrimPrefix(s, "\n") },
@@ -21,6 +22,7 @@ func TestSimpleCases(t *testing.T) {
 
 	for name, preprocessor := range testCases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			tempDir := t.TempDir()
 
 			value := `
@@ -48,6 +50,7 @@ func TestSimpleCases(t *testing.T) {
 }
 
 func TestShouldSetSystemTime(t *testing.T) {
+	t.Parallel()
 	sandboxTime := time.Now()
 
 	tests := []struct {
@@ -104,6 +107,7 @@ func TestShouldSetSystemTime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := shouldSetSystemTime(tt.hostTime, sandboxTime)
 			assert.Equal(t, tt.want, got)
 		})

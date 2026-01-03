@@ -20,6 +20,7 @@ var (
 )
 
 func Test_server_List(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		in1 *emptypb.Empty
 	}
@@ -66,6 +67,7 @@ func Test_server_List(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			s := &Server{
 				sandboxes: sandbox.NewSandboxesMap(),
 				info:      &service.ServiceInfo{},

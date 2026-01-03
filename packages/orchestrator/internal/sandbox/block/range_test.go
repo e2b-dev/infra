@@ -29,6 +29,7 @@ func getOffsets(start, end int64, blockSize int64) iter.Seq[int64] {
 }
 
 func TestRange_End(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		start    int64
@@ -63,6 +64,7 @@ func TestRange_End(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			r := Range{
 				Start: tt.start,
 				Size:  tt.size,
@@ -73,6 +75,7 @@ func TestRange_End(t *testing.T) {
 }
 
 func TestNewRange(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		start    int64
@@ -110,6 +113,7 @@ func TestNewRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			r := NewRange(tt.start, tt.size)
 			assert.Equal(t, tt.expected, r)
 		})
@@ -117,6 +121,7 @@ func TestNewRange(t *testing.T) {
 }
 
 func TestNewRangeFromBlocks(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		startIdx       int64
@@ -178,6 +183,7 @@ func TestNewRangeFromBlocks(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			r := NewRangeFromBlocks(tt.startIdx, tt.numberOfBlocks, tt.blockSize)
 			assert.Equal(t, tt.expected, r)
 		})
@@ -185,6 +191,7 @@ func TestNewRangeFromBlocks(t *testing.T) {
 }
 
 func TestRange_Offsets(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		range_    Range
@@ -249,6 +256,7 @@ func TestRange_Offsets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			offsets := slices.Collect(rangeOffsets(&tt.range_, tt.blockSize))
 			if len(tt.expected) == 0 {
 				assert.Empty(t, offsets)
@@ -260,6 +268,7 @@ func TestRange_Offsets(t *testing.T) {
 }
 
 func TestRange_Offsets_Iteration(t *testing.T) {
+	t.Parallel()
 	// Test that iteration can be stopped early
 	r := Range{
 		Start: 0,
@@ -280,6 +289,7 @@ func TestRange_Offsets_Iteration(t *testing.T) {
 }
 
 func TestBitsetRanges_Empty(t *testing.T) {
+	t.Parallel()
 	b := bitset.New(100)
 	blockSize := int64(4096)
 
@@ -288,6 +298,7 @@ func TestBitsetRanges_Empty(t *testing.T) {
 }
 
 func TestBitsetRanges_SingleBit(t *testing.T) {
+	t.Parallel()
 	b := bitset.New(100)
 	b.Set(5)
 	blockSize := int64(4096)
@@ -301,6 +312,7 @@ func TestBitsetRanges_SingleBit(t *testing.T) {
 }
 
 func TestBitsetRanges_Contiguous(t *testing.T) {
+	t.Parallel()
 	b := bitset.New(100)
 	// Set bits 2, 3, 4, 5
 	b.Set(2)
@@ -318,6 +330,7 @@ func TestBitsetRanges_Contiguous(t *testing.T) {
 }
 
 func TestBitsetRanges_MultipleRanges(t *testing.T) {
+	t.Parallel()
 	b := bitset.New(100)
 	// Set bits 1, 2, 3 (contiguous)
 	b.Set(1)
@@ -342,6 +355,7 @@ func TestBitsetRanges_MultipleRanges(t *testing.T) {
 }
 
 func TestBitsetRanges_AllSet(t *testing.T) {
+	t.Parallel()
 	b := bitset.New(10)
 	for i := range uint(10) {
 		b.Set(i)
@@ -357,6 +371,7 @@ func TestBitsetRanges_AllSet(t *testing.T) {
 }
 
 func TestBitsetRanges_EndOfBitset(t *testing.T) {
+	t.Parallel()
 	b := bitset.New(20)
 	// Set bits 15, 16, 17, 18, 19 (at the end)
 	for i := uint(15); i < 20; i++ {
@@ -373,6 +388,7 @@ func TestBitsetRanges_EndOfBitset(t *testing.T) {
 }
 
 func TestBitsetRanges_Sparse(t *testing.T) {
+	t.Parallel()
 	b := bitset.New(100)
 	// Set individual bits with gaps
 	b.Set(0)
@@ -390,6 +406,7 @@ func TestBitsetRanges_Sparse(t *testing.T) {
 }
 
 func TestGetSize(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		ranges   []Range
@@ -437,6 +454,7 @@ func TestGetSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			size := GetSize(tt.ranges)
 			assert.Equal(t, tt.expected, size)
 		})
@@ -444,6 +462,7 @@ func TestGetSize(t *testing.T) {
 }
 
 func TestRange_Offsets_EdgeCases(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		range_    Range
@@ -481,6 +500,7 @@ func TestRange_Offsets_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			offsets := slices.Collect(rangeOffsets(&tt.range_, tt.blockSize))
 			assert.Equal(t, tt.expected, offsets)
 		})

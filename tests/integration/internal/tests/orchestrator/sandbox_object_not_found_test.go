@@ -15,6 +15,7 @@ import (
 )
 
 func TestSandboxObjectNotFound(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

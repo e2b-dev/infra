@@ -15,6 +15,7 @@ import (
 )
 
 func TestCommandKillNextApp(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -94,6 +95,7 @@ func TestCommandKillNextApp(t *testing.T) {
 }
 
 func TestCommandKillWithAnd(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -213,6 +215,7 @@ func killPid(
 }
 
 func TestWorkdirDeletion(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -234,6 +237,7 @@ func TestWorkdirDeletion(t *testing.T) {
 }
 
 func TestWorkdirPermissionDenied(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -258,6 +262,7 @@ func TestWorkdirPermissionDenied(t *testing.T) {
 }
 
 func TestStdinCantRead(t *testing.T) {
+	t.Parallel()
 	client := setup.GetAPIClient()
 	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(120))
 

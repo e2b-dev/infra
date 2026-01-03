@@ -16,6 +16,7 @@ import (
 )
 
 func TestAccessingHyperloopServerViaIP(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -40,6 +41,7 @@ func TestAccessingHyperloopServerViaIP(t *testing.T) {
 }
 
 func TestAccessingHyperloopServerViaDomain(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -64,6 +66,7 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 }
 
 func TestAccessingHyperloopServerViaIPWithBlockedInternet(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

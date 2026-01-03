@@ -71,6 +71,7 @@ func newDiffWithAsserts(t *testing.T, cachePath, buildId string, diffType DiffTy
 }
 
 func TestNewDiffStore(t *testing.T) {
+	t.Parallel()
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()
@@ -90,6 +91,7 @@ func TestNewDiffStore(t *testing.T) {
 }
 
 func TestDiffStoreTTLEviction(t *testing.T) {
+	t.Parallel()
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()
@@ -125,6 +127,7 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 }
 
 func TestDiffStoreRefreshTTLEviction(t *testing.T) {
+	t.Parallel()
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()
@@ -163,6 +166,7 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 }
 
 func TestDiffStoreDelayEviction(t *testing.T) {
+	t.Parallel()
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()
@@ -209,6 +213,7 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 }
 
 func TestDiffStoreDelayEvictionAbort(t *testing.T) {
+	t.Parallel()
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()
@@ -262,6 +267,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 }
 
 func TestDiffStoreOldestFromCache(t *testing.T) {
+	t.Parallel()
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()
@@ -329,6 +335,8 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 // cancel channel in resetDelete method. This test should be run with the race
 // detector enabled: go test -race
 func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
+	t.Parallel()
+
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()
@@ -417,6 +425,8 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 // TestDiffStoreResetDeleteRace specifically targets the resetDelete method
 // race condition by simulating the exact scenario from the race report
 func TestDiffStoreResetDeleteRace(t *testing.T) {
+	t.Parallel()
+
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()

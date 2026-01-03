@@ -52,6 +52,7 @@ func createSandbox(t *testing.T, sbxWithAuth bool, reqEditors ...api.RequestEdit
 }
 
 func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -73,6 +74,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 }
 
 func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -92,6 +94,7 @@ func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
 }
 
 func TestChangeAccessAuthorizedToken(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -114,6 +117,7 @@ func TestChangeAccessAuthorizedToken(t *testing.T) {
 }
 
 func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -170,6 +174,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 }
 
 func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

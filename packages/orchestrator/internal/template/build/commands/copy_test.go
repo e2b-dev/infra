@@ -169,6 +169,7 @@ type testCase struct {
 }
 
 func TestParseCopyArgs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		args          []string
@@ -368,6 +369,7 @@ func TestParseCopyArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := parseCopyArgs(tt.args, tt.defaultUser)
 
 			if tt.expectedError != "" {
@@ -386,7 +388,7 @@ func TestParseCopyArgs(t *testing.T) {
 	}
 }
 
-func TestCopyScriptBehavior(t *testing.T) {
+func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why this one doesn't work, but it doesn't
 	uid, gid := getCurrentUser()
 	currentUser := fmt.Sprintf("%d:%d", uid, gid)
 
@@ -634,7 +636,7 @@ func TestCopyScriptBehavior(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range tests { //nolint:paralleltest // no idea why this one doesn't work, but it doesn't
 		t.Run(tc.name, func(t *testing.T) {
 			sourceDir, targetBaseDir, workDir := setupTestEnvironment(t)
 

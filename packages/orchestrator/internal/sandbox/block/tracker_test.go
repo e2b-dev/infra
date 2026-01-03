@@ -10,6 +10,7 @@ import (
 )
 
 func TestTracker_AddAndHas(t *testing.T) {
+	t.Parallel()
 	const pageSize = 4096
 	tr := NewTracker(pageSize)
 
@@ -35,6 +36,7 @@ func TestTracker_AddAndHas(t *testing.T) {
 }
 
 func TestTracker_Reset(t *testing.T) {
+	t.Parallel()
 	const pageSize = 4096
 	tr := NewTracker(pageSize)
 
@@ -56,6 +58,7 @@ func TestTracker_Reset(t *testing.T) {
 }
 
 func TestTracker_MultipleOffsets(t *testing.T) {
+	t.Parallel()
 	const pageSize = 4096
 	tr := NewTracker(pageSize)
 
@@ -89,6 +92,7 @@ func TestTracker_MultipleOffsets(t *testing.T) {
 }
 
 func TestTracker_ResetClearsAll(t *testing.T) {
+	t.Parallel()
 	const pageSize = 4096
 	tr := NewTracker(pageSize)
 
@@ -114,6 +118,7 @@ func TestTracker_ResetClearsAll(t *testing.T) {
 }
 
 func TestTracker_MisalignedOffset(t *testing.T) {
+	t.Parallel()
 	const pageSize = 4096
 	tr := NewTracker(pageSize)
 
@@ -138,6 +143,7 @@ func TestTracker_MisalignedOffset(t *testing.T) {
 }
 
 func TestTracker_Offsets(t *testing.T) {
+	t.Parallel()
 	const pageSize = 4096
 	tr := NewTracker(pageSize)
 

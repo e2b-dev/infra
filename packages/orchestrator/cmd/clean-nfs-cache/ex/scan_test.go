@@ -14,6 +14,7 @@ import (
 )
 
 func TestScanDir(t *testing.T) {
+	t.Parallel()
 	path := t.TempDir()
 	CreateTestDir(path, 157, 10000, 1000)
 	t.Cleanup(func() {
@@ -57,6 +58,7 @@ func TestScanDir(t *testing.T) {
 }
 
 func TestRandomSubdirOrOldestFile(t *testing.T) {
+	t.Parallel()
 	// build a Dir with files sorted so that the oldest file is at the end
 	d := &Dir{}
 	count := 10

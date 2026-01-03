@@ -18,6 +18,7 @@ type testItem struct {
 }
 
 func TestGenerateCursor(t *testing.T) {
+	t.Parallel()
 	timestamp := time.Date(2024, 1, 15, 10, 30, 45, 123456789, time.UTC)
 	id := "test-id-123"
 
@@ -32,6 +33,7 @@ func TestGenerateCursor(t *testing.T) {
 }
 
 func TestNewPagination(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 10,
 		MaxLimit:     100,
@@ -39,6 +41,7 @@ func TestNewPagination(t *testing.T) {
 	}
 
 	t.Run("with default limit", func(t *testing.T) {
+		t.Parallel()
 		p, err := NewPagination[testItem](PaginationParams{}, config)
 		require.NoError(t, err)
 		assert.Equal(t, int32(10), p.limit)
@@ -47,6 +50,7 @@ func TestNewPagination(t *testing.T) {
 	})
 
 	t.Run("with custom limit", func(t *testing.T) {
+		t.Parallel()
 		limit := int32(25)
 		p, err := NewPagination[testItem](
 			PaginationParams{Limit: &limit},
@@ -58,6 +62,7 @@ func TestNewPagination(t *testing.T) {
 	})
 
 	t.Run("with limit exceeding max", func(t *testing.T) {
+		t.Parallel()
 		limit := int32(150)
 		p, err := NewPagination[testItem](
 			PaginationParams{Limit: &limit},
@@ -69,6 +74,7 @@ func TestNewPagination(t *testing.T) {
 	})
 
 	t.Run("with valid next token", func(t *testing.T) {
+		t.Parallel()
 		timestamp := time.Date(2024, 1, 15, 10, 30, 45, 123456789, time.UTC)
 		id := "test-id-123"
 		token := generateCursor(timestamp, id)
@@ -83,6 +89,7 @@ func TestNewPagination(t *testing.T) {
 	})
 
 	t.Run("with invalid next token", func(t *testing.T) {
+		t.Parallel()
 		invalidToken := "invalid-token"
 		_, err := NewPagination[testItem](
 			PaginationParams{NextToken: &invalidToken},
@@ -93,6 +100,7 @@ func TestNewPagination(t *testing.T) {
 	})
 
 	t.Run("with empty next token", func(t *testing.T) {
+		t.Parallel()
 		emptyToken := ""
 		p, err := NewPagination[testItem](
 			PaginationParams{NextToken: &emptyToken},
@@ -103,6 +111,7 @@ func TestNewPagination(t *testing.T) {
 	})
 
 	t.Run("with nil next token", func(t *testing.T) {
+		t.Parallel()
 		p, err := NewPagination[testItem](
 			PaginationParams{NextToken: nil},
 			config,
@@ -113,6 +122,7 @@ func TestNewPagination(t *testing.T) {
 }
 
 func TestPagination_Limit(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 20,
 		MaxLimit:     100,
@@ -125,6 +135,7 @@ func TestPagination_Limit(t *testing.T) {
 }
 
 func TestPagination_QueryLimit(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 20,
 		MaxLimit:     100,
@@ -137,6 +148,7 @@ func TestPagination_QueryLimit(t *testing.T) {
 }
 
 func TestPagination_Cursor(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 10,
 		MaxLimit:     100,
@@ -159,6 +171,7 @@ func TestPagination_Cursor(t *testing.T) {
 }
 
 func TestPagination_CursorTime(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 10,
 		MaxLimit:     100,
@@ -179,6 +192,7 @@ func TestPagination_CursorTime(t *testing.T) {
 }
 
 func TestPagination_CursorID(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 10,
 		MaxLimit:     100,
@@ -199,6 +213,7 @@ func TestPagination_CursorID(t *testing.T) {
 }
 
 func TestPagination_SetNextToken(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 10,
 		MaxLimit:     100,
@@ -221,6 +236,7 @@ func TestPagination_SetNextToken(t *testing.T) {
 }
 
 func TestPagination_HasMore(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 10,
 		MaxLimit:     100,
@@ -231,17 +247,20 @@ func TestPagination_HasMore(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("no more results", func(t *testing.T) {
+		t.Parallel()
 		assert.False(t, p.hasMore(5))
 		assert.False(t, p.hasMore(10))
 	})
 
 	t.Run("has more results", func(t *testing.T) {
+		t.Parallel()
 		assert.True(t, p.hasMore(11))
 		assert.True(t, p.hasMore(15))
 	})
 }
 
 func TestPagination_TrimResults(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 5,
 		MaxLimit:     100,
@@ -252,6 +271,7 @@ func TestPagination_TrimResults(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("no trimming needed", func(t *testing.T) {
+		t.Parallel()
 		results := []testItem{
 			{ID: "1", Timestamp: time.Now()},
 			{ID: "2", Timestamp: time.Now()},
@@ -263,6 +283,7 @@ func TestPagination_TrimResults(t *testing.T) {
 	})
 
 	t.Run("trimming needed", func(t *testing.T) {
+		t.Parallel()
 		results := []testItem{
 			{ID: "1", Timestamp: time.Now()},
 			{ID: "2", Timestamp: time.Now()},
@@ -278,6 +299,7 @@ func TestPagination_TrimResults(t *testing.T) {
 	})
 
 	t.Run("exact limit", func(t *testing.T) {
+		t.Parallel()
 		results := []testItem{
 			{ID: "1", Timestamp: time.Now()},
 			{ID: "2", Timestamp: time.Now()},
@@ -292,6 +314,7 @@ func TestPagination_TrimResults(t *testing.T) {
 }
 
 func TestPagination_ProcessResults(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 5,
 		MaxLimit:     100,
@@ -303,6 +326,7 @@ func TestPagination_ProcessResults(t *testing.T) {
 	}
 
 	t.Run("no more results", func(t *testing.T) {
+		t.Parallel()
 		p, err := NewPagination[testItem](PaginationParams{}, config)
 		require.NoError(t, err)
 
@@ -318,6 +342,7 @@ func TestPagination_ProcessResults(t *testing.T) {
 	})
 
 	t.Run("has more results", func(t *testing.T) {
+		t.Parallel()
 		p, err := NewPagination[testItem](PaginationParams{}, config)
 		require.NoError(t, err)
 
@@ -343,6 +368,7 @@ func TestPagination_ProcessResults(t *testing.T) {
 }
 
 func TestPagination_ProcessResultsWithGin(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 5,
 		MaxLimit:     100,
@@ -356,6 +382,7 @@ func TestPagination_ProcessResultsWithGin(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	t.Run("sets header when has more results", func(t *testing.T) {
+		t.Parallel()
 		p, err := NewPagination[testItem](PaginationParams{}, config)
 		require.NoError(t, err)
 
@@ -380,6 +407,7 @@ func TestPagination_ProcessResultsWithGin(t *testing.T) {
 	})
 
 	t.Run("no header when no more results", func(t *testing.T) {
+		t.Parallel()
 		p, err := NewPagination[testItem](PaginationParams{}, config)
 		require.NoError(t, err)
 
@@ -402,6 +430,7 @@ func TestPagination_ProcessResultsWithGin(t *testing.T) {
 }
 
 func TestPagination_SetHeader(t *testing.T) {
+	t.Parallel()
 	config := PaginationConfig{
 		DefaultLimit: 10,
 		MaxLimit:     100,
@@ -411,6 +440,7 @@ func TestPagination_SetHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	t.Run("sets header when next token exists", func(t *testing.T) {
+		t.Parallel()
 		p, err := NewPagination[testItem](PaginationParams{}, config)
 		require.NoError(t, err)
 
@@ -426,6 +456,7 @@ func TestPagination_SetHeader(t *testing.T) {
 	})
 
 	t.Run("does not set header when next token is nil", func(t *testing.T) {
+		t.Parallel()
 		p, err := NewPagination[testItem](PaginationParams{}, config)
 		require.NoError(t, err)
 
@@ -438,7 +469,9 @@ func TestPagination_SetHeader(t *testing.T) {
 }
 
 func TestParseCursor(t *testing.T) {
+	t.Parallel()
 	t.Run("valid cursor", func(t *testing.T) {
+		t.Parallel()
 		timestamp := time.Date(2024, 1, 15, 10, 30, 45, 123456789, time.UTC)
 		id := "test-id-123"
 		cursor := generateCursor(timestamp, id)
@@ -450,12 +483,14 @@ func TestParseCursor(t *testing.T) {
 	})
 
 	t.Run("invalid base64 encoding", func(t *testing.T) {
+		t.Parallel()
 		_, _, err := ParseCursor("invalid-base64!")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "error decoding cursor")
 	})
 
 	t.Run("invalid format - missing separator", func(t *testing.T) {
+		t.Parallel()
 		invalid := base64.URLEncoding.EncodeToString([]byte("not-valid-format"))
 		_, _, err := ParseCursor(invalid)
 		require.Error(t, err)
@@ -463,6 +498,7 @@ func TestParseCursor(t *testing.T) {
 	})
 
 	t.Run("invalid timestamp format", func(t *testing.T) {
+		t.Parallel()
 		invalid := base64.URLEncoding.EncodeToString([]byte("invalid-timestamp__test-id"))
 		_, _, err := ParseCursor(invalid)
 		require.Error(t, err)

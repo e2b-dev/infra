@@ -167,6 +167,7 @@ func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Dest
 }
 
 func TestProxyRoutesToTargetServer(t *testing.T) {
+	t.Parallel()
 	var lisCfg net.ListenConfig
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -283,6 +284,7 @@ func (l *instrumentedListener) Accept() (net.Conn, error) {
 }
 
 func TestProxyReusesConnections(t *testing.T) {
+	t.Parallel()
 	var lisCfg net.ListenConfig
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -328,6 +330,7 @@ func TestProxyReusesConnections(t *testing.T) {
 }
 
 func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
+	t.Parallel()
 	var lisCfg net.ListenConfig
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -370,6 +373,7 @@ func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
 }
 
 func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
+	t.Parallel()
 	var lisCfg net.ListenConfig
 
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -444,6 +448,7 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 
 // This is a test that verify that the proxy reuse fails when the backend changes.
 func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
+	t.Parallel()
 	// Create first backend
 	var lisCfg net.ListenConfig
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -516,6 +521,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 }
 
 func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
+	t.Parallel()
 	// Create first backend
 	var lisCfg net.ListenConfig
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -598,6 +604,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 // TestProxyRetriesOnDelayedBackendStartup simulates the scenario where a backend
 // server starts up after the initial connection attempt (like envd port forwarding delay).
 func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
+	t.Parallel()
 	var lisCfg net.ListenConfig
 	tempListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -689,6 +696,7 @@ type data struct {
 // The internal and masked server both return a constant string. The proxy, when masked,
 // should return the "internal" server and not "masked" server.
 func TestChangeResponseHeader(t *testing.T) {
+	t.Parallel()
 	proxyPort := uint16(30092)
 	internalPort := uint64(30090)
 	maskedPort := uint16(30091)

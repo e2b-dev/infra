@@ -29,52 +29,54 @@ func createFilterTestSandbox(state sandbox.State, endTime time.Time) sandbox.San
 
 // TestApplyFilter_ExpiredFiltering tests the expiration filter logic used by the evictor
 func TestApplyFilter_ExpiredFiltering(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		onlyExpired   bool
-		endTime       time.Time
+		endTimeMod    time.Duration
 		expectedMatch bool
 		description   string
 	}{
 		{
 			name:          "no filter - not expired",
 			onlyExpired:   false,
-			endTime:       time.Now().Add(time.Hour),
+			endTimeMod:    time.Hour,
 			expectedMatch: true,
 			description:   "Should match when no filter is applied",
 		},
 		{
 			name:          "no filter - expired",
 			onlyExpired:   false,
-			endTime:       time.Now().Add(-time.Hour),
+			endTimeMod:    -time.Hour,
 			expectedMatch: true,
 			description:   "Should match when no filter is applied, even if expired",
 		},
 		{
 			name:          "expired filter - not expired",
 			onlyExpired:   true,
-			endTime:       time.Now().Add(time.Hour),
+			endTimeMod:    time.Hour,
 			expectedMatch: false,
 			description:   "Should NOT match when filtering for expired but sandbox is active",
 		},
 		{
 			name:          "expired filter - expired",
 			onlyExpired:   true,
-			endTime:       time.Now().Add(-time.Hour),
+			endTimeMod:    -time.Hour,
 			expectedMatch: true,
 			description:   "Should match when filtering for expired and sandbox is expired",
 		},
 		{
 			name:          "expired filter - just expired",
 			onlyExpired:   true,
-			endTime:       time.Now().Add(-time.Nanosecond),
+			endTimeMod:    -time.Nanosecond,
 			expectedMatch: true,
 			description:   "Should match when expired by even a nanosecond",
 		},
 		{
 			name:          "expired filter - about to expire",
 			onlyExpired:   true,
-			endTime:       time.Now().Add(time.Millisecond),
+			endTimeMod:    time.Millisecond,
 			expectedMatch: false,
 			description:   "Should NOT match when still has time left",
 		},
@@ -82,10 +84,12 @@ func TestApplyFilter_ExpiredFiltering(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			filter := sandbox.NewItemsFilter()
 			sandbox.WithOnlyExpired(tt.onlyExpired)(filter)
 
-			sbx := createFilterTestSandbox(sandbox.StateRunning, tt.endTime)
+			sbx := createFilterTestSandbox(sandbox.StateRunning, time.Now().Add(tt.endTimeMod))
 			result := applyFilter(sbx, filter)
 
 			assert.Equal(t, tt.expectedMatch, result, tt.description)

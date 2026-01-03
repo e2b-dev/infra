@@ -16,6 +16,8 @@ import (
 )
 
 func TestValidate(t *testing.T) {
+	t.Parallel()
+
 	// Generate a valid access token
 	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
 	require.NoError(t, err)
@@ -89,17 +91,19 @@ func TestValidate(t *testing.T) {
 		},
 	}
 	for _, tc := range testcases {
-		t.Run(tc.name, func(tb *testing.T) {
-			dbClient := testutils.SetupDatabase(tb)
-			setupValidateTest(tb, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-			valid, err := Validate(tb.Context(), dbClient, tc.accessTokenUsed, tc.validateEnvId)
+			dbClient := testutils.SetupDatabase(t)
+			setupValidateTest(t, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
+
+			valid, err := Validate(t.Context(), dbClient, tc.accessTokenUsed, tc.validateEnvId)
 			if tc.error {
-				require.Error(tb, err)
+				require.Error(t, err)
 			} else {
-				require.NoError(tb, err)
+				require.NoError(t, err)
 			}
-			assert.Equal(tb, tc.valid, valid)
+			assert.Equal(t, tc.valid, valid)
 		})
 	}
 }

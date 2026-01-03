@@ -19,6 +19,7 @@ import (
 )
 
 func TestSandboxWithEnabledTrafficAccessTokenButMissingHeader(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	sbxNetAllowPublic := false
@@ -72,6 +73,7 @@ func TestSandboxWithEnabledTrafficAccessTokenButMissingHeader(t *testing.T) {
 }
 
 func TestSandboxWithEnabledTrafficAccessTokenButInvalidHeader(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	sbxNetAllowPublic := false
@@ -127,6 +129,7 @@ func TestSandboxWithEnabledTrafficAccessTokenButInvalidHeader(t *testing.T) {
 }
 
 func TestSandboxWithEnabledTrafficAccessToken(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	sbxNetAllowPublic := false
@@ -166,6 +169,7 @@ func TestSandboxWithEnabledTrafficAccessToken(t *testing.T) {
 }
 
 func TestEnvdPortIsNotAffectedByTrafficAccessToken(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	sbxNetAllowPublic := false
