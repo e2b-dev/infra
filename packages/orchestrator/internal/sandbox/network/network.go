@@ -193,6 +193,13 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error initializing slot firewall: %w", err)
 	}
 
+	// Create new iptables handle for host namespace rules
+	// The previous 'tables' handle was created in the VM namespace
+	hostTables, err := iptables.New()
+	if err != nil {
+		return fmt.Errorf("error initializing host iptables: %w", err)
+	}
+
 	// Add routing from host to FC namespace
 	err = netlink.RouteAdd(&netlink.Route{
 		Gw:  s.VpeerIP(),
@@ -203,24 +210,24 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 	}
 
 	// Add host forwarding rules
-	err = tables.Append("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
+	err = hostTables.Append("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
 	if err != nil {
 		return fmt.Errorf("error creating forwarding rule to default gateway: %w", err)
 	}
 
-	err = tables.Append("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
+	err = hostTables.Append("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
 	if err != nil {
 		return fmt.Errorf("error creating forwarding rule from default gateway: %w", err)
 	}
 
 	// Add host postrouting rules
-	err = tables.Append("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
+	err = hostTables.Append("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
 	}
 
 	// Redirect traffic destined for hyperloop proxy
-	err = tables.Append(
+	err = hostTables.Append(
 		"nat", "PREROUTING", "-i", s.VethName(),
 		"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
 		"-j", "REDIRECT", "--to-port", s.hyperloopPort,
@@ -232,7 +239,7 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 	// Redirect unmarked TCP traffic to the egress proxy
 	// Traffic marked by nftables (in host namespace) bypasses this rule
 	// This works correctly because both nftables and iptables are in the same namespace
-	err = tables.Append(
+	err = hostTables.Append(
 		"nat", "PREROUTING", "-i", s.VethName(),
 		"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
 		"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,

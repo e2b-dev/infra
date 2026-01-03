@@ -229,8 +229,9 @@ func (s *Slot) InitializeFirewall() error {
 		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
 	}
 
-	// Pass VethName instead of TapName so firewall filters in host namespace
-	fw, err := NewFirewall(s.VethName(), s.HyperloopIPString())
+	// Pass slot index to create unique nftables table/sets for this slot
+	// Pass VethName so firewall filters in host namespace
+	fw, err := NewFirewall(s.Idx, s.VethName(), s.HyperloopIPString())
 	if err != nil {
 		return fmt.Errorf("error initializing firewall: %w", err)
 	}

@@ -16,7 +16,9 @@ import (
 )
 
 const (
-	tableName = "slot-firewall"
+	// tableNamePrefix is the prefix for slot firewall tables
+	// Each slot gets a unique table: "slot-firewall-{idx}"
+	tableNamePrefix = "slot-firewall"
 
 	// allowedMark is the mark value to signal "allowed" traffic (skip DNAT)
 	allowedMark = 0x1
@@ -48,11 +50,14 @@ type Firewall struct {
 	allowedRanges []string
 }
 
-func NewFirewall(filterIf string, hyperloopIP string) (*Firewall, error) {
+func NewFirewall(slotIdx int, filterIf string, hyperloopIP string) (*Firewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
 	}
+
+	// Create unique table name for this slot to avoid conflicts with other concurrent slots
+	tableName := fmt.Sprintf("%s-%d", tableNamePrefix, slotIdx)
 
 	table := conn.AddTable(&nftables.Table{
 		Name:   tableName,
@@ -70,21 +75,21 @@ func NewFirewall(filterIf string, hyperloopIP string) (*Firewall, error) {
 		Policy:   utils.ToPtr(nftables.ChainPolicyAccept),
 	})
 
-	// Create deny-set and allow-set
-	alwaysDenySet, err := set.New(conn, table, "filtered_always_denylist", nftables.TypeIPAddr)
+	// Create deny-set and allow-set with unique names per slot
+	alwaysDenySet, err := set.New(conn, table, fmt.Sprintf("filtered_always_denylist_%d", slotIdx), nftables.TypeIPAddr)
 	if err != nil {
 		return nil, fmt.Errorf("new deny set: %w", err)
 	}
-	alwaysAllowSet, err := set.New(conn, table, "filtered_always_allowlist", nftables.TypeIPAddr)
+	alwaysAllowSet, err := set.New(conn, table, fmt.Sprintf("filtered_always_allowlist_%d", slotIdx), nftables.TypeIPAddr)
 	if err != nil {
 		return nil, fmt.Errorf("new allow set: %w", err)
 	}
 
-	denySet, err := set.New(conn, table, "filtered_denylist", nftables.TypeIPAddr)
+	denySet, err := set.New(conn, table, fmt.Sprintf("filtered_denylist_%d", slotIdx), nftables.TypeIPAddr)
 	if err != nil {
 		return nil, fmt.Errorf("new deny set: %w", err)
 	}
-	allowSet, err := set.New(conn, table, "filtered_allowlist", nftables.TypeIPAddr)
+	allowSet, err := set.New(conn, table, fmt.Sprintf("filtered_allowlist_%d", slotIdx), nftables.TypeIPAddr)
 	if err != nil {
 		return nil, fmt.Errorf("new allow set: %w", err)
 	}
@@ -116,6 +121,15 @@ func NewFirewall(filterIf string, hyperloopIP string) (*Firewall, error) {
 }
 
 func (fw *Firewall) Close() error {
+	// Delete the table to clean up all rules, chains, and sets
+	// This is critical now that firewall operates in host namespace
+	// (not automatically cleaned up when sandbox namespace is deleted)
+	fw.conn.DelTable(fw.table)
+	if err := fw.conn.Flush(); err != nil {
+		// Log but don't fail - we still want to close the connection
+		// The table might already be deleted or not exist
+		_ = err
+	}
 	return fw.conn.CloseLasting()
 }
 
