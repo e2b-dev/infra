@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"path/filepath"
 	"strconv"
 	"sync/atomic"
 
-	"github.com/containernetworking/plugins/pkg/ns"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -231,7 +229,8 @@ func (s *Slot) InitializeFirewall() error {
 		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
 	}
 
-	fw, err := NewFirewall(s.TapName(), s.HyperloopIPString())
+	// Pass VethName instead of TapName so firewall filters in host namespace
+	fw, err := NewFirewall(s.VethName(), s.HyperloopIPString())
 	if err != nil {
 		return fmt.Errorf("error initializing firewall: %w", err)
 	}
@@ -267,36 +266,24 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 
 	s.firewallCustomRules.Store(true)
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	// Firewall now operates in host namespace, no need for ns.Do()
+	err := s.Firewall.SetTCPFirewall(true)
 	if err != nil {
-		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+		return fmt.Errorf("error setting TCP firewall: %w", err)
 	}
-	defer n.Close()
 
-	err = n.Do(func(_ ns.NetNS) error {
-		err := s.Firewall.SetTCPFirewall(true)
+	for _, cidr := range network.GetEgress().GetAllowedCidrs() {
+		err = s.Firewall.AddAllowedCIDR(cidr)
 		if err != nil {
-			return fmt.Errorf("error setting TCP firewall: %w", err)
+			return fmt.Errorf("error setting firewall rules: %w", err)
 		}
+	}
 
-		for _, cidr := range network.GetEgress().GetAllowedCidrs() {
-			err = s.Firewall.AddAllowedCIDR(cidr)
-			if err != nil {
-				return fmt.Errorf("error setting firewall rules: %w", err)
-			}
+	for _, cidr := range network.GetEgress().GetDeniedCidrs() {
+		err = s.Firewall.AddDeniedCIDR(cidr)
+		if err != nil {
+			return fmt.Errorf("error setting firewall rules: %w", err)
 		}
-
-		for _, cidr := range network.GetEgress().GetDeniedCidrs() {
-			err = s.Firewall.AddDeniedCIDR(cidr)
-			if err != nil {
-				return fmt.Errorf("error setting firewall rules: %w", err)
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
 	}
 
 	return nil
@@ -312,22 +299,10 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 		return nil
 	}
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	// Firewall now operates in host namespace, no need for ns.Do()
+	err := s.Firewall.Reset()
 	if err != nil {
-		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
-	}
-	defer n.Close()
-
-	err = n.Do(func(_ ns.NetNS) error {
-		err := s.Firewall.Reset()
-		if err != nil {
-			return fmt.Errorf("error cleaning firewall rules: %w", err)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+		return fmt.Errorf("error cleaning firewall rules: %w", err)
 	}
 
 	return nil

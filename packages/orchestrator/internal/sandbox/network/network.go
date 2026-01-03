@@ -180,15 +180,17 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
 	}
 
-	err = s.InitializeFirewall()
-	if err != nil {
-		return fmt.Errorf("error initializing slot firewall: %w", err)
-	}
-
 	// Go back to original namespace
 	err = netns.Set(hostNS)
 	if err != nil {
 		return fmt.Errorf("error setting network namespace to %s: %w", hostNS.String(), err)
+	}
+
+	// Initialize firewall in host namespace (filtering on veth interface)
+	// This ensures packet marks work correctly with iptables redirect rules
+	err = s.InitializeFirewall()
+	if err != nil {
+		return fmt.Errorf("error initializing slot firewall: %w", err)
 	}
 
 	// Add routing from host to FC namespace
@@ -227,9 +229,9 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
 	}
 
-	// Redirect unmarked TCP traffic to the egress proxy.
-	// Allowed traffic is marked by nftables and bypasses this rule.
-	// This preserves the original destination IP for SO_ORIGINAL_DST.
+	// Redirect unmarked TCP traffic to the egress proxy
+	// Traffic marked by nftables (in host namespace) bypasses this rule
+	// This works correctly because both nftables and iptables are in the same namespace
 	err = tables.Append(
 		"nat", "PREROUTING", "-i", s.VethName(),
 		"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),

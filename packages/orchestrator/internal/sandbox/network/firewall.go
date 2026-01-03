@@ -43,12 +43,12 @@ type Firewall struct {
 	// tcpFirewallSkipRule allows us to add/remove the rule dynamically by marking all TCP packets.
 	tcpFirewallSkipRule *nftables.Rule
 
-	tapInterface string
+	filterInterface string
 
 	allowedRanges []string
 }
 
-func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
+func NewFirewall(filterIf string, hyperloopIP string) (*Firewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
@@ -96,7 +96,7 @@ func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 		predefinedAllowSet: alwaysAllowSet,
 		userDenySet:        denySet,
 		userAllowSet:       allowSet,
-		tapInterface:       tapIf,
+		filterInterface:    filterIf,
 		allowedRanges:      []string{fmt.Sprintf("%s/32", hyperloopIP)},
 		filterChain:        filterChain,
 	}
@@ -119,14 +119,14 @@ func (fw *Firewall) Close() error {
 	return fw.conn.CloseLasting()
 }
 
-// tapIfaceMatch returns expressions that match packets from the tap interface.
-func (fw *Firewall) tapIfaceMatch() []expr.Any {
+// interfaceMatch returns expressions that match packets from the filter interface.
+func (fw *Firewall) interfaceMatch() []expr.Any {
 	return []expr.Any{
 		&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
 		&expr.Cmp{
 			Register: 1,
 			Op:       expr.CmpOpEq,
-			Data:     append([]byte(fw.tapInterface), 0), // null-terminated interface name
+			Data:     append([]byte(fw.filterInterface), 0), // null-terminated interface name
 		},
 	}
 }
@@ -161,7 +161,7 @@ func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
 	fw.conn.AddRule(&nftables.Rule{
 		Table: fw.table,
 		Chain: fw.filterChain,
-		Exprs: append(append(fw.tapIfaceMatch(),
+		Exprs: append(append(fw.interfaceMatch(),
 			expressions.IPv4DestinationAddress(1),
 			expressions.IPSetLookUp(ipSet, 1)),
 			verdict...,
@@ -183,7 +183,7 @@ func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
 	fw.conn.AddRule(&nftables.Rule{
 		Table: fw.table,
 		Chain: fw.filterChain,
-		Exprs: append(append(fw.tapIfaceMatch(),
+		Exprs: append(append(fw.interfaceMatch(),
 			// Match non-TCP protocol (protocol != TCP)
 			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
 			&expr.Cmp{
@@ -215,7 +215,7 @@ func (fw *Firewall) installRules() error {
 	fw.conn.AddRule(&nftables.Rule{
 		Table: fw.table,
 		Chain: fw.filterChain,
-		Exprs: append(append(fw.tapIfaceMatch(),
+		Exprs: append(append(fw.interfaceMatch(),
 			// Load CT state
 			&expr.Ct{Key: expr.CtKeySTATE, Register: 1},
 			// Check ESTABLISHED or RELATED
@@ -361,7 +361,7 @@ func (fw *Firewall) SetTCPFirewall(useTCPFirewall bool) error {
 			fw.conn.AddRule(&nftables.Rule{
 				Table: fw.table,
 				Chain: fw.filterChain,
-				Exprs: append(append(fw.tapIfaceMatch(),
+				Exprs: append(append(fw.interfaceMatch(),
 					// Match TCP protocol
 					&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
 					&expr.Cmp{
