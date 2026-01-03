@@ -9,6 +9,7 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -127,9 +128,12 @@ func (c *Cache) GetTemplate(
 	persistence := c.persistence
 	// Because of the template caching, if we enable the shared cache feature flag,
 	// it will start working only for new orchestrators or new builds.
-	if c.useNFSCache(ctx, isBuilding, isSnapshot) {
+	if path, enabled := c.useNFSCache(ctx, isBuilding, isSnapshot); enabled {
 		logger.L().Info(ctx, "using local template cache", zap.String("path", c.rootCachePath))
-		persistence = storage.NewCachedProvider(c.rootCachePath, persistence, c.flags)
+		persistence = storage.NewCachedProvider(path, persistence, c.flags)
+		span.SetAttributes(attribute.Bool("use_cache", true))
+	} else {
+		span.SetAttributes(attribute.Bool("use_cache", false))
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
@@ -190,16 +194,11 @@ func (c *Cache) AddSnapshot(
 	return nil
 }
 
-func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot bool) bool {
+func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot bool) (string, bool) {
 	if isBuilding {
 		// caching this layer doesn't speed up the next sandbox launch,
 		// as the previous template isn't used to load the one that's being built.
-		return false
-	}
-
-	if c.rootCachePath == "" {
-		// can't enable cache if we don't have a cache path
-		return false
+		return "", false
 	}
 
 	var flagName featureflags.BoolFlag
@@ -209,9 +208,16 @@ func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot boo
 		flagName = featureflags.TemplateFeatureFlag
 	}
 
-	flag := c.flags.BoolFlag(ctx, flagName)
+	useNFSCache := c.flags.BoolFlag(ctx, flagName)
+	if useNFSCache {
+		if c.rootCachePath == "" {
+			logger.L().Warn(ctx, "NFSCache feature flag is enabled but cache path is not set")
 
-	return flag
+			return "", false
+		}
+	}
+
+	return c.rootCachePath, useNFSCache
 }
 
 func cleanDir(path string) error {

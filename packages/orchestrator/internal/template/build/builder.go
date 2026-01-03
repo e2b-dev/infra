@@ -231,9 +231,15 @@ func runBuild(
 	bc buildcontext.BuildContext,
 	builder *Builder,
 ) (*Result, error) {
+	ctx, span := tracer.Start(ctx, "run build")
+	defer span.End()
+
 	templateStorage := builder.templateStorage
 	if path, ok := builder.useNFSCache(ctx); ok {
 		templateStorage = storage.NewCachedProvider(path, templateStorage, builder.featureFlags)
+		span.SetAttributes(attribute.Bool("use_cache", true))
+	} else {
+		span.SetAttributes(attribute.Bool("use_cache", false))
 	}
 
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, templateStorage)

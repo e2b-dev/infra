@@ -22,7 +22,8 @@ var launchDarklyApiKey = os.Getenv("LAUNCH_DARKLY_API_KEY")
 const waitForInit = 5 * time.Second
 
 type Client struct {
-	ld *ldclient.LDClient
+	ld             *ldclient.LDClient
+	deploymentName string
 }
 
 func NewClient() (*Client, error) {
@@ -52,8 +53,12 @@ func NewClient() (*Client, error) {
 	return &Client{ld: ldClient}, nil
 }
 
+func (c *Client) SetDeploymentName(deploymentName string) {
+	c.deploymentName = deploymentName
+}
+
 func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcontext.Context) bool {
-	return getFlag(ctx, c.ld, c.ld.BoolVariationCtx, flag, contexts...)
+	return getFlag(ctx, c.ld, c.ld.BoolVariationCtx, flag, c.allContexts(contexts))
 }
 
 func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) ldvalue.Value {
@@ -74,11 +79,11 @@ func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcont
 }
 
 func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) int {
-	return getFlag(ctx, c.ld, c.ld.IntVariationCtx, flag, contexts...)
+	return getFlag(ctx, c.ld, c.ld.IntVariationCtx, flag, c.allContexts(contexts))
 }
 
 func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ldcontext.Context) string {
-	return getFlag(ctx, c.ld, c.ld.StringVariationCtx, flag, contexts...)
+	return getFlag(ctx, c.ld, c.ld.StringVariationCtx, flag, c.allContexts(contexts))
 }
 
 type typedFlag[T any] interface {
@@ -86,7 +91,13 @@ type typedFlag[T any] interface {
 	Fallback() T
 }
 
-func getFlag[T any](ctx context.Context, ld *ldclient.LDClient, getFromLD func(ctx context.Context, key string, context ldcontext.Context, defaultVal T) (T, error), flag typedFlag[T], contexts ...ldcontext.Context) T {
+func getFlag[T any](
+	ctx context.Context,
+	ld *ldclient.LDClient,
+	getFromLD func(ctx context.Context, key string, context ldcontext.Context, defaultVal T) (T, error),
+	flag typedFlag[T],
+	contexts []ldcontext.Context,
+) T {
 	if ld == nil {
 		logger.L().Info(ctx, "LaunchDarkly client is not initialized, returning fallback")
 
@@ -114,4 +125,12 @@ func (c *Client) Close(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *Client) allContexts(contexts []ldcontext.Context) []ldcontext.Context {
+	if c.deploymentName != "" {
+		contexts = append(contexts, deploymentContext(c.deploymentName))
+	}
+
+	return contexts
 }
