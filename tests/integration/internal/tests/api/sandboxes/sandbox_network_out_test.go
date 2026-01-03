@@ -890,3 +890,38 @@ func TestNoNetworkConfig_SSHWorks(t *testing.T) {
 	require.Error(t, err, "Expected SSH command to exit with non-zero status due to lack of credentials")
 	require.Contains(t, output, "Permission denied (publickey)")
 }
+
+// TestNoNetworkConfig_SSHWorks tests that SSH connections work when no network config is set.
+// This is a regression test for the issue where the TCP firewall redirect rule would
+// break SSH connections even when no egress filtering was configured.
+// Expected: SSH connection to GitHub should succeed (TCP handshake completes),
+// though we'll get "Permission denied (publickey)" since we don't have valid credentials.
+func TestNetworkConfig_SSHWorks(t *testing.T) {
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	// Create sandbox WITHOUT any network configuration
+	// This tests the default behavior - all traffic should be allowed
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut: &[]string{"github.com"},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Test SSH connection to GitHub
+	// Expected output: "git@github.com: Permission denied (publickey)."
+	// This shows the TCP connection succeeded (SSH handshake completed),
+	// even though we don't have valid credentials for authentication.
+	t.Log("Testing SSH connection to github.com (port 22)...")
+	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+		"ssh", "-T", "-o", "StrictHostKeyChecking=accept-new",
+		"-o", "ConnectTimeout=5", "git@github.com")
+	require.Error(t, err, "Expected SSH command to exit with non-zero status due to lack of credentials")
+	require.Contains(t, output, "Permission denied (publickey)")
+}
