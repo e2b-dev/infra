@@ -62,12 +62,11 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	}
 
 	// generate the full endpoint URL
-	var endpointBaseUrl string
+	scheme := "http"
 	if endpointTLS {
-		endpointBaseUrl = fmt.Sprintf("https://%s", endpoint)
-	} else {
-		endpointBaseUrl = fmt.Sprintf("http://%s", endpoint)
+		scheme = "https"
 	}
+	endpointBaseUrl := fmt.Sprintf("%s://%s", scheme, endpoint)
 
 	httpClient, err := api.NewClientWithResponses(endpointBaseUrl, clientAuthMiddleware)
 	if err != nil {
@@ -133,8 +132,10 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
-	var instances []*ClusterInstance
-	for _, instance := range c.instances.Items() {
+	// convert map to slice
+	mapItems := c.instances.Items()
+	instances := make([]*ClusterInstance, 0, len(mapItems))
+	for _, instance := range mapItems {
 		instances = append(instances, instance)
 	}
 
@@ -167,10 +168,11 @@ func (c *Cluster) GetHTTP() *ClusterHTTP {
 }
 
 func (c *Cluster) GetOrchestrators() []*ClusterInstance {
-	instances := make([]*ClusterInstance, 0)
-	for _, i := range c.instances.Items() {
-		if i.IsOrchestrator() {
-			instances = append(instances, i)
+	mapItems := c.instances.Items()
+	instances := make([]*ClusterInstance, 0, len(mapItems))
+	for _, instance := range mapItems {
+		if instance.IsOrchestrator() {
+			instances = append(instances, instance)
 		}
 	}
 
