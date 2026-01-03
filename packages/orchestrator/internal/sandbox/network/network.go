@@ -227,18 +227,6 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
 	}
 
-	// Redirect unmarked TCP traffic to the egress proxy.
-	// Allowed traffic is marked by nftables and bypasses this rule.
-	// This preserves the original destination IP for SO_ORIGINAL_DST.
-	err = tables.Append(
-		"nat", "PREROUTING", "-i", s.VethName(),
-		"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
-		"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
-	)
-	if err != nil {
-		return fmt.Errorf("error creating redirect rule to egress proxy: %w", err)
-	}
-
 	return nil
 }
 
