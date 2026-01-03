@@ -66,7 +66,7 @@ func NewCluster(ctx context.Context, tel *telemetry.Client, endpoint string, end
 	if endpointTLS {
 		scheme = "https"
 	}
-	endpointBaseUrl := scheme + "://" + endpoint
+	endpointBaseUrl := fmt.Sprintf("%s://%s", scheme, endpoint)
 
 	httpClient, err := api.NewClientWithResponses(endpointBaseUrl, clientAuthMiddleware)
 	if err != nil {
