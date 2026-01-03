@@ -19,3 +19,16 @@ packages:
           dir: packages/shared/pkg/storage/mocks
           filename: mockseekableobjectprovider.go
           pkgname: storagemocks
+
+  github.com/e2b-dev/infra/packages/shared/pkg/utils:
+    interfaces:
+      ItemFactory:
+        config:
+          dir: packages/shared/pkg/utils
+          filename: mocks_test.go
+          pkgname: utils
+      Item:
+        config:
+          dir: packages/shared/pkg/utils
+          filename: mocks_test.go
+          pkgname: utils
