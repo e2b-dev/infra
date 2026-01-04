@@ -11,11 +11,9 @@ import (
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	netutils "k8s.io/utils/net"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -83,6 +81,7 @@ type Slot struct {
 	hyperloopIP, hyperloopPort string
 
 	tcpFirewallPort string
+	useTCPFirewall  bool
 }
 
 func NewSlot(key string, idx int, config Config) (*Slot, error) {
@@ -352,10 +351,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	// Remove iptables redirect rule from host namespace
 	tables, err := iptables.New()
 	if err != nil {
-		// Log error but don't fail - rule might not exist
-		logger.L().Warn(ctx, "error initializing iptables during reset", zap.Error(err))
-
-		return nil
+		return fmt.Errorf("error initializing iptables: %w", err)
 	}
 
 	err = tables.Delete(
@@ -364,8 +360,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 		"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
 	)
 	if err != nil {
-		// Log error but don't fail - rule might not exist
-		logger.L().Warn(ctx, "error deleting egress proxy redirect rule during reset", zap.Error(err))
+		return fmt.Errorf("error deleting redirect rule to egress proxy: %w", err)
 	}
 
 	return nil
