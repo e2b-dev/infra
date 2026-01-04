@@ -79,7 +79,10 @@ type Slot struct {
 
 	hyperloopIP, hyperloopPort string
 
-	tcpFirewallPort string
+	// TCP firewall ports for different traffic types
+	tcpFirewallHTTPPort  string // Port 80 traffic
+	tcpFirewallTLSPort   string // Port 443 traffic
+	tcpFirewallOtherPort string // All other traffic
 }
 
 func NewSlot(key string, idx int, config Config) (*Slot, error) {
@@ -138,7 +141,9 @@ func NewSlot(key string, idx int, config Config) (*Slot, error) {
 		hyperloopIP:   config.HyperloopIPAddress,
 		hyperloopPort: strconv.FormatUint(uint64(config.HyperloopProxyPort), 10),
 
-		tcpFirewallPort: strconv.FormatUint(uint64(config.SandboxTCPFirewallPort), 10),
+		tcpFirewallHTTPPort:  strconv.FormatUint(uint64(config.SandboxTCPFirewallHTTPPort), 10),
+		tcpFirewallTLSPort:   strconv.FormatUint(uint64(config.SandboxTCPFirewallTLSPort), 10),
+		tcpFirewallOtherPort: strconv.FormatUint(uint64(config.SandboxTCPFirewallOtherPort), 10),
 	}
 
 	return slot, nil
