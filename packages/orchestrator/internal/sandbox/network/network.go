@@ -268,16 +268,6 @@ func (s *Slot) RemoveNetwork() error {
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
 		}
-
-		// Delete egress proxy redirect rule
-		err = tables.Delete(
-			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
-			"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
-		)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting egress proxy redirect rule: %w", err))
-		}
 	}
 
 	// Delete routing from host to FC namespace
