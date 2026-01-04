@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"runtime"
-	"strings"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
@@ -270,14 +269,15 @@ func (s *Slot) RemoveNetwork() error {
 			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
 		}
 
-		// Delete egress proxy redirect rule
-		err = tables.Delete(
-			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
-			"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
-		)
-		if err != nil && !strings.Contains(err.Error(), "Bad rule (does a matching rule exist in that chain?)") {
-			errs = append(errs, fmt.Errorf("error deleting sandbox egress proxy redirect rule: %w", err))
+		if s.firewallCustomRules.Load() {
+			err = tables.Delete(
+				"nat", "PREROUTING", "-i", s.VethName(),
+				"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
+				"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
+			)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("error deleting sandbox egress proxy redirect rule: %w", err))
+			}
 		}
 	}
 
