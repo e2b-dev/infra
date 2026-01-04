@@ -81,7 +81,6 @@ type Slot struct {
 	hyperloopIP, hyperloopPort string
 
 	tcpFirewallPort string
-	useTCPFirewall  bool
 }
 
 func NewSlot(key string, idx int, config Config) (*Slot, error) {
