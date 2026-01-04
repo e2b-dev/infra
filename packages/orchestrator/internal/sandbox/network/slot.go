@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/coreos/go-iptables/iptables"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -299,6 +300,22 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
 	}
 
+	// Add iptables redirect rule in host namespace
+	// This redirects unmarked TCP traffic to the egress proxy
+	tables, err := iptables.New()
+	if err != nil {
+		return fmt.Errorf("error initializing iptables: %w", err)
+	}
+
+	err = tables.Append(
+		"nat", "PREROUTING", "-i", s.VethName(),
+		"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
+		"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
+	)
+	if err != nil {
+		return fmt.Errorf("error creating redirect rule to egress proxy: %w", err)
+	}
+
 	return nil
 }
 
@@ -328,6 +345,21 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+
+	// Remove iptables redirect rule from host namespace
+	tables, err := iptables.New()
+	if err != nil {
+		return fmt.Errorf("error initializing iptables: %w", err)
+	}
+
+	err = tables.Delete(
+		"nat", "PREROUTING", "-i", s.VethName(),
+		"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
+		"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
+	)
+	if err != nil {
+		return fmt.Errorf("error deleting redirect rule to egress proxy: %w", err)
 	}
 
 	return nil
