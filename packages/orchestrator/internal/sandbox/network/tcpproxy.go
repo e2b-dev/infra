@@ -45,13 +45,14 @@ func (c tcpProxyConfig) rules() []tcpProxyRule {
 }
 
 // ruleArgs returns the iptables arguments for a TCP proxy redirect rule.
+// Uses state matching to only redirect NEW connections (ESTABLISHED/RELATED bypass the proxy).
 func (c tcpProxyConfig) ruleArgs(rule tcpProxyRule) []string {
 	args := []string{"-i", c.iface, "-p", "tcp"}
 	if rule.dstPort != "" {
 		args = append(args, "--dport", rule.dstPort)
 	}
 	args = append(args,
-		"-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
+		"-m", "state", "--state", "NEW",
 		"-j", "REDIRECT", "--to-port", rule.proxyPort,
 	)
 
