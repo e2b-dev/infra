@@ -27,7 +27,7 @@ func GetClusterSandboxMetrics(ctx context.Context, pool *Pool, sandboxID string,
 	cluster, ok := pool.GetClusterById(clusterID)
 	if !ok {
 		return nil, &api.APIError{
-			Code:      http.StatusInternalServerError,
+			Code:      http.StatusNotFound,
 			ClientMsg: fmt.Sprintf("Error getting cluster '%s'", clusterID),
 			Err:       fmt.Errorf("cluster with ID '%s' not found", clusterID),
 		}
