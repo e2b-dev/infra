@@ -157,7 +157,7 @@ func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, object
 	}, nil
 }
 
-func (m *MultipartUploader) InitiateUpload(ctx context.Context) (string, error) {
+func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) {
 	url := fmt.Sprintf("%s/%s?uploads", m.baseURL, m.objectName)
 
 	req, err := retryablehttp.NewRequestWithContext(ctx, "POST", url, nil)
@@ -189,7 +189,7 @@ func (m *MultipartUploader) InitiateUpload(ctx context.Context) (string, error) 
 	return result.UploadID, nil
 }
 
-func (m *MultipartUploader) UploadPart(ctx context.Context, uploadID string, partNumber int, data []byte) (string, error) {
+func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, partNumber int, data []byte) (string, error) {
 	// Calculate MD5 for data integrity
 	hasher := md5.New()
 	hasher.Write(data)
@@ -227,7 +227,7 @@ func (m *MultipartUploader) UploadPart(ctx context.Context, uploadID string, par
 	return etag, nil
 }
 
-func (m *MultipartUploader) CompleteUpload(ctx context.Context, uploadID string, parts []Part) error {
+func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string, parts []Part) error {
 	// Sort parts by part number
 	sort.Slice(parts, func(i, j int) bool {
 		return parts[i].PartNumber < parts[j].PartNumber
@@ -288,17 +288,17 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	}
 
 	// Initiate multipart upload
-	uploadID, err := m.InitiateUpload(ctx)
+	uploadID, err := m.initiateUpload(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
-	parts, err2 := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
-	if err2 != nil {
-		return err2
+	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
+	if err != nil {
+		return err
 	}
 
-	if err := m.CompleteUpload(ctx, uploadID, parts); err != nil {
+	if err := m.completeUpload(ctx, uploadID, parts); err != nil {
 		return fmt.Errorf("failed to complete upload: %w", err)
 	}
 
@@ -337,7 +337,7 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 			}
 
 			// Upload part
-			etag, err := m.UploadPart(ctx, uploadID, partNumber, chunk)
+			etag, err := m.uploadPart(ctx, uploadID, partNumber, chunk)
 			if err != nil {
 				return fmt.Errorf("failed to upload part %d: %w", partNumber, err)
 			}
