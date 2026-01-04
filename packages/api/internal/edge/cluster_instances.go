@@ -48,9 +48,9 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	// we are taking service info directly from the instance to avoid timing delays in service discovery
 	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
-	info, err := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
+	info, grpcError := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
 
-	err = utils.UnwrapGRPCError(err)
+	err := utils.UnwrapGRPCError(grpcError)
 	if err != nil {
 		logger.L().Error(ctx, "Failed to get instance info",
 			zap.Error(err),
@@ -62,12 +62,19 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 		return
 	}
 
-	instance.mutex.Lock()
-	defer instance.mutex.Unlock()
+	// build the data object first to minimize lock time
+	// machineInfo.FromGrpcInfo might be expensive
 
-	instance.status = info.GetServiceStatus()
-	instance.roles = info.GetServiceRoles()
-	instance.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
+	infosStatus := info.GetServiceStatus()
+	roles := info.GetServiceRoles()
+	machineInfo := machineinfo.FromGRPCInfo(info.GetMachineInfo())
+
+	// Lock only to assign the values
+	instance.mutex.Lock()
+	instance.status = infosStatus
+	instance.roles = roles
+	instance.machineInfo = machineInfo
+	instance.mutex.Unlock()
 }
 
 func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
@@ -135,8 +142,9 @@ func (d clusterSynchronizationStore) SourceExists(_ context.Context, s []api.Clu
 }
 
 func (d clusterSynchronizationStore) PoolList(_ context.Context) []*ClusterInstance {
-	mapped := make([]*ClusterInstance, 0)
-	for _, item := range d.cluster.instances.Items() {
+	clusterInstanceItems := d.cluster.instances.Items()
+	mapped := make([]*ClusterInstance, 0, len(clusterInstanceItems))
+	for _, item := range clusterInstanceItems {
 		mapped = append(mapped, item)
 	}
 
