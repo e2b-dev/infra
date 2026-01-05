@@ -188,7 +188,7 @@ func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*Instance, b
 	return nil, false
 }
 
-func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, info machineinfo.MachineInfo) (*Instance, error) {
+func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo machineinfo.MachineInfo) (*Instance, error) {
 	_, span := tracer.Start(ctx, "template-builder-get-available-instance")
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
@@ -208,7 +208,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, info machinei
 		}
 
 		// Check machine compatibility
-		if machineInfo := instance.GetMachineInfo(); machineInfo.CPUModel != "" && !machineInfo.IsCompatibleWith(instance.machine) {
+		if machineInfo := instance.GetMachineInfo(); expectedInfo.CPUModel != "" && !expectedInfo.IsCompatibleWith(machineInfo) {
 			continue
 		}
 
