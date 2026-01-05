@@ -243,16 +243,18 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 				continue
 			}
 
-			del, reinsertBackToCache := c.splitBatch(batch)
-
 			// reinsert the "younger" candidates back into the directory tree
+			del, reinsertBackToCache := c.splitBatch(batch)
 			c.reinsertCandidates(reinsertBackToCache)
 
-			c.Info(ctx, "selected batch",
-				zap.Int("count", len(del)),
-				zap.Duration("oldest", time.Since(time.Unix(del[0].ATimeUnix, 0))),
-				zap.Duration("newest", time.Since(time.Unix(del[len(del)-1].ATimeUnix, 0))),
-			)
+			if len(del) >= 0 {
+				c.Info(ctx, "selected batch",
+					zap.Int("count", len(del)),
+					zap.Duration("oldest", time.Since(time.Unix(del[0].ATimeUnix, 0))),
+					zap.Duration("newest", time.Since(time.Unix(del[len(del)-1].ATimeUnix, 0))),
+				)
+			}
+
 			total := uint64(0)
 			for _, toDelete := range del {
 				deleteCh <- toDelete
@@ -295,6 +297,7 @@ func (c *Cleaner) splitBatch(batch []*Candidate) (toDelete []*Candidate, toReins
 	del := min(c.DeleteN, len(batch))
 	toDelete = batch[:del]
 	toReinsert = batch[del:]
+
 	return toDelete, toReinsert
 }
 

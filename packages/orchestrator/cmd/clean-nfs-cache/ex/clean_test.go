@@ -138,12 +138,12 @@ func TestSplitBatch(t *testing.T) {
 
 	toDelete, toReinsert := c.splitBatch(batch)
 
-	require.Equal(t, 3, len(toDelete))
+	require.Len(t, toDelete, 3)
 	require.Equal(t, "file0.txt", toDelete[0].FullPath)
 	require.Equal(t, "file1.txt", toDelete[1].FullPath)
 	require.Equal(t, "file2.txt", toDelete[2].FullPath)
 
-	require.Equal(t, 2, len(toReinsert))
+	require.Len(t, toReinsert, 2)
 	require.Equal(t, "file3.txt", toReinsert[0].FullPath)
 	require.Equal(t, "file4.txt", toReinsert[1].FullPath)
 }
