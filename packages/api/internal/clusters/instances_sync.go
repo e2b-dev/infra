@@ -63,6 +63,7 @@ func (d instancesSyncStore) PoolInsert(ctx context.Context, item discovery.Item)
 		logger.WithServiceInstanceID(item.InstanceID),
 	)
 
+	// Instant is synced immediately after creation to ensure it's working before adding to the pool.
 	instance, err := d.instanceCreation(ctx, item)
 	if err != nil {
 		logger.L().Error(ctx, "Failed to create cluster instance during pool insert",
@@ -71,14 +72,6 @@ func (d instancesSyncStore) PoolInsert(ctx context.Context, item discovery.Item)
 			logger.WithNodeID(item.NodeID),
 			logger.WithServiceInstanceID(item.InstanceID),
 		)
-
-		return
-	}
-
-	ok := d.tryToSyncInstance(ctx, instance)
-	if !ok {
-		// Try to gracefully close the instance
-		d.tryToCloseInstance(ctx, instance)
 
 		return
 	}
