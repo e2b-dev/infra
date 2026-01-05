@@ -11,18 +11,6 @@ import (
 	apiedge "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
-func edgeMetricToApi(m apiedge.SandboxMetric) api.SandboxMetric {
-	return api.SandboxMetric{
-		Timestamp:     m.Timestamp,
-		TimestampUnix: m.TimestampUnix,
-		CpuUsedPct:    m.CpuUsedPct,
-		CpuCount:      m.CpuCount,
-		MemTotal:      m.MemTotal,
-		MemUsed:       m.MemUsed,
-		DiskTotal:     m.DiskTotal,
-		DiskUsed:      m.DiskUsed,
-	}
-}
 func GetClusterSandboxMetrics(ctx context.Context, pool *Pool, sandboxID string, teamID string, clusterID uuid.UUID, qStart *int64, qEnd *int64) ([]api.SandboxMetric, *api.APIError) {
 	cluster, ok := pool.GetClusterById(clusterID)
 	if !ok {
@@ -65,11 +53,19 @@ func GetClusterSandboxMetrics(ctx context.Context, pool *Pool, sandboxID string,
 	}
 
 	// Transform edge types (snake_case) to API types (camelCase)
-	metrics := *res.JSON200
 
-	apiMetrics := make([]api.SandboxMetric, len(metrics))
-	for i, m := range metrics {
-		apiMetrics[i] = edgeMetricToApi(m)
+	apiMetrics := make([]api.SandboxMetric, len(*res.JSON200))
+	for i, m := range *res.JSON200 {
+		apiMetrics[i] = api.SandboxMetric{
+			Timestamp:     m.Timestamp,
+			TimestampUnix: m.TimestampUnix,
+			CpuUsedPct:    m.CpuUsedPct,
+			CpuCount:      m.CpuCount,
+			DiskTotal:     m.DiskTotal,
+			DiskUsed:      m.DiskUsed,
+			MemTotal:      m.MemTotal,
+			MemUsed:       m.MemUsed,
+		}
 	}
 
 	return apiMetrics, nil
@@ -79,7 +75,7 @@ func GetClusterSandboxListMetrics(ctx context.Context, pool *Pool, teamID string
 	cluster, ok := pool.GetClusterById(clusterID)
 	if !ok {
 		return nil, &api.APIError{
-			Code:      http.StatusNotFound,
+			Code:      http.StatusInternalServerError,
 			ClientMsg: fmt.Sprintf("Error getting cluster '%s'", clusterID),
 			Err:       fmt.Errorf("cluster with ID '%s' not found", clusterID),
 		}
@@ -115,10 +111,18 @@ func GetClusterSandboxListMetrics(ctx context.Context, pool *Pool, teamID string
 		}
 	}
 
-	sandboxesMap := res.JSON200.Sandboxes
-	apiMetrics := make(map[string]api.SandboxMetric, len(sandboxesMap))
-	for key, m := range sandboxesMap {
-		apiMetrics[key] = edgeMetricToApi(m)
+	apiMetrics := make(map[string]api.SandboxMetric)
+	for key, m := range res.JSON200.Sandboxes {
+		apiMetrics[key] = api.SandboxMetric{
+			Timestamp:     m.Timestamp,
+			TimestampUnix: m.TimestampUnix,
+			CpuUsedPct:    m.CpuUsedPct,
+			CpuCount:      m.CpuCount,
+			DiskTotal:     m.DiskTotal,
+			DiskUsed:      m.DiskUsed,
+			MemTotal:      m.MemTotal,
+			MemUsed:       m.MemUsed,
+		}
 	}
 
 	return apiMetrics, nil

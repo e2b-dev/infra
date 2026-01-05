@@ -48,9 +48,9 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	// we are taking service info directly from the instance to avoid timing delays in service discovery
 	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
-	info, grpcError := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
+	info, err := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
 
-	err := utils.UnwrapGRPCError(grpcError)
+	err = utils.UnwrapGRPCError(err)
 	if err != nil {
 		logger.L().Error(ctx, "Failed to get instance info",
 			zap.Error(err),
@@ -62,19 +62,13 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 		return
 	}
 
-	// build the data object first to minimize lock time
-	// machineInfo.FromGrpcInfo might be expensive
-
-	infosStatus := info.GetServiceStatus()
-	roles := info.GetServiceRoles()
-	machineInfo := machineinfo.FromGRPCInfo(info.GetMachineInfo())
-
-	// Lock only to assign the values
 	instance.mutex.Lock()
-	instance.status = infosStatus
-	instance.roles = roles
-	instance.machineInfo = machineInfo
-	instance.mutex.Unlock()
+	defer instance.mutex.Unlock()
+
+	instance.status = info.GetServiceStatus()
+	instance.roles = info.GetServiceRoles()
+	instance.machineInfo = machineinfo.FromGRPCInfo(info.GetMachineInfo())
+
 }
 
 func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
