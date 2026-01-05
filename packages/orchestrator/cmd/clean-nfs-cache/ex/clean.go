@@ -247,7 +247,7 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 			del, reinsertBackToCache := c.splitBatch(batch)
 			c.reinsertCandidates(reinsertBackToCache)
 
-			if len(del) >= 0 {
+			if len(del) > 0 {
 				c.Info(ctx, "selected batch",
 					zap.Int("count", len(del)),
 					zap.Duration("oldest", time.Since(time.Unix(del[0].ATimeUnix, 0))),

@@ -71,7 +71,7 @@ func TestCleanDeletesTwoFiles(t *testing.T) {
 
 			// file0 should be newest
 			ageMinutes := time.Duration(10*i) * time.Minute // ensure clear ordering
-			mtime := now.Add(time.Duration(-ageMinutes))
+			mtime := now.Add(-ageMinutes)
 			err = os.Chtimes(name, mtime, mtime)
 			require.NoError(t, err)
 		}
