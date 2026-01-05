@@ -149,7 +149,7 @@ func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
 
 // addNonTCPSetFilterRule adds a filter rule that matches ONLY non-TCP traffic to destinations in a set.
 // If drop is true, packets are dropped. Otherwise, they are accepted.
-// TCP traffic is NOT affected by this rule (iptables REDIRECT handles NEW TCP connections).
+// TCP traffic is NOT affected by this rule (iptables REDIRECT handles TCP traffic).
 func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
 	var verdict []expr.Any
 	if drop {
@@ -186,10 +186,8 @@ func (fw *Firewall) installRules() error {
 	//   3. predefinedDenySet → DROP (all protocols, hard block)
 	//   4. Non-TCP: userAllowSet → accept
 	//   5. Non-TCP: userDenySet → DROP
-	//   6. Default: ACCEPT (TCP handled by iptables REDIRECT for NEW only)
+	//   6. Default: ACCEPT (TCP handled by iptables REDIRECT)
 	//
-	// Note: TCP proxy redirect uses "-m state --state NEW" so only NEW
-	// connections are redirected. ESTABLISHED/RELATED bypass the proxy.
 	// ============================================================
 
 	// Rule 1: Allow ESTABLISHED/RELATED connections - all protocols
@@ -224,16 +222,16 @@ func (fw *Firewall) installRules() error {
 	fw.addSetFilterRule(fw.predefinedDenySet.Set(), true)
 
 	// Rule 4: Non-TCP + userAllowSet → accept
-	// Only non-TCP traffic is affected; TCP goes to proxy for NEW connections
+	// Only non-TCP traffic is affected; TCP goes to proxy
 	fw.addNonTCPSetFilterRule(fw.userAllowSet.Set(), false)
 
 	// Rule 5: Non-TCP + userDenySet → DROP
-	// Only non-TCP traffic is affected; TCP goes to proxy for NEW connections
+	// Only non-TCP traffic is affected; TCP goes to proxy
 	fw.addNonTCPSetFilterRule(fw.userDenySet.Set(), true)
 
 	// Default policy: ACCEPT
 	// - Non-TCP not in user sets: allowed (default policy)
-	// - TCP: iptables REDIRECT handles NEW connections to proxy
+	// - TCP: iptables REDIRECT handles TCP traffic to proxy
 
 	if err := fw.conn.Flush(); err != nil {
 		return fmt.Errorf("flush nftables changes: %w", err)
