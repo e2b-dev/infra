@@ -152,37 +152,57 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 	direction api.LogsDirection,
 	source *api.LogsSource,
 ) ([]logs.LogEntry, error) {
+	ctx, span := tracer.Start(ctx, "get build-logs")
+	defer span.End()
+
 	start, end := logQueryWindow(cursor, direction)
 
-	// Fetch logs directly from template builder instance
+	var sources []logSourceFunc
+
 	if nodeID != nil && logCheckSourceType(source, api.LogsSourceTemporary) {
 		instance, found := l.instances.Get(*nodeID)
 		if !found {
 			return nil, fmt.Errorf("node instance not found for id '%s'", *nodeID)
 		}
 
-		entries, err := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
-		if err != nil {
-			return nil, fmt.Errorf("error getting build logs from node: %w", err)
-		}
-
-		return entries, nil
+		sourceCallback := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
+		sources = append(sources, sourceCallback)
 	}
 
-	// Fetch logs from Loki backend
+	// Fetch logs from Loki backend (explicit persistent source or default)
 	if logCheckSourceType(source, api.LogsSourcePersistent) {
 		lokiDirection := defaultDirection
 		if direction == api.LogsDirectionBackward {
 			lokiDirection = logproto.BACKWARD
 		}
 
-		entries, err := l.queryLogsProvider.QueryBuildLogs(ctx, templateID, buildID, start, end, int(limit), offset, level, lokiDirection)
+		sourceCallback := l.logsFromLocalLoki(ctx, templateID, buildID, start, end, int(limit), offset, level, lokiDirection)
+		sources = append(sources, sourceCallback)
+	}
+
+	// Iterate through sources and return the first successful fetch,
+	// it depends on nodeID and source what sources are available here.
+	for _, sourceFetch := range sources {
+		entries, err := sourceFetch()
 		if err != nil {
-			return nil, fmt.Errorf("error when fetching build logs: %w", err)
+			logger.L().Warn(ctx, "Error fetching build logs", logger.WithTemplateID(templateID), logger.WithBuildID(buildID), zap.Error(err))
+
+			continue
 		}
 
 		return entries, nil
 	}
 
 	return nil, nil
+}
+
+func (l *LocalClusterResourceProvider) logsFromLocalLoki(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int32, level *logs.LogLevel, direction logproto.Direction) logSourceFunc {
+	return func() ([]logs.LogEntry, error) {
+		entries, err := l.queryLogsProvider.QueryBuildLogs(ctx, templateID, buildID, start, end, limit, offset, level, direction)
+		if err != nil {
+			return nil, fmt.Errorf("error when fetching build logs from Loki: %w", err)
+		}
+
+		return entries, nil
+	}
 }

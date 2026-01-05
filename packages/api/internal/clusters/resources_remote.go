@@ -7,8 +7,11 @@ import (
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -149,27 +152,31 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 
 	start, end := logQueryWindow(cursor, direction)
 
-	// Fetch logs directly from template builder instance
+	var sources []logSourceFunc
+
 	if nodeID != nil && logCheckSourceType(source, api.LogsSourceTemporary) {
 		instance, found := r.instances.Get(*nodeID)
 		if !found {
 			return nil, fmt.Errorf("node instance not found for id '%s'", *nodeID)
 		}
 
-		entries, err := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
-		if err != nil {
-			return nil, fmt.Errorf("error getting build logs from node: %w", err)
-		}
-
-		return entries, nil
+		sourceCallback := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
+		sources = append(sources, sourceCallback)
 	}
 
-	// Fetch logs from edge API
 	if logCheckSourceType(source, api.LogsSourcePersistent) {
-		// Fetch logs from edge API
-		entries, err := r.getBuildLogsFromEdge(ctx, templateID, buildID, offset, limit, level, start, end, direction)
+		sourceCallback := r.getBuildLogsFromEdge(ctx, templateID, buildID, offset, limit, level, start, end, direction)
+		sources = append(sources, sourceCallback)
+	}
+
+	// Iterate through sources and return the first successful fetch,
+	// it depends on nodeID and source what sources are available here.
+	for _, sourceFetch := range sources {
+		entries, err := sourceFetch()
 		if err != nil {
-			return nil, fmt.Errorf("error getting build logs from edge API: %w", err)
+			logger.L().Warn(ctx, "Error fetching build logs", logger.WithTemplateID(templateID), logger.WithBuildID(buildID), zap.Error(err))
+
+			continue
 		}
 
 		return entries, nil
@@ -178,42 +185,44 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 	return nil, nil
 }
 
-func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) ([]logs.LogEntry, error) {
-	res, err := r.client.V1TemplateBuildLogsWithResponse(
-		ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{
-			TemplateID: templateID,
-			Offset:     &offset,
-			Limit:      &limit,
-			Level:      logToEdgeLevel(level),
-			// TODO: remove this once the API spec is not required to have orchestratorID (https://linear.app/e2b/issue/ENG-3352)
-			OrchestratorID: utils.ToPtr("unused"),
-			Start:          utils.ToPtr(start.UnixMilli()),
-			End:            utils.ToPtr(end.UnixMilli()),
-			Direction:      utils.ToPtr(edgeapi.V1TemplateBuildLogsParamsDirection(direction)),
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get build logs in template manager: %w", err)
-	}
-
-	if res.StatusCode() != 200 {
-		return nil, errors.New("failed to get build logs in template manager")
-	}
-
-	if res.JSON200 == nil {
-		return nil, errors.New("request returned nil response")
-	}
-
-	raw := *res.JSON200
-	l := make([]logs.LogEntry, len(raw.LogEntries))
-	for i, entry := range raw.LogEntries {
-		l[i] = logs.LogEntry{
-			Timestamp: entry.Timestamp,
-			Message:   entry.Message,
-			Level:     logs.StringToLevel(string(entry.Level)),
-			Fields:    entry.Fields,
+func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) logSourceFunc {
+	return func() ([]logs.LogEntry, error) {
+		res, err := r.client.V1TemplateBuildLogsWithResponse(
+			ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{
+				TemplateID: templateID,
+				Offset:     &offset,
+				Limit:      &limit,
+				Level:      logToEdgeLevel(level),
+				// TODO: remove this once the API spec is not required to have orchestratorID (https://linear.app/e2b/issue/ENG-3352)
+				OrchestratorID: utils.ToPtr("unused"),
+				Start:          utils.ToPtr(start.UnixMilli()),
+				End:            utils.ToPtr(end.UnixMilli()),
+				Direction:      utils.ToPtr(edgeapi.V1TemplateBuildLogsParamsDirection(direction)),
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get build logs in template manager: %w", err)
 		}
-	}
 
-	return l, nil
+		if res.StatusCode() != 200 {
+			return nil, errors.New("failed to get build logs in template manager")
+		}
+
+		if res.JSON200 == nil {
+			return nil, errors.New("request returned nil response")
+		}
+
+		raw := *res.JSON200
+		l := make([]logs.LogEntry, len(raw.LogEntries))
+		for i, entry := range raw.LogEntries {
+			l[i] = logs.LogEntry{
+				Timestamp: entry.Timestamp,
+				Message:   entry.Message,
+				Level:     logs.StringToLevel(string(entry.Level)),
+				Fields:    entry.Fields,
+			}
+		}
+
+		return l, nil
+	}
 }

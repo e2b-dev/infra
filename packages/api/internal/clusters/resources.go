@@ -55,10 +55,6 @@ func logDirectionToTemplateManagerDirection(direction api.LogsDirection) templat
 	}
 }
 
-func logCheckSourceType(source *api.LogsSource, sourceType api.LogsSource) bool {
-	return source == nil || *source == sourceType
-}
-
 func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {
 	if level == nil {
 		return nil
@@ -69,41 +65,49 @@ func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {
 	return &value
 }
 
-func logsFromBuilderInstance(ctx context.Context, instance *Instance, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) ([]logs.LogEntry, error) {
-	var lvlReq *templatemanagergrpc.LogLevel
-	if level != nil {
-		lvlReq = templatemanagergrpc.LogLevel(*level).Enum()
-	}
+func logCheckSourceType(source *api.LogsSource, sourceType api.LogsSource) bool {
+	return source == nil || *source == sourceType
+}
 
-	res, err := instance.GetConnection().Template.TemplateBuildStatus(
-		ctx, &templatemanagergrpc.TemplateStatusRequest{
-			TemplateID: templateID,
-			BuildID:    buildID,
-			Offset:     &offset,
-			Limit:      utils.ToPtr(uint32(limit)),
-			Level:      lvlReq,
-			Start:      timestamppb.New(start),
-			End:        timestamppb.New(end),
-			Direction:  utils.ToPtr(logDirectionToTemplateManagerDirection(direction)),
-		},
-	)
-	if err != nil {
-		telemetry.ReportError(ctx, "error when returning logs for template build", err)
-		logger.L().Error(ctx, "error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
+type logSourceFunc func() ([]logs.LogEntry, error)
 
-		return nil, err
-	}
-
-	raw := res.GetLogEntries()
-	entries := make([]logs.LogEntry, len(raw))
-	for i, entry := range res.GetLogEntries() {
-		entries[i] = logs.LogEntry{
-			Timestamp: entry.GetTimestamp().AsTime(),
-			Message:   entry.GetMessage(),
-			Level:     logs.LogLevel(entry.GetLevel()),
-			Fields:    entry.GetFields(),
+func logsFromBuilderInstance(ctx context.Context, instance *Instance, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) logSourceFunc {
+	return func() ([]logs.LogEntry, error) {
+		var lvlReq *templatemanagergrpc.LogLevel
+		if level != nil {
+			lvlReq = templatemanagergrpc.LogLevel(*level).Enum()
 		}
-	}
 
-	return entries, nil
+		res, err := instance.GetConnection().Template.TemplateBuildStatus(
+			ctx, &templatemanagergrpc.TemplateStatusRequest{
+				TemplateID: templateID,
+				BuildID:    buildID,
+				Offset:     &offset,
+				Limit:      utils.ToPtr(uint32(limit)),
+				Level:      lvlReq,
+				Start:      timestamppb.New(start),
+				End:        timestamppb.New(end),
+				Direction:  utils.ToPtr(logDirectionToTemplateManagerDirection(direction)),
+			},
+		)
+		if err != nil {
+			telemetry.ReportError(ctx, "error when returning logs for template build", err)
+			logger.L().Error(ctx, "error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
+
+			return nil, err
+		}
+
+		raw := res.GetLogEntries()
+		entries := make([]logs.LogEntry, len(raw))
+		for i, entry := range res.GetLogEntries() {
+			entries[i] = logs.LogEntry{
+				Timestamp: entry.GetTimestamp().AsTime(),
+				Message:   entry.GetMessage(),
+				Level:     logs.LogLevel(entry.GetLevel()),
+				Fields:    entry.GetFields(),
+			}
+		}
+
+		return entries, nil
+	}
 }
