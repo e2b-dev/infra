@@ -99,6 +99,9 @@ type ServerInterface interface {
 	// (POST /templates)
 	PostTemplates(c *gin.Context)
 
+	// (GET /templates/aliases/{alias})
+	GetTemplatesAliasesAlias(c *gin.Context, alias string)
+
 	// (POST /templates/tags)
 	PostTemplatesTags(c *gin.Context)
 
@@ -976,6 +979,36 @@ func (siw *ServerInterfaceWrapper) PostTemplates(c *gin.Context) {
 	siw.Handler.PostTemplates(c)
 }
 
+// GetTemplatesAliasesAlias operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesAliasesAlias(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "alias" -------------
+	var alias string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "alias", c.Param("alias"), &alias, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter alias: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesAliasesAlias(c, alias)
+}
+
 // PostTemplatesTags operation middleware
 func (siw *ServerInterfaceWrapper) PostTemplatesTags(c *gin.Context) {
 
@@ -1568,6 +1601,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/teams/:teamID/metrics/max", wrapper.GetTeamsTeamIDMetricsMax)
 	router.GET(options.BaseURL+"/templates", wrapper.GetTemplates)
 	router.POST(options.BaseURL+"/templates", wrapper.PostTemplates)
+	router.GET(options.BaseURL+"/templates/aliases/:alias", wrapper.GetTemplatesAliasesAlias)
 	router.POST(options.BaseURL+"/templates/tags", wrapper.PostTemplatesTags)
 	router.DELETE(options.BaseURL+"/templates/tags/:name", wrapper.DeleteTemplatesTagsName)
 	router.DELETE(options.BaseURL+"/templates/:templateID", wrapper.DeleteTemplatesTemplateID)

@@ -2525,6 +2525,33 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /templates/aliases/{alias}:
+    get:
+      description: Check if template with given alias exists
+      tags: [templates]
+      security:
+        - AccessTokenAuth: []
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+      parameters:
+        - name: alias
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Template alias
+      responses:
+        "200":
+          description: Successfully queried template by alias
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
   /nodes:
     get:
       description: List all nodes

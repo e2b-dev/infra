@@ -194,6 +194,9 @@ type ClientInterface interface {
 
 	PostTemplates(ctx context.Context, body PostTemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetTemplatesAliasesAlias request
+	GetTemplatesAliasesAlias(ctx context.Context, alias string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PostTemplatesTagsWithBody request with any body
 	PostTemplatesTagsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -695,6 +698,18 @@ func (c *Client) PostTemplatesWithBody(ctx context.Context, contentType string, 
 
 func (c *Client) PostTemplates(ctx context.Context, body PostTemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostTemplatesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetTemplatesAliasesAlias(ctx context.Context, alias string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesAliasesAliasRequest(c.Server, alias)
 	if err != nil {
 		return nil, err
 	}
@@ -2198,6 +2213,40 @@ func NewPostTemplatesRequestWithBody(server string, contentType string, body io.
 	return req, nil
 }
 
+// NewGetTemplatesAliasesAliasRequest generates requests for GetTemplatesAliasesAlias
+func NewGetTemplatesAliasesAliasRequest(server string, alias string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "alias", runtime.ParamLocationPath, alias)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/aliases/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewPostTemplatesTagsRequest calls the generic PostTemplatesTags builder with application/json body
 func NewPostTemplatesTagsRequest(server string, body PostTemplatesTagsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -3154,6 +3203,9 @@ type ClientWithResponsesInterface interface {
 
 	PostTemplatesWithResponse(ctx context.Context, body PostTemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostTemplatesResponse, error)
 
+	// GetTemplatesAliasesAliasWithResponse request
+	GetTemplatesAliasesAliasWithResponse(ctx context.Context, alias string, reqEditors ...RequestEditorFn) (*GetTemplatesAliasesAliasResponse, error)
+
 	// PostTemplatesTagsWithBodyWithResponse request with any body
 	PostTemplatesTagsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostTemplatesTagsResponse, error)
 
@@ -3898,6 +3950,31 @@ func (r PostTemplatesResponse) StatusCode() int {
 	return 0
 }
 
+type GetTemplatesAliasesAliasResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *N400
+	JSON403      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesAliasesAliasResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesAliasesAliasResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type PostTemplatesTagsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4571,6 +4648,15 @@ func (c *ClientWithResponses) PostTemplatesWithResponse(ctx context.Context, bod
 		return nil, err
 	}
 	return ParsePostTemplatesResponse(rsp)
+}
+
+// GetTemplatesAliasesAliasWithResponse request returning *GetTemplatesAliasesAliasResponse
+func (c *ClientWithResponses) GetTemplatesAliasesAliasWithResponse(ctx context.Context, alias string, reqEditors ...RequestEditorFn) (*GetTemplatesAliasesAliasResponse, error) {
+	rsp, err := c.GetTemplatesAliasesAlias(ctx, alias, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesAliasesAliasResponse(rsp)
 }
 
 // PostTemplatesTagsWithBodyWithResponse request with arbitrary body returning *PostTemplatesTagsResponse
@@ -5973,6 +6059,53 @@ func ParsePostTemplatesResponse(rsp *http.Response) (*PostTemplatesResponse, err
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTemplatesAliasesAliasResponse parses an HTTP response from a GetTemplatesAliasesAliasWithResponse call
+func ParseGetTemplatesAliasesAliasResponse(rsp *http.Response) (*GetTemplatesAliasesAliasResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesAliasesAliasResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
