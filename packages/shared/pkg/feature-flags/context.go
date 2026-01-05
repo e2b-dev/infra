@@ -9,18 +9,11 @@ import (
 type ctxKey struct{}
 
 func SetContext(ctx context.Context, contexts ...ldcontext.Context) context.Context {
-	var val ldcontext.Context
-
-	switch len(contexts) {
-	case 0:
+	if len(contexts) == 0 {
 		return ctx
-	case 1:
-		val = contexts[0]
-	default:
-		val = ldcontext.NewMulti(contexts...)
 	}
 
-	ctx = context.WithValue(ctx, ctxKey{}, val)
+	ctx = context.WithValue(ctx, ctxKey{}, mergeContexts(ctx, contexts))
 
 	return ctx
 }
@@ -104,7 +97,8 @@ func removeUndefined(contexts []ldcontext.Context) []ldcontext.Context {
 
 func mergeContexts(ctx context.Context, contexts []ldcontext.Context) ldcontext.Context {
 	if embeddedContext, ok := getContext(ctx); ok {
-		contexts = append(contexts, embeddedContext)
+		// Prepend embedded context so new contexts override old ones
+		contexts = append([]ldcontext.Context{embeddedContext}, contexts...)
 	}
 
 	contexts = flattenContexts(contexts)
