@@ -414,6 +414,7 @@ func (c *CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, o
 	output, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, cacheFilePermissions)
 	if err != nil {
 		writeTimer.Failure(ctx, 0)
+
 		return fmt.Errorf("failed to open file %s: %w", chunkPath, err)
 	}
 	defer utils.Cleanup(ctx, "failed to close file", output.Close)

@@ -316,22 +316,22 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		span.End()
 	}()
 
-	timer := googleWriteTimerFactory.Begin()
-
 	bucketName := g.storage.bucket.BucketName()
 	objectName := g.path
 	filePath := path
 
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
-		timer.Failure(ctx, 0)
-
 		return fmt.Errorf("failed to get file size: %w", err)
 	}
 
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
 	if fileInfo.Size() < gcpMultipartUploadChunkSize {
+		timer := googleWriteTimerFactory.Begin(
+			attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystemOneShot),
+		)
+
 		data, err := os.ReadFile(path)
 		if err != nil {
 			timer.Failure(ctx, 0)
@@ -346,10 +346,14 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 			return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
 		}
 
-		timer.Success(ctx, int64(count), attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystemOneShot))
+		timer.Success(ctx, int64(count))
 
 		return nil
 	}
+
+	timer := googleWriteTimerFactory.Begin(
+		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
+	)
 
 	maxConcurrency := gcloudDefaultUploadConcurrency
 	if g.limiter != nil {
@@ -396,7 +400,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		zap.Int64("duration", time.Since(start).Milliseconds()),
 	)
 
-	timer.Success(ctx, count, attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem))
+	timer.Success(ctx, count)
 
 	return nil
 }
