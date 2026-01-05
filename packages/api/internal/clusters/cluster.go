@@ -21,6 +21,7 @@ import (
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -187,7 +188,7 @@ func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*Instance, b
 	return nil, false
 }
 
-func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*Instance, error) {
+func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, info machineinfo.MachineInfo) (*Instance, error) {
 	_, span := tracer.Start(ctx, "template-builder-get-available-instance")
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
@@ -201,7 +202,13 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*Instance, e
 	rand.Shuffle(len(instances), func(i, j int) { instances[i], instances[j] = instances[j], instances[i] })
 
 	for _, instance := range instances {
+		// Check availability and builder role
 		if info := instance.GetInfo(); info.Status != infogrpc.ServiceInfoStatus_Healthy || !info.IsBuilder {
+			continue
+		}
+
+		// Check machine compatibility
+		if info.CPUModel != "" && !info.IsCompatibleWith(instance.machine) {
 			continue
 		}
 
