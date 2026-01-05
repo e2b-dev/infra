@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
@@ -20,7 +22,16 @@ import (
 
 const maxRequestsInProgress = 4096
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd")
+
 var ErrUnexpectedEventType = errors.New("unexpected event type")
+
+// PageFaultEvent represents a single page fault with timing information.
+type PageFaultEvent struct {
+	Timestamp int64 // Unix nanoseconds when the fault started
+	Duration  int64 // Total time to serve the fault (nanoseconds)
+	Offset    int64 // Offset in the memfile
+}
 
 type Userfaultfd struct {
 	fd Fd
@@ -33,6 +44,11 @@ type Userfaultfd struct {
 	missingRequests *block.Tracker
 	// We use the settleRequests to guard the missingRequests so we can access a consistent state of the missingRequests after the requests are finished.
 	settleRequests sync.RWMutex
+
+	// Page fault tracing
+	pageFaultTrace   []PageFaultEvent
+	pageFaultTraceMu sync.Mutex
+	traceEnabled     bool
 
 	wg errgroup.Group
 
@@ -54,6 +70,8 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		src:             src,
 		missingRequests: block.NewTracker(blockSize),
 		ma:              m,
+		pageFaultTrace:  make([]PageFaultEvent, 0, 1024),
+		traceEnabled:    false, // Disabled by default, enable via SetTraceEnabled
 		logger:          logger,
 	}
 
@@ -63,6 +81,23 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	u.wg.SetLimit(maxRequestsInProgress)
 
 	return u, nil
+}
+
+// SetTraceEnabled enables or disables page fault tracing.
+func (u *Userfaultfd) SetTraceEnabled(enabled bool) {
+	u.pageFaultTraceMu.Lock()
+	defer u.pageFaultTraceMu.Unlock()
+	u.traceEnabled = enabled
+}
+
+// GetPageFaultTrace returns a copy of the page fault trace.
+func (u *Userfaultfd) GetPageFaultTrace() []PageFaultEvent {
+	u.pageFaultTraceMu.Lock()
+	defer u.pageFaultTraceMu.Unlock()
+
+	result := make([]PageFaultEvent, len(u.pageFaultTrace))
+	copy(result, u.pageFaultTrace)
+	return result
 }
 
 func (u *Userfaultfd) Close() error {
@@ -218,6 +253,9 @@ func (u *Userfaultfd) handleMissing(
 	pagesize uintptr,
 	offset int64,
 ) error {
+	// Capture start time outside the goroutine to include any queuing delay
+	startTime := time.Now()
+
 	u.wg.Go(func() error {
 		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 		// even if the errgroup is cancelled or the goroutine returns early.
@@ -248,7 +286,6 @@ func (u *Userfaultfd) handleMissing(
 		copyErr := u.fd.copy(addr, pagesize, b, copyMode)
 		if errors.Is(copyErr, unix.EEXIST) {
 			// Page is already mapped
-
 			return nil
 		}
 
@@ -264,6 +301,17 @@ func (u *Userfaultfd) handleMissing(
 
 		// Add the offset to the missing requests tracker.
 		u.missingRequests.Add(offset)
+
+		// Record page fault trace if enabled
+		u.pageFaultTraceMu.Lock()
+		if u.traceEnabled {
+			u.pageFaultTrace = append(u.pageFaultTrace, PageFaultEvent{
+				Timestamp: startTime.UnixNano(),
+				Duration:  time.Since(startTime).Nanoseconds(),
+				Offset:    offset,
+			})
+		}
+		u.pageFaultTraceMu.Unlock()
 
 		return nil
 	})

@@ -120,6 +120,19 @@ func (c *Cache) Sync() error {
 	return nil
 }
 
+func (c *Cache) EnableTransparentHugePages() error {
+	if c.mmap == nil {
+		return nil
+	}
+
+	err := unix.Madvise(*c.mmap, unix.MADV_HUGEPAGE)
+	if err != nil {
+		return fmt.Errorf("error enabling transparent huge pages: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Cache) ExportToDiff(ctx context.Context, out io.Writer) (*header.DiffMetadata, error) {
 	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()
@@ -260,6 +273,29 @@ func (c *Cache) setIsCached(off, length int64) {
 	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
 		c.dirty.Store(off+blockOff, struct{}{})
 	}
+}
+
+// SliceForWrite returns a direct slice into the mmap for zero-copy writes.
+// The caller can write directly to this slice, then call MarkCached.
+// Returns error if cache is closed or mmap is nil.
+func (c *Cache) SliceForWrite(off, length int64) ([]byte, error) {
+	if c.isClosed() {
+		return nil, NewErrCacheClosed(c.filePath)
+	}
+
+	if c.mmap == nil {
+		return nil, fmt.Errorf("mmap not available")
+	}
+
+	end := min(off+length, c.size)
+
+	return (*c.mmap)[off:end], nil
+}
+
+// MarkCached marks the given range as cached (dirty).
+// Use after writing directly to a slice obtained from SliceForWrite.
+func (c *Cache) MarkCached(off, length int64) {
+	c.setIsCached(off, length)
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.

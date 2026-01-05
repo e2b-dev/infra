@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	connections    = 4
+	connections    = 1
 	connectTimeout = 30 * time.Second
 
 	// disconnectTimeout should not be necessary if the disconnect is reliable
@@ -45,6 +45,10 @@ type DirectPathMount struct {
 	socksServer []io.Closer
 
 	handlersWg sync.WaitGroup
+
+	// Tracing - stored here so it can be applied when dispatchers are created
+	traceMu      sync.Mutex
+	traceEnabled bool
 }
 
 func NewDirectPathMount(b block.Device, devicePool *DevicePool) *DirectPathMount {
@@ -106,6 +110,14 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			server.Close()
 
 			dispatch := NewDispatch(serverc, d.Backend)
+
+			// Apply tracing setting from before Open() was called
+			d.traceMu.Lock()
+			if d.traceEnabled {
+				dispatch.SetTraceEnabled(true)
+			}
+			d.traceMu.Unlock()
+
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Go(func() {
 				handleErr := dispatch.Handle(ctx)
@@ -248,6 +260,27 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// SetTraceEnabled enables or disables NBD tracing for all dispatchers.
+// If called before Open(), the setting is stored and applied when dispatchers are created.
+func (d *DirectPathMount) SetTraceEnabled(enabled bool) {
+	d.traceMu.Lock()
+	defer d.traceMu.Unlock()
+	d.traceEnabled = enabled
+	// Apply to existing dispatchers (if any)
+	for _, disp := range d.dispatchers {
+		disp.SetTraceEnabled(enabled)
+	}
+}
+
+// GetTrace returns combined NBD trace events from all dispatchers.
+func (d *DirectPathMount) GetTrace() []NBDEvent {
+	var result []NBDEvent
+	for _, disp := range d.dispatchers {
+		result = append(result, disp.GetTrace()...)
+	}
+	return result
 }
 
 func disconnectNBDWithTimeout(ctx context.Context, deviceIndex uint32, timeout time.Duration) error {

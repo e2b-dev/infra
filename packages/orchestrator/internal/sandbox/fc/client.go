@@ -303,6 +303,28 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	return nil
 }
 
+// setLogger configures Firecracker internal logging
+func (c *apiClient) setLogger(ctx context.Context, logPath string, level string) error {
+	showLevel := true
+	showOrigin := true
+	loggerParams := operations.PutLoggerParams{
+		Context: ctx,
+		Body: &models.Logger{
+			LogPath:       logPath,
+			Level:         &level,
+			ShowLevel:     &showLevel,
+			ShowLogOrigin: &showOrigin,
+		},
+	}
+
+	_, err := c.client.Operations.PutLogger(&loggerParams)
+	if err != nil {
+		return fmt.Errorf("error setting fc logger: %w", err)
+	}
+
+	return nil
+}
+
 func (c *apiClient) memoryMapping(ctx context.Context) (*memory.Mapping, error) {
 	params := operations.GetMemoryMappingsParams{
 		Context: ctx,

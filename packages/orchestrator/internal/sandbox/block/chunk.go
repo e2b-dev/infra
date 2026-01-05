@@ -39,6 +39,11 @@ func NewChunker(
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
 
+	err = cache.EnableTransparentHugePages()
+	if err != nil {
+		return nil, fmt.Errorf("failed to enable transparent huge pages: %w", err)
+	}
+
 	chunker := &Chunker{
 		size:     size,
 		base:     base,
@@ -138,6 +143,11 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 		// Ensure the closure captures the correct block offset.
 		fetchOff := startingChunkOffset + chunkOff
 
+		b, err := c.cache.SliceForWrite(fetchOff, storage.MemoryChunkSize)
+		if err != nil {
+			return fmt.Errorf("failed to get slice for write at %d: %w", fetchOff, err)
+		}
+
 		eg.Go(func() (err error) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -153,8 +163,6 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				default:
 				}
 
-				b := make([]byte, storage.MemoryChunkSize)
-
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 				readBytes, err := c.base.ReadAt(ctx, b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
@@ -167,19 +175,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				}
 				fetchSW.End(ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
 
-				writeSW := c.metrics.WriteChunksTimerFactory.Begin()
-				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
-				if cacheErr != nil {
-					writeSW.End(ctx,
-						int64(readBytes),
-						attribute.String(result, resultTypeFailure),
-						attribute.String(failureReason, failureTypeLocalWrite),
-					)
-
-					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
-				}
-
-				writeSW.End(ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
+				c.cache.MarkCached(fetchOff, storage.MemoryChunkSize)
 
 				return nil
 			})

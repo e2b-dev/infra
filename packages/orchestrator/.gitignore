@@ -8,3 +8,5 @@ bin
 .shared
 /tmp
 .local-build
+/resume-sandbox
+trace-*.html

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -24,6 +25,72 @@ import (
 const (
 	loopDelay = 5 * time.Millisecond
 )
+
+// EnvdWaitDiagnostics captures timing information about waiting for envd
+type EnvdWaitDiagnostics struct {
+	StartTime           time.Time     // When waiting started
+	FirstTCPConnect     time.Time     // When TCP connection first succeeded
+	FirstHealthResponse time.Time     // When /health endpoint first responded
+	FirstInitResponse   time.Time     // When /init endpoint first responded
+	TCPAttempts         int           // Number of TCP connection attempts
+	HealthAttempts      int           // Number of /health request attempts
+	TotalDuration       time.Duration // Total time to get envd ready
+}
+
+// WaitForEnvdWithDiagnostics waits for envd and returns detailed timing
+// This is for diagnostic purposes - tracks TCP, /health, and timing
+func WaitForEnvdWithDiagnostics(ctx context.Context, hostIP string, port int, timeout time.Duration) (*EnvdWaitDiagnostics, error) {
+	diag := &EnvdWaitDiagnostics{
+		StartTime: time.Now(),
+	}
+
+	addr := fmt.Sprintf("%s:%d", hostIP, port)
+	healthAddr := fmt.Sprintf("http://%s/health", addr)
+
+	deadline := time.Now().Add(timeout)
+
+	// Phase 1: Wait for TCP connection
+	for time.Now().Before(deadline) {
+		diag.TCPAttempts++
+		conn, err := net.DialTimeout("tcp", addr, 50*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			if diag.FirstTCPConnect.IsZero() {
+				diag.FirstTCPConnect = time.Now()
+			}
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if diag.FirstTCPConnect.IsZero() {
+		diag.TotalDuration = time.Since(diag.StartTime)
+		return diag, fmt.Errorf("TCP connection never succeeded after %d attempts", diag.TCPAttempts)
+	}
+
+	// Phase 2: Wait for /health endpoint to respond
+	client := &http.Client{Timeout: 100 * time.Millisecond}
+	for time.Now().Before(deadline) {
+		diag.HealthAttempts++
+		resp, err := client.Get(healthAddr)
+		if err == nil {
+			resp.Body.Close()
+			if diag.FirstHealthResponse.IsZero() {
+				diag.FirstHealthResponse = time.Now()
+			}
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	diag.TotalDuration = time.Since(diag.StartTime)
+
+	if diag.FirstHealthResponse.IsZero() {
+		return diag, fmt.Errorf("/health never responded after %d attempts (TCP worked after %d attempts)", diag.HealthAttempts, diag.TCPAttempts)
+	}
+
+	return diag, nil
+}
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
 // The parent context should have a deadline or a timeout.

@@ -75,3 +75,11 @@ func (m *NoopMemory) Ready() chan struct{} {
 func (m *NoopMemory) Exit() *utils.ErrorOnce {
 	return m.exit
 }
+
+// SetTraceEnabled is a no-op for NoopMemory.
+func (m *NoopMemory) SetTraceEnabled(_ bool) {}
+
+// GetPageFaultTrace returns an empty slice as NoopMemory doesn't track page faults.
+func (m *NoopMemory) GetPageFaultTrace() []PageFaultEvent {
+	return nil
+}
