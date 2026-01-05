@@ -156,12 +156,17 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 
 	if nodeID != nil && logCheckSourceType(source, api.LogsSourceTemporary) {
 		instance, found := r.instances.Get(*nodeID)
-		if !found {
-			return nil, fmt.Errorf("node instance not found for id '%s'", *nodeID)
+		if found {
+			sourceCallback := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
+			sources = append(sources, sourceCallback)
+		} else {
+			logger.L().Warn(
+				ctx, "Node instance not found for build logs, falling back to other sources",
+				logger.WithNodeID(*nodeID),
+				logger.WithTemplateID(templateID),
+				logger.WithBuildID(buildID),
+			)
 		}
-
-		sourceCallback := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
-		sources = append(sources, sourceCallback)
 	}
 
 	if logCheckSourceType(source, api.LogsSourcePersistent) {
