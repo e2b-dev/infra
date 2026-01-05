@@ -116,7 +116,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	defer childSpan.End()
 
 	// setup launch darkly context
-	ctx = featureflags.SetContext(
+	ctx = featureflags.AddToContext(
 		ctx,
 		featureflags.TemplateContext(cfg.TemplateID),
 		featureflags.TeamContext(cfg.TeamID),

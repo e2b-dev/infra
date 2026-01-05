@@ -279,20 +279,15 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		err := s.Firewall.SetTCPFirewall(true)
-		if err != nil {
-			return fmt.Errorf("error setting TCP firewall: %w", err)
-		}
-
 		for _, cidr := range network.GetEgress().GetAllowedCidrs() {
-			err = s.Firewall.AddAllowedCIDR(cidr)
+			err := s.Firewall.AddAllowedCIDR(cidr)
 			if err != nil {
 				return fmt.Errorf("error setting firewall rules: %w", err)
 			}
 		}
 
 		for _, cidr := range network.GetEgress().GetDeniedCidrs() {
-			err = s.Firewall.AddDeniedCIDR(cidr)
+			err := s.Firewall.AddDeniedCIDR(cidr)
 			if err != nil {
 				return fmt.Errorf("error setting firewall rules: %w", err)
 			}

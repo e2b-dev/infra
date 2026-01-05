@@ -24,7 +24,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	// Build the context for feature flags
-	ctx = featureflags.SetContext(
+	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(sandboxID).
 			Kind(featureflags.SandboxKind).
