@@ -112,7 +112,7 @@ func (o *Orchestrator) CreateSandbox(
 	if err != nil {
 		var limitErr *sandbox.LimitExceededError
 
-		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
+		telemetry.ReportError(ctx, "failed to reserve sandbox for team", err)
 
 		switch {
 		case errors.As(err, &limitErr):
@@ -257,8 +257,6 @@ func (o *Orchestrator) CreateSandbox(
 
 	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, machineinfo.FromDB(build))
 	if err != nil {
-		telemetry.ReportError(ctx, "failed to place sandbox", err)
-
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to place sandbox",
