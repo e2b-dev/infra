@@ -243,22 +243,18 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 				continue
 			}
 
-			// Process the batch, start by sorting candidates by age (oldest first)
-			sort.Slice(batch, func(i, j int) bool {
-				return batch[i].ATimeUnix > batch[j].ATimeUnix
-			})
-
-			c.Info(ctx, "selected batch",
-				zap.Int("count", len(batch)),
-				zap.Duration("oldest", time.Since(time.Unix(batch[0].ATimeUnix, 0))),
-				zap.Duration("newest", time.Since(time.Unix(batch[len(batch)-1].ATimeUnix, 0))),
-			)
+			del, reinsertBackToCache := c.splitBatch(batch)
 
 			// reinsert the "younger" candidates back into the directory tree
-			c.reinsertCandidates(batch[c.DeleteN:])
+			c.reinsertCandidates(reinsertBackToCache)
 
+			c.Info(ctx, "selected batch",
+				zap.Int("count", len(del)),
+				zap.Duration("oldest", time.Since(time.Unix(del[0].ATimeUnix, 0))),
+				zap.Duration("newest", time.Since(time.Unix(del[len(del)-1].ATimeUnix, 0))),
+			)
 			total := uint64(0)
-			for _, toDelete := range batch[:c.DeleteN] {
+			for _, toDelete := range del {
 				deleteCh <- toDelete
 				c.DeleteSubmittedC.Add(1)
 				total += toDelete.Size
@@ -288,6 +284,18 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func (c *Cleaner) splitBatch(batch []*Candidate) (toDelete []*Candidate, toReinsert []*Candidate) {
+	// Process the batch, start by sorting candidates by age (oldest first)
+	sort.Slice(batch, func(i, j int) bool {
+		return batch[i].ATimeUnix < batch[j].ATimeUnix
+	})
+
+	del := min(c.DeleteN, len(batch))
+	toDelete = batch[:del]
+	toReinsert = batch[del:]
+	return toDelete, toReinsert
 }
 
 func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
