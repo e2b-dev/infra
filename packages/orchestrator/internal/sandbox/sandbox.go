@@ -70,6 +70,8 @@ type Config struct {
 	Network *orchestrator.SandboxNetworkConfig
 
 	Envd EnvdMetadata
+
+	FirecrackerConfig fc.Config
 }
 
 type EnvdMetadata struct {
@@ -171,7 +173,6 @@ func (f *Factory) CreateSandbox(
 	ctx context.Context,
 	config Config,
 	runtime RuntimeMetadata,
-	fcVersions fc.FirecrackerVersions,
 	template template.Template,
 	sandboxTimeout time.Duration,
 	rootfsCachePath string,
@@ -214,7 +215,7 @@ func (f *Factory) CreateSandbox(
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
 			rootFS,
-			sandboxFiles.SandboxCacheRootfsPath(f.config),
+			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 			f.devicePool,
 		)
 	} else {
@@ -262,7 +263,7 @@ func (f *Factory) CreateSandbox(
 		f.config,
 		ips.slot,
 		sandboxFiles,
-		fcVersions,
+		config.FirecrackerConfig,
 		rootfsPath,
 		fc.ConstantRootfsPaths,
 	)
@@ -404,7 +405,7 @@ func (f *Factory) ResumeSandbox(
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		readonlyRootfs,
-		sandboxFiles.SandboxCacheRootfsPath(f.config),
+		sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 		f.devicePool,
 	)
 	if err != nil {
@@ -482,10 +483,7 @@ func (f *Factory) ResumeSandbox(
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
-		fc.FirecrackerVersions{
-			KernelVersion:      sandboxFiles.KernelVersion,
-			FirecrackerVersion: sandboxFiles.FirecrackerVersion,
-		},
+		config.FirecrackerConfig,
 		rootfsPath,
 		fc.RootfsPaths{
 			TemplateVersion: meta.Version,
@@ -667,10 +665,6 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
-	return s.process.Versions
-}
-
 func (s *Sandbox) Shutdown(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "shutdown sandbox")
 	defer span.End()
@@ -684,10 +678,8 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 
 	// This is required because the FC API doesn't support passing /dev/null
 	tf, err := storage.TemplateFiles{
-		BuildID:            uuid.New().String(),
-		KernelVersion:      s.Template.Files().KernelVersion,
-		FirecrackerVersion: s.Template.Files().FirecrackerVersion,
-	}.CacheFiles(s.config)
+		BuildID: uuid.New().String(),
+	}.CacheFiles(s.config.StorageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create template files: %w", err)
 	}
@@ -738,7 +730,7 @@ func (s *Sandbox) Pause(
 		}
 	}()
 
-	snapshotTemplateFiles, err := m.Template.CacheFiles(s.config)
+	snapshotTemplateFiles, err := storage.TemplateFiles{BuildID: m.Template.BuildID}.CacheFiles(s.config.StorageConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}

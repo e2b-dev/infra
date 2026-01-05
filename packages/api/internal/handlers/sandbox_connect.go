@@ -16,7 +16,6 @@ import (
 	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -54,6 +53,12 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	sandboxID = utils.ShortID(sandboxID)
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 	if err == nil {
+		if sandboxData.TeamID != teamInfo.Team.ID {
+			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+
+			return
+		}
+
 		switch sandboxData.State {
 		case sandbox.StatePausing:
 			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
@@ -94,7 +99,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		}
 	}
 
-	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamInfo.Team.ID})
+	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
@@ -105,6 +110,13 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 
 		logger.L().Error(ctx, "Error getting last snapshot", logger.WithSandboxID(sandboxID), zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting snapshot")
+
+		return
+	}
+
+	if lastSnapshot.Snapshot.TeamID != teamInfo.Team.ID {
+		telemetry.ReportCriticalError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxID, teamInfo.Team.ID.String()), nil)
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
 
 		return
 	}

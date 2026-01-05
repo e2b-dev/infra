@@ -93,7 +93,6 @@ type encoder struct {
 	uploadConcurrency int
 	uploadID          string
 	uploader          MultipartUploader
-	uploadEG          *errgroup.Group
 }
 
 type frame struct {
@@ -117,9 +116,6 @@ var _ io.Writer = (*frame)(nil) // for compression output
 
 // UploadFileFramed compresses the given file and uploads it using multipart upload.
 func UploadFileFramed(ctx context.Context, filePath string, partUploader MultipartUploader, uploadConcurrency int, opts *CompressionOptions) (*FrameTable, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -144,11 +140,11 @@ func newFrameEncoder(opts *CompressionOptions, uploader MultipartUploader, uploa
 
 func (e *encoder) upload(ctx context.Context, file io.Reader) (frameTable *FrameTable, err error) {
 	// Set up the uploader
-	e.uploadEG, ctx = errgroup.WithContext(ctx)
+	uploadEG, uploadCtx := errgroup.WithContext(ctx)
 	if e.uploadConcurrency > 0 {
-		e.uploadEG.SetLimit(e.uploadConcurrency)
+		uploadEG.SetLimit(e.uploadConcurrency)
 	}
-	if e.uploadID, err = e.uploader.InitiateUpload(); err != nil {
+	if e.uploadID, err = e.uploader.InitiateUpload(ctx); err != nil {
 		return nil, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
@@ -187,7 +183,7 @@ func (e *encoder) upload(ctx context.Context, file io.Reader) (frameTable *Frame
 			e.mu.Unlock()
 
 			if flush != nil {
-				if err := e.flushFrame(flush, !ok); err != nil {
+				if err := e.flushFrame(uploadEG, uploadCtx, flush, !ok); err != nil {
 					return nil, fmt.Errorf("failed to flush frame: %w", err)
 				}
 			}
@@ -201,16 +197,16 @@ func (e *encoder) upload(ctx context.Context, file io.Reader) (frameTable *Frame
 			}
 
 			// No more data to process; wait for the uploads to complete and done!
-			if err = e.uploadEG.Wait(); err != nil {
+			if err = uploadEG.Wait(); err != nil {
 				return nil, fmt.Errorf("failed to upload frames: %w", err)
 			}
 
 			// Complete the multipart upload if no error occurred. The caller
 			// should cancel the upload (ctx cancel) on error.
 			if err == nil && e.uploadID != "" {
-				err = e.uploader.CompleteUpload(e.uploadID)
+				err = e.uploader.CompleteUpload(ctx, e.uploadID)
 				if err != nil {
-					return nil, fmt.Errorf("failed to upload frames: %w", err)
+					return nil, fmt.Errorf("failed to finish uploading frames: %w", err)
 				}
 			}
 
@@ -219,7 +215,7 @@ func (e *encoder) upload(ctx context.Context, file io.Reader) (frameTable *Frame
 	}
 }
 
-func (e *encoder) flushFrame(f *frame, last bool) error {
+func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *frame, last bool) error {
 	if err := f.enc.Close(); err != nil {
 		return fmt.Errorf("failed to close encoder: %w", err)
 	}
@@ -242,8 +238,8 @@ func (e *encoder) flushFrame(f *frame, last bool) error {
 		e.partLen = 0
 		e.partFrames = e.partFrames[:0]
 
-		e.uploadEG.Go(func() error {
-			err := e.uploader.UploadPart(e.uploadID, i, frameData...)
+		eg.Go(func() error {
+			err := e.uploader.UploadPart(uploadCtx, e.uploadID, i, frameData...)
 			if err != nil {
 				return fmt.Errorf("failed to upload part %d: %w", e.partIndex, err)
 			}

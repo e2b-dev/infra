@@ -7,10 +7,6 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-func (bc BuilderConfig) GetSandboxCacheDir() string  { return bc.SandboxCacheDir }
-func (bc BuilderConfig) GetSnapshotCacheDir() string { return bc.SnapshotCacheDir }
-func (bc BuilderConfig) GetTemplateCacheDir() string { return bc.TemplateCacheDir }
-
 func makePathsAbsolute(c *BuilderConfig) error {
 	for _, item := range []*string{
 		&c.DefaultCacheDir,
@@ -18,11 +14,11 @@ func makePathsAbsolute(c *BuilderConfig) error {
 		&c.HostEnvdPath,
 		&c.HostKernelsDir,
 		&c.OrchestratorBaseDir,
-		&c.SandboxCacheDir,
+		&c.StorageConfig.SandboxCacheDir,
 		&c.SandboxDir,
 		&c.SharedChunkCacheDir,
-		&c.SnapshotCacheDir,
-		&c.TemplateCacheDir,
+		&c.StorageConfig.SnapshotCacheDir,
+		&c.StorageConfig.TemplateCacheDir,
 		&c.TemplatesDir,
 	} {
 		dir := *item

@@ -18,7 +18,7 @@ runs:
         echo "TESTS_SANDBOX_TEMPLATE_ID=${TEMPLATE_ID}" >> .env.test
         echo "TESTS_SANDBOX_BUILD_ID=${BUILD_ID}" >> .env.test
 
-        make -C packages/orchestrator build-template \
+        sudo -E make -C packages/orchestrator build-template \
           ARTIFACTS_REGISTRY_PROVIDER=Local \
           STORAGE_PROVIDER=Local \
           TEMPLATE_ID=${TEMPLATE_ID} \

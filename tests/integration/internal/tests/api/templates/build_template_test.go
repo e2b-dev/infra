@@ -26,7 +26,7 @@ type BuildLogHandler func(alias string, entry api.BuildLogEntry)
 
 func buildTemplate(
 	tb testing.TB,
-	templateAlias string,
+	templateName string,
 	data api.TemplateBuildStartV2,
 	logHandler BuildLogHandler,
 ) bool {
@@ -39,7 +39,7 @@ func buildTemplate(
 
 	// Request build
 	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
-		Alias:    templateAlias,
+		Names:    utils.ToPtr([]string{templateName}),
 		CpuCount: utils.ToPtr[int32](2),
 		MemoryMB: utils.ToPtr[int32](1024),
 	}, setup.WithAPIKey(), setup.WithTestsUserAgent())
@@ -84,7 +84,7 @@ func buildTemplate(
 
 		offset += len(statusResp.JSON200.LogEntries)
 		for _, entry := range statusResp.JSON200.LogEntries {
-			logHandler(templateAlias, entry)
+			logHandler(templateName, entry)
 		}
 
 		switch statusResp.JSON200.Status {
@@ -869,4 +869,68 @@ func TestTemplateBuildWithDifferentSourceImages(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
+	t.Parallel()
+
+	// Test that packages installed by provision.sh are available during template build
+	packages := []string{
+		"systemd",
+		"systemd-sysv",
+		"openssh-server",
+		"sudo",
+		"chrony",
+		"linuxptp",
+		"socat",
+		"curl",
+		"ca-certificates",
+		"fuse3",
+		"mount-s3",
+	}
+
+	steps := make([]api.TemplateStep, 0, len(packages))
+	for _, pkg := range packages {
+		steps = append(steps, api.TemplateStep{
+			Type: "RUN",
+			Args: utils.ToPtr([]string{
+				"dpkg-query -W -f='${Status}' " + pkg + " | grep -q 'install ok installed'",
+			}),
+		})
+	}
+
+	buildConfig := api.TemplateBuildStartV2{
+		Force:     utils.ToPtr(ForceBaseBuild),
+		FromImage: utils.ToPtr("ubuntu:22.04"),
+		Steps:     utils.ToPtr(steps),
+	}
+
+	assert.True(t, buildTemplate(t, "test-ubuntu-packages-available", buildConfig, defaultBuildLogHandler(t)))
+}
+
+func TestTemplateBuildMountS3Fuse3Link(t *testing.T) {
+	t.Parallel()
+
+	// Test that libfuse.so is properly linked to mount-s3
+	// and that mount-s3 is properly installed and outputs a version
+	buildConfig := api.TemplateBuildStartV2{
+		Force:     utils.ToPtr(ForceBaseBuild),
+		FromImage: utils.ToPtr("ubuntu:22.04"),
+		Steps: utils.ToPtr([]api.TemplateStep{
+			{
+				Type: "RUN",
+				Args: utils.ToPtr([]string{
+					"ldd $(which mount-s3) | grep -q 'libfuse.so'",
+				}),
+			},
+			{
+				Type: "RUN",
+				Args: utils.ToPtr([]string{
+					"mount-s3 --version",
+				}),
+			},
+		}),
+	}
+
+	assert.True(t, buildTemplate(t, "test-ubuntu-mount-s3-fuse3", buildConfig, defaultBuildLogHandler(t)))
 }

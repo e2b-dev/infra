@@ -130,11 +130,10 @@ func (lb *LayerExecutor) BuildLayer(
 	}
 
 	// Prepare metadata
-	fcVersions := sbx.FirecrackerVersions()
-	meta = meta.NewVersionTemplate(storage.TemplateFiles{
+	meta = meta.NewVersionTemplate(metadata.TemplateMetadata{
 		BuildID:            cmd.CurrentLayer.Template.BuildID,
-		KernelVersion:      fcVersions.KernelVersion,
-		FirecrackerVersion: fcVersions.FirecrackerVersion,
+		KernelVersion:      sbx.Config.FirecrackerConfig.KernelVersion,
+		FirecrackerVersion: sbx.Config.FirecrackerConfig.FirecrackerVersion,
 	})
 	err = lb.PauseAndUpload(
 		ctx,
@@ -214,7 +213,8 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	// This might not be necessary if we don't use keepalives for the proxy.
 	err = lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
 	if err != nil {
-		return fmt.Errorf("failed to remove proxy from pool: %w", err)
+		// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
+		lb.logger.Warn(ctx, "errors when manually closing connections to sandbox after restarting envd", zap.Error(err))
 	}
 
 	lb.logger.Debug(
@@ -261,8 +261,6 @@ func (lb *LayerExecutor) PauseAndUpload(
 	err = lb.templateCache.AddSnapshot(
 		context.WithoutCancel(ctx),
 		meta.Template.BuildID,
-		meta.Template.KernelVersion,
-		meta.Template.FirecrackerVersion,
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
@@ -286,7 +284,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		err := snapshot.Upload(
 			ctx,
 			lb.templateStorage,
-			meta.Template,
+			storage.TemplateFiles{BuildID: meta.Template.BuildID},
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)

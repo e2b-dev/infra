@@ -184,7 +184,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error building environment: %w", err)
 	}
 
-	cacheFiles, err := baseMetadata.Template.CacheFiles(bb.BuildContext.BuilderConfig)
+	cacheFiles, err := storage.TemplateFiles{BuildID: baseMetadata.Template.BuildID}.CacheFiles(bb.BuildContext.BuilderConfig.StorageConfig)
 	if err != nil {
 		err = errors.Join(err, rootfs.Close(), memfile.Close())
 
@@ -210,6 +210,11 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,
 		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      bb.Config.KernelVersion,
+			FirecrackerVersion: bb.Config.FirecrackerVersion,
+		},
 	}
 	err = bb.provisionSandbox(
 		ctx,
@@ -219,10 +224,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			TemplateID:  bb.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
-		},
-		fc.FirecrackerVersions{
-			KernelVersion:      bb.Template.KernelVersion,
-			FirecrackerVersion: bb.Template.FirecrackerVersion,
 		},
 		localTemplate,
 		rootfsPath,
@@ -258,10 +259,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		baseSbxConfig,
 		bb.sandboxFactory,
 		baseLayerTimeout,
-		fc.FirecrackerVersions{
-			KernelVersion:      bb.Template.KernelVersion,
-			FirecrackerVersion: bb.Template.FirecrackerVersion,
-		},
 		layer.WithRootfsCachePath(rootfsPath),
 	)
 
@@ -342,10 +339,10 @@ func (bb *BaseBuilder) Layer(
 
 		meta := metadata.Template{
 			Version: metadata.CurrentVersion,
-			Template: storage.TemplateFiles{
+			Template: metadata.TemplateMetadata{
 				BuildID:            uuid.New().String(),
-				KernelVersion:      bb.Template.KernelVersion,
-				FirecrackerVersion: bb.Template.FirecrackerVersion,
+				KernelVersion:      bb.Config.KernelVersion,
+				FirecrackerVersion: bb.Config.FirecrackerVersion,
 			},
 			Context:      cmdMeta,
 			FromImage:    &bb.Config.FromImage,

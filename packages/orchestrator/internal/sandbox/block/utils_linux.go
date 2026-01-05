@@ -34,29 +34,47 @@ func (c *Cache) FileSize() (int64, error) {
 func (c *Cache) copyProcessMemory(
 	ctx context.Context,
 	pid int,
-	ranges []Range,
+	rs []Range,
 ) error {
-	var start int64
+	// We need to split the ranges because the Kernel does not support reading/writing more than MAX_RW_COUNT bytes in a single operation.
+	ranges := splitOversizedRanges(rs, MAX_RW_COUNT)
 
-	for i := 0; i < len(ranges); i += IOV_MAX {
-		segmentRanges := ranges[i:min(i+IOV_MAX, len(ranges))]
+	var offset int64
+	var rangeIdx int64
 
-		remote := make([]unix.RemoteIovec, len(segmentRanges))
+	for {
+		var remote []unix.RemoteIovec
 
 		var segmentSize int64
 
-		for j, r := range segmentRanges {
-			remote[j] = unix.RemoteIovec{
+		// We iterate over the range of all ranges until we have reached the limit of the IOV_MAX,
+		// or until the next range would overflow the MAX_RW_COUNT.
+		for ; rangeIdx < int64(len(ranges)); rangeIdx++ {
+			r := ranges[rangeIdx]
+
+			if len(remote) == IOV_MAX {
+				break
+			}
+
+			if segmentSize+r.Size > MAX_RW_COUNT {
+				break
+			}
+
+			remote = append(remote, unix.RemoteIovec{
 				Base: uintptr(r.Start),
 				Len:  int(r.Size),
-			}
+			})
 
 			segmentSize += r.Size
 		}
 
+		if len(remote) == 0 {
+			break
+		}
+
 		local := []unix.Iovec{
 			{
-				Base: c.address(start),
+				Base: c.address(offset),
 				// We could keep this as full cache length, but we might as well be exact here.
 				Len: uint64(segmentSize),
 			},
@@ -96,10 +114,10 @@ func (c *Cache) copyProcessMemory(
 			}
 
 			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				c.dirty.Store(start+blockOff, struct{}{})
+				c.dirty.Store(offset+blockOff, struct{}{})
 			}
 
-			start += segmentSize
+			offset += segmentSize
 
 			break
 		}

@@ -56,7 +56,7 @@ func NewForwarder(
 		"port-forwarder",
 		// We only want to forward ports that are actively listening on localhost.
 		&ScannerFilter{
-			IPs:   []string{"127.0.0.1", "localhost", "::1", "::"},
+			IPs:   []string{"127.0.0.1", "localhost", "::1"},
 			State: "LISTEN",
 		},
 	)

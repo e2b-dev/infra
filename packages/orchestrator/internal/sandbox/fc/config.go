@@ -21,20 +21,20 @@ const (
 	entropyOneTimeBurst int64 = 0
 )
 
-type FirecrackerVersions struct {
+type Config struct {
 	KernelVersion      string
 	FirecrackerVersion string
 }
 
-func (t FirecrackerVersions) SandboxKernelDir() string {
+func (t Config) SandboxKernelDir() string {
 	return t.KernelVersion
 }
 
-func (t FirecrackerVersions) HostKernelPath(config cfg.BuilderConfig) string {
+func (t Config) HostKernelPath(config cfg.BuilderConfig) string {
 	return filepath.Join(config.HostKernelsDir, t.KernelVersion, SandboxKernelFile)
 }
 
-func (t FirecrackerVersions) FirecrackerPath(config cfg.BuilderConfig) string {
+func (t Config) FirecrackerPath(config cfg.BuilderConfig) string {
 	return filepath.Join(config.FirecrackerVersionsDir, t.FirecrackerVersion, FirecrackerBinaryName)
 }
 

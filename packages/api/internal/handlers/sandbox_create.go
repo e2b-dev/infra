@@ -71,23 +71,24 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
-	cleanedAliasOrEnvID, err := id.CleanTemplateID(body.TemplateID)
+	// Parse template ID and optional tag in the format "templateID:tag"
+	cleanedAliasOrEnvID, tag, err := id.ParseTemplateIDOrAliasWithTag(body.TemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid environment ID: %s", err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", err))
 
-		telemetry.ReportCriticalError(ctx, "error when cleaning env ID", err)
+		telemetry.ReportCriticalError(ctx, "error when parsing template ID", err)
 
 		return
 	}
 
-	telemetry.ReportEvent(ctx, "Cleaned template ID")
+	telemetry.ReportEvent(ctx, "Parsed template ID and tag")
 
 	_, templateSpan := tracer.Start(ctx, "get-template")
 	defer templateSpan.End()
 
 	// Check if team has access to the environment
 	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
-	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, clusterID, true)
+	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, tag, teamInfo.Team.ID, clusterID, true)
 	if checkErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)

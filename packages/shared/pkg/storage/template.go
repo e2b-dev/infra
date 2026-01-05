@@ -16,9 +16,7 @@ const (
 )
 
 type TemplateFiles struct {
-	BuildID            string `json:"build_id"`
-	KernelVersion      string `json:"kernel_version"`
-	FirecrackerVersion string `json:"firecracker_version"`
+	BuildID string `json:"build_id"`
 }
 
 // Key for the cache. Unique for template-build pair.

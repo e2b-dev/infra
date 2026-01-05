@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 
@@ -29,13 +30,13 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 		t.Log("Building custom template for network egress tests...")
 
 		template := utils.BuildTemplate(t, utils.TemplateBuildOptions{
-			Alias: "network-egress-test",
+			Names: []string{"network-egress-test"},
 			BuildData: api.TemplateBuildStartV2{
 				FromImage: sharedutils.ToPtr("ubuntu:22.04"),
 				Steps: sharedutils.ToPtr([]api.TemplateStep{
 					{
 						Type: "RUN",
-						Args: sharedutils.ToPtr([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils && sudo rm -rf /var/lib/apt/lists/*"}),
+						Args: sharedutils.ToPtr([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils openssh-client && sudo rm -rf /var/lib/apt/lists/*"}),
 					},
 				}),
 			},
@@ -86,6 +87,16 @@ func assertBlockedDNSQuery(t *testing.T, ctx context.Context, sbx *api.Sandbox, 
 	t.Helper()
 	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=3", fmt.Sprintf("@%s", dnsServer), domain)
 	require.Error(t, err, msg)
+}
+
+// assertHTTPResponseFromServer asserts that an HTTPS request returns a response from the expected server
+// This is used to verify that DNS spoofing redirection worked correctly
+func assertHTTPResponseFromServer(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, expectedServerHeader, msg string) {
+	t.Helper()
+	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user", "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
+	require.NoError(t, err, msg)
+	require.Contains(t, strings.ToLower(output), strings.ToLower(expectedServerHeader),
+		"%s - expected server header to contain %q, got response: %s", msg, expectedServerHeader, output)
 }
 
 // =============================================================================
@@ -792,4 +803,130 @@ func TestEgressFirewallUDPAllowedCIDR(t *testing.T) {
 
 	assertSuccessfulDNSQuery(t, ctx, sbx, envdClient, "8.8.8.8", "google.com", "Expected DNS query (UDP) to IP within allowed CIDR (8.8.8.0/24) to succeed")
 	assertBlockedDNSQuery(t, ctx, sbx, envdClient, "1.1.1.1", "google.com", "Expected DNS query (UDP) to IP outside allowed CIDR to fail")
+}
+
+// TestEgressFirewallDNSSpoofingNeutralized tests that DNS spoofing attacks are neutralized.
+// This simulates an attack where:
+// 1. The firewall allows traffic to "google.com"
+// 2. An attacker modifies /etc/hosts to make google.com resolve to 1.1.1.1 (Cloudflare's IP)
+// 3. The attacker tries to access 1.1.1.1 claiming the hostname is "google.com"
+// 4. The firewall IGNORES the spoofed IP and resolves google.com itself, redirecting to the real Google IP
+// 5. The connection SUCCEEDS to the real Google server (not to 1.1.1.1)
+func TestEgressFirewallDNSSpoofingNeutralized(t *testing.T) {
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			// Block all internet but allow google.com domain
+			AllowOut: &[]string{"google.com"},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// First, verify normal access to google.com works and response is from Google (server: gws)
+	assertHTTPResponseFromServer(t, ctx, sbx, envdClient, "https://google.com", "server: gws",
+		"Expected curl to google.com to succeed and return Google server header before DNS spoofing")
+
+	// Now simulate DNS spoofing by adding an /etc/hosts entry that maps google.com to 1.1.1.1 (Cloudflare's IP)
+	// This simulates what would happen if an attacker modified DNS resolution
+	// If the spoofing worked (i.e., if we connected to 1.1.1.1), we would see "server: cloudflare"
+	err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "sh", "-c", "echo '1.1.1.1 google.com' >> /etc/hosts")
+	require.NoError(t, err, "Expected to modify /etc/hosts without error")
+
+	// Now try to access google.com - this should STILL SUCCEED and return Google's response because:
+	// - The sandbox resolves google.com to 1.1.1.1 (via /etc/hosts)
+	// - The firewall sees a connection to 1.1.1.1 with hostname "google.com"
+	// - The firewall resolves google.com itself and gets the real Google IPs
+	// - The firewall REDIRECTS the connection to a real Google IP (ignoring 1.1.1.1)
+	// - The connection succeeds to the real Google server
+	//
+	// We verify this by checking the "server" header in the response:
+	// - If we reached Google: "server: gws"
+	// - If we reached Cloudflare (spoofing worked): "server: cloudflare"
+	assertHTTPResponseFromServer(t, ctx, sbx, envdClient, "https://google.com", "server: gws",
+		"Expected response from Google (server: gws), NOT Cloudflare - firewall should redirect to real Google IP")
+
+	t.Log("SUCCESS: DNS spoofing attack neutralized")
+	t.Log("  - google.com was allowed in the firewall rules")
+	t.Log("  - /etc/hosts was modified to make google.com resolve to 1.1.1.1 (Cloudflare)")
+	t.Log("  - Firewall resolved google.com itself and redirected to a real Google IP")
+	t.Log("  - Response came from Google (server: gws), NOT Cloudflare - spoofing was bypassed!")
+}
+
+// TestNoNetworkConfig_SSHWorks tests that SSH connections work when no network config is set.
+// This is a regression test for the issue where the TCP firewall redirect rule would
+// break SSH connections even when no egress filtering was configured.
+// Expected: SSH connection to GitHub should succeed (TCP handshake completes),
+// though we'll get "Permission denied (publickey)" since we don't have valid credentials.
+func TestNoNetworkConfig_SSHWorks(t *testing.T) {
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	// Create sandbox WITHOUT any network configuration
+	// This tests the default behavior - all traffic should be allowed
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		// No network config - this is the key part of the test
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Test SSH connection to GitHub
+	// Expected output: "git@github.com: Permission denied (publickey)."
+	// This shows the TCP connection succeeded (SSH handshake completed),
+	// even though we don't have valid credentials for authentication.
+	t.Log("Testing SSH connection to github.com (port 22)...")
+	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+		"ssh", "-T", "-o", "StrictHostKeyChecking=accept-new",
+		"-o", "ConnectTimeout=5", "git@github.com")
+	require.Error(t, err, "Expected SSH command to exit with non-zero status due to lack of credentials")
+	require.Contains(t, output, "Permission denied (publickey)")
+}
+
+// TestWithNetworkConfig_SSHWorks tests that SSH connections work when network config IS defined.
+// This tests that SSH traffic (which is non-HTTP/HTTPS) is correctly handled by the firewall
+// when IP-based filtering is enabled. SSH doesn't use SNI or Host headers, so we must allow
+// by IP address rather than domain name.
+// Expected: SSH connection to GitHub should succeed (TCP handshake completes),
+// though we'll get "Permission denied (publickey)" since we don't have valid credentials.
+func TestWithNetworkConfig_SSHWorks(t *testing.T) {
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	// Create sandbox WITH network configuration that allows all IPs
+	// SSH is a plain TCP protocol without hostname information (no SNI/Host header),
+	// so domain-based filtering won't work for SSH - we need IP-based rules.
+	// Using 0.0.0.0/0 in allowOut to allow all traffic, but with denyOut set to prove
+	// network config is being processed (not just bypassed).
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut: &[]string{sandbox_network.AllInternetTrafficCIDR}, // Allow all IPs
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR}, // Would block all, but allowOut takes precedence
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Test SSH connection to GitHub
+	// Expected output: "git@github.com: Permission denied (publickey)."
+	// This shows the TCP connection succeeded (SSH handshake completed),
+	// even though we don't have valid credentials for authentication.
+	t.Log("Testing SSH connection to github.com (port 22) with network config defined...")
+	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+		"ssh", "-T", "-o", "StrictHostKeyChecking=accept-new",
+		"-o", "ConnectTimeout=5", "git@github.com")
+	require.Error(t, err, "Expected SSH command to exit with non-zero status due to lack of credentials")
+	require.Contains(t, output, "Permission denied (publickey)",
+		"Expected 'Permission denied (publickey)' indicating SSH handshake succeeded but auth failed")
 }

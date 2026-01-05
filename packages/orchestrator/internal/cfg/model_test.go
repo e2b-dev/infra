@@ -62,5 +62,6 @@ func TestParse(t *testing.T) {
 		config, err := Parse()
 		require.NoError(t, err)
 		assert.Equal(t, "/a/b/c/build", config.DefaultCacheDir)
+		assert.Equal(t, "/a/b/c/sandbox", config.StorageConfig.SandboxCacheDir)
 	})
 }

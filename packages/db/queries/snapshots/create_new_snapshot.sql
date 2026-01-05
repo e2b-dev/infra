@@ -45,41 +45,56 @@ snapshot as (
         auto_pause = excluded.auto_pause,
         config = excluded.config
     RETURNING env_id as template_id
-)
+),
 
 -- Create a new build for the snapshot
-INSERT INTO "public"."env_builds" (
-    env_id,
-    vcpu,
-    ram_mb,
-    free_disk_size_mb,
-    kernel_version,
-    firecracker_version,
-    envd_version,
-    status,
-    cluster_node_id,
-    total_disk_size_mb,
-    updated_at,
-    cpu_architecture,
-    cpu_family,
-    cpu_model,
-    cpu_model_name,
-    cpu_flags
-) VALUES (
-    (SELECT template_id FROM snapshot),
-    @vcpu,
-    @ram_mb,
-    @free_disk_size_mb,
-    @kernel_version,
-    @firecracker_version,
-    @envd_version,
-    @status,
-    @origin_node_id,
-    @total_disk_size_mb,
-    now(),
-    @cpu_architecture,
-    @cpu_family,
-    @cpu_model,
-    @cpu_model_name,
-    @cpu_flags
-) RETURNING id as build_id, env_id as template_id;
+new_build as (
+    INSERT INTO "public"."env_builds" (
+        env_id,
+        vcpu,
+        ram_mb,
+        free_disk_size_mb,
+        kernel_version,
+        firecracker_version,
+        envd_version,
+        status,
+        cluster_node_id,
+        total_disk_size_mb,
+        updated_at,
+        cpu_architecture,
+        cpu_family,
+        cpu_model,
+        cpu_model_name,
+        cpu_flags
+    ) VALUES (
+        (SELECT template_id FROM snapshot),
+        @vcpu,
+        @ram_mb,
+        @free_disk_size_mb,
+        @kernel_version,
+        @firecracker_version,
+        @envd_version,
+        @status,
+        @origin_node_id,
+        @total_disk_size_mb,
+        now(),
+        @cpu_architecture,
+        @cpu_family,
+        @cpu_model,
+        @cpu_model_name,
+        @cpu_flags
+    ) RETURNING id as build_id, env_id as template_id
+),
+
+-- Create the build assignment edge (explicit, not relying on trigger)
+build_assignment as (
+    INSERT INTO "public"."env_build_assignments" (env_id, build_id, tag)
+    VALUES (
+        (SELECT template_id FROM new_build),
+        (SELECT build_id FROM new_build),
+        'default'
+    )
+    RETURNING build_id, env_id as template_id
+)
+
+SELECT build_id, template_id FROM new_build;

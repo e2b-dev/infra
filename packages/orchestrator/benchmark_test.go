@@ -23,12 +23,14 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	buildconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -197,6 +199,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			AccessToken: &accessToken,
 			Version:     "1.2.3",
 		},
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      kernelVersion,
+			FirecrackerVersion: fcVersion,
+		},
 	}
 
 	runtime := sandbox.RuntimeMetadata{
@@ -253,21 +259,21 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		// build template
 		force := true
 		templateConfig := buildconfig.TemplateConfig{
-			Version:    templateVersion,
-			TemplateID: templateID,
-			FromImage:  baseImage,
-			Force:      &force,
-			VCpuCount:  sandboxConfig.Vcpu,
-			MemoryMB:   sandboxConfig.RamMB,
-			StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
-			DiskSizeMB: sandboxConfig.TotalDiskSizeMB,
-			HugePages:  sandboxConfig.HugePages,
+			Version:            templateVersion,
+			TemplateID:         templateID,
+			FromImage:          baseImage,
+			Force:              &force,
+			VCpuCount:          sandboxConfig.Vcpu,
+			MemoryMB:           sandboxConfig.RamMB,
+			StartCmd:           "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+			DiskSizeMB:         sandboxConfig.TotalDiskSizeMB,
+			HugePages:          sandboxConfig.HugePages,
+			KernelVersion:      kernelVersion,
+			FirecrackerVersion: fcVersion,
 		}
 
 		metadata := storage.TemplateFiles{
-			BuildID:            buildID,
-			KernelVersion:      kernelVersion,
-			FirecrackerVersion: fcVersion,
+			BuildID: buildID,
 		}
 		_, err = builder.Build(b.Context(), metadata, templateConfig, l.Detach(b.Context()).Core())
 		require.NoError(b, err)
@@ -277,8 +283,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	tmpl, err := templateCache.GetTemplate(
 		b.Context(),
 		buildID,
-		kernelVersion,
-		fcVersion,
 		false,
 		false,
 	)
@@ -342,7 +346,7 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 	meta, err := sbx.Template.Metadata()
 	require.NoError(b, err)
 
-	templateMetadata := meta.SameVersionTemplate(storage.TemplateFiles{
+	templateMetadata := meta.SameVersionTemplate(metadata.TemplateMetadata{
 		BuildID:            buildID,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: fcVersion,

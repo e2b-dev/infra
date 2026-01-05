@@ -12,17 +12,9 @@ import (
 	"golang.org/x/sys/unix"
 
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const (
-	tableName = "slot-firewall"
-
-	// allowedMark is the mark value to signal "allowed" traffic (skip DNAT)
-	allowedMark = 0x1
-
-	defaultUseTCPFirewall = false
-)
+const tableName = "slot-firewall"
 
 type Firewall struct {
 	conn  *nftables.Conn
@@ -36,12 +28,6 @@ type Firewall struct {
 
 	userDenySet  set.Set
 	userAllowSet set.Set
-
-	// useTCPFirewall controls whether TCP traffic is redirected to the proxy.
-	// When false, all TCP packets are marked to skip the proxy redirect.
-	useTCPFirewall bool
-	// tcpFirewallSkipRule allows us to add/remove the rule dynamically by marking all TCP packets.
-	tcpFirewallSkipRule *nftables.Rule
 
 	tapInterface string
 
@@ -60,14 +46,15 @@ func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 	})
 
 	// Filter chain in PREROUTING
-	// This handles: allow/deny decisions and marking allowed traffic
+	// This handles: allow/deny decisions for traffic from the tap interface
+	policy := nftables.ChainPolicyAccept
 	filterChain := conn.AddChain(&nftables.Chain{
 		Name:     "PREROUTE_FILTER",
 		Table:    table,
 		Type:     nftables.ChainTypeFilter,
 		Hooknum:  nftables.ChainHookPrerouting,
 		Priority: nftables.ChainPriorityRef(-150),
-		Policy:   utils.ToPtr(nftables.ChainPolicyAccept),
+		Policy:   &policy,
 	})
 
 	// Create deny-set and allow-set
@@ -131,31 +118,22 @@ func (fw *Firewall) tapIfaceMatch() []expr.Any {
 	}
 }
 
-// markAndAccept returns expressions that set the allowed mark and accept the packet.
-func markAndAccept() []expr.Any {
+// accept returns an expression that accepts the packet.
+func accept() []expr.Any {
 	return []expr.Any{
-		&expr.Immediate{
-			Register: 1,
-			Data:     binaryutil.NativeEndian.PutUint32(allowedMark),
-		},
-		&expr.Meta{
-			Key:            expr.MetaKeyMARK,
-			SourceRegister: true,
-			Register:       1,
-		},
 		&expr.Verdict{Kind: expr.VerdictAccept},
 	}
 }
 
 // addSetFilterRule adds a filter rule that matches destination IPs in a set.
-// If drop is true, packets are dropped. Otherwise, they are marked as allowed and accepted.
+// If drop is true, packets are dropped. Otherwise, they are accepted.
 // This applies to ALL protocols.
 func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
 	var verdict []expr.Any
 	if drop {
 		verdict = []expr.Any{&expr.Verdict{Kind: expr.VerdictDrop}}
 	} else {
-		verdict = markAndAccept()
+		verdict = accept()
 	}
 
 	fw.conn.AddRule(&nftables.Rule{
@@ -170,14 +148,14 @@ func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
 }
 
 // addNonTCPSetFilterRule adds a filter rule that matches ONLY non-TCP traffic to destinations in a set.
-// If drop is true, packets are dropped. Otherwise, they are marked as allowed and accepted.
-// TCP traffic is NOT affected by this rule (iptables REDIRECT handles proxy redirect).
+// If drop is true, packets are dropped. Otherwise, they are accepted.
+// TCP traffic is NOT affected by this rule (iptables REDIRECT handles TCP traffic).
 func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
 	var verdict []expr.Any
 	if drop {
 		verdict = []expr.Any{&expr.Verdict{Kind: expr.VerdictDrop}}
 	} else {
-		verdict = markAndAccept()
+		verdict = accept()
 	}
 
 	fw.conn.AddRule(&nftables.Rule{
@@ -203,15 +181,17 @@ func (fw *Firewall) installRules() error {
 	// ============================================================
 	// FILTER CHAIN (PREROUTING, priority -150)
 	// Order:
-	//   1. ESTABLISHED/RELATED → mark + accept (all protocols)
-	//   2. predefinedAllowSet → mark + accept (all protocols)
+	//   1. ESTABLISHED/RELATED → accept (allow responses even from denied ranges)
+	//   2. predefinedAllowSet → accept (all protocols)
 	//   3. predefinedDenySet → DROP (all protocols, hard block)
-	//   4. Non-TCP: userAllowSet → mark + accept
+	//   4. Non-TCP: userAllowSet → accept
 	//   5. Non-TCP: userDenySet → DROP
-	//   6. TCP: continues unmarked, iptables REDIRECT handles proxy
+	//   6. Default: ACCEPT (TCP handled by iptables REDIRECT)
+	//
 	// ============================================================
 
-	// Rule 1: Allow ESTABLISHED/RELATED connections (mark + accept) - all protocols
+	// Rule 1: Allow ESTABLISHED/RELATED connections - all protocols
+	// This ensures response packets are allowed even if the source is in predefinedDenySet
 	fw.conn.AddRule(&nftables.Rule{
 		Table: fw.table,
 		Chain: fw.filterChain,
@@ -231,34 +211,30 @@ func (fw *Firewall) installRules() error {
 				Register: 1,
 				Data:     binaryutil.NativeEndian.PutUint32(0),
 			}),
-			markAndAccept()...,
+			accept()...,
 		),
 	})
 
-	// Rule 2: predefinedAllowSet → mark + accept (all protocols)
+	// Rule 2: predefinedAllowSet → accept (all protocols)
 	fw.addSetFilterRule(fw.predefinedAllowSet.Set(), false)
 
-	// Rule 3: predefinedDenySet → DROP (all protocols, hard block, NO redirect)
+	// Rule 3: predefinedDenySet → DROP (all protocols, hard block)
 	fw.addSetFilterRule(fw.predefinedDenySet.Set(), true)
 
-	// Rule 4: Non-TCP + userAllowSet → mark + accept
-	// Only non-TCP traffic is affected; TCP continues to proxy
+	// Rule 4: Non-TCP + userAllowSet → accept
+	// Only non-TCP traffic is affected; TCP goes to proxy
 	fw.addNonTCPSetFilterRule(fw.userAllowSet.Set(), false)
 
 	// Rule 5: Non-TCP + userDenySet → DROP
-	// Only non-TCP traffic is affected; TCP continues to proxy
+	// Only non-TCP traffic is affected; TCP goes to proxy
 	fw.addNonTCPSetFilterRule(fw.userDenySet.Set(), true)
 
 	// Default policy: ACCEPT
 	// - Non-TCP not in user sets: allowed (default policy)
-	// - TCP marking rule is added/removed dynamically
+	// - TCP: iptables REDIRECT handles TCP traffic to proxy
 
 	if err := fw.conn.Flush(); err != nil {
 		return fmt.Errorf("flush nftables changes: %w", err)
-	}
-
-	if err := fw.SetTCPFirewall(defaultUseTCPFirewall); err != nil {
-		return fmt.Errorf("set default TCP firewall: %w", err)
 	}
 
 	return nil
@@ -295,9 +271,6 @@ func (fw *Firewall) AddAllowedCIDR(cidr string) error {
 }
 
 func (fw *Firewall) Reset() error {
-	if err := fw.SetTCPFirewall(defaultUseTCPFirewall); err != nil {
-		return fmt.Errorf("clear TCP firewall: %w", err)
-	}
 	if err := fw.ResetDeniedSets(); err != nil {
 		return fmt.Errorf("clear denied set: %w", err)
 	}
@@ -340,58 +313,6 @@ func (fw *Firewall) ResetAllowedSets() error {
 	}
 
 	return fw.conn.Flush()
-}
-
-// SetTCPFirewall controls whether TCP traffic is redirected to the proxy.
-func (fw *Firewall) SetTCPFirewall(useTCPFirewall bool) error {
-	if useTCPFirewall {
-		// Enable TCP rerouting: remove the TCP mark rule if it exists
-		if fw.tcpFirewallSkipRule != nil {
-			if err := fw.conn.DelRule(fw.tcpFirewallSkipRule); err != nil {
-				return fmt.Errorf("delete TCP mark rule: %w", err)
-			}
-			if err := fw.conn.Flush(); err != nil {
-				return fmt.Errorf("flush delete TCP mark rule: %w", err)
-			}
-			fw.tcpFirewallSkipRule = nil
-		}
-	} else {
-		// Disable TCP rerouting: add a rule to mark all TCP packets as allowed
-		if fw.tcpFirewallSkipRule == nil {
-			fw.conn.AddRule(&nftables.Rule{
-				Table: fw.table,
-				Chain: fw.filterChain,
-				Exprs: append(append(fw.tapIfaceMatch(),
-					// Match TCP protocol
-					&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte{unix.IPPROTO_TCP},
-					}),
-					markAndAccept()...,
-				),
-			})
-			if err := fw.conn.Flush(); err != nil {
-				return fmt.Errorf("flush add TCP mark rule: %w", err)
-			}
-			// Retrieve the rule from the kernel to get its Handle (required for DelRule)
-			// AddRule returns a rule without the Handle set; it's only assigned by the kernel after Flush.
-			rules, err := fw.conn.GetRules(fw.table, fw.filterChain)
-			if err != nil {
-				return fmt.Errorf("get rules after adding TCP mark rule: %w", err)
-			}
-			if len(rules) == 0 {
-				return fmt.Errorf("no rules found after adding TCP mark rule")
-			}
-			// The rule we just added is the last one in the chain
-			fw.tcpFirewallSkipRule = rules[len(rules)-1]
-		}
-	}
-
-	fw.useTCPFirewall = useTCPFirewall
-
-	return nil
 }
 
 func addCIDRToSet(conn *nftables.Conn, ipset set.Set, cidr string) error {

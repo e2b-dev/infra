@@ -115,6 +115,7 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 		require.Equal(t, 1, completeC)
 		require.Equal(t, 7, len(receivedParts), "should have been at least 4 parts uploaded")
 		require.Len(t, frameTable.Frames, 13)
+		t.Logf("<>/<> !!!!!!!! frame table: %+v\n", frameTable)
 
 		totalUncompressed := 0
 		for _, frame := range frameTable.Frames {
@@ -159,6 +160,7 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 			}
 
 			t.Logf("requesting frames for range %#x to %#x, %#x bytes\n", s, e, e-s)
+			t.Logf("<>/<> frame table: %+v\n", frameTable)
 			start, frames, err := DownloadFrames(t.Context(), rr, int64(s), e-s, frameTable)
 			require.NoError(t, err)
 			require.LessOrEqual(t, int(start), s)
