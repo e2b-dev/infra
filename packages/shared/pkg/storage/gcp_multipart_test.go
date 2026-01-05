@@ -82,7 +82,7 @@ func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	uploadID, err := uploader.InitiateUpload()
+	uploadID, err := uploader.initiateUpload(t.Context())
 
 	require.NoError(t, err)
 	require.Equal(t, expectedUploadID, uploadID)
@@ -108,7 +108,7 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	etag, err := uploader.UploadPart("test-upload-id", 1, testData)
+	etag, err := uploader.uploadPart(t.Context(), "test-upload-id", 1, testData)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedETag, etag)
@@ -122,7 +122,7 @@ func TestMultipartUploader_UploadPart_MissingETag(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	etag, err := uploader.UploadPart("test-upload-id", 1, []byte("test"))
+	etag, err := uploader.uploadPart(t.Context(), "test-upload-id", 1, []byte("test"))
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no ETag returned for part 1")
@@ -156,7 +156,7 @@ func TestMultipartUploader_CompleteUpload_Success(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	err := uploader.CompleteUpload("test-upload-id", parts)
+	err := uploader.completeUpload(t.Context(), "test-upload-id", parts)
 	require.NoError(t, err)
 }
 
@@ -252,7 +252,7 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 	}
 
 	uploader := createTestMultipartUploader(t, handler, config)
-	uploadID, err := uploader.InitiateUpload()
+	uploadID, err := uploader.initiateUpload(t.Context())
 
 	require.NoError(t, err)
 	require.Equal(t, expectedUploadID, uploadID)
@@ -897,7 +897,7 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 	client.HTTPClient = server.Client()
 
 	startTime := time.Now()
-	req, err := retryablehttp.NewRequest("GET", server.URL, nil)
+	req, err := retryablehttp.NewRequestWithContext(t.Context(), "GET", server.URL, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Do(req)
