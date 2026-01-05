@@ -19,7 +19,7 @@ type BuildMap struct {
 	Length             uint64
 	BuildId            uuid.UUID
 	BuildStorageOffset uint64
-	CompressedInfo     *storage.CompressedInfo
+	FrameTable         *storage.FrameTable
 }
 
 func (mapping *BuildMap) Copy() *BuildMap {
@@ -163,7 +163,7 @@ func MergeMappings(
 					// the build storage offset is the same as the base mapping
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
-				leftBase.CompressedInfo = base.CompressedInfo.Subset(int64(leftBase.Offset), int64(leftBase.Length))
+				leftBase.FrameTable = base.FrameTable.Subset(int64(leftBase.Offset), int64(leftBase.Length))
 
 				mappings = append(mappings, leftBase)
 			}
@@ -182,7 +182,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-				rightBase.CompressedInfo = base.CompressedInfo.Subset(int64(rightBase.Offset), int64(rightBase.Length))
+				rightBase.FrameTable = base.FrameTable.Subset(int64(rightBase.Offset), int64(rightBase.Length))
 
 				baseMapping[baseIdx] = rightBase
 			} else {
@@ -210,7 +210,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-				rightBase.CompressedInfo = base.CompressedInfo.Subset(int64(rightBase.Offset), int64(rightBase.Length))
+				rightBase.FrameTable = base.FrameTable.Subset(int64(rightBase.Offset), int64(rightBase.Length))
 
 				baseMapping[baseIdx] = rightBase
 			} else {
@@ -232,7 +232,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
-				leftBase.CompressedInfo = base.CompressedInfo.Subset(int64(leftBase.Offset), int64(leftBase.Length))
+				leftBase.FrameTable = base.FrameTable.Subset(int64(leftBase.Offset), int64(leftBase.Length))
 
 				mappings = append(mappings, leftBase)
 			}

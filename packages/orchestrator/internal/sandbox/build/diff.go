@@ -31,7 +31,7 @@ type Diff interface {
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
 	FileSize() (int64, error)
-	Init(ctx context.Context, compressedInfo *storage.CompressedInfo) error
+	Init(context.Context) error
 }
 
 type NoDiff struct{}
@@ -62,7 +62,7 @@ func (n *NoDiff) CacheKey() DiffStoreKey {
 	return ""
 }
 
-func (n *NoDiff) Init(_ context.Context, _ *storage.CompressedInfo) error {
+func (n *NoDiff) Init(_ context.Context) error {
 	return NoDiffError{}
 }
 

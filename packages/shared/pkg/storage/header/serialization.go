@@ -68,6 +68,13 @@ func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
 func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	var buf bytes.Buffer
 
+	fmt.Printf("<>/<> Serializing header %+v\n", metadata) // DEBUG --- IGNORE ---
+	fmt.Printf("<>/<>   for build %s, version %d, %d mappings\n",
+		metadata.BuildId.String(),
+		metadata.Version,
+		len(mappings),
+	) // DEBUG --- IGNORE ---
+
 	err := binary.Write(&buf, binary.LittleEndian, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
@@ -85,16 +92,27 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 				BuildStorageOffset: mapping.BuildStorageOffset,
 			}
 		} else {
+			if mapping.FrameTable != nil {
+				fmt.Printf("<>/<> Serializing V4 mapping for build %q, %d many frames\n",
+					mapping.BuildId.String(),
+					len(mapping.FrameTable.Frames),
+				) // DEBUG --- IGNORE ---
+			} else {
+				fmt.Printf("<>/<> Serializing V4 mapping for build %q, no frames\n",
+					mapping.BuildId.String(),
+				) // DEBUG --- IGNORE ---
+			}
+
 			v4 := &v4SerializableBuildMap{
 				Offset:             mapping.Offset,
 				Length:             mapping.Length,
 				BuildId:            mapping.BuildId,
 				BuildStorageOffset: mapping.BuildStorageOffset,
 			}
-			if mapping.CompressedInfo != nil {
-				v4.CompressionTypeNumFrames = uint64(mapping.CompressedInfo.CompressionType)<<24 | uint64(len(mapping.CompressedInfo.Frames))
-				offset = &mapping.CompressedInfo.FramesStartAt
-				frames = mapping.CompressedInfo.Frames
+			if mapping.FrameTable != nil {
+				v4.CompressionTypeNumFrames = uint64(mapping.FrameTable.CompressionType)<<24 | uint64(len(mapping.FrameTable.Frames))
+				offset = &mapping.FrameTable.StartAt
+				frames = mapping.FrameTable.Frames
 			}
 			v = v4
 		}
@@ -137,6 +155,8 @@ func Deserialize(ctx context.Context, in storage.WriterToCtx) (*Header, error) {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
 
+	fmt.Printf(("<>/<> Deserializing header %+v\n"), &metadata) // DEBUG --- IGNORE ---
+
 	mappings := make([]*BuildMap, 0)
 
 MAPPINGS:
@@ -168,7 +188,7 @@ MAPPINGS:
 			m.BuildId = v4.BuildId
 			m.BuildStorageOffset = v4.BuildStorageOffset
 			if v4.CompressionTypeNumFrames != 0 {
-				m.CompressedInfo = &storage.CompressedInfo{
+				m.FrameTable = &storage.FrameTable{
 					CompressionType: storage.CompressionType((v4.CompressionTypeNumFrames >> 24) & 0xFF),
 				}
 				numFrames := v4.CompressionTypeNumFrames & 0xFFFFFF
@@ -179,7 +199,7 @@ MAPPINGS:
 					if err != nil {
 						return nil, fmt.Errorf("failed to read the expected compression frame: %w", err)
 					}
-					m.CompressedInfo.Frames = append(m.CompressedInfo.Frames, frame)
+					m.FrameTable.Frames = append(m.FrameTable.Frames, frame)
 				}
 			}
 		}

@@ -1,0 +1,373 @@
+package storage
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"sync"
+
+	"github.com/klauspost/compress/zstd"
+	"golang.org/x/sync/errgroup"
+)
+
+// Compressed frame contains 1+ chunks; chunks are aligned to 2MB uncompressed
+// size (except maybe the last chunk in file).
+const (
+	targetFrameCompressedSize = 4 * 1024 * 1024 // 4Mb target compressed frame size
+
+	// TODO LEV <>/<>: what should be the chunk size?
+	chunkUncompressedSize  = 2 * 1024 * 1024 // 2Mb uncompressed chunk size
+	zstdCompressionLevel   = zstd.SpeedBestCompression
+	zstdDefaultConcurrency = 0 // use default concurrency settings
+)
+
+const (
+	CompressionNone = CompressionType(iota)
+	CompressionZstd
+	CompressionLZ4
+)
+
+type CompressionType byte
+
+type Offset struct {
+	U int64 // TODO is uint64 needed?
+	C int64
+}
+
+type Frame struct {
+	U int32
+	C int32
+}
+
+type FrameTable struct {
+	CompressionType CompressionType
+	StartAt         Offset
+	Frames          []Frame
+}
+
+type CompressionOptions struct {
+	CompressionType CompressionType
+	Level           int
+	Concurrency     int
+	ChunkSize       int // frames are made of whole chunks
+	TargetFrameSize int // frames may be bigger than this due to chunk alignment and async compression.
+}
+
+func (c CompressionType) String() string {
+	switch c {
+	case CompressionNone:
+		return "none"
+	case CompressionZstd:
+		return "zstd"
+	case CompressionLZ4:
+		return "lz4"
+	default:
+		return "unknown"
+	}
+}
+
+var DefaultCompressionOptions = &CompressionOptions{
+	CompressionType: CompressionZstd,
+	ChunkSize:       chunkUncompressedSize,
+	TargetFrameSize: targetFrameCompressedSize,
+	Level:           int(zstdCompressionLevel),
+	Concurrency:     zstdDefaultConcurrency,
+}
+
+type encoder struct {
+	// ctx  context.Context
+	opts *CompressionOptions
+
+	// frame rotation is protected by mutex
+	mu         sync.Mutex
+	frame      *frame
+	frameTable *FrameTable
+
+	// Upload-specific data
+	targetPartSize    int64
+	partIndex         int
+	partLen           int64
+	partFrames        [][]byte
+	uploadConcurrency int
+	uploadID          string
+	uploader          MultipartUploader
+	uploadEG          *errgroup.Group
+}
+
+type frame struct {
+	e                *encoder
+	enc              io.WriteCloser
+	compressedBuffer *bytes.Buffer
+	flushing         bool
+
+	// lenU is updated by the Copy goroutine when it writes uncompressed data
+	// into the _current_ frame; can be read without locking after the frame
+	// starts closing since the incoming data is going to a new frame.
+	lenU int
+
+	// lenC is updated in the Write() method as compressed data is written into
+	// the compressedBuffer. It can be read without locking after the frame's
+	// encoder is flushed (closed).
+	lenC int
+}
+
+var _ io.Writer = (*frame)(nil) // for compression output
+
+// UploadFileFramed compresses the given file and uploads it using multipart upload.
+func UploadFileFramed(ctx context.Context, filePath string, partUploader MultipartUploader, uploadConcurrency int, opts *CompressionOptions) (*FrameTable, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	return newFrameEncoder(opts, partUploader, uploadConcurrency).upload(ctx, file)
+}
+
+func newFrameEncoder(opts *CompressionOptions, uploader MultipartUploader, uploadConcurrency int) *encoder {
+	return &encoder{
+		opts:              opts,
+		targetPartSize:    gcpMultipartUploadPartSize,
+		partFrames:        make([][]byte, 0, 8),
+		uploadConcurrency: uploadConcurrency,
+		uploader:          uploader,
+		frameTable: &FrameTable{
+			CompressionType: opts.CompressionType,
+		},
+	}
+}
+
+func (e *encoder) upload(ctx context.Context, file io.Reader) (frameTable *FrameTable, err error) {
+	// Set up the uploader
+	e.uploadEG, ctx = errgroup.WithContext(ctx)
+	if e.uploadConcurrency > 0 {
+		e.uploadEG.SetLimit(e.uploadConcurrency)
+	}
+	if e.uploadID, err = e.uploader.InitiateUpload(); err != nil {
+		return nil, fmt.Errorf("failed to initiate upload: %w", err)
+	}
+
+	// Start copying file to the compression encoder. Use a return channel
+	// instead of errgroup to be able to detect completion in the event loop.
+	chunkCh := make(chan []byte)
+	readErrorCh := make(chan error)
+	go readFile(ctx, file, e.opts.ChunkSize, chunkCh, readErrorCh)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+
+		case err := <-readErrorCh:
+			return nil, err
+
+		case chunk, ok := <-chunkCh:
+			// See if we need to flush and to start a new frame
+			e.mu.Lock()
+			var flush *frame
+			if !ok {
+				// No more data; flush current frame
+				flush = e.frame
+			} else {
+				if e.frame == nil || e.frame.flushing {
+					// Start a new frame and flush the current one
+					flush = e.frame
+					if e.frame, err = e.startFrame(); err != nil {
+						e.mu.Unlock()
+						return nil, fmt.Errorf("failed to start frame: %w", err)
+					}
+				}
+			}
+			frame := e.frame
+			e.mu.Unlock()
+
+			if flush != nil {
+				if err := e.flushFrame(flush, !ok); err != nil {
+					return nil, fmt.Errorf("failed to flush frame: %w", err)
+				}
+			}
+
+			// If we have data, write it to the current frame and continue
+			if ok {
+				if err := e.writeChunk(frame, chunk); err != nil {
+					return nil, fmt.Errorf("failed to encode to frame: %w", err)
+				}
+				continue
+			}
+
+			// No more data to process; wait for the uploads to complete and done!
+			if err = e.uploadEG.Wait(); err != nil {
+				return nil, fmt.Errorf("failed to upload frames: %w", err)
+			}
+
+			// Complete the multipart upload if no error occurred. The caller
+			// should cancel the upload (ctx cancel) on error.
+			if err == nil && e.uploadID != "" {
+				err = e.uploader.CompleteUpload(e.uploadID)
+				if err != nil {
+					return nil, fmt.Errorf("failed to upload frames: %w", err)
+				}
+			}
+
+			return e.frameTable, nil
+		}
+	}
+}
+
+func (e *encoder) flushFrame(f *frame, last bool) error {
+	if err := f.enc.Close(); err != nil {
+		return fmt.Errorf("failed to close encoder: %w", err)
+	}
+
+	ft := Frame{
+		U: int32(f.lenU),
+		C: int32(f.lenC),
+	}
+	e.frameTable.Frames = append(e.frameTable.Frames, ft)
+
+	data := f.compressedBuffer.Bytes()
+	e.partLen += int64(len(data))
+	e.partFrames = append(e.partFrames, data)
+
+	if e.partLen >= int64(e.targetPartSize) || last {
+		e.partIndex++
+
+		i := e.partIndex
+		frameData := append([][]byte{}, e.partFrames...)
+		e.partLen = 0
+		e.partFrames = e.partFrames[:0]
+
+		e.uploadEG.Go(func() error {
+			err := e.uploader.UploadPart(e.uploadID, i, frameData...)
+			if err != nil {
+				return fmt.Errorf("failed to upload part %d: %w", e.partIndex, err)
+			}
+			return nil
+		})
+	}
+
+	return nil
+}
+
+func readFile(ctx context.Context, file io.Reader, chunkSize int, chunkCh chan<- []byte, errorCh chan<- error) {
+	var err error
+	for i := 0; err == nil; i++ {
+		var chunk []byte
+		chunk, err = readChunk(file, chunkSize)
+		if err == nil {
+			err = ctx.Err()
+		}
+		switch err {
+		case nil:
+			chunkCh <- chunk
+		case io.EOF:
+			if len(chunk) > 0 {
+				chunkCh <- chunk
+			}
+			close(chunkCh)
+		default:
+			errorCh <- fmt.Errorf("failed to read file chunk %d: %w", i, err)
+		}
+	}
+}
+
+func readChunk(file io.Reader, chunkSize int) ([]byte, error) {
+	chunk := make([]byte, chunkSize)
+	var n int
+	var err error
+
+	for n < chunkSize && err == nil {
+		var c int
+		c, err = file.Read(chunk[n:])
+		n += c
+	}
+	return chunk[:n], err
+}
+
+func (e *encoder) startFrame() (*frame, error) {
+	var enc io.WriteCloser
+	var err error
+	frame := &frame{
+		e:                e,
+		compressedBuffer: bytes.NewBuffer(make([]byte, 0, e.opts.TargetFrameSize+e.opts.ChunkSize)),
+	}
+	switch e.opts.CompressionType {
+	case CompressionZstd:
+		enc, err = newZstdEncoder(frame, e.opts.Concurrency, e.opts.TargetFrameSize, zstd.EncoderLevel(e.opts.Level))
+	default:
+		return nil, fmt.Errorf("unsupported compression type: %v", e.opts.CompressionType)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to create zstd encoder: %w", err)
+	}
+	frame.enc = enc
+
+	return frame, nil
+}
+
+// addChunk writes uncompressed data chunk into the frame. len(data) is expected to be <= opts.ChunkSize.
+func (e *encoder) writeChunk(frame *frame, data []byte) error {
+	for len(data) > 0 {
+		// Write out data that fits the current chunk
+		written, err := frame.enc.Write(data)
+		if err != nil {
+			return err
+		}
+		frame.lenU += written
+		data = data[written:]
+	}
+
+	return nil
+}
+
+// Write implements io.Writer to be used as the output of the compression encoder.
+func (frame *frame) Write(p []byte) (n int, err error) {
+	e := frame.e
+	n, err = frame.compressedBuffer.Write(p)
+	frame.lenC += n
+
+	e.mu.Lock()
+	if frame.lenC < e.opts.TargetFrameSize || frame.flushing {
+		e.mu.Unlock()
+		return n, err
+	}
+	frame.flushing = true
+	e.mu.Unlock()
+
+	return n, err
+}
+
+func newZstdEncoder(out io.Writer, concurrency int, windowSize int, compressionLevel zstd.EncoderLevel) (*zstd.Encoder, error) {
+	switch {
+	case concurrency > 0 && windowSize > 0:
+		return zstd.NewWriter(out,
+			zstd.WithEncoderConcurrency(concurrency),
+			zstd.WithWindowSize(windowSize),
+			zstd.WithEncoderLevel(compressionLevel))
+	case concurrency > 0:
+		return zstd.NewWriter(out,
+			zstd.WithEncoderConcurrency(concurrency),
+			zstd.WithEncoderLevel(compressionLevel))
+	case windowSize > 0:
+		return zstd.NewWriter(out,
+			zstd.WithWindowSize(windowSize),
+			zstd.WithEncoderLevel(compressionLevel))
+	default:
+		return zstd.NewWriter(out,
+			zstd.WithEncoderLevel(compressionLevel))
+	}
+}
+
+func newMultiReader(data [][]byte) io.Reader {
+	rr := []io.Reader{}
+	for _, d := range data {
+		rr = append(rr, bytes.NewReader(d))
+	}
+
+	return io.MultiReader(rr...)
+}

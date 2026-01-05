@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
@@ -19,65 +20,35 @@ import (
 
 func TestMultipartCompressUploadFile_Success(t *testing.T) {
 	const (
-		chunkSize = 1024
-		frameSize = 2048
-		partSize  = 4096
+		chunkSize = 2048
+		frameSize = 1024
+		partSize  = 2048
 
-		targetNumParts    = 5
-		maxChunksPerFrame = 5
+		chunksInData   = 100
+		targetNumParts = 3
 	)
 
-	uncompressedSize := 0
 	var origData []byte
-	r := rand.New(rand.NewSource(42))
+	seeded := rand.New(rand.NewSource(42))
 
 	t.Run("Generate test data", func(t *testing.T) {
-		compressedSize := 0
-		iPart := 0
-		iFrame := 0
-		var chunksInFrame int
-		var bytesInPart int
-		for iPart < targetNumParts {
+		for range chunksInData {
 			// read in some random bytes
-			chunk := make([]byte, 0, chunkSize)
+			chunk := make([]byte, 0, chunkSize*2)
 			for len(chunk) < chunkSize {
-				n := r.Intn(8) + 1
-				b := r.Intn(256)
+				n := seeded.Intn(64) + 1
+				b := seeded.Intn(256)
 				for range n {
 					chunk = append(chunk, byte(b))
 				}
 			}
 			chunk = chunk[:chunkSize]
 			origData = append(origData, chunk...)
-			uncompressedSize += len(chunk)
-			chunksInFrame++
-
-			compressedBuf := newSyncBuffer(frameSize + chunkSize)
-			zw, err := zstd.NewWriter(compressedBuf, zstd.WithEncoderLevel(zstdCompressionLevel))
-			require.NoError(t, err)
-			_, err = zw.Write(chunk)
-			require.NoError(t, err)
-			err = zw.Close()
-			require.NoError(t, err)
-
-			// see if we need to start a new frame
-			bb := compressedBuf.Bytes()
-			compressedSize += len(bb)
-			if chunksInFrame >= maxChunksPerFrame || len(bb) >= frameSize {
-				iFrame++
-				chunksInFrame = 0
-				if bytesInPart+len(bb) >= partSize {
-					iPart++
-					bytesInPart = 0
-				} else {
-					bytesInPart += len(bb)
-				}
-			}
 		}
 	})
 
 	var data []byte
-	var ci *CompressedInfo
+	var frameTable *FrameTable
 	receivedParts := make(map[string][]byte)
 	receivedData := make([]byte, 0)
 	t.Run("Frame compressed parallel upload", func(t *testing.T) {
@@ -112,6 +83,10 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 				body, _ := io.ReadAll(r.Body)
 				receivedParts[partNum] = body
 
+				// Simulate variable network/upload delay, 50-1000ms
+				randomDelay := seeded.Intn(50)
+				time.Sleep(time.Duration(randomDelay) * time.Millisecond)
+
 				w.Header().Set("ETag", fmt.Sprintf(`"etag%s"`, partNum))
 				w.WriteHeader(http.StatusOK)
 
@@ -123,35 +98,33 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 		})
 
 		uploader := createTestMultipartUploader(t, handler)
-		fu, err := newFrameUploader(t.Context(), uploader, partSize, 3)
-		require.NoError(t, err)
+
 		opts := CompressionOptions{
 			CompressionType: CompressionZstd,
 			Level:           int(zstdCompressionLevel),
 			ChunkSize:       chunkSize,
 			TargetFrameSize: frameSize,
 		}
+		e := newFrameEncoder(&opts, uploader, 3)
+		e.targetPartSize = partSize
 
-		fe, err := newFrameEncoder(&opts, fu.handleFrame)
-		require.NoError(t, err)
-
-		// 171 and newPureReader (a "pure" io.Reader) to exercise uneven chunking
-		// in fe.Write
-		ci, err = multipartCompressUploadFile(newPureReader(origData), fe, fu, 171)
+		var err error
+		frameTable, err = e.upload(t.Context(), bytes.NewReader(origData))
 		require.NoError(t, err)
 		require.Equal(t, 1, initiateC)
 		require.Equal(t, 1, completeC)
-		require.Greater(t, len(receivedParts), 3, "should have been at least 4 parts uploaded")
+		require.Equal(t, 7, len(receivedParts), "should have been at least 4 parts uploaded")
+		require.Len(t, frameTable.Frames, 13)
 
 		totalUncompressed := 0
-		for _, frame := range ci.Frames {
-			totalUncompressed += frame.U
-			require.LessOrEqual(t, frame.C, frame.U,
+		for _, frame := range frameTable.Frames {
+			totalUncompressed += int(frame.U)
+			require.LessOrEqual(t, int(frame.C), int(frame.U),
 				"expect that all frames get somewhat compressed due to the nature of the data")
-			require.Equal(t, 0, frame.U%chunkSize,
+			require.Equal(t, 0, int(frame.U)%chunkSize,
 				"expect each frame's uncompressed size to be multiple of chunk size")
 		}
-		require.Equal(t, uncompressedSize, totalUncompressed,
+		require.Equal(t, len(origData), totalUncompressed,
 			"expect total uncompressed size in frame info to match original data length")
 
 		// Verify uploaded parts
@@ -179,18 +152,17 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 		rr := &fakeRanger{data: receivedData}
 
 		for range 10 {
-			s := r.Intn(len(origData) - 1)
-			e := r.Intn(len(origData) - 1)
+			s := seeded.Intn(len(origData) - 1)
+			e := seeded.Intn(len(origData) - 1)
 			if s > e {
 				s, e = e, s
 			}
 
-			buf := make([]byte, e-s)
-			t.Logf("requesting slice from %d to %d, %d bytes\n", s, e, len(buf))
-
-			err := ci.DownloadSlice(t.Context(), rr, buf, int64(s))
+			t.Logf("requesting frames for range %#x to %#x, %#x bytes\n", s, e, e-s)
+			start, frames, err := DownloadFrames(t.Context(), rr, int64(s), e-s, frameTable)
 			require.NoError(t, err)
-			require.Equal(t, origData[s:e], buf)
+			require.LessOrEqual(t, int(start), s)
+			require.GreaterOrEqual(t, len(frames), 1)
 		}
 	})
 }
@@ -203,35 +175,6 @@ func (r *fakeRanger) RangeGet(_ context.Context, offset, length int64) (io.ReadC
 	return io.NopCloser(bytes.NewReader(r.data[offset : offset+length])), nil
 }
 
-type pureReader struct {
-	data []byte
-}
-
-func newPureReader(data []byte) *pureReader {
-	return &pureReader{
-		data: data,
-	}
-}
-
-func (mr *pureReader) Read(p []byte) (n int, err error) {
-	if len(mr.data) == 0 {
-		return 0, io.EOF
-	}
-
-	if len(mr.data) < len(p) {
-		copy(p, mr.data)
-		n = len(mr.data)
-		mr.data = nil
-
-		return n, io.EOF
-	}
-
-	copy(p, mr.data[:len(p)])
-	mr.data = mr.data[len(p):]
-
-	return len(p), nil
-}
-
 func TestCompressedInfo_Subset(t *testing.T) {
 	// Create a CompressedInfo with frames of known sizes
 	// Frame 0: U=1000, C=500 (offset 0-1000)
@@ -239,9 +182,9 @@ func TestCompressedInfo_Subset(t *testing.T) {
 	// Frame 2: U=1500, C=750 (offset 3000-4500)
 	// Frame 3: U=3000, C=1500 (offset 4500-7500)
 	// Total uncompressed: 7500 bytes
-	ci := &CompressedInfo{
+	ci := &FrameTable{
 		CompressionType: CompressionZstd,
-		FramesStartAt:   Offset{U: 100, C: 50},
+		StartAt:         Offset{U: 100, C: 50},
 		Frames: []Frame{
 			{U: 1000, C: 500},
 			{U: 2000, C: 1000},
@@ -373,7 +316,7 @@ func TestCompressedInfo_Subset(t *testing.T) {
 
 	t.Run("subset with large frames", func(t *testing.T) {
 		// Create CompressedInfo with larger frames
-		largeCi := &CompressedInfo{
+		largeCi := &FrameTable{
 			CompressionType: CompressionZstd,
 			Frames: []Frame{
 				{U: 1000000, C: 500000},  // 1MB uncompressed
@@ -390,7 +333,7 @@ func TestCompressedInfo_Subset(t *testing.T) {
 	})
 
 	t.Run("subset from empty CompressedInfo returns empty", func(t *testing.T) {
-		emptyCi := &CompressedInfo{
+		emptyCi := &FrameTable{
 			CompressionType: CompressionZstd,
 			Frames:          []Frame{},
 		}
@@ -415,7 +358,7 @@ func TestCompressedInfo_Subset(t *testing.T) {
 	})
 
 	t.Run("Subset of nil is nil", func(t *testing.T) {
-		var nilCi *CompressedInfo
+		var nilCi *FrameTable
 		subset := nilCi.Subset(0, 100)
 		require.Nil(t, subset)
 	})

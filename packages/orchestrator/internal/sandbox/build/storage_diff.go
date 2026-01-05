@@ -25,6 +25,7 @@ type StorageDiff struct {
 	blockSize   int64
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
+	frameTable  *storage.FrameTable
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -44,6 +45,7 @@ func newStorageDiff(
 	blockSize int64,
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
+	frameTable *storage.FrameTable,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
 	storageObjectType, ok := storageObjectType(diffType)
@@ -61,6 +63,7 @@ func newStorageDiff(
 		blockSize:         blockSize,
 		metrics:           metrics,
 		persistence:       persistence,
+		frameTable:        frameTable,
 		cacheKey:          GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
@@ -80,8 +83,8 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 	return b.cacheKey
 }
 
-func (b *StorageDiff) Init(ctx context.Context, compressedInfo *storage.CompressedInfo) error {
-	obj, err := b.persistence.OpenFramedReader(ctx, b.storagePath, compressedInfo)
+func (b *StorageDiff) Init(ctx context.Context) error {
+	obj, err := b.persistence.OpenFramedReader(ctx, b.storagePath)
 	if err != nil {
 		return err
 	}
@@ -94,7 +97,7 @@ func (b *StorageDiff) Init(ctx context.Context, compressedInfo *storage.Compress
 		return errMsg
 	}
 
-	chunker, err := block.NewChunker(size, b.blockSize, obj, b.cachePath, b.metrics)
+	chunker, err := block.NewChunker(size, b.blockSize, obj, b.cachePath, b.metrics, b.frameTable)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
 		b.chunker.SetError(errMsg)

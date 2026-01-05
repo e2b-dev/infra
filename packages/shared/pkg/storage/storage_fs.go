@@ -31,7 +31,6 @@ var _ FramedWriter = (*fsFramedWriter)(nil)
 
 type fsFramedReader struct {
 	path string
-	info *CompressedInfo
 }
 
 var _ FramedReader = (*fsFramedReader)(nil)
@@ -80,10 +79,9 @@ func (fs *fsStore) OpenFramedWriter(_ context.Context, path string, opts *Compre
 	}, nil
 }
 
-func (fs *fsStore) OpenFramedReader(_ context.Context, path string, info *CompressedInfo) (FramedReader, error) {
+func (fs *fsStore) OpenFramedReader(_ context.Context, path string) (FramedReader, error) {
 	return &fsFramedReader{
 		path: fs.abs(path),
-		info: info,
 	}, nil
 }
 
@@ -172,7 +170,7 @@ func (f *fsObject) Delete(_ context.Context) error {
 	return os.Remove(f.path)
 }
 
-func (f *fsFramedWriter) StoreFromFileSystem(_ context.Context, path string) (*CompressedInfo, error) {
+func (f *fsFramedWriter) StoreFromFileSystem(_ context.Context, path string) (*FrameTable, error) {
 	handle, err := getHandle(f.path, false)
 	if err != nil {
 		return nil, err
@@ -185,95 +183,14 @@ func (f *fsFramedWriter) StoreFromFileSystem(_ context.Context, path string) (*C
 	}
 	defer src.Close()
 
-	fe, err := newFrameEncoder(f.opts, func(frame []byte, _ bool) error {
-		_, err := handle.Write(frame)
-
-		return err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create framed encoder: %w", err)
-	}
-
-	_, err = io.Copy(fe, src)
-	if err != nil {
-		return nil, err
-	}
-
-	return fe.Close()
+	return nil, fmt.Errorf("<>/<> IMPLEMENT ME")
 }
 
-func (f *fsFramedReader) ReadAt(_ context.Context, _ []byte, offset int64) (n int, err error) {
-	panic("<>/<> REFACTOR ME")
-
-	// handle, err := getHandle(f.path, true)
-	// if err != nil {
-	// 	return 0, err
-	// }
-	// defer handle.Close()
-
-	// if f.info == nil || f.info.CompressionType == CompressionNone {
-	// 	return handle.ReadAt(buf, offset)
-	// }
-
-	// if offset < f.info.FramesStartAt.U {
-	// 	return 0, fmt.Errorf("offset %d is before start of framed data %d", offset, f.info.FramesStartAt.U)
-	// }
-
-	// dec, err := zstd.NewReader(nil)
-	// if err != nil {
-	// 	return 0, fmt.Errorf("failed to create zstd decoder: %w", err)
-	// }
-	// defer dec.Close()
-
-	// first := true
-	// err = f.info.Range(offset, int64(len(buf)), func(off Offset, frame Frame) error {
-	// 	if first {
-	// 		// seek to the start of the first frame
-	// 		_, err = handle.Seek(off.C, io.SeekStart)
-	// 		if err != nil {
-	// 			return fmt.Errorf("failed to seek to frame at offset %d: %w", off.C, err)
-	// 		}
-	// 		first = false
-	// 	}
-
-	// 	// read the compressed frame
-	// 	compressedFrame := make([]byte, frame.C)
-	// 	_, err = io.ReadFull(handle, compressedFrame)
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to read compressed frame at offset %d: %w", off.C, err)
-	// 	}
-
-	// 	// decompress the frame
-	// 	decompressedFrame, err := dec.DecodeAll(compressedFrame, nil)
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to decompress frame at offset %d: %w", off.C, err)
-	// 	}
-
-	// 	// calculate the offset within the decompressed frame to start copying from
-	// 	startInFrame := 0
-	// 	if offset > off.U {
-	// 		startInFrame = int(offset - off.U)
-	// 	}
-
-	// 	// calculate how much data to copy from this frame
-	// 	toCopy := min(len(buf), len(decompressedFrame)-startInFrame)
-
-	// 	// copy the data to the buffer
-	// 	copy(buf[:toCopy], decompressedFrame[startInFrame:startInFrame+toCopy])
-
-	// 	// update the buffer and offset for the next iteration
-	// 	buf = buf[toCopy:]
-	// 	offset += int64(toCopy)
-
-	// 	return nil
-	// })
-	// if err != nil {
-	// 	return n, err
-	// }
-
-	// return len(buf), nil
+func (f *fsFramedReader) ReadFrames(ctx context.Context, off int64, n int, ft *FrameTable) (framesStartAt int64, frameData [][]byte, err error) {
+	panic("<>/<> IMPLEMENT ME")
 }
 
 func (f *fsFramedReader) Size(_ context.Context) (int64, error) {
-	return f.info.TotalUncompressedSize(), nil
+	panic("<>/<> IMPLEMENT ME")
+	// return f.info.TotalUncompressedSize(), nil
 }

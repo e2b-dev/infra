@@ -144,7 +144,7 @@ func (a *awsBucketStore) OpenFramedWriter(_ context.Context, path string, _ *Com
 	}, nil
 }
 
-func (a *awsBucketStore) OpenFramedReader(_ context.Context, path string, _ *CompressedInfo) (FramedReader, error) {
+func (a *awsBucketStore) OpenFramedReader(_ context.Context, path string) (FramedReader, error) {
 	return &awsObject{
 		client:     a.client,
 		bucketName: a.bucketName,
@@ -201,7 +201,7 @@ func (a *awsObject) CopyFromFileSystem(ctx context.Context, path string) error {
 	return err
 }
 
-func (a *awsObject) StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error) {
+func (a *awsObject) StoreFromFileSystem(ctx context.Context, path string) (*FrameTable, error) {
 	err := a.CopyFromFileSystem(ctx, path)
 	if err != nil {
 		return nil, err
@@ -307,4 +307,17 @@ func ignoreNotExists(err error) error {
 	}
 
 	return err
+}
+
+func (a *awsObject) ReadFrames(ctx context.Context, off int64, n int, ft *FrameTable) (framesStartAt int64, frameData [][]byte, err error) {
+	buf := make([]byte, n)
+
+	// return the entire range as a single frame
+
+	nRead, err := a.ReadAt(ctx, buf, off)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return 0, [][]byte{buf[:nRead]}, nil
 }

@@ -79,8 +79,8 @@ func (c cachedStore) OpenObject(ctx context.Context, path string, objectType Obj
 	return &cachedObject{path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
 }
 
-func (c cachedStore) OpenFramedReader(ctx context.Context, path string, info *CompressedInfo) (FramedReader, error) {
-	innerObject, err := c.inner.OpenFramedReader(ctx, path, info)
+func (c cachedStore) OpenFramedReader(ctx context.Context, path string) (FramedReader, error) {
+	innerObject, err := c.inner.OpenFramedReader(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}

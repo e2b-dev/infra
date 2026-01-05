@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"os"
 	"slices"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
@@ -190,7 +188,7 @@ func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
 		return 0, NewErrCacheClosed(c.filePath)
 	}
 
-	return c.WriteAtWithoutLock(b, off)
+	return c.WriteAtWithoutLock([][]byte{b}, int64(len(b)), off)
 }
 
 func (c *Cache) Close() (e error) {
@@ -263,7 +261,7 @@ func (c *Cache) setIsCached(off, length int64) {
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
-func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
+func (c *Cache) WriteAtWithoutLock(frames [][]byte, size int64, off int64) (int, error) {
 	if c.isClosed() {
 		return 0, NewErrCacheClosed(c.filePath)
 	}
@@ -272,13 +270,17 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 		return 0, nil
 	}
 
-	end := min(off+int64(len(b)), c.size)
+	N := 0
+	for _, f := range frames {
+		end := min(off+int64(len(f)), c.size)
 
-	n := copy((*c.mmap)[off:end], b)
+		n := copy((*c.mmap)[off:end], f)
+		N += n
+	}
 
-	c.setIsCached(off, end-off)
+	c.setIsCached(off, int64(N))
 
-	return n, nil
+	return N, nil
 }
 
 // dirtySortedKeys returns a sorted list of dirty keys.
@@ -293,24 +295,6 @@ func (c *Cache) dirtySortedKeys() []int64 {
 	slices.Sort(keys)
 
 	return keys
-}
-
-// FileSize returns the size of the cache on disk.
-// The size might differ from the dirty size, as it may not be fully on disk.
-func (c *Cache) FileSize() (int64, error) {
-	var stat syscall.Stat_t
-	err := syscall.Stat(c.filePath, &stat)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get file stats: %w", err)
-	}
-
-	var fsStat syscall.Statfs_t
-	err = syscall.Statfs(c.filePath, &fsStat)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get disk stats for path %s: %w", c.filePath, err)
-	}
-
-	return stat.Blocks * fsStat.Bsize, nil
 }
 
 func (c *Cache) address(off int64) *byte {
@@ -353,81 +337,4 @@ func NewCacheFromProcessMemory(
 	}
 
 	return cache, nil
-}
-
-func (c *Cache) copyProcessMemory(
-	ctx context.Context,
-	pid int,
-	ranges []Range,
-) error {
-	var start int64
-
-	for i := 0; i < len(ranges); i += IOV_MAX {
-		segmentRanges := ranges[i:min(i+IOV_MAX, len(ranges))]
-
-		remote := make([]unix.RemoteIovec, len(segmentRanges))
-
-		var segmentSize int64
-
-		for j, r := range segmentRanges {
-			remote[j] = unix.RemoteIovec{
-				Base: uintptr(r.Start),
-				Len:  int(r.Size),
-			}
-
-			segmentSize += r.Size
-		}
-
-		local := []unix.Iovec{
-			{
-				Base: c.address(start),
-				// We could keep this as full cache length, but we might as well be exact here.
-				Len: uint64(segmentSize),
-			},
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-
-			// We could retry only on the remaining segment size, but for simplicity we retry the whole segment.
-			n, err := unix.ProcessVMReadv(pid,
-				local,
-				remote,
-				0,
-			)
-			if errors.Is(err, unix.EAGAIN) {
-				continue
-			}
-			if errors.Is(err, unix.EINTR) {
-				continue
-			}
-			if errors.Is(err, unix.ENOMEM) {
-				time.Sleep(oomMinBackoff + time.Duration(rand.Intn(int(oomMaxJitter.Milliseconds())))*time.Millisecond)
-
-				continue
-			}
-
-			if err != nil {
-				return fmt.Errorf("failed to read memory: %w", err)
-			}
-
-			if int64(n) != segmentSize {
-				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
-			}
-
-			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				c.dirty.Store(start+blockOff, struct{}{})
-			}
-
-			start += segmentSize
-
-			break
-		}
-	}
-
-	return nil
 }

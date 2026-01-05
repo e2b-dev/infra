@@ -56,44 +56,12 @@ const (
 	LayerMetadataObjectType
 )
 
-const (
-	CompressionNone = CompressionType(iota)
-	CompressionZstd
-	CompressionLZ4
-)
-
-type CompressionType byte
-
-type Offset struct {
-	U int64 // TODO is uint64 needed?
-	C int64
-}
-
-type Frame struct {
-	U int
-	C int
-}
-
-type CompressedInfo struct {
-	CompressionType CompressionType
-	FramesStartAt   Offset
-	Frames          []Frame
-}
-
-type CompressionOptions struct {
-	CompressionType CompressionType
-	Level           int
-	Concurrency     int
-	ChunkSize       int // frames are made of whole chunks
-	TargetFrameSize int // frames may be bigger than this size due to chunk alignment and async compression.
-}
-
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
 	OpenObject(ctx context.Context, path string, objectType ObjectType) (ObjectProvider, error)
 	OpenFramedWriter(ctx context.Context, path string, opts *CompressionOptions) (FramedWriter, error)
-	OpenFramedReader(ctx context.Context, path string, compressedInfo *CompressedInfo) (FramedReader, error)
+	OpenFramedReader(ctx context.Context, path string) (FramedReader, error)
 	GetDetails() string
 }
 
@@ -122,12 +90,15 @@ type ObjectProvider interface {
 }
 
 type FramedWriter interface {
-	StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error)
+	StoreFromFileSystem(ctx context.Context, path string) (*FrameTable, error)
 }
 
 type FramedReader interface {
-	// read
-	ReaderAtCtx
+	// ReadFrames reads all relevant frames for a given target byte range. If
+	// the file is uncompressed, it does a range request. If the file is
+	// compressed, it uses compressedInfo to fetch the relevant frames, and
+	// returns them decompressed, as a slice.
+	ReadFrames(ctx context.Context, off int64, n int, ft *FrameTable) (framesStartAt int64, frameData [][]byte, err error)
 
 	// utility
 	Size(ctx context.Context) (int64, error)

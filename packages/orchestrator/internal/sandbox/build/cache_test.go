@@ -151,7 +151,7 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 
 	// Refresh diff expiration
 	time.Sleep(ttl / 2)
-	_, err = store.Get(t.Context(), nil, diff)
+	_, err = store.Get(t.Context(), diff)
 	require.NoError(t, err)
 
 	// Try to expire diff
@@ -246,7 +246,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	assert.True(t, dFound)
 
 	// Abort removal of diff
-	_, err = store.Get(t.Context(), nil, diff)
+	_, err = store.Get(t.Context(), diff)
 	require.NoError(t, err)
 
 	found = store.Has(diff)
@@ -387,7 +387,7 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 
 				// Occasionally try to access the item, which calls resetDelete
 				if j%5 == 0 {
-					_, err := store.Get(t.Context(), nil, diff)
+					_, err := store.Get(t.Context(), diff)
 					assert.NoError(t, err)
 				}
 			}
@@ -472,7 +472,7 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 
 			// This call to Get() will trigger resetDelete, which is where the race occurs
 			// Multiple goroutines calling resetDelete on the same key can race
-			_, err = store.Get(t.Context(), nil, iterDiff)
+			_, err = store.Get(t.Context(), iterDiff)
 			assert.NoError(t, err)
 
 			// Also try direct resetDelete calls to increase race probability

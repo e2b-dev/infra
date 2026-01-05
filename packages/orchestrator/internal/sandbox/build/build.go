@@ -47,6 +47,13 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		remainingReadLength := int64(len(p)) - int64(n)
 		readLength := min(int64(mappedToBuild.Length), remainingReadLength) // TODO yet again [u]int64?
 
+		// fmt.Printf("<>/<> buildfile.ReadAt will read %#x out of %#x bytes from build %s at offset %#x\n",
+		// 	readLength,
+		// 	remainingReadLength,
+		// 	b.header.Metadata.BuildId.String(),
+		// 	off+int64(n),
+		// )
+
 		if readLength <= 0 {
 			logger.L().Error(ctx, fmt.Sprintf(
 				"(%d bytes left to read, off %d) reading %d bytes from %+v/%+v: [%d:] -> [%d:%d] <> %d (mapped length: %d, remaining read length: %d)\n>>> EOF\n",
@@ -115,6 +122,23 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 }
 
 func (b *File) getBuild(ctx context.Context, mappedToBuild *header.BuildMap) (Diff, error) {
+	// if mappedToBuild.FrameTable != nil {
+	// 	fmt.Printf("<>/<> getBuild for %q (%#x %#x), compression %s, frames start at %#x, num frames %d\n",
+	// 		mappedToBuild.BuildId.String(),
+	// 		mappedToBuild.Offset,
+	// 		mappedToBuild.Length,
+	// 		mappedToBuild.FrameTable.CompressionType,
+	// 		mappedToBuild.FrameTable.StartAt.U,
+	// 		len(mappedToBuild.FrameTable.Frames),
+	// 	) // DEBUG --- IGNORE ---
+	// } else {
+	// 	fmt.Printf("<>/<> getBuild for %q (%#x %#x), no frame table\n",
+	// 		mappedToBuild.BuildId.String(),
+	// 		mappedToBuild.Offset,
+	// 		mappedToBuild.Length,
+	// 	) // DEBUG --- IGNORE ---
+	// }
+
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		mappedToBuild.BuildId.String(),
@@ -122,12 +146,13 @@ func (b *File) getBuild(ctx context.Context, mappedToBuild *header.BuildMap) (Di
 		int64(b.header.Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
+		mappedToBuild.FrameTable,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage diff: %w", err)
 	}
 
-	source, err := b.store.Get(ctx, mappedToBuild.CompressedInfo, storageDiff)
+	source, err := b.store.Get(ctx, storageDiff)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build from store: %w", err)
 	}

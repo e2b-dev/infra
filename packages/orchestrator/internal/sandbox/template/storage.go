@@ -86,7 +86,7 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 		// Old style must not be compressed
-		object, err := persistence.OpenFramedReader(ctx, objectPath, nil)
+		object, err := persistence.OpenFramedReader(ctx, objectPath)
 		if err != nil {
 			return nil, err
 		}

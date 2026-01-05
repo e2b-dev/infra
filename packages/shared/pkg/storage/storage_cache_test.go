@@ -61,11 +61,11 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		err = os.WriteFile(cacheFilename, []byte{1, 2, 3}, 0o600)
 		require.NoError(t, err)
 
-		buffer := make([]byte, 3)
-		read, err := c.ReadAt(t.Context(), buffer, 0)
+		start, frames, err := c.ReadFrames(t.Context(), 0, 3, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{1, 2, 3}, buffer)
-		assert.Equal(t, 3, read)
+		require.Len(t, frames, 1)
+		require.Equal(t, int64(0), start)
+		assert.Equal(t, []byte{1, 2, 3}, frames[0])
 	})
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
@@ -73,14 +73,13 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		fakeStorageObjectProvider := NewMockFramedReader(t)
 
 		fakeStorageObjectProvider.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, buff []byte, off int64) (int, error) {
+			ReadFrames(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			RunAndReturn(func(_ context.Context, off int64, n int, _ *FrameTable) (int64, [][]byte, error) {
 				start := off
-				end := off + int64(len(buff))
+				end := off + int64(n)
 				end = min(end, int64(len(fakeData)))
-				copy(buff, fakeData[start:end])
 
-				return int(end - start), nil
+				return off, [][]byte{fakeData[start:end]}, nil
 			})
 
 		tempDir := t.TempDir()
@@ -91,22 +90,20 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		}
 
 		// first read goes to source
-		buffer := make([]byte, 3)
-		read, err := c.ReadAt(t.Context(), buffer, 3)
+		start, frames, err := c.ReadFrames(t.Context(), 3, 3, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{4, 5, 6}, buffer)
-		assert.Equal(t, 3, read)
+		assert.Equal(t, int64(3), start)
+		assert.Equal(t, []byte{4, 5, 6}, frames[0])
 
 		// we write asynchronously, so let's wait until we're done
 		time.Sleep(time.Millisecond * 20)
 
 		// second read pulls from cache
 		c.r = nil // prevent remote reads, force cache read
-		buffer = make([]byte, 3)
-		read, err = c.ReadAt(t.Context(), buffer, 3)
+		start, frames, err = c.ReadFrames(t.Context(), 3, 3, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{4, 5, 6}, buffer)
-		assert.Equal(t, 3, read)
+		assert.Equal(t, int64(3), start)
+		assert.Equal(t, []byte{4, 5, 6}, frames[0])
 	})
 
 	t.Run("WriteTo calls should read from cache", func(t *testing.T) {

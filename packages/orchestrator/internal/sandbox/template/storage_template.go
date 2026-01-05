@@ -75,6 +75,8 @@ func newTemplateFromStorage(
 func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
 	var wg errgroup.Group
 
+	// fmt.Printf("<>/<> Starting to fetch template files for build %s\n", t.files.BuildID)
+
 	wg.Go(func() error {
 		if t.localSnapfile != nil {
 			if err := t.snapfile.SetValue(t.localSnapfile); err != nil {
@@ -168,6 +170,8 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	})
 
 	wg.Go(func() error {
+		// fmt.Printf("<>/<> Fetching memfile for build %s\n", t.files.BuildID)
+
 		memfileStorage, memfileErr := NewStorage(
 			ctx,
 			buildStore,

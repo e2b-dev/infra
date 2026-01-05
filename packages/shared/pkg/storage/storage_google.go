@@ -78,8 +78,6 @@ type gcpFramedWriter struct {
 
 type gcpFramedReader struct {
 	gcpObj
-
-	compressedInfo *CompressedInfo
 }
 
 var (
@@ -178,7 +176,7 @@ func (g *gcpBucketStore) OpenFramedWriter(_ context.Context, path string, opts *
 	}, nil
 }
 
-func (g *gcpBucketStore) OpenFramedReader(_ context.Context, path string, frameInfo *CompressedInfo) (FramedReader, error) {
+func (g *gcpBucketStore) OpenFramedReader(_ context.Context, path string) (FramedReader, error) {
 	return &gcpFramedReader{
 		gcpObj: gcpObj{
 			store:   g,
@@ -186,7 +184,6 @@ func (g *gcpBucketStore) OpenFramedReader(_ context.Context, path string, frameI
 			handle:  g.handle(path),
 			limiter: g.limiter,
 		},
-		compressedInfo: frameInfo,
 	}, nil
 }
 
@@ -397,7 +394,7 @@ func (g *gcpObj) CopyFromFileSystem(ctx context.Context, path string) error {
 	return nil
 }
 
-func (g *gcpFramedWriter) StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error) {
+func (g *gcpFramedWriter) StoreFromFileSystem(ctx context.Context, path string) (*FrameTable, error) {
 	if g.opts == nil || g.opts.CompressionType == CompressionNone {
 		return nil, g.gcpObj.CopyFromFileSystem(ctx, path)
 	}
@@ -433,7 +430,7 @@ func (g *gcpFramedWriter) StoreFromFileSystem(ctx context.Context, path string) 
 	}
 
 	start := time.Now()
-	info, err := MultipartCompressUploadFile(ctx, filePath, uploader, maxConcurrency, g.opts)
+	info, err := UploadFileFramed(ctx, filePath, uploader, maxConcurrency, g.opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
@@ -476,28 +473,46 @@ func (g *gcpFramedReader) RangeGet(ctx context.Context, offset int64, length int
 	return g.handle.NewRangeReader(ctx, offset, length)
 }
 
-func (g *gcpFramedReader) ReadAt(ctx context.Context, userBuf []byte, offset int64) (n int, err error) {
-	if g.compressedInfo == nil || g.compressedInfo.CompressionType == CompressionNone {
-		return g.gcpObj.ReadAt(ctx, userBuf, offset)
+func (g *gcpFramedReader) Size(ctx context.Context) (int64, error) {
+	// TODO implement getting size from compressed - ???
+	// treat as uncompressed?
+	return g.gcpObj.size(ctx)
+}
+
+func (g *gcpFramedReader) ReadFrames(ctx context.Context, offset int64, length int, fTable *FrameTable) (framesStartAt int64, frameData [][]byte, err error) {
+	// fmt.Printf("<>/<> READFRAMES GOOGLE offset %d, length %d\n", offset, length) // DEBUG --- IGNORE ---
+	// if fTable == nil {
+	// 	fmt.Printf("<>/<> READFRAMES GOOGLE fTable is nil\n") // DEBUG --- IGNORE ---
+	// } else {
+	// 	fmt.Printf("<>/<> READFRAMES GOOGLE fTable StartAt %d, CompressionType %s\n", fTable.StartAt.U, fTable.CompressionType.String()) // DEBUG --- IGNORE ---
+	// }
+
+	if fTable == nil || fTable.CompressionType == CompressionNone {
+		buf := make([]byte, length)
+		n, err := g.gcpObj.ReadAt(ctx, buf, offset)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return 0, nil, fmt.Errorf("failed to read uncompressed data at offset %d: %w", offset, err)
+		}
+
+		return offset, [][]byte{buf[:n]}, nil
+
 	}
-	if offset < g.compressedInfo.FramesStartAt.U {
-		return 0, fmt.Errorf("offset %d is before start of available framed data %d", offset, g.compressedInfo.FramesStartAt.U)
+	if offset < fTable.StartAt.U {
+		return 0, nil, fmt.Errorf("offset %d is before start of available framed data %d", offset, fTable.StartAt.U)
 	}
 
 	timer := googleReadTimerFactory.Begin()
 
-	g.compressedInfo.DownloadSlice(ctx, g, userBuf, offset)
-
-	timer.End(ctx, int64(len(userBuf)), attribute.String("method", "frame"))
-
-	return len(userBuf), nil
-}
-
-func (g *gcpFramedReader) Size(ctx context.Context) (int64, error) {
-	if g.compressedInfo == nil {
-		// treat as uncompressed?
-		return g.gcpObj.size(ctx)
+	framesStart, frameData, err := DownloadFrames(ctx, g, offset, length, fTable)
+	if err != nil {
+		return 0, nil, err
 	}
 
-	return g.compressedInfo.TotalUncompressedSize(), nil
+	totalSize := int64(0)
+	for _, frame := range frameData {
+		totalSize += int64(len(frame))
+	}
+	timer.End(ctx, totalSize, attribute.String("method", "frame"))
+
+	return framesStart, frameData, nil
 }

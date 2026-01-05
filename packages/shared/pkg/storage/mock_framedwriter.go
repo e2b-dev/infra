@@ -38,23 +38,23 @@ func (_m *MockFramedWriter) EXPECT() *MockFramedWriter_Expecter {
 }
 
 // StoreFromFileSystem provides a mock function for the type MockFramedWriter
-func (_mock *MockFramedWriter) StoreFromFileSystem(ctx context.Context, path string) (*CompressedInfo, error) {
+func (_mock *MockFramedWriter) StoreFromFileSystem(ctx context.Context, path string) (*FrameTable, error) {
 	ret := _mock.Called(ctx, path)
 
 	if len(ret) == 0 {
 		panic("no return value specified for StoreFromFileSystem")
 	}
 
-	var r0 *CompressedInfo
+	var r0 *FrameTable
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*CompressedInfo, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*FrameTable, error)); ok {
 		return returnFunc(ctx, path)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *CompressedInfo); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *FrameTable); ok {
 		r0 = returnFunc(ctx, path)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*CompressedInfo)
+			r0 = ret.Get(0).(*FrameTable)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -95,12 +95,12 @@ func (_c *MockFramedWriter_StoreFromFileSystem_Call) Run(run func(ctx context.Co
 	return _c
 }
 
-func (_c *MockFramedWriter_StoreFromFileSystem_Call) Return(compressedInfo *CompressedInfo, err error) *MockFramedWriter_StoreFromFileSystem_Call {
-	_c.Call.Return(compressedInfo, err)
+func (_c *MockFramedWriter_StoreFromFileSystem_Call) Return(frameTable *FrameTable, err error) *MockFramedWriter_StoreFromFileSystem_Call {
+	_c.Call.Return(frameTable, err)
 	return _c
 }
 
-func (_c *MockFramedWriter_StoreFromFileSystem_Call) RunAndReturn(run func(ctx context.Context, path string) (*CompressedInfo, error)) *MockFramedWriter_StoreFromFileSystem_Call {
+func (_c *MockFramedWriter_StoreFromFileSystem_Call) RunAndReturn(run func(ctx context.Context, path string) (*FrameTable, error)) *MockFramedWriter_StoreFromFileSystem_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -132,74 +132,88 @@ func (_m *MockFramedReader) EXPECT() *MockFramedReader_Expecter {
 	return &MockFramedReader_Expecter{mock: &_m.Mock}
 }
 
-// ReadAt provides a mock function for the type MockFramedReader
-func (_mock *MockFramedReader) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
-	ret := _mock.Called(ctx, p, off)
+// ReadFrames provides a mock function for the type MockFramedReader
+func (_mock *MockFramedReader) ReadFrames(ctx context.Context, off int64, n int, ft *FrameTable) (int64, [][]byte, error) {
+	ret := _mock.Called(ctx, off, n, ft)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ReadAt")
+		panic("no return value specified for ReadFrames")
 	}
 
-	var r0 int
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64) (int, error)); ok {
-		return returnFunc(ctx, p, off)
+	var r0 int64
+	var r1 [][]byte
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int, *FrameTable) (int64, [][]byte, error)); ok {
+		return returnFunc(ctx, off, n, ft)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64) int); ok {
-		r0 = returnFunc(ctx, p, off)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int, *FrameTable) int64); ok {
+		r0 = returnFunc(ctx, off, n, ft)
 	} else {
-		r0 = ret.Get(0).(int)
+		r0 = ret.Get(0).(int64)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte, int64) error); ok {
-		r1 = returnFunc(ctx, p, off)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int64, int, *FrameTable) [][]byte); ok {
+		r1 = returnFunc(ctx, off, n, ft)
 	} else {
-		r1 = ret.Error(1)
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).([][]byte)
+		}
 	}
-	return r0, r1
+	if returnFunc, ok := ret.Get(2).(func(context.Context, int64, int, *FrameTable) error); ok {
+		r2 = returnFunc(ctx, off, n, ft)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
 }
 
-// MockFramedReader_ReadAt_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReadAt'
-type MockFramedReader_ReadAt_Call struct {
+// MockFramedReader_ReadFrames_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReadFrames'
+type MockFramedReader_ReadFrames_Call struct {
 	*mock.Call
 }
 
-// ReadAt is a helper method to define mock.On call
+// ReadFrames is a helper method to define mock.On call
 //   - ctx context.Context
-//   - p []byte
 //   - off int64
-func (_e *MockFramedReader_Expecter) ReadAt(ctx interface{}, p interface{}, off interface{}) *MockFramedReader_ReadAt_Call {
-	return &MockFramedReader_ReadAt_Call{Call: _e.mock.On("ReadAt", ctx, p, off)}
+//   - n int
+//   - ft *FrameTable
+func (_e *MockFramedReader_Expecter) ReadFrames(ctx interface{}, off interface{}, n interface{}, ft interface{}) *MockFramedReader_ReadFrames_Call {
+	return &MockFramedReader_ReadFrames_Call{Call: _e.mock.On("ReadFrames", ctx, off, n, ft)}
 }
 
-func (_c *MockFramedReader_ReadAt_Call) Run(run func(ctx context.Context, p []byte, off int64)) *MockFramedReader_ReadAt_Call {
+func (_c *MockFramedReader_ReadFrames_Call) Run(run func(ctx context.Context, off int64, n int, ft *FrameTable)) *MockFramedReader_ReadFrames_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 []byte
+		var arg1 int64
 		if args[1] != nil {
-			arg1 = args[1].([]byte)
+			arg1 = args[1].(int64)
 		}
-		var arg2 int64
+		var arg2 int
 		if args[2] != nil {
-			arg2 = args[2].(int64)
+			arg2 = args[2].(int)
+		}
+		var arg3 *FrameTable
+		if args[3] != nil {
+			arg3 = args[3].(*FrameTable)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *MockFramedReader_ReadAt_Call) Return(n int, err error) *MockFramedReader_ReadAt_Call {
-	_c.Call.Return(n, err)
+func (_c *MockFramedReader_ReadFrames_Call) Return(framesStartAt int64, frameData [][]byte, err error) *MockFramedReader_ReadFrames_Call {
+	_c.Call.Return(framesStartAt, frameData, err)
 	return _c
 }
 
-func (_c *MockFramedReader_ReadAt_Call) RunAndReturn(run func(ctx context.Context, p []byte, off int64) (int, error)) *MockFramedReader_ReadAt_Call {
+func (_c *MockFramedReader_ReadFrames_Call) RunAndReturn(run func(ctx context.Context, off int64, n int, ft *FrameTable) (int64, [][]byte, error)) *MockFramedReader_ReadFrames_Call {
 	_c.Call.Return(run)
 	return _c
 }
