@@ -83,10 +83,11 @@ func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, 
 	count, err := c.readAtFromCache(ctx, chunkPath, buff)
 	if ignoreEOF(err) == nil {
 		recordCacheRead(ctx, true, int64(count), cacheTypeSeekable, cacheOpReadAt)
-		readTimer.End(ctx, int64(count))
+		readTimer.Success(ctx, int64(count))
 
 		return count, err // return `err` in case it's io.EOF
 	}
+	readTimer.Failure(ctx, int64(count))
 
 	if !os.IsNotExist(err) {
 		recordCacheReadError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
@@ -297,14 +298,18 @@ func (c *CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, of
 	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
 		go safelyRemoveFile(ctx, tempPath)
 
+		writeTimer.Failure(ctx, int64(len(bytes)))
+
 		return fmt.Errorf("failed to write temp cache file: %w", err)
 	}
 
 	if err := utils.RenameOrDeleteFile(ctx, tempPath, chunkPath); err != nil {
+		writeTimer.Failure(ctx, int64(len(bytes)))
+
 		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
-	writeTimer.End(ctx, int64(len(bytes)))
+	writeTimer.Success(ctx, int64(len(bytes)))
 
 	return nil
 }
@@ -418,12 +423,13 @@ func (c *CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, o
 	offsetReader := newOffsetReader(input, offset)
 	count, err := io.CopyN(output, offsetReader, c.chunkSize)
 	if ignoreEOF(err) != nil {
+		writeTimer.Failure(ctx, count)
 		safelyRemoveFile(ctx, chunkPath)
 
 		return fmt.Errorf("failed to copy chunk: %w", err)
 	}
 
-	writeTimer.End(ctx, count)
+	writeTimer.Success(ctx, count)
 
 	return nil
 }

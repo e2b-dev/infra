@@ -271,18 +271,18 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) error {
+func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) (int64, error) {
 	// Open file
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	// Get file size
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
+		return 0, fmt.Errorf("failed to get file info: %w", err)
 	}
 	fileSize := fileInfo.Size()
 
@@ -295,19 +295,19 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	// Initiate multipart upload
 	uploadID, err := m.initiateUpload(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to initiate upload: %w", err)
+		return 0, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
 	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
 	if err != nil {
-		return fmt.Errorf("failed to upload parts: %w", err)
+		return 0, fmt.Errorf("failed to upload parts: %w", err)
 	}
 
 	if err := m.completeUpload(ctx, uploadID, parts); err != nil {
-		return fmt.Errorf("failed to complete upload: %w", err)
+		return 0, fmt.Errorf("failed to complete upload: %w", err)
 	}
 
-	return nil
+	return fileSize, nil
 }
 
 func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int, numParts int, fileSize int64, file *os.File, uploadID string) ([]Part, error) {
