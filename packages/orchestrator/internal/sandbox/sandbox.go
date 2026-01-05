@@ -1148,6 +1148,11 @@ func (s *Sandbox) WaitForEnvd(
 	if err := s.waitForHealth(ctx); err != nil {
 		return fmt.Errorf("failed to wait for envd health: %w", err)
 	}
+	
+	// // Wait for /health endpoint only - no /init call
+	// if err := s.waitForHealth(ctx); err != nil {
+	// 	return fmt.Errorf("failed to wait for envd health: %w", err)
+	// }
 
 	telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: envd health check passed", s.Metadata.Runtime.SandboxID))
 
