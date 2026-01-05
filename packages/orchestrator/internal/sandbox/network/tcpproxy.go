@@ -51,7 +51,6 @@ func (c tcpProxyConfig) ruleArgs(rule tcpProxyRule) []string {
 		args = append(args, "--dport", rule.dstPort)
 	}
 	args = append(args,
-		"-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
 		"-j", "REDIRECT", "--to-port", rule.proxyPort,
 	)
 
