@@ -24,7 +24,6 @@ import (
 type CreateSandbox struct {
 	config         sandbox.Config
 	timeout        time.Duration
-	fcVersions     fc.FirecrackerVersions
 	sandboxFactory *sandbox.Factory
 
 	rootfsCachePath string
@@ -57,7 +56,7 @@ func WithRootfsCachePath(rootfsCachePath string) CreateSandboxOption {
 	}
 }
 
-func NewCreateSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, fcVersions fc.FirecrackerVersions, options ...CreateSandboxOption) *CreateSandbox {
+func NewCreateSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, options ...CreateSandboxOption) *CreateSandbox {
 	opts := &createSandboxOptions{
 		rootfsCachePath: "",
 		ioEngine:        utils.ToPtr(DefaultIoEngine),
@@ -69,7 +68,6 @@ func NewCreateSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, ti
 	return &CreateSandbox{
 		config:          config,
 		timeout:         timeout,
-		fcVersions:      fcVersions,
 		rootfsCachePath: opts.rootfsCachePath,
 		sandboxFactory:  sandboxFactory,
 		ioEngine:        opts.ioEngine,
@@ -108,7 +106,6 @@ func (cs *CreateSandbox) Sandbox(
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
-		cs.fcVersions,
 		template,
 		cs.timeout,
 		cs.rootfsCachePath,

@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -155,15 +154,15 @@ func validateMetadata(
 }
 
 func validateTemplate(
-	files storage.TemplateFiles,
+	metadata metadata.TemplateMetadata,
 ) (err error) {
-	if files.BuildID == "" {
+	if metadata.BuildID == "" {
 		err = errors.Join(err, fmt.Errorf("template build ID is empty"))
 	}
-	if files.KernelVersion == "" {
+	if metadata.KernelVersion == "" {
 		err = errors.Join(err, fmt.Errorf("template kernel version is empty"))
 	}
-	if files.FirecrackerVersion == "" {
+	if metadata.FirecrackerVersion == "" {
 		err = errors.Join(err, fmt.Errorf("template firecracker version is empty"))
 	}
 

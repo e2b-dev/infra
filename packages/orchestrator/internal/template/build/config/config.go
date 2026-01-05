@@ -58,6 +58,12 @@ type TemplateConfig struct {
 
 	// Steps to build the template.
 	Steps []*templatemanager.TemplateStep
+
+	// Firecracker version to use
+	FirecrackerVersion string
+
+	// Kernel version to use
+	KernelVersion string
 }
 
 func MemfilePageSize(hugePages bool) int64 {
