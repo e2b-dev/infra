@@ -32,6 +32,13 @@ const (
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
+	// Record first init time if not already set
+	a.initLock.Lock()
+	if a.firstInitTime.IsZero() {
+		a.firstInitTime = time.Now()
+	}
+	a.initLock.Unlock()
+
 	operationID := logs.AssignOperationID()
 	logger := a.logger.With().Str(string(logs.OperationIDKey), operationID).Logger()
 
@@ -66,6 +73,9 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	// Record init complete time
+	a.initCompleteTime = time.Now()
 
 	go func() { //nolint:contextcheck // TODO: fix this later
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

@@ -26,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -72,6 +73,9 @@ type Config struct {
 	Envd EnvdMetadata
 
 	FirecrackerConfig fc.Config
+
+	// TraceEnabled enables page fault tracing for debugging/profiling.
+	TraceEnabled bool
 }
 
 type EnvdMetadata struct {
@@ -131,6 +135,9 @@ type Sandbox struct {
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
+
+	// Trace recorder for debugging/profiling
+	traceRecorder *uffd.TraceRecorder
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -373,6 +380,10 @@ func (f *Factory) ResumeSandbox(
 
 	exit := utils.NewErrorOnce()
 
+	// Create trace recorder for profiling
+	tr := uffd.NewTraceRecorder(config.TraceEnabled)
+	tr.Record("resume_start")
+
 	cleanup := NewCleanup()
 	defer func() {
 		if e != nil {
@@ -383,6 +394,7 @@ func (f *Factory) ResumeSandbox(
 		}
 	}()
 
+	tr.Record("get_network_slot")
 	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
 	defer func() {
 		// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
@@ -394,13 +406,16 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
+	tr.Record("get_rootfs")
 	readonlyRootfs, err := t.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs: %w", err)
 	}
+	tr.Record("rootfs_ready")
 
 	telemetry.ReportEvent(ctx, "got template rootfs")
 
+	tr.Record("create_nbd")
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(f.config),
@@ -411,9 +426,18 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	cleanup.Add(ctx, rootfsOverlay.Close)
+	tr.Record("nbd_created")
 
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
+	// Enable NBD tracing if configured
+	if config.TraceEnabled {
+		if nbdProv, ok := rootfsOverlay.(interface{ SetTraceEnabled(bool) }); ok {
+			nbdProv.SetTraceEnabled(true)
+		}
+	}
+
+	tr.Record("start_nbd")
 	go func() {
 		runErr := rootfsOverlay.Start(execCtx)
 		if runErr != nil {
@@ -421,13 +445,16 @@ func (f *Factory) ResumeSandbox(
 		}
 	}()
 
+	tr.Record("get_memfile")
 	memfile, err := t.Memfile(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
+	tr.Record("memfile_ready")
 
 	telemetry.ReportEvent(ctx, "got template memfile")
 
+	tr.Record("create_uffd")
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
 	fcUffd, err := serveMemory(
@@ -436,10 +463,12 @@ func (f *Factory) ResumeSandbox(
 		memfile,
 		fcUffdPath,
 		runtime.SandboxID,
+		config.TraceEnabled,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serve memory: %w", err)
 	}
+	tr.Record("uffd_created")
 
 	telemetry.ReportEvent(ctx, "started serving memory")
 
@@ -453,27 +482,34 @@ func (f *Factory) ResumeSandbox(
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
+	tr.Record("wait_nbd_path")
 	rootfsPath, err := rootfsOverlay.Path()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
+	tr.Record("nbd_path_ready")
 
 	telemetry.ReportEvent(ctx, "got rootfs path")
 
+	tr.Record("wait_network_slot")
 	ips := <-ipsCh
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
 	}
+	tr.Record("got_network_slot")
 
 	telemetry.ReportEvent(ctx, "got network slot")
 
+	tr.Record("get_metadata")
 	meta, err := t.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
+	tr.Record("metadata_ready")
 
 	telemetry.ReportEvent(ctx, "got metadata")
 
+	tr.Record("create_fc_process")
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
 		execCtx,
@@ -492,17 +528,21 @@ func (f *Factory) ResumeSandbox(
 	if fcErr != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
+	tr.Record("fc_created")
 
 	telemetry.ReportEvent(ctx, "created FC process")
 
 	// todo: check if kernel, firecracker, and envd versions exist
+	tr.Record("get_snapfile")
 	snapfile, err := t.Snapfile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapfile: %w", err)
 	}
+	tr.Record("snapfile_ready")
 
 	telemetry.ReportEvent(ctx, "got snapfile")
 
+	tr.Record("fc_resume")
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		sbxlogger.SandboxMetadata{
@@ -514,10 +554,12 @@ func (f *Factory) ResumeSandbox(
 		snapfile,
 		fcUffd.Ready(),
 		ips.slot,
+		tr,
 	)
 	if fcStartErr != nil {
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
+	tr.Record("fc_resumed")
 
 	telemetry.ReportEvent(ctx, "initialized FC")
 
@@ -553,6 +595,8 @@ func (f *Factory) ResumeSandbox(
 		APIStoredConfig: apiConfigToStore,
 
 		exit: exit,
+
+		traceRecorder: tr,
 	}
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
@@ -568,6 +612,8 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(execCtx, "waiting for envd")
 
+	sbx.RecordTraceEvent("wait_envd")
+
 	err = sbx.WaitForEnvd(
 		ctx,
 		f.config.EnvdTimeout,
@@ -575,6 +621,12 @@ func (f *Factory) ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+
+	sbx.RecordTraceEvent("envd_ready")
+	sbx.RecordTraceEvent("resume_end")
+
+	// Stop tracing after envd init (we only trace the resume phase)
+	sbx.SetTraceEnabled(false)
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
@@ -626,6 +678,59 @@ func (s *Sandbox) Close(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// SetTraceEnabled enables or disables page fault and NBD tracing.
+func (s *Sandbox) SetTraceEnabled(enabled bool) {
+	if s.memory != nil {
+		s.memory.SetTraceEnabled(enabled)
+	}
+	s.SetNBDTraceEnabled(enabled)
+}
+
+// GetPageFaultTrace returns the page fault trace from the memory backend.
+func (s *Sandbox) GetPageFaultTrace() []uffd.PageFaultEvent {
+	if s.memory == nil {
+		return nil
+	}
+	return s.memory.GetPageFaultTrace()
+}
+
+// GetNBDTrace returns the NBD trace from the rootfs provider.
+func (s *Sandbox) GetNBDTrace() []nbd.NBDEvent {
+	if s.rootfs == nil {
+		return nil
+	}
+	// Type assert to NBDProvider to access NBD-specific methods
+	if nbdProv, ok := s.rootfs.(interface{ GetNBDTrace() []nbd.NBDEvent }); ok {
+		return nbdProv.GetNBDTrace()
+	}
+	return nil
+}
+
+// SetNBDTraceEnabled enables or disables NBD tracing.
+func (s *Sandbox) SetNBDTraceEnabled(enabled bool) {
+	if s.rootfs == nil {
+		return
+	}
+	if nbdProv, ok := s.rootfs.(interface{ SetTraceEnabled(bool) }); ok {
+		nbdProv.SetTraceEnabled(enabled)
+	}
+}
+
+// RecordTraceEvent records a named event with current timestamp.
+func (s *Sandbox) RecordTraceEvent(name string) {
+	if s.traceRecorder != nil {
+		s.traceRecorder.Record(name)
+	}
+}
+
+// GetTraceEvents returns all recorded trace events.
+func (s *Sandbox) GetTraceEvents() []uffd.TraceEvent {
+	if s.traceRecorder == nil {
+		return nil
+	}
+	return s.traceRecorder.Events()
 }
 
 // Stop kills the sandbox. It is safe to call multiple times; only the first
@@ -946,6 +1051,7 @@ func serveMemory(
 	cleanup *Cleanup,
 	memfile block.ReadonlyDevice,
 	socketPath, sandboxID string,
+	traceEnabled bool,
 ) (uffd.MemoryBackend, error) {
 	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
@@ -954,6 +1060,9 @@ func serveMemory(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
+
+	// Enable tracing before starting the UFFD handler
+	fcUffd.SetTraceEnabled(traceEnabled)
 
 	telemetry.ReportEvent(ctx, "created uffd")
 
@@ -1035,13 +1144,53 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx); err != nil {
-		return fmt.Errorf("failed to init new envd: %w", err)
+	// Wait for /health endpoint only - no /init call
+	if err := s.waitForHealth(ctx); err != nil {
+		return fmt.Errorf("failed to wait for envd health: %w", err)
 	}
 
-	telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
+	telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: envd health check passed", s.Metadata.Runtime.SandboxID))
 
 	return nil
+}
+
+// waitForHealth waits for envd's /health endpoint to respond
+func (s *Sandbox) waitForHealth(ctx context.Context) error {
+	address := fmt.Sprintf("http://%s:%d/health", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+
+	startTime := time.Now()
+	attempts := 0
+
+	for {
+		attempts++
+		reqCtx, cancel := context.WithTimeout(ctx, s.internalConfig.EnvdInitRequestTimeout)
+		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, address, nil)
+		if err != nil {
+			cancel()
+			return err
+		}
+
+		resp, err := sandboxHttpClient.Do(req)
+		cancel()
+
+		if err == nil {
+			resp.Body.Close()
+			// Log timing info
+			elapsed := time.Since(startTime)
+			logger.L().Debug(ctx, "envd health check succeeded",
+				zap.Int("attempts", attempts),
+				zap.Duration("total_wait", elapsed),
+				zap.Duration("avg_per_attempt", elapsed/time.Duration(attempts)),
+			)
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%w with cause: %w", ctx.Err(), context.Cause(ctx))
+		case <-time.After(loopDelay):
+		}
+	}
 }
 
 func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {

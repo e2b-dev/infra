@@ -340,6 +340,27 @@ func (p *Process) Create(
 	return nil
 }
 
+// TraceRecorder is an interface for recording trace events.
+type TraceRecorder interface {
+	Record(name string)
+}
+
+// EnableLogging enables Firecracker internal logging to the specified file.
+// Should be called after FC process is started but before snapshot load.
+// Level can be: "Error", "Warning", "Info", "Debug", "Trace"
+func (p *Process) EnableLogging(ctx context.Context, logPath string, level string) error {
+	return p.client.setLogger(ctx, logPath, level)
+}
+
+// ResumeOptions configures the Resume operation.
+type ResumeOptions struct {
+	// LogPath enables Firecracker internal logging to this path.
+	// If empty, logging is not enabled.
+	LogPath string
+	// LogLevel is the logging level ("Error", "Warning", "Info", "Debug", "Trace").
+	LogLevel string
+}
+
 func (p *Process) Resume(
 	ctx context.Context,
 	sbxMetadata sbxlogger.SandboxMetadata,
@@ -347,10 +368,27 @@ func (p *Process) Resume(
 	snapfile template.File,
 	uffdReady chan struct{},
 	slot *network.Slot,
+	tr TraceRecorder,
+) error {
+	return p.ResumeWithOptions(ctx, sbxMetadata, uffdSocketPath, snapfile, uffdReady, slot, tr, ResumeOptions{})
+}
+
+func (p *Process) ResumeWithOptions(
+	ctx context.Context,
+	sbxMetadata sbxlogger.SandboxMetadata,
+	uffdSocketPath string,
+	snapfile template.File,
+	uffdReady chan struct{},
+	slot *network.Slot,
+	tr TraceRecorder,
+	opts ResumeOptions,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
 
+	if tr != nil {
+		tr.Record("fc_configure")
+	}
 	err := p.configure(
 		ctx,
 		sbxMetadata,
@@ -362,6 +400,23 @@ func (p *Process) Resume(
 
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
+	if tr != nil {
+		tr.Record("fc_configured")
+	}
+
+	// Enable FC internal logging if requested
+	if opts.LogPath != "" {
+		level := opts.LogLevel
+		if level == "" {
+			level = "Debug"
+		}
+		if err := p.EnableLogging(ctx, opts.LogPath, level); err != nil {
+			// Non-fatal: log the error but continue
+			telemetry.ReportEvent(ctx, fmt.Sprintf("failed to enable FC logging: %v", err))
+		} else {
+			telemetry.ReportEvent(ctx, "FC logging enabled")
+		}
+	}
 
 	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config))
 	if err != nil {
@@ -370,6 +425,9 @@ func (p *Process) Resume(
 
 	telemetry.ReportEvent(ctx, "symlinked rootfs")
 
+	if tr != nil {
+		tr.Record("fc_load_snapshot")
+	}
 	err = p.client.loadSnapshot(
 		ctx,
 		uffdSocketPath,
@@ -381,12 +439,21 @@ func (p *Process) Resume(
 
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
+	if tr != nil {
+		tr.Record("fc_snapshot_loaded")
+	}
 
+	if tr != nil {
+		tr.Record("fc_resume_vm")
+	}
 	err = p.client.resumeVM(ctx)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
+	}
+	if tr != nil {
+		tr.Record("fc_vm_resumed")
 	}
 
 	meta := &MmdsMetadata{
@@ -395,11 +462,17 @@ func (p *Process) Resume(
 		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
 	}
 
+	if tr != nil {
+		tr.Record("fc_set_mmds")
+	}
 	err = p.client.setMmds(ctx, meta)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
+	}
+	if tr != nil {
+		tr.Record("fc_mmds_set")
 	}
 
 	telemetry.SetAttributes(

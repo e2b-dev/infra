@@ -58,6 +58,9 @@ var (
 	commitFlag   bool
 	startCmdFlag string
 	cgroupRoot   string
+
+	// Startup timing for tracing
+	startupTime = time.Now() // Captured at package init
 )
 
 func parseFlags() {
@@ -187,7 +190,11 @@ func main() {
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
-	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
+	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, startupTime)
+
+	// Add trace endpoint for debugging resume performance (not in OpenAPI spec)
+	m.Get("/trace", service.GetTrace)
+
 	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 

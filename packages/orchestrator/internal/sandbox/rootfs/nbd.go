@@ -141,6 +141,16 @@ func (o *NBDProvider) Path() (string, error) {
 	return o.ready.Wait()
 }
 
+// SetTraceEnabled enables or disables NBD tracing.
+func (o *NBDProvider) SetTraceEnabled(enabled bool) {
+	o.mnt.SetTraceEnabled(enabled)
+}
+
+// GetNBDTrace returns NBD trace events.
+func (o *NBDProvider) GetNBDTrace() []nbd.NBDEvent {
+	return o.mnt.GetTrace()
+}
+
 func (o *NBDProvider) sync(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sync")
 	defer span.End()

@@ -33,7 +33,7 @@ const (
 	storageProviderEnv = "STORAGE_PROVIDER"
 
 	// MemoryChunkSize must always be bigger or equal to the block size.
-	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
+	MemoryChunkSize = 2 * 1024 * 1024 // 4 MB
 )
 
 type SeekableObjectType int
