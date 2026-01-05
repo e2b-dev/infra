@@ -8,7 +8,7 @@ import (
 
 type ctxKey struct{}
 
-func SetContext(ctx context.Context, contexts ...ldcontext.Context) context.Context {
+func AddToContext(ctx context.Context, contexts ...ldcontext.Context) context.Context {
 	if len(contexts) == 0 {
 		return ctx
 	}

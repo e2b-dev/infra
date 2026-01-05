@@ -158,7 +158,7 @@ func newSet[T comparable](input ...T) set[T] {
 func TestSetContext(t *testing.T) {
 	t.Run("empty_contexts_returns_original_context", func(t *testing.T) {
 		ctx := context.Background()
-		result := SetContext(ctx)
+		result := AddToContext(ctx)
 
 		assert.Equal(t, ctx, result)
 		_, ok := getContext(result)
@@ -169,7 +169,7 @@ func TestSetContext(t *testing.T) {
 		ctx := context.Background()
 		teamCtx := TeamContext("team-123")
 
-		result := SetContext(ctx, teamCtx)
+		result := AddToContext(ctx, teamCtx)
 
 		embedded, ok := getContext(result)
 		assert.True(t, ok)
@@ -182,7 +182,7 @@ func TestSetContext(t *testing.T) {
 		teamCtx := TeamContext("team-123")
 		userCtx := UserContext("user-456")
 
-		result := SetContext(ctx, teamCtx, userCtx)
+		result := AddToContext(ctx, teamCtx, userCtx)
 
 		embedded, ok := getContext(result)
 		assert.True(t, ok)
@@ -197,10 +197,10 @@ func TestSetContext(t *testing.T) {
 		ctx := context.Background()
 
 		// First call adds team context
-		ctx = SetContext(ctx, TeamContext("team-123"))
+		ctx = AddToContext(ctx, TeamContext("team-123"))
 
 		// Second call adds user context - should merge, not replace
-		ctx = SetContext(ctx, UserContext("user-456"))
+		ctx = AddToContext(ctx, UserContext("user-456"))
 
 		embedded, ok := getContext(ctx)
 		assert.True(t, ok)
@@ -215,10 +215,10 @@ func TestSetContext(t *testing.T) {
 		ctx := context.Background()
 
 		// First call with team-123
-		ctx = SetContext(ctx, TeamContextWithName("team-123", "First Team"))
+		ctx = AddToContext(ctx, TeamContextWithName("team-123", "First Team"))
 
 		// Second call with different team - should override
-		ctx = SetContext(ctx, TeamContextWithName("team-456", "Second Team"))
+		ctx = AddToContext(ctx, TeamContextWithName("team-456", "Second Team"))
 
 		embedded, ok := getContext(ctx)
 		assert.True(t, ok)
