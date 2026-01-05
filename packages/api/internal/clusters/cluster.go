@@ -208,7 +208,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, info machinei
 		}
 
 		// Check machine compatibility
-		if info.CPUModel != "" && !info.IsCompatibleWith(instance.machine) {
+		if machineInfo := instance.GetMachineInfo(); machineInfo.CPUModel != "" && !machineInfo.IsCompatibleWith(instance.machine) {
 			continue
 		}
 
