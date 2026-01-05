@@ -124,6 +124,8 @@ func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterI
 	if err != nil {
 		if errors.Is(err, edge.ErrAvailableTemplateBuilderNotFound) {
 			// Fallback to any template builder
+			logger.L().Warn(ctx, "No available template builder found with the specified machine info, falling back to any available template builder", zap.String("clusterID", clusterID.String()))
+
 			builder, err = cluster.GetAvailableTemplateBuilder(ctx, machineinfo.MachineInfo{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to get any available template builder for cluster '%s': %w", clusterID, err)
