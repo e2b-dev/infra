@@ -175,5 +175,6 @@ var firecrackerVersions = map[string]string{
 var (
 	BuildFirecrackerVersion = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
 	BuildIoEngine           = newStringFlag("build-io-engine", "Sync")
+	BuildNodeInfo           = newJSONFlag("preferred-build-node", ldvalue.Null())
 	FirecrackerVersions     = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
 )
