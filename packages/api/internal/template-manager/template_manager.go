@@ -115,6 +115,9 @@ func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterI
 		return nil, fmt.Errorf("cluster with ID '%s' not found", clusterID)
 	}
 
+	// Set feature flags context for cluster
+	ctx = featureflags.SetContext(ctx, featureflags.ClusterContext(clusterID.String()))
+
 	nodeInfoJSON := tm.featureFlags.JSONFlag(ctx, featureflags.BuildNodeInfo)
 	nodeInfo := machineinfo.FromLDValue(ctx, nodeInfoJSON)
 	builder, err := cluster.GetAvailableTemplateBuilder(ctx, nodeInfo)
