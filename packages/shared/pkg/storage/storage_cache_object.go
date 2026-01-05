@@ -26,6 +26,7 @@ type CachedObjectProvider struct {
 	chunkSize int64
 	inner     ObjectProvider
 	flags     featureFlagsClient
+	tracer    trace.Tracer
 
 	wg sync.WaitGroup
 }
@@ -37,7 +38,7 @@ func (c *CachedObjectProvider) Exists(ctx context.Context) (bool, error) {
 }
 
 func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n int64, e error) {
-	ctx, span := tracer.Start(ctx, "read object into writer")
+	ctx, span := c.tracer.Start(ctx, "read object into writer")
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -67,7 +68,7 @@ func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n in
 	data := buffer.Bytes()
 
 	c.goCtxWithoutCancel(ctx, func(ctx context.Context) {
-		ctx, span := tracer.Start(ctx, "write file back to cache")
+		ctx, span := c.tracer.Start(ctx, "write file back to cache")
 		defer span.End()
 
 		count, err := c.writeFileToCache(ctx, buffer)
@@ -94,7 +95,7 @@ func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n in
 // Write pushes data to the wrapped object provider, and optionally pushes the data to a fast ephemeral cache as well.
 // `p` is considered immutable, and won't change if we access it after the function returns.
 func (c *CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e error) {
-	ctx, span := tracer.Start(ctx, "write data to object")
+	ctx, span := c.tracer.Start(ctx, "write data to object")
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -102,7 +103,7 @@ func (c *CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e er
 
 	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 		c.goCtxWithoutCancel(ctx, func(ctx context.Context) {
-			ctx, span := tracer.Start(ctx, "write data to cache")
+			ctx, span := c.tracer.Start(ctx, "write data to cache")
 			defer span.End()
 
 			count, err := c.writeFileToCache(
@@ -122,7 +123,7 @@ func (c *CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e er
 }
 
 func (c *CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (e error) {
-	ctx, span := tracer.Start(ctx, "write from filesystem to object")
+	ctx, span := c.tracer.Start(ctx, "write from filesystem to object")
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -130,7 +131,7 @@ func (c *CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path str
 
 	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 		c.goCtxWithoutCancel(ctx, func(ctx context.Context) {
-			ctx, span := tracer.Start(ctx, "write from filesystem to cache",
+			ctx, span := c.tracer.Start(ctx, "write from filesystem to cache",
 				trace.WithAttributes(attribute.String("path", path)))
 			defer span.End()
 
@@ -169,7 +170,7 @@ func (c *CachedObjectProvider) fullFilename() string {
 }
 
 func (c *CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.Writer) (n int64, e error) {
-	ctx, span := tracer.Start(ctx, "read cached object into writer")
+	ctx, span := c.tracer.Start(ctx, "read cached object into writer")
 	defer func() {
 		recordError(span, e)
 		span.End()

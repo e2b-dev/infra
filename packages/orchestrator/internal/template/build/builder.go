@@ -236,7 +236,7 @@ func runBuild(
 
 	templateStorage := builder.templateStorage
 	if path, ok := builder.useNFSCache(ctx); ok {
-		templateStorage = storage.NewCachedProvider(path, templateStorage, builder.featureFlags)
+		templateStorage = storage.NewCachedProvider(ctx, path, templateStorage, builder.featureFlags)
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else {
 		span.SetAttributes(attribute.Bool("use_cache", false))

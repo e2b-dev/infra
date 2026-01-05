@@ -87,6 +87,7 @@ var (
 	BestOfKCanFitFlag                   = newBoolFlag("best-of-k-can-fit", true)
 	BestOfKTooManyStartingFlag          = newBoolFlag("best-of-k-too-many-starting", false)
 	EdgeProvidedSandboxMetricsFlag      = newBoolFlag("edge-provided-sandbox-metrics", false)
+	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 )
 
 type IntFlag struct {

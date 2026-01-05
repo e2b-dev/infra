@@ -55,6 +55,7 @@ type CachedSeekableObjectProvider struct {
 	chunkSize int64
 	inner     SeekableObjectProvider
 	flags     featureFlagsClient
+	tracer    trace.Tracer
 
 	wg sync.WaitGroup
 }
@@ -62,7 +63,7 @@ type CachedSeekableObjectProvider struct {
 var _ SeekableObjectProvider = (*CachedSeekableObjectProvider)(nil)
 
 func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
-	ctx, span := tracer.Start(ctx, "read object at offset", trace.WithAttributes(
+	ctx, span := c.tracer.Start(ctx, "read object at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int("buff_len", len(buff)),
 	))
@@ -106,7 +107,7 @@ func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, 
 	copy(shadowBuff, buff[:readCount])
 
 	c.goCtx(ctx, func(ctx context.Context) {
-		ctx, span := tracer.Start(ctx, "write chunk at offset back to cache")
+		ctx, span := c.tracer.Start(ctx, "write chunk at offset back to cache")
 		defer span.End()
 
 		if err := c.writeChunkToCache(ctx, offset, chunkPath, shadowBuff); err != nil {
@@ -121,7 +122,7 @@ func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, 
 }
 
 func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (n int64, e error) {
-	ctx, span := tracer.Start(ctx, "get size of object")
+	ctx, span := c.tracer.Start(ctx, "get size of object")
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -142,7 +143,7 @@ func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (n int64, e err
 	}
 
 	c.goCtx(ctx, func(ctx context.Context) {
-		ctx, span := tracer.Start(ctx, "write size of object to cache")
+		ctx, span := c.tracer.Start(ctx, "write size of object to cache")
 		defer span.End()
 
 		if err := c.writeLocalSize(ctx, size); err != nil {
@@ -157,7 +158,7 @@ func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (n int64, e err
 }
 
 func (c *CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (e error) {
-	ctx, span := tracer.Start(ctx, "write object from file system",
+	ctx, span := c.tracer.Start(ctx, "write object from file system",
 		trace.WithAttributes(attribute.String("path", path)),
 	)
 	defer func() {
@@ -170,7 +171,7 @@ func (c *CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, 
 
 	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 		c.goCtx(ctx, func(ctx context.Context) {
-			ctx, span := tracer.Start(ctx, "write cache object from file system",
+			ctx, span := c.tracer.Start(ctx, "write cache object from file system",
 				trace.WithAttributes(attribute.String("path", path)))
 			defer span.End()
 
@@ -211,7 +212,7 @@ func (c *CachedSeekableObjectProvider) makeTempChunkFilename(offset int64) strin
 }
 
 func (c *CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (n int, e error) {
-	ctx, span := tracer.Start(ctx, "read chunk at offset from cache")
+	ctx, span := c.tracer.Start(ctx, "read chunk at offset from cache")
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -344,7 +345,7 @@ func (c *CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size 
 }
 
 func (c *CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Context, inputPath string) (count int64, err error) {
-	ctx, span := tracer.Start(ctx, "create cache blocks from filesystem")
+	ctx, span := c.tracer.Start(ctx, "create cache blocks from filesystem")
 	defer func() {
 		recordError(span, err)
 		span.End()
@@ -395,7 +396,7 @@ func (c *CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Con
 // be called in the build layer, which cannot be built on multiple machines at the same time, or multiple times on the
 // same machine..
 func (c *CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, input *os.File) (err error) {
-	_, span := tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
+	_, span := c.tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 	))
 	defer func() {

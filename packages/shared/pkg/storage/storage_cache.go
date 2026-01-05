@@ -11,6 +11,7 @@ import (
 
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -27,12 +28,32 @@ type CachedProvider struct {
 	chunkSize int64
 	inner     StorageProvider
 	flags     *featureflags.Client
+
+	tracer trace.Tracer
 }
 
 var _ StorageProvider = (*CachedProvider)(nil)
 
-func NewCachedProvider(rootPath string, inner StorageProvider, flags *featureflags.Client) *CachedProvider {
-	return &CachedProvider{rootPath: rootPath, inner: inner, chunkSize: MemoryChunkSize, flags: flags}
+func NewCachedProvider(
+	ctx context.Context,
+	rootPath string,
+	inner StorageProvider,
+	flags *featureflags.Client,
+) *CachedProvider {
+	cacheTracer := tracer
+
+	createCacheSpans := flags.BoolFlag(ctx, featureflags.CreateStorageCacheSpansFlag)
+	if !createCacheSpans {
+		cacheTracer = noop.NewTracerProvider().Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
+	}
+
+	return &CachedProvider{
+		rootPath:  rootPath,
+		inner:     inner,
+		chunkSize: MemoryChunkSize,
+		flags:     flags,
+		tracer:    cacheTracer,
+	}
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
@@ -59,7 +80,13 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string, objectType 
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &CachedObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject, flags: c.flags}, nil
+	return &CachedObjectProvider{
+		path:      localPath,
+		chunkSize: c.chunkSize,
+		inner:     innerObject,
+		flags:     c.flags,
+		tracer:    c.tracer,
+	}, nil
 }
 
 func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, objectType SeekableObjectType) (SeekableObjectProvider, error) {
@@ -73,7 +100,13 @@ func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, obj
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &CachedSeekableObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject, flags: c.flags}, nil
+	return &CachedSeekableObjectProvider{
+		path:      localPath,
+		chunkSize: c.chunkSize,
+		inner:     innerObject,
+		flags:     c.flags,
+		tracer:    c.tracer,
+	}, nil
 }
 
 func (c CachedProvider) GetDetails() string {

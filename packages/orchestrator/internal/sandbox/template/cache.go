@@ -130,7 +130,7 @@ func (c *Cache) GetTemplate(
 	// it will start working only for new orchestrators or new builds.
 	if path, enabled := c.useNFSCache(ctx, isBuilding, isSnapshot); enabled {
 		logger.L().Info(ctx, "using local template cache", zap.String("path", c.rootCachePath))
-		persistence = storage.NewCachedProvider(path, persistence, c.flags)
+		persistence = storage.NewCachedProvider(ctx, path, persistence, c.flags)
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else {
 		span.SetAttributes(attribute.Bool("use_cache", false))
