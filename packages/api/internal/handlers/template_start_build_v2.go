@@ -93,7 +93,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	)
 
 	// setup launch darkly context
-	ctx = featureflags.SetContext(ctx, featureflags.TemplateContext(templateID))
+	ctx = featureflags.AddToContext(ctx, featureflags.TemplateContext(templateID))
 
 	// Check and cancel concurrent builds
 	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
