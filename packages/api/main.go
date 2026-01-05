@@ -402,7 +402,7 @@ func run() int {
 		// to signal that the service is shutting down.
 		// This is a bit of a hack, but this way we can properly propagate
 		// the health status to the load balancer.
-		apiStore.Healthy = false
+		apiStore.Healthy.Store(false)
 
 		// Skip the delay in local environment for instant shutdown
 		if !env.IsLocal() {

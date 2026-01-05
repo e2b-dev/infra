@@ -15,7 +15,7 @@ import (
 
 func TestUpdateTemplateVisibilityToPublicWithAPIKey(t *testing.T) {
 	// Create a test template
-	template := testutils.BuildSimpleTemplate(t, "test-update-public-api-key", setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, []string{"test-update-public-api-key"}, setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
@@ -53,7 +53,7 @@ func TestUpdateTemplateVisibilityToPublicWithAPIKey(t *testing.T) {
 
 func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 	// Create a test template
-	template := testutils.BuildSimpleTemplate(t, "test-update-private-api-key", setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, []string{"test-update-private-api-key"}, setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
@@ -102,7 +102,7 @@ func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 
 func TestUpdateTemplateWithInvalidAPIKey(t *testing.T) {
 	// Create a test template with valid API key
-	template := testutils.BuildSimpleTemplate(t, "test-update-invalid-key", setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, []string{"test-update-invalid-key"}, setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
@@ -142,7 +142,7 @@ func TestUpdateNonExistentTemplateWithAPIKey(t *testing.T) {
 
 func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
 	// Create a test template with API key first
-	template := testutils.BuildSimpleTemplate(t, "test-update-supabase-token", setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, []string{"test-update-supabase-token"}, setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
@@ -197,7 +197,7 @@ func TestUpdateTemplateNotOwnedByTeam(t *testing.T) {
 	team2APIKey := testutils.CreateAPIKey(t, ctx, c, user1ID.String(), team2ID)
 
 	// Create a template
-	template := testutils.BuildSimpleTemplate(t, "test-update-template-cross-team", setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, []string{"test-update-template-cross-team"}, setup.WithAPIKey())
 	team1TemplateID := template.TemplateID
 
 	// Try to update team1's template using team2's API key - should fail
