@@ -99,7 +99,7 @@ func logsFromBuilderInstance(ctx context.Context, instance *Instance, templateID
 
 		raw := res.GetLogEntries()
 		entries := make([]logs.LogEntry, len(raw))
-		for i, entry := range res.GetLogEntries() {
+		for i, entry := range raw {
 			entries[i] = logs.LogEntry{
 				Timestamp: entry.GetTimestamp().AsTime(),
 				Message:   entry.GetMessage(),
