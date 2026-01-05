@@ -279,6 +279,8 @@ func (c *CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, of
 		// failed to acquire lock, which is a different category of failure than "write failed"
 		recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
 
+		writeTimer.Failure(ctx, 0)
+
 		return nil
 	}
 
@@ -368,7 +370,6 @@ func (c *CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Con
 	}
 
 	totalSize := stat.Size()
-	var wg sync.WaitGroup
 
 	maxConcurrency := c.flags.IntFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag)
 	if maxConcurrency <= 0 {
@@ -377,24 +378,20 @@ func (c *CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Con
 		maxConcurrency = 1
 	}
 
-	workers := make(chan struct{}, maxConcurrency)
+	ec := utils.NewErrorCollector(maxConcurrency)
 	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
-		wg.Go(func() {
-			// limit concurrency
-			workers <- struct{}{}
-			defer func() { <-workers }()
-
+		ec.Go(func() error {
 			if err := c.writeChunkFromFile(ctx, offset, input); err != nil {
-				logger.L().Error(ctx, "failed to write chunk file",
-					zap.String("path", inputPath),
-					zap.Int64("offset", offset),
-					zap.Error(err))
+				return fmt.Errorf("failed to write chunk file at offset %d: %w", offset, err)
 			}
+
+			return nil
 		})
 	}
-	wg.Wait()
 
-	return totalSize, nil
+	err = ec.Wait()
+
+	return totalSize, err
 }
 
 // writeChunkFromFile writes a piece of a local file. It does not need to worry about race conditions, as it will only
@@ -416,6 +413,7 @@ func (c *CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, o
 
 	output, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, cacheFilePermissions)
 	if err != nil {
+		writeTimer.Failure(ctx, 0)
 		return fmt.Errorf("failed to open file %s: %w", chunkPath, err)
 	}
 	defer utils.Cleanup(ctx, "failed to close file", output.Close)

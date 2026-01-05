@@ -13,9 +13,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
 )
+
+var noopTracer = noop.TracerProvider{}.Tracer("")
 
 func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 	t.Run("can be cached successfully", func(t *testing.T) {
@@ -38,7 +41,7 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 		featureFlags := storagemocks.NewMockFeatureFlagsClient(t)
 		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
 
-		c := CachedObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags}
+		c := CachedObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
 		// write temp file
 		err = c.WriteFromFileSystem(t.Context(), tempFilename)
@@ -75,7 +78,7 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 				return int64(num), err
 			})
 
-		c := CachedObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024}
+		c := CachedObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024, tracer: noopTracer}
 
 		buff := bytes.NewBuffer(nil)
 		bytesRead, err := c.WriteTo(t.Context(), buff)
@@ -97,7 +100,8 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 
 func TestCachedObjectProvider_WriteFileToCache(t *testing.T) {
 	c := CachedObjectProvider{
-		path: t.TempDir(),
+		path:   t.TempDir(),
+		tracer: noopTracer,
 	}
 	errTarget := errors.New("find me")
 	reader := storagemocks.NewMockReader(t)

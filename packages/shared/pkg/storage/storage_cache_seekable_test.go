@@ -19,7 +19,7 @@ import (
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
 	t.Parallel()
 
-	c := CachedSeekableObjectProvider{path: "/a/b/c", chunkSize: 1024}
+	c := CachedSeekableObjectProvider{path: "/a/b/c", chunkSize: 1024, tracer: noopTracer}
 	filename := c.makeChunkFilename(1024 * 4)
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
 }
@@ -35,7 +35,7 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 		inner := storagemocks.NewMockSeekableObjectProvider(t)
 		inner.EXPECT().Size(mock.Anything).Return(expectedSize, nil)
 
-		c := CachedSeekableObjectProvider{path: t.TempDir(), inner: inner}
+		c := CachedSeekableObjectProvider{path: t.TempDir(), inner: inner, tracer: noopTracer}
 
 		// first call will write to cache
 		size, err := c.Size(t.Context())
@@ -80,7 +80,7 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
 		featureFlags.EXPECT().IntFlag(mock.Anything, mock.Anything).Return(10)
 
-		c := CachedSeekableObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags}
+		c := CachedSeekableObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
 		// write temp file
 		err = c.WriteFromFileSystem(t.Context(), tempFilename)
@@ -114,7 +114,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		tempDir := t.TempDir()
 
 		tempPath := filepath.Join(tempDir, "a", "b", "c")
-		c := CachedSeekableObjectProvider{path: tempPath, chunkSize: 3}
+		c := CachedSeekableObjectProvider{path: tempPath, chunkSize: 3, tracer: noopTracer}
 
 		// create cache file
 		cacheFilename := c.makeChunkFilename(0)
@@ -153,6 +153,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
+			tracer:    noopTracer,
 		}
 
 		// first read goes to source
@@ -193,6 +194,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
+			tracer:    noopTracer,
 		}
 
 		// write to both local and remote storage
@@ -255,6 +257,7 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 
 			c := CachedSeekableObjectProvider{
 				chunkSize: tc.chunkSize,
+				tracer:    noopTracer,
 			}
 			err := c.validateReadAtParams(tc.bufferSize, tc.offset)
 			if tc.expected == nil {
@@ -272,7 +275,7 @@ func TestCachedSeekableObjectProvider_ReadAt(t *testing.T) {
 	t.Run("failed but returns count on short read", func(t *testing.T) {
 		t.Parallel()
 
-		c := CachedSeekableObjectProvider{chunkSize: 10}
+		c := CachedSeekableObjectProvider{chunkSize: 10, tracer: noopTracer}
 		errTarget := errors.New("find me")
 		mockSeeker := storagemocks.NewMockSeekableObjectProvider(t)
 		mockSeeker.EXPECT().ReadAt(mock.Anything, mock.Anything, mock.Anything).Return(5, errTarget)
