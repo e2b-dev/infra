@@ -25,7 +25,7 @@ func TestOpenFile(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, len(expected), count)
 
-		_, err = os.Stat("test.bin")
+		_, err = os.Stat(filename)
 		require.Error(t, err)
 		assert.True(t, os.IsNotExist(err))
 
