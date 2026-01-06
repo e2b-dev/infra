@@ -163,7 +163,7 @@ func newProxyClient(
 			}
 
 			if r.StatusCode >= 500 {
-				t.RequestLogger.Error(
+				t.RequestLogger.Warn(
 					ctx,
 					"Reverse proxy error",
 					zap.Int("status_code", r.StatusCode),

@@ -33,3 +33,7 @@ func getIOVMax() (int, error) {
 
 	return int(iovMax), nil
 }
+
+func getAlignedMaxRwCount(blockSize int64) int64 {
+	return (MAX_RW_COUNT / blockSize) * blockSize
+}

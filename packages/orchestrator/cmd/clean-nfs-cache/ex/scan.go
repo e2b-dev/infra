@@ -26,6 +26,7 @@ func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, er
 			switch {
 			case err == nil:
 				continuousErrors = 0
+				c.FileC.Add(-1)
 				candidateCh <- candidate
 
 			case errors.Is(err, ErrBusy):
@@ -190,6 +191,7 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 
 		if t&os.ModeDir != 0 {
 			dirs = append(dirs, NewDir(name))
+			c.DirC.Add(1)
 		} else {
 			// file
 			nFiles++
@@ -227,6 +229,7 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 	if err != nil {
 		return nil, err
 	}
+	c.FileC.Add(int64(nFiles))
 
 	d.mu.Lock()
 	d.Dirs = dirs

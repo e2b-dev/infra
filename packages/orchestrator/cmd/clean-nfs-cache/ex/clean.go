@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -27,21 +28,29 @@ type Cleaner struct {
 }
 
 type Options struct {
-	Experimental           bool
-	Path                   string
-	BatchN                 int
-	DeleteN                int
+	Experimental bool
+	Path         string
+	BatchN       int
+	DeleteN      int
+
+	// TargetFilesToDelete overrides TargetBytesToDelete, and TargetBytesToDelete
+	// overrides TargetDiskUsagePercent
+	TargetFilesToDelete    uint64
 	TargetBytesToDelete    uint64
-	DryRun                 bool
-	MaxConcurrentStat      int
-	MaxConcurrentScan      int
-	MaxConcurrentDelete    int
-	MaxErrorRetries        int
 	TargetDiskUsagePercent float64
-	OtelCollectorEndpoint  string
+
+	DryRun                bool
+	MaxConcurrentStat     int
+	MaxConcurrentScan     int
+	MaxConcurrentDelete   int
+	MaxErrorRetries       int
+	OtelCollectorEndpoint string
 }
 
 type Counters struct {
+	FileC atomic.Int64
+	DirC  atomic.Int64
+
 	DeleteSubmittedC   atomic.Int64
 	DeleteAttemptC     atomic.Int64
 	DeleteErrC         atomic.Int64
@@ -127,8 +136,8 @@ func (c *Cleaner) validateOptions() error {
 	if c.BatchN < c.DeleteN {
 		errs = append(errs, errors.New("files-per-loop must be >= deletions-per-loop"))
 	}
-	if c.TargetBytesToDelete == 0 && c.TargetDiskUsagePercent == 0 {
-		errs = append(errs, errors.New("either target-bytes-to-delete or disk-usage-target-percent must be set"))
+	if c.TargetFilesToDelete == 0 && c.TargetBytesToDelete == 0 && c.TargetDiskUsagePercent == 0 {
+		errs = append(errs, errors.New("either target-files-to-delete, target-bytes-to-delete or disk-usage-target-percent must be set"))
 	}
 	if c.MaxConcurrentStat <= 0 {
 		errs = append(errs, errors.New("max-concurrent-stat must be > 0"))
@@ -183,6 +192,11 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 		}()
 	}
 
+	// Obtain the base level for memory usage
+	baseMem := runtime.MemStats{}
+	runtime.ReadMemStats(&baseMem)
+	batchNumber := 0
+
 	for range c.MaxConcurrentStat {
 		running.Add(1)
 		go c.Statter(ctx, running)
@@ -197,9 +211,18 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	}
 
 	for {
-		if c.DeletedBytes.Load() >= c.TargetBytesToDelete && !draining {
-			c.Info(ctx, "target bytes deleted reached, draining remaining candidates")
-			drain(nil)
+		if !draining {
+			if c.TargetFilesToDelete > 0 {
+				if c.RemoveC.Load() >= int64(c.TargetFilesToDelete) {
+					c.Info(ctx, "target files deleted reached, draining remaining candidates")
+					drain(nil)
+				}
+			} else {
+				if c.DeletedBytes.Load() >= c.TargetBytesToDelete {
+					c.Info(ctx, "target bytes deleted reached, draining remaining candidates")
+					drain(nil)
+				}
+			}
 		}
 
 		select {
@@ -220,31 +243,42 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 				continue
 			}
 
-			// Process the batch, start by sorting candidates by age (oldest first)
-			sort.Slice(batch, func(i, j int) bool {
-				return batch[i].ATimeUnix > batch[j].ATimeUnix
-			})
-
-			c.Info(ctx, "selected batch",
-				zap.Int("count", len(batch)),
-				zap.Duration("oldest", time.Since(time.Unix(batch[0].ATimeUnix, 0))),
-				zap.Duration("newest", time.Since(time.Unix(batch[len(batch)-1].ATimeUnix, 0))),
-			)
-
 			// reinsert the "younger" candidates back into the directory tree
-			c.reinsertCandidates(batch[c.DeleteN:])
+			del, reinsertBackToCache := c.splitBatch(batch)
+			c.reinsertCandidates(reinsertBackToCache)
+
+			if len(del) > 0 {
+				c.Info(ctx, "selected batch",
+					zap.Int("count", len(del)),
+					zap.Duration("oldest", time.Since(time.Unix(del[0].ATimeUnix, 0))),
+					zap.Duration("newest", time.Since(time.Unix(del[len(del)-1].ATimeUnix, 0))),
+				)
+			}
 
 			total := uint64(0)
-			for _, toDelete := range batch[:c.DeleteN] {
+			for _, toDelete := range del {
 				deleteCh <- toDelete
 				c.DeleteSubmittedC.Add(1)
 				total += toDelete.Size
 			}
+
+			var mem runtime.MemStats
+			runtime.ReadMemStats(&mem)
+			c.Info(ctx, "memory usage",
+				zap.Int("batch", batchNumber),
+				zap.Int64("files", c.FileC.Load()),
+				zap.Int64("dirs", c.DirC.Load()),
+				zap.Uint64("total_alloc", mem.TotalAlloc),
+				zap.Uint64("num_gc", uint64(mem.NumGC)),
+				zap.Uint64("sys_bytes", mem.Sys-baseMem.Sys),
+				zap.Uint64("alloc_bytes", mem.Alloc-baseMem.Alloc),
+			)
 			c.Info(ctx, "deleting files",
 				zap.Int("count", c.DeleteN),
 				zap.Uint64("bytes", total))
 			batch = batch[:0]
 			n = 0
+			batchNumber++
 
 		case err := <-errCh:
 			if !draining && errors.Is(err, ErrMaxRetries) {
@@ -252,6 +286,19 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func (c *Cleaner) splitBatch(batch []*Candidate) (toDelete []*Candidate, toReinsert []*Candidate) {
+	// Process the batch, start by sorting candidates by age (oldest first)
+	sort.Slice(batch, func(i, j int) bool {
+		return batch[i].ATimeUnix < batch[j].ATimeUnix
+	})
+
+	del := min(c.DeleteN, len(batch))
+	toDelete = batch[:del]
+	toReinsert = batch[del:]
+
+	return toDelete, toReinsert
 }
 
 func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
@@ -267,6 +314,7 @@ func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
 		if newParent {
 			if prevParent != nil {
 				prevParent.reinsertFiles(files)
+				c.FileC.Add(int64(len(files)))
 			}
 			prevParent = parent
 			files = files[:0]
@@ -281,6 +329,7 @@ func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
 	}
 	if prevParent != nil {
 		prevParent.reinsertFiles(files)
+		c.FileC.Add(int64(len(files)))
 	}
 }
 
