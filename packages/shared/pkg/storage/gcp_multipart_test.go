@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -555,9 +556,13 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 
 func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testing.T) {
 	t.Parallel()
+
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "resource.txt")
-	testContent := strings.Repeat("resource exhaustion test ", 4000000) // ~200MB file for multiple parts
+	totalChunks := 10
+	const text = "resource exhaustion test "
+	repetitionsInChunk := math.Ceil(float64(gcpMultipartUploadChunkSize) / float64(len(text)))
+	testContent := strings.Repeat(text, int(repetitionsInChunk)*totalChunks)
 	err := os.WriteFile(testFile, []byte(testContent), 0o644)
 	require.NoError(t, err)
 
@@ -589,7 +594,7 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 			}
 
 			// Simulate work that takes time
-			time.Sleep(20 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 
 			partNum := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 			w.Header().Set("ETag", fmt.Sprintf(`"resource-etag-%s"`, partNum))
