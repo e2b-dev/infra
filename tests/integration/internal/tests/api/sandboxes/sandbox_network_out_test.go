@@ -895,6 +895,8 @@ func TestEgressFirewallDNSSpoofingNeutralized(t *testing.T) {
 // Expected: SSH connection to GitHub should succeed (TCP handshake completes),
 // though we'll get "Permission denied (publickey)" since we don't have valid credentials.
 func TestNoNetworkConfig_SSHWorks(t *testing.T) {
+	t.Parallel()
+
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -928,6 +930,8 @@ func TestNoNetworkConfig_SSHWorks(t *testing.T) {
 // Expected: SSH connection to GitHub should succeed (TCP handshake completes),
 // though we'll get "Permission denied (publickey)" since we don't have valid credentials.
 func TestWithNetworkConfig_SSHWorks(t *testing.T) {
+	t.Parallel()
+
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()

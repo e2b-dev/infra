@@ -159,7 +159,11 @@ func newSet[T comparable](input ...T) set[T] {
 }
 
 func TestSetContext(t *testing.T) {
+	t.Parallel()
+
 	t.Run("empty_contexts_returns_original_context", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := context.Background()
 		result := AddToContext(ctx)
 
@@ -169,6 +173,8 @@ func TestSetContext(t *testing.T) {
 	})
 
 	t.Run("single_context", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := context.Background()
 		teamCtx := TeamContext("team-123")
 
@@ -181,6 +187,8 @@ func TestSetContext(t *testing.T) {
 	})
 
 	t.Run("multiple_contexts", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := context.Background()
 		teamCtx := TeamContext("team-123")
 		userCtx := UserContext("user-456")
@@ -197,6 +205,8 @@ func TestSetContext(t *testing.T) {
 	})
 
 	t.Run("sequential_calls_merge_contexts", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := context.Background()
 
 		// First call adds team context
@@ -215,6 +225,8 @@ func TestSetContext(t *testing.T) {
 	})
 
 	t.Run("same_kind_second_takes_precedence", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := context.Background()
 
 		// First call with team-123

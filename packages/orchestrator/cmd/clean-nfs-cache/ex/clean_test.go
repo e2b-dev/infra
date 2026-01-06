@@ -126,6 +126,8 @@ func TestCleanDeletesTwoFiles(t *testing.T) {
 }
 
 func TestSplitBatch(t *testing.T) {
+	t.Parallel()
+
 	c := &Cleaner{
 		Options: Options{DeleteN: 3},
 	}
