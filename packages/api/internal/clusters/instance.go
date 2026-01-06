@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -22,6 +23,8 @@ const (
 	// maxSyncFailuresBeforeUnhealthy defines the number of consecutive sync failures
 	// before an instance is marked as unhealthy.
 	maxSyncFailuresBeforeUnhealthy = 3
+
+	maxInstanceSyncCallTimeout = 1 * time.Second
 )
 
 type Instance struct {
@@ -109,6 +112,9 @@ func newInstance(
 // Sync function can be called on freshly initialized instance to populate its data
 // In initial case its possible that service instance id needed for proper remote cluster routing is not yet set.
 func (i *Instance) Sync(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, maxInstanceSyncCallTimeout)
+	defer cancel()
+
 	info, err := i.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
