@@ -165,8 +165,7 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 	assert.True(t, found2)
 }
 
-func TestDiffStoreDelayEviction(t *testing.T) {
-	t.Parallel()
+func TestDiffStoreDelayEviction(t *testing.T) { //nolint:paralleltest // very timing sensitive
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()
@@ -204,7 +203,7 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 	assert.True(t, dFound)
 
 	// Wait for complete removal of diff
-	time.Sleep(delay * 4)
+	time.Sleep(delay)
 
 	found = store.Has(diff)
 	assert.False(t, found)
@@ -212,9 +211,7 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 	assert.False(t, dFound)
 }
 
-func TestDiffStoreDelayEvictionAbort(t *testing.T) {
-	t.Parallel()
-
+func TestDiffStoreDelayEvictionAbort(t *testing.T) { //nolint:paralleltest // very timing sensitive
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()
@@ -243,7 +240,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	store.Add(diff)
 
 	// Wait for removal trigger of diff
-	time.Sleep(delay)
+	time.Sleep(delay / 2)
 
 	// Verify still in cache
 	found := store.Has(diff)
