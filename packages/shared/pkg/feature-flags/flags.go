@@ -117,6 +117,9 @@ var (
 	// that can be used before the cache starts evicting items.
 	BuildCacheMaxUsagePercentage = newIntFlag("build-cache-max-usage-percentage", 85)
 	BuildProvisionVersion        = newIntFlag("build-provision-version", 0)
+
+	// NBDConnectionsPerDevice the number of NBD socket connections per device
+	NBDConnectionsPerDevice = newIntFlag("nbd-connections-per-device", 4)
 )
 
 type StringFlag struct {
