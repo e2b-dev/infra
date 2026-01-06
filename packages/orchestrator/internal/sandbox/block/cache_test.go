@@ -398,6 +398,47 @@ func TestCopyFromProcess_Exceed_MAX_RW_COUNT(t *testing.T) {
 	require.NoError(t, compareData(data[:n], mem[0:size]))
 }
 
+// Tests for a misalignment of the block size and the MAX_RW_COUNT that causes incorrect dirty tracking.
+func TestCopyFromProcess_MAX_RW_COUNT_Misalignment_Hugepage(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.HugepageSize)
+	// We allocate more than MAX_RW_COUNT/pageSize + 2 to misalign the dirty tracking if the range split is unaligned to the block size.
+	size := ((MAX_RW_COUNT/pageSize + 2) * pageSize)
+
+	mem, addr, err := testutils.NewPageMmap(t, uint64(size), uint64(pageSize))
+	require.NoError(t, err)
+
+	n, err := rand.Read(mem)
+	require.NoError(t, err)
+	require.Equal(t, len(mem), n)
+
+	ranges := []Range{
+		{Start: int64(addr), Size: size},
+	}
+
+	cache, err := NewCacheFromProcessMemory(
+		t.Context(),
+		header.HugepageSize,
+		t.TempDir()+"/cache",
+		os.Getpid(),
+		ranges,
+	)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		cache.Close()
+	})
+
+	for _, offset := range header.BlocksOffsets(size, pageSize) {
+		buf := make([]byte, pageSize)
+		n, err := cache.ReadAt(buf, offset)
+		require.NoError(t, err)
+		require.Equal(t, int(pageSize), n)
+		require.NoError(t, compareData(buf, mem[offset:offset+pageSize]))
+	}
+}
+
 func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 	pageSize := int64(header.HugepageSize)
 	size := pageSize * 500
