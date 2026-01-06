@@ -164,10 +164,12 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 		defer sbx.mu.Unlock()
 
 		setErr := sbx.transition.SetError(err)
+		if setErr != nil {
+			logger.L().Warn(ctx, "Failed to set transition result", logger.WithSandboxID(sbx.SandboxID()), zap.Error(setErr))
+		}
+
 		if err != nil {
 			// Keep the transition in place so the error stays
-			logger.L().Error(ctx, "Failed to set transition result", logger.WithSandboxID(sbx.SandboxID()), zap.Error(setErr))
-
 			return
 		}
 

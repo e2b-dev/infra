@@ -60,7 +60,7 @@ func (p *ProxyPool) Get(ctx context.Context, d *Destination) *ProxyClient {
 
 		l := logger.L().With(withFields...)
 
-		stdLogger, err := zap.NewStdLogAt(l.Detach(ctx), zap.ErrorLevel)
+		stdLogger, err := zap.NewStdLogAt(l.Detach(ctx), zap.WarnLevel)
 		if err != nil {
 			l.Warn(ctx, "failed to create logger", zap.Error(err))
 		}
