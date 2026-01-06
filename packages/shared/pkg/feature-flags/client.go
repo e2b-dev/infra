@@ -81,7 +81,7 @@ type typedFlag[T any] interface {
 func getFlag[T any](
 	ctx context.Context,
 	ld *ldclient.LDClient,
-	getFromLD func(ctx context.Context, key string, context ldcontext.Context, defaultVal T) (T, error),
+	getFromLaunchDarkly func(ctx context.Context, key string, context ldcontext.Context, defaultVal T) (T, error),
 	flag typedFlag[T],
 	contexts []ldcontext.Context,
 ) T {
@@ -91,7 +91,7 @@ func getFlag[T any](
 		return flag.Fallback()
 	}
 
-	value, err := getFromLD(ctx, flag.Key(), mergeContexts(ctx, contexts), flag.Fallback())
+	value, err := getFromLaunchDarkly(ctx, flag.Key(), mergeContexts(ctx, contexts), flag.Fallback())
 	if err != nil {
 		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.Key()))
 	}
