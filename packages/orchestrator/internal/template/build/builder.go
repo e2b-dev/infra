@@ -162,20 +162,19 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		}
 	}(ctx)
 
-	// Wrap context.Canceled as a user error if no user error already exists
-	defer func() {
-		if errors.Is(ctx.Err(), context.Canceled) {
-			e = errors.Join(e, ctx.Err())
-		}
-
-		e = builderrors.WrapCanceledAsUserError(e)
-	}()
-
 	defer func() {
 		if r := recover(); r != nil {
 			telemetry.ReportCriticalError(ctx, "recovered from panic in template build", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.TemplateID), telemetry.WithBuildID(template.BuildID))
 			e = errors.New("fatal error occurred during template build, please contact us")
 		}
+	}()
+
+	// Wrap context as a user error if no user error already exists
+	defer func() {
+		if ctx.Err() != nil {
+			e = errors.Join(e, ctx.Err())
+		}
+		e = builderrors.WrapContextAsUserError(e)
 	}()
 
 	if isV1Build {

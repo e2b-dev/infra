@@ -24,9 +24,9 @@ func IsUserError(err error) bool {
 	return phases.UnwrapPhaseBuildError(err) != nil
 }
 
-// WrapCanceledAsUserError wraps context.Canceled as a user error if no user error already exists.
+// WrapContextAsUserError wraps context.Canceled as a user error if no user error already exists.
 // This ensures that user-initiated cancellations are tracked as user errors in metrics.
-func WrapCanceledAsUserError(err error) error {
+func WrapContextAsUserError(err error) error {
 	if err == nil {
 		return nil
 	}
