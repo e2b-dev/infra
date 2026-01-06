@@ -165,7 +165,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	// Wrap context.Canceled as a user error if no user error already exists
 	defer func() {
 		if errors.Is(ctx.Err(), context.Canceled) {
-			e = ctx.Err()
+			e = errors.Join(e, ctx.Err())
 		}
 
 		e = builderrors.WrapCanceledAsUserError(e)
