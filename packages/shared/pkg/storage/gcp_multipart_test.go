@@ -554,16 +554,44 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 	require.Equal(t, smallContent, receivedData)
 }
 
+type repeatReader struct {
+	char      byte
+	remaining int
+}
+
+var _ io.Reader = (*repeatReader)(nil)
+
+func (r *repeatReader) Read(p []byte) (n int, err error) {
+	toWrite := int(math.Min(float64(len(p)), float64(r.remaining)))
+	if toWrite <= 0 {
+		return 0, io.EOF
+	}
+	r.remaining -= toWrite
+
+	for index := range p[:toWrite] {
+		p[index] = r.char
+	}
+
+	return toWrite, nil
+}
+
+func newRepeatReader(b byte, count int) io.Reader {
+	return &repeatReader{char: b, remaining: count}
+}
+
 func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testing.T) {
 	t.Parallel()
 
+	totalChunks := 10
+
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "resource.txt")
-	totalChunks := 10
-	const text = "resource exhaustion test "
-	repetitionsInChunk := math.Ceil(float64(gcpMultipartUploadChunkSize) / float64(len(text)))
-	testContent := strings.Repeat(text, int(repetitionsInChunk)*totalChunks)
-	err := os.WriteFile(testFile, []byte(testContent), 0o644)
+	file, err := os.Create(testFile)
+	require.NoError(t, err)
+	count, err := io.Copy(file, newRepeatReader('a', gcpMultipartUploadChunkSize*totalChunks))
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, count, int64(gcpMultipartUploadChunkSize*totalChunks))
+	err = file.Close()
 	require.NoError(t, err)
 
 	var activeConcurrency atomic.Int32
