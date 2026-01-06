@@ -41,7 +41,7 @@ func TestDirSort(t *testing.T) {
 	require.Equal(t, int64(100), d.Files[2].ATimeUnix)
 }
 
-func TestCleanDeletesTwoFiles(t *testing.T) {
+func TestCleanDeletesOldestFiles(t *testing.T) {
 	root := t.TempDir()
 	defer os.RemoveAll(root)
 
