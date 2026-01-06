@@ -16,6 +16,8 @@ ExecStart=/bin/bash -l -c "/usr/bin/envd"
 OOMPolicy=continue
 OOMScoreAdjust=-1000
 Environment="GOMEMLIMIT={{ .MemoryLimit }}MiB"
+StandardOutput=null
+StandardError=null
 
 Delegate=yes
 MemoryMin=50M

@@ -76,6 +76,11 @@ type Config struct {
 
 	// TraceEnabled enables page fault tracing for debugging/profiling.
 	TraceEnabled bool
+
+	// OnFCResumed is a callback invoked after FC is resumed but before WaitForEnvd.
+	// The callback receives the FC process PID. This is used for syscall tracing.
+	// If the callback returns a cleanup function, it will be called after WaitForEnvd.
+	OnFCResumed func(pid int) (cleanup func())
 }
 
 type EnvdMetadata struct {
@@ -561,6 +566,14 @@ func (f *Factory) ResumeSandbox(
 	}
 	tr.Record("fc_resumed")
 
+	// Call the OnFCResumed callback if provided (for syscall tracing)
+	var onFCResumedCleanup func()
+	if config.OnFCResumed != nil {
+		if pid, err := fcHandle.Pid(); err == nil {
+			onFCResumedCleanup = config.OnFCResumed(pid)
+		}
+	}
+
 	telemetry.ReportEvent(ctx, "initialized FC")
 
 	resources := &Resources{
@@ -618,6 +631,12 @@ func (f *Factory) ResumeSandbox(
 		ctx,
 		f.config.EnvdTimeout,
 	)
+
+	// Call cleanup from OnFCResumed callback (stops strace, etc.)
+	if onFCResumedCleanup != nil {
+		onFCResumedCleanup()
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
@@ -731,6 +750,14 @@ func (s *Sandbox) GetTraceEvents() []uffd.TraceEvent {
 		return nil
 	}
 	return s.traceRecorder.Events()
+}
+
+// FCPid returns the PID of the Firecracker process.
+func (s *Sandbox) FCPid() (int, error) {
+	if s.process == nil {
+		return 0, fmt.Errorf("FC process not available")
+	}
+	return s.process.Pid()
 }
 
 // Stop kills the sandbox. It is safe to call multiple times; only the first
@@ -1148,7 +1175,7 @@ func (s *Sandbox) WaitForEnvd(
 	if err := s.waitForHealth(ctx); err != nil {
 		return fmt.Errorf("failed to wait for envd health: %w", err)
 	}
-	
+
 	// // Wait for /health endpoint only - no /init call
 	// if err := s.waitForHealth(ctx); err != nil {
 	// 	return fmt.Errorf("failed to wait for envd health: %w", err)

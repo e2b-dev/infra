@@ -28,6 +28,7 @@ import (
 
 	"connectrpc.com/connect"
 	googleprof "github.com/google/pprof/profile"
+	"github.com/google/uuid"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
 	"github.com/launchdarkly/go-server-sdk/v7/ldcomponents"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
@@ -50,7 +51,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
-	"github.com/google/uuid"
 )
 
 func main() {
@@ -69,6 +69,7 @@ func main() {
 	kvmTrace := flag.Bool("kvm-trace", false, "enable KVM ftrace (requires debugfs)")
 	fcLog := flag.Bool("fc-log", false, "enable Firecracker internal logging")
 	guestDmesg := flag.Bool("guest-dmesg", false, "fetch guest dmesg after resume")
+	fcStrace := flag.Bool("fc-strace", false, "enable strace on FC process to trace syscalls")
 	flag.Parse()
 
 	if *buildID == "" {
@@ -91,7 +92,7 @@ func main() {
 		}
 	}
 
-	if err := run(ctx, *buildID, *kernel, *fcVer, *vcpu, *memory, *disk, *benchmark, *trace, *pprofFlag, *pprofPort, *kvmTrace, *fcLog, *guestDmesg); err != nil && ctx.Err() == nil {
+	if err := run(ctx, *buildID, *kernel, *fcVer, *vcpu, *memory, *disk, *benchmark, *trace, *pprofFlag, *pprofPort, *kvmTrace, *fcLog, *guestDmesg, *fcStrace); err != nil && ctx.Err() == nil {
 		log.Fatal(err)
 	}
 }
@@ -138,6 +139,7 @@ type runner struct {
 	kvmTraceEnable bool
 	fcLogEnable    bool
 	guestDmesgGet  bool
+	fcStraceEnable bool
 }
 
 type resumeResult struct {
@@ -153,6 +155,9 @@ type resumeResult struct {
 	KVMTrace          string         // KVM ftrace output
 	KVMStats          *KVMStats      // Aggregated KVM statistics
 	KVMTraceStartTime int64          // Wall clock ns when KVM tracing started
+	// Strace data
+	FCStraceOutput string       // Raw strace output
+	FCStraceStats  *StraceStats // Parsed strace statistics
 }
 
 func (r *runner) resumeOnce(iter int) (resumeResult, error) {
@@ -178,8 +183,42 @@ func (r *runner) resumeOnce(iter int) (resumeResult, error) {
 		}
 	}
 
+	// Set up strace tracing if enabled
+	type straceResult struct {
+		output string
+		stats  *StraceStats
+	}
+	var straceRes straceResult
+	var fcStrace *FCStraceTracer
+	var straceStartTime time.Time
+
+	// Create a copy of sbxConfig with the OnFCResumed callback
+	sbxConfig := r.sbxConfig
+	if r.fcStraceEnable {
+		sbxConfig.OnFCResumed = func(pid int) func() {
+			straceStartTime = time.Now()
+			fcStrace = NewFCStraceTracer(pid)
+			if err := fcStrace.Start(r.ctx); err != nil {
+				fmt.Printf("Warning: Failed to start strace: %v\n", err)
+				fcStrace = nil
+				return nil
+			}
+			// Return cleanup function that will be called after WaitForEnvd
+			return func() {
+				if fcStrace != nil {
+					output, err := fcStrace.Stop()
+					if err != nil {
+						fmt.Printf("Warning: Failed to stop strace: %v\n", err)
+					}
+					straceRes.output = output
+					straceRes.stats = ParseStraceOutput(output, straceStartTime)
+				}
+			}
+		}
+	}
+
 	t0 := time.Now()
-	sbx, err := r.factory.ResumeSandbox(r.ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	sbx, err := r.factory.ResumeSandbox(r.ctx, r.tmpl, sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
 	dur := time.Since(t0)
 
 	// Capture KVM trace immediately after resume
@@ -231,6 +270,8 @@ func (r *runner) resumeOnce(iter int) (resumeResult, error) {
 		GuestDmesg:      guestDmesg,
 		KVMTrace:        kvmTrace,
 		KVMStats:        kvmStats,
+		FCStraceOutput:  straceRes.output,
+		FCStraceStats:   straceRes.stats,
 	}, nil
 }
 
@@ -358,6 +399,7 @@ func (r *runner) runInteractive() error {
 	fmt.Println("🚀 Starting...")
 	t0 := time.Now()
 	sbx, err := r.factory.ResumeSandbox(r.ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	dur := time.Since(t0)
 	if err != nil {
 		return err
 	}
@@ -367,7 +409,7 @@ func (r *runner) runInteractive() error {
 		sbx.SetTraceEnabled(true)
 	}
 
-	fmt.Printf("✅ Running (resumed in %s)\n", time.Since(t0))
+	fmt.Printf("✅ Running (resumed in %s)\n", dur)
 	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
 	fmt.Println("Ctrl+C to stop")
 
@@ -376,7 +418,9 @@ func (r *runner) runInteractive() error {
 
 	if r.trace {
 		pageFaults := sbx.GetPageFaultTrace()
-		if len(pageFaults) > 0 {
+		nbdEvents := sbx.GetNBDTrace()
+		traceEvents := sbx.GetTraceEvents()
+		if len(pageFaults) > 0 || len(nbdEvents) > 0 {
 			// Get memfile header for nil page analysis
 			var memfileHeader *header.Header
 			if r.tmpl != nil {
@@ -384,7 +428,14 @@ func (r *runner) runInteractive() error {
 					memfileHeader = memfile.Header()
 				}
 			}
-			exportMultiRunTrace(r.ctx, []TraceRun{{Run: 0, Faults: pageFaults}}, r.spec, nil, nil, nil, 0, 0, memfileHeader)
+			exportMultiRunTrace(r.ctx, []TraceRun{{
+				Run:       0,
+				StartTs:   t0.UnixNano(),
+				Duration:  dur.Nanoseconds(),
+				Faults:    pageFaults,
+				NBDEvents: nbdEvents,
+				Events:    traceEvents,
+			}}, r.spec, nil, nil, nil, 0, 0, memfileHeader)
 		}
 	}
 
@@ -430,6 +481,8 @@ func (r *runner) runBenchmark(count int) error {
 				GuestDmesg:      result.GuestDmesg,
 				EnvdTrace:       result.EnvdTrace,
 				HealthCheckTime: result.HealthCheckTime,
+				StraceOutput:    result.FCStraceOutput,
+				StraceStats:     result.FCStraceStats,
 			})
 		}
 		fmt.Printf("[%d/%d] Resumed in %s", i+1, count, result.Duration)
@@ -441,6 +494,9 @@ func (r *runner) runBenchmark(count int) error {
 		}
 		if result.HealthCheckTime > 0 {
 			fmt.Printf(" (health: %s)", result.HealthCheckTime)
+		}
+		if result.FCStraceStats != nil && result.FCStraceStats.TotalSyscalls > 0 {
+			fmt.Printf(" (strace: %d syscalls, %d blocking)", result.FCStraceStats.TotalSyscalls, result.FCStraceStats.BlockingSyscalls)
 		}
 		fmt.Println()
 	}
@@ -531,6 +587,9 @@ type TraceRun struct {
 	Faults          []uffd.PageFaultEvent
 	NBDEvents       []nbd.NBDEvent
 	Events          []uffd.TraceEvent
+	// Strace data
+	StraceOutput string       // Raw strace output
+	StraceStats  *StraceStats // Parsed strace statistics
 }
 
 func exportMultiRunTrace(ctx context.Context, runs []TraceRun, spec SpecInfo, profileHotspots []ProfileFunction, profileCallStacks []ProfileCallStack, memoryHotspots []MemoryHotspot, totalAllocBytes, totalAllocObjects int64, memfileHeader *header.Header) {
@@ -639,6 +698,29 @@ type TemplateData struct {
 	HasDmesg    bool
 	// Raw traces (collapsible in UI)
 	RawKVMTraces []RawTraceData // Per-run KVM ftrace output
+	// Strace data
+	StraceStats     *StraceAggregatedStats // Aggregated strace stats across runs
+	RawStraceOutput string                 // Raw strace output from first run for debugging
+	HasStrace       bool
+}
+
+type StraceAggregatedStats struct {
+	AvgSyscalls   int
+	AvgBlocking   int
+	TotalBlocking string
+	TotalTime     string              // Total time spent in syscalls
+	TopSyscalls   []StraceBlockerData // By count
+	TopBlockers   []StraceBlockerData // By total time
+	IoctlStats    []IoctlStatData     // Ioctl breakdown
+	SampleRun     int                 // Which run the data is from
+}
+
+type IoctlStatData struct {
+	Type      string // KVM, Network, Virtio, etc.
+	Command   string // Specific command
+	Count     int
+	TotalTime string
+	MaxTime   string
 }
 
 type KVMAggregatedStats struct {
@@ -672,9 +754,9 @@ type PageAnalysisData struct {
 	OrderingChart    []OrderingRunData
 	AvgDeviationLine []AvgDeviationPoint // Average deviation at each position
 	// Nil/empty page analysis
-	TotalNilPages    int    // Number of unique pages that map to nil/empty (uuid.Nil)
-	NilPagesPct      string // Percentage of faulted pages that are nil
-	TotalNilFaults   int    // Total faults for nil pages (across all runs)
+	TotalNilPages  int    // Number of unique pages that map to nil/empty (uuid.Nil)
+	NilPagesPct    string // Percentage of faulted pages that are nil
+	TotalNilFaults int    // Total faults for nil pages (across all runs)
 }
 
 // OrderingRunData contains deviation data for one run
@@ -748,15 +830,32 @@ type RunData struct {
 	Faults         []FaultData
 	NBDEvents      []NBDEventData
 	// Per-run trace data
-	HasKVMTrace    bool
-	KVMEntries     int
-	KVMExits       int
-	KVMHalts       int
-	KVMTopExit     string
-	KVMRawTrace    string
-	KVMEvents      []KVMEventData
-	GuestDmesg     string
-	HasDmesg       bool
+	HasKVMTrace bool
+	KVMEntries  int
+	KVMExits    int
+	KVMHalts    int
+	KVMTopExit  string
+	KVMRawTrace string
+	KVMEvents   []KVMEventData
+	GuestDmesg  string
+	HasDmesg    bool
+	// Strace data
+	HasStrace            bool
+	StraceTotalSyscalls  int
+	StraceBlockingCalls  int
+	StraceTotalBlocking  string
+	StraceTopBlockers    []StraceBlockerData
+	StraceLongestCalls   []StraceLongestCallData
+	StraceTimelineEvents []StraceTimelineEvent // For timeline visualization
+}
+
+type StraceTimelineEvent struct {
+	LeftPct    string  // Position on timeline
+	WidthPct   string  // Width on timeline
+	Syscall    string  // Syscall name
+	Duration   string  // Duration as string
+	DurationMs float64 // Duration in ms for sorting
+	FD         string  // File descriptor info
 }
 
 type EventGroupData struct {
@@ -801,6 +900,23 @@ type KVMEventData struct {
 	EventType string // "hlt", "wakeup", "exit", "entry", "mmio", "pio", "sched"
 	Details   string
 	Duration  string
+}
+
+type StraceBlockerData struct {
+	Name      string
+	Count     int
+	TotalTime string
+	AvgTime   string
+	MaxTime   string
+	Pct       string
+}
+
+type StraceLongestCallData struct {
+	Syscall   string
+	Duration  string
+	FD        string
+	Args      string
+	Timestamp string
 }
 
 func generateTraceHTML(ctx context.Context, filename string, runs []TraceRun, spec SpecInfo, profileHotspots []ProfileFunction, profileCallStacks []ProfileCallStack, memoryHotspots []MemoryHotspot, totalAllocBytes, totalAllocObjects int64, memfileHeader *header.Header) error {
@@ -924,6 +1040,15 @@ func buildTemplateData(ctx context.Context, runs []TraceRun, spec SpecInfo, prof
 
 	var rawKVMTraces []RawTraceData
 
+	// Aggregate strace stats across runs
+	var straceAggStats *StraceAggregatedStats
+	var hasStrace bool
+	totalSyscalls := 0
+	totalBlockingCalls := 0
+	totalBlockingTime := time.Duration(0)
+	straceRunCount := 0
+	var sampleStraceStats *StraceStats // Keep first run's detailed stats as sample
+
 	for i, run := range runs {
 		if run.KVMStats != nil && run.KVMStats.TotalEntries > 0 {
 			hasKVMTrace = true
@@ -945,6 +1070,23 @@ func buildTemplateData(ctx context.Context, runs []TraceRun, spec SpecInfo, prof
 			guestDmesg = run.GuestDmesg
 			hasDmesg = true
 		}
+		// Aggregate strace stats
+		if run.StraceStats != nil && run.StraceStats.TotalSyscalls > 0 {
+			hasStrace = true
+			straceRunCount++
+			totalSyscalls += run.StraceStats.TotalSyscalls
+			totalBlockingCalls += run.StraceStats.BlockingSyscalls
+			totalBlockingTime += run.StraceStats.TotalBlockingTime
+			if sampleStraceStats == nil {
+				sampleStraceStats = run.StraceStats
+			}
+		}
+	}
+
+	// Capture raw strace output from first run for debugging
+	var rawStraceOutput string
+	if len(runs) > 0 && runs[0].StraceOutput != "" {
+		rawStraceOutput = runs[0].StraceOutput
 	}
 
 	if hasKVMTrace && kvmRunCount > 0 {
@@ -961,6 +1103,56 @@ func buildTemplateData(ctx context.Context, runs []TraceRun, spec SpecInfo, prof
 			AvgExits:      totalKVMExits / kvmRunCount,
 			TopExitReason: topReason,
 			TopExitCount:  topCount / kvmRunCount,
+		}
+	}
+
+	// Aggregate strace stats
+	if hasStrace && straceRunCount > 0 && sampleStraceStats != nil {
+		// Convert top syscalls (by count) from sample run
+		var topSyscalls []StraceBlockerData
+		for _, b := range sampleStraceStats.TopSyscalls {
+			topSyscalls = append(topSyscalls, StraceBlockerData{
+				Name:      b.Name,
+				Count:     b.Count,
+				TotalTime: formatMicros(b.TotalTime),
+				AvgTime:   formatMicros(b.AvgTime),
+				MaxTime:   formatMicros(b.MaxTime),
+				Pct:       fmt.Sprintf("%.1f%%", b.BlockingPct),
+			})
+		}
+		// Convert top blockers (by time) from sample run
+		var topBlockers []StraceBlockerData
+		for _, b := range sampleStraceStats.TopBlockers {
+			topBlockers = append(topBlockers, StraceBlockerData{
+				Name:      b.Name,
+				Count:     b.Count,
+				TotalTime: formatMicros(b.TotalTime),
+				AvgTime:   formatMicros(b.AvgTime),
+				MaxTime:   formatMicros(b.MaxTime),
+				Pct:       fmt.Sprintf("%.1f%%", b.BlockingPct),
+			})
+		}
+		// Convert ioctl stats from sample run
+		var ioctlStats []IoctlStatData
+		for _, ioctl := range sampleStraceStats.IoctlStats {
+			ioctlStats = append(ioctlStats, IoctlStatData{
+				Type:      ioctl.Type,
+				Command:   ioctl.Command,
+				Count:     ioctl.Count,
+				TotalTime: formatMicros(ioctl.TotalTime),
+				MaxTime:   formatMicros(ioctl.MaxTime),
+			})
+		}
+
+		straceAggStats = &StraceAggregatedStats{
+			AvgSyscalls:   totalSyscalls / straceRunCount,
+			AvgBlocking:   totalBlockingCalls / straceRunCount,
+			TotalBlocking: formatMicros(totalBlockingTime / time.Duration(straceRunCount)),
+			TotalTime:     formatMicros(sampleStraceStats.TotalTime),
+			TopSyscalls:   topSyscalls,
+			TopBlockers:   topBlockers,
+			IoctlStats:    ioctlStats,
+			SampleRun:     0, // First run
 		}
 	}
 
@@ -988,6 +1180,9 @@ func buildTemplateData(ctx context.Context, runs []TraceRun, spec SpecInfo, prof
 		HasKVMTrace:        hasKVMTrace,
 		HasDmesg:           hasDmesg,
 		RawKVMTraces:       rawKVMTraces,
+		StraceStats:        straceAggStats,
+		RawStraceOutput:    rawStraceOutput,
+		HasStrace:          hasStrace,
 	}
 }
 
@@ -1427,6 +1622,15 @@ func buildRunData(run TraceRun, globalMaxDuration int64) *RunData {
 		return nil
 	}
 
+	// Safeguard: ensure globalMaxDuration is not zero
+	if globalMaxDuration <= 0 {
+		// Use run.Duration as fallback, or 1ms minimum to avoid divide by zero
+		globalMaxDuration = run.Duration
+		if globalMaxDuration <= 0 {
+			globalMaxDuration = 1_000_000 // 1ms minimum
+		}
+	}
+
 	startTs := run.StartTs
 
 	// Sort faults by timestamp
@@ -1802,6 +2006,60 @@ func buildRunData(run TraceRun, globalMaxDuration int64) *RunData {
 
 	}
 
+	// Extract strace data for this run
+	hasStrace := run.StraceStats != nil && run.StraceStats.TotalSyscalls > 0
+	var straceTotalSyscalls, straceBlockingCalls int
+	var straceTotalBlocking string
+	var straceTopBlockers []StraceBlockerData
+	var straceLongestCalls []StraceLongestCallData
+	var straceTimelineEvents []StraceTimelineEvent
+
+	if run.StraceStats != nil {
+		straceTotalSyscalls = run.StraceStats.TotalSyscalls
+		straceBlockingCalls = run.StraceStats.BlockingSyscalls
+		straceTotalBlocking = formatMicros(run.StraceStats.TotalBlockingTime)
+
+		// Convert top blockers
+		for _, b := range run.StraceStats.TopBlockers {
+			straceTopBlockers = append(straceTopBlockers, StraceBlockerData{
+				Name:      b.Name,
+				Count:     b.Count,
+				TotalTime: formatMicros(b.TotalTime),
+				AvgTime:   formatMicros(b.AvgTime),
+				MaxTime:   formatMicros(b.MaxTime),
+				Pct:       fmt.Sprintf("%.1f%%", b.BlockingPct),
+			})
+		}
+
+		// Convert longest calls and build timeline events for blocking syscalls
+		runDurationUs := float64(run.Duration) / float64(time.Microsecond)
+		for _, c := range run.StraceStats.LongestCalls {
+			straceLongestCalls = append(straceLongestCalls, StraceLongestCallData{
+				Syscall:   c.Syscall,
+				Duration:  formatMicros(c.Duration),
+				FD:        c.FD,
+				Args:      c.Args,
+				Timestamp: fmt.Sprintf("%.2fms", c.TimestampUs/1000.0),
+			})
+
+			// Add to timeline if it's a significant blocking call (> 1ms)
+			if c.Duration > time.Millisecond && runDurationUs > 0 {
+				leftPct := (c.TimestampUs / runDurationUs) * 100.0
+				widthPct := (float64(c.Duration) / float64(time.Microsecond) / runDurationUs) * 100.0
+				if leftPct >= 0 && leftPct <= 100 {
+					straceTimelineEvents = append(straceTimelineEvents, StraceTimelineEvent{
+						LeftPct:    fmt.Sprintf("%.3f", leftPct),
+						WidthPct:   fmt.Sprintf("%.3f", max(widthPct, 0.5)), // Min 0.5% width for visibility
+						Syscall:    c.Syscall,
+						Duration:   formatMicros(c.Duration),
+						DurationMs: float64(c.Duration) / float64(time.Millisecond),
+						FD:         c.FD,
+					})
+				}
+			}
+		}
+	}
+
 	return &RunData{
 		RunNum:         run.Run,
 		NumFaults:      len(faults),
@@ -1840,6 +2098,14 @@ func buildRunData(run TraceRun, globalMaxDuration int64) *RunData {
 		KVMEvents:   kvmEventData,
 		GuestDmesg:  run.GuestDmesg,
 		HasDmesg:    run.GuestDmesg != "",
+		// Strace data
+		HasStrace:            hasStrace,
+		StraceTotalSyscalls:  straceTotalSyscalls,
+		StraceBlockingCalls:  straceBlockingCalls,
+		StraceTotalBlocking:  straceTotalBlocking,
+		StraceTopBlockers:    straceTopBlockers,
+		StraceLongestCalls:   straceLongestCalls,
+		StraceTimelineEvents: straceTimelineEvents,
 	}
 }
 
@@ -1934,6 +2200,23 @@ func formatDuration(ns int64) string {
 	}
 	if d >= time.Microsecond {
 		return fmt.Sprintf("%.1fµs", float64(d.Nanoseconds())/1e3)
+	}
+	return fmt.Sprintf("%dns", d.Nanoseconds())
+}
+
+// formatMicros formats a time.Duration with appropriate units (µs, ms, s)
+func formatMicros(d time.Duration) string {
+	if d >= time.Second {
+		return fmt.Sprintf("%.2fs", d.Seconds())
+	}
+	if d >= time.Millisecond {
+		return fmt.Sprintf("%.2fms", float64(d.Nanoseconds())/1e6)
+	}
+	if d >= time.Microsecond {
+		return fmt.Sprintf("%.1fµs", float64(d.Nanoseconds())/1e3)
+	}
+	if d == 0 {
+		return "0"
 	}
 	return fmt.Sprintf("%dns", d.Nanoseconds())
 }
@@ -2399,7 +2682,7 @@ func parseHeapProfile(data []byte, numRuns int) ([]MemoryHotspot, int64, int64) 
 	return result, totalBytes, totalObjects
 }
 
-func run(ctx context.Context, buildID, kernel, fcVer string, vcpu, memory, disk int64, count int, trace bool, pprofEnabled bool, pprofPort int, kvmTrace bool, fcLog bool, guestDmesg bool) error {
+func run(ctx context.Context, buildID, kernel, fcVer string, vcpu, memory, disk int64, count int, trace bool, pprofEnabled bool, pprofPort int, kvmTrace bool, fcLog bool, guestDmesg bool, fcStrace bool) error {
 	l, _ := logger.NewDevelopmentLogger()
 	sbxlogger.SetSandboxLoggerInternal(l)
 
@@ -2460,6 +2743,7 @@ func run(ctx context.Context, buildID, kernel, fcVer string, vcpu, memory, disk 
 		kvmTraceEnable: kvmTrace,
 		fcLogEnable:    fcLog,
 		guestDmesgGet:  guestDmesg,
+		fcStraceEnable: fcStrace,
 		spec: func() SpecInfo {
 			hostCPU, hostCores, hostMemGB, hostOS, hostname := getHostSpec()
 			return SpecInfo{
@@ -2493,6 +2777,9 @@ func run(ctx context.Context, buildID, kernel, fcVer string, vcpu, memory, disk 
 	}
 	if guestDmesg {
 		fmt.Println("Guest dmesg collection enabled")
+	}
+	if fcStrace {
+		fmt.Println("FC strace enabled (traces syscalls during envd wait)")
 	}
 	if pprofEnabled {
 		// Start pprof HTTP server

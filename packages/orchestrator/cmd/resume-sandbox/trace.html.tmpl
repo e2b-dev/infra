@@ -694,6 +694,55 @@ h1 {
 </div>
 <span class="concurrency">Peak: {{.MaxLanes}} parallel UFFD</span>
 <span class="concurrency-nbd">{{.MaxNBDLanes}} parallel NBD</span>
+
+{{if .HasStrace}}
+<details style="margin-top: 16px;">
+<summary style="cursor: pointer; color: #a855f7; font-size: 0.65rem; font-weight: 500;">FC Syscalls: {{.StraceTotalSyscalls}} total, {{.StraceBlockingCalls}} blocking ({{.StraceTotalBlocking}})</summary>
+<div style="margin-top: 12px; padding: 12px; background: #0f0f0f; border-radius: 6px; border: 1px solid #1f1f1f;">
+<div style="display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 12px;">
+{{range .StraceTopBlockers}}
+<div style="font-size: 0.6rem;">
+<span style="color: #a855f7; font-weight: 500;">{{.Name}}</span>
+<span style="color: #737373;">×{{.Count}}</span>
+<span style="color: #4ade80;">{{.TotalTime}}</span>
+<span style="color: #525252;">(max {{.MaxTime}})</span>
+</div>
+{{end}}
+</div>
+{{if .StraceLongestCalls}}
+<div style="margin-top: 12px; color: #737373; font-size: 0.55rem;">Syscalls &gt;1ms (sorted by time):</div>
+<table style="width: 100%; margin-top: 4px; font-size: 0.55rem; border-collapse: collapse;">
+<thead>
+<tr style="border-bottom: 1px solid #262626; color: #737373; text-align: left;">
+<th style="padding: 4px 8px;">Start</th>
+<th style="padding: 4px 8px;">Duration</th>
+<th style="padding: 4px 8px;">Syscall</th>
+<th style="padding: 4px 8px;">FD / Target</th>
+</tr>
+</thead>
+<tbody>
+{{range .StraceLongestCalls}}
+<tr style="border-bottom: 1px solid #1a1a1a;">
+<td style="padding: 4px 8px; color: #737373; font-variant-numeric: tabular-nums;">{{.Timestamp}}</td>
+<td style="padding: 4px 8px; color: #4ade80; font-weight: 500;">{{.Duration}}</td>
+<td style="padding: 4px 8px; color: #e5e5e5;">{{.Syscall}}</td>
+<td style="padding: 4px 8px; color: #06b6d4; font-size: 0.5rem;">{{if .FD}}{{.FD}}{{else}}<span style="color: #525252;">-</span>{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+</div>
+</details>
+{{end}}
+
+{{if .HasDmesg}}
+<details style="margin-top: 8px;">
+<summary style="cursor: pointer; color: #06b6d4; font-size: 0.65rem; font-weight: 500;">Guest Kernel Logs (dmesg)</summary>
+<pre style="margin-top: 8px; padding: 12px; background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 6px; font-size: 0.55rem; color: #a3a3a3; max-height: 200px; overflow-y: auto; white-space: pre-wrap;">{{.GuestDmesg}}</pre>
+</details>
+{{end}}
+
 </div>
 {{end}}
 
@@ -1146,6 +1195,105 @@ Consider object pooling (sync.Pool) or pre-allocation to reduce allocations in h
 KVM exits indicate times when the guest OS transferred control to the hypervisor. Common reasons: I/O, interrupts, memory management.
 High exit rates may indicate guest workload causing frequent traps to the host.
 </p>
+</div>
+{{end}}
+
+{{if .HasStrace}}
+<div class="profile-section" style="margin-top: 40px; padding-top: 40px; border-top: 1px solid #1f1f1f;">
+<h2>FC Syscall Analysis: Gap Correlation</h2>
+<p class="profile-desc">Understanding what Firecracker is doing during the gaps (time when neither UFFD nor NBD is serving)</p>
+
+<div class="stats" style="margin-bottom: 24px;">
+<div class="stat"><div class="label">Avg Syscalls/run</div><div class="value">{{.StraceStats.AvgSyscalls}}</div></div>
+<div class="stat"><div class="label">Total Syscall Time</div><div class="value">{{.StraceStats.TotalTime}}</div></div>
+<div class="stat"><div class="label">Blocking Calls (&gt;100µs)</div><div class="value">{{.StraceStats.AvgBlocking}}</div></div>
+<div class="stat"><div class="label">Blocking Time</div><div class="value">{{.StraceStats.TotalBlocking}}</div></div>
+</div>
+
+<div style="background: #161616; border: 1px solid #262626; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+<h3 style="font-weight: 600; font-size: 0.8rem; color: #f5f5f5; margin-bottom: 16px;">What causes the gaps?</h3>
+<div style="font-size: 0.7rem; color: #a3a3a3; line-height: 1.8;">
+
+{{if .StraceStats.TopBlockers}}
+<p><strong style="color: #a855f7;">Top time-consuming syscalls:</strong></p>
+<ul style="margin: 8px 0 16px 20px;">
+{{range .StraceStats.TopBlockers}}
+<li><strong style="color: #e5e5e5;">{{.Name}}</strong> — {{.Count}}× calls, total {{.TotalTime}} (max {{.MaxTime}})
+{{if eq .Name "epoll_pwait"}} <span style="color: #06b6d4;">← FC waiting for guest events (guest is idle or processing)</span>{{end}}
+{{if eq .Name "ioctl"}} <span style="color: #06b6d4;">← see ioctl breakdown below</span>{{end}}
+{{if eq .Name "read"}} <span style="color: #06b6d4;">← reading from tap device or vsock</span>{{end}}
+{{if eq .Name "write"}} <span style="color: #06b6d4;">← writing to tap device or vsock</span>{{end}}
+{{if eq .Name "readv"}} <span style="color: #06b6d4;">← reading network packets from tap</span>{{end}}
+{{if eq .Name "writev"}} <span style="color: #06b6d4;">← writing network packets to tap</span>{{end}}
+{{if eq .Name "ppoll"}} <span style="color: #06b6d4;">← FC polling for I/O events</span>{{end}}
+{{if eq .Name "futex"}} <span style="color: #06b6d4;">← thread synchronization</span>{{end}}
+</li>
+{{end}}
+</ul>
+{{end}}
+
+{{if .StraceStats.IoctlStats}}
+<p style="margin-top: 16px;"><strong style="color: #f59e0b;">Ioctl breakdown by type:</strong></p>
+<ul style="margin: 8px 0 16px 20px;">
+{{range .StraceStats.IoctlStats}}
+<li>
+<span style="background: {{if eq .Type "KVM"}}#7c3aed{{else if eq .Type "Network"}}#0ea5e9{{else if eq .Type "Virtio"}}#10b981{{else}}#6b7280{{end}}; color: white; padding: 1px 6px; border-radius: 3px; font-size: 0.6rem; font-weight: 600;">{{.Type}}</span>
+<strong style="color: #e5e5e5; margin-left: 6px;">{{.Command}}</strong> — {{.Count}}× calls, total {{.TotalTime}} (max {{.MaxTime}})
+{{if eq .Command "KVM_RUN"}} <span style="color: #06b6d4;">← running guest vCPU</span>{{end}}
+{{if eq .Command "KVM_SET_USER_MEMORY_REGION"}} <span style="color: #06b6d4;">← setting up guest memory</span>{{end}}
+{{if eq .Command "KVM_IRQFD"}} <span style="color: #06b6d4;">← interrupt delivery</span>{{end}}
+{{if eq .Command "KVM_IOEVENTFD"}} <span style="color: #06b6d4;">← I/O event signaling</span>{{end}}
+{{if or (eq .Type "Network") (eq .Type "Virtio")}} <span style="color: #06b6d4;">← network/virtio device operation</span>{{end}}
+</li>
+{{end}}
+</ul>
+{{end}}
+
+<p><strong style="color: #4ade80;">Gap interpretation:</strong></p>
+<ul style="margin: 8px 0 0 20px;">
+<li>If <strong>epoll_pwait</strong> dominates → the guest is busy but not requesting pages. Check guest dmesg for what it's doing.</li>
+<li>If <strong>ioctl (KVM_RUN)</strong> dominates → guest vCPU is executing. The guest is processing (not waiting for I/O).</li>
+<li>If <strong>read/write on network</strong> dominates → there's network activity. The guest might be doing network I/O.</li>
+<li>Compare timestamps in per-run strace with the gap positions in the timeline above.</li>
+</ul>
+</div>
+</div>
+
+{{if .RawStraceOutput}}
+<details style="margin-top: 24px;">
+<summary style="cursor: pointer; color: #737373; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;">Raw strace output (Run 1)</summary>
+<pre style="background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 6px; padding: 16px; margin-top: 12px; font-size: 0.6rem; color: #a3a3a3; overflow-x: auto; max-height: 500px; white-space: pre-wrap; word-wrap: break-word;">{{.RawStraceOutput}}</pre>
+</details>
+{{end}}
+</div>
+{{end}}
+
+{{if .GuestDmesg}}
+<div class="profile-section" style="margin-top: 40px; padding-top: 40px; border-top: 1px solid #1f1f1f;">
+<h2>Guest Kernel Analysis</h2>
+<p class="profile-desc">Kernel messages from inside the guest VM - shows what the guest OS is doing during resume</p>
+
+<div style="background: #161616; border: 1px solid #262626; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+<h3 style="font-weight: 600; font-size: 0.8rem; color: #f5f5f5; margin-bottom: 16px;">What to look for in guest dmesg:</h3>
+<div style="font-size: 0.7rem; color: #a3a3a3; line-height: 1.8;">
+<ul style="margin: 0 0 0 20px;">
+<li><strong style="color: #06b6d4;">PM: hibernation exit / Restarting tasks</strong> — when the guest kernel resumes from snapshot</li>
+<li><strong style="color: #06b6d4;">virtio_net / eth0</strong> — network device initialization (can take time)</li>
+<li><strong style="color: #06b6d4;">virtio_blk</strong> — block device initialization</li>
+<li><strong style="color: #06b6d4;">random: crng init done</strong> — entropy initialization (historically slow)</li>
+<li><strong style="color: #06b6d4;">systemd</strong> — init system activity after kernel hands off</li>
+</ul>
+<p style="margin-top: 12px;">
+<strong style="color: #4ade80;">Timestamps in dmesg</strong> show seconds since boot. Compare these with the gap timings in the runs above.
+The per-run dmesg is available in each run's expandable section.
+</p>
+</div>
+</div>
+
+<details style="margin-top: 16px;">
+<summary style="cursor: pointer; color: #737373; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;">Full guest dmesg (Run 1)</summary>
+<pre style="background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 6px; padding: 16px; margin-top: 12px; font-size: 0.6rem; color: #a3a3a3; overflow-x: auto; max-height: 500px; white-space: pre-wrap; word-wrap: break-word;">{{.GuestDmesg}}</pre>
+</details>
 </div>
 {{end}}
 
