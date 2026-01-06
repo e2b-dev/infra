@@ -38,8 +38,12 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 		case <-ticker.C:
 			sandboxes := o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning})
 			longRunningSandboxes := make([]sandbox.Sandbox, 0, len(sandboxes))
+			now := time.Now()
 			for _, sandbox := range sandboxes {
-				if time.Since(sandbox.StartTime) > oldSandboxThreshold {
+				if sandbox.StartTime.IsZero() {
+					continue
+				}
+				if now.Sub(sandbox.StartTime) > oldSandboxThreshold {
 					longRunningSandboxes = append(longRunningSandboxes, sandbox)
 				}
 			}
@@ -57,14 +61,14 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 		return
 	}
 
-	childCtx, cancel := context.WithTimeout(ctx, syncAnalyticsTime)
+	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
-	instanceIds := make([]string, len(instances))
-	executionIds := make([]string, len(instances))
-	for idx, i := range instances {
-		instanceIds[idx] = i.SandboxID
-		executionIds[idx] = i.ExecutionID
+	instanceIds := make([]string, 0, len(instances))
+	executionIds := make([]string, 0, len(instances))
+	for _, i := range instances {
+		instanceIds = append(instanceIds, i.SandboxID)
+		executionIds = append(executionIds, i.ExecutionID)
 	}
 
 	_, err := analytics.RunningInstances(childCtx,
