@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -27,13 +28,21 @@ var (
 	}
 
 	PluginConfig = &plugins.InternalPluginConfig{
-		Factory: func(l hclog.Logger) interface{} { return NewNodePoolPlugin(l) },
+		Factory: func(l hclog.Logger) any { return NewNodePoolPlugin(l) },
 	}
 
 	pluginInfo = &base.PluginInfo{
 		Name:       PluginName,
 		PluginType: PluginTypeAPM,
 	}
+
+	// filterValueEscaper escapes special characters for Nomad filter expressions.
+	// Nomad uses go-bexpr which requires escaping backslashes and double quotes
+	// within quoted string values.
+	filterValueEscaper = strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+	)
 )
 
 // NodePoolPlugin is the APM plugin implementation that queries
@@ -107,10 +116,11 @@ func (p *NodePoolPlugin) Query(query string, timeRange sdk.TimeRange) (sdk.Times
 
 	p.logger.Debug("querying node count for node pool", "node_pool", nodePool)
 
-	// List nodes filtered by node pool
-	// Using the filter expression to match nodes in the specified pool
+	// List nodes filtered by node pool.
+	// Escape special characters in the node pool name to prevent filter injection.
+	escapedNodePool := filterValueEscaper.Replace(nodePool)
 	nodes, _, err := p.client.Nodes().List(&api.QueryOptions{
-		Filter: fmt.Sprintf(`NodePool == "%s"`, nodePool),
+		Filter: fmt.Sprintf(`NodePool == "%s"`, escapedNodePool),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes in pool %q: %w", nodePool, err)

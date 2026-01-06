@@ -12,6 +12,6 @@ func main() {
 }
 
 // factory returns a new instance of the NodePoolPlugin.
-func factory(log hclog.Logger) interface{} {
+func factory(log hclog.Logger) any {
 	return nodepoolapm.NewNodePoolPlugin(log)
 }
