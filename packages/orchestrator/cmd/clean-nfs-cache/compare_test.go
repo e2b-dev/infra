@@ -88,7 +88,7 @@ func TestCompare(t *testing.T) {
 			fmt.Sprintf("--files-per-loop=%d", NFiles/10),
 			fmt.Sprintf("--deletions-per-loop=%d", NFiles/100),
 			path,
-		}, targetBytesToDelete)
+		}, targetBytesToDelete, 0)
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, allResults.deletedBytes, targetBytesToDelete)
 		printSummary(start, allResults.lastAccessed, uint64(allResults.deletedBytes))
