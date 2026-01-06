@@ -107,7 +107,7 @@ func (p *NodePoolPlugin) PluginInfo() (*base.PluginInfo, error) {
 
 // Query retrieves the node count for a given node pool.
 // The query parameter should be the name of the node pool (e.g., "build").
-func (p *NodePoolPlugin) Query(query string, timeRange sdk.TimeRange) (sdk.TimestampedMetrics, error) {
+func (p *NodePoolPlugin) Query(query string, _ sdk.TimeRange) (sdk.TimestampedMetrics, error) {
 	nodePool := query
 
 	if nodePool == "" {
