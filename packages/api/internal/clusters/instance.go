@@ -118,6 +118,14 @@ func (i *Instance) Sync(ctx context.Context) error {
 		// Increase fail count and set unhealthy status if needed
 		i.syncFailCount++
 		if i.syncFailCount >= maxSyncFailuresBeforeUnhealthy {
+			logger.L().Warn(ctx, "Instance sync failed multiple times, marking instance as unhealthy",
+				logger.WithNodeID(i.NodeID),
+				logger.WithClusterID(i.ClusterID),
+				logger.WithServiceInstanceID(i.serviceInstanceID),
+				zap.Int("counter", i.syncFailCount),
+				zap.Error(err),
+			)
+
 			i.status = infogrpc.ServiceInfoStatus_Unhealthy
 		}
 
