@@ -214,6 +214,7 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 
 func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	t.Parallel()
+
 	cachePath := t.TempDir()
 
 	c, err := cfg.Parse()
@@ -242,7 +243,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	store.Add(diff)
 
 	// Wait for removal trigger of diff
-	time.Sleep(delay / 2)
+	time.Sleep(delay)
 
 	// Verify still in cache
 	found := store.Has(diff)
