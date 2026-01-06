@@ -53,7 +53,7 @@ jobs:
           # Enable hugepages
           sudo mkdir -p /mnt/hugepages
           sudo mount -t hugetlbfs none /mnt/hugepages
-          echo 1050 | sudo tee /proc/sys/vm/nr_hugepages
+          echo 2000 | sudo tee /proc/sys/vm/nr_hugepages
 
           # Enable NBD
           sudo modprobe nbd nbds_max=256
