@@ -1,7 +1,7 @@
 job "template-manager" {
   type = "service"
   node_pool  = "${node_pool}"
-  priority = 70
+  priority = 75
 
   group "template-manager" {
     # Count is fetched from current Nomad state to preserve autoscaler-managed value
