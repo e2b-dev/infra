@@ -360,7 +360,9 @@ func (c *Cache) copyProcessMemory(
 	pid int,
 	rs []Range,
 ) error {
-  alignedRwCount := getAlignedMaxRwCount(c.blockSize)
+	// We need to align the maximum read/write count to the block size, so we can use mark the offsets as dirty correctly.
+	// Because the MAX_RW_COUNT is not aligned to arbitrary block sizes, we need to align it to the block size we use for the cache.
+	alignedRwCount := getAlignedMaxRwCount(c.blockSize)
 
 	// We need to split the ranges because the Kernel does not support reading/writing more than MAX_RW_COUNT bytes in a single operation.
 	ranges := splitOversizedRanges(rs, alignedRwCount)
@@ -437,10 +439,6 @@ func (c *Cache) copyProcessMemory(
 
 			if int64(n) != segmentSize {
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
-			}
-
-			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				c.dirty.Store(offset+blockOff, struct{}{})
 			}
 
 			offset += segmentSize
