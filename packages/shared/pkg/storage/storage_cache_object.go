@@ -106,10 +106,7 @@ func (c *CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e er
 			ctx, span := c.tracer.Start(ctx, "write data to cache")
 			defer span.End()
 
-			count, err := c.writeFileToCache(
-				context.WithoutCancel(ctx),
-				bytes.NewReader(p),
-			)
+			count, err := c.writeFileToCache(ctx, bytes.NewReader(p))
 			if err != nil {
 				recordError(span, err)
 				recordCacheWriteError(ctx, cacheTypeObject, cacheOpWrite, err)

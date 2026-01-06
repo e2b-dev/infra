@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"sync"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // ErrorCollector collects errors from multiple goroutines. This has a similar API to `errgroup.Group`,
@@ -11,7 +14,7 @@ type ErrorCollector struct {
 	done    chan struct{}
 	input   chan error
 	errs    []error
-	workers chan struct{}
+	workers *semaphore.Weighted
 	wg      sync.WaitGroup
 }
 
@@ -19,12 +22,11 @@ type ErrorCollector struct {
 func NewErrorCollector(maxConcurrency int) *ErrorCollector {
 	done := make(chan struct{})
 	input := make(chan error, 10)
-	workers := make(chan struct{}, maxConcurrency)
 
 	ec := &ErrorCollector{
 		done:    done,
 		input:   input,
-		workers: workers,
+		workers: semaphore.NewWeighted(int64(maxConcurrency)),
 	}
 
 	go ec.run()
@@ -40,11 +42,15 @@ func (ec *ErrorCollector) run() {
 	close(ec.done)
 }
 
-func (ec *ErrorCollector) Go(fn func() error) {
+func (ec *ErrorCollector) Go(ctx context.Context, fn func() error) {
 	ec.wg.Go(func() {
 		// limit concurrency
-		ec.workers <- struct{}{}
-		defer func() { <-ec.workers }()
+		if err := ec.workers.Acquire(ctx, 1); err != nil {
+			ec.input <- err
+
+			return
+		}
+		defer ec.workers.Release(1)
 
 		err := fn()
 		if err != nil {

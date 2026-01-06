@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
@@ -130,13 +129,4 @@ func ignoreEOF(err error) error {
 	}
 
 	return err
-}
-
-func recordError(span trace.Span, err error) {
-	if ignoreEOF(err) == nil {
-		return
-	}
-
-	span.RecordError(err)
-	span.SetStatus(codes.Error, err.Error())
 }

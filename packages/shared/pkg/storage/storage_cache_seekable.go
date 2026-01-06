@@ -380,7 +380,7 @@ func (c *CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Con
 
 	ec := utils.NewErrorCollector(maxConcurrency)
 	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
-		ec.Go(func() error {
+		ec.Go(ctx, func() error {
 			if err := c.writeChunkFromFile(ctx, offset, input); err != nil {
 				return fmt.Errorf("failed to write chunk file at offset %d: %w", offset, err)
 			}
