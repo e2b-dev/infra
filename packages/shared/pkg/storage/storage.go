@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
@@ -72,6 +74,10 @@ type WriterToCtx interface {
 	WriteTo(ctx context.Context, w io.Writer) (n int64, err error)
 }
 
+type WriteFromFileSystemCtx interface {
+	WriteFromFileSystem(ctx context.Context, path string) error
+}
+
 type ReaderAtCtx interface {
 	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
 }
@@ -79,7 +85,7 @@ type ReaderAtCtx interface {
 type ObjectProvider interface {
 	// write
 	WriterCtx
-	WriteFromFileSystem(ctx context.Context, path string) error
+	WriteFromFileSystemCtx
 
 	// read
 	WriterToCtx
@@ -90,7 +96,7 @@ type ObjectProvider interface {
 
 type SeekableObjectProvider interface {
 	// write
-	WriteFromFileSystem(ctx context.Context, path string) error
+	WriteFromFileSystemCtx
 
 	// read
 	ReaderAtCtx
@@ -141,4 +147,13 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
+}
+
+func recordError(span trace.Span, err error) {
+	if ignoreEOF(err) == nil {
+		return
+	}
+
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }

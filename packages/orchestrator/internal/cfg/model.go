@@ -13,6 +13,7 @@ import (
 
 type BuilderConfig struct {
 	AllowSandboxInternet   bool          `env:"ALLOW_SANDBOX_INTERNET"   envDefault:"true"`
+	DomainName             string        `env:"DOMAIN_NAME"              envDefault:""`
 	EnvdTimeout            time.Duration `env:"ENVD_TIMEOUT"             envDefault:"10s"`
 	FirecrackerVersionsDir string        `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`
 	HostEnvdPath           string        `env:"HOST_ENVD_PATH"           envDefault:"/fc-envd/envd"`
