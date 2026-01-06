@@ -15,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd/testutils"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -57,20 +58,25 @@ func main() {
 	// We use a separate ctx for majority of the operations as cancelling context for the NBD+storage and *then* doing cleanup for these often resulted in deadlocks.
 	nbdContext := context.Background()
 
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		log.Fatalf("failed to create feature flags client: %s", err)
+	}
+
 	if *empty {
-		err := runEmpty(ctx, nbdContext, *size, *blockSize)
+		err := runEmpty(ctx, nbdContext, featureFlags, *size, *blockSize)
 		if err != nil {
 			panic(fmt.Errorf("failed to create empty rootfs: %w", err))
 		}
 	} else {
-		err := run(ctx, nbdContext, *buildId, *mountPath, *verify)
+		err := run(ctx, nbdContext, featureFlags, *buildId, *mountPath, *verify)
 		if err != nil {
 			panic(fmt.Errorf("failed to mount rootfs: %w", err))
 		}
 	}
 }
 
-func runEmpty(ctx, nbdContext context.Context, size int64, blockSize int64) error {
+func runEmpty(ctx, nbdContext context.Context, featureFlags *featureflags.Client, size int64, blockSize int64) error {
 	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("rootfs.ext4.cow.cache-%s", uuid.New().String()))
 
 	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
@@ -95,7 +101,7 @@ func runEmpty(ctx, nbdContext context.Context, size int64, blockSize int64) erro
 	overlay := block.NewOverlay(emptyDevice, cache)
 	defer overlay.Close()
 
-	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, testutils.NewLoggerOverlay(overlay))
+	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, testutils.NewLoggerOverlay(overlay), featureFlags)
 	defer deviceCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to get nbd device: %w", err)
@@ -110,7 +116,7 @@ func runEmpty(ctx, nbdContext context.Context, size int64, blockSize int64) erro
 	return nil
 }
 
-func run(ctx, nbdContext context.Context, buildID, mountPath string, verify bool) error {
+func run(ctx, nbdContext context.Context, featureFlags *featureflags.Client, buildID, mountPath string, verify bool) error {
 	rootfs, rootfsCleanup, err := testutils.TemplateRootfs(ctx, buildID)
 	defer rootfsCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
@@ -136,7 +142,7 @@ func run(ctx, nbdContext context.Context, buildID, mountPath string, verify bool
 	overlay := block.NewOverlay(rootfs, cache)
 	defer overlay.Close()
 
-	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, overlay)
+	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, overlay, featureFlags)
 	defer deviceCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to get nbd device: %w", err)
