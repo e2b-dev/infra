@@ -38,8 +38,8 @@ job "template-manager" {
     # https://developer.hashicorp.com/nomad/docs/job-specification/update
     update {
       max_parallel      = 1
-      min_healthy_time  = "30s"
-      healthy_deadline  = "75m"
+      min_healthy_time  = "10s"
+      healthy_deadline  = "2m"
       progress_deadline = "80m"  # Must be > healthy_deadline and > kill_timeout
       auto_revert       = false
     }
