@@ -18,6 +18,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const (
+	// maxSyncFailuresBeforeUnhealthy defines the number of consecutive sync failures
+	// before an instance is marked as unhealthy.
+	maxSyncFailuresBeforeUnhealthy = 3
+)
+
 type Instance struct {
 	// Identifier that uniquely identifies the instance so it will not be registered multiple times.
 	// Depending on service discovery used, it can be combination of different parameters, what service discovery gives us.
@@ -36,6 +42,8 @@ type Instance struct {
 	roles          []infogrpc.ServiceInfoRole
 	isBuilder      bool
 	isOrchestrator bool
+
+	syncFailCount int
 
 	mutex sync.RWMutex
 }
@@ -104,11 +112,23 @@ func (i *Instance) Sync(ctx context.Context) error {
 	info, err := i.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
+		i.mutex.Lock()
+		defer i.mutex.Unlock()
+
+		// Increase fail count and set unhealthy status if needed
+		i.syncFailCount++
+		if i.syncFailCount >= maxSyncFailuresBeforeUnhealthy {
+			i.status = infogrpc.ServiceInfoStatus_Unhealthy
+		}
+
 		return err
 	}
 
 	i.mutex.Lock()
 	defer i.mutex.Unlock()
+
+	// Reset fail count on successful sync
+	i.syncFailCount = 0
 
 	i.status = info.GetServiceStatus()
 	i.roles = info.GetServiceRoles()
