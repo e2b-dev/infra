@@ -217,6 +217,7 @@ func (f *Factory) CreateSandbox(
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 			f.devicePool,
+			f.featureFlags,
 		)
 	} else {
 		rootfsProvider, err = rootfs.NewDirectProvider(
@@ -405,6 +406,7 @@ func (f *Factory) ResumeSandbox(
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 		f.devicePool,
+		f.featureFlags,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
