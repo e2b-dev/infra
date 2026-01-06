@@ -519,15 +519,29 @@ resource "nomad_job" "template_manager" {
   })
 }
 
+data "google_storage_bucket_object" "nomad_nodepool_apm" {
+  name   = "nomad-nodepool-apm"
+  bucket = var.fc_env_pipeline_bucket_name
+}
+
+data "external" "nomad_nodepool_apm_checksum" {
+  program = ["bash", "${path.module}/scripts/checksum.sh"]
+
+  query = {
+    base64 = data.google_storage_bucket_object.nomad_nodepool_apm.md5hash
+  }
+}
+
 # Nomad Autoscaler - required for template-manager dynamic scaling
 resource "nomad_job" "nomad_autoscaler" {
   count = var.template_manages_clusters_size_gt_1 ? 1 : 0
 
   jobspec = templatefile("${path.module}/jobs/nomad-autoscaler.hcl", {
-    node_pool          = var.api_node_pool
-    autoscaler_version = var.nomad_autoscaler_version
-    bucket_name        = var.fc_env_pipeline_bucket_name
-    nomad_token        = var.nomad_acl_token_secret
+    node_pool                   = var.api_node_pool
+    autoscaler_version          = var.nomad_autoscaler_version
+    bucket_name                 = var.fc_env_pipeline_bucket_name
+    nomad_token                 = var.nomad_acl_token_secret
+    nomad_nodepool_apm_checksum = data.external.nomad_nodepool_apm_checksum.result.hex
   })
 }
 

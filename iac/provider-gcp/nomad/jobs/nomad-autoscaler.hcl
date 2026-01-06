@@ -27,6 +27,9 @@ job "nomad-autoscaler" {
         source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/nomad-nodepool-apm"
         destination = "local/plugins/nomad-nodepool-apm"
         mode        = "file"
+        options {
+          checksum = "md5:${nomad_nodepool_apm_checksum}"
+        }
       }
 
       template {
