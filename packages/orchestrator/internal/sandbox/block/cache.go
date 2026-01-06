@@ -443,6 +443,10 @@ func (c *Cache) copyProcessMemory(
 
 			offset += segmentSize
 
+			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
+				c.dirty.Store(offset+blockOff, struct{}{})
+			}
+
 			break
 		}
 	}
