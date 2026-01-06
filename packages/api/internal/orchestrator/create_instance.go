@@ -112,8 +112,6 @@ func (o *Orchestrator) CreateSandbox(
 	if err != nil {
 		var limitErr *sandbox.LimitExceededError
 
-		telemetry.ReportError(ctx, "failed to reserve sandbox for team", err)
-
 		switch {
 		case errors.As(err, &limitErr):
 			return sandbox.Sandbox{}, &api.APIError{
