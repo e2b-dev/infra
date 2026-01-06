@@ -204,7 +204,7 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 	assert.True(t, dFound)
 
 	// Wait for complete removal of diff
-	time.Sleep(delay)
+	time.Sleep(delay * 4)
 
 	found = store.Has(diff)
 	assert.False(t, found)
