@@ -60,7 +60,7 @@ func main() {
 
 	featureFlags, err := featureflags.NewClient()
 	if err != nil {
-		log.Fatalf("failed to create feature flags client: %s", err)
+		panic(fmt.Errorf("failed to create feature flags client: %w", err))
 	}
 
 	if *empty {
