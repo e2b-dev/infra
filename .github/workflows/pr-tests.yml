@@ -8,7 +8,7 @@ permissions:
 jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
-    runs-on: ubuntu-24.04
+    runs-on: infra-tests
     strategy:
       matrix:
         include:
