@@ -14,8 +14,8 @@ const (
 
 // User errors
 var (
-	CanceledError = errors.New("build was cancelled")
-	TimeoutError  = errors.New("build timed out")
+	ErrCanceled = errors.New("build was cancelled")
+	ErrTimeout  = errors.New("build timed out")
 )
 
 // IsUserError returns true if the error is a user error (i.e., a PhaseBuildError).
@@ -38,12 +38,12 @@ func WrapCanceledAsUserError(err error) error {
 
 	// If it's a canceled context, wrap it as a user error
 	if errors.Is(err, context.Canceled) {
-		return phases.NewPhaseBuildError(phases.PhaseMeta{}, CanceledError)
+		return phases.NewPhaseBuildError(phases.PhaseMeta{}, ErrCanceled)
 	}
 
 	// If it's a timeout context, wrap it as a user error
 	if errors.Is(err, context.DeadlineExceeded) {
-		return phases.NewPhaseBuildError(phases.PhaseMeta{}, TimeoutError)
+		return phases.NewPhaseBuildError(phases.PhaseMeta{}, ErrTimeout)
 	}
 
 	return err

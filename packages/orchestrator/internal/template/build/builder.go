@@ -30,7 +30,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/user"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	buildcache "github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
@@ -145,11 +144,6 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		}
 	}()
 
-	// Wrap context.Canceled as a user error if no user error already exists
-	defer func() {
-		e = builderrors.WrapCanceledAsUserError(e)
-	}()
-
 	cacheScope := cfg.CacheScope
 
 	// Validate template, update force layers if needed
@@ -160,15 +154,22 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	l := logger.NewTracedLoggerFromCore(logsCore)
 	defer func(ctx context.Context) {
 		switch {
-		case errors.Is(ctx.Err(), context.Canceled):
-			l.Error(ctx, fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
 		case e != nil:
-			l.Error(ctx, fmt.Sprintf("Build failed: %v", builderrors.UnwrapUserError(e).Message))
+			l.Error(ctx, fmt.Sprintf("Build failed: %v", builderrors.UnwrapUserError(e).GetMessage()))
 		default:
 			l.Info(ctx, fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
 		}
 	}(ctx)
+
+	// Wrap context.Canceled as a user error if no user error already exists
+	defer func() {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			e = ctx.Err()
+		}
+
+		e = builderrors.WrapCanceledAsUserError(e)
+	}()
 
 	defer func() {
 		if r := recover(); r != nil {
