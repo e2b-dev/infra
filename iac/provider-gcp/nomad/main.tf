@@ -462,10 +462,35 @@ data "external" "template_manager" {
   }
 }
 
+# Get current template-manager count from Nomad to preserve autoscaler-managed value
+# This prevents Terraform from resetting count on job updates
+# Default depends on whether scaling is enabled (min=2) or not (min=1)
+data "external" "template_manager_count" {
+  program = ["bash", "-c", <<-EOF
+    eval "$(jq -r '@sh "ADDR=\(.nomad_addr) TOKEN=\(.nomad_token) MIN=\(.min_count)"')"
+    COUNT=$(curl -s -f -H "X-Nomad-Token: $TOKEN" \
+      "$ADDR/v1/job/template-manager" 2>/dev/null | \
+      jq -r '.TaskGroups[0].Count // empty' 2>/dev/null) || COUNT=""
+    # Ensure COUNT is a valid number >= MIN
+    if ! [[ "$COUNT" =~ ^[0-9]+$ ]] || [ "$COUNT" -lt "$MIN" ]; then
+      COUNT="$MIN"
+    fi
+    echo "{\"count\": \"$COUNT\"}"
+  EOF
+  ]
+
+  query = {
+    nomad_addr  = "https://nomad.${var.domain_name}"
+    nomad_token = var.nomad_acl_token_secret
+    min_count   = var.template_manages_clusters_size_gt_1 ? "2" : "1"
+  }
+}
+
 resource "nomad_job" "template_manager" {
   jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
     update_stanza = var.template_manages_clusters_size_gt_1
     node_pool     = var.builder_node_pool
+    current_count = tonumber(data.external.template_manager_count.result.count)
 
     gcp_project      = var.gcp_project_id
     gcp_region       = var.gcp_region
@@ -493,6 +518,19 @@ resource "nomad_job" "template_manager" {
     shared_chunk_cache_path = ""
   })
 }
+
+# Nomad Autoscaler - required for template-manager dynamic scaling
+resource "nomad_job" "nomad_autoscaler" {
+  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
+
+  jobspec = templatefile("${path.module}/jobs/nomad-autoscaler.hcl", {
+    node_pool          = var.api_node_pool
+    autoscaler_version = var.nomad_autoscaler_version
+    bucket_name        = var.fc_env_pipeline_bucket_name
+    nomad_token        = var.nomad_acl_token_secret
+  })
+}
+
 resource "nomad_job" "loki" {
   jobspec = templatefile("${path.module}/jobs/loki.hcl", {
     gcp_zone = var.gcp_zone
