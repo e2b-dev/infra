@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
+	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -498,19 +499,20 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 func flagsWithMaxBuildCachePercentage(tb testing.TB, maxBuildCachePercentage int) *featureflags.Client {
 	tb.Helper()
 
-	flags, err := featureflags.NewClient()
+	datastore := ldtestdata.DataSource()
+
+	datastore.Update(
+		datastore.Flag(featureflags.BuildCacheMaxUsagePercentage.String()).
+			ValueForAll(ldvalue.Int(maxBuildCachePercentage)),
+	)
+
+	flags, err := featureflags.NewClientWithDatasource(datastore)
 	require.NoError(tb, err)
 
 	tb.Cleanup(func() {
-		defer func() {
-			err := flags.Close(tb.Context())
-			assert.NoError(tb, err)
-		}()
+		err := flags.Close(tb.Context())
+		assert.NoError(tb, err)
 	})
-
-	featureflags.LaunchDarklyOfflineStore.Update(
-		featureflags.LaunchDarklyOfflineStore.Flag(featureflags.BuildCacheMaxUsagePercentage.String()).ValueForAll(ldvalue.Int(maxBuildCachePercentage)),
-	)
 
 	return flags
 }
