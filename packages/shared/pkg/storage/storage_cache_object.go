@@ -123,7 +123,7 @@ func (c *CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e er
 }
 
 func (c *CachedObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (e error) {
-	ctx, span := c.tracer.Start(ctx, "write from filesystem to object")
+	ctx, span := c.tracer.Start(ctx, "write from filesystem to object storage")
 	defer func() {
 		recordError(span, e)
 		span.End()
