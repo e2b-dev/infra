@@ -25,8 +25,10 @@ func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
 
 func TestCachedFileObjectProvider_Size(t *testing.T) {
 	t.Parallel()
+
 	t.Run("can be cached successfully", func(t *testing.T) {
 		t.Parallel()
+
 		const expectedSize int64 = 1024
 
 		inner := storagemocks.NewMockSeekableObjectProvider(t)
@@ -40,7 +42,7 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 		assert.Equal(t, expectedSize, size)
 
 		// sleep, cache writing is async
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 
 		// second call must come from cache
 		c.inner = nil
