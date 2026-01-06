@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,6 +35,7 @@ const (
 type Uffd struct {
 	exit       *utils.ErrorOnce
 	readyCh    chan struct{}
+	readyOnce  sync.Once
 	fdExit     *fdexit.FdExit
 	lis        *net.UnixListener
 	socketPath string
@@ -51,12 +53,21 @@ func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 
 	return &Uffd{
 		exit:       utils.NewErrorOnce(),
-		readyCh:    make(chan struct{}, 1),
+		readyCh:    make(chan struct{}),
 		fdExit:     fdExit,
 		socketPath: socketPath,
 		memfile:    memfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 	}, nil
+}
+
+func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) error {
+	handler, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	return handler.Prefault(ctx, offset, data)
 }
 
 func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
@@ -83,7 +94,8 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 
 		u.exit.SetError(errors.Join(handleErr, closeErr, fdExitErr))
 
-		close(u.readyCh)
+		// Close the ready channel to unblock any waiters (safe to call multiple times via Once)
+		u.readyOnce.Do(func() { close(u.readyCh) })
 	}()
 
 	return nil
@@ -158,7 +170,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		}
 	}()
 
-	u.readyCh <- struct{}{}
+	u.readyOnce.Do(func() { close(u.readyCh) })
 
 	err = uffd.Serve(
 		ctx,

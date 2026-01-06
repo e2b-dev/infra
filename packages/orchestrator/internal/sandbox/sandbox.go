@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/prefetch"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -451,19 +452,39 @@ func (f *Factory) ResumeSandbox(
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
-	ips := <-ipsCh
-	if ips.err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
-	}
-
-	telemetry.ReportEvent(ctx, "got network slot")
-
 	meta, err := t.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "got metadata")
+
+	// Start background prefetcher as early as possible if prefetch mapping exists
+	// Fetching from source starts immediately; copying waits for uffd to be ready
+	if meta.Prefetch != nil && meta.Prefetch.Memory != nil {
+		telemetry.ReportEvent(ctx, "starting prefetcher")
+		l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
+
+		go func() {
+			p := prefetch.New(
+				l,
+				memfile,
+				fcUffd,
+				meta.Prefetch.Memory,
+			)
+			err := p.Start(execCtx)
+			if err != nil {
+				l.Error(ctx, "failed to start prefetcher", zap.Error(err))
+			}
+		}()
+	}
+
+	ips := <-ipsCh
+	if ips.err != nil {
+		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
+	}
+
+	telemetry.ReportEvent(ctx, "got network slot")
 
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
@@ -809,6 +830,15 @@ func (s *Sandbox) Pause(
 
 		cleanup: cleanup,
 	}, nil
+}
+
+func (s *Sandbox) MemoryDiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
+	diffMetadata, err := s.Resources.memory.DiffMetadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get diff metadata: %w", err)
+	}
+
+	return diffMetadata, nil
 }
 
 func pauseProcessMemory(

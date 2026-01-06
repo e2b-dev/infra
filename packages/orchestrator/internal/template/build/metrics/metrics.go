@@ -18,6 +18,7 @@ const (
 	PhaseBase     Phase = "base"
 	PhaseSteps    Phase = "steps"
 	PhaseFinalize Phase = "finalize"
+	PhasePrefetch Phase = "prefetch"
 )
 
 // BuildResultType represents the type of build result

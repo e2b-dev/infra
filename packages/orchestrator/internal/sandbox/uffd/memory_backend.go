@@ -9,6 +9,7 @@ import (
 
 type MemoryBackend interface {
 	DiffMetadata(ctx context.Context) (*header.DiffMetadata, error)
+	Prefault(ctx context.Context, offset int64, data []byte) error
 	Start(ctx context.Context, sandboxId string) error
 	Stop() error
 	Ready() chan struct{}

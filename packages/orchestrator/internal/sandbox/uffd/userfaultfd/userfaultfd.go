@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"unsafe"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
@@ -17,6 +19,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd")
 
 const maxRequestsInProgress = 4096
 
@@ -219,6 +223,9 @@ func (u *Userfaultfd) handleMissing(
 	offset int64,
 ) error {
 	u.wg.Go(func() error {
+		ctx, span := tracer.Start(ctx, "uffd-page-fault")
+		defer span.End()
+
 		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 		// even if the errgroup is cancelled or the goroutine returns early.
 		// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
@@ -238,6 +245,7 @@ func (u *Userfaultfd) handleMissing(
 
 			joinedErr := errors.Join(sliceErr, signalErr)
 
+			span.RecordError(joinedErr)
 			u.logger.Error(ctx, "UFFD serve slice error", zap.Error(joinedErr))
 
 			return fmt.Errorf("failed to read from source: %w", joinedErr)
@@ -248,6 +256,7 @@ func (u *Userfaultfd) handleMissing(
 		copyErr := u.fd.copy(addr, pagesize, b, copyMode)
 		if errors.Is(copyErr, unix.EEXIST) {
 			// Page is already mapped
+			span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
 
 			return nil
 		}
@@ -257,6 +266,7 @@ func (u *Userfaultfd) handleMissing(
 
 			joinedErr := errors.Join(copyErr, signalErr)
 
+			span.RecordError(joinedErr)
 			u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
 
 			return fmt.Errorf("failed uffdio copy %w", joinedErr)
@@ -279,4 +289,57 @@ func (u *Userfaultfd) Dirty() *block.Tracker {
 	defer u.settleRequests.Unlock()
 
 	return u.missingRequests.Clone()
+}
+
+// Prefault proactively copies a page to guest memory at the given offset.
+// This is used to speed up sandbox starts by prefetching pages that are known to be needed.
+// Returns nil on success, or if the page is already mapped (EEXIST is handled gracefully).
+func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) error {
+	_, span := tracer.Start(ctx, "prefault page")
+	defer span.End()
+
+	// Acquire RLock to synchronize with Dirty() and ensure consistent tracker state.
+	u.settleRequests.RLock()
+	defer u.settleRequests.RUnlock()
+
+	// Get host virtual address and page size for this offset
+	addr, pagesize, err := u.ma.GetHostVirtAddr(offset)
+	if err != nil {
+		span.RecordError(err)
+
+		return fmt.Errorf("failed to get host virtual address: %w", err)
+	}
+
+	if len(data) < int(pagesize) {
+		err := fmt.Errorf("data length (%d) is less than pagesize (%d)", len(data), pagesize)
+		span.RecordError(err)
+
+		return err
+	}
+
+	// Copy the page to guest memory via uffd
+	var copyMode CULong
+	copyErr := u.fd.copy(addr, pagesize, data, copyMode)
+
+	// EEXIST means the page is already mapped, which is fine - another request
+	// or the normal page fault handler already mapped this page
+	if errors.Is(copyErr, unix.EEXIST) {
+		return nil
+	}
+
+	if copyErr != nil {
+		span.RecordError(copyErr)
+
+		return fmt.Errorf("failed uffdio copy: %w", copyErr)
+	}
+
+	// Add the offset to the missing requests tracker.
+	u.missingRequests.Add(offset)
+
+	return nil
+}
+
+// BlockSize returns the block size used by the source.
+func (u *Userfaultfd) BlockSize() int64 {
+	return u.src.BlockSize()
 }

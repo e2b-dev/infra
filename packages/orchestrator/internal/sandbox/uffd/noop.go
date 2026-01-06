@@ -32,6 +32,10 @@ func NewNoopMemory(
 	}
 }
 
+func (m *NoopMemory) Prefault(_ context.Context, _ int64, _ []byte) error {
+	return nil
+}
+
 func (m *NoopMemory) DiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
 	diffInfo, err := m.getDiffMetadata(ctx, m.blockSize)
 	if err != nil {
