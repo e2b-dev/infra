@@ -11,11 +11,11 @@ import (
 )
 
 // helper to create a FileSystemStorageProvider rooted in a temp directory.
-func newTempProvider(t *testing.T) *FileSystemStorageProvider {
+func newTempProvider(t *testing.T) *fsStore {
 	t.Helper()
 
 	base := t.TempDir()
-	p, err := NewFileSystemStorageProvider(base)
+	p, err := newFSStore(base)
 	require.NoError(t, err)
 
 	return p
@@ -58,7 +58,8 @@ func TestWriteFromFileSystem(t *testing.T) {
 
 	obj, err := p.OpenObject(ctx, "copy/dst.txt", UnknownObjectType)
 	require.NoError(t, err)
-	require.NoError(t, obj.WriteFromFileSystem(t.Context(), srcPath))
+	err = obj.CopyFromFileSystem(t.Context(), srcPath)
+	require.NoError(t, err)
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(t.Context(), &buf)
@@ -70,7 +71,7 @@ func TestDelete(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenObject(ctx, "to/delete.txt", 0)
+	obj, err := p.OpenObject(ctx, "to/delete.txt", UnknownObjectType)
 	require.NoError(t, err)
 
 	_, err = obj.Write(t.Context(), []byte("bye"))

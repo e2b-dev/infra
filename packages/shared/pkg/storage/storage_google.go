@@ -50,42 +50,60 @@ var (
 	))
 )
 
-type GCPBucketStorageProvider struct {
+type gcpBucketStore struct {
 	client *storage.Client
 	bucket *storage.BucketHandle
 
 	limiter *limit.Limiter
 }
 
-var _ StorageProvider = (*GCPBucketStorageProvider)(nil)
+var _ StorageProvider = (*gcpBucketStore)(nil)
 
-type GCPBucketStorageObjectProvider struct {
-	storage *GCPBucketStorageProvider
+type gcpObj struct {
+	store   *gcpBucketStore
 	path    string
 	handle  *storage.ObjectHandle
-
 	limiter *limit.Limiter
 }
 
+type gcpObject struct {
+	gcpObj
+}
+
+type gcpFramedWriter struct {
+	gcpObj
+
+	opts *CompressionOptions
+}
+
+type gcpFramedReader struct {
+	gcpObj
+}
+
 var (
-	_ SeekableObjectProvider = (*GCPBucketStorageObjectProvider)(nil)
-	_ ObjectProvider         = (*GCPBucketStorageObjectProvider)(nil)
+	_ ObjectProvider = (*gcpObject)(nil)
+	_ FramedWriter   = (*gcpFramedWriter)(nil)
+	_ FramedReader   = (*gcpFramedReader)(nil)
 )
 
-func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
+func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
+	return newGCPBucketStore(ctx, bucketName, limiter)
+}
+
+func newGCPBucketStore(ctx context.Context, bucketName string, limiter *limit.Limiter) (*gcpBucketStore, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
 
-	return &GCPBucketStorageProvider{
+	return &gcpBucketStore{
 		client:  client,
 		bucket:  client.Bucket(bucketName),
 		limiter: limiter,
 	}, nil
 }
 
-func (g *GCPBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+func (g *gcpBucketStore) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
 	objects := g.bucket.Objects(ctx, &storage.Query{Prefix: prefix + "/"})
 
 	for {
@@ -107,11 +125,11 @@ func (g *GCPBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 	return nil
 }
 
-func (g *GCPBucketStorageProvider) GetDetails() string {
+func (g *gcpBucketStore) GetDetails() string {
 	return fmt.Sprintf("[GCP Storage, bucket set to %s]", g.bucket.BucketName())
 }
 
-func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
+func (g *gcpBucketStore) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
 	token, err := parseServiceAccountBase64(consts.GoogleServiceAccountSecret)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse GCP service account: %w", err)
@@ -132,8 +150,8 @@ func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path strin
 	return url, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
-	handle := g.bucket.Object(path).Retryer(
+func (g *gcpBucketStore) handle(path string) *storage.ObjectHandle {
+	return g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
 		storage.WithBackoff(
@@ -144,39 +162,43 @@ func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path st
 			},
 		),
 	)
+}
 
-	return &GCPBucketStorageObjectProvider{
-		storage: g,
-		path:    path,
-		handle:  handle,
-
-		limiter: g.limiter,
+func (g *gcpBucketStore) OpenFramedWriter(_ context.Context, path string, opts *CompressionOptions) (FramedWriter, error) {
+	return &gcpFramedWriter{
+		gcpObj: gcpObj{
+			store:   g,
+			path:    path,
+			handle:  g.handle(path),
+			limiter: g.limiter,
+		},
+		opts: opts,
 	}, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
-	handle := g.bucket.Object(path).Retryer(
-		storage.WithMaxAttempts(googleMaxAttempts),
-		storage.WithPolicy(storage.RetryAlways),
-		storage.WithBackoff(
-			gax.Backoff{
-				Initial:    googleInitialBackoff,
-				Max:        googleMaxBackoff,
-				Multiplier: googleBackoffMultiplier,
-			},
-		),
-	)
-
-	return &GCPBucketStorageObjectProvider{
-		storage: g,
-		path:    path,
-		handle:  handle,
-
-		limiter: g.limiter,
+func (g *gcpBucketStore) OpenFramedReader(_ context.Context, path string) (FramedReader, error) {
+	return &gcpFramedReader{
+		gcpObj: gcpObj{
+			store:   g,
+			path:    path,
+			handle:  g.handle(path),
+			limiter: g.limiter,
+		},
 	}, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
+func (g *gcpBucketStore) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
+	return &gcpObject{
+		gcpObj: gcpObj{
+			store:   g,
+			path:    path,
+			handle:  g.handle(path),
+			limiter: g.limiter,
+		},
+	}, nil
+}
+
+func (g *gcpObject) Delete(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -187,13 +209,17 @@ func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
 	return nil
 }
 
-func (g *GCPBucketStorageObjectProvider) Exists(ctx context.Context) (bool, error) {
+func (g *gcpObject) Exists(ctx context.Context) (bool, error) {
 	_, err := g.Size(ctx)
 
 	return err == nil, ignoreNotExists(err)
 }
 
-func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+func (g *gcpObject) Size(ctx context.Context) (int64, error) {
+	return g.size(ctx)
+}
+
+func (g *gcpObj) size(ctx context.Context) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -210,7 +236,7 @@ func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 	return attrs.Size, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+func (g *gcpObj) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	timer := googleReadTimerFactory.Begin()
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
@@ -244,7 +270,7 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (n int, e error) {
+func (g *gcpObj) Write(ctx context.Context, data []byte) (n int, e error) {
 	timer := googleWriteTimerFactory.Begin()
 	defer func() {
 		if e == nil {
@@ -267,7 +293,7 @@ func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte)
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+func (g *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	timer := googleReadTimerFactory.Begin()
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
@@ -295,10 +321,10 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+func (g *gcpObj) CopyFromFileSystem(ctx context.Context, path string) error {
 	timer := googleWriteTimerFactory.Begin()
 
-	bucketName := g.storage.bucket.BucketName()
+	bucketName := g.store.bucket.BucketName()
 	objectName := g.path
 	filePath := path
 
@@ -309,7 +335,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
-	if fileInfo.Size() < gcpMultipartUploadChunkSize {
+	if fileInfo.Size() < gcpMultipartUploadPartSize {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("failed to read file: %w", err)
@@ -338,7 +364,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		maxConcurrency = g.limiter.GCloudMaxTasks(ctx)
 	}
 
-	uploader, err := NewMultipartUploaderWithRetryConfig(
+	uploader, err := newGCPUploaderWithRetryConfig(
 		ctx,
 		bucketName,
 		objectName,
@@ -349,7 +375,8 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	}
 
 	start := time.Now()
-	if err := uploader.UploadFileInParallel(ctx, filePath, maxConcurrency); err != nil {
+	err = MultipartUploadFile(ctx, filePath, uploader, maxConcurrency)
+	if err != nil {
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
@@ -365,6 +392,62 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	timer.End(ctx, fileInfo.Size(), attribute.String("method", "multipart"))
 
 	return nil
+}
+
+func (g *gcpFramedWriter) StoreFromFileSystem(ctx context.Context, path string) (*FrameTable, error) {
+	if g.opts == nil || g.opts.CompressionType == CompressionNone {
+		return nil, g.gcpObj.CopyFromFileSystem(ctx, path)
+	}
+
+	timer := googleWriteTimerFactory.Begin()
+
+	bucketName := g.store.bucket.BucketName()
+	objectName := g.path
+	filePath := path
+
+	maxConcurrency := gcloudDefaultUploadConcurrency
+	if g.limiter != nil {
+		uploadLimiter := g.limiter.GCloudUploadLimiter()
+		if uploadLimiter != nil {
+			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
+			if semaphoreErr != nil {
+				return nil, fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+			}
+			defer uploadLimiter.Release(1)
+		}
+
+		maxConcurrency = g.limiter.GCloudMaxTasks(ctx)
+	}
+
+	uploader, err := newGCPUploaderWithRetryConfig(
+		ctx,
+		bucketName,
+		objectName,
+		DefaultRetryConfig(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create multipart uploader: %w", err)
+	}
+
+	start := time.Now()
+	info, err := UploadFileFramed(ctx, filePath, uploader, maxConcurrency, g.opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload file in parallel: %w", err)
+	}
+
+	logger.L().Debug(ctx, "Uploaded file in parallel",
+		zap.String("bucket", bucketName),
+		zap.String("object", objectName),
+		zap.String("path", filePath),
+		zap.Int("max_concurrency", maxConcurrency),
+		zap.Int64("compressed_size", info.TotalCompressedSize()),
+		zap.Int64("original_size", info.TotalUncompressedSize()),
+		zap.Int64("duration", time.Since(start).Milliseconds()),
+	)
+
+	timer.End(ctx, info.TotalUncompressedSize(), attribute.String("method", "multipart"))
+
+	return info, nil
 }
 
 type gcpServiceToken struct {
@@ -384,4 +467,52 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	}
 
 	return &sa, nil
+}
+
+func (g *gcpFramedReader) RangeGet(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
+	return g.handle.NewRangeReader(ctx, offset, length)
+}
+
+func (g *gcpFramedReader) Size(ctx context.Context) (int64, error) {
+	// TODO implement getting size from compressed - ???
+	// treat as uncompressed?
+	return g.gcpObj.size(ctx)
+}
+
+func (g *gcpFramedReader) ReadFrames(ctx context.Context, offset int64, length int, fTable *FrameTable) (framesStartAt int64, frameData [][]byte, err error) {
+	// fmt.Printf("<>/<> READFRAMES GOOGLE offset %d, length %d\n", offset, length) // DEBUG --- IGNORE ---
+	// if fTable == nil {
+	// 	fmt.Printf("<>/<> READFRAMES GOOGLE fTable is nil\n") // DEBUG --- IGNORE ---
+	// } else {
+	// 	fmt.Printf("<>/<> READFRAMES GOOGLE fTable StartAt %d, CompressionType %s\n", fTable.StartAt.U, fTable.CompressionType.String()) // DEBUG --- IGNORE ---
+	// }
+
+	if fTable == nil || fTable.CompressionType == CompressionNone {
+		buf := make([]byte, length)
+		n, err := g.gcpObj.ReadAt(ctx, buf, offset)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return 0, nil, fmt.Errorf("failed to read uncompressed data at offset %d: %w", offset, err)
+		}
+
+		return offset, [][]byte{buf[:n]}, nil
+
+	}
+	if offset < fTable.StartAt.U {
+		return 0, nil, fmt.Errorf("offset %d is before start of available framed data %d", offset, fTable.StartAt.U)
+	}
+
+	timer := googleReadTimerFactory.Begin()
+
+	framesStart, frameData, err := DownloadFrames(ctx, g, offset, length, fTable)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	totalSize := int64(0)
+	for _, frame := range frameData {
+		totalSize += int64(len(frame))
+	}
+	timer.End(ctx, totalSize, attribute.String("method", "frame"))
+
+	return framesStart, frameData, nil
 }

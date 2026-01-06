@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const metadataVersion = 3
+const metadataVersion = 4
 
 type Metadata struct {
 	Version    uint64
@@ -23,6 +23,24 @@ type Metadata struct {
 	BuildId    uuid.UUID
 	// TODO: Use the base build id when setting up the snapshot rootfs
 	BaseBuildId uuid.UUID
+}
+
+type v3SerializableBuildMap struct {
+	Offset             uint64
+	Length             uint64
+	BuildId            uuid.UUID
+	BuildStorageOffset uint64
+}
+type v4SerializableBuildMap struct {
+	Offset                   uint64
+	Length                   uint64
+	BuildId                  uuid.UUID
+	BuildStorageOffset       uint64
+	CompressionTypeNumFrames uint64 // CompressionType is stored as uint8 in the high byte, the low 24 bits are NumFrames
+
+	// if CompressionType != CompressionNone and there are frames
+	// - followed by frames offset (16 bytes)
+	// - followed by frames... (16 bytes * NumFrames)
 }
 
 func NewTemplateMetadata(buildId uuid.UUID, blockSize, size uint64) *Metadata {
@@ -38,7 +56,7 @@ func NewTemplateMetadata(buildId uuid.UUID, blockSize, size uint64) *Metadata {
 
 func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
 	return &Metadata{
-		Version:     m.Version,
+		Version:     metadataVersion,
 		Generation:  m.Generation + 1,
 		BlockSize:   m.BlockSize,
 		Size:        m.Size,
@@ -50,15 +68,70 @@ func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
 func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	var buf bytes.Buffer
 
+	fmt.Printf("<>/<> Serializing header %+v\n", metadata) // DEBUG --- IGNORE ---
+	fmt.Printf("<>/<>   for build %s, version %d, %d mappings\n",
+		metadata.BuildId.String(),
+		metadata.Version,
+		len(mappings),
+	) // DEBUG --- IGNORE ---
+
 	err := binary.Write(&buf, binary.LittleEndian, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
 	}
 
+	var v any
 	for _, mapping := range mappings {
-		err := binary.Write(&buf, binary.LittleEndian, mapping)
+		var offset *storage.Offset
+		var frames []storage.Frame
+		if metadata.Version <= 3 {
+			v = &v3SerializableBuildMap{
+				Offset:             mapping.Offset,
+				Length:             mapping.Length,
+				BuildId:            mapping.BuildId,
+				BuildStorageOffset: mapping.BuildStorageOffset,
+			}
+		} else {
+			if mapping.FrameTable != nil {
+				fmt.Printf("<>/<> Serializing V4 mapping for build %q, %d many frames\n",
+					mapping.BuildId.String(),
+					len(mapping.FrameTable.Frames),
+				) // DEBUG --- IGNORE ---
+			} else {
+				fmt.Printf("<>/<> Serializing V4 mapping for build %q, no frames\n",
+					mapping.BuildId.String(),
+				) // DEBUG --- IGNORE ---
+			}
+
+			v4 := &v4SerializableBuildMap{
+				Offset:             mapping.Offset,
+				Length:             mapping.Length,
+				BuildId:            mapping.BuildId,
+				BuildStorageOffset: mapping.BuildStorageOffset,
+			}
+			if mapping.FrameTable != nil {
+				v4.CompressionTypeNumFrames = uint64(mapping.FrameTable.CompressionType)<<24 | uint64(len(mapping.FrameTable.Frames))
+				offset = &mapping.FrameTable.StartAt
+				frames = mapping.FrameTable.Frames
+			}
+			v = v4
+		}
+
+		err := binary.Write(&buf, binary.LittleEndian, v)
 		if err != nil {
 			return nil, fmt.Errorf("failed to write block mapping: %w", err)
+		}
+		if offset != nil {
+			err := binary.Write(&buf, binary.LittleEndian, offset)
+			if err != nil {
+				return nil, fmt.Errorf("failed to write compression frames starting offset: %w", err)
+			}
+		}
+		for _, frame := range frames {
+			err := binary.Write(&buf, binary.LittleEndian, frame)
+			if err != nil {
+				return nil, fmt.Errorf("failed to write compression frame: %w", err)
+			}
 		}
 	}
 
@@ -82,17 +155,53 @@ func Deserialize(ctx context.Context, in storage.WriterToCtx) (*Header, error) {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
 
+	fmt.Printf(("<>/<> Deserializing header %+v\n"), &metadata) // DEBUG --- IGNORE ---
+
 	mappings := make([]*BuildMap, 0)
 
+MAPPINGS:
 	for {
 		var m BuildMap
-		err := binary.Read(reader, binary.LittleEndian, &m)
-		if errors.Is(err, io.EOF) {
-			break
-		}
 
-		if err != nil {
-			return nil, fmt.Errorf("failed to read block mapping: %w", err)
+		switch metadata.Version {
+		case 0, 1, 2, 3:
+			var v3 v3SerializableBuildMap
+			err = binary.Read(reader, binary.LittleEndian, &v3)
+			if errors.Is(err, io.EOF) {
+				break MAPPINGS
+			}
+
+			m.Offset = v3.Offset
+			m.Length = v3.Length
+			m.BuildId = v3.BuildId
+			m.BuildStorageOffset = v3.BuildStorageOffset
+
+		case 4:
+			var v4 v4SerializableBuildMap
+			err = binary.Read(reader, binary.LittleEndian, &v4)
+			if errors.Is(err, io.EOF) {
+				break MAPPINGS
+			}
+
+			m.Offset = v4.Offset
+			m.Length = v4.Length
+			m.BuildId = v4.BuildId
+			m.BuildStorageOffset = v4.BuildStorageOffset
+			if v4.CompressionTypeNumFrames != 0 {
+				m.FrameTable = &storage.FrameTable{
+					CompressionType: storage.CompressionType((v4.CompressionTypeNumFrames >> 24) & 0xFF),
+				}
+				numFrames := v4.CompressionTypeNumFrames & 0xFFFFFF
+
+				for range numFrames {
+					var frame storage.Frame
+					err = binary.Read(reader, binary.LittleEndian, &frame)
+					if err != nil {
+						return nil, fmt.Errorf("failed to read the expected compression frame: %w", err)
+					}
+					m.FrameTable.Frames = append(m.FrameTable.Frames, frame)
+				}
+			}
 		}
 
 		mappings = append(mappings, &m)

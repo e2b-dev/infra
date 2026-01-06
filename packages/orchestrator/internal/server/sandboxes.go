@@ -46,6 +46,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
 
+	fmt.Printf("<>/<> !!! CREATE\n")
+
 	// set up tracing
 	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
@@ -436,6 +438,8 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.GetSandboxId(), err)
 	}
+
+	fmt.Printf("<>/<> !!!!!!!!!!!!!!!!!!!!!!!!! Paused!\n")
 
 	err = s.templateCache.AddSnapshot(
 		ctx,

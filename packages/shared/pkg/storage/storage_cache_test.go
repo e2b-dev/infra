@@ -12,12 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-
-	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
 )
 
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
-	c := CachedSeekableObjectProvider{path: "/a/b/c", chunkSize: 1024}
+	c := cachedFramedReaderWriter{path: "/a/b/c", chunkSize: 1024}
 	filename := c.makeChunkFilename(1024 * 4)
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
 }
@@ -26,10 +24,10 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 	t.Run("can be cached successfully", func(t *testing.T) {
 		const expectedSize int64 = 1024
 
-		inner := storagemocks.NewMockSeekableObjectProvider(t)
+		inner := NewMockFramedReader(t)
 		inner.EXPECT().Size(mock.Anything).Return(expectedSize, nil)
 
-		c := CachedSeekableObjectProvider{path: t.TempDir(), inner: inner}
+		c := cachedFramedReaderWriter{path: t.TempDir(), r: inner}
 
 		// first call will write to cache
 		size, err := c.Size(t.Context())
@@ -40,7 +38,7 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 
 		// second call must come from cache
-		c.inner = nil
+		c.r = nil
 
 		size, err = c.Size(t.Context())
 		require.NoError(t, err)
@@ -53,7 +51,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		tempDir := t.TempDir()
 
 		tempPath := filepath.Join(tempDir, "a", "b", "c")
-		c := CachedSeekableObjectProvider{path: tempPath, chunkSize: 3}
+		c := cachedFramedReaderWriter{path: tempPath, chunkSize: 3}
 
 		// create cache file
 		cacheFilename := c.makeChunkFilename(0)
@@ -63,58 +61,55 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		err = os.WriteFile(cacheFilename, []byte{1, 2, 3}, 0o600)
 		require.NoError(t, err)
 
-		buffer := make([]byte, 3)
-		read, err := c.ReadAt(t.Context(), buffer, 0)
+		start, frames, err := c.ReadFrames(t.Context(), 0, 3, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{1, 2, 3}, buffer)
-		assert.Equal(t, 3, read)
+		require.Len(t, frames, 1)
+		require.Equal(t, int64(0), start)
+		assert.Equal(t, []byte{1, 2, 3}, frames[0])
 	})
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		fakeStorageObjectProvider := storagemocks.NewMockSeekableObjectProvider(t)
+		fakeStorageObjectProvider := NewMockFramedReader(t)
 
 		fakeStorageObjectProvider.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, buff []byte, off int64) (int, error) {
+			ReadFrames(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			RunAndReturn(func(_ context.Context, off int64, n int, _ *FrameTable) (int64, [][]byte, error) {
 				start := off
-				end := off + int64(len(buff))
+				end := off + int64(n)
 				end = min(end, int64(len(fakeData)))
-				copy(buff, fakeData[start:end])
 
-				return int(end - start), nil
+				return off, [][]byte{fakeData[start:end]}, nil
 			})
 
 		tempDir := t.TempDir()
-		c := CachedSeekableObjectProvider{
+		c := cachedFramedReaderWriter{
 			path:      tempDir,
 			chunkSize: 3,
-			inner:     fakeStorageObjectProvider,
+			r:         fakeStorageObjectProvider,
 		}
 
 		// first read goes to source
-		buffer := make([]byte, 3)
-		read, err := c.ReadAt(t.Context(), buffer, 3)
+		start, frames, err := c.ReadFrames(t.Context(), 3, 3, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{4, 5, 6}, buffer)
-		assert.Equal(t, 3, read)
+		assert.Equal(t, int64(3), start)
+		assert.Equal(t, []byte{4, 5, 6}, frames[0])
 
 		// we write asynchronously, so let's wait until we're done
 		time.Sleep(time.Millisecond * 20)
 
 		// second read pulls from cache
-		c.inner = nil // prevent remote reads, force cache read
-		buffer = make([]byte, 3)
-		read, err = c.ReadAt(t.Context(), buffer, 3)
+		c.r = nil // prevent remote reads, force cache read
+		start, frames, err = c.ReadFrames(t.Context(), 3, 3, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{4, 5, 6}, buffer)
-		assert.Equal(t, 3, read)
+		assert.Equal(t, int64(3), start)
+		assert.Equal(t, []byte{4, 5, 6}, frames[0])
 	})
 
 	t.Run("WriteTo calls should read from cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3}
 
-		fakeStorageObjectProvider := storagemocks.NewMockObjectProvider(t)
+		fakeStorageObjectProvider := NewMockObjectProvider(t)
 		fakeStorageObjectProvider.EXPECT().
 			WriteTo(mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
@@ -124,7 +119,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			})
 
 		tempDir := t.TempDir()
-		c := CachedObjectProvider{
+		c := cachedObject{
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
@@ -184,7 +179,7 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
-			c := CachedSeekableObjectProvider{
+			c := cachedFramedReaderWriter{
 				chunkSize: tc.chunkSize,
 			}
 			err := c.validateReadAtParams(tc.bufferSize, tc.offset)

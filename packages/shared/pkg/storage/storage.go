@@ -60,7 +60,8 @@ type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
 	OpenObject(ctx context.Context, path string, objectType ObjectType) (ObjectProvider, error)
-	OpenSeekableObject(ctx context.Context, path string, seekableObjectType SeekableObjectType) (SeekableObjectProvider, error)
+	OpenFramedWriter(ctx context.Context, path string, opts *CompressionOptions) (FramedWriter, error)
+	OpenFramedReader(ctx context.Context, path string) (FramedReader, error)
 	GetDetails() string
 }
 
@@ -79,7 +80,7 @@ type ReaderAtCtx interface {
 type ObjectProvider interface {
 	// write
 	WriterCtx
-	WriteFromFileSystem(ctx context.Context, path string) error
+	CopyFromFileSystem(ctx context.Context, path string) error
 
 	// read
 	WriterToCtx
@@ -88,12 +89,16 @@ type ObjectProvider interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-type SeekableObjectProvider interface {
-	// write
-	WriteFromFileSystem(ctx context.Context, path string) error
+type FramedWriter interface {
+	StoreFromFileSystem(ctx context.Context, path string) (*FrameTable, error)
+}
 
-	// read
-	ReaderAtCtx
+type FramedReader interface {
+	// ReadFrames reads all relevant frames for a given target byte range. If
+	// the file is uncompressed, it does a range request. If the file is
+	// compressed, it uses compressedInfo to fetch the relevant frames, and
+	// returns them decompressed, as a slice.
+	ReadFrames(ctx context.Context, off int64, n int, ft *FrameTable) (framesStartAt int64, frameData [][]byte, err error)
 
 	// utility
 	Size(ctx context.Context) (int64, error)
@@ -105,7 +110,7 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
 
-		return NewFileSystemStorageProvider(basePath)
+		return newFSStore(basePath)
 	}
 
 	bucketName := utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
@@ -113,9 +118,9 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 	// cloud bucket-based storage
 	switch provider {
 	case AWSStorageProvider:
-		return NewAWSBucketStorageProvider(ctx, bucketName)
+		return newAWSBucketStore(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPBucketStorageProvider(ctx, bucketName, limiter)
+		return newGCPBucketStore(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
@@ -127,7 +132,7 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
 
-		return NewFileSystemStorageProvider(basePath)
+		return newFSStore(basePath)
 	}
 
 	bucketName := utils.RequiredEnv("BUILD_CACHE_BUCKET_NAME", "Bucket for storing template files")
@@ -135,9 +140,9 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	// cloud bucket-based storage
 	switch provider {
 	case AWSStorageProvider:
-		return NewAWSBucketStorageProvider(ctx, bucketName)
+		return newAWSBucketStore(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPBucketStorageProvider(ctx, bucketName, limiter)
+		return newGCPBucketStore(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)

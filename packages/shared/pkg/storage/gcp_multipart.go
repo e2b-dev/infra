@@ -25,8 +25,14 @@ import (
 )
 
 const (
-	gcpMultipartUploadChunkSize = 50 * 1024 * 1024 // 50MB chunks
+	gcpMultipartUploadPartSize = 50 * 1024 * 1024 // 50Mb parts
 )
+
+type MultipartUploader interface {
+	InitiateUpload(ctx context.Context) (id string, err error)
+	UploadPart(ctx context.Context, id string, partNumber int, data ...[]byte) error
+	CompleteUpload(ctx context.Context, id string) error
+}
 
 // RetryConfig holds the configuration for retry logic
 type RetryConfig struct {
@@ -127,16 +133,19 @@ type Part struct {
 	ETag       string `xml:"ETag"`
 }
 
-type MultipartUploader struct {
+type multipartUploaderGCP struct {
 	bucketName  string
 	objectName  string
 	token       string
 	client      *retryablehttp.Client
 	retryConfig RetryConfig
 	baseURL     string // Allow overriding for testing
+	etags       *sync.Map
 }
 
-func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig) (*MultipartUploader, error) {
+var _ MultipartUploader = (*multipartUploaderGCP)(nil)
+
+func newGCPUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig) (*multipartUploaderGCP, error) {
 	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials: %w", err)
@@ -147,7 +156,8 @@ func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, object
 		return nil, fmt.Errorf("failed to get token: %w", err)
 	}
 
-	return &MultipartUploader{
+	return &multipartUploaderGCP{
+		etags:       &sync.Map{},
 		bucketName:  bucketName,
 		objectName:  objectName,
 		token:       token.AccessToken,
@@ -157,7 +167,7 @@ func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, object
 	}, nil
 }
 
-func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) {
+func (m *multipartUploaderGCP) InitiateUpload(ctx context.Context) (string, error) {
 	url := fmt.Sprintf("%s/%s?uploads", m.baseURL, m.objectName)
 
 	req, err := retryablehttp.NewRequestWithContext(ctx, "POST", url, nil)
@@ -189,45 +199,75 @@ func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) 
 	return result.UploadID, nil
 }
 
-func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, partNumber int, data []byte) (string, error) {
+func (m *multipartUploaderGCP) UploadPart(ctx context.Context, uploadID string, partNumber int, dataList ...[]byte) error {
 	// Calculate MD5 for data integrity
 	hasher := md5.New()
-	hasher.Write(data)
+	l := 0
+	for _, data := range dataList {
+		_, _ = hasher.Write(data)
+		l += len(data)
+	}
 	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
-	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, bytes.NewReader(data))
+	var r io.Reader
+	if len(dataList) == 1 {
+		r = bytes.NewReader(dataList[0])
+	} else {
+		r = newMultiReader(dataList)
+	}
+	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, r)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
+	req.Header.Set("Content-Length", fmt.Sprintf("%d", l))
 	req.Header.Set("Content-MD5", md5Sum)
 
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 
-		return "", fmt.Errorf("failed to upload part %d (status %d): %s", partNumber, resp.StatusCode, string(body))
+		return fmt.Errorf("failed to upload part %d (status %d): %s", partNumber, resp.StatusCode, string(body))
 	}
 
 	etag := resp.Header.Get("ETag")
 	if etag == "" {
-		return "", fmt.Errorf("no ETag returned for part %d", partNumber)
+		return fmt.Errorf("no ETag returned for part %d", partNumber)
 	}
+	m.etags.Store(partNumber, etag)
 
-	return etag, nil
+	return nil
 }
 
-func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string, parts []Part) error {
+func (m *multipartUploaderGCP) CompleteUpload(ctx context.Context, uploadID string) error {
+	// Collect parts
+	parts := make([]Part, 0)
+	m.etags.Range(func(key, value any) bool {
+		partNumber, ok := key.(int)
+		if !ok {
+			return false
+		}
+		etag, ok := value.(string)
+		if !ok {
+			return false
+		}
+		parts = append(parts, Part{
+			PartNumber: partNumber,
+			ETag:       etag,
+		})
+
+		return true
+	})
+
 	// Sort parts by part number
 	sort.Slice(parts, func(i, j int) bool {
 		return parts[i].PartNumber < parts[j].PartNumber
@@ -266,7 +306,8 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) error {
+// TODO deprecate and replace with framed uploader, 1 frame, no compression
+func MultipartUploadFile(ctx context.Context, filePath string, u MultipartUploader, maxConcurrency int) error {
 	// Open file
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -282,36 +323,30 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	fileSize := fileInfo.Size()
 
 	// Calculate number of parts
-	numParts := int(math.Ceil(float64(fileSize) / float64(gcpMultipartUploadChunkSize)))
+	numParts := int(math.Ceil(float64(fileSize) / float64(gcpMultipartUploadPartSize)))
 	if numParts == 0 {
 		numParts = 1 // Always upload at least 1 part, even for empty files
 	}
 
 	// Initiate multipart upload
-	uploadID, err := m.initiateUpload(ctx)
+	uploadID, err := u.InitiateUpload(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
-	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
-	if err != nil {
+	if err = uploadParts(ctx, u, maxConcurrency, numParts, fileSize, file, uploadID); err != nil {
 		return err
 	}
-
-	if err := m.completeUpload(ctx, uploadID, parts); err != nil {
+	if err := u.CompleteUpload(ctx, uploadID); err != nil {
 		return fmt.Errorf("failed to complete upload: %w", err)
 	}
 
 	return nil
 }
 
-func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int, numParts int, fileSize int64, file *os.File, uploadID string) ([]Part, error) {
+func uploadParts(ctx context.Context, u MultipartUploader, maxConcurrency int, numParts int, fileSize int64, file *os.File, uploadID string) error {
 	g, ctx := errgroup.WithContext(ctx) // Context ONLY for waitgroup goroutines; canceled after errgroup finishes
 	g.SetLimit(maxConcurrency)          // Limit concurrent goroutines
-
-	// Thread-safe map to collect parts
-	var partsMu sync.Mutex
-	parts := make([]Part, numParts)
 
 	// Upload each part concurrently
 	for partNumber := 1; partNumber <= numParts; partNumber++ {
@@ -324,8 +359,8 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 			}
 
 			// Read chunk from file
-			offset := int64(partNumber-1) * gcpMultipartUploadChunkSize
-			chunkSize := gcpMultipartUploadChunkSize
+			offset := int64(partNumber-1) * gcpMultipartUploadPartSize
+			chunkSize := gcpMultipartUploadPartSize
 			if offset+int64(chunkSize) > fileSize {
 				chunkSize = int(fileSize - offset)
 			}
@@ -337,27 +372,14 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 			}
 
 			// Upload part
-			etag, err := m.uploadPart(ctx, uploadID, partNumber, chunk)
-			if err != nil {
-				return fmt.Errorf("failed to upload part %d: %w", partNumber, err)
-			}
-
-			// Store result thread-safely
-			partsMu.Lock()
-			parts[partNumber-1] = Part{
-				PartNumber: partNumber,
-				ETag:       etag,
-			}
-			partsMu.Unlock()
-
-			return nil
+			return u.UploadPart(ctx, uploadID, partNumber, chunk)
 		})
 	}
 
 	// Wait for all parts to complete or first error
 	if err := g.Wait(); err != nil {
-		return nil, fmt.Errorf("upload failed: %w", err)
+		return fmt.Errorf("upload failed: %w", err)
 	}
 
-	return parts, nil
+	return nil
 }

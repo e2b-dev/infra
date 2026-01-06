@@ -6,6 +6,8 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 // Start, Length and SourceStart are in bytes of the data file
@@ -13,10 +15,11 @@ import (
 // The list of block mappings will be in order of increasing Start, covering the entire file
 type BuildMap struct {
 	// Offset defines which block of the current layer this mapping starts at
-	Offset             uint64
+	Offset             uint64 // in the memory space
 	Length             uint64
 	BuildId            uuid.UUID
 	BuildStorageOffset uint64
+	FrameTable         *storage.FrameTable
 }
 
 func (mapping *BuildMap) Copy() *BuildMap {
@@ -160,6 +163,7 @@ func MergeMappings(
 					// the build storage offset is the same as the base mapping
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
+				leftBase.FrameTable = base.FrameTable.Subset(int64(leftBase.Offset), int64(leftBase.Length))
 
 				mappings = append(mappings, leftBase)
 			}
@@ -178,6 +182,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
+				rightBase.FrameTable = base.FrameTable.Subset(int64(rightBase.Offset), int64(rightBase.Length))
 
 				baseMapping[baseIdx] = rightBase
 			} else {
@@ -205,6 +210,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
+				rightBase.FrameTable = base.FrameTable.Subset(int64(rightBase.Offset), int64(rightBase.Length))
 
 				baseMapping[baseIdx] = rightBase
 			} else {
@@ -226,6 +232,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
+				leftBase.FrameTable = base.FrameTable.Subset(int64(leftBase.Offset), int64(leftBase.Length))
 
 				mappings = append(mappings, leftBase)
 			}
