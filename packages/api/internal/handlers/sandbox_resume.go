@@ -175,7 +175,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		nil, // mcp
 	)
 	if createErr != nil {
-		logger.L().Error(ctx, "Failed to resume sandbox", zap.Error(createErr.Err))
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
 
 		return

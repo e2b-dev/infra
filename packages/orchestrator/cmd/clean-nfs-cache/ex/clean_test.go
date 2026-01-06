@@ -42,8 +42,9 @@ func TestDirSort(t *testing.T) {
 	require.Equal(t, int64(100), d.Files[2].ATimeUnix)
 }
 
-func TestCleanDeletesTwoFiles(t *testing.T) {
+func TestCleanDeletesOldestFiles(t *testing.T) {
 	t.Parallel()
+
 	root := t.TempDir()
 	defer os.RemoveAll(root)
 
@@ -116,12 +117,14 @@ func TestCleanDeletesTwoFiles(t *testing.T) {
 		}
 	}
 
-	// Expect at least 2 deletions
+	// Expect at least 2 deletions, it can be more due to concurrency.
 	require.GreaterOrEqual(t, len(deleted), 2)
 
-	// The two files must have been some combination of 7 and 8 (from whichever folder)
+	// The two files must have been some combination of 7 and 8 (from whichever
+	// folder) Because of concurrency, sometimes we may pick an extra batch of
+	// candidates, so include 6 as well.
 	for _, d := range deleted {
-		require.Regexp(t, `.+/file(7|8)\.txt`, d)
+		require.Regexp(t, `.+/file(6|7|8)\.txt`, d)
 	}
 }
 

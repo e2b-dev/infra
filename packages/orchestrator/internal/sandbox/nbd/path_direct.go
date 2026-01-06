@@ -18,12 +18,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	connections    = 4
 	connectTimeout = 30 * time.Second
 
 	// disconnectTimeout should not be necessary if the disconnect is reliable
@@ -33,8 +33,9 @@ const (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd")
 
 type DirectPathMount struct {
-	cancelfn   context.CancelFunc
-	devicePool *DevicePool
+	cancelfn     context.CancelFunc
+	devicePool   *DevicePool
+	featureFlags *featureflags.Client
 
 	Backend     block.Device
 	deviceIndex uint32
@@ -47,14 +48,15 @@ type DirectPathMount struct {
 	handlersWg sync.WaitGroup
 }
 
-func NewDirectPathMount(b block.Device, devicePool *DevicePool) *DirectPathMount {
+func NewDirectPathMount(b block.Device, devicePool *DevicePool, featureFlags *featureflags.Client) *DirectPathMount {
 	return &DirectPathMount{
-		Backend:     b,
-		blockSize:   4096,
-		devicePool:  devicePool,
-		socksClient: make([]*os.File, 0),
-		socksServer: make([]io.Closer, 0),
-		deviceIndex: math.MaxUint32,
+		Backend:      b,
+		blockSize:    4096,
+		devicePool:   devicePool,
+		featureFlags: featureFlags,
+		socksClient:  make([]*os.File, 0),
+		socksServer:  make([]io.Closer, 0),
+		deviceIndex:  math.MaxUint32,
 	}
 }
 
@@ -89,6 +91,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		d.socksClient = make([]*os.File, 0)
 		d.socksServer = make([]io.Closer, 0)
 		d.dispatchers = make([]*Dispatch, 0)
+
+		connections := d.featureFlags.IntFlag(ctx, featureflags.NBDConnectionsPerDevice)
 
 		for i := range connections {
 			// Create the socket pairs
