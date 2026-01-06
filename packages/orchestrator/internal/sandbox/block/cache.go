@@ -360,8 +360,10 @@ func (c *Cache) copyProcessMemory(
 	pid int,
 	rs []Range,
 ) error {
+  alignedRwCount := getAlignedMaxRwCount(c.blockSize)
+
 	// We need to split the ranges because the Kernel does not support reading/writing more than MAX_RW_COUNT bytes in a single operation.
-	ranges := splitOversizedRanges(rs, MAX_RW_COUNT)
+	ranges := splitOversizedRanges(rs, alignedRwCount)
 
 	var offset int64
 	var rangeIdx int64
@@ -380,7 +382,7 @@ func (c *Cache) copyProcessMemory(
 				break
 			}
 
-			if segmentSize+r.Size > MAX_RW_COUNT {
+			if segmentSize+r.Size > alignedRwCount {
 				break
 			}
 
