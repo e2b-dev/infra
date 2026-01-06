@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -121,7 +120,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		defer func() {
 			if r := recover(); r != nil {
 				telemetry.ReportCriticalError(ctx, "recovered from panic in template build handler", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
-				buildInfo.SetFail(builderrors.UnwrapUserError(errors.New("fatal error occurred, please contact us")))
+				buildInfo.SetFail(builderrors.UnwrapUserError(nil))
 			}
 		}()
 
@@ -143,9 +142,19 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		res, err := s.builder.Build(ctx, metadata, template, core)
 		_ = core.Sync()
 		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error while building template", err, telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
+			userError := builderrors.UnwrapUserError(err)
 
-			buildInfo.SetFail(builderrors.UnwrapUserError(err))
+			attrs := []attribute.KeyValue{
+				telemetry.WithTemplateID(cfg.GetTemplateID()),
+				telemetry.WithBuildID(cfg.GetBuildID()),
+			}
+			if userError.Message != builderrors.InternalErrorMessage {
+				telemetry.ReportError(ctx, "error while building template", err, attrs...)
+			} else {
+				telemetry.ReportCriticalError(ctx, "error while building template", err, attrs...)
+			}
+
+			buildInfo.SetFail(userError)
 		} else {
 			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
 				RootfsSizeKey:  int32(res.RootfsSizeMB),

@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/envd"
@@ -130,12 +131,23 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		b.metrics.RecordBuildDuration(ctx, duration, success)
 
 		if success {
-			b.metrics.RecordBuildResult(ctx, cfg.TeamID, true)
+			b.metrics.RecordBuildResult(ctx, cfg.TeamID, metrics.BuildResultSuccess)
 			b.metrics.RecordRootfsSize(ctx, r.RootfsSizeMB<<constants.ToMBShift)
-		} else if !errors.Is(e, context.Canceled) {
-			// Skip reporting failure metrics only on explicit cancellation
-			b.metrics.RecordBuildResult(ctx, cfg.TeamID, false)
+		} else {
+			// Determine if the error is a user error or internal error
+			var resultType metrics.BuildResultType
+			if builderrors.IsUserError(e) {
+				resultType = metrics.BuildResultUserError
+			} else {
+				resultType = metrics.BuildResultInternalError
+			}
+			b.metrics.RecordBuildResult(ctx, cfg.TeamID, resultType)
 		}
+	}()
+
+	// Wrap context.Canceled as a user error if no user error already exists
+	defer func() {
+		e = builderrors.WrapCanceledAsUserError(e)
 	}()
 
 	cacheScope := cfg.CacheScope
@@ -151,7 +163,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		case errors.Is(ctx.Err(), context.Canceled):
 			l.Error(ctx, fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
 		case e != nil:
-			l.Error(ctx, fmt.Sprintf("Build failed: %v", e))
+			l.Error(ctx, fmt.Sprintf("Build failed: %v", builderrors.UnwrapUserError(e).Message))
 		default:
 			l.Info(ctx, fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
