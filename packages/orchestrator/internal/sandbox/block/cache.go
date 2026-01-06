@@ -441,11 +441,11 @@ func (c *Cache) copyProcessMemory(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			offset += segmentSize
-
 			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
 				c.dirty.Store(offset+blockOff, struct{}{})
 			}
+
+			offset += segmentSize
 
 			break
 		}
