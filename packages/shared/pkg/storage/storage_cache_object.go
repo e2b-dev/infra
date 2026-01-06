@@ -95,7 +95,7 @@ func (c *CachedObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (n in
 // Write pushes data to the wrapped object provider, and optionally pushes the data to a fast ephemeral cache as well.
 // `p` is considered immutable, and won't change if we access it after the function returns.
 func (c *CachedObjectProvider) Write(ctx context.Context, p []byte) (n int, e error) {
-	ctx, span := c.tracer.Start(ctx, "write data to object")
+	ctx, span := c.tracer.Start(ctx, "write data to object storage")
 	defer func() {
 		recordError(span, e)
 		span.End()
