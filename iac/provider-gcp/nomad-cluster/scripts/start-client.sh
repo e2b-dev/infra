@@ -87,7 +87,8 @@ sysctl vm.vfs_cache_pressure=50
 %{ if USE_FILESTORE_CACHE }
 # Configure NFS read ahead
 cat <<'EOH' >/etc/udev/rules.d/99-nfs.rules
-# set read_ahead_kb to 4096 (chunk size), from https://support.vastdata.com/s/document-item?bundleId=z-kb-articles-publications-prod&topicId=6147145742.html&_LANG=enus
+# set read_ahead_kb to 4096 (chunk size), from https://archive.is/3vAU7 (aka: https://support.vastdata.com/s/document-item?bundleId=z-kb-articles-publications-prod&topicId=6147145742.html&_LANG=enus)
+
 SUBSYSTEM=="bdi", ACTION=="add", PROGRAM="/bin/awk -v bdi=$kernel 'BEGIN{ret=1} {if ($4 == bdi) {ret=0}} END{exit ret}' /proc/fs/nfsfs/volumes", ATTR{read_ahead_kb}="4096"
 EOH
 udevadm control --reload
