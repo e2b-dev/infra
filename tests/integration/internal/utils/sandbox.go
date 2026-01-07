@@ -128,6 +128,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		return sbx
 	}
 
+	t.Logf("Sandbox creation failed after 10 retries")
 	t.FailNow()
 
 	return nil
