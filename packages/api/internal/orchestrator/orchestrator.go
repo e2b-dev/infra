@@ -278,9 +278,9 @@ func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Clie
 
 	alphaPercent := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKAlpha)
 
-	canFit := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFit)
+	canFit := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFitFlag)
 
-	tooManyStarting := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStarting)
+	tooManyStarting := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStartingFlag)
 
 	// Convert percentage to decimal
 	alpha := float64(alphaPercent) / 100.0

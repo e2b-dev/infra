@@ -69,6 +69,7 @@ job "template-manager-system" {
         API_SECRET                    = "${api_secret}"
         OTEL_TRACING_PRINT            = "${otel_tracing_print}"
         ENVIRONMENT                   = "${environment}"
+        DOMAIN_NAME                   = "${domain_name}"
         TEMPLATE_BUCKET_NAME          = "${template_bucket_name}"
         BUILD_CACHE_BUCKET_NAME       = "${build_cache_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"

@@ -10,6 +10,7 @@ import (
 )
 
 func TestMatchDomain(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		hostname string
@@ -117,6 +118,7 @@ func TestMatchDomain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := matchDomain(tt.hostname, tt.pattern)
 			if got != tt.want {
 				t.Errorf("matchDomain(%q, %q) = %v, want %v", tt.hostname, tt.pattern, got, tt.want)
@@ -126,6 +128,7 @@ func TestMatchDomain(t *testing.T) {
 }
 
 func TestIsEgressAllowed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		network   *orchestrator.SandboxNetworkConfig
@@ -378,6 +381,7 @@ func TestIsEgressAllowed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			sbx := &sandbox.Sandbox{
 				Metadata: &sandbox.Metadata{
 					Config: sandbox.Config{
@@ -410,6 +414,7 @@ func TestIsEgressAllowed(t *testing.T) {
 }
 
 func TestAlwaysDeniedCIDRs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		ip   string
@@ -444,6 +449,7 @@ func TestAlwaysDeniedCIDRs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ip := net.ParseIP(tt.ip)
 			if ip == nil {
 				t.Fatalf("Failed to parse IP: %s", tt.ip)

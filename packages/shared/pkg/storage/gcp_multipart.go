@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/sync/errgroup"
@@ -79,6 +80,10 @@ func createRetryableClient(ctx context.Context, config RetryConfig) *retryableht
 
 		return backoff
 	}
+
+	// add otel instrumentation
+	originalTransport := client.HTTPClient.Transport
+	client.HTTPClient.Transport = otelhttp.NewTransport(originalTransport)
 
 	// Use zap logger
 	client.Logger = &leveledLogger{
@@ -244,7 +249,7 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 
 	req, err := retryablehttp.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(xmlData))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create complete request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
@@ -253,7 +258,7 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("http request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -266,18 +271,18 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) error {
+func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) (int64, error) {
 	// Open file
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	// Get file size
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
+		return 0, fmt.Errorf("failed to get file info: %w", err)
 	}
 	fileSize := fileInfo.Size()
 
@@ -290,19 +295,19 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	// Initiate multipart upload
 	uploadID, err := m.initiateUpload(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to initiate upload: %w", err)
+		return 0, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
 	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
 	if err != nil {
-		return err
+		return 0, fmt.Errorf("failed to upload parts: %w", err)
 	}
 
 	if err := m.completeUpload(ctx, uploadID, parts); err != nil {
-		return fmt.Errorf("failed to complete upload: %w", err)
+		return 0, fmt.Errorf("failed to complete upload: %w", err)
 	}
 
-	return nil
+	return fileSize, nil
 }
 
 func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int, numParts int, fileSize int64, file *os.File, uploadID string) ([]Part, error) {
@@ -319,7 +324,7 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 			// Check if context was cancelled
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return fmt.Errorf("part %d failed: %w", partNumber, ctx.Err())
 			default:
 			}
 

@@ -5,6 +5,7 @@ import (
 )
 
 func TestRemoveRegistryFromTag(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		tag     string
@@ -57,6 +58,7 @@ func TestRemoveRegistryFromTag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := removeRegistryFromTag(tt.tag)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("removeRegistryFromTag() error = %v, wantErr %v", err, tt.wantErr)

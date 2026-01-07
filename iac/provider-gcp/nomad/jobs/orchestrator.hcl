@@ -88,6 +88,7 @@ EOT
         OTEL_TRACING_PRINT           = "${otel_tracing_print}"
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
         ENVIRONMENT                  = "${environment}"
+        DOMAIN_NAME                  = "${domain_name}"
         ENVD_TIMEOUT                 = "${envd_timeout}"
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"

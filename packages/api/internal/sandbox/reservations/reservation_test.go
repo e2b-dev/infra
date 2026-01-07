@@ -32,6 +32,7 @@ func newReservationStorage() *ReservationStorage {
 }
 
 func TestReservation(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	_, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -39,6 +40,7 @@ func TestReservation(t *testing.T) {
 }
 
 func TestReservation_Exceeded(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	_, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -48,6 +50,7 @@ func TestReservation_Exceeded(t *testing.T) {
 }
 
 func TestReservation_SameSandbox(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	_, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -59,6 +62,7 @@ func TestReservation_SameSandbox(t *testing.T) {
 }
 
 func TestReservation_Release(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	_, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -71,6 +75,7 @@ func TestReservation_Release(t *testing.T) {
 }
 
 func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	_, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -82,6 +87,7 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 }
 
 func TestReservation_WaitForStart(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	finishStart, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 10)
@@ -114,6 +120,7 @@ func TestReservation_WaitForStart(t *testing.T) {
 }
 
 func TestReservation_WaitForStartError(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	finishStart, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 10)
@@ -137,6 +144,7 @@ func TestReservation_WaitForStartError(t *testing.T) {
 }
 
 func TestReservation_MultipleWaiters(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	finishStart, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 10)
@@ -176,6 +184,7 @@ func TestReservation_MultipleWaiters(t *testing.T) {
 }
 
 func TestReservation_Remove(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	finishStart, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -204,6 +213,7 @@ func TestReservation_Remove(t *testing.T) {
 }
 
 func TestReservation_MultipleTeams(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	team1 := uuid.New()
@@ -229,6 +239,7 @@ func TestReservation_MultipleTeams(t *testing.T) {
 }
 
 func TestReservation_FailedStart(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	sbxID := "failed-sandbox"
@@ -249,6 +260,7 @@ func TestReservation_FailedStart(t *testing.T) {
 }
 
 func TestReservation_FailedStartWithWaiters(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	sbxID := "failed-with-waiters"
@@ -305,6 +317,7 @@ func TestReservation_FailedStartWithWaiters(t *testing.T) {
 }
 
 func TestReservation_ConcurrentReservations(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	concurrency := 100
@@ -337,6 +350,7 @@ func TestReservation_ConcurrentReservations(t *testing.T) {
 }
 
 func TestReservation_ConcurrentSameSandbox(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	sbxID := "concurrent-sandbox"
@@ -373,6 +387,7 @@ func TestReservation_ConcurrentSameSandbox(t *testing.T) {
 }
 
 func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	sbxID := "wait-finish-sandbox"
@@ -438,6 +453,7 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 }
 
 func TestReservation_ConcurrentRemove(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	concurrency := 50
@@ -476,6 +492,7 @@ func TestReservation_ConcurrentRemove(t *testing.T) {
 }
 
 func TestReservation_RaceConditionStressTest(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	numOperations := 2000

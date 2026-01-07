@@ -168,7 +168,7 @@ fmt:
 
 .PHONY: lint
 lint:
-	go work edit -json | jq -r '.Use[].DiskPath' | xargs -P 10 -I{} golangci-lint run {}/... --fix
+	go work edit -json | jq -r '.Use[].DiskPath' | xargs -P 4 -I{} golangci-lint run {}/... --fix
 
 .PHONY: generate-mocks
 generate-mocks:

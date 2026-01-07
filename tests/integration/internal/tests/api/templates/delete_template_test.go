@@ -14,6 +14,7 @@ import (
 )
 
 func TestDeleteTemplate(t *testing.T) {
+	t.Parallel()
 	alias := "test-to-delete"
 	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
 		Force:     utils.ToPtr(ForceBaseBuild),
@@ -40,6 +41,7 @@ func TestDeleteTemplate(t *testing.T) {
 }
 
 func TestDeleteTemplateWithAccessToken(t *testing.T) {
+	t.Parallel()
 	alias := "test-to-delete-access-token"
 	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
 		Force:     utils.ToPtr(ForceBaseBuild),
@@ -66,6 +68,7 @@ func TestDeleteTemplateWithAccessToken(t *testing.T) {
 }
 
 func TestDeleteTemplateFromAnotherTeamAccessToken(t *testing.T) {
+	t.Parallel()
 	alias := "test-to-delete-another-team-access-token"
 
 	db := setup.GetTestDBClient(t)
@@ -96,6 +99,7 @@ func TestDeleteTemplateFromAnotherTeamAccessToken(t *testing.T) {
 }
 
 func TestDeleteTemplateFromAnotherTeamAPIKey(t *testing.T) {
+	t.Parallel()
 	alias := "test-to-delete-another-team-api-key"
 
 	db := setup.GetTestDBClient(t)

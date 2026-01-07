@@ -11,6 +11,7 @@ import (
 )
 
 func TestFlattenContexts(t *testing.T) {
+	t.Parallel()
 	one := ldcontext.NewWithKind("one", "one")
 	two := ldcontext.NewWithKind("two", "two")
 	three := ldcontext.NewWithKind("three", "three")
@@ -33,6 +34,7 @@ func ldValueToText(value ldvalue.Value) string {
 }
 
 func TestMergeContextsSameKind(t *testing.T) {
+	t.Parallel()
 	kind := ldcontext.Kind("test")
 	testKey := "test"
 	emptyName := "[none]"
@@ -122,6 +124,7 @@ func TestMergeContextsSameKind(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			result := mergeSameKind(tc.firstContext, tc.secondContext)
 			assert.Equal(t, tc.expectedKey, result.Key(), "expected key to match")
 			assert.Equal(t, tc.expectedName, result.Name().String(), "expected name to match")
@@ -156,7 +159,11 @@ func newSet[T comparable](input ...T) set[T] {
 }
 
 func TestSetContext(t *testing.T) {
+	t.Parallel()
+
 	t.Run("empty_contexts_returns_original_context", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := context.Background()
 		result := AddToContext(ctx)
 
@@ -166,6 +173,8 @@ func TestSetContext(t *testing.T) {
 	})
 
 	t.Run("single_context", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := context.Background()
 		teamCtx := TeamContext("team-123")
 
@@ -178,6 +187,8 @@ func TestSetContext(t *testing.T) {
 	})
 
 	t.Run("multiple_contexts", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := context.Background()
 		teamCtx := TeamContext("team-123")
 		userCtx := UserContext("user-456")
@@ -194,6 +205,8 @@ func TestSetContext(t *testing.T) {
 	})
 
 	t.Run("sequential_calls_merge_contexts", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := context.Background()
 
 		// First call adds team context
@@ -212,6 +225,8 @@ func TestSetContext(t *testing.T) {
 	})
 
 	t.Run("same_kind_second_takes_precedence", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := context.Background()
 
 		// First call with team-123

@@ -387,6 +387,7 @@ locals {
     proxy_port       = var.orchestrator_proxy_port
     environment      = var.environment
     consul_acl_token = var.consul_acl_token_secret
+    domain_name      = var.domain_name
 
     envd_timeout                 = var.envd_timeout
     bucket_name                  = var.fc_env_pipeline_bucket_name
@@ -472,6 +473,7 @@ resource "nomad_job" "template_manager" {
     port             = var.template_manager_port
     environment      = var.environment
     consul_acl_token = var.consul_acl_token_secret
+    domain_name      = var.domain_name
 
     api_secret                      = var.api_secret
     bucket_name                     = var.fc_env_pipeline_bucket_name
@@ -487,9 +489,7 @@ resource "nomad_job" "template_manager" {
     clickhouse_connection_string    = local.clickhouse_connection_string
     dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
     launch_darkly_api_key           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-
-    # For now we DISABLE the shared chunk cache in the template manager
-    shared_chunk_cache_path = ""
+    shared_chunk_cache_path         = var.shared_chunk_cache_path
   })
 }
 resource "nomad_job" "loki" {

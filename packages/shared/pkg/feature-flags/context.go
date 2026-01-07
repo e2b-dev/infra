@@ -120,6 +120,10 @@ func ClusterContext(clusterID string) ldcontext.Context {
 	return ldcontext.NewWithKind(ClusterKind, clusterID)
 }
 
+func deploymentContext(deploymentName string) ldcontext.Context {
+	return ldcontext.NewWithKind(deploymentKind, deploymentName)
+}
+
 func SandboxContext(sandboxID string) ldcontext.Context {
 	return ldcontext.NewWithKind(SandboxKind, sandboxID)
 }
