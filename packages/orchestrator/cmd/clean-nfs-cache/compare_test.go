@@ -39,7 +39,7 @@ func TestCompare(t *testing.T) {
 	for _, nScan := range []int{1, 4, 16, 32} {
 		for _, nDel := range []int{1, 2, 4, 16} {
 			for _, nStat := range []int{1, 4, 16, 32} {
-				t.Run(fmt.Sprintf("Scan%v-Del%v-Stat%v", nScan, nDel, nStat), func(t *testing.T) {
+				t.Run(fmt.Sprintf("Scan%v-Del%v-Stat%v", nScan, nDel, nStat), func(t *testing.T) { //nolint:paralleltest // timing here is relevant, running in Parallel messes up the output.
 					path := t.TempDir()
 					ex.CreateTestDir(path, NDirs, NFiles, testFileSize)
 					t.Cleanup(func() {
