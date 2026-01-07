@@ -98,9 +98,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		templateID = setup.SandboxTemplateID
 	}
 
-	var sbx *api.Sandbox
-	require.Eventually(t, func() bool {
-		// only retry if 429
+	for range 10 { // retry up to 10 times, but only in case of 429
 		createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 			TemplateID:          templateID,
 			Timeout:             &config.timeout,
@@ -113,21 +111,24 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		require.NoError(t, err)
 
 		if createSandboxResponse.StatusCode() == http.StatusTooManyRequests {
-			return false // only retry if we hit a 429
+			t.Logf("Sandbox creation failed with status code %d, retrying...", createSandboxResponse.StatusCode())
+			time.Sleep(time.Second * 5)
+			continue
 		}
 
 		require.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
-		sbx = createSandboxResponse.JSON201
+		sbx := createSandboxResponse.JSON201
 		require.NotNil(t, sbx)
 
-		return true
-	}, 5*time.Second, 30*time.Second, "Sandbox creation timed out")
+		t.Cleanup(func() {
+			TeardownSandbox(t, c, sbx.SandboxID)
+		})
 
-	t.Cleanup(func() {
-		TeardownSandbox(t, c, sbx.SandboxID)
-	})
+		return sbx
+	}
 
-	return sbx
+	t.FailNow()
+	return nil
 }
 
 // TeardownSandbox kills the sandbox with the given ID
