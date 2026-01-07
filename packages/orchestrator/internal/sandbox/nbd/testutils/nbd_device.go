@@ -7,9 +7,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
-func GetNBDDevice(ctx context.Context, backend block.Device) (nbd.DevicePath, *Cleaner, error) {
+func GetNBDDevice(ctx context.Context, backend block.Device, featureFlags *feature_flags.Client) (nbd.DevicePath, *Cleaner, error) {
 	var cleaner Cleaner
 
 	devicePool, err := nbd.NewDevicePool()
@@ -43,7 +44,7 @@ func GetNBDDevice(ctx context.Context, backend block.Device) (nbd.DevicePath, *C
 		close(poolClosed)
 	}()
 
-	mnt := nbd.NewDirectPathMount(backend, devicePool)
+	mnt := nbd.NewDirectPathMount(backend, devicePool, featureFlags)
 
 	mntIndex, err := mnt.Open(ctx)
 	if err != nil {

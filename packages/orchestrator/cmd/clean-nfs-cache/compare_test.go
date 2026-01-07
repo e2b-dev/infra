@@ -14,6 +14,7 @@ import (
 )
 
 func TestCompare(t *testing.T) {
+	t.Parallel()
 	var (
 		testFileSize = 7317
 		NDirs        = 500
@@ -39,6 +40,8 @@ func TestCompare(t *testing.T) {
 		for _, nDel := range []int{1, 2, 8, 1024} {
 			for _, nStat := range []int{1, 4, 16, 1024} {
 				t.Run(fmt.Sprintf("Scan%v-Del%v-Stat%v", nScan, nDel, nStat), func(t *testing.T) {
+					t.Parallel()
+
 					path := t.TempDir()
 					ex.CreateTestDir(path, NDirs, NFiles, testFileSize)
 					t.Cleanup(func() {
@@ -69,6 +72,7 @@ func TestCompare(t *testing.T) {
 	}
 
 	t.Run("cleanNFSCache", func(t *testing.T) {
+		t.Parallel()
 		path := t.TempDir()
 		ex.CreateTestDir(path, NDirs, NFiles, testFileSize)
 		t.Cleanup(func() {
@@ -84,7 +88,7 @@ func TestCompare(t *testing.T) {
 			fmt.Sprintf("--files-per-loop=%d", NFiles/10),
 			fmt.Sprintf("--deletions-per-loop=%d", NFiles/100),
 			path,
-		}, targetBytesToDelete)
+		}, targetBytesToDelete, 0)
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, allResults.deletedBytes, targetBytesToDelete)
 		printSummary(start, allResults.lastAccessed, uint64(allResults.deletedBytes))

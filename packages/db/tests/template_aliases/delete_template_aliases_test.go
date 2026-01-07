@@ -11,6 +11,7 @@ import (
 )
 
 func TestDeleteTemplateAliases_Success(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	client := testutils.SetupDatabase(t)
 	ctx := context.Background()
@@ -27,6 +28,7 @@ func TestDeleteTemplateAliases_Success(t *testing.T) {
 }
 
 func TestDeleteTemplateAliases_NoAlias(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	client := testutils.SetupDatabase(t)
 	ctx := context.Background()

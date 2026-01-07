@@ -15,9 +15,11 @@ import (
 )
 
 func TestSandboxConnect(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	t.Run("connect with paused sandbox", func(t *testing.T) {
+		t.Parallel()
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
 		sbxId := sbx.SandboxID
@@ -41,6 +43,7 @@ func TestSandboxConnect(t *testing.T) {
 	})
 
 	t.Run("connect to running sandbox", func(t *testing.T) {
+		t.Parallel()
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(100))
 		sbxId := sbx.SandboxID
@@ -73,6 +76,7 @@ func TestSandboxConnect(t *testing.T) {
 	})
 
 	t.Run("connect to running sandbox shorter timeout", func(t *testing.T) {
+		t.Parallel()
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c)
 		sbxId := sbx.SandboxID
@@ -105,6 +109,7 @@ func TestSandboxConnect(t *testing.T) {
 	})
 
 	t.Run("connect to not existing sandbox", func(t *testing.T) {
+		t.Parallel()
 		// Try to connect the sandbox
 		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "it-isnt-there", api.PostSandboxesSandboxIDConnectJSONRequestBody{
 			Timeout: 30,
@@ -114,6 +119,7 @@ func TestSandboxConnect(t *testing.T) {
 	})
 
 	t.Run("connect with too big timeout", func(t *testing.T) {
+		t.Parallel()
 		// Try to connect the sandbox
 		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "it-isnt-there", api.PostSandboxesSandboxIDConnectJSONRequestBody{
 			Timeout: 60 * 60 * 72, // 3 days
@@ -123,6 +129,7 @@ func TestSandboxConnect(t *testing.T) {
 	})
 
 	t.Run("concurrent connects - not returning early", func(t *testing.T) {
+		t.Parallel()
 		c := setup.GetAPIClient()
 
 		// Create a sandbox with auto-pause disabled
@@ -173,6 +180,7 @@ func TestSandboxConnect(t *testing.T) {
 }
 
 func TestSandboxConnect_CrossTeamAccess_Paused(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	db := setup.GetTestDBClient(t)
 
@@ -196,6 +204,7 @@ func TestSandboxConnect_CrossTeamAccess_Paused(t *testing.T) {
 }
 
 func TestSandboxConnect_CrossTeamAccess_Running(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	db := setup.GetTestDBClient(t)
 

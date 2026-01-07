@@ -196,7 +196,7 @@ func (sb *StepBuilder) Build(
 			meta.Context,
 		)
 		if err != nil {
-			return metadata.Template{}, phases.NewPhaseBuildError(sb, err)
+			return metadata.Template{}, phases.NewPhaseBuildError(sb.Metadata(), err)
 		}
 
 		err = sandboxtools.SyncChangesToDisk(

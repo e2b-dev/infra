@@ -217,6 +217,7 @@ func (f *Factory) CreateSandbox(
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 			f.devicePool,
+			f.featureFlags,
 		)
 	} else {
 		rootfsProvider, err = rootfs.NewDirectProvider(
@@ -405,6 +406,7 @@ func (f *Factory) ResumeSandbox(
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 		f.devicePool,
+		f.featureFlags,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
@@ -555,7 +557,7 @@ func (f *Factory) ResumeSandbox(
 		exit: exit,
 	}
 
-	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
+	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox

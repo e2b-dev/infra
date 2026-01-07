@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
@@ -22,6 +23,7 @@ func constructLayerFilesFromOCI(
 	ctx context.Context,
 	userLogger logger.Logger,
 	buildContext buildcontext.BuildContext,
+	phaseMetadata phases.PhaseMeta,
 	// The base build ID can be different from the final requested template build ID.
 	baseBuildID string,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
@@ -44,7 +46,7 @@ func constructLayerFilesFromOCI(
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)
 	}
-	imgConfig, err := rtfs.CreateExt4Filesystem(ctx, userLogger, rootfsPath, provisionScript, provisionLogPrefix, provisionScriptResultPath)
+	imgConfig, err := rtfs.CreateExt4Filesystem(ctx, userLogger, phaseMetadata, rootfsPath, provisionScript, provisionLogPrefix, provisionScriptResultPath)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
