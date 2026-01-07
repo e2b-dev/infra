@@ -527,7 +527,7 @@ data "external" "nomad_nodepool_apm_checksum" {
 }
 
 # Nomad Autoscaler - required for template-manager dynamic scaling
-resource "nomad_job" "nomad_autoscaler" {
+resource "nomad_job" "nomad_nodepool_apm" {
   count = var.template_manages_clusters_size_gt_1 ? 1 : 0
 
   jobspec = templatefile("${path.module}/jobs/nomad-autoscaler.hcl", {
