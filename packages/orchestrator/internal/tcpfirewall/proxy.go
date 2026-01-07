@@ -52,28 +52,17 @@ func (p *Proxy) Start(ctx context.Context) error {
 	tlsAddr := fmt.Sprintf("0.0.0.0:%d", p.tlsPort)
 	otherAddr := fmt.Sprintf("0.0.0.0:%d", p.otherPort)
 
-	// Custom listener factory that wraps connections with metadata (original dst, sandbox info)
-	p.proxy.ListenFunc = func(network, laddr string) (net.Listener, error) {
-		var lc net.ListenConfig
-		ln, err := lc.Listen(ctx, network, laddr)
-		if err != nil {
-			return nil, err
-		}
-
-		return newOrigDstListener(ctx, ln, p.sandboxes, p.logger, p.metrics), nil
-	}
-
 	// HTTP listener (port 80 traffic): inspect Host header for domain allowlist
-	p.proxy.AddHTTPHostMatchRoute(httpAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(domainHandler, ProtocolHTTP, p.metrics, p.logger))
-	p.proxy.AddRoute(httpAddr, newConnectionHandler(cidrOnlyHandler, ProtocolHTTP, p.metrics, p.logger))
+	p.proxy.AddHTTPHostMatchRoute(httpAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolHTTP, p.metrics, p.logger, p.sandboxes))
+	p.proxy.AddRoute(httpAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolHTTP, p.metrics, p.logger, p.sandboxes))
 
 	// TLS listener (port 443 traffic): inspect SNI for domain allowlist
-	p.proxy.AddSNIMatchRoute(tlsAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(domainHandler, ProtocolTLS, p.metrics, p.logger))
-	p.proxy.AddRoute(tlsAddr, newConnectionHandler(cidrOnlyHandler, ProtocolTLS, p.metrics, p.logger))
+	p.proxy.AddSNIMatchRoute(tlsAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolTLS, p.metrics, p.logger, p.sandboxes))
+	p.proxy.AddRoute(tlsAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolTLS, p.metrics, p.logger, p.sandboxes))
 
 	// Other listener (all other ports): CIDR-only check, no protocol inspection
 	// This prevents blocking on server-first protocols like SSH
-	p.proxy.AddRoute(otherAddr, newConnectionHandler(cidrOnlyHandler, ProtocolOther, p.metrics, p.logger))
+	p.proxy.AddRoute(otherAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolOther, p.metrics, p.logger, p.sandboxes))
 
 	p.logger.Info(ctx, "TCP firewall proxy started",
 		zap.Uint16("http_port", p.httpPort),
@@ -109,77 +98,57 @@ var _ tcpproxy.Target = (*connectionHandler)(nil)
 
 // connectionHandler adapts a handler function to tcpproxy.Target interface.
 type connectionHandler struct {
-	handler  handlerFunc
-	protocol Protocol
-	metrics  *Metrics
-	logger   logger.Logger
+	ctx context.Context //nolint:containedctx // base context for request tracing
+
+	handler   handlerFunc
+	protocol  Protocol
+	metrics   *Metrics
+	logger    logger.Logger
+	sandboxes *sandbox.Map
 }
 
-func newConnectionHandler(handler handlerFunc, protocol Protocol, metrics *Metrics, logger logger.Logger) *connectionHandler {
+func newConnectionHandler(ctx context.Context, handler handlerFunc, protocol Protocol, metrics *Metrics, logger logger.Logger, sandboxes *sandbox.Map) *connectionHandler {
 	return &connectionHandler{
-		handler:  handler,
-		protocol: protocol,
-		metrics:  metrics,
-		logger:   logger,
+		ctx:       ctx,
+		handler:   handler,
+		protocol:  protocol,
+		metrics:   metrics,
+		logger:    logger,
+		sandboxes: sandboxes,
 	}
 }
 
 func (t *connectionHandler) HandleConn(conn net.Conn) {
-	meta, ok := unwrapConnMeta(conn)
-	if !ok {
-		t.metrics.RecordError(context.Background(), ErrorTypeConnectionMeta, t.protocol)
+	// Request tracing context.
+	ctx := t.ctx
+
+	// Get the underlying connection for sandbox lookup and original dst.
+	// tcpproxy may wrap in *tcpproxy.Conn for peeked bytes.
+	rawConn := tcpproxy.UnderlyingConn(conn)
+
+	// Look up sandbox by source address
+	sourceAddr := rawConn.RemoteAddr().String()
+	sbx, err := t.sandboxes.GetByHostPort(sourceAddr)
+	if err != nil {
+		t.logger.Error(ctx, "failed to find sandbox for connection", zap.String("source", sourceAddr), zap.Error(err))
+		t.metrics.RecordError(ctx, ErrorTypeSandboxLookup, t.protocol)
 		conn.Close()
 
 		return
 	}
 
-	logger := t.logger.With(logger.WithSandboxID(meta.sbx.Runtime.SandboxID))
-	t.metrics.RecordConnection(meta.ctx, t.protocol)
+	// Get original destination (before iptables redirect)
+	ip, port, err := getOriginalDst(rawConn)
+	if err != nil {
+		t.logger.Error(ctx, "failed to get original destination", zap.Error(err))
+		t.metrics.RecordError(ctx, ErrorTypeOrigDst, t.protocol)
+		conn.Close()
 
-	t.handler(meta.ctx, conn, meta.ip, meta.port, meta.sbx, logger, t.metrics, t.protocol)
-}
-
-// origDstListener wraps accepted connections with metadata
-type origDstListener struct {
-	net.Listener
-
-	sandboxes *sandbox.Map
-	logger    logger.Logger
-	metrics   *Metrics
-
-	ctx context.Context //nolint:containedctx // propagated to connections for request tracing
-}
-
-func newOrigDstListener(ctx context.Context, listener net.Listener, sandboxes *sandbox.Map, logger logger.Logger, metrics *Metrics) *origDstListener {
-	return &origDstListener{Listener: listener, ctx: ctx, sandboxes: sandboxes, logger: logger, metrics: metrics}
-}
-
-func (l *origDstListener) Accept() (net.Conn, error) {
-	for {
-		conn, err := l.Listener.Accept()
-		if err != nil {
-			return nil, err
-		}
-
-		sourceAddr := conn.RemoteAddr().String()
-		sbx, err := l.sandboxes.GetByHostPort(sourceAddr)
-		if err != nil {
-			l.logger.Error(l.ctx, "failed to find sandbox for connection", zap.String("source", sourceAddr), zap.Error(err))
-			l.metrics.RecordError(l.ctx, ErrorTypeSandboxLookup, ProtocolOther)
-			conn.Close()
-
-			continue
-		}
-
-		ip, port, err := getOriginalDst(conn)
-		if err != nil {
-			l.logger.Error(l.ctx, "failed to get original destination", zap.Error(err))
-			l.metrics.RecordError(l.ctx, ErrorTypeOrigDst, ProtocolOther)
-			conn.Close()
-
-			continue
-		}
-
-		return &connMeta{Conn: conn, ip: ip, port: port, ctx: l.ctx, sbx: sbx}, nil
+		return
 	}
+
+	logger := t.logger.With(logger.WithSandboxID(sbx.Runtime.SandboxID))
+	t.metrics.RecordConnection(ctx, t.protocol)
+
+	t.handler(ctx, conn, ip, port, sbx, logger, t.metrics, t.protocol)
 }
