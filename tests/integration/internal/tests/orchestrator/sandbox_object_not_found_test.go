@@ -63,6 +63,8 @@ func TestSandboxObjectNotFound(t *testing.T) {
 		}
 
 		assert.Equal(t, codes.FailedPrecondition, st.Code(), "status code should be FailedPrecondition")
+
+		return
 	}
 
 	t.Log("failed to create sandbox after 10 retries")

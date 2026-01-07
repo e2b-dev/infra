@@ -311,8 +311,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	assert.Empty(t, nextToken)
 }
 
-func TestSandboxListPaginationRunningLargerLimit(t *testing.T) {
-	t.Parallel()
+func TestSandboxListPaginationRunningLargerLimit(t *testing.T) { //nolint:tparallel // uses counts of a shared resource
 	c := setup.GetAPIClient()
 
 	metadataKey := "uniqueIdentifier"
