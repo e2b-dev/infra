@@ -32,12 +32,12 @@ func TestCompare(t *testing.T) {
 
 	printSummary := func(start time.Time, atimes []time.Duration, deletedBytes uint64) {
 		mean, sd := standardDeviation(atimes)
-		t.Logf("Cleaned %d out of %d bytes in %v; file age %v (%v)",
+		t.Logf("Cleaned %d (target %d) bytes in %v; file age %v (%v)",
 			deletedBytes, targetBytesToDelete, time.Since(start), mean.Round(time.Hour), sd.Round(time.Minute))
 	}
 
-	for _, nScan := range []int{1, 4, 16, 1024} {
-		for _, nDel := range []int{1, 2, 8, 1024} {
+	for _, nScan := range []int{1, 4, 16, 128} {
+		for _, nDel := range []int{1, 2, 8, 128} {
 			for _, nStat := range []int{1, 4, 16, 1024} {
 				t.Run(fmt.Sprintf("Scan%v-Del%v-Stat%v", nScan, nDel, nStat), func(t *testing.T) {
 					t.Parallel()
@@ -48,6 +48,8 @@ func TestCompare(t *testing.T) {
 						os.RemoveAll(path)
 					})
 					start := time.Now()
+					// log, _ := logger.NewDevelopmentLogger()
+					log := logger.NewNopLogger()
 					c := ex.NewCleaner(ex.Options{
 						Path:                path,
 						DeleteN:             NFiles / 100,
@@ -58,8 +60,7 @@ func TestCompare(t *testing.T) {
 						MaxConcurrentDelete: nDel,
 						TargetBytesToDelete: targetBytesToDelete,
 						MaxErrorRetries:     10,
-					}, logger.NewNopLogger())
-
+					}, log)
 					err := c.Clean(ctx)
 					require.NoError(t, err)
 					require.GreaterOrEqual(t, c.DeletedBytes.Load(), targetBytesToDelete)
