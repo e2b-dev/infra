@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -164,7 +165,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	}()
 
 	if err := done.WaitWithContext(ctx); err != nil {
-		return fmt.Errorf("error waiting for provisioning sandbox: %w", err)
+		return phases.NewPhaseBuildError(bb.Metadata(), fmt.Errorf("error waiting for provisioning sandbox: %w", err))
 	}
 
 	userLogger.Info(ctx, "Provisioning was successful, cleaning up")
