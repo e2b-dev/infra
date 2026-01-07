@@ -90,6 +90,12 @@ mkdir -p "${NFS_MOUNT_PATH}"
 echo "${NFS_IP_ADDRESS}:/store ${NFS_MOUNT_PATH} nfs ${NFS_MOUNT_OPTS} 0 0" | tee -a /etc/fstab
 mount "${NFS_MOUNT_PATH}"
 mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
+
+# Optimize read ahead for our chunk size
+device_number=$(stat -c '%d' ${NFS_MOUNT_PATH})
+((major = ($device_number & 0xFFF00) >> 8))
+((minor = ($device_number & 0xFF) | (($device_number >> 12) & 0xFFF00)))
+echo 4096 > /sys/class/bdi/$major:$minor/read_ahead_kb
 %{ endif }
 
 # Add tmpfs for snapshotting
