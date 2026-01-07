@@ -245,15 +245,26 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 
 			// reinsert the "younger" candidates back into the directory tree
 			del, reinsertBackToCache := c.splitBatch(batch)
-			c.reinsertCandidates(reinsertBackToCache)
 
+			now := time.Now()
 			if len(del) > 0 {
-				c.Info(ctx, "selected batch",
+				c.Info(ctx, "delete",
 					zap.Int("count", len(del)),
-					zap.Duration("oldest", time.Since(time.Unix(del[0].ATimeUnix, 0))),
-					zap.Duration("newest", time.Since(time.Unix(del[len(del)-1].ATimeUnix, 0))),
+					zap.Duration("oldest", now.Sub(time.Unix(del[0].ATimeUnix, 0))),
+					zap.Duration("newest", now.Sub(time.Unix(del[len(del)-1].ATimeUnix, 0))),
+					zap.Ints("histogram", c.histogram(del)),
 				)
 			}
+			if len(reinsertBackToCache) > 0 {
+				c.Info(ctx, "reinsert",
+					zap.Int("count", len(reinsertBackToCache)),
+					zap.Duration("oldest", now.Sub(time.Unix(reinsertBackToCache[0].ATimeUnix, 0))),
+					zap.Duration("newest", now.Sub(time.Unix(reinsertBackToCache[len(reinsertBackToCache)-1].ATimeUnix, 0))),
+					zap.Ints("histogram", c.histogram(reinsertBackToCache)),
+				)
+			}
+
+			c.reinsertCandidates(reinsertBackToCache)
 
 			total := uint64(0)
 			for _, toDelete := range del {
@@ -289,7 +300,6 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 }
 
 func (c *Cleaner) splitBatch(batch []*Candidate) (toDelete []*Candidate, toReinsert []*Candidate) {
-	// Process the batch, start by sorting candidates by age (oldest first)
 	sort.Slice(batch, func(i, j int) bool {
 		return batch[i].ATimeUnix < batch[j].ATimeUnix
 	})
@@ -424,4 +434,32 @@ func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {
 			panic(err)
 		}
 	}
+}
+
+func (c *Cleaner) histogram(candidates []*Candidate) []int {
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	buckets := []int64{10, 100, 1000, 10_000, 100_000, 1_000_000, 10_000_000} // seconds
+	hist := make([]int, len(buckets)+1)
+
+	now := time.Now().Unix()
+	for _, candidate := range candidates {
+		age := now - candidate.ATimeUnix
+		bucketed := false
+		for i, b := range buckets {
+			if age <= b {
+				hist[i]++
+				bucketed = true
+
+				break
+			}
+		}
+		if !bucketed {
+			hist[len(buckets)]++
+		}
+	}
+
+	return hist
 }
