@@ -31,6 +31,49 @@ const (
 	dispatchMaxWriteBufferSize = 32 * 1024 * 1024
 )
 
+const mediumBufferSize = 128 * 1024 // 128KB
+
+// Buffer pools. We use *[]byte so the slice header is stack-allocated.
+// sync.Pool does NOT clear buffers - fine since we overwrite before use.
+var (
+	mediumBufferPool = sync.Pool{
+		New: func() any {
+			buf := make([]byte, mediumBufferSize)
+			return &buf
+		},
+	}
+	largeBufferPool = sync.Pool{
+		New: func() any {
+			buf := make([]byte, dispatchBufferSize)
+			return &buf
+		},
+	}
+)
+
+const smallBufferSize = 4 * 1024 // 4KB - allocate directly, too small to pool
+
+// getBuffer returns a pooled buffer of appropriate size.
+func getBuffer(size uint32) (*[]byte, func()) {
+	if size <= smallBufferSize {
+		buf := make([]byte, size)
+		return &buf, func() {}
+	}
+
+	if size <= mediumBufferSize {
+		buf := mediumBufferPool.Get().(*[]byte)
+		return buf, func() { mediumBufferPool.Put(buf) }
+	}
+
+	if size <= dispatchBufferSize {
+		buf := largeBufferPool.Get().(*[]byte)
+		return buf, func() { largeBufferPool.Put(buf) }
+	}
+
+	buf := make([]byte, size)
+
+	return &buf, func() {}
+}
+
 // NBD Commands
 const (
 	NBDCmdRead       = 0
@@ -124,7 +167,10 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  *
  */
 func (d *Dispatch) Handle(ctx context.Context) error {
-	buffer := make([]byte, dispatchBufferSize)
+	bufferPtr, releaseBuffer := getBuffer(dispatchBufferSize)
+	defer releaseBuffer()
+	buffer := *bufferPtr
+
 	wp := 0
 
 	request := Request{}
@@ -184,7 +230,8 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					return fmt.Errorf("nbd write request length %d exceeds maximum %d", request.Length, dispatchMaxWriteBufferSize)
 				}
 
-				data := make([]byte, request.Length)
+				dataPtr, releaseData := getBuffer(request.Length)
+				data := (*dataPtr)[:request.Length]
 
 				dataCopied := copy(data, buffer[rp:wp])
 
@@ -196,6 +243,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				for dataCopied < int(request.Length) {
 					n, err := d.fp.Read(data[dataCopied:])
 					if err != nil {
+						releaseData()
 						return fmt.Errorf("nbd write read error: %w", err)
 					}
 
@@ -203,14 +251,16 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 					select {
 					case err := <-d.fatal:
+						releaseData()
 						return err
 					case <-ctx.Done():
+						releaseData()
 						return ctx.Err()
 					default:
 					}
 				}
 
-				err := d.cmdWrite(ctx, request.Handle, request.From, data)
+				err := d.cmdWrite(ctx, request.Handle, request.From, data, releaseData)
 				if err != nil {
 					return err
 				}
@@ -244,9 +294,13 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	d.shuttingDownLock.Unlock()
 
 	performRead := func(handle uint64, from uint64, length uint32) error {
+		// Get pooled buffer
+		dataPtr, releaseData := getBuffer(length)
+		defer releaseData()
+		data := (*dataPtr)[:length]
+
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
-		data := make([]byte, length)
 
 		go func() {
 			_, err := d.prov.ReadAt(ctx, data, int64(from))
@@ -263,7 +317,6 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			}
 		}
 
-		// read was successful
 		return d.writeResponse(0, handle, data)
 	}
 
@@ -282,10 +335,11 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	return nil
 }
 
-func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte, releaseData func()) error {
 	d.shuttingDownLock.Lock()
 	if d.shuttingDown {
 		d.shuttingDownLock.Unlock()
+		releaseData()
 
 		return ErrShuttingDown
 	}
@@ -311,7 +365,6 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			}
 		}
 
-		// write was successful
 		return d.writeResponse(0, handle, []byte{})
 	}
 
