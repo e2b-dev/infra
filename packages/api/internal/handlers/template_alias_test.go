@@ -18,6 +18,8 @@ import (
 )
 
 func TestQueryNotExistingTemplateAlias(t *testing.T) {
+	t.Parallel()
+
 	testDB := testutils.SetupDatabase(t)
 
 	store := &APIStore{
@@ -47,6 +49,8 @@ func TestQueryNotExistingTemplateAlias(t *testing.T) {
 }
 
 func TestQueryExistingTemplateAlias(t *testing.T) {
+	t.Parallel()
+
 	testDB := testutils.SetupDatabase(t)
 
 	teamID := testutils.CreateTestTeam(t, testDB)
@@ -82,6 +86,8 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 }
 
 func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
+	t.Parallel()
+
 	testDB := testutils.SetupDatabase(t)
 
 	ownerTeamID := testutils.CreateTestTeam(t, testDB)
