@@ -452,6 +452,7 @@ func (c *Cleaner) histogram(candidates []*Candidate) []int {
 			if age <= b {
 				hist[i]++
 				bucketed = true
+
 				break
 			}
 		}
