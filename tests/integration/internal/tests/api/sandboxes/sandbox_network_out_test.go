@@ -36,7 +36,7 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 				Steps: sharedutils.ToPtr([]api.TemplateStep{
 					{
 						Type: "RUN",
-						Args: sharedutils.ToPtr([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils openssh-client && sudo rm -rf /var/lib/apt/lists/*"}),
+						Args: sharedutils.ToPtr([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils openssh-client gnupg && sudo rm -rf /var/lib/apt/lists/*"}),
 					},
 				}),
 			},
@@ -963,4 +963,74 @@ func TestWithNetworkConfig_SSHWorks(t *testing.T) {
 	require.Error(t, err, "Expected SSH command to exit with non-zero status due to lack of credentials")
 	require.Contains(t, output, "Permission denied (publickey)",
 		"Expected 'Permission denied (publickey)' indicating SSH handshake succeeded but auth failed")
+}
+
+// TestGPGKeyserverWorks tests that GPG keyserver connections work correctly.
+// GPG keyservers use the HKP protocol (HTTP Keyserver Protocol) typically on port 11371.
+// This test is important for verifying TCP half-close handling in the firewall proxy.
+// GPG's HKP client may half-close the connection after sending the request (FIN from client),
+// while still waiting for the server's response. If the proxy doesn't handle half-close correctly,
+// the connection would freeze waiting indefinitely and the key retrieval would fail.
+// Expected: GPG should successfully receive the key from the keyserver.
+func TestGPGKeyserverWorks(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	client := setup.GetAPIClient()
+
+	t.Run("without network config", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		// Create sandbox WITHOUT any network configuration
+		// This tests the default behavior - all traffic should be allowed
+		sbx := utils.SetupSandboxWithCleanup(t, client,
+			utils.WithTemplateID(templateID),
+			utils.WithTimeout(60),
+			// No network config - this is the key part of the test
+		)
+
+		envdClient := setup.GetEnvdClient(t, ctx)
+
+		// Test GPG keyserver connection to Ubuntu's keyserver
+		// This tests that:
+		// 1. Non-standard TCP ports (11371) work correctly through the firewall
+		// 2. TCP half-close is properly handled (GPG may FIN after request but expects response)
+		t.Log("Testing GPG keyserver connection to hkp://keyserver.ubuntu.com...")
+		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+			"gpg", "--keyserver", "hkp://keyserver.ubuntu.com",
+			"--recv-key", "95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7")
+		require.NoError(t, err, "Expected GPG keyserver command to succeed, got error: %v, output: %s", err, output)
+		t.Logf("GPG keyserver output: %s", output)
+	})
+
+	t.Run("with network config", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		// Create sandbox WITH network configuration that allows all IPs
+		// Using 0.0.0.0/0 in allowOut to allow all traffic, but with denyOut set to prove
+		// network config is being processed (not just bypassed).
+		sbx := utils.SetupSandboxWithCleanup(t, client,
+			utils.WithTemplateID(templateID),
+			utils.WithTimeout(60),
+			utils.WithNetwork(&api.SandboxNetworkConfig{
+				AllowOut: &[]string{sandbox_network.AllInternetTrafficCIDR}, // Allow all IPs
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR}, // Would block all, but allowOut takes precedence
+			}),
+		)
+
+		envdClient := setup.GetEnvdClient(t, ctx)
+
+		// Test GPG keyserver connection to Ubuntu's keyserver
+		// This tests that:
+		// 1. Non-standard TCP ports (11371) work correctly through the firewall when network config is active
+		// 2. TCP half-close is properly handled (GPG may FIN after request but expects response)
+		t.Log("Testing GPG keyserver connection to hkp://keyserver.ubuntu.com with network config defined...")
+		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+			"gpg", "--keyserver", "hkp://keyserver.ubuntu.com",
+			"--recv-key", "95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7")
+		require.NoError(t, err, "Expected GPG keyserver command to succeed, got error: %v, output: %s", err, output)
+		t.Logf("GPG keyserver output: %s", output)
+	})
 }
