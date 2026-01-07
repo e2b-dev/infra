@@ -243,26 +243,25 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 				continue
 			}
 
-			c.Info(ctx, "processing batch",
-				zap.Ints("histogram", c.histogram(batch)),
-			)
-
 			// reinsert the "younger" candidates back into the directory tree
 			del, reinsertBackToCache := c.splitBatch(batch)
+
+			now := time.Now()
 			if len(del) > 0 {
 				c.Info(ctx, "delete",
 					zap.Int("count", len(del)),
-					zap.Duration("oldest", time.Since(time.Unix(del[0].ATimeUnix, 0))),
-					zap.Duration("newest", time.Since(time.Unix(del[len(del)-1].ATimeUnix, 0))),
+					zap.Duration("oldest", now.Sub(time.Unix(del[0].ATimeUnix, 0))),
+					zap.Duration("newest", now.Sub(time.Unix(del[len(del)-1].ATimeUnix, 0))),
+					zap.Ints("histogram", c.histogram(del)),
 				)
-
+			}
+			if len(reinsertBackToCache) > 0 {
 				c.Info(ctx, "reinsert",
 					zap.Int("count", len(reinsertBackToCache)),
-					zap.Duration("oldest", time.Since(time.Unix(reinsertBackToCache[0].ATimeUnix, 0))),
-					zap.Duration("newest", time.Since(time.Unix(reinsertBackToCache[len(reinsertBackToCache)-1].ATimeUnix, 0))),
+					zap.Duration("oldest", now.Sub(time.Unix(reinsertBackToCache[0].ATimeUnix, 0))),
+					zap.Duration("newest", now.Sub(time.Unix(reinsertBackToCache[len(reinsertBackToCache)-1].ATimeUnix, 0))),
+					zap.Ints("histogram", c.histogram(reinsertBackToCache)),
 				)
-
-				c.Info(ctx, "delete hist", zap.Ints("histogram", c.histogram(del)))
 			}
 
 			c.reinsertCandidates(reinsertBackToCache)
