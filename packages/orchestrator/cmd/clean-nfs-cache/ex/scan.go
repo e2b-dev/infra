@@ -37,7 +37,9 @@ func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, er
 
 			default:
 				if !errors.Is(err, ErrNoFiles) {
-					c.Info(ctx, "error during scanning", zap.Error(err))
+					c.Info(ctx, "error during scanning",
+						zap.Int("continousCount", continuousErrors),
+						zap.Error(err))
 				}
 				continuousErrors++
 				if continuousErrors >= c.MaxErrorRetries {
@@ -94,12 +96,12 @@ func (c *Cleaner) findCandidate(ctx context.Context, path []*Dir) (*Candidate, e
 	}
 }
 
-func (d *Dir) randomSubdirOrOldestFile() (cadidate *File, randomSubdir *Dir, err error) {
+func (d *Dir) randomSubdirOrOldestFile() (randomCandidate *File, randomSubdir *Dir, err error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	if len(d.Files) == 0 && len(d.Dirs) == 0 {
-		return nil, nil, ErrNoFiles
+		return nil, nil, fmt.Errorf("no candidates found in %s: %w", d.Name, ErrNoFiles)
 	}
 	itemCount := len(d.Dirs) + len(d.Files)
 	i := rand.Intn(itemCount)
@@ -129,7 +131,7 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 	case dirStateScanning:
 		d.mu.Unlock()
 
-		return nil, ErrBusy
+		return nil, fmt.Errorf("%w: directory %s is busy being scanned", ErrBusy, c.abs(path, ""))
 
 	default:
 		// continue
