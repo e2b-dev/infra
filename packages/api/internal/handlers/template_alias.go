@@ -46,7 +46,7 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 
 	// Team is alias owner
 	c.JSON(
-		http.StatusOK, api.TemplateQuick{
+		http.StatusOK, api.TemplateAliasResponse{
 			Public:     result.Public,
 			TemplateID: result.EnvID,
 		},
