@@ -153,9 +153,10 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				default:
 				}
 
-				b := make([]byte, storage.MemoryChunkSize)
+				b := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
+
 				readBytes, err := c.base.ReadAt(ctx, b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
 					fetchSW.End(ctx, int64(readBytes),
@@ -165,21 +166,10 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
+ 
+				c.cache.setIsCached(fetchOff, int64(readBytes))
+
 				fetchSW.End(ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
-
-				writeSW := c.metrics.WriteChunksTimerFactory.Begin()
-				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
-				if cacheErr != nil {
-					writeSW.End(ctx,
-						int64(readBytes),
-						attribute.String(result, resultTypeFailure),
-						attribute.String(failureReason, failureTypeLocalWrite),
-					)
-
-					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
-				}
-
-				writeSW.End(ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
 
 				return nil
 			})

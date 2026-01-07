@@ -96,6 +96,19 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 	}, nil
 }
 
+func (c *Cache) EnableTransparentHugePages() error {
+	if c.mmap == nil {
+		return nil
+	}
+
+	err := unix.Madvise(*c.mmap, unix.MADV_HUGEPAGE)
+	if err != nil {
+		return fmt.Errorf("error enabling transparent huge pages: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Cache) isClosed() bool {
 	return c.closed.Load()
 }
@@ -319,6 +332,16 @@ func (c *Cache) address(off int64) *byte {
 	}
 
 	return &(*c.mmap)[off]
+}
+
+func (c *Cache) addressBytes(off, length int64) []byte {
+	if c.mmap == nil {
+		return nil
+	}
+
+	end := min(off+length, c.size)
+	
+	return (*c.mmap)[off:end]
 }
 
 func (c *Cache) BlockSize() int64 {
