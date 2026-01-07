@@ -13,6 +13,7 @@ import (
 )
 
 func TestDirSort(t *testing.T) {
+	t.Parallel()
 	d := &Dir{
 		Name: "testdir",
 		Dirs: []*Dir{
@@ -42,6 +43,8 @@ func TestDirSort(t *testing.T) {
 }
 
 func TestCleanDeletesOldestFiles(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	defer os.RemoveAll(root)
 
@@ -126,6 +129,8 @@ func TestCleanDeletesOldestFiles(t *testing.T) {
 }
 
 func TestSplitBatch(t *testing.T) {
+	t.Parallel()
+
 	c := &Cleaner{
 		Options: Options{DeleteN: 3},
 	}

@@ -11,7 +11,11 @@ import (
 )
 
 func TestAtomicMove_SuccessWhenDestMissing(t *testing.T) {
+	t.Parallel()
+
 	t.Run("happy path", func(t *testing.T) {
+		t.Parallel()
+
 		td := t.TempDir()
 		content := []byte("alpha")
 		src := filepath.Join(td, "src")
@@ -31,6 +35,8 @@ func TestAtomicMove_SuccessWhenDestMissing(t *testing.T) {
 	})
 
 	t.Run("fail when source does not exist", func(t *testing.T) {
+		t.Parallel()
+
 		td := t.TempDir()
 		src := filepath.Join(td, "src")
 		dst := filepath.Join(td, "dst")
@@ -45,6 +51,8 @@ func TestAtomicMove_SuccessWhenDestMissing(t *testing.T) {
 	})
 
 	t.Run("fail when destination exists", func(t *testing.T) {
+		t.Parallel()
+
 		td := t.TempDir()
 		content := []byte("alpha")
 		secondContent := []byte("beta")
@@ -67,6 +75,8 @@ func TestAtomicMove_SuccessWhenDestMissing(t *testing.T) {
 	})
 
 	t.Run("succeed when source cannot be removed", func(t *testing.T) {
+		t.Parallel()
+
 		errTarget := errors.New("target error")
 
 		td := t.TempDir()

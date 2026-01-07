@@ -18,6 +18,7 @@ import (
 )
 
 func TestMaskRequestHostAPIParameter(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	ctx := t.Context()
 
@@ -78,6 +79,7 @@ func TestMaskRequestHostAPIParameter(t *testing.T) {
 }
 
 func TestMaskRequestHostIncorrectUrl(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	ctx := t.Context()
 

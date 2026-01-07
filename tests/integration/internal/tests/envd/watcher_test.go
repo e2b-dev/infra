@@ -15,6 +15,7 @@ import (
 )
 
 func TestWatcher(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 	envdClient := setup.GetEnvdClient(t, t.Context())

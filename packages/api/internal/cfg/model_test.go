@@ -12,7 +12,7 @@ func TestParse(t *testing.T) {
 	// set base required values
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres-connection-string")
 
-	t.Run("postgres connection string is required", func(t *testing.T) {
+	t.Run("postgres connection string is required", func(t *testing.T) { //nolint:paralleltest // cannot call t.Setenv and t.Parallel
 		removeEnv(t, "POSTGRES_CONNECTION_STRING")
 
 		_, err := Parse()

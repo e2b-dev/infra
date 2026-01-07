@@ -18,6 +18,7 @@ type ForbiddenErrorResponse struct {
 }
 
 func TestBannedTeam(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	db := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()
@@ -44,6 +45,7 @@ UPDATE teams SET is_banned = $1 WHERE id = $2
 }
 
 func TestBlockedTeam(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	db := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()

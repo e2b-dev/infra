@@ -21,7 +21,11 @@ import (
 var noopTracer = noop.TracerProvider{}.Tracer("")
 
 func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
+	t.Parallel()
+
 	t.Run("can be cached successfully", func(t *testing.T) {
+		t.Parallel()
+
 		tempDir := t.TempDir()
 		cacheDir := filepath.Join(tempDir, "cache")
 		tempFilename := filepath.Join(tempDir, "temp.bin")
@@ -61,13 +65,15 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 	})
 
 	t.Run("uncached reads will be cached the second time", func(t *testing.T) {
+		t.Parallel()
+
 		tempDir := t.TempDir()
 		cacheDir := filepath.Join(tempDir, "cache")
 		err := os.MkdirAll(cacheDir, 0o777)
 		require.NoError(t, err)
 
 		const dataSize = 10 * megabyte
-		actualData := generateData(dataSize)
+		actualData := generateData(t, dataSize)
 
 		inner := storagemocks.NewMockObjectProvider(t)
 		inner.EXPECT().
@@ -99,6 +105,8 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 }
 
 func TestCachedObjectProvider_WriteFileToCache(t *testing.T) {
+	t.Parallel()
+
 	c := CachedObjectProvider{
 		path:   t.TempDir(),
 		tracer: noopTracer,
@@ -117,7 +125,9 @@ func TestCachedObjectProvider_WriteFileToCache(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func generateData(count int) []byte {
+func generateData(t *testing.T, count int) []byte {
+	t.Helper()
+
 	data := make([]byte, count)
 	for i := range count {
 		data[i] = byte(rand.Intn(256))

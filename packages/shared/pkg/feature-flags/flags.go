@@ -44,8 +44,8 @@ func (f JSONFlag) Fallback() ldvalue.Value {
 
 func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
 	flag := JSONFlag{name: name, fallback: fallback}
-	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(fallback)
-	LaunchDarklyOfflineStore.Update(builder)
+	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(fallback)
+	launchDarklyOfflineStore.Update(builder)
 
 	return flag
 }
@@ -71,8 +71,8 @@ func (f BoolFlag) Fallback() bool {
 
 func newBoolFlag(name string, fallback bool) BoolFlag {
 	flag := BoolFlag{name: name, fallback: fallback}
-	builder := LaunchDarklyOfflineStore.Flag(flag.name).VariationForAll(fallback)
-	LaunchDarklyOfflineStore.Update(builder)
+	builder := launchDarklyOfflineStore.Flag(flag.name).VariationForAll(fallback)
+	launchDarklyOfflineStore.Update(builder)
 
 	return flag
 }
@@ -109,8 +109,8 @@ func (f IntFlag) Fallback() int {
 
 func newIntFlag(name string, fallback int) IntFlag {
 	flag := IntFlag{name: name, fallback: fallback}
-	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.Int(fallback))
-	LaunchDarklyOfflineStore.Update(builder)
+	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.Int(fallback))
+	launchDarklyOfflineStore.Update(builder)
 
 	return flag
 }
@@ -156,8 +156,8 @@ func (f StringFlag) Fallback() string {
 
 func newStringFlag(name string, fallback string) StringFlag {
 	flag := StringFlag{name: name, fallback: fallback}
-	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback))
-	LaunchDarklyOfflineStore.Update(builder)
+	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback))
+	launchDarklyOfflineStore.Update(builder)
 
 	return flag
 }

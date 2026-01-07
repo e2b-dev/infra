@@ -35,6 +35,7 @@ func (f fakeTemplateManagerClient) GetStatus(context.Context, uuid.UUID, string,
 }
 
 func TestPollBuildStatus_setStatus(t *testing.T) {
+	t.Parallel()
 	type fields struct {
 		buildID               uuid.UUID
 		templateManagerClient templateManagerClient
@@ -98,6 +99,7 @@ func TestPollBuildStatus_setStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			c := &PollBuildStatus{
 				client: tt.fields.templateManagerClient,
 				logger: logger.NewNopLogger(),
@@ -121,6 +123,7 @@ func TestPollBuildStatus_setStatus(t *testing.T) {
 }
 
 func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
+	t.Parallel()
 	type fields struct {
 		templateManagerClient templateManagerClient
 	}
@@ -269,6 +272,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			c := &PollBuildStatus{
 				client: tt.fields.templateManagerClient,
 				logger: logger.NewNopLogger(),

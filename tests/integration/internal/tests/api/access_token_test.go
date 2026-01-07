@@ -16,6 +16,7 @@ import (
 )
 
 func TestCreateAccessToken(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -35,12 +36,14 @@ func TestCreateAccessToken(t *testing.T) {
 }
 
 func TestDeleteAccessToken(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	t.Cleanup(cancel)
 
 	c := setup.GetAPIClient()
 
 	t.Run("succeeds", func(t *testing.T) {
+		t.Parallel()
 		respC, err := c.PostAccessTokensWithResponse(ctx, api.PostAccessTokensJSONRequestBody{
 			Name: "test",
 		}, setup.WithSupabaseToken(t))
@@ -57,6 +60,7 @@ func TestDeleteAccessToken(t *testing.T) {
 	})
 
 	t.Run("id does not exist", func(t *testing.T) {
+		t.Parallel()
 		respD, err := c.DeleteAccessTokensAccessTokenIDWithResponse(ctx, uuid.New().String(), setup.WithSupabaseToken(t))
 		if err != nil {
 			t.Fatal(err)

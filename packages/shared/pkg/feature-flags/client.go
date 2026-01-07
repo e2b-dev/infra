@@ -14,8 +14,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-// LaunchDarklyOfflineStore is a test fixture that provides dynamically updatable feature flag state
-var LaunchDarklyOfflineStore = ldtestdata.DataSource()
+// launchDarklyOfflineStore is a test fixture that provides dynamically updatable feature flag state
+var launchDarklyOfflineStore = ldtestdata.DataSource()
 
 var launchDarklyApiKey = os.Getenv("LAUNCH_DARKLY_API_KEY")
 
@@ -26,23 +26,26 @@ type Client struct {
 	deploymentName string
 }
 
+func NewClientWithDatasource(source *ldtestdata.TestDataSource) (*Client, error) {
+	ldClient, err := ldclient.MakeCustomClient(
+		"",
+		ldclient.Config{
+			DataSource: source,
+		},
+		0)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Client{ld: ldClient}, nil
+}
+
 func NewClient() (*Client, error) {
 	var ldClient *ldclient.LDClient
 	var err error
 
 	if launchDarklyApiKey == "" {
-		// waitFor has to be 0 for offline store
-		ldClient, err = ldclient.MakeCustomClient(
-			"",
-			ldclient.Config{
-				DataSource: LaunchDarklyOfflineStore,
-			},
-			0)
-		if err != nil {
-			return nil, err
-		}
-
-		return &Client{ld: ldClient}, nil
+		return NewClientWithDatasource(launchDarklyOfflineStore)
 	}
 
 	ldClient, err = ldclient.MakeClient(launchDarklyApiKey, waitForInit)

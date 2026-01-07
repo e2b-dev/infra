@@ -10,13 +10,19 @@ import (
 )
 
 func TestErrorCollector(t *testing.T) {
+	t.Parallel()
+
 	t.Run("no errors", func(t *testing.T) {
+		t.Parallel()
+
 		ec := NewErrorCollector(1)
 		err := ec.Wait()
 		require.NoError(t, err)
 	})
 
 	t.Run("one error", func(t *testing.T) {
+		t.Parallel()
+
 		errTarget := errors.New("target error")
 		ec := NewErrorCollector(1)
 		ec.Go(t.Context(), func() error { return errTarget })
@@ -25,6 +31,8 @@ func TestErrorCollector(t *testing.T) {
 	})
 
 	t.Run("multiple errors", func(t *testing.T) {
+		t.Parallel()
+
 		errTarget1 := errors.New("first error")
 		errTarget2 := errors.New("second error")
 
@@ -37,6 +45,8 @@ func TestErrorCollector(t *testing.T) {
 	})
 
 	t.Run("waiting can be canceled", func(t *testing.T) {
+		t.Parallel()
+
 		ec := NewErrorCollector(1)
 
 		// Block the collector's only slot

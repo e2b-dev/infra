@@ -21,6 +21,8 @@ import (
 )
 
 func TestPathDirect_Direct4MBWrite(t *testing.T) {
+	t.Parallel()
+
 	featureFlags, err := featureflags.NewClient()
 	require.NoError(t, err)
 	size := int64(10 * 1024 * 1024)
@@ -50,6 +52,8 @@ func TestPathDirect_Direct4MBWrite(t *testing.T) {
 
 // We usually see the 32MB write be split into smaller writes, even on O_DIRECT.
 func TestPathDirect_Direct32MBWrite(t *testing.T) {
+	t.Parallel()
+
 	featureFlags, err := featureflags.NewClient()
 	require.NoError(t, err)
 	size := int64(256 * 1024 * 1024)
@@ -76,6 +80,8 @@ func TestPathDirect_Direct32MBWrite(t *testing.T) {
 }
 
 func TestPathDirect_Write(t *testing.T) {
+	t.Parallel()
+
 	featureFlags, err := featureflags.NewClient()
 	require.NoError(t, err)
 
@@ -100,6 +106,8 @@ func TestPathDirect_Write(t *testing.T) {
 }
 
 func TestPathDirect_WriteAtOffset(t *testing.T) {
+	t.Parallel()
+
 	featureFlags, err := featureflags.NewClient()
 	require.NoError(t, err)
 	size := int64(5 * 1024 * 1024)
@@ -124,6 +132,8 @@ func TestPathDirect_WriteAtOffset(t *testing.T) {
 }
 
 func TestPathDirect_LargeWrite(t *testing.T) {
+	t.Parallel()
+
 	featureFlags, err := featureflags.NewClient()
 	require.NoError(t, err)
 
@@ -141,6 +151,8 @@ func TestPathDirect_LargeWrite(t *testing.T) {
 }
 
 func TestPathLargeRead(t *testing.T) {
+	t.Parallel()
+
 	featureFlags, err := featureflags.NewClient()
 	require.NoError(t, err)
 

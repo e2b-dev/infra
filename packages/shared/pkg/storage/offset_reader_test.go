@@ -10,6 +10,8 @@ import (
 )
 
 func TestOffsetReader_Read(t *testing.T) {
+	t.Parallel()
+
 	data := []byte("hello world")
 	readerAt := bytes.NewReader(data)
 
@@ -80,6 +82,8 @@ func TestOffsetReader_Read(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r := newOffsetReader(readerAt, tt.offset)
 			p := make([]byte, tt.readSize)
 			n, err := r.Read(p)
@@ -93,6 +97,8 @@ func TestOffsetReader_Read(t *testing.T) {
 }
 
 func TestOffsetReader_SequentialReads(t *testing.T) {
+	t.Parallel()
+
 	data := []byte("hello world")
 	readerAt := bytes.NewReader(data)
 	r := newOffsetReader(readerAt, 0)

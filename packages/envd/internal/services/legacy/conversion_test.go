@@ -20,6 +20,7 @@ import (
 )
 
 func TestFilesystemClient_FieldFormatter(t *testing.T) {
+	t.Parallel()
 	fsh := filesystemconnectmocks.NewMockFilesystemHandler(t)
 	fsh.EXPECT().Move(mock.Anything, mock.Anything).Return(connect.NewResponse(&filesystem.MoveResponse{
 		Entry: &filesystem.EntryInfo{
@@ -35,6 +36,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 	)
 
 	t.Run("can return all fields", func(t *testing.T) {
+		t.Parallel()
 		buf := bytes.NewBufferString(`{}`)
 		req := httptest.NewRequest(http.MethodPost, filesystemconnect.FilesystemMoveProcedure, buf)
 		req.Header.Set("content-type", "application/json")
@@ -54,6 +56,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 	})
 
 	t.Run("can hide fields when appropriate", func(t *testing.T) {
+		t.Parallel()
 		buf := bytes.NewBufferString(`{}`)
 		req := httptest.NewRequest(http.MethodPost, filesystemconnect.FilesystemMoveProcedure, buf)
 		req.Header.Set("user-agent", brokenUserAgent)
@@ -70,6 +73,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 }
 
 func TestConversion(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		input    connect.AnyResponse
@@ -265,6 +269,7 @@ func TestConversion(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			actual := maybeConvertResponse(zerolog.DefaultContextLogger, tc.input)
 
 			expectedMsg := tc.expected.Any()
@@ -276,6 +281,7 @@ func TestConversion(t *testing.T) {
 }
 
 func TestConvertValue(t *testing.T) {
+	t.Parallel()
 	testCases := map[string]struct {
 		input, expected any
 	}{
@@ -307,6 +313,7 @@ func TestConvertValue(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			actual := maybeConvertValue(tc.input)
 			assert.Equal(t, tc.expected, actual)
 		})

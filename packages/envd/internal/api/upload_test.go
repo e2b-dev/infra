@@ -17,6 +17,7 @@ import (
 )
 
 func TestProcessFile(t *testing.T) {
+	t.Parallel()
 	uid := os.Getuid()
 	gid := os.Getgid()
 
@@ -34,6 +35,7 @@ func TestProcessFile(t *testing.T) {
 	var emptyLogger zerolog.Logger
 
 	t.Run("failed to ensure directories", func(t *testing.T) {
+		t.Parallel()
 		httpStatus, err := processFile(&emptyReq, "/proc/invalid/not-real", emptyPart, uid, gid, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusInternalServerError, httpStatus)
@@ -41,6 +43,7 @@ func TestProcessFile(t *testing.T) {
 	})
 
 	t.Run("attempt to replace directory with a file", func(t *testing.T) {
+		t.Parallel()
 		tempDir := t.TempDir()
 
 		httpStatus, err := processFile(&emptyReq, tempDir, emptyPart, uid, gid, emptyLogger)
@@ -50,6 +53,7 @@ func TestProcessFile(t *testing.T) {
 	})
 
 	t.Run("fail to create file", func(t *testing.T) {
+		t.Parallel()
 		httpStatus, err := processFile(&emptyReq, "/proc/invalid-filename", emptyPart, uid, gid, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusInternalServerError, httpStatus)
@@ -57,6 +61,7 @@ func TestProcessFile(t *testing.T) {
 	})
 
 	t.Run("out of disk space", func(t *testing.T) {
+		t.Parallel()
 		// make a tiny tmpfs mount
 		mountSize := 1024
 		tempDir := createTmpfsMount(t, mountSize)
@@ -87,6 +92,7 @@ func TestProcessFile(t *testing.T) {
 	})
 
 	t.Run("happy path", func(t *testing.T) {
+		t.Parallel()
 		tempDir := t.TempDir()
 		tempFile := filepath.Join(tempDir, "test-file")
 
@@ -103,6 +109,7 @@ func TestProcessFile(t *testing.T) {
 	})
 
 	t.Run("overwrite file on full disk", func(t *testing.T) {
+		t.Parallel()
 		// make a tiny tmpfs mount
 		sizeInBytes := 1024
 		tempDir := createTmpfsMount(t, 1024)
@@ -124,6 +131,7 @@ func TestProcessFile(t *testing.T) {
 	})
 
 	t.Run("write new file on full disk", func(t *testing.T) {
+		t.Parallel()
 		// make a tiny tmpfs mount
 		sizeInBytes := 1024
 		tempDir := createTmpfsMount(t, 1024)
@@ -146,6 +154,7 @@ func TestProcessFile(t *testing.T) {
 	})
 
 	t.Run("write new file with no inodes available", func(t *testing.T) {
+		t.Parallel()
 		// make a tiny tmpfs mount
 		tempDir := createTmpfsMountWithInodes(t, 1024, 2)
 
@@ -167,6 +176,7 @@ func TestProcessFile(t *testing.T) {
 	})
 
 	t.Run("update sysfs or other virtual fs", func(t *testing.T) {
+		t.Parallel()
 		if os.Geteuid() != 0 {
 			t.Skip("skipping sysfs updates: Operation not permitted with non-root user")
 		}
@@ -185,6 +195,7 @@ func TestProcessFile(t *testing.T) {
 	})
 
 	t.Run("replace file", func(t *testing.T) {
+		t.Parallel()
 		tempDir := t.TempDir()
 		tempFile := filepath.Join(tempDir, "test-file")
 

@@ -11,7 +11,11 @@ import (
 )
 
 func TestOpenFile(t *testing.T) {
+	t.Parallel()
+
 	t.Run("happy path", func(t *testing.T) {
+		t.Parallel()
+
 		expected := []byte("hello")
 
 		tempDir := t.TempDir()
@@ -38,6 +42,8 @@ func TestOpenFile(t *testing.T) {
 	})
 
 	t.Run("close without commit drops new data", func(t *testing.T) {
+		t.Parallel()
+
 		expected := []byte("hello")
 
 		tempDir := t.TempDir()
@@ -67,6 +73,8 @@ func TestOpenFile(t *testing.T) {
 	})
 
 	t.Run("two files cannot be opened at the same time", func(t *testing.T) {
+		t.Parallel()
+
 		tempDir := t.TempDir()
 		filename := filepath.Join(tempDir, "test.bin")
 
@@ -92,6 +100,8 @@ func TestOpenFile(t *testing.T) {
 	})
 
 	t.Run("missing directory returns error", func(t *testing.T) {
+		t.Parallel()
+
 		tempDir := t.TempDir()
 		filename := filepath.Join(tempDir, "a", "b", "test.bin")
 
