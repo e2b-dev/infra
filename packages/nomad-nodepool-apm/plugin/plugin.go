@@ -129,7 +129,7 @@ func (p *NodePoolPlugin) Query(query string, _ sdk.TimeRange) (sdk.TimestampedMe
 	// Count only nodes that are ready and eligible for scheduling
 	readyCount := 0
 	for _, node := range nodes {
-		if node.Status == "ready" && node.SchedulingEligibility == "eligible" {
+		if node.Status == api.NodeStatusReady && node.SchedulingEligibility == api.NodeSchedulingEligible {
 			readyCount++
 		}
 	}
