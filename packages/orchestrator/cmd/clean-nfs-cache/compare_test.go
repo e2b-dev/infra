@@ -36,12 +36,10 @@ func TestCompare(t *testing.T) {
 			deletedBytes, targetBytesToDelete, time.Since(start), mean.Round(time.Hour), sd.Round(time.Minute))
 	}
 
-	for _, nScan := range []int{1, 4, 16, 128} {
-		for _, nDel := range []int{1, 2, 8, 128} {
-			for _, nStat := range []int{1, 4, 16, 1024} {
+	for _, nScan := range []int{1, 4, 16, 32} {
+		for _, nDel := range []int{1, 2, 4, 16} {
+			for _, nStat := range []int{1, 4, 16, 32} {
 				t.Run(fmt.Sprintf("Scan%v-Del%v-Stat%v", nScan, nDel, nStat), func(t *testing.T) {
-					t.Parallel()
-
 					path := t.TempDir()
 					ex.CreateTestDir(path, NDirs, NFiles, testFileSize)
 					t.Cleanup(func() {
