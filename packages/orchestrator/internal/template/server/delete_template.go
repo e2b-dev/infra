@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -37,7 +37,7 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		logger.L().Info(ctx, "Canceling running template build", logger.WithTemplateID(in.GetTemplateID()), logger.WithBuildID(in.GetBuildID()))
 		telemetry.ReportEvent(ctx, "cancel in progress template build")
 		buildInfo.SetFail(&templatemanager.TemplateBuildStatusReason{
-			Message: cache.CanceledBuildReason,
+			Message: builderrors.ErrCanceled.Error(),
 		})
 	}
 

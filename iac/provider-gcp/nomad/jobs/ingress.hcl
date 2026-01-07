@@ -84,6 +84,7 @@ job "ingress" {
 
           # Traefik Nomad provider
           "--providers.nomad=true",
+          "--providers.nomad.exposedByDefault=false",
           "--providers.nomad.endpoint.address=${nomad_endpoint}",
           "--providers.nomad.endpoint.token=${nomad_token}",
 

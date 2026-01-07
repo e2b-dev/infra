@@ -162,6 +162,14 @@ provider-login:
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
 	gcloud --quiet auth application-default login
 
+# Migration: Detach old template-manager-system job from Terraform state
+# This keeps the Nomad job running but removes it from Terraform management
+# TODO: Remove after template-manager migration is complete
+.PHONY: migrate-template-manager-detach
+migrate-template-manager-detach:
+	@ printf "Detaching old template-manager-system from Terraform state for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n"
+	$(tf_vars) $(TF) state rm module.nomad.nomad_job.template_manager || true
+
 # TODO 2025-12-29: [ENG-3410] - Remove after migration period (14 days)
 .PHONY: migrate-clusters-terraform
 migrate-clusters-terraform:

@@ -69,6 +69,7 @@ build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
 build-and-upload:build-and-upload/clickhouse-migrator
+build-and-upload:build-and-upload/nomad-nodepool-apm
 build-and-upload/clean-nfs-cache:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/clean-nfs-cache
@@ -182,6 +183,13 @@ tidy:
 local-infra:
 	docker compose --file ./packages/local-dev/docker-compose.yaml up --abort-on-container-failure
 
+
+# Migration: Detach old template-manager-system job from Terraform state
+# TODO: Remove after template-manager migration is complete
+.PHONY: migrate-template-manager-detach
+migrate-template-manager-detach:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-gcp migrate-template-manager-detach
 
 # TODO 2025-12-29: [ENG-3410] - Remove after migration period (14 days)
 define env_var_or_default
