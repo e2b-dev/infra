@@ -970,6 +970,15 @@ type TemplateLegacy struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// TemplateQuick defines model for TemplateQuick.
+type TemplateQuick struct {
+	// Public Whether the template is public or only accessible by the team
+	Public bool `json:"public"`
+
+	// TemplateID Identifier of the template
+	TemplateID string `json:"templateID"`
+}
+
 // TemplateRequestResponseV3 defines model for TemplateRequestResponseV3.
 type TemplateRequestResponseV3 struct {
 	// Aliases Aliases of the template

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	apispec "github.com/e2b-dev/infra/packages/api/internal/api"
@@ -49,7 +50,7 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 	testDB := testutils.SetupDatabase(t)
 
 	teamID := testutils.CreateTestTeam(t, testDB)
-	_, alias := testutils.CreateTestTemplateWithAlias(t, testDB, teamID)
+	templateID, alias := testutils.CreateTestTemplateWithAlias(t, testDB, teamID)
 
 	store := &APIStore{
 		sqlcDB: testDB,
@@ -72,6 +73,12 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 	res, err := apispec.ParseGetTemplatesAliasesAliasResponse(w.Result())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, res.StatusCode())
+
+	require.NotNil(t, res.JSON200)
+
+	resBody := *res.JSON200
+	assert.Equal(t, templateID, resBody.TemplateID)
+	assert.True(t, resBody.Public)
 }
 
 func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {

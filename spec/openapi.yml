@@ -837,6 +837,18 @@ components:
           items:
             $ref: "#/components/schemas/TemplateBuild"
 
+    TemplateQuick:
+      required:
+        - templateID
+        - public
+      properties:
+        templateID:
+          type: string
+          description: Identifier of the template
+        public:
+          type: boolean
+          description: Whether the template is public or only accessible by the team
+
     TemplateBuildRequest:
       required:
         - dockerfile
@@ -2543,6 +2555,10 @@ paths:
       responses:
         "200":
           description: Successfully queried template by alias
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateQuick"
         "400":
           $ref: "#/components/responses/400"
         "403":

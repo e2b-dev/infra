@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -44,5 +45,10 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 	}
 
 	// Team is alias owner
-	c.Status(http.StatusOK)
+	c.JSON(
+		http.StatusOK, api.TemplateQuick{
+			Public:     result.Public,
+			TemplateID: result.EnvID,
+		},
+	)
 }
