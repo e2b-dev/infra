@@ -463,10 +463,25 @@ data "external" "template_manager" {
   }
 }
 
+# Get current template-manager count from Nomad to preserve autoscaler-managed value
+# This prevents Terraform from resetting count on job updates
+# Default depends on whether scaling is enabled (min=2) or not (min=1)
+data "external" "template_manager_count" {
+  program = ["bash", "${path.module}/scripts/get-nomad-job-count.sh"]
+
+  query = {
+    nomad_addr  = "https://nomad.${var.domain_name}"
+    nomad_token = var.nomad_acl_token_secret
+    job_name    = "template-manager"
+    min_count   = var.template_manages_clusters_size_gt_1 ? "2" : "1"
+  }
+}
+
 resource "nomad_job" "template_manager" {
   jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
     update_stanza = var.template_manages_clusters_size_gt_1
     node_pool     = var.builder_node_pool
+    current_count = tonumber(data.external.template_manager_count.result.count)
 
     gcp_project      = var.gcp_project_id
     gcp_region       = var.gcp_region
@@ -493,6 +508,37 @@ resource "nomad_job" "template_manager" {
     shared_chunk_cache_path         = var.shared_chunk_cache_path
   })
 }
+
+data "google_storage_bucket_object" "nomad_nodepool_apm" {
+  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
+
+  name   = "nomad-nodepool-apm"
+  bucket = var.fc_env_pipeline_bucket_name
+}
+
+data "external" "nomad_nodepool_apm_checksum" {
+  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
+
+  program = ["bash", "${path.module}/scripts/checksum.sh"]
+
+  query = {
+    base64 = data.google_storage_bucket_object.nomad_nodepool_apm[0].md5hash
+  }
+}
+
+# Nomad Autoscaler - required for template-manager dynamic scaling
+resource "nomad_job" "nomad_autoscaler" {
+  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
+
+  jobspec = templatefile("${path.module}/jobs/nomad-autoscaler.hcl", {
+    node_pool                   = var.api_node_pool
+    autoscaler_version          = var.nomad_autoscaler_version
+    bucket_name                 = var.fc_env_pipeline_bucket_name
+    nomad_token                 = var.nomad_acl_token_secret
+    nomad_nodepool_apm_checksum = data.external.nomad_nodepool_apm_checksum[0].result.hex
+  })
+}
+
 resource "nomad_job" "loki" {
   jobspec = templatefile("${path.module}/jobs/loki.hcl", {
     gcp_zone = var.gcp_zone
