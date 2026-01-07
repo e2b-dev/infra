@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/trace"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -70,6 +72,9 @@ type Dispatch struct {
 	shuttingDown     bool
 	shuttingDownLock sync.Mutex
 	fatal            chan error
+
+	// Tracing - uses shared trace.EventRecorder
+	tracer *trace.EventRecorder
 }
 
 func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
@@ -78,6 +83,7 @@ func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
 		fp:             fp,
 		prov:           prov,
 		fatal:          make(chan error, 1),
+		tracer:         trace.NewEventRecorder(false),
 	}
 
 	binary.BigEndian.PutUint32(d.responseHeader, NBDResponseMagic)
@@ -92,6 +98,24 @@ func (d *Dispatch) Drain() {
 
 	// Wait for any pending responses
 	d.pendingResponses.Wait()
+}
+
+// SetTraceEnabled enables or disables NBD tracing.
+func (d *Dispatch) SetTraceEnabled(enabled bool) {
+	d.tracer.SetEnabled(enabled)
+}
+
+// GetTrace returns a copy of the NBD trace events.
+func (d *Dispatch) GetTrace() []trace.Event {
+	return d.tracer.Events()
+}
+
+func (d *Dispatch) recordEvent(startTime time.Time, offset, length int64, isWrite bool) {
+	eventType := trace.TypeRead
+	if isWrite {
+		eventType = trace.TypeWrite
+	}
+	d.tracer.Record(startTime, offset, length, eventType)
 }
 
 /**
@@ -244,6 +268,8 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	d.shuttingDownLock.Unlock()
 
 	performRead := func(handle uint64, from uint64, length uint32) error {
+		startTime := time.Now()
+
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
@@ -263,8 +289,11 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			}
 		}
 
-		// read was successful
-		return d.writeResponse(0, handle, data)
+		// read was successful - write response and record event including response time
+		err := d.writeResponse(0, handle, data)
+		d.recordEvent(startTime, int64(from), int64(length), false)
+
+		return err
 	}
 
 	go func() {
@@ -294,6 +323,8 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	d.shuttingDownLock.Unlock()
 
 	performWrite := func(handle uint64, from uint64, data []byte) error {
+		startTime := time.Now()
+
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
@@ -311,8 +342,11 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			}
 		}
 
-		// write was successful
-		return d.writeResponse(0, handle, []byte{})
+		// write was successful - write response and record event including response time
+		err := d.writeResponse(0, handle, []byte{})
+		d.recordEvent(startTime, int64(from), int64(len(data)), true)
+
+		return err
 	}
 
 	go func() {

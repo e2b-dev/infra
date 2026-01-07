@@ -7,3 +7,6 @@ bin
 .clickhouse
 .shared
 /tmp
+.local-build
+/resume-sandbox
+trace-*.html
