@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/inetaf/tcpproxy"
 	"go.uber.org/zap"
-	"inet.af/tcpproxy"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"

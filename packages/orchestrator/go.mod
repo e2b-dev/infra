@@ -36,6 +36,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/hashicorp/consul/api v1.30.0
+	github.com/inetaf/tcpproxy v0.0.0-20250222171855-c4b9df066048
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/launchdarkly/go-sdk-common/v3 v3.3.0
 	github.com/launchdarkly/go-server-sdk/v7 v7.13.0
@@ -62,7 +63,6 @@ require (
 	golang.org/x/sys v0.38.0
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
-	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 )
 

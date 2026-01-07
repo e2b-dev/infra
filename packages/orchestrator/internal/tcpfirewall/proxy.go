@@ -6,9 +6,9 @@ import (
 	"net"
 	"strings"
 
+	"github.com/inetaf/tcpproxy"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"inet.af/tcpproxy"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 
-	"inet.af/tcpproxy"
+	"github.com/inetaf/tcpproxy"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 )
