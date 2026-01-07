@@ -158,8 +158,7 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # Ingress
-  ingress_port  = var.ingress_port
-  ingress_count = var.ingress_count
+  ingress_port = var.ingress_port
 
   # API
   api_resources_cpu_count                   = var.api_resources_cpu_count

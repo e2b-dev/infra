@@ -35,7 +35,6 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \
-	$(call tfvar, INGRESS_COUNT) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \

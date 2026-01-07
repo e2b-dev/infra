@@ -44,11 +44,10 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
   secret = var.redis_tls_ca_base64_secret_version.secret
 }
 
-
 resource "nomad_job" "ingress" {
   jobspec = templatefile("${path.module}/jobs/ingress.hcl",
     {
-      count         = var.ingress_count
+      count         = var.api_machine_count
       update_stanza = var.api_machine_count > 1
       cpu_count     = 1
       memory_mb     = 512

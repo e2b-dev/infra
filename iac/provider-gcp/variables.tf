@@ -121,11 +121,6 @@ variable "client_proxy_count" {
   default = 1
 }
 
-variable "ingress_count" {
-  type    = number
-  default = 1
-}
-
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
