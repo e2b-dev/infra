@@ -837,7 +837,7 @@ components:
           items:
             $ref: "#/components/schemas/TemplateBuild"
 
-    TemplateQuick:
+    TemplateAliasResponse:
       required:
         - templateID
         - public
@@ -2542,9 +2542,9 @@ paths:
       description: Check if template with given alias exists
       tags: [templates]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - name: alias
           in: path
@@ -2558,7 +2558,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TemplateQuick"
+                $ref: "#/components/schemas/TemplateAliasResponse"
         "400":
           $ref: "#/components/responses/400"
         "403":

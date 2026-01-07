@@ -780,6 +780,15 @@ type Template struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// TemplateAliasResponse defines model for TemplateAliasResponse.
+type TemplateAliasResponse struct {
+	// Public Whether the template is public or only accessible by the team
+	Public bool `json:"public"`
+
+	// TemplateID Identifier of the template
+	TemplateID string `json:"templateID"`
+}
+
 // TemplateBuild defines model for TemplateBuild.
 type TemplateBuild struct {
 	// BuildID Identifier of the build
@@ -968,15 +977,6 @@ type TemplateLegacy struct {
 
 	// UpdatedAt Time when the template was last updated
 	UpdatedAt time.Time `json:"updatedAt"`
-}
-
-// TemplateQuick defines model for TemplateQuick.
-type TemplateQuick struct {
-	// Public Whether the template is public or only accessible by the team
-	Public bool `json:"public"`
-
-	// TemplateID Identifier of the template
-	TemplateID string `json:"templateID"`
 }
 
 // TemplateRequestResponseV3 defines model for TemplateRequestResponseV3.

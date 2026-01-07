@@ -3953,7 +3953,7 @@ func (r PostTemplatesResponse) StatusCode() int {
 type GetTemplatesAliasesAliasResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *TemplateQuick
+	JSON200      *TemplateAliasResponse
 	JSON400      *N400
 	JSON403      *N403
 	JSON404      *N404
@@ -6088,7 +6088,7 @@ func ParseGetTemplatesAliasesAliasResponse(rsp *http.Response) (*GetTemplatesAli
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest TemplateQuick
+		var dest TemplateAliasResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
