@@ -138,8 +138,7 @@ plan-without-jobs:
 .PHONY: apply
 apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	@ $(tf_vars) \
-	$(TF) apply \
+	@ $(TF) apply \
 	-auto-approve \
 	-input=false \
 	-compact-warnings \
