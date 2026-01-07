@@ -290,6 +290,12 @@ variable "template_manages_clusters_size_gt_1" {
   type = bool
 }
 
+variable "nomad_autoscaler_version" {
+  type        = string
+  description = "Version of the Nomad Autoscaler to deploy"
+  default     = "0.4.5"
+}
+
 # Redis
 variable "redis_port" {
   type = object({
