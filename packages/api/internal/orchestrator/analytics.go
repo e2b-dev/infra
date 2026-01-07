@@ -38,12 +38,8 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 		case <-ticker.C:
 			sandboxes := o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning})
 			longRunningSandboxes := make([]sandbox.Sandbox, 0, len(sandboxes))
-			now := time.Now()
 			for _, sandbox := range sandboxes {
-				if sandbox.StartTime.IsZero() {
-					continue
-				}
-				if now.Sub(sandbox.StartTime) > oldSandboxThreshold {
+				if time.Since(sandbox.StartTime) > oldSandboxThreshold {
 					longRunningSandboxes = append(longRunningSandboxes, sandbox)
 				}
 			}
