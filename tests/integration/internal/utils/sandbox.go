@@ -113,6 +113,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		if createSandboxResponse.StatusCode() == http.StatusTooManyRequests {
 			t.Logf("Sandbox creation failed with status code %d, retrying...", createSandboxResponse.StatusCode())
 			time.Sleep(time.Second * 5)
+
 			continue
 		}
 
@@ -128,6 +129,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 	}
 
 	t.FailNow()
+
 	return nil
 }
 
