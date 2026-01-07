@@ -85,17 +85,18 @@ sysctl vm.vfs_cache_pressure=50
 
 # TODO: Optimize the mount more according to https://cloud.google.com/filestore/docs/mounting-fileshares
 %{ if USE_FILESTORE_CACHE }
+# Configure NFS read ahead
+cat <<'EOH' >/etc/udev/rules.d/99-nfs.rules
+# set read_ahead_kb to 4096 (chunk size), from https://support.vastdata.com/s/document-item?bundleId=z-kb-articles-publications-prod&topicId=6147145742.html&_LANG=enus
+SUBSYSTEM=="bdi", ACTION=="add", PROGRAM="/bin/awk -v bdi=$kernel 'BEGIN{ret=1} {if ($4 == bdi) {ret=0}} END{exit ret}' /proc/fs/nfsfs/volumes", ATTR{read_ahead_kb}="4096"
+EOH
+udevadm control --reload
+
 # Mount NFS
 mkdir -p "${NFS_MOUNT_PATH}"
 echo "${NFS_IP_ADDRESS}:/store ${NFS_MOUNT_PATH} nfs ${NFS_MOUNT_OPTS} 0 0" | tee -a /etc/fstab
 mount "${NFS_MOUNT_PATH}"
 mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
-
-# Optimize read ahead for our chunk size
-device_number=$(stat -c '%d' "${NFS_MOUNT_PATH}")
-((major = ($device_number & 0xFFF00) >> 8))
-((minor = ($device_number & 0xFF) | (($device_number >> 12) & 0xFFF00)))
-echo 4096 > /sys/class/bdi/$major:$minor/read_ahead_kb
 %{ endif }
 
 # Add tmpfs for snapshotting
