@@ -780,6 +780,15 @@ type Template struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// TemplateAliasResponse defines model for TemplateAliasResponse.
+type TemplateAliasResponse struct {
+	// Public Whether the template is public or only accessible by the team
+	Public bool `json:"public"`
+
+	// TemplateID Identifier of the template
+	TemplateID string `json:"templateID"`
+}
+
 // TemplateBuild defines model for TemplateBuild.
 type TemplateBuild struct {
 	// BuildID Identifier of the build
