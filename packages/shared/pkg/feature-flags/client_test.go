@@ -16,12 +16,12 @@ func TestOfflineDatastore(t *testing.T) {
 	t.Parallel()
 	clientCtx := ldcontext.NewBuilder(flagName).Build()
 	client, err := NewClient()
+	require.NoError(t, err)
+
 	t.Cleanup(func() {
 		err = client.Close(t.Context())
 		assert.NoError(t, err)
 	})
-
-	require.NoError(t, err)
 
 	// value is not set so it should be default (false)
 	flagValue, _ := client.ld.BoolVariation(flagName, clientCtx, false)
