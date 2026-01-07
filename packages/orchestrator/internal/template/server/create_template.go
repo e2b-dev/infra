@@ -148,10 +148,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 				telemetry.WithTemplateID(cfg.GetTemplateID()),
 				telemetry.WithBuildID(cfg.GetBuildID()),
 			}
-			if userError.GetMessage() != builderrors.InternalErrorMessage {
-				telemetry.ReportError(ctx, "error while building template", err, attrs...)
-			} else {
+			if userError.GetMessage() == builderrors.InternalErrorMessage {
 				telemetry.ReportCriticalError(ctx, "error while building template", err, attrs...)
+			} else {
+				telemetry.ReportError(ctx, "error while building template", err, attrs...)
 			}
 
 			buildInfo.SetFail(userError)
