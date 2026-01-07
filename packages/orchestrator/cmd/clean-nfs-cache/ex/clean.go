@@ -197,13 +197,6 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	runtime.ReadMemStats(&baseMem)
 	batchNumber := 0
 
-	// All scanner workers would immediately try to scan the root directory,
-	// so we scan it once here to populate the initial directory tree.
-	_, err := c.scanDir(ctx, []*Dir{c.root})
-	if err != nil {
-		return fmt.Errorf("initial scan of root directory failed: %w", err)
-	}
-
 	for range c.MaxConcurrentStat {
 		running.Add(1)
 		go c.Statter(ctx, running)
