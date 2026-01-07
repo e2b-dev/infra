@@ -5,6 +5,7 @@ import (
 	"maps"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,28 +98,36 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		templateID = setup.SandboxTemplateID
 	}
 
-	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
-		TemplateID:          templateID,
-		Timeout:             &config.timeout,
-		Metadata:            &config.metadata,
-		AutoPause:           &config.autoPause,
-		Network:             config.network,
-		AllowInternetAccess: config.allowInternetAccess,
-		Secure:              config.secure,
-	}, setup.WithAPIKey())
+	var sbx *api.Sandbox
+	require.Eventually(t, func() bool {
+		// only retry if 429
+		createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
+			TemplateID:          templateID,
+			Timeout:             &config.timeout,
+			Metadata:            &config.metadata,
+			AutoPause:           &config.autoPause,
+			Network:             config.network,
+			AllowInternetAccess: config.allowInternetAccess,
+			Secure:              config.secure,
+		}, setup.WithAPIKey())
+		require.NoError(t, err)
 
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
-	require.NotNil(t, createSandboxResponse.JSON201)
+		if createSandboxResponse.StatusCode() == http.StatusTooManyRequests {
+			return false // only retry if we hit a 429
+		}
+
+		require.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
+		sbx = createSandboxResponse.JSON201
+		require.NotNil(t, sbx)
+
+		return true
+	}, 5*time.Second, 30*time.Second, "Sandbox creation timed out")
 
 	t.Cleanup(func() {
-		if t.Failed() {
-			t.Logf("Response: %s", string(createSandboxResponse.Body))
-		}
-		TeardownSandbox(t, c, createSandboxResponse.JSON201.SandboxID)
+		TeardownSandbox(t, c, sbx.SandboxID)
 	})
 
-	return createSandboxResponse.JSON201
+	return sbx
 }
 
 // TeardownSandbox kills the sandbox with the given ID
