@@ -13,8 +13,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -290,8 +292,16 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 	case !hasImage && !hasTemplate:
 		return fmt.Errorf("must specify either fromImage or fromTemplate")
 	case hasTemplate:
+		alias, tag, err := id.ParseTemplateIDOrAliasWithTag(*fromTemplate)
+		if err != nil {
+			return fmt.Errorf("failed to parse template ID or alias with tag: %w", err)
+		}
+
 		// Look up the base template by alias to get its metadata
-		baseTemplate, err := tm.sqlcDB.GetTemplateWithBuild(ctx, *fromTemplate)
+		baseTemplate, err := tm.sqlcDB.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
+			AliasOrEnvID: alias,
+			Tag:          tag,
+		})
 		if err != nil {
 			return &FromTemplateError{
 				err:     err,

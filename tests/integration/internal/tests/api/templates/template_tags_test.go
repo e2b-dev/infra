@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
+	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	testutils "github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -512,4 +513,168 @@ func TestTemplateBuildWithTagInAlias(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, sbxResp.StatusCode())
 	require.NotNil(t, sbxResp.JSON201)
+}
+
+// TestAssignmentOrderingLatestWins verifies that when multiple builds are assigned
+// to the same tag, the latest assignment (by created_at DESC) is used for sandbox creation.
+// This is a critical behavior for the tag reassignment feature.
+func TestAssignmentOrderingLatestWins(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
+	defer cancel()
+
+	c := setup.GetAPIClient()
+
+	alias := "test-ordering-latest"
+	versionFilePath := "/home/user/version.txt"
+
+	// Build first version - write "build-1" to a file
+	template1 := testutils.BuildTemplate(t, testutils.TemplateBuildOptions{
+		Names: []string{alias},
+		BuildData: api.TemplateBuildStartV2{
+			FromImage: utils.ToPtr("ubuntu:22.04"),
+			Steps: utils.ToPtr([]api.TemplateStep{
+				{
+					Type:  "RUN",
+					Force: utils.ToPtr(true),
+					Args:  utils.ToPtr([]string{"echo -n 'build-1' > " + versionFilePath}),
+				},
+			}),
+		},
+		ReqEditors: []api.RequestEditorFn{setup.WithAPIKey()},
+	})
+
+	// Build second version (same template, new build) - write "build-2" to a file
+	template2 := testutils.BuildTemplate(t, testutils.TemplateBuildOptions{
+		Names: []string{alias},
+		BuildData: api.TemplateBuildStartV2{
+			FromImage: utils.ToPtr("ubuntu:22.04"),
+			Steps: utils.ToPtr([]api.TemplateStep{
+				{
+					Type:  "RUN",
+					Force: utils.ToPtr(true),
+					Args:  utils.ToPtr([]string{"echo -n 'build-2' > " + versionFilePath}),
+				},
+			}),
+		},
+		ReqEditors: []api.RequestEditorFn{setup.WithAPIKey()},
+	})
+
+	require.Equal(t, template1.TemplateID, template2.TemplateID, "Same alias should produce same template ID")
+	require.NotEqual(t, template1.BuildID, template2.BuildID, "Each build should have unique build ID")
+
+	// The default tag should now point to the latest build (template2)
+	// Create a sandbox and verify it uses the latest build
+	sbx := testutils.SetupSandboxWithCleanup(t, c, testutils.WithTemplateID(alias+":"+id.DefaultTag))
+
+	// Read the version file from the sandbox to verify it's using the latest build
+	envdClient := setup.GetEnvdClient(t, ctx)
+	fileResp, err := envdClient.HTTPClient.GetFilesWithResponse(
+		ctx,
+		&envdapi.GetFilesParams{Path: &versionFilePath, Username: utils.ToPtr("user")},
+		setup.WithSandbox(sbx.SandboxID),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, fileResp.StatusCode(), "Failed to read version file")
+
+	// The file should contain "build-2" since the latest build should be used
+	assert.Equal(t, "build-2", string(fileResp.Body),
+		"Sandbox should use the latest build (build-2)")
+
+	// Verify the template details show the latest build
+	templateResp, err := c.GetTemplatesTemplateIDWithResponse(ctx, alias, nil, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, templateResp.StatusCode())
+	require.NotNil(t, templateResp.JSON200)
+	require.NotEmpty(t, templateResp.JSON200.Builds, "Template should have builds")
+
+	// The first build in the list should be the latest one (template2)
+	assert.Equal(t, template2.BuildID, templateResp.JSON200.Builds[0].BuildID.String(),
+		"First build should be the latest (most recent assignment)")
+}
+
+// TestAssignmentOrderingAfterTagReassignment verifies that after reassigning a tag
+// to a different build, sandbox creation uses the newly assigned build.
+func TestAssignmentOrderingAfterTagReassignment(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
+	defer cancel()
+
+	c := setup.GetAPIClient()
+
+	alias := "test-ordering-reassign"
+	versionFilePath := "/home/user/version.txt"
+
+	// Build two versions - each writes a different version to a file
+	template1 := testutils.BuildTemplate(t, testutils.TemplateBuildOptions{
+		Names: []string{alias},
+		BuildData: api.TemplateBuildStartV2{
+			FromImage: utils.ToPtr("ubuntu:22.04"),
+			Steps: utils.ToPtr([]api.TemplateStep{
+				{Type: "RUN", Force: utils.ToPtr(true), Args: utils.ToPtr([]string{"echo -n 'version-1' > " + versionFilePath})},
+			}),
+		},
+		ReqEditors: []api.RequestEditorFn{setup.WithAPIKey()},
+	})
+
+	template2 := testutils.BuildTemplate(t, testutils.TemplateBuildOptions{
+		Names: []string{alias},
+		BuildData: api.TemplateBuildStartV2{
+			FromImage: utils.ToPtr("ubuntu:22.04"),
+			Steps: utils.ToPtr([]api.TemplateStep{
+				{Type: "RUN", Force: utils.ToPtr(true), Args: utils.ToPtr([]string{"echo -n 'version-2' > " + versionFilePath})},
+			}),
+		},
+		ReqEditors: []api.RequestEditorFn{setup.WithAPIKey()},
+	})
+
+	// Create a 'stable' tag pointing to the first build
+	_, err := c.PostTemplatesTagsWithResponse(ctx, api.AssignTemplateTagRequest{
+		Target: template1.TemplateID + ":" + template1.BuildID,
+		Names:  []string{alias + ":stable"},
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+
+	// Verify 'stable' points to first build
+	templateResp1, err := c.GetTemplatesTemplateIDWithResponse(ctx, alias+":stable", nil, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, templateResp1.StatusCode())
+	require.NotEmpty(t, templateResp1.JSON200.Builds, "Should have builds")
+	assert.Equal(t, template1.BuildID, templateResp1.JSON200.Builds[0].BuildID.String(),
+		"stable tag should initially point to first build")
+
+	// Reassign 'stable' tag to the second build
+	reassignResp, err := c.PostTemplatesTagsWithResponse(ctx, api.AssignTemplateTagRequest{
+		Target: template2.TemplateID + ":" + template2.BuildID,
+		Names:  []string{alias + ":stable"},
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, reassignResp.StatusCode())
+
+	// Verify 'stable' now points to second build (latest assignment wins)
+	templateResp2, err := c.GetTemplatesTemplateIDWithResponse(ctx, alias+":stable", nil, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, templateResp2.StatusCode())
+	require.NotEmpty(t, templateResp2.JSON200.Builds, "Should have builds")
+	assert.Equal(t, template2.BuildID, templateResp2.JSON200.Builds[0].BuildID.String(),
+		"stable tag should now point to second build after reassignment")
+
+	// Create sandbox with 'stable' tag and verify it uses the latest assignment
+	sbx := testutils.SetupSandboxWithCleanup(t, c, testutils.WithTemplateID(alias+":stable"))
+
+	// Read the version file from the sandbox to verify it's using the reassigned build
+	envdClient := setup.GetEnvdClient(t, ctx)
+	fileResp, err := envdClient.HTTPClient.GetFilesWithResponse(
+		ctx,
+		&envdapi.GetFilesParams{Path: &versionFilePath, Username: utils.ToPtr("user")},
+		setup.WithSandbox(sbx.SandboxID),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, fileResp.StatusCode(), "Failed to read version file")
+
+	// The file should contain "version-2" since the stable tag was reassigned to the second build
+	assert.Equal(t, "version-2", string(fileResp.Body),
+		"Sandbox should use the reassigned build (version-2)")
 }

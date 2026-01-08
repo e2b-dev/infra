@@ -20,16 +20,16 @@ LEFT JOIN LATERAL (
     SELECT b.*
     FROM public.env_build_assignments AS ba
     JOIN public.env_builds AS b ON b.id = ba.build_id
-    WHERE ba.env_id = e.id
-    ORDER BY b.finished_at DESC
+    WHERE ba.env_id = e.id AND ba.tag = 'default'
+    ORDER BY ba.created_at DESC
     LIMIT 1
 ) latest_build ON TRUE
 LEFT JOIN LATERAL (
     SELECT b.*
     FROM public.env_build_assignments AS ba
     JOIN public.env_builds AS b ON b.id = ba.build_id
-    WHERE ba.env_id = e.id AND b.status = 'uploaded'
-    ORDER BY b.finished_at DESC
+    WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status = 'uploaded'
+    ORDER BY ba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
 WHERE

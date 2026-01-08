@@ -257,7 +257,7 @@ func (tm *TemplateManager) createInProcessingQueue(buildID uuid.UUID, templateID
 	return false
 }
 
-func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status types.BuildStatus, reason *templatemanagergrpc.TemplateBuildStatusReason) error {
+func (tm *TemplateManager) SetStatus(ctx context.Context, _ string, buildID uuid.UUID, status types.BuildStatus, reason *templatemanagergrpc.TemplateBuildStatusReason) error {
 	var buildReason types.BuildReason
 	if reason != nil {
 		buildReason = types.BuildReason{
@@ -275,7 +275,6 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 		FinishedAt: &now,
 		Reason:     buildReason,
 		BuildID:    buildID,
-		TemplateID: templateID,
 	})
 
 	tm.buildCache.SetStatus(ctx, buildID, status, buildReason)
@@ -283,13 +282,12 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 	return err
 }
 
-func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
+func (tm *TemplateManager) SetFinished(ctx context.Context, _ string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
 	// first do database update to prevent race condition while calling status
 	err := tm.sqlcDB.FinishTemplateBuild(ctx, queries.FinishTemplateBuildParams{
 		TotalDiskSizeMb: &rootfsSize,
 		EnvdVersion:     &envdVersion,
 		BuildID:         buildID,
-		EnvID:           templateID,
 	})
 	if err != nil {
 		tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusFailed, types.BuildReason{

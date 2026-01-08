@@ -48,6 +48,9 @@ generate:
 	rm -rf queries/*.go
 	go tool sqlc generate
 
+.PHONY: test
+test:
+	go test -v ./tests/...
 
 .PHONY: build-and-upload
 build-and-upload:

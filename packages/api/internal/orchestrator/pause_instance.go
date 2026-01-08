@@ -89,7 +89,6 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		FinishedAt: &now,
 		Reason:     types.BuildReason{},
 		BuildID:    result.BuildID,
-		TemplateID: result.TemplateID,
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)

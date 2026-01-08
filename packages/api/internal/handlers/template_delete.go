@@ -29,7 +29,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	builds, err := a.sqlcDB.GetTemplateBuildsByIdOrAlias(ctx, cleanedAliasOrTemplateID)
+	builds, err := a.sqlcDB.GetExclusiveBuildsForTemplateDeletion(ctx, cleanedAliasOrTemplateID)
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to get template", fmt.Errorf("failed to get template: %w", err), telemetry.WithTemplateID(aliasOrTemplateID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
@@ -99,12 +99,12 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	buildIds := make([]template_manager.DeleteBuild, 0)
 	for _, build := range builds {
 		// Skip if there was no build
-		if build.BuildID == nil || build.ClusterNodeID == nil {
+		if build.ClusterNodeID == nil {
 			continue
 		}
 
 		buildIds = append(buildIds, template_manager.DeleteBuild{
-			BuildID:    *build.BuildID,
+			BuildID:    build.BuildID,
 			TemplateID: build.Env.ID,
 			ClusterID:  utils.WithClusterFallback(team.ClusterID),
 			NodeID:     *build.ClusterNodeID,

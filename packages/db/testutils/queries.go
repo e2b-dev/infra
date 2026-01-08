@@ -1,9 +1,11 @@
 package testutils
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/db/client"
@@ -63,4 +65,53 @@ func CreateTestTemplateWithAlias(t *testing.T, db *client.Client, teamID uuid.UU
 	alias := CreateTestTemplateAlias(t, db, templateID)
 
 	return templateID, alias
+}
+
+// CreateTestBuild creates a build for a template with the given status
+func CreateTestBuild(t *testing.T, ctx context.Context, db *client.Client, templateID string, status string) uuid.UUID {
+	t.Helper()
+	buildID := uuid.New()
+
+	err := db.TestsRawSQL(ctx,
+		`INSERT INTO public.env_builds 
+		(id, env_id, status, vcpu, ram_mb, free_disk_size_mb, kernel_version, firecracker_version, cluster_node_id, created_at, updated_at)
+		VALUES ($1, $2, $3, 2, 2048, 512, '6.1.0', '1.4.0', 'test-node', NOW(), NOW())`,
+		buildID, templateID, status,
+	)
+	require.NoError(t, err, "Failed to create test build")
+
+	return buildID
+}
+
+// CreateTestBuildAssignment creates a build assignment with a specific tag
+func CreateTestBuildAssignment(t *testing.T, ctx context.Context, db *client.Client, templateID string, buildID uuid.UUID, tag string) {
+	t.Helper()
+
+	err := db.TestsRawSQL(ctx,
+		`INSERT INTO public.env_build_assignments (env_id, build_id, tag, source, created_at)
+		VALUES ($1, $2, $3, 'app', NOW())`,
+		templateID, buildID, tag,
+	)
+	require.NoError(t, err, "Failed to create build assignment")
+}
+
+// GetBuildStatus retrieves the status of a build
+func GetBuildStatus(t *testing.T, ctx context.Context, db *client.Client, buildID uuid.UUID) string {
+	t.Helper()
+	var status string
+
+	err := db.TestsRawSQLQuery(ctx,
+		"SELECT status FROM public.env_builds WHERE id = $1",
+		func(rows pgx.Rows) error {
+			if rows.Next() {
+				return rows.Scan(&status)
+			}
+
+			return nil
+		},
+		buildID,
+	)
+	require.NoError(t, err, "Failed to get build status")
+
+	return status
 }
