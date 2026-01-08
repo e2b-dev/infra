@@ -109,17 +109,17 @@ SET status = 'failed',
 FROM "public"."env_build_assignments" eba
 WHERE eba.build_id = eb.id
     AND eba.env_id = $2
-    AND eba.tag = $3
+    AND eba.tag = ANY($3::text[])
     AND eb.status = 'waiting'
 `
 
 type InvalidateUnstartedTemplateBuildsParams struct {
 	Reason     types.BuildReason
 	TemplateID string
-	Tag        string
+	Tags       []string
 }
 
 func (q *Queries) InvalidateUnstartedTemplateBuilds(ctx context.Context, arg InvalidateUnstartedTemplateBuildsParams) error {
-	_, err := q.db.Exec(ctx, invalidateUnstartedTemplateBuilds, arg.Reason, arg.TemplateID, arg.Tag)
+	_, err := q.db.Exec(ctx, invalidateUnstartedTemplateBuilds, arg.Reason, arg.TemplateID, arg.Tags)
 	return err
 }

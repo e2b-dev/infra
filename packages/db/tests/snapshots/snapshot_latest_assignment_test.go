@@ -68,7 +68,7 @@ func TestGetLastSnapshot_ReturnsLatestAfterMultipleUpserts(t *testing.T) {
 
 	// Create multiple snapshots (each upsert creates a new build)
 	var lastBuildID uuid.UUID
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		time.Sleep(10 * time.Millisecond)
 		result := upsertTestSnapshot(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID)
 		lastBuildID = result.BuildID

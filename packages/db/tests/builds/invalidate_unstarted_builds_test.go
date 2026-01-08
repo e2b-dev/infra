@@ -25,7 +25,7 @@ func TestInvalidateUnstartedTemplateBuilds_InvalidatesWaitingBuilds(t *testing.T
 	// Invalidate waiting builds for default tag
 	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: templateID,
-		Tag:        "default",
+		Tags:       []string{"default"},
 		Reason:     types.BuildReason{Message: "Test invalidation"},
 	})
 	require.NoError(t, err)
@@ -48,14 +48,15 @@ func TestInvalidateUnstartedTemplateBuilds_OnlyAffectsSpecificTag(t *testing.T) 
 	defaultBuildID := testutils.CreateTestBuild(t, ctx, db, templateID, "waiting")
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, defaultBuildID, "default")
 
-	// Build with 'v1' tag
+	// Build with 'v1' tag only (delete trigger-created 'default' assignment)
 	v1BuildID := testutils.CreateTestBuild(t, ctx, db, templateID, "waiting")
+	testutils.DeleteTriggerBuildAssignment(t, ctx, db, templateID, v1BuildID, "default")
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, v1BuildID, "v1")
 
 	// Invalidate only 'default' tag builds
 	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: templateID,
-		Tag:        "default",
+		Tags:       []string{"default"},
 		Reason:     types.BuildReason{Message: "Test invalidation"},
 	})
 	require.NoError(t, err)
@@ -87,7 +88,7 @@ func TestInvalidateUnstartedTemplateBuilds_DoesNotAffectOtherTemplates(t *testin
 	// Invalidate only template1's builds
 	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: template1ID,
-		Tag:        "default",
+		Tags:       []string{"default"},
 		Reason:     types.BuildReason{Message: "Test invalidation"},
 	})
 	require.NoError(t, err)
@@ -121,7 +122,7 @@ func TestInvalidateUnstartedTemplateBuilds_DoesNotAffectNonWaitingBuilds(t *test
 	// Invalidate waiting builds
 	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: templateID,
-		Tag:        "default",
+		Tags:       []string{"default"},
 		Reason:     types.BuildReason{Message: "Test invalidation"},
 	})
 	require.NoError(t, err)
@@ -158,7 +159,7 @@ func TestInvalidateUnstartedTemplateBuilds_MultipleWaitingBuilds(t *testing.T) {
 	// Invalidate all waiting builds
 	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: templateID,
-		Tag:        "default",
+		Tags:       []string{"default"},
 		Reason:     types.BuildReason{Message: "Test invalidation"},
 	})
 	require.NoError(t, err)
@@ -167,4 +168,49 @@ func TestInvalidateUnstartedTemplateBuilds_MultipleWaitingBuilds(t *testing.T) {
 	assert.Equal(t, "failed", testutils.GetBuildStatus(t, ctx, db, build1ID), "Build 1 should be invalidated")
 	assert.Equal(t, "failed", testutils.GetBuildStatus(t, ctx, db, build2ID), "Build 2 should be invalidated")
 	assert.Equal(t, "failed", testutils.GetBuildStatus(t, ctx, db, build3ID), "Build 3 should be invalidated")
+}
+
+func TestInvalidateUnstartedTemplateBuilds_MultipleTagsInSingleCall(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	// Create template with builds assigned to different tags
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	// Build with 'default' tag
+	defaultBuildID := testutils.CreateTestBuild(t, ctx, db, templateID, "waiting")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, defaultBuildID, "default")
+
+	// Build with 'v1' tag only (delete trigger-created 'default' assignment)
+	v1BuildID := testutils.CreateTestBuild(t, ctx, db, templateID, "waiting")
+	testutils.DeleteTriggerBuildAssignment(t, ctx, db, templateID, v1BuildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, v1BuildID, "v1")
+
+	// Build with 'v2' tag only (delete trigger-created 'default' assignment)
+	v2BuildID := testutils.CreateTestBuild(t, ctx, db, templateID, "waiting")
+	testutils.DeleteTriggerBuildAssignment(t, ctx, db, templateID, v2BuildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, v2BuildID, "v2")
+
+	// Build with 'stable' tag only (should NOT be affected) - delete trigger-created 'default' assignment
+	stableBuildID := testutils.CreateTestBuild(t, ctx, db, templateID, "waiting")
+	testutils.DeleteTriggerBuildAssignment(t, ctx, db, templateID, stableBuildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, stableBuildID, "stable")
+
+	// Invalidate 'default', 'v1', and 'v2' tags in a single call
+	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+		TemplateID: templateID,
+		Tags:       []string{"default", "v1", "v2"},
+		Reason:     types.BuildReason{Message: "Test batch invalidation"},
+	})
+	require.NoError(t, err)
+
+	// Verify the specified tags were invalidated
+	assert.Equal(t, "failed", testutils.GetBuildStatus(t, ctx, db, defaultBuildID), "Default tag build should be invalidated")
+	assert.Equal(t, "failed", testutils.GetBuildStatus(t, ctx, db, v1BuildID), "v1 tag build should be invalidated")
+	assert.Equal(t, "failed", testutils.GetBuildStatus(t, ctx, db, v2BuildID), "v2 tag build should be invalidated")
+
+	// Verify the 'stable' tag was NOT affected
+	assert.Equal(t, "waiting", testutils.GetBuildStatus(t, ctx, db, stableBuildID), "stable tag build should NOT be affected")
 }

@@ -115,3 +115,16 @@ func GetBuildStatus(t *testing.T, ctx context.Context, db *client.Client, buildI
 
 	return status
 }
+
+// DeleteTriggerBuildAssignment deletes a trigger-created build assignment
+// This is useful for tests that need to create builds without the auto-assigned 'default' tag
+func DeleteTriggerBuildAssignment(t *testing.T, ctx context.Context, db *client.Client, templateID string, buildID uuid.UUID, tag string) {
+	t.Helper()
+
+	err := db.TestsRawSQL(ctx,
+		`DELETE FROM public.env_build_assignments 
+		WHERE env_id = $1 AND build_id = $2 AND tag = $3 AND source = 'trigger'`,
+		templateID, buildID, tag,
+	)
+	require.NoError(t, err, "Failed to delete trigger build assignment")
+}

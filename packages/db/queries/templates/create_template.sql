@@ -14,7 +14,7 @@ SET status = 'failed',
 FROM "public"."env_build_assignments" eba
 WHERE eba.build_id = eb.id
     AND eba.env_id = @template_id
-    AND eba.tag = @tag
+    AND eba.tag = ANY(@tags::text[])
     AND eb.status = 'waiting';
 
 -- name: CreateTemplateBuild :exec

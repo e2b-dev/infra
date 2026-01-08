@@ -27,7 +27,6 @@ func TestGetExclusiveBuildsForTemplateDeletion_ExclusiveBuild(t *testing.T) {
 	// Build should be returned since it's only assigned to this template
 	assert.Len(t, results, 1, "Should return 1 exclusive build")
 	assert.Equal(t, buildID, results[0].BuildID, "Build ID should match")
-	assert.Equal(t, templateID, results[0].Env.ID, "Template ID should match")
 }
 
 func TestGetExclusiveBuildsForTemplateDeletion_SharedBuild(t *testing.T) {
@@ -81,27 +80,6 @@ func TestGetExclusiveBuildsForTemplateDeletion_MixedBuilds(t *testing.T) {
 	// Only the exclusive build should be returned
 	assert.Len(t, results, 1, "Should return only 1 exclusive build")
 	assert.Equal(t, exclusiveBuildID, results[0].BuildID, "Should return the exclusive build")
-}
-
-func TestGetExclusiveBuildsForTemplateDeletion_ByAlias(t *testing.T) {
-	t.Parallel()
-	db := testutils.SetupDatabase(t)
-	ctx := t.Context()
-
-	// Create template with alias
-	teamID := testutils.CreateTestTeam(t, db)
-	templateID, alias := testutils.CreateTestTemplateWithAlias(t, db, teamID)
-	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
-	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
-
-	// Query by alias
-	results, err := db.GetExclusiveBuildsForTemplateDeletion(ctx, alias)
-	require.NoError(t, err)
-
-	// Should find the build using the alias
-	assert.Len(t, results, 1, "Should return 1 build when querying by alias")
-	assert.Equal(t, buildID, results[0].BuildID, "Build ID should match")
-	assert.Equal(t, templateID, results[0].Env.ID, "Template ID should match")
 }
 
 func TestGetExclusiveBuildsForTemplateDeletion_NoBuilds(t *testing.T) {

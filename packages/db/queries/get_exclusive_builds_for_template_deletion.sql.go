@@ -12,36 +12,27 @@ import (
 )
 
 const getExclusiveBuildsForTemplateDeletion = `-- name: GetExclusiveBuildsForTemplateDeletion :many
-WITH target_template AS (
-    -- Resolve template ID once (uses envs primary key or env_aliases index)
-    SELECT e.id
-    FROM "public"."envs" e
-    LEFT JOIN "public"."env_aliases" ea ON ea.env_id = e.id
-    WHERE e.id = $1 OR ea.alias = $1
-    LIMIT 1
-)
-SELECT DISTINCT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id as build_id, eb.cluster_node_id
-FROM target_template t
-JOIN "public"."envs" e ON e.id = t.id
-JOIN "public"."env_build_assignments" eba ON eba.env_id = t.id  -- uses idx_env_build_assignments_env_build
+SELECT DISTINCT eb.id as build_id, eb.cluster_node_id
+FROM "public"."env_build_assignments" eba
 JOIN "public"."env_builds" eb ON eb.id = eba.build_id
-WHERE NOT EXISTS (
+WHERE eba.env_id = $1
+  AND NOT EXISTS (
     -- Exclude builds that have assignments to OTHER templates
     SELECT 1 FROM "public"."env_build_assignments" other_eba
-    WHERE other_eba.build_id = eb.id AND other_eba.env_id != t.id
+    WHERE other_eba.build_id = eb.id AND other_eba.env_id != $1
 )
 `
 
 type GetExclusiveBuildsForTemplateDeletionRow struct {
-	Env           Env
 	BuildID       uuid.UUID
 	ClusterNodeID *string
 }
 
-// Returns template info and builds that are ONLY assigned to this template (safe to delete)
-// Builds shared with other templates are excluded
-func (q *Queries) GetExclusiveBuildsForTemplateDeletion(ctx context.Context, templateIDOrAlias string) ([]GetExclusiveBuildsForTemplateDeletionRow, error) {
-	rows, err := q.db.Query(ctx, getExclusiveBuildsForTemplateDeletion, templateIDOrAlias)
+// Returns builds that are ONLY assigned to this template (safe to delete).
+// Builds shared with other templates are excluded.
+// DISTINCT needed because builds may have multiple tag assignments to the same template.
+func (q *Queries) GetExclusiveBuildsForTemplateDeletion(ctx context.Context, templateID string) ([]GetExclusiveBuildsForTemplateDeletionRow, error) {
+	rows, err := q.db.Query(ctx, getExclusiveBuildsForTemplateDeletion, templateID)
 	if err != nil {
 		return nil, err
 	}
@@ -49,20 +40,7 @@ func (q *Queries) GetExclusiveBuildsForTemplateDeletion(ctx context.Context, tem
 	var items []GetExclusiveBuildsForTemplateDeletionRow
 	for rows.Next() {
 		var i GetExclusiveBuildsForTemplateDeletionRow
-		if err := rows.Scan(
-			&i.Env.ID,
-			&i.Env.CreatedAt,
-			&i.Env.UpdatedAt,
-			&i.Env.Public,
-			&i.Env.BuildCount,
-			&i.Env.SpawnCount,
-			&i.Env.LastSpawnedAt,
-			&i.Env.TeamID,
-			&i.Env.CreatedBy,
-			&i.Env.ClusterID,
-			&i.BuildID,
-			&i.ClusterNodeID,
-		); err != nil {
+		if err := rows.Scan(&i.BuildID, &i.ClusterNodeID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -172,23 +172,21 @@ func RegisterBuild(
 	}
 	telemetry.ReportEvent(ctx, "created or update template")
 
-	// Mark the previous not started builds as failed for each tag
-	for _, tag := range tags {
-		err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
-			Reason: dbtypes.BuildReason{
-				Message: "The build was canceled because it was superseded by a newer one.",
-			},
-			TemplateID: data.TemplateID,
-			Tag:        tag,
-		})
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error when invalidating unstarted builds", err, attribute.String("tag", tag))
+	// Mark the previous not started builds as failed for all tags
+	err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+		Reason: dbtypes.BuildReason{
+			Message: "The build was canceled because it was superseded by a newer one.",
+		},
+		TemplateID: data.TemplateID,
+		Tags:       tags,
+	})
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when invalidating unstarted builds", err, attribute.StringSlice("tags", tags))
 
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
-				Code:      http.StatusInternalServerError,
-			}
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
+			Code:      http.StatusInternalServerError,
 		}
 	}
 	telemetry.ReportEvent(ctx, "marked previous builds as failed")
