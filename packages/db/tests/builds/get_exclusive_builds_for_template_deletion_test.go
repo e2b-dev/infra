@@ -122,3 +122,58 @@ func TestGetExclusiveBuildsForTemplateDeletion_MultipleTagsSameTemplate(t *testi
 	assert.Len(t, results, 1, "Should return build only once despite multiple tag assignments")
 	assert.Equal(t, buildID, results[0].BuildID, "Build ID should match")
 }
+
+func TestGetExclusiveBuildsForTemplateDeletion_SharedBuildAcrossTeams(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	// Create two templates belonging to different teams
+	team1ID := testutils.CreateTestTeam(t, db)
+	team2ID := testutils.CreateTestTeam(t, db)
+	template1ID := testutils.CreateTestTemplate(t, db, team1ID)
+	template2ID := testutils.CreateTestTemplate(t, db, team2ID)
+
+	// Create a build assigned to template1
+	buildID := testutils.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template1ID, buildID, "default")
+
+	// Also assign the same build to template2 (shared build across teams)
+	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, buildID, "default")
+
+	// Execute query for template1
+	results, err := db.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
+	require.NoError(t, err)
+
+	// Build should NOT be returned since it's shared with another template (even in a different team)
+	assert.Empty(t, results, "Should not return builds shared across teams")
+}
+
+func TestGetExclusiveBuildsForTemplateDeletion_MixedBuildsAcrossTeams(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	// Create two templates belonging to different teams
+	team1ID := testutils.CreateTestTeam(t, db)
+	team2ID := testutils.CreateTestTeam(t, db)
+	template1ID := testutils.CreateTestTemplate(t, db, team1ID)
+	template2ID := testutils.CreateTestTemplate(t, db, team2ID)
+
+	// Create an exclusive build for template1
+	exclusiveBuildID := testutils.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template1ID, exclusiveBuildID, "default")
+
+	// Create a shared build (assigned to both templates from different teams)
+	sharedBuildID := testutils.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template1ID, sharedBuildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, sharedBuildID, "default")
+
+	// Execute query for template1
+	results, err := db.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
+	require.NoError(t, err)
+
+	// Only the exclusive build should be returned
+	assert.Len(t, results, 1, "Should return only 1 exclusive build")
+	assert.Equal(t, exclusiveBuildID, results[0].BuildID, "Should return the exclusive build, not the one shared across teams")
+}
