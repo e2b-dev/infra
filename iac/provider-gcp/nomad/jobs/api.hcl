@@ -57,9 +57,10 @@ job "api" {
       # Time to wait for the canary to be healthy
       min_healthy_time  = "10s"
       # Time to wait for the canary to be healthy, if not it will be marked as failed
-      healthy_deadline  = "600s"
-      #Time to wait for the overall update to complete. Otherwise, the deployment is marked as failed and rolled back
-      progress_deadline = "601s"
+      healthy_deadline  = "900s"
+      # Time to wait for the overall update to complete. Otherwise, the deployment is marked as failed and rolled back
+      # This is on purpose very tight, we want to fail immediately if the deployment is marked as unhealthy
+      progress_deadline = "901s"
       # Whether to promote the canary if the rest of the group is not healthy
       auto_promote      = true
       # Whether to automatically rollback if the update fails
