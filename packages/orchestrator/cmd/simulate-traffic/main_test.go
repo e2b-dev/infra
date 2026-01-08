@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,10 +49,12 @@ type mockExperiment struct {
 	id string
 }
 
-func (m mockExperiment) setup(ctx context.Context, p *processor) error    { return nil }
-func (m mockExperiment) teardown(ctx context.Context, p *processor) error { return nil }
+func (m mockExperiment) setup(_ context.Context, _ *processor) error    { return nil }
+func (m mockExperiment) teardown(_ context.Context, _ *processor) error { return nil }
 
 func TestGenerateScenarios(t *testing.T) {
+	t.Parallel()
+
 	experiments := map[string]map[string]experiment{
 		"a": {
 			"1": mockExperiment{"a1"},
@@ -98,6 +102,8 @@ func TestGenerateScenarios(t *testing.T) {
 }
 
 func TestDumpResultsToCSV(t *testing.T) {
+	t.Parallel()
+
 	results := []result{
 		{
 			scenario: scenario{
@@ -106,12 +112,12 @@ func TestDumpResultsToCSV(t *testing.T) {
 			},
 			summary: durationSummary{
 				count:   10,
-				minTime: 100,
-				p50:     200,
-				p95:     300,
-				p99:     400,
-				maxTime: 500,
-				stddev:  50,
+				minTime: 100 * time.Millisecond,
+				p50:     200 * time.Millisecond,
+				p95:     300 * time.Millisecond,
+				p99:     400 * time.Millisecond,
+				maxTime: 500 * time.Millisecond,
+				stddev:  50 * time.Millisecond,
 			},
 		},
 		{
@@ -121,25 +127,29 @@ func TestDumpResultsToCSV(t *testing.T) {
 			},
 			summary: durationSummary{
 				count:   20,
-				minTime: 110,
-				p50:     210,
-				p95:     310,
-				p99:     410,
-				maxTime: 510,
-				stddev:  51,
+				minTime: 110 * time.Millisecond,
+				p50:     210 * time.Millisecond,
+				p95:     310 * time.Millisecond,
+				p99:     410 * time.Millisecond,
+				maxTime: 510 * time.Millisecond,
+				stddev:  51 * time.Millisecond,
 			},
 		},
 	}
 
-	dumpResultsToCSV(results)
-	defer os.Remove("output.csv")
+	tempDir := t.TempDir()
+	tempCSV := filepath.Join(tempDir, "output.csv")
+	defer os.Remove(tempCSV)
 
-	content, err := os.ReadFile("output.csv")
+	err := dumpResultsToCSV(tempCSV, results)
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(tempCSV)
 	require.NoError(t, err)
 
 	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
 	assert.Len(t, lines, 3)
 	assert.Equal(t, "exp1,exp2,count,min,p50,p95,p99,max,stddev", lines[0])
-	assert.Equal(t, "val1,val2,10,100ns,200ns,300ns,400ns,500ns,50ns", lines[1])
-	assert.Equal(t, "val3,val4,20,110ns,210ns,310ns,410ns,510ns,51ns", lines[2])
+	assert.Equal(t, "val1,val2,10,100,200,300,400,500,50", lines[1])
+	assert.Equal(t, "val3,val4,20,110,210,310,410,510,51", lines[2])
 }

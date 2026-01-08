@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"iter"
 	"log"
+	"maps"
 	"math"
 	"math/rand"
 	"os"
@@ -19,8 +20,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/dustin/go-humanize"
 )
 
 const defaultChunkSize = 4 * 1024 * 1024
@@ -49,6 +48,7 @@ func main() {
 		p.path = paths[0]
 	default:
 		log.Fatal("only one path can be specified")
+
 		return
 	}
 
@@ -58,7 +58,7 @@ func main() {
 			"Read":   readMethodExperiment{p.read},
 		},
 		"nfs read ahead": {
-			//"128kb": &setReadAhead{readAhead: "128"}, // always bad
+			// "128kb": &setReadAhead{readAhead: "128"}, // always bad
 			"4mb": &setReadAhead{readAhead: "4096"},
 		},
 		"net.core.rmem_max": {
@@ -151,6 +151,7 @@ func dumpResultsToCSV(path string, results []result) error {
 	}
 
 	fmt.Println("\nResults dumped to output.csv")
+
 	return nil
 }
 
@@ -177,9 +178,8 @@ func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[sc
 			if index == len(keys) {
 				// Create a copy of the scenario to yield
 				s := make(scenario, len(current))
-				for k, v := range current {
-					s[k] = v
-				}
+				maps.Copy(s, current)
+
 				return yield(s)
 			}
 
@@ -198,6 +198,7 @@ func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[sc
 					return false
 				}
 			}
+
 			return true
 		}
 
@@ -243,7 +244,7 @@ func (s *setReadAhead) setup(ctx context.Context, p *processor) error {
 	return nil
 }
 
-func (s *setReadAhead) teardown(ctx context.Context, p *processor) error {
+func (s *setReadAhead) teardown(_ context.Context, _ *processor) error {
 	// reset old value
 	return os.WriteFile(s.readAheadPath, []byte(s.oldReadAhead), 0o644)
 }
@@ -258,25 +259,25 @@ type setSysFs struct {
 
 var _ experiment = (*setSysFs)(nil)
 
-func (d *setSysFs) setup(ctx context.Context, p *processor) error {
+func (d *setSysFs) setup(ctx context.Context, _ *processor) error {
 	// read old value
-	output, err := exec.Command("sysctl", "-n", d.path).Output()
+	output, err := exec.CommandContext(ctx, "sysctl", "-n", d.path).Output()
 	if err != nil {
 		return fmt.Errorf("failed to read sysfs value: %w", err)
 	}
 	d.oldValue = strings.TrimSpace(string(output))
 
 	// set new value
-	if err := exec.Command("sysctl", "-w", fmt.Sprintf("%s=%s", d.path, d.newValue)).Run(); err != nil {
+	if err := exec.CommandContext(ctx, "sysctl", "-w", fmt.Sprintf("%s=%s", d.path, d.newValue)).Run(); err != nil {
 		return fmt.Errorf("failed to set sysfs value: %w", err)
 	}
 
 	return nil
 }
 
-func (d *setSysFs) teardown(ctx context.Context, p *processor) error {
+func (d *setSysFs) teardown(ctx context.Context, _ *processor) error {
 	// set old value
-	if err := exec.Command("sysctl", "-w", fmt.Sprintf("%s=%s", d.path, d.oldValue)).Run(); err != nil {
+	if err := exec.CommandContext(ctx, "sysctl", "-w", fmt.Sprintf("%s=%s", d.path, d.oldValue)).Run(); err != nil {
 		return fmt.Errorf("failed to set sysfs value: %w", err)
 	}
 
@@ -287,12 +288,13 @@ type readMethodExperiment struct {
 	readMethod func(string) (int, error)
 }
 
-func (r readMethodExperiment) setup(ctx context.Context, p *processor) error {
+func (r readMethodExperiment) setup(_ context.Context, p *processor) error {
 	p.readMethod = r.readMethod
+
 	return nil
 }
 
-func (r readMethodExperiment) teardown(ctx context.Context, p *processor) error {
+func (r readMethodExperiment) teardown(_ context.Context, _ *processor) error {
 	return nil
 }
 
@@ -386,13 +388,13 @@ func (p *processor) run(ctx context.Context, scenario scenario) result {
 	}
 	allFiles.addPaths(paths)
 
-	//logger.Println("setting up experiments ... ")
+	// logger.Println("setting up experiments ... ")
 	if err := scenario.setup(ctx, p); err != nil {
 		logger.Fatal("failed to setup experiments", "error", err)
 	}
 
 	// open/read files into buffer
-	//logger.Println("starting reads ... ")
+	// logger.Println("starting reads ... ")
 	var reads []time.Duration
 	var sizes []int
 	var mu sync.Mutex
@@ -434,7 +436,6 @@ func (p *processor) run(ctx context.Context, scenario scenario) result {
 
 	wg.Wait()
 
-	//logger.Println("tearing down experiments ... ")
 	if err := scenario.teardown(ctx, p); err != nil {
 		logger.Fatal("failed to teardown experiments", "error", err)
 	}
@@ -442,9 +443,6 @@ func (p *processor) run(ctx context.Context, scenario scenario) result {
 	// render times
 	readSummary := summarizeDurations(reads)
 	printDurationSummary("reads", readSummary)
-
-	//sizeSummary := summarizeBytes(sizes)
-	//printByteSummary("sizes", sizeSummary)
 
 	if p.nfsStat {
 		if err := p.compareNfsStat(ctx); err != nil {
@@ -456,66 +454,6 @@ func (p *processor) run(ctx context.Context, scenario scenario) result {
 		scenario: scenario,
 		summary:  readSummary,
 	}
-}
-
-type intSummary struct {
-	count, min, max, stddev, p50, p95, p99 uint64
-}
-
-func summarizeBytes(ints []int) intSummary {
-	if len(ints) == 0 {
-		return intSummary{}
-	}
-
-	// Sort to find percentiles, min, and max
-	slices.Sort(ints)
-
-	n := len(ints)
-
-	// Helper for percentiles
-	percentile := func(p float64) uint64 {
-		idx := max(int(math.Ceil(p/100*float64(n)))-1, 0)
-
-		return uint64(ints[idx])
-	}
-
-	// Basic stats
-	var sum float64
-	for _, r := range ints {
-		sum += float64(r)
-	}
-	mean := sum / float64(n)
-
-	// Standard deviation
-	var varianceSum float64
-	for _, r := range ints {
-		diff := float64(r) - mean
-		varianceSum += diff * diff
-	}
-	stdDev := math.Sqrt(varianceSum / float64(n))
-
-	return intSummary{
-		count:  uint64(n),
-		min:    uint64(ints[0]),
-		max:    uint64(ints[n-1]),
-		p50:    percentile(50),
-		p95:    percentile(95),
-		p99:    percentile(99),
-		stddev: uint64(stdDev),
-	}
-}
-
-func printByteSummary(label string, s intSummary) {
-	fmt.Printf(`
-==== %s ====
-count: %d
-min: %s
-p50: %s
-p95: %s
-p99: %s
-max: %s
-stddev: %s
-`, label, s.count, humanize.Bytes(s.min), humanize.Bytes(s.p50), humanize.Bytes(s.p95), humanize.Bytes(s.p99), humanize.Bytes(s.max), humanize.Bytes(s.stddev))
 }
 
 func printDurationSummary(label string, s durationSummary) {
