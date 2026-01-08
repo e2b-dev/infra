@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
@@ -17,6 +18,8 @@ const (
 	trackingTable        = "_migrations"
 	migrationsDir        = "./migrations"
 	authMigrationVersion = 20000101000000
+
+	statementTimeout = 10 * time.Minute
 )
 
 func main() {
@@ -32,12 +35,23 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to open DB: %v", err)
 	}
+
 	defer func() {
 		err := db.Close()
 		if err != nil {
 			log.Printf("failed to close DB: %v\n", err)
 		}
 	}()
+
+	// Use a single connection to ensure session settings (like statement_timeout) apply to all queries
+	db.SetMaxOpenConns(1)
+
+	// Set statement timeout for migrations - some migrations (especially data migrations)
+	// can take longer than the default server timeout
+	_, err = db.Exec(fmt.Sprintf("SET statement_timeout = %d", statementTimeout.Milliseconds()))
+	if err != nil {
+		log.Fatalf("failed to disable statement timeout: %v", err)
+	}
 
 	// Create a session locking
 	sessionLocker, err := lock.NewPostgresSessionLocker()
