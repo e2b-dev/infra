@@ -48,15 +48,15 @@ func main() {
 
 	// Set statement timeout for migrations - some migrations (especially data migrations)
 	// can take longer than the default server timeout
-	_, err = db.Exec(fmt.Sprintf("SET statement_timeout = %d", statementTimeout.Milliseconds()))
+	_, err = db.ExecContext(ctx, fmt.Sprintf("SET statement_timeout = %d", statementTimeout.Milliseconds()))
 	if err != nil {
-		log.Fatalf("failed to disable statement timeout: %v", err)
+		log.Fatalf("failed to set statement timeout: %v", err) //nolint:gocritic // process exits, db cleanup not critical
 	}
 
 	// Create a session locking
 	sessionLocker, err := lock.NewPostgresSessionLocker()
 	if err != nil {
-		log.Fatalf("failed to create session locker: %v", err) //nolint:gocritic // no harm in exiting after defer here
+		log.Fatalf("failed to create session locker: %v", err)
 	}
 
 	goose.SetTableName(trackingTable)
