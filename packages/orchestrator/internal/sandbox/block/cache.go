@@ -321,14 +321,18 @@ func (c *Cache) address(off int64) *byte {
 	return &(*c.mmap)[off]
 }
 
-func (c *Cache) addressBytes(off, length int64) []byte {
+func (c *Cache) addressBytes(off, length int64) ([]byte, error) {
+	if c.isClosed() {
+		return nil, NewErrCacheClosed(c.filePath)
+	}
+
 	if c.mmap == nil {
-		return nil
+		return nil, nil
 	}
 
 	end := min(off+length, c.size)
 
-	return (*c.mmap)[off:end]
+	return (*c.mmap)[off:end], nil
 }
 
 func (c *Cache) BlockSize() int64 {

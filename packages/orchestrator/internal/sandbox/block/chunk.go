@@ -148,7 +148,10 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				default:
 				}
 
-				b := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
+				b, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
+				if err != nil {
+					return err
+				}
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
