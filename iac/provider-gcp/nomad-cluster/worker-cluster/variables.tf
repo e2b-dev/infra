@@ -31,7 +31,8 @@ variable "boot_disk" {
 }
 
 variable "network_interface_type" {
-  type = string
+  type     = string
+  nullable = true
 }
 
 variable "cache_disks" {
