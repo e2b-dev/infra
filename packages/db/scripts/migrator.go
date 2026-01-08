@@ -39,6 +39,7 @@ func main() {
 		log.Fatalf("failed to parse connection string: %v", err)
 	}
 
+	poolConfig.MaxConns = 4
 	poolConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		_, err := conn.Exec(ctx, fmt.Sprintf("SET statement_timeout = %d", statementTimeout.Milliseconds()))
 
