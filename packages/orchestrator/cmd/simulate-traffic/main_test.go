@@ -9,6 +9,8 @@ import (
 )
 
 func TestNfsstatParse(t *testing.T) {
+	t.Parallel()
+
 	input := strings.TrimSpace(`
 nfs v4 client        total:  7676067 
 ------------- ------------- --------

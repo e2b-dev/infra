@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -21,6 +22,8 @@ import (
 const defaultChunkSize = 4 * 1024 * 1024
 
 func main() {
+	ctx := context.Background()
+
 	var p processor
 
 	var readMethod string
@@ -49,7 +52,7 @@ func main() {
 		log.Fatalf("invalid read method: %s", readMethod)
 	}
 
-	p.run(paths)
+	p.run(ctx, paths)
 }
 
 type processor struct {
@@ -63,7 +66,7 @@ type processor struct {
 	nfsStatFile string
 }
 
-func (p *processor) run(paths []string) {
+func (p *processor) run(ctx context.Context, paths []string) {
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 
 	if p.dropNfsCache {
@@ -78,7 +81,9 @@ func (p *processor) run(paths []string) {
 		}
 	}
 
-	allFiles := files{}
+	allFiles := files{
+		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
 	for _, path := range paths {
 		// find 4 MB files under $path
 		paths, err := p.findFiles(path)
@@ -96,6 +101,7 @@ func (p *processor) run(paths []string) {
 		f, err := allFiles.selectFile()
 		if err != nil {
 			logger.Println("failed to get file", "error", err)
+
 			break
 		}
 
@@ -104,6 +110,7 @@ func (p *processor) run(paths []string) {
 		size, err := p.readMethod(f)
 		if err != nil {
 			logger.Println("failed to time file read", "error", err)
+
 			break
 		}
 
@@ -120,14 +127,14 @@ func (p *processor) run(paths []string) {
 	printByteSummary("sizes", sizeSummary)
 
 	if p.nfsStat {
-		if err := p.compareNfsStat(); err != nil {
+		if err := p.compareNfsStat(ctx); err != nil {
 			logger.Fatal("failed to store nfs stat", "error", err)
 		}
 	}
 }
 
 type intSummary struct {
-	count, min, max, avg, stddev, p50, p95, p99 uint64
+	count, min, max, stddev, p50, p95, p99 uint64
 }
 
 func summarizeBytes(ints []int) intSummary {
@@ -142,10 +149,8 @@ func summarizeBytes(ints []int) intSummary {
 
 	// Helper for percentiles
 	percentile := func(p float64) uint64 {
-		idx := int(math.Ceil(p/100*float64(n))) - 1
-		if idx < 0 {
-			idx = 0
-		}
+		idx := max(int(math.Ceil(p/100*float64(n)))-1, 0)
+
 		return uint64(ints[idx])
 	}
 
@@ -199,10 +204,10 @@ p99: %s
 max: %s
 stddev: %s
 `, label, s.count, s.minTime, s.p50, s.p95, s.p99, s.maxTime, s.stddev)
-
 }
 
 type files struct {
+	rand  *rand.Rand
 	paths []string
 }
 
@@ -238,7 +243,6 @@ func (p *processor) findFiles(path string) ([]string, error) {
 
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -323,10 +327,10 @@ func (p *processor) storeNfsStat() error {
 	return nil
 }
 
-func (p *processor) compareNfsStat() error {
+func (p *processor) compareNfsStat(ctx context.Context) error {
 	defer safeRemove(p.nfsStatFile)
 
-	output, err := exec.Command("nfsstat", "--list", "--since", p.nfsStatFile, "/proc/net/rpc/nfs").Output()
+	output, err := exec.CommandContext(ctx, "nfsstat", "--list", "--since", p.nfsStatFile, "/proc/net/rpc/nfs").Output()
 	if err != nil {
 		return fmt.Errorf("failed to compare nfs stat: %w", err)
 	}
@@ -337,6 +341,7 @@ func (p *processor) compareNfsStat() error {
 	}
 
 	summarizeNfsstat(stats)
+
 	return nil
 }
 
@@ -353,8 +358,8 @@ type nfsstat struct {
 
 func nfsstatParse(s string) ([]nfsstat, error) {
 	var stats []nfsstat
-	lines := strings.Split(s, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(s, "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "---") {
 			continue
@@ -420,10 +425,8 @@ func summarizeDurations(reads []time.Duration) durationSummary {
 
 	// Helper for percentiles
 	percentile := func(p float64) time.Duration {
-		idx := int(math.Ceil(p/100*float64(n))) - 1
-		if idx < 0 {
-			idx = 0
-		}
+		idx := max(int(math.Ceil(p/100*float64(n)))-1, 0)
+
 		return reads[idx]
 	}
 
