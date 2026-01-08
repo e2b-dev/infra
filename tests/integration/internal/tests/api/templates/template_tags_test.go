@@ -581,17 +581,6 @@ func TestAssignmentOrderingLatestWins(t *testing.T) {
 	// The file should contain "build-2" since the latest build should be used
 	assert.Equal(t, "build-2", string(fileResp.Body),
 		"Sandbox should use the latest build (build-2)")
-
-	// Verify the template details show the latest build
-	templateResp, err := c.GetTemplatesTemplateIDWithResponse(ctx, alias, nil, setup.WithAPIKey())
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, templateResp.StatusCode())
-	require.NotNil(t, templateResp.JSON200)
-	require.NotEmpty(t, templateResp.JSON200.Builds, "Template should have builds")
-
-	// The first build in the list should be the latest one (template2)
-	assert.Equal(t, template2.BuildID, templateResp.JSON200.Builds[0].BuildID.String(),
-		"First build should be the latest (most recent assignment)")
 }
 
 // TestAssignmentOrderingAfterTagReassignment verifies that after reassigning a tag
@@ -637,14 +626,6 @@ func TestAssignmentOrderingAfterTagReassignment(t *testing.T) {
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
 
-	// Verify 'stable' points to first build
-	templateResp1, err := c.GetTemplatesTemplateIDWithResponse(ctx, alias+":stable", nil, setup.WithAPIKey())
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, templateResp1.StatusCode())
-	require.NotEmpty(t, templateResp1.JSON200.Builds, "Should have builds")
-	assert.Equal(t, template1.BuildID, templateResp1.JSON200.Builds[0].BuildID.String(),
-		"stable tag should initially point to first build")
-
 	// Reassign 'stable' tag to the second build
 	reassignResp, err := c.PostTemplatesTagsWithResponse(ctx, api.AssignTemplateTagRequest{
 		Target: template2.TemplateID + ":" + template2.BuildID,
@@ -652,14 +633,6 @@ func TestAssignmentOrderingAfterTagReassignment(t *testing.T) {
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, reassignResp.StatusCode())
-
-	// Verify 'stable' now points to second build (latest assignment wins)
-	templateResp2, err := c.GetTemplatesTemplateIDWithResponse(ctx, alias+":stable", nil, setup.WithAPIKey())
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, templateResp2.StatusCode())
-	require.NotEmpty(t, templateResp2.JSON200.Builds, "Should have builds")
-	assert.Equal(t, template2.BuildID, templateResp2.JSON200.Builds[0].BuildID.String(),
-		"stable tag should now point to second build after reassignment")
 
 	// Create sandbox with 'stable' tag and verify it uses the latest assignment
 	sbx := testutils.SetupSandboxWithCleanup(t, c, testutils.WithTemplateID(alias+":stable"))

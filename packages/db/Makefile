@@ -48,8 +48,12 @@ generate:
 	rm -rf queries/*.go
 	go tool sqlc generate
 
+.PHONY: build-tools
+build-tools:
+	@go tool goose --version > /dev/null
+
 .PHONY: test
-test:
+test: build-tools
 	go test -v ./tests/...
 
 .PHONY: build-and-upload
