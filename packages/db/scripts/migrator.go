@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -32,13 +32,16 @@ func main() {
 		log.Fatal("Database connection string is required. Set POSTGRES_CONNECTION_STRING env var.")
 	}
 
-	// Append statement_timeout to connection string so it applies to all connections in the pool
-	// This allows migrations (especially data migrations) to run longer than the default server timeout
-	separator := "?"
-	if strings.Contains(dbString, "?") {
-		separator = "&"
+	// Add statement_timeout to connection string so it applies to all connections in the pool.
+	// This allows migrations (especially data migrations) to run longer than the default server timeout.
+	connURL, err := url.Parse(dbString)
+	if err != nil {
+		log.Fatalf("failed to parse connection string: %v", err)
 	}
-	dbString = fmt.Sprintf("%s%soptions=-c%%20statement_timeout=%d", dbString, separator, statementTimeout.Milliseconds())
+	q := connURL.Query()
+	q.Set("statement_timeout", fmt.Sprintf("%d", statementTimeout.Milliseconds()))
+	connURL.RawQuery = q.Encode()
+	dbString = connURL.String()
 
 	db, err := sql.Open("postgres", dbString)
 	if err != nil {
