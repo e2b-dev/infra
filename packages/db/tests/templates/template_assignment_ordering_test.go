@@ -45,9 +45,9 @@ func TestGetTemplateWithBuildByTag_AssignmentOrderDifferentFromBuildOrder(t *tes
 		"GetTemplateWithBuildByTag should use assignment order, not build creation order")
 }
 
-// TestGetTemplateWithBuildByTag_ReturnsLatestAssignmentForTag verifies that the query
+// TestGetTemplateWithBuildByTag_AssignmentOrderSameAsBuildOrder verifies that the query
 // returns the build from the most recent assignment for a specific tag.
-func TestGetTemplateWithBuildByTag_ReturnsLatestAssignmentForTag(t *testing.T) {
+func TestGetTemplateWithBuildByTag_AssignmentOrderSameAsBuildOrder(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
