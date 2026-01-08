@@ -27,7 +27,7 @@ concurrency:
 jobs:
   deploy:
     name: Build and upload job to the ${{ inputs.environment }} environment
-    runs-on: ubuntu-22.04
+    runs-on: ci-builder
     permissions:
       contents: read
       id-token: write
