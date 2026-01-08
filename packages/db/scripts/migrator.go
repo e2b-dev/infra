@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -31,6 +32,14 @@ func main() {
 		log.Fatal("Database connection string is required. Set POSTGRES_CONNECTION_STRING env var.")
 	}
 
+	// Append statement_timeout to connection string so it applies to all connections in the pool
+	// This allows migrations (especially data migrations) to run longer than the default server timeout
+	separator := "?"
+	if strings.Contains(dbString, "?") {
+		separator = "&"
+	}
+	dbString = fmt.Sprintf("%s%soptions=-c%%20statement_timeout=%d", dbString, separator, statementTimeout.Milliseconds())
+
 	db, err := sql.Open("postgres", dbString)
 	if err != nil {
 		log.Fatalf("failed to open DB: %v", err)
@@ -43,20 +52,10 @@ func main() {
 		}
 	}()
 
-	// Use a single connection to ensure session settings (like statement_timeout) apply to all queries
-	db.SetMaxOpenConns(1)
-
-	// Set statement timeout for migrations - some migrations (especially data migrations)
-	// can take longer than the default server timeout
-	_, err = db.ExecContext(ctx, fmt.Sprintf("SET statement_timeout = %d", statementTimeout.Milliseconds()))
-	if err != nil {
-		log.Fatalf("failed to set statement timeout: %v", err) //nolint:gocritic // process exits, db cleanup not critical
-	}
-
 	// Create a session locking
 	sessionLocker, err := lock.NewPostgresSessionLocker()
 	if err != nil {
-		log.Fatalf("failed to create session locker: %v", err)
+		log.Fatalf("failed to create session locker: %v", err) //nolint:gocritic // process exits, db cleanup not critical
 	}
 
 	goose.SetTableName(trackingTable)
