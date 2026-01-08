@@ -128,7 +128,8 @@ variable "client_clusters_config" {
       size_gb   = number
       count     = number
     })
-    hugepages_percentage = optional(number)
+    hugepages_percentage   = optional(number)
+    network_interface_type = optional(string)
   }))
 }
 
@@ -159,7 +160,8 @@ variable "build_clusters_config" {
       size_gb   = number
       count     = number
     })
-    hugepages_percentage = optional(number)
+    hugepages_percentage   = optional(number)
+    network_interface_type = optional(string)
   }))
 }
 

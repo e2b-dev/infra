@@ -204,7 +204,8 @@ resource "google_compute_instance_template" "template" {
   }
 
   network_interface {
-    network = var.network_name
+    network  = var.network_name
+    nic_type = var.network_interface_type
 
     dynamic "access_config" {
       for_each = ["public_ip"]

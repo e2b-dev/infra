@@ -173,6 +173,7 @@ module "build_cluster" {
   image_family              = var.build_image_family
   network_name              = var.network_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.build_base_hugepages_percentage)
+  network_interface_type    = each.value.network_interface_type
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.build_node_pool
@@ -227,6 +228,7 @@ module "client_cluster" {
   image_family              = var.client_image_family
   network_name              = var.network_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
+  network_interface_type    = each.value.network_interface_type
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.orchestrator_node_pool
