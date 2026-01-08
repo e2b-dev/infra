@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"iter"
 	"log"
 	"math"
 	"math/rand"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -26,47 +28,163 @@ func main() {
 
 	var p processor
 
-	var readMethod string
-
 	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	f.BoolVar(&p.nfsStat, "nfs-stat", false, "measure nfs stat")
 	f.BoolVar(&p.dropNfsCache, "drop-nfs-cache", true, "drop nfs cache")
 	f.IntVar(&p.bufferSize, "buffer-size", defaultChunkSize, "size of buffer to read files into")
 	f.IntVar(&p.maxFileCount, "count", 100, "number of files to read")
 	f.IntVar(&p.onlyFileSize, "only-file-size", defaultChunkSize, "only read files of this size (in bytes)")
-	f.StringVar(&readMethod, "read-method", "ReadAt", "read method to use (ReadAt or Read)")
+	f.IntVar(&p.concurrentRequests, "concurrent-requests", 1, "number of concurrent requests to make")
 	_ = f.Parse(os.Args[1:])
 
-	paths := f.Args()
-	if len(paths) == 0 {
-		paths = []string{"."}
+	switch paths := f.Args(); len(paths) {
+	case 0:
+		p.path = "."
+	case 1:
+		p.path = paths[0]
+	default:
+		log.Fatal("only one path can be specified")
+		return
 	}
 
-	readMethods := map[string]func(string) (int, error){
-		"ReadAt":   p.readAtFile,
-		"ReadFile": p.read,
+	experiments := map[string]map[string]experiment{
+		"read method": {
+			"ReadAt": readMethodExperiment{p.readAtFile},
+			"Read":   readMethodExperiment{p.read},
+		},
+		"nfs read ahead": {
+			"128kb": &setReadAhead{readAhead: 128},
+			"4mb":   &setReadAhead{readAhead: 4096},
+		},
+		"net.core.rmem_max": {
+			"default": defaultSysFs{"net.core.rmem_max"},
+			"32mb":    &setSysFs{path: "net.core.rmem_max", newValue: "33554432"},
+		},
+		"net.ipv4.tcp_rmem": {
+			"default":           defaultSysFs{"net.ipv4.tcp_rmem"},
+			"4k / 256k / 32 mb": &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 262144 33554432"},
+		},
+		"sunrpc.tcp_slot_table_entries": {
+			"default": defaultSysFs{"sunrpc.tcp_slot_table_entries"},
+			"128":     &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "128"},
+		},
 	}
 
-	var ok bool
-	if p.readMethod, ok = readMethods[readMethod]; !ok {
-		log.Fatalf("invalid read method: %s", readMethod)
+	for scenario := range generateScenarios(experiments) {
+		p.run(ctx, scenario)
 	}
-
-	p.run(ctx, paths)
 }
 
+func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[scenario] {
+	return func(yield func(scenario) bool) {
+
+	}
+}
+
+type setReadAhead struct {
+	readAhead int
+
+	readAheadPath string
+	oldReadAhead  int
+}
+
+func (s *setReadAhead) setup(p *processor) {
+	// find nfs device
+
+	// read old read_ahead_kb, store
+
+	// set new value
+
+	panic("implement me")
+}
+
+func (s *setReadAhead) teardown(p *processor) {
+	// reset old value
+	panic("implement me")
+}
+
+var _ experiment = (*setReadAhead)(nil)
+
+type setSysFs struct {
+	path     string
+	newValue string
+	oldValue string
+}
+
+var _ experiment = (*setSysFs)(nil)
+
+func (d *setSysFs) setup(p *processor) {
+	// read old value
+
+	// set new value
+
+	panic("implement me")
+}
+
+func (d *setSysFs) teardown(p *processor) {
+	// set old value
+	panic("implement me")
+}
+
+type defaultSysFs struct {
+	path string
+}
+
+func (d defaultSysFs) setup(p *processor) {
+	// report current sysfs value
+}
+
+func (d defaultSysFs) teardown(p *processor) {
+}
+
+var _ experiment = (*defaultSysFs)(nil)
+
+type readMethodExperiment struct {
+	readMethod func(string) (int, error)
+}
+
+func (r readMethodExperiment) setup(p *processor) {
+	p.readMethod = r.readMethod
+}
+
+func (r readMethodExperiment) teardown(p *processor) {
+}
+
+var _ experiment = (*readMethodExperiment)(nil)
+
 type processor struct {
-	dropNfsCache bool
-	nfsStat      bool
-	maxFileCount int
-	bufferSize   int
-	onlyFileSize int
-	readMethod   func(string) (int, error)
+	path               string
+	dropNfsCache       bool
+	nfsStat            bool
+	maxFileCount       int
+	bufferSize         int
+	onlyFileSize       int
+	readMethod         func(string) (int, error)
+	concurrentRequests int
 
 	nfsStatFile string
 }
 
-func (p *processor) run(ctx context.Context, paths []string) {
+type experiment interface {
+	setup(p *processor)
+	teardown(p *processor)
+}
+
+type scenario map[string]experiment
+
+func (s scenario) setup(p *processor) {
+	for _, exp := range s {
+		exp.setup(p)
+	}
+}
+
+func (s scenario) teardown(p *processor) {
+	for _, exp := range s {
+		exp.teardown(p)
+	}
+}
+
+func (p *processor) run(ctx context.Context, scenario scenario) {
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 
 	if p.dropNfsCache {
@@ -84,19 +202,25 @@ func (p *processor) run(ctx context.Context, paths []string) {
 	allFiles := files{
 		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
-	for _, path := range paths {
-		// find 4 MB files under $path
-		paths, err := p.findFiles(path)
-		if err != nil {
-			logger.Fatal("failed to find files", "error", err)
-		}
-
-		allFiles.addPaths(paths)
+	// find 4 MB files under $path
+	paths, err := p.findFiles(p.path)
+	if err != nil {
+		logger.Fatal("failed to find files", "error", err)
 	}
+	allFiles.addPaths(paths)
+
+	logger.Println("setting up experiments ... ")
+	scenario.setup(p)
 
 	// open/read files into buffer
+	logger.Println("starting reads ... ")
 	var reads []time.Duration
 	var sizes []int
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	semaphore := make(chan struct{}, p.concurrentRequests)
+
 	for range p.maxFileCount {
 		f, err := allFiles.selectFile()
 		if err != nil {
@@ -105,19 +229,36 @@ func (p *processor) run(ctx context.Context, paths []string) {
 			break
 		}
 
-		start := time.Now()
+		wg.Add(1)
+		semaphore <- struct{}{}
 
-		size, err := p.readMethod(f)
-		if err != nil {
-			logger.Println("failed to time file read", "error", err)
+		go func(f string) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
 
-			break
-		}
+			start := time.Now()
 
-		duration := time.Since(start)
-		sizes = append(sizes, size)
-		reads = append(reads, duration)
+			size, err := p.readMethod(f)
+			if err != nil {
+				logger.Println("failed to time file read", "error", err)
+
+				return
+			}
+
+			duration := time.Since(start)
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			sizes = append(sizes, size)
+			reads = append(reads, duration)
+		}(f)
 	}
+
+	wg.Wait()
+
+	logger.Println("tearing down experiments ... ")
+	scenario.teardown(p)
 
 	// render times
 	readSummary := summarizeDurations(reads)
