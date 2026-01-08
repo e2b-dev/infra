@@ -72,7 +72,6 @@ func (tm *TemplateManager) CreateTemplate(
 		telemetry.ReportCriticalError(ctx, "build failed", e, telemetry.WithTemplateID(templateID))
 		err := tm.SetStatus(
 			ctx,
-			templateID,
 			buildID,
 			types.BuildStatusFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
@@ -136,7 +135,6 @@ func (tm *TemplateManager) CreateTemplate(
 
 		err = tm.SetStatus(
 			ctx,
-			templateID,
 			buildID,
 			types.BuildStatusFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
@@ -170,7 +168,6 @@ func (tm *TemplateManager) CreateTemplate(
 	// it's possible build status job will be triggered before build cache on template manager is created and build will fail
 	err = tm.SetStatus(
 		ctx,
-		templateID,
 		buildID,
 		types.BuildStatusBuilding,
 		nil,
