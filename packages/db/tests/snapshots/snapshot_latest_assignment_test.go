@@ -211,6 +211,8 @@ func TestGetLastSnapshot_IgnoresNonDefaultTags(t *testing.T) {
 	// Create another build and assign it with a non-default tag (e.g., "v1")
 	// This should be ignored by GetLastSnapshot
 	otherBuildID := testutils.CreateTestBuild(t, ctx, db, result1.TemplateID, "success")
+	// Delete the auto-created 'default' assignment from the trigger so the build only has 'v1' tag
+	testutils.DeleteTriggerBuildAssignment(t, ctx, db, result1.TemplateID, otherBuildID, "default")
 	testutils.CreateTestBuildAssignment(t, ctx, db, result1.TemplateID, otherBuildID, "v1")
 
 	// GetLastSnapshot should return the default-tagged build, not the v1-tagged one
@@ -263,8 +265,8 @@ func createSnapshotRecord(t *testing.T, ctx context.Context, db *client.Client, 
 
 	err := db.TestsRawSQL(ctx,
 		`INSERT INTO public.snapshots 
-		(sandbox_id, env_id, team_id, base_env_id, sandbox_started_at, metadata)
-		VALUES ($1, $2, $3, $4, NOW(), '{}'::jsonb)`,
+		(sandbox_id, env_id, team_id, base_env_id, sandbox_started_at, metadata, origin_node_id)
+		VALUES ($1, $2, $3, $4, NOW(), '{}'::jsonb, 'test-node')`,
 		sandboxID, templateID, teamID, baseTemplateID,
 	)
 	require.NoError(t, err, "Failed to create snapshot record")
