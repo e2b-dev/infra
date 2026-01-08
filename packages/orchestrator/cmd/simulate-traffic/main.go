@@ -34,7 +34,7 @@ func main() {
 	f.BoolVar(&p.nfsStat, "nfs-stat", false, "measure nfs stat")
 	f.BoolVar(&p.dropNfsCache, "drop-nfs-cache", true, "drop nfs cache")
 	f.IntVar(&p.bufferSize, "buffer-size", defaultChunkSize, "size of buffer to read files into")
-	f.IntVar(&p.maxFileCount, "count", 100, "number of files to read")
+	f.DurationVar(&p.testDuration, "test-duration", 15*time.Second, "amount of time to run test")
 	f.IntVar(&p.onlyFileSize, "only-file-size", defaultChunkSize, "only read files of this size (in bytes)")
 	f.IntVar(&p.concurrentRequests, "concurrent-requests", 1, "number of concurrent requests to make")
 	f.StringVar(&csvPath, "csv-path", "output.csv", "path to output csv file")
@@ -77,10 +77,20 @@ func main() {
 
 	var results []result
 
+	fmt.Println("generating files ... ")
+	if err := p.generateFiles(); err != nil {
+		log.Fatalf("failed to generate files: %s", err)
+	}
+
 	for scenario := range generateScenarios(experiments) {
 		fmt.Printf("\n=== Scenario: %s ===\n", scenario.Name())
 
-		results = append(results, p.run(ctx, scenario))
+		result, err := p.run(ctx, scenario)
+		if err != nil {
+			log.Fatalf("failed to run scenario: %s", err.Error())
+		}
+
+		results = append(results, result)
 	}
 
 	if csvPath != "" {
@@ -304,12 +314,13 @@ type processor struct {
 	path               string
 	dropNfsCache       bool
 	nfsStat            bool
-	maxFileCount       int
+	testDuration       time.Duration
 	bufferSize         int
 	onlyFileSize       int
 	readMethod         func(string) (int, error)
 	concurrentRequests int
 
+	allFiles    []string
 	nfsStatFile string
 }
 
@@ -363,34 +374,24 @@ func (s scenario) Name() any {
 	return strings.Join(values, "; ")
 }
 
-func (p *processor) run(ctx context.Context, scenario scenario) result {
+func (p *processor) run(ctx context.Context, scenario scenario) (result, error) {
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 
 	if p.dropNfsCache {
 		if err := os.WriteFile("/proc/sys/vm/drop_caches", []byte("3"), 0o644); err != nil {
-			logger.Fatal("failed to drop nfs cache", "error", err)
+			return result{}, fmt.Errorf("failed to drop nfs cache: %w", err)
 		}
 	}
 
 	if p.nfsStat {
 		if err := p.storeNfsStat(); err != nil {
-			logger.Fatal("failed to store nfs stat", "error", err)
+			return result{}, fmt.Errorf("failed to store nfs stat: %w", err)
 		}
 	}
 
-	allFiles := files{
-		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
-	}
-	// find 4 MB files under $path
-	paths, err := p.findFiles(p.path)
-	if err != nil {
-		logger.Fatal("failed to find files", "error", err)
-	}
-	allFiles.addPaths(paths)
-
 	// logger.Println("setting up experiments ... ")
 	if err := scenario.setup(ctx, p); err != nil {
-		logger.Fatal("failed to setup experiments", "error", err)
+		return result{}, fmt.Errorf("failed to setup experiments: %w", err)
 	}
 
 	// open/read files into buffer
@@ -402,7 +403,15 @@ func (p *processor) run(ctx context.Context, scenario scenario) result {
 
 	semaphore := make(chan struct{}, p.concurrentRequests)
 
-	for range p.maxFileCount {
+	testCtx, cancel := context.WithTimeout(ctx, p.testDuration)
+	defer cancel()
+
+	allFiles := &files{
+		rand:  rand.New(rand.NewSource(time.Now().UnixNano())),
+		paths: p.allFiles,
+	}
+
+	for testCtx.Err() == nil {
 		f, err := allFiles.selectFile()
 		if err != nil {
 			logger.Println("failed to get file", "error", err)
@@ -412,8 +421,10 @@ func (p *processor) run(ctx context.Context, scenario scenario) result {
 
 		semaphore <- struct{}{}
 
-		wg.Go(func() {
+		wg.Add(1)
+		go func() {
 			defer func() { <-semaphore }()
+			defer wg.Done()
 
 			start := time.Now()
 
@@ -426,18 +437,22 @@ func (p *processor) run(ctx context.Context, scenario scenario) result {
 
 			duration := time.Since(start)
 
+			if testCtx.Err() != nil {
+				return
+			}
+
 			mu.Lock()
 			defer mu.Unlock()
 
 			sizes = append(sizes, size)
 			reads = append(reads, duration)
-		})
+		}()
 	}
 
 	wg.Wait()
 
 	if err := scenario.teardown(ctx, p); err != nil {
-		logger.Fatal("failed to teardown experiments", "error", err)
+		return result{}, fmt.Errorf("failed to teardown experiments: %w", err)
 	}
 
 	// render times
@@ -446,25 +461,20 @@ func (p *processor) run(ctx context.Context, scenario scenario) result {
 
 	if p.nfsStat {
 		if err := p.compareNfsStat(ctx); err != nil {
-			logger.Fatal("failed to store nfs stat", "error", err)
+			return result{}, fmt.Errorf("failed to compare nfs stat: %w", err)
 		}
 	}
 
 	return result{
 		scenario: scenario,
 		summary:  readSummary,
-	}
+	}, nil
 }
 
 func printDurationSummary(label string, s durationSummary) {
 	fmt.Printf(`
-   %s: p50 / p95 / p99 (stddev): %s / %s / %s (%s)
-`, label, s.p50, s.p95, s.p99, s.stddev)
-}
-
-type files struct {
-	rand  *rand.Rand
-	paths []string
+   %s: p50 / p95 / p99 (stddev): %s / %s / %s (%s) [%d reads]
+`, label, s.p50, s.p95, s.p99, s.stddev, s.count)
 }
 
 func (p *processor) findFiles(path string) ([]string, error) {
@@ -493,10 +503,6 @@ func (p *processor) findFiles(path string) ([]string, error) {
 
 		paths = append(paths, path)
 
-		if len(paths) == p.maxFileCount {
-			return filepath.SkipAll // we're done
-		}
-
 		return nil
 	})
 	if err != nil {
@@ -504,6 +510,11 @@ func (p *processor) findFiles(path string) ([]string, error) {
 	}
 
 	return paths, nil
+}
+
+type files struct {
+	rand  *rand.Rand
+	paths []string
 }
 
 func (f *files) selectFile() (string, error) {
@@ -518,10 +529,6 @@ func (f *files) selectFile() (string, error) {
 	f.paths = append(f.paths[:idx], f.paths[idx+1:]...)
 
 	return path, nil
-}
-
-func (f *files) addPaths(paths []string) {
-	f.paths = append(f.paths, paths...)
 }
 
 func (p *processor) readAtFile(path string) (int, error) {
@@ -598,6 +605,18 @@ func (p *processor) compareNfsStat(ctx context.Context) error {
 
 	summarizeNfsstat(stats)
 
+	return nil
+}
+
+func (p *processor) generateFiles() error {
+	// find 4 MB files under $path
+	var err error
+	p.allFiles, err = p.findFiles(p.path)
+	if err != nil {
+		return fmt.Errorf("failed to find files in %q: %w", p.path, err)
+	}
+
+	fmt.Printf("found %d files\n", len(p.allFiles))
 	return nil
 }
 

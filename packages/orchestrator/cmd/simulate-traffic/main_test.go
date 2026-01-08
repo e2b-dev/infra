@@ -153,3 +153,47 @@ func TestDumpResultsToCSV(t *testing.T) {
 	assert.Equal(t, "val1,val2,10,100,200,300,400,500,50", lines[1])
 	assert.Equal(t, "val3,val4,20,110,210,310,410,510,51", lines[2])
 }
+
+func TestSummarizeDurations(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty", func(t *testing.T) {
+		summary := summarizeDurations(nil)
+		assert.Equal(t, durationSummary{}, summary)
+	})
+
+	t.Run("single", func(t *testing.T) {
+		durations := []time.Duration{10 * time.Millisecond}
+		summary := summarizeDurations(durations)
+		assert.Equal(t, 1, summary.count)
+		assert.Equal(t, 10*time.Millisecond, summary.p50)
+		assert.Equal(t, 10*time.Millisecond, summary.p95)
+		assert.Equal(t, 10*time.Millisecond, summary.p99)
+	})
+
+	t.Run("multiple", func(t *testing.T) {
+		durations := make([]time.Duration, 100)
+		for i := 0; i < 100; i++ {
+			durations[i] = time.Duration(i+1) * time.Millisecond
+		}
+		summary := summarizeDurations(durations)
+		assert.Equal(t, 100, summary.count)
+		assert.Equal(t, 50*time.Millisecond, summary.p50)
+		assert.Equal(t, 95*time.Millisecond, summary.p95)
+		assert.Equal(t, 99*time.Millisecond, summary.p99)
+	})
+
+	t.Run("matches_user_report", func(t *testing.T) {
+		// 428 files, if p50 is 23ms, then throughput at concurrency 2 should be ~428 in 5s
+		// throughput = 2 / 0.023 = 86.9 files/s
+		// 5s * 86.9 = 434 files.
+		// If we have 428 files in 5s, average latency per file = 5 / (428/2) = 0.02336s = 23.36ms.
+
+		durations := make([]time.Duration, 428)
+		for i := range durations {
+			durations[i] = 23 * time.Millisecond
+		}
+		summary := summarizeDurations(durations)
+		assert.Equal(t, 23*time.Millisecond, summary.p50)
+	})
+}
