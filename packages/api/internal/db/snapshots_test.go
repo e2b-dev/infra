@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/testutils"
 	"github.com/e2b-dev/infra/packages/db/types"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // createTestTeam creates a test team in the database using raw SQL
@@ -85,7 +84,7 @@ func createTestSnapshot(t *testing.T, db *client.Client, teamID uuid.UUID, baseE
 				},
 			},
 		},
-		OriginNodeID: utils.ToPtr("node-1"),
+		OriginNodeID: "node-1",
 		Status:       "success",
 	}
 
@@ -130,6 +129,7 @@ func deleteBuild(t *testing.T, db *client.Client, envID string) {
 }
 
 func TestGetSnapshotWithBuilds_Success(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
 
@@ -162,6 +162,7 @@ func TestGetSnapshotWithBuilds_Success(t *testing.T) {
 }
 
 func TestGetSnapshotWithBuilds_NoAdditionalBuilds(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
 
@@ -185,6 +186,7 @@ func TestGetSnapshotWithBuilds_NoAdditionalBuilds(t *testing.T) {
 }
 
 func TestGetSnapshotWithBuilds_NotFound(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
 
@@ -201,6 +203,7 @@ func TestGetSnapshotWithBuilds_NotFound(t *testing.T) {
 }
 
 func TestGetSnapshotWithBuilds_WrongTeamID(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
 
@@ -221,6 +224,7 @@ func TestGetSnapshotWithBuilds_WrongTeamID(t *testing.T) {
 }
 
 func TestGetSnapshotWithBuilds_NoBuilds(t *testing.T) {
+	t.Parallel()
 	// Setup test database with migrations
 	db := testutils.SetupDatabase(t)
 

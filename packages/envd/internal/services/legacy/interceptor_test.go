@@ -17,6 +17,7 @@ import (
 )
 
 func TestInterceptor(t *testing.T) {
+	t.Parallel()
 	streamSetup := func(count int) func(mockFS *filesystemconnectmocks.MockFilesystemHandler) {
 		return func(mockFS *filesystemconnectmocks.MockFilesystemHandler) {
 			mockFS.EXPECT().
@@ -111,6 +112,7 @@ func TestInterceptor(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			// setup server
 			mockFS := filesystemconnectmocks.NewMockFilesystemHandler(t)
 			if test.setup != nil {

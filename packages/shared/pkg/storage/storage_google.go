@@ -33,6 +33,13 @@ const (
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
 	gcloudDefaultUploadConcurrency = 16
+
+	gcsOperationAttr                           = "operation"
+	gcsOperationAttrReadAt                     = "ReadAt"
+	gcsOperationAttrWrite                      = "Write"
+	gcsOperationAttrWriteFromFileSystem        = "WriteFromFileSystem"
+	gcsOperationAttrWriteFromFileSystemOneShot = "WriteFromFileSystemOneShot"
+	gcsOperationAttrWriteTo                    = "WriteTo"
 )
 
 var (
@@ -211,7 +218,7 @@ func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 }
 
 func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
-	timer := googleReadTimerFactory.Begin()
+	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 	defer cancel()
@@ -219,38 +226,37 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	// The file should not be gzip compressed
 	reader, err := g.handle.NewRangeReader(ctx, off, int64(len(buff)))
 	if err != nil {
+		timer.Failure(ctx, int64(n))
+
 		return 0, fmt.Errorf("failed to create GCS reader for %q: %w", g.path, err)
 	}
 
 	defer reader.Close()
 
 	for reader.Remain() > 0 {
-		nr, readErr := reader.Read(buff[n:])
+		nr, err := reader.Read(buff[n:])
 		n += nr
 
-		if readErr == nil {
+		if err == nil {
 			continue
 		}
 
-		if errors.Is(readErr, io.EOF) {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 
-		return n, fmt.Errorf("failed to read %q: %w", g.path, readErr)
+		timer.Failure(ctx, int64(n))
+
+		return n, fmt.Errorf("failed to read %q: %w", g.path, err)
 	}
 
-	timer.End(ctx, int64(n))
+	timer.Success(ctx, int64(n))
 
 	return n, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (n int, e error) {
-	timer := googleWriteTimerFactory.Begin()
-	defer func() {
-		if e == nil {
-			timer.End(ctx, int64(n))
-		}
-	}()
+	timer := googleWriteTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
 	w := g.handle.NewWriter(ctx)
 	defer func() {
@@ -261,20 +267,26 @@ func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte)
 
 	n, err := w.Write(data)
 	if err != nil && !errors.Is(err, io.EOF) {
+		timer.Failure(ctx, int64(n))
+
 		return n, fmt.Errorf("failed to write to %q: %w", g.path, err)
 	}
+
+	timer.Success(ctx, int64(n))
 
 	return n, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
-	timer := googleReadTimerFactory.Begin()
+	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWriteTo))
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 	defer cancel()
 
 	reader, err := g.handle.NewReader(ctx)
 	if err != nil {
+		timer.Failure(ctx, 0)
+
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			return 0, fmt.Errorf("failed to create reader for %q: %w", g.path, ErrObjectNotExist)
 		}
@@ -287,16 +299,22 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	buff := make([]byte, googleBufferSize)
 	n, err := io.CopyBuffer(dst, reader, buff)
 	if err != nil {
+		timer.Failure(ctx, n)
+
 		return n, fmt.Errorf("failed to copy %q to buffer: %w", g.path, err)
 	}
 
-	timer.End(ctx, n)
+	timer.Success(ctx, n)
 
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
-	timer := googleWriteTimerFactory.Begin()
+func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (e error) {
+	ctx, span := tracer.Start(ctx, "write to gcp from file system")
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
 
 	bucketName := g.storage.bucket.BucketName()
 	objectName := g.path
@@ -310,19 +328,32 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
 	if fileInfo.Size() < gcpMultipartUploadChunkSize {
+		timer := googleWriteTimerFactory.Begin(
+			attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystemOneShot),
+		)
+
 		data, err := os.ReadFile(path)
 		if err != nil {
+			timer.Failure(ctx, 0)
+
 			return fmt.Errorf("failed to read file: %w", err)
 		}
 
-		if _, err = g.Write(ctx, data); err != nil {
+		count, err := g.Write(ctx, data)
+		if err != nil {
+			timer.Failure(ctx, int64(count))
+
 			return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
 		}
 
-		timer.End(ctx, int64(len(data)), attribute.String("method", "one-shot"))
+		timer.Success(ctx, int64(count))
 
 		return nil
 	}
+
+	timer := googleWriteTimerFactory.Begin(
+		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
+	)
 
 	maxConcurrency := gcloudDefaultUploadConcurrency
 	if g.limiter != nil {
@@ -330,6 +361,8 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		if uploadLimiter != nil {
 			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
 			if semaphoreErr != nil {
+				timer.Failure(ctx, 0)
+
 				return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
 			}
 			defer uploadLimiter.Release(1)
@@ -345,11 +378,16 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		DefaultRetryConfig(),
 	)
 	if err != nil {
+		timer.Failure(ctx, 0)
+
 		return fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
 	start := time.Now()
-	if err := uploader.UploadFileInParallel(ctx, filePath, maxConcurrency); err != nil {
+	count, err := uploader.UploadFileInParallel(ctx, filePath, maxConcurrency)
+	if err != nil {
+		timer.Failure(ctx, count)
+
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
@@ -362,7 +400,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		zap.Int64("duration", time.Since(start).Milliseconds()),
 	)
 
-	timer.End(ctx, fileInfo.Size(), attribute.String("method", "multipart"))
+	timer.Success(ctx, count)
 
 	return nil
 }

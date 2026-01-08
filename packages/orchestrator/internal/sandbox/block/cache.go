@@ -368,29 +368,51 @@ func NewCacheFromProcessMemory(
 func (c *Cache) copyProcessMemory(
 	ctx context.Context,
 	pid int,
-	ranges []Range,
+	rs []Range,
 ) error {
-	var start int64
+	// We need to align the maximum read/write count to the block size, so we can use mark the offsets as dirty correctly.
+	// Because the MAX_RW_COUNT is not aligned to arbitrary block sizes, we need to align it to the block size we use for the cache.
+	alignedRwCount := getAlignedMaxRwCount(c.blockSize)
 
-	for i := 0; i < len(ranges); i += IOV_MAX {
-		segmentRanges := ranges[i:min(i+IOV_MAX, len(ranges))]
+	// We need to split the ranges because the Kernel does not support reading/writing more than MAX_RW_COUNT bytes in a single operation.
+	ranges := splitOversizedRanges(rs, alignedRwCount)
 
-		remote := make([]unix.RemoteIovec, len(segmentRanges))
+	var offset int64
+	var rangeIdx int64
+
+	for {
+		var remote []unix.RemoteIovec
 
 		var segmentSize int64
 
-		for j, r := range segmentRanges {
-			remote[j] = unix.RemoteIovec{
+		// We iterate over the range of all ranges until we have reached the limit of the IOV_MAX,
+		// or until the next range would overflow the MAX_RW_COUNT.
+		for ; rangeIdx < int64(len(ranges)); rangeIdx++ {
+			r := ranges[rangeIdx]
+
+			if len(remote) == IOV_MAX {
+				break
+			}
+
+			if segmentSize+r.Size > alignedRwCount {
+				break
+			}
+
+			remote = append(remote, unix.RemoteIovec{
 				Base: uintptr(r.Start),
 				Len:  int(r.Size),
-			}
+			})
 
 			segmentSize += r.Size
 		}
 
+		if len(remote) == 0 {
+			break
+		}
+
 		local := []unix.Iovec{
 			{
-				Base: c.address(start),
+				Base: c.address(offset),
 				// We could keep this as full cache length, but we might as well be exact here.
 				Len: uint64(segmentSize),
 			},
@@ -430,14 +452,36 @@ func (c *Cache) copyProcessMemory(
 			}
 
 			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				c.dirty.Store(start+blockOff, struct{}{})
+				c.dirty.Store(offset+blockOff, struct{}{})
 			}
 
-			start += segmentSize
+			offset += segmentSize
 
 			break
 		}
 	}
 
 	return nil
+}
+
+// Split ranges so there are no ranges larger than maxSize.
+// This is not an optimal split—ideally we would split the ranges so that we can fill each call to unix.ProcessVMReadv to the max size.
+// This is though a very simple split that will work and the syscalls overhead here is not very high as opposed to the other things.
+func splitOversizedRanges(ranges []Range, maxSize int64) (result []Range) {
+	for _, r := range ranges {
+		if r.Size <= maxSize {
+			result = append(result, r)
+
+			continue
+		}
+
+		for offset := int64(0); offset < r.Size; offset += maxSize {
+			result = append(result, Range{
+				Start: r.Start + offset,
+				Size:  min(r.Size-offset, maxSize),
+			})
+		}
+	}
+
+	return result
 }

@@ -6,8 +6,6 @@ runs:
   steps:
     - name: Setup Go
       uses: ./.github/actions/go-setup-cache
-      with:
-        job_key: build-packages
 
     - name: Build Packages
       run: |

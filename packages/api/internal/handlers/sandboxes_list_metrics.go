@@ -41,7 +41,7 @@ func (a *APIStore) getSandboxesMetrics(
 		attribute.Int("sandboxes.count", len(sandboxIDs)),
 	)
 
-	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
+	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlag)
 
 	// Get metrics for all sandboxes
 	if !metricsReadFlag {
@@ -52,7 +52,7 @@ func (a *APIStore) getSandboxesMetrics(
 	}
 
 	// TODO: Remove in [ENG-3377], once edge is migrated
-	edgeProvidedMetrics := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlagName)
+	edgeProvidedMetrics := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlag)
 
 	var metrics map[string]api.SandboxMetric
 	var apiErr *api.APIError
@@ -126,7 +126,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "listed running instances with metrics", properties)
 
 	// Build the context for feature flags
-	ctx = featureflags.SetContext(
+	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(team.ID.String()).
 			Kind(featureflags.TeamKind).
@@ -135,7 +135,6 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, team.ClusterID, params.SandboxIds)
 	if apiErr != nil {
-		logger.L().Error(ctx, "error getting sandbox metrics", zap.Error(apiErr.Err))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

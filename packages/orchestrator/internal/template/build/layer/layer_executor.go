@@ -213,7 +213,8 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	// This might not be necessary if we don't use keepalives for the proxy.
 	err = lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
 	if err != nil {
-		return fmt.Errorf("failed to remove proxy from pool: %w", err)
+		// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
+		lb.logger.Warn(ctx, "errors when manually closing connections to sandbox after restarting envd", zap.Error(err))
 	}
 
 	lb.logger.Debug(

@@ -59,7 +59,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	)
 
 	// setup launch darkly
-	ctx = featureflags.SetContext(
+	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(req.GetSandbox().GetSandboxId()).
 			Kind(featureflags.SandboxKind).
@@ -381,7 +381,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	defer childSpan.End()
 
 	// setup launch darkly
-	ctx = featureflags.SetContext(
+	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(in.GetSandboxId()).
 			Kind(featureflags.SandboxKind).

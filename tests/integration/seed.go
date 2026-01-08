@@ -174,15 +174,20 @@ VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 	}
 
 	oldBuildTime := time.Now().Add(-time.Hour)
+	// Important: Insert builds in chronological order (oldest first, newest last)
+	// because the trigger on env_builds creates env_build_assignments with CURRENT_TIMESTAMP.
+	// The query uses ORDER BY eba.created_at DESC to get the latest build,
+	// so the last inserted build will be selected.
 	builds := []buildData{
-		{
-			id:        data.BuildID,
-			createdAt: nil,
-		},
-		// An older build, so we have multiple builds
+		// An older build, so we have multiple builds - inserted FIRST
 		{
 			id:        uuid.New(),
 			createdAt: &oldBuildTime,
+		},
+		// Primary build - inserted LAST so it has the latest trigger-created timestamp
+		{
+			id:        data.BuildID,
+			createdAt: nil,
 		},
 	}
 

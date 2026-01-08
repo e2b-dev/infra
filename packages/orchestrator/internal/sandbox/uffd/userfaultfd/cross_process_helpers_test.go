@@ -225,6 +225,8 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 
 // Secondary process, orchestrator in our case
 func TestHelperServingProcess(t *testing.T) {
+	t.Parallel()
+
 	if os.Getenv("GO_TEST_HELPER_PROCESS") != "1" {
 		t.Skip("this is a helper process, skipping direct execution")
 	}

@@ -293,15 +293,6 @@ type TimerFactory struct {
 	count    metric.Int64Counter
 }
 
-func (f *TimerFactory) Begin() *Stopwatch {
-	return &Stopwatch{
-		histogram: f.duration,
-		sum:       f.bytes,
-		count:     f.count,
-		start:     time.Now(),
-	}
-}
-
 func NewTimerFactory(
 	blocksMeter metric.Meter,
 	metricName, durationDescription, bytesDescription, counterDescription string,
@@ -332,13 +323,41 @@ func NewTimerFactory(
 	return TimerFactory{duration, bytes, count}, nil
 }
 
+func (f *TimerFactory) Begin(kv ...attribute.KeyValue) *Stopwatch {
+	return &Stopwatch{
+		histogram: f.duration,
+		sum:       f.bytes,
+		count:     f.count,
+		start:     time.Now(),
+		kv:        kv,
+	}
+}
+
 type Stopwatch struct {
 	histogram  metric.Int64Histogram
 	sum, count metric.Int64Counter
 	start      time.Time
+	kv         []attribute.KeyValue
 }
 
-func (t Stopwatch) End(ctx context.Context, total int64, kv ...attribute.KeyValue) {
+const (
+	resultAttr        = "result"
+	resultTypeSuccess = "success"
+	resultTypeFailure = "failure"
+)
+
+func (t Stopwatch) Success(ctx context.Context, total int64, kv ...attribute.KeyValue) {
+	t.end(ctx, resultTypeSuccess, total, kv...)
+}
+
+func (t Stopwatch) Failure(ctx context.Context, total int64, kv ...attribute.KeyValue) {
+	t.end(ctx, resultTypeFailure, total, kv...)
+}
+
+func (t Stopwatch) end(ctx context.Context, result string, total int64, kv ...attribute.KeyValue) {
+	kv = append(kv, attribute.KeyValue{Key: resultAttr, Value: attribute.StringValue(result)})
+	kv = append(t.kv, kv...)
+
 	amount := time.Since(t.start).Milliseconds()
 	t.histogram.Record(ctx, amount, metric.WithAttributes(kv...))
 	t.sum.Add(ctx, total, metric.WithAttributes(kv...))

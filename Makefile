@@ -69,6 +69,7 @@ build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
 build-and-upload:build-and-upload/clickhouse-migrator
+build-and-upload:build-and-upload/nomad-nodepool-apm
 build-and-upload/clean-nfs-cache:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/clean-nfs-cache
@@ -168,7 +169,7 @@ fmt:
 
 .PHONY: lint
 lint:
-	go work edit -json | jq -r '.Use[].DiskPath' | xargs -P 10 -I{} golangci-lint run {}/... --fix
+	go work edit -json | jq -r '.Use[].DiskPath' | xargs -P 4 -I{} golangci-lint run {}/... --fix
 
 .PHONY: generate-mocks
 generate-mocks:
@@ -183,6 +184,13 @@ local-infra:
 	docker compose --file ./packages/local-dev/docker-compose.yaml up --abort-on-container-failure
 
 
+# Migration: Detach old template-manager-system job from Terraform state
+# TODO: Remove after template-manager migration is complete
+.PHONY: migrate-template-manager-detach
+migrate-template-manager-detach:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-gcp migrate-template-manager-detach
+
 # TODO 2025-12-29: [ENG-3410] - Remove after migration period (14 days)
 define env_var_or_default
 $(if $(value $(strip $(1))),$($(strip $(1))),$(2))
@@ -192,6 +200,6 @@ endef
 migrate-clusters-terraform:
 	$(eval CLIENT_CLUSTER_SIZE := $(call env_var_or_default,CLIENT_CLUSTER_SIZE,1))
 
-	@echo "\nBUILD_CLUSTERS_CONFIG='[{\"cluster_size\": $(call env_var_or_default,BUILD_CLUSTER_SIZE,1), \"machine\":{\"type\":\"$(BUILD_MACHINE_TYPE)\",\"min_cpu_platform\":\"$(call env_var_or_default,MIN_CPU_PLATFORM,"Intel Skylake")\"}, \"boot_disk\":{\"disk_type\":\"$(call env_var_or_default,BUILD_BOOT_DISK_TYPE,"pd-ssd")\",\"size_gb\":$(call env_var_or_default,BUILD_CLUSTER_ROOT_DISK_SIZE_GB,200)}, \"cache_disks\":{\"disk_type\":\"$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_TYPE,"local-ssd")\",\"size_gb\":$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_SIZE_GB,375),\"count\":$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_COUNT,3)}}]'" >> ${ENV_FILE}
-	@echo "CLIENT_CLUSTERS_CONFIG='[{\"cluster_size\": $(CLIENT_CLUSTER_SIZE), \"autoscaler\": {\"size_max\": $(call env_var_or_default,CLIENT_CLUSTER_SIZE_MAX,$(CLIENT_CLUSTER_SIZE)), \"memory_target\": $(call env_var_or_default,CLIENT_CLUSTER_AUTOSCALING_MEMORY_TARGET,85), \"cpu_target\": $(call env_var_or_default,CLIENT_CLUSTER_AUTOSCALING_CPU_TARGET,0.6) }, \"machine\":{\"type\":\"$(CLIENT_MACHINE_TYPE)\",\"min_cpu_platform\":\"$(call env_var_or_default,MIN_CPU_PLATFORM,"Intel Skylake")\"}, \"boot_disk\":{\"disk_type\":\"$(call env_var_or_default,CLIENT_BOOT_DISK_TYPE,"pd-ssd")\",\"size_gb\":$(call env_var_or_default,CLIENT_CLUSTER_ROOT_DISK_SIZE_GB,300)}, \"cache_disks\":{\"disk_type\":\"$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_TYPE,"local-ssd")\",\"size_gb\":$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_SIZE_GB,375),\"count\":$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_COUNT,3)}}]'" >> ${ENV_FILE}
+	@echo "\nBUILD_CLUSTERS_CONFIG='{\"default\":{\"cluster_size\": $(call env_var_or_default,BUILD_CLUSTER_SIZE,1), \"machine\":{\"type\":\"$(BUILD_MACHINE_TYPE)\",\"min_cpu_platform\":\"$(call env_var_or_default,MIN_CPU_PLATFORM,"Intel Skylake")\"}, \"boot_disk\":{\"disk_type\":\"$(call env_var_or_default,BUILD_BOOT_DISK_TYPE,"pd-ssd")\",\"size_gb\":$(call env_var_or_default,BUILD_CLUSTER_ROOT_DISK_SIZE_GB,200)}, \"cache_disks\":{\"disk_type\":\"$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_TYPE,"local-ssd")\",\"size_gb\":$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_SIZE_GB,375),\"count\":$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_COUNT,3)}}}'" >> ${ENV_FILE}
+	@echo "CLIENT_CLUSTERS_CONFIG='{\"default\":{\"cluster_size\": $(CLIENT_CLUSTER_SIZE), \"autoscaler\": {\"size_max\": $(call env_var_or_default,CLIENT_CLUSTER_SIZE_MAX,$(CLIENT_CLUSTER_SIZE)), \"memory_target\": $(call env_var_or_default,CLIENT_CLUSTER_AUTOSCALING_MEMORY_TARGET,85), \"cpu_target\": $(call env_var_or_default,CLIENT_CLUSTER_AUTOSCALING_CPU_TARGET,0.6) }, \"machine\":{\"type\":\"$(CLIENT_MACHINE_TYPE)\",\"min_cpu_platform\":\"$(call env_var_or_default,MIN_CPU_PLATFORM,"Intel Skylake")\"}, \"boot_disk\":{\"disk_type\":\"$(call env_var_or_default,CLIENT_BOOT_DISK_TYPE,"pd-ssd")\",\"size_gb\":$(call env_var_or_default,CLIENT_CLUSTER_ROOT_DISK_SIZE_GB,300)}, \"cache_disks\":{\"disk_type\":\"$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_TYPE,"local-ssd")\",\"size_gb\":$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_SIZE_GB,375),\"count\":$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_COUNT,3)}}}'" >> ${ENV_FILE}
 	$(MAKE) -C iac/provider-gcp migrate-clusters-terraform

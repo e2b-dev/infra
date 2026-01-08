@@ -6,6 +6,7 @@ import (
 )
 
 func TestFlatJsonLogLineParser(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -117,6 +118,7 @@ func TestFlatJsonLogLineParser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := FlatJsonLogLineParser(tt.input)
 
 			if tt.hasError {

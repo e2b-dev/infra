@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/inetaf/tcpproxy"
 	"go.uber.org/zap"
-	"inet.af/tcpproxy"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -26,8 +26,8 @@ const (
 
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
 func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
-	// Get hostname from tcpproxy's wrapped connection
-	// Hostname can be empty, this is the case e.g. for https://1.1.1.1 like requests
+	// Get hostname from tcpproxy's wrapped connection (HTTP Host or TLS SNI).
+	// Hostname can be empty, e.g. for https://1.1.1.1 like requests.
 	var hostname string
 	if tc, ok := conn.(*tcpproxy.Conn); ok {
 		hostname = tc.HostName

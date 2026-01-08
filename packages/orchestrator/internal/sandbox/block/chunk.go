@@ -82,16 +82,14 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		timer.End(ctx, length,
-			attribute.String(result, resultTypeSuccess),
+		timer.Success(ctx, length,
 			attribute.String(pullType, pullTypeLocal))
 
 		return b, nil
 	}
 
 	if !errors.As(err, &BytesNotAvailableError{}) {
-		timer.End(ctx, length,
-			attribute.String(result, "failure"),
+		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalRead))
 
@@ -100,8 +98,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 
 	chunkErr := c.fetchToCache(ctx, off, length)
 	if chunkErr != nil {
-		timer.End(ctx, length,
-			attribute.String(result, resultTypeFailure),
+		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeRemote),
 			attribute.String(failureReason, failureTypeCacheFetch))
 
@@ -110,16 +107,14 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
-		timer.End(ctx, length,
-			attribute.String(result, resultTypeFailure),
+		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalReadAgain))
 
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	timer.End(ctx, length,
-		attribute.String(result, resultTypeSuccess),
+	timer.Success(ctx, length,
 		attribute.String(pullType, pullTypeRemote))
 
 	return b, nil
@@ -159,17 +154,16 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 				readBytes, err := c.base.ReadAt(ctx, b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
-					fetchSW.End(ctx, int64(readBytes),
-						attribute.String(result, resultTypeFailure),
+					fetchSW.Failure(ctx, int64(readBytes),
 						attribute.String(failureReason, failureTypeRemoteRead),
 					)
 
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
- 
+
 				c.cache.setIsCached(fetchOff, int64(readBytes))
 
-				fetchSW.End(ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
+				fetchSW.Success(ctx, int64(readBytes))
 
 				return nil
 			})
@@ -195,10 +189,6 @@ func (c *Chunker) FileSize() (int64, error) {
 }
 
 const (
-	result            = "result"
-	resultTypeSuccess = "success"
-	resultTypeFailure = "failure"
-
 	pullType       = "pull-type"
 	pullTypeLocal  = "local"
 	pullTypeRemote = "remote"

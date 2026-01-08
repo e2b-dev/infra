@@ -54,7 +54,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 			Version: types.PausedSandboxConfigVersion,
 			Network: sbx.Network,
 		},
-		OriginNodeID:    utils.ToPtr(node.ID),
+		OriginNodeID:    node.ID,
 		Status:          string(types.BuildStatusSnapshotting),
 		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
 		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
@@ -89,7 +89,6 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		FinishedAt: &now,
 		Reason:     types.BuildReason{},
 		BuildID:    result.BuildID,
-		TemplateID: result.TemplateID,
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)

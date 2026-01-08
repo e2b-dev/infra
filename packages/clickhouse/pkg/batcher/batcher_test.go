@@ -10,6 +10,7 @@ import (
 )
 
 func TestBatcherStartStop(t *testing.T) {
+	t.Parallel()
 	b, err := NewBatcher[int](func(context.Context, []int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -25,6 +26,7 @@ func TestBatcherStartStop(t *testing.T) {
 }
 
 func TestBatcherPushNotStarted(t *testing.T) {
+	t.Parallel()
 	b, err := NewBatcher[int](func(context.Context, []int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +41,7 @@ func TestBatcherPushNotStarted(t *testing.T) {
 }
 
 func TestBatcherStopNotStarted(t *testing.T) {
+	t.Parallel()
 	b, err := NewBatcher[int](func(context.Context, []int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -49,6 +52,7 @@ func TestBatcherStopNotStarted(t *testing.T) {
 }
 
 func TestBatcherDoubleStop(t *testing.T) {
+	t.Parallel()
 	b, err := NewBatcher[int](func(context.Context, []int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -65,6 +69,7 @@ func TestBatcherDoubleStop(t *testing.T) {
 }
 
 func TestBatcherDoubleStart(t *testing.T) {
+	t.Parallel()
 	b, err := NewBatcher[int](func(context.Context, []int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +83,7 @@ func TestBatcherDoubleStart(t *testing.T) {
 }
 
 func TestBatcherPushStop(t *testing.T) {
+	t.Parallel()
 	n := 0
 	b, err := NewBatcher[int](func(_ context.Context, batch []int) error {
 		n += len(batch)
@@ -109,6 +115,7 @@ func TestBatcherPushStop(t *testing.T) {
 }
 
 func TestBatcherPushMaxBatchSize(t *testing.T) {
+	t.Parallel()
 	testBatcherPushMaxBatchSize(t, 1, 100)
 	testBatcherPushMaxBatchSize(t, 10, 100)
 	testBatcherPushMaxBatchSize(t, 100, 100)
@@ -118,12 +125,14 @@ func TestBatcherPushMaxBatchSize(t *testing.T) {
 }
 
 func TestBatcherPushMaxDelay(t *testing.T) {
+	t.Parallel()
 	testBatcherPushMaxDelay(t, 100, time.Millisecond)
 	testBatcherPushMaxDelay(t, 205, 10*time.Millisecond)
 	testBatcherPushMaxDelay(t, 313, 100*time.Millisecond)
 }
 
 func TestBatcherConcurrentPush(t *testing.T) {
+	t.Parallel()
 	s := uint32(0)
 	b, err := NewBatcher[uint32](func(_ context.Context, batch []uint32) error {
 		for _, v := range batch {
@@ -159,6 +168,7 @@ func TestBatcherConcurrentPush(t *testing.T) {
 }
 
 func TestBatcherQueueSize(t *testing.T) {
+	t.Parallel()
 	ch := make(chan struct{})
 	n := 0
 	b, err := NewBatcher[int](func(_ context.Context, batch []int) error {

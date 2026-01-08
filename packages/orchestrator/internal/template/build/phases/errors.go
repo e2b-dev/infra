@@ -18,12 +18,10 @@ func (e *PhaseBuildError) Unwrap() error {
 	return e.Err
 }
 
-func NewPhaseBuildError(phase BuilderPhase, err error) *PhaseBuildError {
-	m := phase.Metadata()
-
+func NewPhaseBuildError(phaseMetadata PhaseMeta, err error) *PhaseBuildError {
 	return &PhaseBuildError{
-		Phase: string(m.Phase),
-		Step:  phaseToStepString(phase),
+		Phase: string(phaseMetadata.Phase),
+		Step:  stepString(phaseMetadata),
 		Err:   err,
 	}
 }

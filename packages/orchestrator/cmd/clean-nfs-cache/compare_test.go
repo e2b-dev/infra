@@ -14,6 +14,7 @@ import (
 )
 
 func TestCompare(t *testing.T) {
+	t.Parallel()
 	var (
 		testFileSize = 7317
 		NDirs        = 500
@@ -31,20 +32,23 @@ func TestCompare(t *testing.T) {
 
 	printSummary := func(start time.Time, atimes []time.Duration, deletedBytes uint64) {
 		mean, sd := standardDeviation(atimes)
-		t.Logf("Cleaned %d out of %d bytes in %v; file age %v (%v)",
+		t.Logf("Cleaned %d (target %d) bytes in %v; file age %v (%v)",
 			deletedBytes, targetBytesToDelete, time.Since(start), mean.Round(time.Hour), sd.Round(time.Minute))
 	}
 
-	for _, nScan := range []int{1, 4, 16, 1024} {
-		for _, nDel := range []int{1, 2, 8, 1024} {
-			for _, nStat := range []int{1, 4, 16, 1024} {
+	for _, nScan := range []int{1, 4, 16, 32} {
+		for _, nDel := range []int{1, 2, 4, 16} {
+			for _, nStat := range []int{1, 4, 16, 32} {
 				t.Run(fmt.Sprintf("Scan%v-Del%v-Stat%v", nScan, nDel, nStat), func(t *testing.T) {
+					t.Parallel()
 					path := t.TempDir()
 					ex.CreateTestDir(path, NDirs, NFiles, testFileSize)
 					t.Cleanup(func() {
 						os.RemoveAll(path)
 					})
 					start := time.Now()
+					// log, _ := logger.NewDevelopmentLogger()
+					log := logger.NewNopLogger()
 					c := ex.NewCleaner(ex.Options{
 						Path:                path,
 						DeleteN:             NFiles / 100,
@@ -55,8 +59,7 @@ func TestCompare(t *testing.T) {
 						MaxConcurrentDelete: nDel,
 						TargetBytesToDelete: targetBytesToDelete,
 						MaxErrorRetries:     10,
-					}, logger.NewNopLogger())
-
+					}, log)
 					err := c.Clean(ctx)
 					require.NoError(t, err)
 					require.GreaterOrEqual(t, c.DeletedBytes.Load(), targetBytesToDelete)
@@ -69,6 +72,7 @@ func TestCompare(t *testing.T) {
 	}
 
 	t.Run("cleanNFSCache", func(t *testing.T) {
+		t.Parallel()
 		path := t.TempDir()
 		ex.CreateTestDir(path, NDirs, NFiles, testFileSize)
 		t.Cleanup(func() {
@@ -84,7 +88,7 @@ func TestCompare(t *testing.T) {
 			fmt.Sprintf("--files-per-loop=%d", NFiles/10),
 			fmt.Sprintf("--deletions-per-loop=%d", NFiles/100),
 			path,
-		}, targetBytesToDelete)
+		}, targetBytesToDelete, 0)
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, allResults.deletedBytes, targetBytesToDelete)
 		printSummary(start, allResults.lastAccessed, uint64(allResults.deletedBytes))

@@ -107,8 +107,8 @@ variable "client_cluster_name" {
 }
 
 variable "client_clusters_config" {
-  description = "List of client cluster configuration object"
-  type = list(object({
+  description = "Client cluster configurations"
+  type = map(object({
     cluster_size = number
     autoscaler = optional(object({
       size_max      = optional(number)
@@ -128,7 +128,8 @@ variable "client_clusters_config" {
       size_gb   = number
       count     = number
     })
-    hugepages_percentage = optional(number)
+    hugepages_percentage   = optional(number)
+    network_interface_type = optional(string)
   }))
 }
 
@@ -138,8 +139,8 @@ variable "build_cluster_name" {
 }
 
 variable "build_clusters_config" {
-  description = "Build cluster configuration object"
-  type = list(object({
+  description = "Build cluster configurations"
+  type = map(object({
     cluster_size = number
     autoscaler = optional(object({
       size_max      = optional(number)
@@ -159,7 +160,8 @@ variable "build_clusters_config" {
       size_gb   = number
       count     = number
     })
-    hugepages_percentage = optional(number)
+    hugepages_percentage   = optional(number)
+    network_interface_type = optional(string)
   }))
 }
 

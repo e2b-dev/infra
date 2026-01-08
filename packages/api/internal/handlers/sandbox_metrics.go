@@ -30,7 +30,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	// Build the context for feature flags
-	ctx = featureflags.SetContext(
+	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(sandboxID).
 			Kind(featureflags.SandboxKind).
@@ -40,7 +40,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 			Build(),
 	)
 
-	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
+	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlag)
 
 	if !metricsReadFlag {
 		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
@@ -53,7 +53,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	}
 
 	// TODO: Remove in [ENG-3377], once edge is migrated
-	edgeProvidedMetrics := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlagName)
+	edgeProvidedMetrics := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlag)
 
 	var metrics []api.SandboxMetric
 	var apiErr *api.APIError
@@ -71,7 +71,6 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		metrics, apiErr = a.getApiProvidedMetrics(ctx, team, sandboxID, params)
 	}
 	if apiErr != nil {
-		logger.L().Error(ctx, "error getting sandbox metrics", zap.Error(apiErr.Err))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

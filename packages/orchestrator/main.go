@@ -88,11 +88,11 @@ func ensureDirs(c cfg.Config) error {
 	for _, dir := range []string{
 		c.DefaultCacheDir,
 		c.OrchestratorBaseDir,
-		c.SandboxCacheDir,
+		c.StorageConfig.SandboxCacheDir,
 		c.SandboxDir,
 		c.SharedChunkCacheDir,
-		c.SnapshotCacheDir,
-		c.TemplateCacheDir,
+		c.StorageConfig.SnapshotCacheDir,
+		c.StorageConfig.TemplateCacheDir,
 		c.TemplatesDir,
 	} {
 		if dir == "" {
@@ -275,6 +275,10 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
 	}
 	closers = append(closers, closer{"feature flags", featureFlags.Close})
+
+	if config.DomainName != "" {
+		featureFlags.SetDeploymentName(config.DomainName)
+	}
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
