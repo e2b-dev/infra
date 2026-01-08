@@ -30,6 +30,10 @@ variable "boot_disk" {
   })
 }
 
+variable "network_interface_type" {
+  type = string
+}
+
 variable "cache_disks" {
   type = object({
     disk_type = string
