@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +29,7 @@ func main() {
 	ctx := context.Background()
 
 	var p processor
+	var csvPath string
 
 	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	f.BoolVar(&p.nfsStat, "nfs-stat", false, "measure nfs stat")
@@ -35,6 +38,8 @@ func main() {
 	f.IntVar(&p.maxFileCount, "count", 100, "number of files to read")
 	f.IntVar(&p.onlyFileSize, "only-file-size", defaultChunkSize, "only read files of this size (in bytes)")
 	f.IntVar(&p.concurrentRequests, "concurrent-requests", 1, "number of concurrent requests to make")
+	f.StringVar(&csvPath, "csv-path", "output.csv", "path to output csv file")
+	f.StringVar(&p.nfsStatFile, "nfs-stat-file", "/tmp/nfs-stat.txt", "file to store nfs stat")
 	_ = f.Parse(os.Args[1:])
 
 	switch paths := f.Args(); len(paths) {
@@ -53,54 +58,194 @@ func main() {
 			"Read":   readMethodExperiment{p.read},
 		},
 		"nfs read ahead": {
-			"128kb": &setReadAhead{readAhead: 128},
-			"4mb":   &setReadAhead{readAhead: 4096},
+			//"128kb": &setReadAhead{readAhead: "128"}, // always bad
+			"4mb": &setReadAhead{readAhead: "4096"},
 		},
 		"net.core.rmem_max": {
-			"default": defaultSysFs{"net.core.rmem_max"},
-			"32mb":    &setSysFs{path: "net.core.rmem_max", newValue: "33554432"},
+			"208kb (default)": &setSysFs{path: "net.core.rmem_max", newValue: "212992"},
+			"32mb":            &setSysFs{path: "net.core.rmem_max", newValue: "33554432"},
 		},
 		"net.ipv4.tcp_rmem": {
-			"default":           defaultSysFs{"net.ipv4.tcp_rmem"},
-			"4k / 256k / 32 mb": &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 262144 33554432"},
+			"4 kb / 128 kb / 6 mb (default)": &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 131072 6291456"},
+			"4 kb / 256 kb / 32 mb":          &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 262144 33554432"},
 		},
 		"sunrpc.tcp_slot_table_entries": {
-			"default": defaultSysFs{"sunrpc.tcp_slot_table_entries"},
-			"128":     &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "128"},
+			"2 (default)": &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "2"},
+			"128":         &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "128"},
 		},
 	}
 
+	var results []result
+
 	for scenario := range generateScenarios(experiments) {
-		p.run(ctx, scenario)
+		fmt.Printf("\n=== Scenario: %s ===\n", scenario.Name())
+
+		results = append(results, p.run(ctx, scenario))
 	}
+
+	if csvPath != "" {
+		if err := dumpResultsToCSV(csvPath, results); err != nil {
+			log.Fatalf("failed to dump results to %q: %s", csvPath, err.Error())
+		}
+	}
+}
+
+func dumpResultsToCSV(path string, results []result) error {
+	// 1. Identify all experiment keys
+	experimentKeysMap := make(map[string]struct{})
+	for _, res := range results {
+		for k := range res.scenario {
+			experimentKeysMap[k] = struct{}{}
+		}
+	}
+	experimentKeys := make([]string, 0, len(experimentKeysMap))
+	for k := range experimentKeysMap {
+		experimentKeys = append(experimentKeys, k)
+	}
+	slices.Sort(experimentKeys)
+
+	// 2. Identify all metrics
+	metrics := []string{"count", "min", "p50", "p95", "p99", "max", "stddev"}
+
+	// 3. Open output.csv
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer safeClose(f)
+
+	// 4. Write header
+	header := append(slices.Clone(experimentKeys), metrics...)
+	if _, err := fmt.Fprintln(f, strings.Join(header, ",")); err != nil {
+		return fmt.Errorf("failed to write header: %w", err)
+	}
+
+	// 5. Write data rows
+	for _, res := range results {
+		row := make([]string, 0, len(header))
+
+		// Experiment values
+		for _, k := range experimentKeys {
+			val := ""
+			if e, ok := res.scenario[k]; ok {
+				val = e.name
+			}
+			row = append(row, val)
+		}
+
+		// Metric values
+		s := res.summary
+		row = append(row,
+			fmt.Sprintf("%d", s.count),
+			toMillis(s.minTime),
+			toMillis(s.p50),
+			toMillis(s.p95),
+			toMillis(s.p99),
+			toMillis(s.maxTime),
+			toMillis(s.stddev),
+		)
+
+		if _, err := fmt.Fprintln(f, strings.Join(row, ",")); err != nil {
+			return fmt.Errorf("failed to write row: %w", err)
+		}
+	}
+
+	fmt.Println("\nResults dumped to output.csv")
+	return nil
+}
+
+func toMillis(minTime time.Duration) string {
+	return strconv.FormatInt(minTime.Milliseconds(), 10)
+}
+
+type result struct {
+	scenario scenario
+	summary  durationSummary
 }
 
 func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[scenario] {
 	return func(yield func(scenario) bool) {
+		keys := make([]string, 0, len(experiments))
+		for k := range experiments {
+			keys = append(keys, k)
+		}
 
+		slices.Sort(keys)
+
+		var generate func(int, scenario) bool
+		generate = func(index int, current scenario) bool {
+			if index == len(keys) {
+				// Create a copy of the scenario to yield
+				s := make(scenario, len(current))
+				for k, v := range current {
+					s[k] = v
+				}
+				return yield(s)
+			}
+
+			key := keys[index]
+			options := experiments[key]
+
+			optionNames := make([]string, 0, len(options))
+			for name := range options {
+				optionNames = append(optionNames, name)
+			}
+			slices.Sort(optionNames)
+
+			for _, name := range optionNames {
+				current[key] = element{name: name, exp: options[name]}
+				if !generate(index+1, current) {
+					return false
+				}
+			}
+			return true
+		}
+
+		generate(0, make(scenario, len(keys)))
 	}
 }
 
 type setReadAhead struct {
-	readAhead int
+	readAhead string
 
 	readAheadPath string
-	oldReadAhead  int
+	oldReadAhead  string
 }
 
-func (s *setReadAhead) setup(p *processor) {
+func (s *setReadAhead) setup(ctx context.Context, p *processor) error {
 	// find nfs device
+	output, err := exec.CommandContext(ctx, "findmnt", "--noheadings", "--output", "target", "--target", p.path).Output()
+	if err != nil {
+		return fmt.Errorf("failed to find nfs mount point: %w", err)
+	}
+	nfsMountPoint := strings.TrimSpace(string(output))
+
+	// find major:minor of device
+	majorMinor, err := exec.CommandContext(ctx, "mountpoint", "--fs-devno", nfsMountPoint).Output()
+	if err != nil {
+		return fmt.Errorf("failed to find nfs major:minor: %w", err)
+	}
+	s.readAheadPath = fmt.Sprintf("/sys/class/bdi/%s/read_ahead_kb", strings.TrimSpace(string(majorMinor)))
 
 	// read old read_ahead_kb, store
+	output, err = os.ReadFile(s.readAheadPath)
+	if err != nil {
+		return fmt.Errorf("failed to read read_ahead_kb: %w", err)
+	}
+
+	s.oldReadAhead = strings.TrimSpace(string(output))
 
 	// set new value
+	if err := os.WriteFile(s.readAheadPath, []byte(s.readAhead), 0o644); err != nil {
+		return fmt.Errorf("failed to write to %q: %w", s.readAheadPath, err)
+	}
 
-	panic("implement me")
+	return nil
 }
 
-func (s *setReadAhead) teardown(p *processor) {
+func (s *setReadAhead) teardown(ctx context.Context, p *processor) error {
 	// reset old value
-	panic("implement me")
+	return os.WriteFile(s.readAheadPath, []byte(s.oldReadAhead), 0o644)
 }
 
 var _ experiment = (*setReadAhead)(nil)
@@ -113,41 +258,42 @@ type setSysFs struct {
 
 var _ experiment = (*setSysFs)(nil)
 
-func (d *setSysFs) setup(p *processor) {
+func (d *setSysFs) setup(ctx context.Context, p *processor) error {
 	// read old value
+	output, err := exec.Command("sysctl", "-n", d.path).Output()
+	if err != nil {
+		return fmt.Errorf("failed to read sysfs value: %w", err)
+	}
+	d.oldValue = strings.TrimSpace(string(output))
 
 	// set new value
+	if err := exec.Command("sysctl", "-w", fmt.Sprintf("%s=%s", d.path, d.newValue)).Run(); err != nil {
+		return fmt.Errorf("failed to set sysfs value: %w", err)
+	}
 
-	panic("implement me")
+	return nil
 }
 
-func (d *setSysFs) teardown(p *processor) {
+func (d *setSysFs) teardown(ctx context.Context, p *processor) error {
 	// set old value
-	panic("implement me")
-}
+	if err := exec.Command("sysctl", "-w", fmt.Sprintf("%s=%s", d.path, d.oldValue)).Run(); err != nil {
+		return fmt.Errorf("failed to set sysfs value: %w", err)
+	}
 
-type defaultSysFs struct {
-	path string
+	return nil
 }
-
-func (d defaultSysFs) setup(p *processor) {
-	// report current sysfs value
-}
-
-func (d defaultSysFs) teardown(p *processor) {
-}
-
-var _ experiment = (*defaultSysFs)(nil)
 
 type readMethodExperiment struct {
 	readMethod func(string) (int, error)
 }
 
-func (r readMethodExperiment) setup(p *processor) {
+func (r readMethodExperiment) setup(ctx context.Context, p *processor) error {
 	p.readMethod = r.readMethod
+	return nil
 }
 
-func (r readMethodExperiment) teardown(p *processor) {
+func (r readMethodExperiment) teardown(ctx context.Context, p *processor) error {
+	return nil
 }
 
 var _ experiment = (*readMethodExperiment)(nil)
@@ -166,25 +312,56 @@ type processor struct {
 }
 
 type experiment interface {
-	setup(p *processor)
-	teardown(p *processor)
+	setup(ctx context.Context, p *processor) error
+	teardown(ctx context.Context, p *processor) error
 }
 
-type scenario map[string]experiment
+type element struct {
+	name string
+	exp  experiment
+}
+type scenario map[string]element
 
-func (s scenario) setup(p *processor) {
-	for _, exp := range s {
-		exp.setup(p)
+func (s scenario) setup(ctx context.Context, p *processor) error {
+	var errs []error
+
+	for _, e := range s {
+		if err := e.exp.setup(ctx, p); err != nil {
+			errs = append(errs, fmt.Errorf("failed to setup %q: %w", e, err))
+		}
 	}
+
+	return errors.Join(errs...)
 }
 
-func (s scenario) teardown(p *processor) {
-	for _, exp := range s {
-		exp.teardown(p)
+func (s scenario) teardown(ctx context.Context, p *processor) error {
+	var errs []error
+
+	for name, e := range s {
+		if err := e.exp.teardown(ctx, p); err != nil {
+			errs = append(errs, fmt.Errorf("failed to teardown %q: %w", name, err))
+		}
 	}
+
+	return errors.Join(errs...)
 }
 
-func (p *processor) run(ctx context.Context, scenario scenario) {
+func (s scenario) Name() any {
+	var keys []string
+	for k := range s {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+
+	var values []string
+	for _, k := range keys {
+		values = append(values, fmt.Sprintf("%s=%s", k, s[k].name))
+	}
+
+	return strings.Join(values, "; ")
+}
+
+func (p *processor) run(ctx context.Context, scenario scenario) result {
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 
 	if p.dropNfsCache {
@@ -209,11 +386,13 @@ func (p *processor) run(ctx context.Context, scenario scenario) {
 	}
 	allFiles.addPaths(paths)
 
-	logger.Println("setting up experiments ... ")
-	scenario.setup(p)
+	//logger.Println("setting up experiments ... ")
+	if err := scenario.setup(ctx, p); err != nil {
+		logger.Fatal("failed to setup experiments", "error", err)
+	}
 
 	// open/read files into buffer
-	logger.Println("starting reads ... ")
+	//logger.Println("starting reads ... ")
 	var reads []time.Duration
 	var sizes []int
 	var mu sync.Mutex
@@ -229,11 +408,9 @@ func (p *processor) run(ctx context.Context, scenario scenario) {
 			break
 		}
 
-		wg.Add(1)
 		semaphore <- struct{}{}
 
-		go func(f string) {
-			defer wg.Done()
+		wg.Go(func() {
 			defer func() { <-semaphore }()
 
 			start := time.Now()
@@ -252,25 +429,32 @@ func (p *processor) run(ctx context.Context, scenario scenario) {
 
 			sizes = append(sizes, size)
 			reads = append(reads, duration)
-		}(f)
+		})
 	}
 
 	wg.Wait()
 
-	logger.Println("tearing down experiments ... ")
-	scenario.teardown(p)
+	//logger.Println("tearing down experiments ... ")
+	if err := scenario.teardown(ctx, p); err != nil {
+		logger.Fatal("failed to teardown experiments", "error", err)
+	}
 
 	// render times
 	readSummary := summarizeDurations(reads)
 	printDurationSummary("reads", readSummary)
 
-	sizeSummary := summarizeBytes(sizes)
-	printByteSummary("sizes", sizeSummary)
+	//sizeSummary := summarizeBytes(sizes)
+	//printByteSummary("sizes", sizeSummary)
 
 	if p.nfsStat {
 		if err := p.compareNfsStat(ctx); err != nil {
 			logger.Fatal("failed to store nfs stat", "error", err)
 		}
+	}
+
+	return result{
+		scenario: scenario,
+		summary:  readSummary,
 	}
 }
 
@@ -336,15 +520,8 @@ stddev: %s
 
 func printDurationSummary(label string, s durationSummary) {
 	fmt.Printf(`
-==== %s ====
-count: %d
-min: %s
-p50: %s
-p95: %s
-p99: %s
-max: %s
-stddev: %s
-`, label, s.count, s.minTime, s.p50, s.p95, s.p99, s.maxTime, s.stddev)
+   %s: p50 / p95 / p99 (stddev): %s / %s / %s (%s)
+`, label, s.p50, s.p95, s.p99, s.stddev)
 }
 
 type files struct {

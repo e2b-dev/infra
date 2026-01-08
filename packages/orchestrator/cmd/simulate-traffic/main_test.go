@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -39,4 +41,105 @@ nfs v4 client bind_conn_to_ses:      245 `)
 		{"nfs v4 client", "test_stateid", 1},
 		{"nfs v4 client", "bind_conn_to_ses", 245},
 	}, actual)
+}
+
+type mockExperiment struct {
+	id string
+}
+
+func (m mockExperiment) setup(ctx context.Context, p *processor) error    { return nil }
+func (m mockExperiment) teardown(ctx context.Context, p *processor) error { return nil }
+
+func TestGenerateScenarios(t *testing.T) {
+	experiments := map[string]map[string]experiment{
+		"a": {
+			"1": mockExperiment{"a1"},
+			"2": mockExperiment{"a2"},
+		},
+		"b": {
+			"x": mockExperiment{"bx"},
+			"y": mockExperiment{"by"},
+		},
+		"c": {
+			"a": mockExperiment{"ca"},
+			"b": mockExperiment{"cb"},
+			"c": mockExperiment{"cc"},
+		},
+		"d": {
+			"only": mockExperiment{"donly"},
+		},
+	}
+
+	var scenarios []scenario
+	for s := range generateScenarios(experiments) {
+		scenarios = append(scenarios, s)
+	}
+
+	// Check if all combinations are present
+	expected := []scenario{
+		{"a": {"1", mockExperiment{"a1"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"1", mockExperiment{"a1"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"1", mockExperiment{"a1"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"1", mockExperiment{"a1"}}, "b": {"y", mockExperiment{"by"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"1", mockExperiment{"a1"}}, "b": {"y", mockExperiment{"by"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"1", mockExperiment{"a1"}}, "b": {"y", mockExperiment{"by"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"2", mockExperiment{"a2"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"2", mockExperiment{"a2"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"2", mockExperiment{"a2"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"2", mockExperiment{"a2"}}, "b": {"y", mockExperiment{"by"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"2", mockExperiment{"a2"}}, "b": {"y", mockExperiment{"by"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}},
+		{"a": {"2", mockExperiment{"a2"}}, "b": {"y", mockExperiment{"by"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}},
+	}
+
+	assert.Len(t, scenarios, len(expected))
+	assert.ElementsMatch(t, expected, scenarios)
+
+	assert.Equal(t, "a=1; b=x; c=a; d=only", expected[0].Name())
+}
+
+func TestDumpResultsToCSV(t *testing.T) {
+	results := []result{
+		{
+			scenario: scenario{
+				"exp1": {name: "val1"},
+				"exp2": {name: "val2"},
+			},
+			summary: durationSummary{
+				count:   10,
+				minTime: 100,
+				p50:     200,
+				p95:     300,
+				p99:     400,
+				maxTime: 500,
+				stddev:  50,
+			},
+		},
+		{
+			scenario: scenario{
+				"exp1": {name: "val3"},
+				"exp2": {name: "val4"},
+			},
+			summary: durationSummary{
+				count:   20,
+				minTime: 110,
+				p50:     210,
+				p95:     310,
+				p99:     410,
+				maxTime: 510,
+				stddev:  51,
+			},
+		},
+	}
+
+	dumpResultsToCSV(results)
+	defer os.Remove("output.csv")
+
+	content, err := os.ReadFile("output.csv")
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	assert.Len(t, lines, 3)
+	assert.Equal(t, "exp1,exp2,count,min,p50,p95,p99,max,stddev", lines[0])
+	assert.Equal(t, "val1,val2,10,100ns,200ns,300ns,400ns,500ns,50ns", lines[1])
+	assert.Equal(t, "val3,val4,20,110ns,210ns,310ns,410ns,510ns,51ns", lines[2])
 }
