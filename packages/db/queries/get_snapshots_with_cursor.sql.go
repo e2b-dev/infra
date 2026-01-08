@@ -27,8 +27,9 @@ JOIN LATERAL (
     JOIN "public"."env_builds" eb ON eb.id = eba.build_id
     WHERE
         eba.env_id = s.env_id
+        AND eba.tag = 'default'
         AND eb.status = 'success'
-    ORDER BY eb.created_at DESC
+    ORDER BY eba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
 WHERE
