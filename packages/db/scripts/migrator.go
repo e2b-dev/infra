@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/database"
@@ -17,6 +21,8 @@ const (
 	trackingTable        = "_migrations"
 	migrationsDir        = "./migrations"
 	authMigrationVersion = 20000101000000
+
+	statementTimeout = 10 * time.Minute
 )
 
 func main() {
@@ -28,21 +34,31 @@ func main() {
 		log.Fatal("Database connection string is required. Set POSTGRES_CONNECTION_STRING env var.")
 	}
 
-	db, err := sql.Open("postgres", dbString)
+	poolConfig, err := pgxpool.ParseConfig(dbString)
 	if err != nil {
-		log.Fatalf("failed to open DB: %v", err)
+		log.Fatalf("failed to parse connection string: %v", err)
 	}
-	defer func() {
-		err := db.Close()
-		if err != nil {
-			log.Printf("failed to close DB: %v\n", err)
-		}
-	}()
+
+	poolConfig.MaxConns = 4
+	poolConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		_, err := conn.Exec(ctx, fmt.Sprintf("SET statement_timeout = %d", statementTimeout.Milliseconds()))
+
+		return err
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		log.Fatalf("failed to create connection pool: %v", err)
+	}
+	defer pool.Close()
+
+	// Convert pgxpool to *sql.DB for goose compatibility
+	db := stdlib.OpenDBFromPool(pool)
 
 	// Create a session locking
 	sessionLocker, err := lock.NewPostgresSessionLocker()
 	if err != nil {
-		log.Fatalf("failed to create session locker: %v", err) //nolint:gocritic // no harm in exiting after defer here
+		log.Fatalf("failed to create session locker: %v", err) //nolint:gocritic // process exits, db cleanup not critical
 	}
 
 	goose.SetTableName(trackingTable)
