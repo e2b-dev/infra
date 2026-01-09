@@ -158,3 +158,13 @@ func (b *StorageDiff) FileSize() (int64, error) {
 func (b *StorageDiff) BlockSize() int64 {
 	return b.blockSize
 }
+
+// ChunksFetched returns the number of unique chunks fetched from remote storage.
+func (b *StorageDiff) ChunksFetched() int64 {
+	c, err := b.chunker.Wait()
+	if err != nil {
+		return 0
+	}
+
+	return c.ChunksFetched()
+}

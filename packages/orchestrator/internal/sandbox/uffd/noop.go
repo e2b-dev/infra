@@ -5,6 +5,7 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/trace"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -78,4 +79,12 @@ func (m *NoopMemory) Ready() chan struct{} {
 
 func (m *NoopMemory) Exit() *utils.ErrorOnce {
 	return m.exit
+}
+
+// SetTraceEnabled is a no-op for NoopMemory.
+func (m *NoopMemory) SetTraceEnabled(_ bool) {}
+
+// GetPageFaultTrace returns an empty slice as NoopMemory doesn't track page faults.
+func (m *NoopMemory) GetPageFaultTrace() []trace.Event {
+	return nil
 }

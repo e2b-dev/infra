@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/trace"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/prefetch"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
@@ -73,6 +74,9 @@ type Config struct {
 	Envd EnvdMetadata
 
 	FirecrackerConfig fc.Config
+
+	// TraceEnabled enables page fault tracing for debugging/profiling.
+	TraceEnabled bool
 }
 
 type EnvdMetadata struct {
@@ -344,7 +348,7 @@ func (f *Factory) CreateSandbox(
 }
 
 // Usage: defer handleSpanError(span, &err)
-func handleSpanError(span trace.Span, err *error) {
+func handleSpanError(span oteltrace.Span, err *error) {
 	defer span.End()
 	if err != nil && *err != nil {
 		span.RecordError(*err)
@@ -413,6 +417,13 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
+	// Enable NBD tracing if configured
+	if config.TraceEnabled {
+		if nbdProv, ok := rootfsOverlay.(interface{ SetTraceEnabled(bool) }); ok {
+			nbdProv.SetTraceEnabled(true)
+		}
+	}
+
 	go func() {
 		runErr := rootfsOverlay.Start(execCtx)
 		if runErr != nil {
@@ -435,6 +446,7 @@ func (f *Factory) ResumeSandbox(
 		memfile,
 		fcUffdPath,
 		runtime.SandboxID,
+		config.TraceEnabled,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serve memory: %w", err)
@@ -451,6 +463,9 @@ func (f *Factory) ResumeSandbox(
 
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
+
+    // Create phase tracer early to capture NBD wait and FC phases
+	phaseTracer := trace.NewPhaseRecorder(config.TraceEnabled)
 
 	meta, err := t.Metadata()
 	if err != nil {
@@ -506,6 +521,9 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	telemetry.ReportEvent(ctx, "created FC process")
+
+	// Pass the phase tracer to FC (already enabled based on config.TraceEnabled)
+	fcHandle.SetPhaseTracer(phaseTracer)
 
 	// todo: check if kernel, firecracker, and envd versions exist
 	snapfile, err := t.Snapfile()
@@ -585,8 +603,11 @@ func (f *Factory) ResumeSandbox(
 		f.config.EnvdTimeout,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+		return sbx, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+
+	// Stop tracing after envd init (we only trace the resume phase)
+	sbx.SetTraceEnabled(false)
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
@@ -614,15 +635,15 @@ func (f *Factory) ResumeSandbox(
 	return sbx, nil
 }
 
-func startExecutionSpan(ctx context.Context) (context.Context, trace.Span) {
-	parentSpan := trace.SpanFromContext(ctx)
+func startExecutionSpan(ctx context.Context) (context.Context, oteltrace.Span) {
+	parentSpan := oteltrace.SpanFromContext(ctx)
 
 	ctx = context.WithoutCancel(ctx)
 	ctx, span := tracer.Start(ctx, "execute sandbox", //nolint:spancheck // this is still just a helper method
-		trace.WithNewRoot(),
+		oteltrace.WithNewRoot(),
 	)
 
-	parentSpan.AddLink(trace.LinkFromContext(ctx))
+	parentSpan.AddLink(oteltrace.LinkFromContext(ctx))
 
 	return ctx, span //nolint:spancheck // this is still just a helper method
 }
@@ -638,6 +659,57 @@ func (s *Sandbox) Close(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// SetTraceEnabled enables or disables page fault, NBD, and FC phase tracing.
+func (s *Sandbox) SetTraceEnabled(enabled bool) {
+	if s.memory != nil {
+		s.memory.SetTraceEnabled(enabled)
+	}
+	if s.process != nil {
+		s.process.SetTraceEnabled(enabled)
+	}
+	s.SetNBDTraceEnabled(enabled)
+}
+
+// GetPageFaultTrace returns the page fault trace from the memory backend.
+func (s *Sandbox) GetPageFaultTrace() []trace.Event {
+	if s.memory == nil {
+		return nil
+	}
+
+	return s.memory.GetPageFaultTrace()
+}
+
+// GetNBDTrace returns the NBD trace from the rootfs provider.
+func (s *Sandbox) GetNBDTrace() []trace.Event {
+	if s.rootfs == nil {
+		return nil
+	}
+	// Type assert to NBDProvider to access NBD-specific methods
+	if nbdProv, ok := s.rootfs.(interface{ GetNBDTrace() []trace.Event }); ok {
+		return nbdProv.GetNBDTrace()
+	}
+
+	return nil
+}
+
+// SetNBDTraceEnabled enables or disables NBD tracing.
+func (s *Sandbox) SetNBDTraceEnabled(enabled bool) {
+	if s.rootfs == nil {
+		return
+	}
+	if nbdProv, ok := s.rootfs.(interface{ SetTraceEnabled(bool) }); ok {
+		nbdProv.SetTraceEnabled(enabled)
+	}
+}
+
+// GetPhaseTrace returns the FC phase trace events.
+func (s *Sandbox) GetPhaseTrace() []trace.PhaseEvent {
+	if s.process == nil {
+		return nil
+	}
+	return s.process.GetPhaseTrace()
 }
 
 // Stop kills the sandbox. It is safe to call multiple times; only the first
@@ -967,6 +1039,7 @@ func serveMemory(
 	cleanup *Cleanup,
 	memfile block.ReadonlyDevice,
 	socketPath, sandboxID string,
+	traceEnabled bool,
 ) (uffd.MemoryBackend, error) {
 	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
@@ -975,6 +1048,9 @@ func serveMemory(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
+
+	// Enable tracing before starting the UFFD handler
+	fcUffd.SetTraceEnabled(traceEnabled)
 
 	telemetry.ReportEvent(ctx, "created uffd")
 

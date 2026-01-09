@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync/atomic"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -26,6 +27,9 @@ type Chunker struct {
 
 	// TODO: Optimize this so we don't need to keep the fetchers in memory.
 	fetchers *utils.WaitMap
+
+	// Track number of unique chunks fetched from remote storage
+	chunksFetched atomic.Int64
 }
 
 func NewChunker(
@@ -173,6 +177,9 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 				writeSW.Success(ctx, int64(readBytes))
 
+				// Track successful chunk fetch
+				c.chunksFetched.Add(1)
+
 				return nil
 			})
 
@@ -186,6 +193,11 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 	}
 
 	return nil
+}
+
+// ChunksFetched returns the number of unique chunks fetched from remote storage.
+func (c *Chunker) ChunksFetched() int64 {
+	return c.chunksFetched.Load()
 }
 
 func (c *Chunker) Close() error {

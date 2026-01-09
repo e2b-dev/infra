@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Sandbox Resume Trace</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { 
+  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', Menlo, Monaco, monospace; 
+  background: #0a0a0a; 
+  color: #d4d4d4; 
+  padding: 48px 64px; 
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+h1 { 
+  font-weight: 600; 
+  font-size: 1.3rem; 
+  color: #f5f5f5; 
+  letter-spacing: -0.01em;
+  margin-bottom: 6px; 
+}
+.spec-line {
+  color: #a3a3a3;
+  font-size: 0.7rem;
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+.spec-line.host-spec {
+  color: #737373;
+  margin-bottom: 12px;
+}
+.subtitle { 
+  color: #737373; 
+  font-size: 0.75rem; 
+  margin-bottom: 48px;
+  letter-spacing: 0.01em;
+}
+.stats { 
+  display: flex; 
+  gap: 56px; 
+  margin-bottom: 56px; 
+  flex-wrap: wrap; 
+}
+.stat .label { 
+  color: #737373; 
+  font-size: 0.65rem; 
+  text-transform: uppercase; 
+  letter-spacing: 0.1em; 
+  margin-bottom: 6px; 
+}
+.stat .value { 
+  color: #f5f5f5; 
+  font-size: 1.6rem; 
+  font-weight: 500; 
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.section-title { 
+  font-weight: 500; 
+  font-size: 0.7rem; 
+  color: #737373; 
+  margin-bottom: 20px; 
+  text-transform: uppercase; 
+  letter-spacing: 0.1em; 
+}
+.legend { 
+  display: flex; 
+  gap: 28px; 
+  margin-bottom: 36px; 
+  font-size: 0.7rem; 
+  color: #a3a3a3; 
+  flex-wrap: wrap; 
+}
+.legend-item { 
+  display: flex; 
+  align-items: center; 
+  gap: 8px; 
+}
+.legend-color { 
+  width: 12px; 
+  height: 12px; 
+  border-radius: 2px; 
+}
+.legend-color.triangle {
+  background: transparent;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid #3b82f6;
+  border-radius: 0;
+}
+.legend-color.striped-old {
+  background: repeating-linear-gradient(
+    90deg,
+    #3b82f6 0px,
+    #3b82f6 2px,
+    transparent 2px,
+    transparent 4px
+  );
+}
+.run { 
+  background: #111111; 
+  border: 1px solid #1f1f1f; 
+  border-radius: 10px; 
+  padding: 28px 32px; 
+  margin-bottom: 16px; 
+}
+.run-header { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: baseline; 
+  margin-bottom: 14px; 
+}
+.run-header h3 { 
+  font-weight: 600; 
+  font-size: 0.9rem; 
+  color: #f5f5f5; 
+}
+.run-header .info { 
+  color: #737373; 
+  font-size: 0.7rem; 
+}
+.run-stats { 
+  color: #737373; 
+  font-size: 0.65rem; 
+  margin-bottom: 6px; 
+  display: block;
+}
+.run-stats .uffd-label {
+  color: #4ade80;
+  font-weight: 500;
+}
+.run-stats-nbd { 
+  color: #737373; 
+  font-size: 0.65rem; 
+  margin-bottom: 20px; 
+  display: block;
+}
+.run-stats-nbd .nbd-label { 
+  color: #fb923c; 
+  font-weight: 500; 
+}
+.timeline { 
+  position: relative; 
+  background: #1a1a1a; 
+  border-radius: 6px; 
+  margin-bottom: 10px; 
+  overflow: visible; 
+}
+.fault { 
+  position: absolute; 
+  background: #22c55e; 
+  border-radius: 1px; 
+  min-width: 2px; 
+  cursor: pointer; 
+  opacity: 0.9;
+  transition: opacity 0.1s, box-shadow 0.1s;
+}
+.fault:hover { 
+  opacity: 1; 
+  z-index: 100; 
+  box-shadow: 0 0 10px rgba(34,197,94,0.6); 
+}
+.fault::after { 
+  content: attr(data-tip); 
+  position: absolute; 
+  bottom: calc(100% + 8px); 
+  left: 50%; 
+  transform: translateX(-50%); 
+  background: #1f1f1f; 
+  color: #e5e5e5; 
+  padding: 8px 12px; 
+  border-radius: 6px; 
+  font-size: 0.65rem; 
+  white-space: nowrap; 
+  opacity: 0; 
+  pointer-events: none; 
+  transition: opacity 0.15s; 
+  z-index: 1000;
+  border: 1px solid #2a2a2a;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.fault:hover::after { opacity: 1; }
+.nbd-event { 
+  position: absolute; 
+  background: #06b6d4; 
+  border-radius: 1px; 
+  min-width: 2px; 
+  cursor: pointer; 
+  opacity: 0.9;
+  transition: opacity 0.1s, box-shadow 0.1s;
+}
+.nbd-event.write { background: #f43f5e; }
+.nbd-event:hover { 
+  opacity: 1; 
+  z-index: 100; 
+  box-shadow: 0 0 10px rgba(249,115,22,0.6); 
+}
+.nbd-event.write:hover { box-shadow: 0 0 10px rgba(234,179,8,0.6); }
+.nbd-event::after { 
+  content: attr(data-tip); 
+  position: absolute; 
+  top: calc(100% + 8px); 
+  left: 50%; 
+  transform: translateX(-50%); 
+  background: #1f1f1f; 
+  color: #e5e5e5; 
+  padding: 8px 12px; 
+  border-radius: 6px; 
+  font-size: 0.65rem; 
+  white-space: nowrap; 
+  opacity: 0; 
+  pointer-events: none; 
+  transition: opacity 0.15s; 
+  z-index: 1000;
+  border: 1px solid #2a2a2a;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.nbd-event:hover::after { opacity: 1; }
+.phase-events-section {
+  margin-top: 16px;
+  border-top: 1px solid #2a2a2a;
+  padding-top: 12px;
+}
+.phase-events-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: #a855f7;
+  font-size: 0.75rem;
+  font-weight: 500;
+  user-select: none;
+}
+.phase-events-toggle:hover {
+  color: #c084fc;
+}
+.phase-events-toggle::before {
+  content: '▶';
+  font-size: 0.6rem;
+  transition: transform 0.2s;
+}
+.phase-events-section.expanded .phase-events-toggle::before {
+  transform: rotate(90deg);
+}
+.phase-events-list {
+  display: none;
+  margin-top: 10px;
+  background: #1a1a1a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.phase-events-section.expanded .phase-events-list {
+  display: block;
+}
+.phase-event-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 100px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  font-size: 0.7rem;
+}
+.phase-event-row:last-child {
+  border-bottom: none;
+}
+.phase-event-row.header {
+  background: #252525;
+  font-weight: 600;
+  color: #a3a3a3;
+}
+.phase-event-name {
+  color: #e5e5e5;
+}
+.phase-event-duration {
+  color: #a855f7;
+  text-align: right;
+}
+.phase-event-start {
+  color: #737373;
+  text-align: right;
+}
+.phase-events-total {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #252525;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.phase-events-total .label {
+  color: #a3a3a3;
+}
+.phase-events-total .value {
+  color: #a855f7;
+}
+.gap { 
+  position: absolute; 
+  background: rgba(239,68,68,0.15); 
+  border-left: 1px solid rgba(239,68,68,0.35); 
+  cursor: pointer;
+  z-index: 10;
+}
+.gap::after { 
+  content: attr(data-tip); 
+  position: absolute; 
+  bottom: calc(100% + 8px); 
+  left: 50%; 
+  transform: translateX(-50%); 
+  background: #1f1f1f; 
+  color: #e5e5e5; 
+  padding: 8px 12px; 
+  border-radius: 6px; 
+  font-size: 0.65rem; 
+  white-space: nowrap; 
+  opacity: 0; 
+  pointer-events: none; 
+  transition: opacity 0.15s; 
+  z-index: 1000;
+  border: 1px solid #2a2a2a;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.gap:hover::after { opacity: 1; }
+.ready { 
+  position: absolute; 
+  width: 0;
+  height: 0;
+  bottom: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid #3b82f6;
+  transform: translateX(-6px);
+}
+.ready-label { 
+  position: absolute; 
+  bottom: -28px; 
+  transform: translateX(-50%); 
+  color: #3b82f6; 
+  font-size: 0.55rem;
+  white-space: nowrap; 
+  font-weight: 600; 
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.axis { 
+  display: flex; 
+  justify-content: space-between; 
+  font-size: 0.6rem; 
+  color: #525252; 
+  margin-top: 28px; 
+  font-variant-numeric: tabular-nums; 
+}
+.concurrency { 
+  font-size: 0.65rem; 
+  color: #525252; 
+  margin-top: 16px; 
+  display: inline-block; 
+}
+.concurrency-nbd { 
+  font-size: 0.65rem; 
+  color: #525252; 
+  margin-top: 16px; 
+  margin-left: 24px; 
+  display: inline-block; 
+}
+.page-analysis {
+  margin-top: 56px;
+  padding-top: 40px;
+  border-top: 1px solid #1f1f1f;
+}
+.page-analysis h2 {
+  font-weight: 500;
+  font-size: 0.7rem;
+  color: #737373;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.page-analysis h3 {
+  font-weight: 500;
+  font-size: 0.65rem;
+  color: #525252;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 32px;
+  margin-bottom: 32px;
+}
+.analysis-section {
+  background: #111111;
+  border: 1px solid #1f1f1f;
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+.analysis-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.analysis-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.analysis-label {
+  color: #737373;
+  font-size: 0.7rem;
+}
+.analysis-value {
+  color: #f5f5f5;
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.analysis-value .pct {
+  color: #737373;
+  font-weight: 400;
+  font-size: 0.7rem;
+}
+.top-pages {
+  background: #111111;
+  border: 1px solid #1f1f1f;
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+.top-pages h3 {
+  margin-bottom: 16px;
+}
+.page-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.7rem;
+}
+.page-table th {
+  text-align: left;
+  color: #525252;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-bottom: 1px solid #1f1f1f;
+}
+.page-table td {
+  color: #a3a3a3;
+  padding: 8px 12px;
+  border-bottom: 1px solid #161616;
+  font-variant-numeric: tabular-nums;
+}
+.page-table tr:hover td {
+  background: #161616;
+}
+.freq-dist {
+  margin-bottom: 24px;
+}
+.freq-desc {
+  color: #525252;
+  font-size: 0.65rem;
+  margin-bottom: 12px;
+}
+.ordering-chart-section {
+  background: #111111;
+  border: 1px solid #1f1f1f;
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin-top: 24px;
+}
+.ordering-chart-section h3 {
+  margin-bottom: 8px;
+}
+.ordering-chart-container {
+  margin: 16px 0;
+}
+.ordering-chart-container canvas {
+  width: 100%;
+  max-width: 900px;
+  height: auto;
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+}
+.chart-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.65rem;
+  color: #a3a3a3;
+}
+.chart-legend .legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.high-spread {
+  color: #ef4444;
+  font-weight: 600;
+}
+.med-spread {
+  color: #f59e0b;
+}
+.zero-spread {
+  color: #22c55e;
+}
+.deterministic td {
+  color: #22c55e;
+}
+.summary-row td {
+  color: #737373;
+  font-style: italic;
+  text-align: center;
+  padding: 12px;
+  background: #161616;
+}
+.profile-section {
+  margin-top: 64px;
+  padding-top: 48px;
+  border-top: 1px solid #262626;
+}
+.profile-section h2 {
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: #f5f5f5;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+.profile-desc {
+  color: #737373;
+  font-size: 0.7rem;
+  margin-bottom: 24px;
+}
+.profile-table {
+  max-width: 900px;
+}
+.profile-table .func-name {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.65rem;
+  color: #a3a3a3;
+  max-width: 350px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-table tr:hover .func-name {
+  color: #3b82f6;
+}
+.profile-table .callers {
+  font-size: 0.6rem;
+  color: #737373;
+  max-width: 350px;
+}
+.profile-table .caller {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+.profile-table .caller:hover {
+  color: #a3a3a3;
+}
+.stacks-title {
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: #d4d4d4;
+  margin: 32px 0 8px 0;
+}
+.call-stacks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 900px;
+}
+.call-stack {
+  background: #161616;
+  border: 1px solid #262626;
+  border-radius: 6px;
+  padding: 12px 16px;
+}
+.stack-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.stack-time {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #f5f5f5;
+  font-variant-numeric: tabular-nums;
+}
+.stack-total {
+  font-size: 0.6rem;
+  color: #737373;
+}
+.profile-table .avg-time {
+  font-weight: 600;
+  color: #f5f5f5;
+}
+.app-frame {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.65rem;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.stack-trace {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.6rem;
+  color: #737373;
+  line-height: 1.8;
+  word-break: break-all;
+}
+</style>
+</head>
+<body>
+<h1>Sandbox Resume Trace</h1>
+<p class="spec-line">VM: {{.Spec.TemplateID}} · {{.Spec.VCPUs}} vCPU · {{.Spec.MemoryMB}} MB RAM · {{.Spec.DiskMB}} MB disk · kernel {{.Spec.Kernel}} · FC {{.Spec.FCVersion}}</p>
+<p class="spec-line host-spec">Host: {{.Spec.Hostname}} · {{.Spec.HostCPU}} · {{.Spec.HostCores}} cores · {{.Spec.HostMemoryGB}} GB RAM · {{.Spec.HostOS}}</p>
+<p class="subtitle">Performance analysis across {{.NumRuns}} runs</p>
+
+<div class="stats">
+<div class="stat"><div class="label">UFFD Faults</div><div class="value">{{.TotalFaults}}</div></div>
+<div class="stat"><div class="label">NBD Events</div><div class="value">{{.TotalNBDEvents}}</div></div>
+<div class="stat"><div class="label">Min</div><div class="value">{{.MinDuration}}</div></div>
+<div class="stat"><div class="label">Avg</div><div class="value">{{.AvgDuration}}</div></div>
+<div class="stat"><div class="label">p95</div><div class="value">{{.P95Duration}}</div></div>
+<div class="stat"><div class="label">Max</div><div class="value">{{.MaxDuration}}</div></div>
+{{if gt .TotalLayers 0}}
+<div class="stat"><div class="label">Build Layers</div><div class="value">{{.TotalLayers}}</div></div>
+<div class="stat"><div class="label">Remote Chunks</div><div class="value">{{.TotalChunks}}</div></div>
+<div class="stat"><div class="label">Data Fetched</div><div class="value">{{.TotalChunksMB}} MB</div></div>
+{{end}}
+</div>
+
+{{if gt .TotalLayers 0}}
+<div class="stats" style="margin-top: -40px; margin-bottom: 48px;">
+<div class="stat"><div class="label">Memfile Layers</div><div class="value">{{.MemfileLayers}}</div></div>
+<div class="stat"><div class="label">Memfile Chunks</div><div class="value">{{.MemfileChunks}}</div></div>
+<div class="stat"><div class="label">Rootfs Layers</div><div class="value">{{.RootfsLayers}}</div></div>
+<div class="stat"><div class="label">Rootfs Chunks</div><div class="value">{{.RootfsChunks}}</div></div>
+</div>
+{{end}}
+
+<div class="section-title">Timeline</div>
+<div class="legend">
+<div class="legend-item"><div class="legend-color" style="background:#22c55e"></div>UFFD</div>
+<div class="legend-item"><div class="legend-color" style="background:#06b6d4"></div>NBD read</div>
+<div class="legend-item"><div class="legend-color" style="background:#f43f5e"></div>NBD write</div>
+<div class="legend-item"><div class="legend-color" style="background:rgba(239,68,68,0.4)"></div>Gap</div>
+<div class="legend-item"><div class="legend-color triangle"></div>Ready</div>
+</div>
+
+{{range .Runs}}
+<div class="run">
+<div class="run-header">
+<h3>Run {{.RunNum}}</h3>
+<span class="info">{{.NumFaults}} faults / {{.NumNBDEvents}} nbd / {{.Duration}} / {{.NumGaps}} gaps</span>
+</div>
+{{if gt .NumFaults 0}}
+<span class="run-stats"><span class="uffd-label">UFFD</span>  {{.ServingTime}} serving  ·  min {{.MinServe}}  ·  avg {{.AvgServe}}  ·  p99 {{.P99Serve}}  ·  max {{.MaxServe}}</span>
+{{end}}
+{{if gt .NumNBDEvents 0}}
+<span class="run-stats-nbd"><span class="nbd-label">NBD</span>  {{.NBDServingTime}} serving  ·  min {{.MinNBD}}  ·  avg {{.AvgNBD}}  ·  p99 {{.P99NBD}}  ·  max {{.MaxNBD}}</span>
+{{end}}
+<div class="timeline" style="height:{{.TimelineHeight}}px">
+<div class="ready" style="left:{{.ReadyPct}}%"><div class="ready-label">READY {{.Duration}}</div></div>
+{{range .Gaps}}
+<div class="gap" style="left:{{.LeftPct}}%;width:{{.WidthPct}}%;height:100%" data-tip="Gap: {{.Duration}}"></div>
+{{end}}
+{{range .Faults}}
+<div class="fault" style="left:{{.LeftPct}}%;width:{{.WidthPct}}%;top:{{.Top}}px;height:{{.Height}}px" data-tip="#{{.Num}}: {{.Duration}} @ page {{.Page}}"></div>
+{{end}}
+{{range .NBDEvents}}
+<div class="nbd-event{{if .IsWrite}} write{{end}}" style="left:{{.LeftPct}}%;width:{{.WidthPct}}%;top:{{.Top}}px;height:{{.Height}}px" data-tip="#{{.Num}}: {{.Duration}} @ {{.Offset}}MB ({{.Length}}KB){{if .IsWrite}} WRITE{{end}}"></div>
+{{end}}
+</div>
+<div class="axis">
+<span>0</span>
+<span>{{.Axis1}}</span>
+<span>{{.Axis2}}</span>
+<span>{{.Axis3}}</span>
+<span>{{.Axis4}}</span>
+</div>
+<span class="concurrency">Peak: {{.MaxLanes}} parallel UFFD</span>
+<span class="concurrency-nbd">{{.MaxNBDLanes}} parallel NBD</span>
+{{if .PhaseEvents}}
+<div class="phase-events-section" onclick="this.classList.toggle('expanded')">
+<div class="phase-events-toggle">FC Operations ({{.NumPhaseEvents}} phases, {{.PhaseTotalDuration}} total)</div>
+<div class="phase-events-list">
+<div class="phase-event-row header">
+<span>Phase</span>
+<span style="text-align:right">Start</span>
+<span style="text-align:right">Duration</span>
+</div>
+{{range .PhaseEvents}}
+<div class="phase-event-row">
+<span class="phase-event-name">{{.Name}}</span>
+<span class="phase-event-start">{{.StartOffset}}</span>
+<span class="phase-event-duration">{{.Duration}}</span>
+</div>
+{{end}}
+</div>
+</div>
+{{end}}
+</div>
+{{end}}
+
+{{if .PageAnalysis}}
+<div class="page-analysis">
+<h2>Page Fault Analysis</h2>
+<div class="analysis-grid">
+<div class="analysis-section">
+<h3>Coverage</h3>
+<div class="analysis-stats">
+<div class="analysis-stat">
+<span class="analysis-label">Unique pages</span>
+<span class="analysis-value">{{.PageAnalysis.TotalUniquePages}}</span>
+</div>
+<div class="analysis-stat">
+<span class="analysis-label">Avg per run</span>
+<span class="analysis-value">{{.PageAnalysis.AvgPagesPerRun}}</span>
+</div>
+<div class="analysis-stat">
+<span class="analysis-label">In all runs</span>
+<span class="analysis-value">{{.PageAnalysis.PagesInAllRuns}} <span class="pct">({{.PageAnalysis.PagesInAllRunsPct}})</span></span>
+</div>
+{{if .PageAnalysis.TotalNilPages}}
+<div class="analysis-stat">
+<span class="analysis-label">Nil/empty pages</span>
+<span class="analysis-value">{{.PageAnalysis.TotalNilPages}} <span class="pct">({{.PageAnalysis.NilPagesPct}})</span></span>
+</div>
+<div class="analysis-stat">
+<span class="analysis-label">Total nil faults</span>
+<span class="analysis-value">{{.PageAnalysis.TotalNilFaults}}</span>
+</div>
+{{end}}
+</div>
+</div>
+<div class="analysis-section">
+<h3>Ordering</h3>
+<div class="analysis-stats">
+<div class="analysis-stat">
+<span class="analysis-label">Order consistency</span>
+<span class="analysis-value">{{.PageAnalysis.OrderConsistency}}</span>
+</div>
+<div class="analysis-stat">
+<span class="analysis-label">Avg position variance</span>
+<span class="analysis-value">{{.PageAnalysis.AvgPositionChange}} positions</span>
+</div>
+</div>
+</div>
+</div>
+{{if .PageAnalysis.FrequencyDist}}
+<div class="analysis-section freq-dist">
+<h3>Frequency Distribution</h3>
+<p class="freq-desc">How many pages appear in N runs (long tail analysis)</p>
+<table class="page-table">
+<thead>
+<tr><th>Runs</th><th>Pages</th><th>%</th><th>Cumul.</th><th>Avg Order</th><th>Avg Spread</th><th>Fixed Order</th></tr>
+</thead>
+<tbody>
+{{range .PageAnalysis.FrequencyDist}}
+<tr><td>{{.RunCount}}</td><td>{{.PageCount}}</td><td>{{.Pct}}</td><td>{{.Cumulative}}</td><td>{{.AvgOrder}}</td><td>{{.AvgSpread}}</td><td>{{.ZeroSpread}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+{{if .PageAnalysis.TopPages}}
+<div class="top-pages">
+<h3>Page Details</h3>
+<p class="freq-desc">Deterministic pages (100% freq, 0 spread) followed by variable pages</p>
+<table class="page-table">
+<thead>
+<tr><th>Page</th><th>Runs</th><th>Freq</th><th>Avg Pos</th><th>Min</th><th>Max</th><th>Spread</th></tr>
+</thead>
+<tbody>
+{{range .PageAnalysis.TopPages}}
+{{if eq .Page -1}}
+<tr class="summary-row">
+<td colspan="7">... and {{.Count}} more deterministic pages (100% freq, 0 spread)</td>
+</tr>
+{{else}}
+<tr class="{{if and (eq .OrderSpread 0) (eq .Pct "100%")}}deterministic{{end}}">
+<td>{{.Page}}</td>
+<td>{{.Count}}</td>
+<td>{{.Pct}}</td>
+<td>{{.AvgOrder}}</td>
+<td>{{.MinOrder}}</td>
+<td>{{.MaxOrder}}</td>
+<td class="{{if gt .OrderSpread 50}}high-spread{{else if gt .OrderSpread 20}}med-spread{{else if eq .OrderSpread 0}}zero-spread{{end}}">{{.OrderSpread}}</td>
+</tr>
+{{end}}
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+
+{{if .PageAnalysis.OrderingChart}}
+<div class="ordering-chart-section">
+<h3>Ordering Deviation Charts</h3>
+<p class="freq-desc">Shows how much each page fault deviates from its expected position. Y-axis: deviation (positive = appeared later than average, negative = earlier).</p>
+
+<div class="chart-stack">
+<div class="chart-cell-full">
+<h4>Per-Run Instantaneous Deviation</h4>
+<div class="ordering-chart-container">
+<canvas id="ordering-chart" width="1760" height="500" style="width:880px;height:250px"></canvas>
+</div>
+<div class="chart-legend" id="chart-legend"></div>
+</div>
+<div class="chart-cell-full">
+<h4>Per-Run Cumulative Deviation (divergence from core pattern)</h4>
+<div class="ordering-chart-container">
+<canvas id="cumulative-chart" width="1760" height="500" style="width:880px;height:250px"></canvas>
+</div>
+<div class="chart-legend" id="cumulative-legend"></div>
+</div>
+</div>
+</div>
+<script>
+(function() {
+  const data = [
+    {{range $i, $run := .PageAnalysis.OrderingChart}}
+    { run: {{$run.Run}}, points: [{{range .Points}}{x:{{.X}},y:{{printf "%.2f" .Y}},page:{{.Page}},exp:{{printf "%.1f" .ExpectedX}}},{{end}}] },
+    {{end}}
+  ];
+  
+  const colors = ['#22c55e', '#3b82f6', '#f97316', '#a855f7', '#ec4899', '#14b8a6', '#eab308', '#ef4444', '#06b6d4', '#84cc16'];
+  
+  // High-DPI canvas setup
+  function setupHiDPICanvas(canvas, width, height) {
+    const ctx = canvas.getContext('2d');
+    ctx.scale(2, 2);
+    return ctx;
+  }
+  
+  // Find data bounds for instantaneous deviation
+  let maxX = 0, maxY = 0;
+  data.forEach(run => {
+    run.points.forEach(p => {
+      if (p.x > maxX) maxX = p.x;
+      if (Math.abs(p.y) > maxY) maxY = Math.abs(p.y);
+    });
+  });
+  maxY = Math.max(maxY, 1);
+  maxX = Math.max(maxX, 1);
+  
+  // Build "core" ordering: for each page, find its median position across all runs
+  const pagePositions = {};
+  data.forEach(run => {
+    run.points.forEach(p => {
+      if (!pagePositions[p.page]) pagePositions[p.page] = [];
+      pagePositions[p.page].push(p.x);
+    });
+  });
+  
+  // Core position = median of all positions for that page
+  const corePosition = {};
+  Object.keys(pagePositions).forEach(page => {
+    const positions = pagePositions[page].sort((a, b) => a - b);
+    const mid = Math.floor(positions.length / 2);
+    corePosition[page] = positions.length % 2 === 0 
+      ? (positions[mid - 1] + positions[mid]) / 2 
+      : positions[mid];
+  });
+  
+  // Calculate cumulative variance for each run (deviation from core pattern)
+  // For each fault, add |actual_position - core_position| to running total
+  const cumulativeData = data.map(run => {
+    let cumVariance = 0;
+    const cumPoints = run.points.map(p => {
+      const expected = corePosition[p.page] || p.exp;
+      const deviation = Math.abs(p.x - expected);
+      cumVariance += deviation;
+      return { x: p.x, y: cumVariance, page: p.page, deviation: deviation };
+    });
+    return { run: run.run, points: cumPoints, finalVariance: cumVariance };
+  });
+  
+  // Find max cumulative variance
+  let maxCumY = 0;
+  cumulativeData.forEach(run => {
+    run.points.forEach(p => {
+      if (p.y > maxCumY) maxCumY = p.y;
+    });
+  });
+  maxCumY = Math.max(maxCumY, 1);
+  
+  const CHART_W = 880, CHART_H = 250;
+  const margin = { top: 25, right: 30, bottom: 35, left: 60 };
+  
+  // ===== Chart 1: Instantaneous Deviation (Scatter) =====
+  const canvas1 = document.getElementById('ordering-chart');
+  const ctx1 = setupHiDPICanvas(canvas1, CHART_W, CHART_H);
+  const legend1 = document.getElementById('chart-legend');
+  
+  const w1 = CHART_W - margin.left - margin.right;
+  const h1 = CHART_H - margin.top - margin.bottom;
+  const centerY1 = margin.top + h1 / 2;
+  
+  const scaleX1 = (x) => margin.left + (x / maxX) * w1;
+  const scaleY1 = (y) => centerY1 - (y / maxY) * (h1 / 2 - 5);
+  
+  ctx1.fillStyle = '#161616';
+  ctx1.fillRect(margin.left, margin.top, w1, h1);
+  
+  // Zero line
+  ctx1.strokeStyle = '#444';
+  ctx1.lineWidth = 1;
+  ctx1.beginPath();
+  ctx1.moveTo(margin.left, centerY1);
+  ctx1.lineTo(margin.left + w1, centerY1);
+  ctx1.stroke();
+  
+  // Grid
+  ctx1.strokeStyle = '#2a2a2a';
+  ctx1.setLineDash([4, 4]);
+  for (let i = -2; i <= 2; i++) {
+    if (i === 0) continue;
+    const y = scaleY1(i * maxY / 2);
+    ctx1.beginPath();
+    ctx1.moveTo(margin.left, y);
+    ctx1.lineTo(margin.left + w1, y);
+    ctx1.stroke();
+  }
+  ctx1.setLineDash([]);
+  
+  // Y-axis
+  ctx1.strokeStyle = '#555';
+  ctx1.beginPath();
+  ctx1.moveTo(margin.left, margin.top);
+  ctx1.lineTo(margin.left, margin.top + h1);
+  ctx1.stroke();
+  
+  // Labels
+  ctx1.fillStyle = '#737373';
+  ctx1.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx1.textAlign = 'center';
+  ctx1.fillText('Fault Order', margin.left + w1/2, CHART_H - 8);
+  ctx1.textAlign = 'right';
+  ctx1.fillText('0', margin.left - 6, centerY1 + 4);
+  ctx1.fillText('+' + Math.round(maxY), margin.left - 6, margin.top + 12);
+  ctx1.fillText('-' + Math.round(maxY), margin.left - 6, margin.top + h1 - 4);
+  
+  // Draw scatter points
+  data.forEach((run, runIdx) => {
+    const color = colors[runIdx % colors.length];
+    ctx1.fillStyle = color;
+    ctx1.globalAlpha = 0.5;
+    run.points.forEach(p => {
+      ctx1.beginPath();
+      ctx1.arc(scaleX1(p.x), scaleY1(p.y), 2.5, 0, Math.PI * 2);
+      ctx1.fill();
+    });
+  });
+  ctx1.globalAlpha = 1;
+  
+  // Legend
+  const maxLegend = Math.min(data.length, 10);
+  for (let i = 0; i < maxLegend; i++) {
+    const span = document.createElement('span');
+    span.className = 'legend-item';
+    span.innerHTML = '<span class="legend-dot" style="background:' + colors[i % colors.length] + '"></span>Run ' + data[i].run;
+    legend1.appendChild(span);
+  }
+  if (data.length > 10) {
+    const span = document.createElement('span');
+    span.className = 'legend-item';
+    span.textContent = '+' + (data.length - 10) + ' more';
+    legend1.appendChild(span);
+  }
+  
+  // ===== Chart 2: Cumulative Variance (Lines going up from baseline) =====
+  const canvas2 = document.getElementById('cumulative-chart');
+  const ctx2 = setupHiDPICanvas(canvas2, CHART_W, CHART_H);
+  const legend2 = document.getElementById('cumulative-legend');
+  
+  const w2 = CHART_W - margin.left - margin.right;
+  const h2 = CHART_H - margin.top - margin.bottom;
+  const baselineY2 = margin.top + h2; // Bottom of chart = 0 variance
+  
+  // Scale: 0 at bottom, maxCumY at top
+  const scaleX2 = (x) => margin.left + (x / maxX) * w2;
+  const scaleY2 = (y) => baselineY2 - (y / maxCumY) * (h2 - 10);
+  
+  ctx2.fillStyle = '#161616';
+  ctx2.fillRect(margin.left, margin.top, w2, h2);
+  
+  // Baseline (0 variance = perfect match with core)
+  ctx2.strokeStyle = '#22c55e';
+  ctx2.lineWidth = 2;
+  ctx2.beginPath();
+  ctx2.moveTo(margin.left, baselineY2);
+  ctx2.lineTo(margin.left + w2, baselineY2);
+  ctx2.stroke();
+  
+  // Grid lines
+  ctx2.strokeStyle = '#2a2a2a';
+  ctx2.lineWidth = 1;
+  ctx2.setLineDash([4, 4]);
+  for (let i = 1; i <= 4; i++) {
+    const y = scaleY2(i * maxCumY / 4);
+    ctx2.beginPath();
+    ctx2.moveTo(margin.left, y);
+    ctx2.lineTo(margin.left + w2, y);
+    ctx2.stroke();
+  }
+  ctx2.setLineDash([]);
+  
+  // Y-axis
+  ctx2.strokeStyle = '#555';
+  ctx2.beginPath();
+  ctx2.moveTo(margin.left, margin.top);
+  ctx2.lineTo(margin.left, margin.top + h2);
+  ctx2.stroke();
+  
+  // Labels
+  ctx2.fillStyle = '#737373';
+  ctx2.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx2.textAlign = 'center';
+  ctx2.fillText('Fault Order', margin.left + w2/2, CHART_H - 8);
+  ctx2.textAlign = 'right';
+  ctx2.fillText('0', margin.left - 6, baselineY2 - 3);
+  ctx2.fillText(Math.round(maxCumY / 2), margin.left - 6, scaleY2(maxCumY / 2) + 4);
+  ctx2.fillText(Math.round(maxCumY), margin.left - 6, margin.top + 12);
+  
+  // Y-axis label
+  ctx2.save();
+  ctx2.translate(12, margin.top + h2 / 2);
+  ctx2.rotate(-Math.PI / 2);
+  ctx2.textAlign = 'center';
+  ctx2.fillText('Cumulative Variance', 0, 0);
+  ctx2.restore();
+  
+  // Draw cumulative lines for each run (starting from bottom-left)
+  cumulativeData.forEach((run, runIdx) => {
+    if (run.points.length < 1) return;
+    const color = colors[runIdx % colors.length];
+    ctx2.strokeStyle = color;
+    ctx2.lineWidth = 1.5;
+    ctx2.globalAlpha = 0.8;
+    ctx2.beginPath();
+    // Start at origin (0, 0)
+    ctx2.moveTo(scaleX2(0), scaleY2(0));
+    run.points.forEach(p => {
+      ctx2.lineTo(scaleX2(p.x), scaleY2(p.y));
+    });
+    ctx2.stroke();
+  });
+  ctx2.globalAlpha = 1;
+  
+  // Sort runs by final variance for legend
+  const sortedRuns = [...cumulativeData].sort((a, b) => a.finalVariance - b.finalVariance);
+  const bestRun = sortedRuns[0];
+  const worstRun = sortedRuns[sortedRuns.length - 1];
+  
+  // Legend with insights
+  legend2.innerHTML = '<span class="legend-item" style="color:#a3a3a3">Lines show cumulative ordering variance from core pattern. Lower = more consistent.</span>' +
+    '<span class="legend-item"><span class="legend-dot" style="background:' + colors[bestRun.run % colors.length] + '"></span>Best: Run ' + bestRun.run + ' (' + Math.round(bestRun.finalVariance) + ')</span>' +
+    '<span class="legend-item"><span class="legend-dot" style="background:' + colors[worstRun.run % colors.length] + '"></span>Worst: Run ' + worstRun.run + ' (' + Math.round(worstRun.finalVariance) + ')</span>';
+})();
+</script>
+<style>
+.chart-stack { display: flex; flex-direction: column; gap: 20px; }
+.chart-cell-full { width: 100%; }
+.chart-cell-full h4 { font-size: 0.7rem; color: #a3a3a3; margin-bottom: 8px; font-weight: 500; }
+</style>
+{{end}}
+
+</div>
+{{end}}
+
+{{if .ProfileEnabled}}
+<div class="profile-section">
+<h2>CPU Profile Hotspots</h2>
+<p class="profile-desc">Top functions by CPU time during benchmark (pprof analysis)</p>
+<table class="page-table profile-table">
+<thead>
+<tr><th>Function</th><th>Avg/Run</th><th>Total</th><th>%</th><th>Cum</th><th>Called From</th></tr>
+</thead>
+<tbody>
+{{range .ProfileHotspots}}
+<tr>
+<td class="func-name">{{.Name}}</td>
+<td class="avg-time">{{.FlatAvg}}</td>
+<td>{{.Flat}}</td>
+<td>{{.FlatPct}}</td>
+<td>{{.Cum}}</td>
+<td class="callers">{{range .Callers}}<span class="caller">{{.}}</span>{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+
+{{if .ProfileCallStacks}}
+<h3 class="stacks-title">Hot Call Stacks</h3>
+<p class="profile-desc">Most frequent execution paths</p>
+<div class="call-stacks">
+{{range .ProfileCallStacks}}
+<div class="call-stack">
+<div class="stack-header">
+<span class="stack-time">{{.FlatAvg}}/run</span>
+<span class="stack-total">({{.Flat}} total, {{.FlatPct}})</span>
+{{if .AppFrame}}<span class="app-frame">{{.AppFrame}}</span>{{end}}
+</div>
+<div class="stack-trace">{{.Stack}}</div>
+</div>
+{{end}}
+</div>
+{{end}}
+</div>
+{{end}}
+
+{{if .HasMemoryProfile}}
+<div class="profile-section">
+<h2>Memory Allocation Hotspots</h2>
+<p class="profile-desc">Functions that allocated the most memory during benchmark (heap profile). Total: {{.TotalAllocBytes}} in {{.TotalAllocObjects}} objects.</p>
+<table class="page-table profile-table">
+<thead>
+<tr><th>Function</th><th>Avg/Run</th><th>Total</th><th>%</th><th>Objects</th><th>Called From</th></tr>
+</thead>
+<tbody>
+{{range .MemoryHotspots}}
+<tr>
+<td class="func-name">{{.Name}}</td>
+<td class="avg-time">{{.AllocAvg}}</td>
+<td>{{.AllocBytes}}</td>
+<td>{{.AllocPct}}</td>
+<td>{{.AllocObjs}}</td>
+<td class="callers">{{range .Callers}}<span class="caller">{{.}}</span>{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+<p class="profile-desc" style="color: #737373; font-size: 0.65rem; margin-top: 16px;">
+Memory hotspots show where allocations happen. High allocation rates may cause GC pressure. 
+Consider object pooling (sync.Pool) or pre-allocation to reduce allocations in hot paths.
+</p>
+</div>
+{{end}}
+
+</body>
+</html>

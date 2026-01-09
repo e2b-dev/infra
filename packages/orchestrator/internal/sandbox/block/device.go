@@ -32,3 +32,8 @@ type Device interface {
 	ReadonlyDevice
 	io.WriterAt
 }
+
+// ChunksFetchedProvider is an optional interface for devices that track remote chunk fetches.
+type ChunksFetchedProvider interface {
+	ChunksFetched() int64
+}

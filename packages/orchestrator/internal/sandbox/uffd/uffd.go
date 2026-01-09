@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/trace"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
@@ -41,6 +42,7 @@ type Uffd struct {
 	socketPath string
 	memfile    block.ReadonlyDevice
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
+	traceEnabled bool 
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
@@ -58,6 +60,7 @@ func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 		socketPath: socketPath,
 		memfile:    memfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
+        traceEnabled: false,
 	}, nil
 }
 
@@ -161,6 +164,11 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("failed to create uffd: %w", err)
 	}
 
+	// Enable tracing if it was requested before Start()
+	if u.traceEnabled {
+		uffd.SetTraceEnabled(true)
+	}
+
 	u.handler.SetValue(uffd)
 
 	defer func() {
@@ -193,6 +201,28 @@ func (u *Uffd) Ready() chan struct{} {
 
 func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
+}
+
+// SetTraceEnabled enables or disables page fault tracing.
+// If called before Start(), it sets up tracing from the beginning.
+// If called after the handler is created, it updates the handler directly.
+func (u *Uffd) SetTraceEnabled(enabled bool) {
+	u.traceEnabled = enabled
+	// Also update the handler if it's already created
+	handler, err := u.handler.Result()
+	if err == nil {
+		handler.SetTraceEnabled(enabled)
+	}
+}
+
+// GetPageFaultTrace returns page fault events.
+func (u *Uffd) GetPageFaultTrace() []trace.Event {
+	handler, err := u.handler.Result()
+	if err != nil {
+		return nil
+	}
+
+	return handler.GetPageFaultTrace()
 }
 
 // DiffMetadata waits for the current requests to finish and returns the dirty pages.

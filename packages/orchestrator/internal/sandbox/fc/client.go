@@ -3,12 +3,14 @@ package fc
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	sbxtrace "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/trace"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
@@ -38,6 +40,7 @@ func (c *apiClient) loadSnapshot(
 	uffdSocketPath string,
 	uffdReady chan struct{},
 	snapfile template.File,
+	phaseTracer *sbxtrace.PhaseRecorder,
 ) error {
 	ctx, span := tracer.Start(ctx, "load-snapshot")
 	defer span.End()
@@ -62,17 +65,23 @@ func (c *apiClient) loadSnapshot(
 		},
 	}
 
+	// Record LoadSnapshot API call
+	loadSnapshotAPIStart := time.Now()
 	_, err := c.client.Operations.LoadSnapshot(&snapshotConfig)
+	phaseTracer.Record("fc_load_snapshot_api", loadSnapshotAPIStart, sbxtrace.TypeFCLoadSnapshotAPI)
 	if err != nil {
 		return fmt.Errorf("error loading snapshot: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "loaded snapshot")
 
+	// Record UFFD ready wait
+	uffdReadyStart := time.Now()
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("context canceled while waiting for uffd ready: %w", ctx.Err())
 	case <-uffdReady:
+		phaseTracer.Record("uffd_ready_wait", uffdReadyStart, sbxtrace.TypeUffdReadyWait)
 		// Wait for the uffd to be ready to serve requests
 	}
 
