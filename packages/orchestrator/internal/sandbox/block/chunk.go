@@ -148,6 +148,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				default:
 				}
 
+				// The size of the buffer is adjusted if the last chunk is not a multiple of the block size.
 				b, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
 				if err != nil {
 					return err
@@ -156,12 +157,16 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
 				readBytes, err := c.base.ReadAt(ctx, b, fetchOff)
-				if err != nil && !errors.Is(err, io.EOF) {
+				if err != nil {
 					fetchSW.Failure(ctx, int64(readBytes),
 						attribute.String(failureReason, failureTypeRemoteRead),
 					)
 
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
+				}
+
+				if readBytes != len(b) {
+					return fmt.Errorf("failed to read chunk from base %d: expected %d bytes, got %d bytes", fetchOff, len(b), readBytes)
 				}
 
 				c.cache.setIsCached(fetchOff, int64(readBytes))
