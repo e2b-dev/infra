@@ -200,7 +200,6 @@ const (
 
 	failureTypeLocalRead      = "local-read"
 	failureTypeLocalReadAgain = "local-read-again"
-	failureTypeLocalWrite     = "local-write"
 	failureTypeRemoteRead     = "remote-read"
 	failureTypeCacheFetch     = "cache-fetch"
 )
