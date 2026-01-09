@@ -5,6 +5,18 @@ job "orchestrator-${latest_orchestrator_job_id}" {
   priority = 90
 
   group "client-orchestrator" {
+    // For future as we can remove static and allow multiple instances on one machine if needed.
+    // Also network allocation is used by Nomad service discovery on API and edge API to find jobs and register them.
+    network {
+      port "orchestrator" {
+        static = "${port}"
+      }
+
+      port "orchestrator-proxy" {
+        static = "${proxy_port}"
+      }
+    }
+
     service {
       name = "orchestrator"
       port = "${port}"

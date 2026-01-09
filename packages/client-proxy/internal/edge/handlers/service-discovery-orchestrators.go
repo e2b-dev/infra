@@ -22,8 +22,8 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 
 	response := make([]api.ClusterOrchestratorNode, 0)
 
-	for _, node := range a.orchestratorPool.GetOrchestrators() {
-		info := node.GetInfo()
+	for _, instance := range a.instancesPool.GetOrchestrators() {
+		info := instance.GetInfo()
 		response = append(
 			response,
 			api.ClusterOrchestratorNode{

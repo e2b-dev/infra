@@ -11,12 +11,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
@@ -41,8 +39,8 @@ type Node struct {
 	IPAddress     string
 	SandboxDomain *string
 
-	client *grpclient.GRPCClient
-	status api.NodeStatus
+	connection *clusters.GRPCClient
+	status     api.NodeStatus
 
 	metrics   Metrics
 	metricsMu sync.RWMutex
@@ -97,9 +95,9 @@ func New(
 		IPAddress:        discoveredNode.IPAddress,
 		SandboxDomain:    nil,
 
-		client: client,
-		status: nodeStatus,
-		meta:   nodeMetadata,
+		connection: client,
+		status:     nodeStatus,
+		meta:       nodeMetadata,
 
 		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
@@ -114,20 +112,21 @@ func New(
 	return n, nil
 }
 
-func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *edge.ClusterInstance) (*Node, error) {
-	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
+func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *clusters.Instance) (*Node, error) {
+	info := i.GetInfo()
+	status, ok := OrchestratorToApiNodeStateMapper[info.Status]
 	if !ok {
-		logger.L().Error(ctx, "Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))
-		nodeStatus = api.NodeStatusUnhealthy
+		logger.L().Error(ctx, "Unknown service info status", zap.String("status", info.Status.String()), logger.WithNodeID(i.NodeID))
+		status = api.NodeStatusUnhealthy
 	}
 
 	buildCache := ttlcache.New[string, any]()
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		ServiceInstanceID: i.ServiceInstanceID,
-		Commit:            i.ServiceVersionCommit,
-		Version:           i.ServiceVersion,
+		ServiceInstanceID: info.ServiceInstanceID,
+		Commit:            info.ServiceVersionCommit,
+		Version:           info.ServiceVersion,
 	}
 
 	n := &Node{
@@ -137,17 +136,17 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 		// We can't connect directly to the node in the cluster
 		IPAddress:     "",
 		SandboxDomain: sandboxDomain,
-
-		client: client,
-		status: nodeStatus,
-		meta:   nodeMetadata,
-
-		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
 			createSuccess:       atomic.Uint64{},
 			createFails:         atomic.Uint64{},
 		},
+
+		connection: client,
+		status:     status,
+		meta:       nodeMetadata,
+
+		buildCache: buildCache,
 	}
 
 	nodeClient, ctx := n.GetClient(ctx)
@@ -167,22 +166,21 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 func (n *Node) Close(ctx context.Context) error {
 	if n.IsNomadManaged() {
 		logger.L().Info(ctx, "Closing local node", logger.WithNodeID(n.ID))
-		err := n.client.Close()
-		if err != nil {
+		if err := n.connection.Close(); err != nil {
 			logger.L().Error(ctx, "Error closing connection to node", zap.Error(err), logger.WithNodeID(n.ID))
 		}
 	} else {
 		logger.L().Info(ctx, "Closing cluster node", logger.WithNodeID(n.ID), logger.WithClusterID(n.ClusterID))
-		// We are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
+		// We are not closing grpc connection, because it is managed by cluster instance
 	}
 	n.buildCache.Stop()
 
 	return nil
 }
 
-// Ensures that GRPC client request context always has the latest service instance ID
-func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
-	return n.client, metadata.NewOutgoingContext(ctx, n.getClientMetadata())
+// Ensures that GRPC connection request context always has the latest service instance ID
+func (n *Node) GetClient(ctx context.Context) (*clusters.GRPCClient, context.Context) {
+	return n.connection, ctx
 }
 
 func (n *Node) IsNomadManaged() bool {

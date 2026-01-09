@@ -87,9 +87,8 @@ func createK8sProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, p
 }
 
 var (
-	ErrMissingNomadEndpoint  = errors.New("missing nomad endpoint")
-	ErrMissingNomadToken     = errors.New("missing nomad token")
-	ErrMissingNomadJobPrefix = errors.New("missing nomad job prefix")
+	ErrMissingNomadEndpoint = errors.New("missing nomad endpoint")
+	ErrMissingNomadToken    = errors.New("missing nomad token")
 )
 
 func createNomadProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig, port uint16, logger logger.Logger) (ServiceDiscoveryAdapter, error) {
@@ -103,12 +102,7 @@ func createNomadProvider(ctx context.Context, config cfg.ServiceDiscoveryConfig,
 		return nil, ErrMissingNomadToken
 	}
 
-	jobPrefix := config.NomadJobPrefix
-	if jobPrefix == "" {
-		return nil, ErrMissingNomadJobPrefix
-	}
-
-	return NewNomadServiceDiscovery(ctx, logger, port, nomadEndpoint, nomadToken, jobPrefix)
+	return NewNomadServiceDiscovery(ctx, logger, port, nomadEndpoint, nomadToken)
 }
 
 var ErrMissingStaticEndpoints = errors.New("missing static endpoints")

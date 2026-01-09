@@ -105,8 +105,9 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	case sandbox.StateActionKill:
 		var err error
 		req := &orchestrator.SandboxDeleteRequest{SandboxId: sbx.SandboxID}
-		client, ctx := node.GetClient(ctx)
-		_, err = client.Sandbox.Delete(node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID), req)
+
+		client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
+		_, err = client.Sandbox.Delete(ctx, req)
 		if err != nil {
 			return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
 		}

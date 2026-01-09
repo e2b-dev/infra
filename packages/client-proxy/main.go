@@ -146,7 +146,7 @@ func run() int {
 		catalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
 
-	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, l, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
+	instances := e2borchestrators.NewInstancesPool(ctx, l, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
 
 	info := &e2binfo.ServiceInfo{
 		NodeID:               nodeID,
@@ -176,9 +176,9 @@ func run() int {
 	authorizationManager := authorization.NewStaticTokenAuthorizationService(config.EdgeSecret)
 
 	var closers []Closeable
-	closers = append(closers, orchestrators, featureFlagsClient, catalog)
+	closers = append(closers, instances, featureFlagsClient, catalog)
 
-	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, l, info, orchestrators, catalog, config)
+	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, l, info, instances, catalog, config)
 	if err != nil {
 		l.Error(ctx, "failed to create edge api store", zap.Error(err))
 
@@ -205,7 +205,7 @@ func run() int {
 
 	// Edge Pass Through Proxy for direct communication with orchestrator nodes
 	grpcListener := muxServer.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc")) // handler requests for gRPC pass through
-	grpcSrv := edgepassthrough.NewNodePassThroughServer(orchestrators, info, authorizationManager, catalog)
+	grpcSrv := edgepassthrough.NewNodePassThroughServer(instances, info, authorizationManager, catalog)
 
 	// Edge REST API
 	restHttpHandler := edge.NewGinServer(l, edgeApiStore, edgeApiSwagger, authorizationManager)
