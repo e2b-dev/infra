@@ -132,7 +132,7 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 	}
 
 	// Execute transaction
-	err = s.redisClient.Set(ctx, key, newData, redis.KeepTTL).Err()
+	err = s.redisClient.Set(ctx, key, newData, 0).Err()
 	if err != nil {
 		return sandbox.Sandbox{}, err
 	}
