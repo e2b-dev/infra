@@ -124,8 +124,8 @@ func TestDumpResultsToCSV(t *testing.T) {
 			},
 		},
 		{
-			totalSuccessfulReads: 20,
-			testDuration:         time.Second,
+			totalSuccessfulReads: 178,
+			testDuration:         5 * time.Second,
 			scenario: scenario{
 				elements: map[string]element{
 					"exp1": {name: "val3"},
@@ -147,7 +147,7 @@ func TestDumpResultsToCSV(t *testing.T) {
 	tempCSV := filepath.Join(tempDir, "output.csv")
 	defer os.Remove(tempCSV)
 
-	err := dumpResultsToCSV(tempCSV, filestoreMetadata{}, results)
+	err := dumpResultsToCSV(tempCSV, environmentMetadata{}, results)
 	require.NoError(t, err)
 
 	content, err := os.ReadFile(tempCSV)
@@ -157,7 +157,7 @@ func TestDumpResultsToCSV(t *testing.T) {
 	assert.Len(t, lines, 3)
 	assert.Equal(t, "capacity (GB),read iops,max read bandwidth (MBps),exp1,exp2,files per second,min,mean,p50,p95,p99,max,stddev", lines[0])
 	assert.Equal(t, "0,0,0,val1,val2,10,100,0,200,300,400,500,50", lines[1])
-	assert.Equal(t, "0,0,0,val3,val4,20,110,0,210,310,410,510,51", lines[2])
+	assert.Equal(t, "0,0,0,val3,val4,35,110,0,210,310,410,510,51", lines[2])
 }
 
 func TestSummarizeDurations(t *testing.T) {
@@ -274,8 +274,8 @@ func TestRemoveAtIndex(t *testing.T) {
 func TestGetFilestoreMetadata(t *testing.T) {
 	t.Parallel()
 
-	metadata, err := getFilestoreMetadata(t.Context(), "e2b-shared-disk-store", "us-west1-a")
+	metadata, err := getEnvironmentMetadata(t.Context(), "e2b-shared-disk-store", "us-west1-a")
 	require.NoError(t, err)
 
-	assert.NotEqual(t, 0, metadata.ReadIOPS)
+	assert.NotEqual(t, 0, metadata.FilestoreReadIOPS)
 }

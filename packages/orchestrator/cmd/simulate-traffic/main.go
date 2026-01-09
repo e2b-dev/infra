@@ -2,22 +2,16 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"iter"
 	"log"
 	"maps"
 	"math"
 	"math/rand"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -25,69 +19,6 @@ import (
 const expectedFileSize = 4 * 1024 * 1024
 
 const implausibleTime = time.Millisecond * 4
-
-var experiments = map[string]map[string]experiment{
-	"concurrent requests": {
-		"1": &setConcurrentRequests{1},
-		// "2": &setConcurrentRequests{2},
-		"4": &setConcurrentRequests{4},
-		"8": &setConcurrentRequests{8},
-	},
-	"read method": {
-		"ReadAt": readMethodExperiment{func(path string) (int, error) {
-			fp, err := os.Open(path)
-			if err != nil {
-				return 0, fmt.Errorf("failed to open file: %w", err)
-			}
-			defer safeClose(fp)
-
-			buff := make([]byte, expectedFileSize)
-
-			return fp.ReadAt(buff, 0)
-		}},
-		// "Read": readMethodExperiment{func(path string) (int, error) {
-		//	fp, err := os.Open(path)
-		//	if err != nil {
-		//		return 0, fmt.Errorf("failed to open file: %w", err)
-		//	}
-		//	defer safeClose(fp)
-		//
-		//	buff := make([]byte, defaultChunkSize)
-		//
-		//	var total int
-		//	for {
-		//		n, err := fp.Read(buff)
-		//		total += n
-		//
-		//		if err != nil {
-		//			if err == io.EOF {
-		//				break
-		//			}
-		//
-		//			return total, fmt.Errorf("failed to read from file: %w", err)
-		//		}
-		//	}
-		//
-		//	return total, nil
-		// }},
-	},
-	"nfs read ahead": {
-		// "128kb": &setReadAhead{readAhead: "128"}, // always bad
-		"4mb": &setReadAhead{readAhead: "4096"},
-	},
-	"net.core.rmem_max": {
-		"208kb (default)": &setSysFs{path: "net.core.rmem_max", newValue: "212992"},
-		"32mb":            &setSysFs{path: "net.core.rmem_max", newValue: "33554432"},
-	},
-	"net.ipv4.tcp_rmem": {
-		"4 kb / 128 kb / 6 mb (default)": &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 131072 6291456"},
-		"4 kb / 256 kb / 32 mb":          &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 262144 33554432"},
-	},
-	"sunrpc.tcp_slot_table_entries": {
-		"2 (default)": &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "2"},
-		"128":         &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "128"},
-	},
-}
 
 func main() {
 	ctx := context.Background()
@@ -119,7 +50,7 @@ func main() {
 	}
 
 	fmt.Println("getting filestore metadata ... ")
-	filestoreMetadata, err := getFilestoreMetadata(ctx, filestoreName, filestoreZone)
+	environmentMetadata, err := getEnvironmentMetadata(ctx, filestoreName, filestoreZone)
 	if err != nil {
 		log.Fatalf("failed to get filestore metadata for %q: %s", filestoreName, err)
 	}
@@ -143,39 +74,10 @@ func main() {
 	}
 
 	if csvPath != "" {
-		if err := dumpResultsToCSV(csvPath, filestoreMetadata, results); err != nil {
+		if err := dumpResultsToCSV(csvPath, environmentMetadata, results); err != nil {
 			log.Fatalf("failed to dump results to %q: %s", csvPath, err.Error())
 		}
 	}
-}
-
-type filestoreMetadata struct {
-	CapacityGB  int
-	ReadIOPS    int
-	MaxReadMBps int
-}
-
-func getFilestoreMetadata(ctx context.Context, name, zone string) (filestoreMetadata, error) {
-	if name == "" {
-		return filestoreMetadata{}, nil
-	}
-
-	// get filestore metadata
-	output, err := exec.CommandContext(ctx, "gcloud", "filestore", "instances", "describe", name, "--zone", zone, "--format=json").CombinedOutput()
-	if err != nil {
-		return filestoreMetadata{}, fmt.Errorf("failed to get filestore metadata: %w", err)
-	}
-
-	var metadata filestoreInstance
-	if err := json.Unmarshal(output, &metadata); err != nil {
-		return filestoreMetadata{}, fmt.Errorf("failed to unmarshal filestore metadata: %w", err)
-	}
-
-	return filestoreMetadata{
-		CapacityGB:  mustParseInt(metadata.FileShares[0].CapacityGb),
-		ReadIOPS:    mustParseInt(metadata.PerformanceLimits.MaxReadIOPS),
-		MaxReadMBps: mustParseInt(metadata.PerformanceLimits.MaxReadThroughputBytesPerSecond) / 1024 / 1024,
-	}, nil
 }
 
 func mustParseInt(s string) int {
@@ -185,97 +87,6 @@ func mustParseInt(s string) int {
 	}
 
 	return n
-}
-
-type filestoreInstance struct {
-	FileShares []struct {
-		CapacityGb string `json:"capacityGb"`
-	} `json:"fileShares"`
-	PerformanceLimits struct {
-		MaxReadThroughputBytesPerSecond string `json:"maxReadThroughputBps"`
-		MaxReadIOPS                     string `json:"maxReadIops"`
-	} `json:"performanceLimits"`
-}
-
-func toIntString(i int) string {
-	return strconv.Itoa(i)
-}
-
-func dumpResultsToCSV(path string, metadata filestoreMetadata, results []result) error {
-	// 1. Identify all experiment keys
-	experimentKeysMap := make(map[string]struct{})
-	for _, res := range results {
-		for k := range res.scenario.elements {
-			experimentKeysMap[k] = struct{}{}
-		}
-	}
-	experimentKeys := make([]string, 0, len(experimentKeysMap))
-	for k := range experimentKeysMap {
-		experimentKeys = append(experimentKeys, k)
-	}
-	slices.Sort(experimentKeys)
-
-	// 2. Identify all metrics
-	metrics := []string{"files per second", "min", "mean", "p50", "p95", "p99", "max", "stddev"}
-
-	// 3. Open output.csv
-	f, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer safeClose(f)
-
-	// 4. Write header
-	header := []string{"capacity (GB)", "read iops", "max read bandwidth (MBps)"}
-	header = append(header, experimentKeys...)
-	header = append(header, metrics...)
-	if _, err := fmt.Fprintln(f, strings.Join(header, ",")); err != nil {
-		return fmt.Errorf("failed to write header: %w", err)
-	}
-
-	// 5. Write data rows
-	for _, res := range results {
-		row := make([]string, 0, len(header))
-		row = append(row,
-			toIntString(metadata.CapacityGB),
-			toIntString(metadata.ReadIOPS),
-			toIntString(metadata.MaxReadMBps),
-		)
-
-		// Experiment values
-		for _, k := range experimentKeys {
-			val := ""
-			if e, ok := res.scenario.elements[k]; ok {
-				val = e.name
-			}
-			row = append(row, val)
-		}
-
-		// Metric values
-		s := res.summary
-		row = append(row,
-			toIntString(int(float64(res.totalSuccessfulReads)/res.testDuration.Seconds())),
-			toMillis(s.minTime),
-			toMillis(s.mean),
-			toMillis(s.p50),
-			toMillis(s.p95),
-			toMillis(s.p99),
-			toMillis(s.maxTime),
-			toMillis(s.stddev),
-		)
-
-		if _, err := fmt.Fprintln(f, strings.Join(row, ",")); err != nil {
-			return fmt.Errorf("failed to write row: %w", err)
-		}
-	}
-
-	fmt.Println("\nResults dumped to " + path)
-
-	return nil
-}
-
-func toMillis(minTime time.Duration) string {
-	return strconv.FormatInt(minTime.Milliseconds(), 10)
 }
 
 type result struct {
@@ -332,112 +143,6 @@ func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[sc
 	}
 }
 
-type setReadAhead struct {
-	readAhead string
-
-	readAheadPath string
-	oldReadAhead  string
-}
-
-func (s *setReadAhead) setup(ctx context.Context, p *processor) error {
-	// find nfs device
-	output, err := exec.CommandContext(ctx, "findmnt", "--noheadings", "--output", "target", "--target", p.path).Output()
-	if err != nil {
-		return fmt.Errorf("failed to find nfs mount point: %w", err)
-	}
-	nfsMountPoint := strings.TrimSpace(string(output))
-
-	// find major:minor of device
-	majorMinor, err := exec.CommandContext(ctx, "mountpoint", "--fs-devno", nfsMountPoint).Output()
-	if err != nil {
-		return fmt.Errorf("failed to find nfs major:minor: %w", err)
-	}
-	s.readAheadPath = fmt.Sprintf("/sys/class/bdi/%s/read_ahead_kb", strings.TrimSpace(string(majorMinor)))
-
-	// read old read_ahead_kb, store
-	output, err = os.ReadFile(s.readAheadPath)
-	if err != nil {
-		return fmt.Errorf("failed to read read_ahead_kb: %w", err)
-	}
-
-	s.oldReadAhead = strings.TrimSpace(string(output))
-
-	// set new value
-	if err := os.WriteFile(s.readAheadPath, []byte(s.readAhead), 0o644); err != nil {
-		return fmt.Errorf("failed to write to %q: %w", s.readAheadPath, err)
-	}
-
-	return nil
-}
-
-func (s *setReadAhead) teardown(_ context.Context, _ *processor) error {
-	// reset old value
-	return os.WriteFile(s.readAheadPath, []byte(s.oldReadAhead), 0o644)
-}
-
-var _ experiment = (*setReadAhead)(nil)
-
-type setConcurrentRequests struct {
-	concurrentRequests int
-}
-
-func (s *setConcurrentRequests) setup(_ context.Context, p *processor) error {
-	p.concurrentRequests = s.concurrentRequests
-
-	return nil
-}
-
-func (s *setConcurrentRequests) teardown(_ context.Context, _ *processor) error { return nil }
-
-type setSysFs struct {
-	path     string
-	newValue string
-	oldValue string
-}
-
-var _ experiment = (*setSysFs)(nil)
-
-func (d *setSysFs) setup(ctx context.Context, _ *processor) error {
-	// read old value
-	output, err := exec.CommandContext(ctx, "sysctl", "-n", d.path).Output()
-	if err != nil {
-		return fmt.Errorf("failed to read sysfs value: %w", err)
-	}
-	d.oldValue = strings.TrimSpace(string(output))
-
-	// set new value
-	if err := exec.CommandContext(ctx, "sysctl", "-w", fmt.Sprintf("%s=%s", d.path, d.newValue)).Run(); err != nil {
-		return fmt.Errorf("failed to set sysfs value: %w", err)
-	}
-
-	return nil
-}
-
-func (d *setSysFs) teardown(ctx context.Context, _ *processor) error {
-	// set old value
-	if err := exec.CommandContext(ctx, "sysctl", "-w", fmt.Sprintf("%s=%s", d.path, d.oldValue)).Run(); err != nil {
-		return fmt.Errorf("failed to set sysfs value: %w", err)
-	}
-
-	return nil
-}
-
-type readMethodExperiment struct {
-	readMethod func(string) (int, error)
-}
-
-func (r readMethodExperiment) setup(_ context.Context, p *processor) error {
-	p.readMethod = r.readMethod
-
-	return nil
-}
-
-func (r readMethodExperiment) teardown(_ context.Context, _ *processor) error {
-	return nil
-}
-
-var _ experiment = (*readMethodExperiment)(nil)
-
 type processor struct {
 	path               string
 	dropNfsCache       bool
@@ -449,59 +154,6 @@ type processor struct {
 
 	allFiles    []string
 	nfsStatFile string
-}
-
-type experiment interface {
-	setup(ctx context.Context, p *processor) error
-	teardown(ctx context.Context, p *processor) error
-}
-
-type element struct {
-	name string
-	exp  experiment
-}
-
-type scenario struct {
-	elements map[string]element
-}
-
-func (s scenario) setup(ctx context.Context, p *processor) error {
-	var errs []error
-
-	for _, e := range s.elements {
-		if err := e.exp.setup(ctx, p); err != nil {
-			errs = append(errs, fmt.Errorf("failed to setup %q: %w", e, err))
-		}
-	}
-
-	return errors.Join(errs...)
-}
-
-func (s scenario) teardown(ctx context.Context, p *processor) error {
-	var errs []error
-
-	for name, e := range s.elements {
-		if err := e.exp.teardown(ctx, p); err != nil {
-			errs = append(errs, fmt.Errorf("failed to teardown %q: %w", name, err))
-		}
-	}
-
-	return errors.Join(errs...)
-}
-
-func (s scenario) Name() any {
-	var keys []string
-	for k := range s.elements {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-
-	var values []string
-	for _, k := range keys {
-		values = append(values, fmt.Sprintf("%s=%s", k, s.elements[k].name))
-	}
-
-	return strings.Join(values, "; ")
 }
 
 func (p *processor) run(ctx context.Context, scenario scenario) (result, error) {
@@ -605,166 +257,6 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 		totalSuccessfulReads: len(reads),
 		testDuration:         p.testDuration,
 	}, nil
-}
-
-func (p *processor) findFiles() error {
-	var paths []string
-
-	err := filepath.WalkDir(p.path, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip directories
-		if d.IsDir() {
-			return nil
-		}
-
-		// If fixedSize is specified, check the file size
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		if info.Size() != expectedFileSize {
-			return nil
-		}
-
-		paths = append(paths, path)
-
-		if p.limitFileCount > 0 && len(paths) >= p.limitFileCount {
-			return filepath.SkipAll
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to find files in %q: %w", p.path, err)
-	}
-
-	p.allFiles = paths
-
-	fmt.Printf("found %d files\n", len(p.allFiles))
-
-	return nil
-}
-
-type files struct {
-	rand  *rand.Rand
-	paths []string
-}
-
-func (f *files) selectFile() (string, error) {
-	if len(f.paths) == 0 {
-		return "", fmt.Errorf("no files found")
-	}
-
-	idx := f.rand.Intn(len(f.paths))
-	path := f.paths[idx]
-
-	// remove path from paths
-	f.paths = removeAtIndex(f.paths, idx)
-
-	return path, nil
-}
-
-func removeAtIndex[T any](items []T, idx int) []T {
-	return slices.Delete(items, idx, idx+1)
-}
-
-func (p *processor) storeNfsStat() error {
-	data, err := os.ReadFile("/proc/net/rpc/nfs")
-	if err != nil {
-		return fmt.Errorf("failed to read nfs stat: %w", err)
-	}
-
-	fname, err := os.CreateTemp("", "nfs-stat-*.txt")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer safeClose(fname)
-
-	if _, err := fname.Write(data); err != nil {
-		return fmt.Errorf("failed to write to temp file: %w", err)
-	}
-
-	p.nfsStatFile = fname.Name()
-
-	return nil
-}
-
-func (p *processor) compareNfsStat(ctx context.Context) error {
-	defer safeRemove(p.nfsStatFile)
-
-	output, err := exec.CommandContext(ctx, "nfsstat", "--list", "--since", p.nfsStatFile, "/proc/net/rpc/nfs").Output()
-	if err != nil {
-		return fmt.Errorf("failed to compare nfs stat: %w", err)
-	}
-
-	stats, err := nfsstatParse(string(output))
-	if err != nil {
-		return fmt.Errorf("failed to parse nfs stat: %w", err)
-	}
-
-	summarizeNfsstat(stats)
-
-	return nil
-}
-
-func summarizeNfsstat(stats []nfsstat) {
-	for _, stat := range stats {
-		fmt.Printf("%s:\t%s:\t%d\n", stat.category, stat.function, stat.count)
-	}
-}
-
-type nfsstat struct {
-	category, function string
-	count              int
-}
-
-func nfsstatParse(s string) ([]nfsstat, error) {
-	var stats []nfsstat
-	lines := strings.SplitSeq(s, "\n")
-	for line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "---") {
-			continue
-		}
-
-		parts := strings.Split(line, ":")
-		if len(parts) != 2 {
-			continue
-		}
-
-		keyPart := strings.TrimSpace(parts[0])
-		valuePart := strings.TrimSpace(parts[1])
-
-		lastSpaceIdx := strings.LastIndex(keyPart, " ")
-		if lastSpaceIdx == -1 {
-			continue
-		}
-
-		category := strings.TrimSpace(keyPart[:lastSpaceIdx])
-		function := strings.TrimSpace(keyPart[lastSpaceIdx+1:])
-
-		var count int
-		if _, err := fmt.Sscanf(valuePart, "%d", &count); err != nil {
-			return nil, fmt.Errorf("failed to parse count for %s %s: %w", category, function, err)
-		}
-
-		stats = append(stats, nfsstat{
-			category: category,
-			function: function,
-			count:    count,
-		})
-	}
-
-	return stats, nil
-}
-
-func safeRemove(file string) {
-	if err := os.Remove(file); err != nil {
-		log.Println("failed to remove file", "error", err)
-	}
 }
 
 func safeClose(fp *os.File) {
