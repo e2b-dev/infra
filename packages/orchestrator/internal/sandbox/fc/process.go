@@ -16,9 +16,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapio"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -62,11 +64,11 @@ type Process struct {
 	config                cfg.BuilderConfig
 	firecrackerSocketPath string
 
-	slot               *network.Slot
-	providerRootfsPath string
-	rootfsPath         string
-	kernelPath         string
-	files              *storage.SandboxFiles
+	slot           *network.Slot
+	rootfsProvider rootfs.Provider
+	rootfsPath     string
+	kernelPath     string
+	files          *storage.SandboxFiles
 
 	Exit *utils.ErrorOnce
 
@@ -80,7 +82,7 @@ func NewProcess(
 	slot *network.Slot,
 	files *storage.SandboxFiles,
 	versions Config,
-	rootfsProviderPath string,
+	rootfsProvider rootfs.Provider,
 	rootfsPaths RootfsPaths,
 ) (*Process, error) {
 	ctx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
@@ -129,7 +131,7 @@ func NewProcess(
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		config:                config,
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
-		providerRootfsPath:    rootfsProviderPath,
+		rootfsProvider:        rootfsProvider,
 		files:                 files,
 		slot:                  slot,
 
@@ -161,12 +163,7 @@ func (p *Process) configure(
 	}
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
-	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
-	if err != nil {
-		return fmt.Errorf("error symlinking rootfs: %w", err)
-	}
-
-	err = p.cmd.Start()
+	err := p.cmd.Start()
 	if err != nil {
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
@@ -227,7 +224,13 @@ func (p *Process) Create(
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
 
-	err := p.configure(
+	// Symlink /dev/null to the rootfs link path, so we can start the FC process without the rootfs and then symlink the real rootfs.
+	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
+
+	err = p.configure(
 		ctx,
 		sbxMetadata,
 		options.Stdout,
@@ -290,10 +293,21 @@ func (p *Process) Create(
 	telemetry.ReportEvent(ctx, "set fc boot source config")
 
 	// Rootfs
-	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
+	rootfsPath, err := p.rootfsProvider.Path()
 	if err != nil {
-		return fmt.Errorf("error symlinking rootfs: %w", err)
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error getting rootfs path: %w", err), fcStopErr)
 	}
+	telemetry.ReportEvent(ctx, "got rootfs path")
+
+	err = utils.SymlinkForce(rootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error symlinking rootfs: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "symlinked rootfs")
 
 	err = p.client.setRootfsDrive(ctx, p.rootfsPath, options.IoEngine)
 	if err != nil {
@@ -351,24 +365,64 @@ func (p *Process) Resume(
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
 
-	err := p.configure(
-		ctx,
-		sbxMetadata,
-		nil,
-		nil,
-	)
-	if err != nil {
-		fcStopErr := p.Stop(ctx)
-
-		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
-	}
-
-	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
+	// Symlink /dev/null to the rootfs link path, so we can start the FC process without the rootfs and then symlink the real rootfs.
+	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
-	telemetry.ReportEvent(ctx, "symlinked rootfs")
+	// create errgroup with context that handled socket wait + rootfs symlink
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	eg.Go(func() error {
+		err := p.configure(
+			egCtx,
+			sbxMetadata,
+			nil,
+			nil,
+		)
+		if err != nil {
+			return fmt.Errorf("error starting fc process: %w", err)
+		}
+
+		telemetry.ReportEvent(egCtx, "configured fc")
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		err := socket.Wait(egCtx, uffdSocketPath)
+		if err != nil {
+			return fmt.Errorf("error waiting for uffd socket: %w", err)
+		}
+
+		telemetry.ReportEvent(egCtx, "uffd socket ready")
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		rootfsPath, err := p.rootfsProvider.Path()
+		if err != nil {
+			return fmt.Errorf("error getting rootfs path: %w", err)
+		}
+
+		err = utils.SymlinkForce(rootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
+		if err != nil {
+			return fmt.Errorf("error symlinking rootfs: %w", err)
+		}
+
+		telemetry.ReportEvent(egCtx, "symlinked rootfs")
+
+		return nil
+	})
+
+	err = eg.Wait()
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error waiting for uffd socket or symlinking rootfs: %w", err), fcStopErr)
+	}
 
 	err = p.client.loadSnapshot(
 		ctx,

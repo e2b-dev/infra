@@ -249,10 +249,6 @@ func (f *Factory) CreateSandbox(
 	}
 
 	// / ==== END of resources initialization ====
-	rootfsPath, err := rootfsProvider.Path()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
-	}
 	ips := <-ipsCh
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
@@ -265,7 +261,7 @@ func (f *Factory) CreateSandbox(
 		ips.slot,
 		sandboxFiles,
 		config.FirecrackerConfig,
-		rootfsPath,
+		rootfsProvider,
 		fc.ConstantRootfsPaths,
 	)
 	if err != nil {
@@ -455,13 +451,6 @@ func (f *Factory) ResumeSandbox(
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
-	rootfsPath, err := rootfsOverlay.Path()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "got rootfs path")
-
 	ips := <-ipsCh
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
@@ -484,7 +473,7 @@ func (f *Factory) ResumeSandbox(
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
 		config.FirecrackerConfig,
-		rootfsPath,
+		rootfsOverlay,
 		fc.RootfsPaths{
 			TemplateVersion: meta.Version,
 			TemplateID:      config.BaseTemplateID,
