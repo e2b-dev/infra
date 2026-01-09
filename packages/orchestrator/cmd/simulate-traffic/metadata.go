@@ -60,7 +60,7 @@ var client http.Client
 
 func getMetadata(ctx context.Context, path string) (string, error) {
 	path = strings.TrimPrefix(path, "/")
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://metadata.google.internal/%s", path), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://metadata.google.internal/%s", path), nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}

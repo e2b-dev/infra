@@ -12,7 +12,7 @@ import (
 
 var experiments = map[string]map[string]experiment{
 	"concurrent requests": {
-		//"1": &setConcurrentRequests{1},
+		// "1": &setConcurrentRequests{1},
 		// "2": &setConcurrentRequests{2},
 		//"4": &setConcurrentRequests{4},
 		"8":  &setConcurrentRequests{8},
@@ -63,11 +63,11 @@ var experiments = map[string]map[string]experiment{
 	},
 	"net.core.rmem_max": {
 		"208kb (default)": &setSysFs{path: "net.core.rmem_max", newValue: "212992"},
-		//"32mb":            &setSysFs{path: "net.core.rmem_max", newValue: "33554432"},
+		// "32mb":            &setSysFs{path: "net.core.rmem_max", newValue: "33554432"},
 	},
 	"net.ipv4.tcp_rmem": {
 		"4 kb / 128 kb / 6 mb (default)": &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 131072 6291456"},
-		//"4 kb / 256 kb / 32 mb":          &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 262144 33554432"},
+		// "4 kb / 256 kb / 32 mb":          &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 262144 33554432"},
 	},
 	"sunrpc.tcp_slot_table_entries": {
 		"2 (default)": &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "2"},
