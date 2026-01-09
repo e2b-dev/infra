@@ -166,6 +166,10 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				}
 
 				if readBytes != len(b) {
+					fetchSW.Failure(ctx, int64(readBytes),
+						attribute.String(failureReason, failureTypeRemoteRead),
+					)
+
 					return fmt.Errorf("failed to read chunk from base %d: expected %d bytes, got %d bytes", fetchOff, len(b), readBytes)
 				}
 
