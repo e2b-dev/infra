@@ -313,12 +313,16 @@ func (c *Cache) FileSize() (int64, error) {
 	return stat.Blocks * fsStat.Bsize, nil
 }
 
-func (c *Cache) address(off int64) *byte {
+func (c *Cache) address(off int64) (*byte, error) {
 	if c.mmap == nil {
-		return nil
+		return nil, nil
 	}
 
-	return &(*c.mmap)[off]
+	if off >= c.size {
+		return nil, fmt.Errorf("offset %d is out of bounds", off)
+	}
+
+	return &(*c.mmap)[off], nil
 }
 
 // addressBytes returns a slice of the mmap and a function to release the read lock which blocks the cache from being closed.
@@ -335,6 +339,10 @@ func (c *Cache) addressBytes(off, length int64) ([]byte, func(), error) {
 		c.mu.RUnlock()
 
 		return nil, func() {}, NewErrCacheClosed(c.filePath)
+	}
+
+	if off >= c.size {
+		return nil, func() {}, fmt.Errorf("offset %d is out of bounds", off)
 	}
 
 	end := min(off+length, c.size)
@@ -425,9 +433,14 @@ func (c *Cache) copyProcessMemory(
 			break
 		}
 
+		address, err := c.address(offset)
+		if err != nil {
+			return fmt.Errorf("failed to get address: %w", err)
+		}
+
 		local := []unix.Iovec{
 			{
-				Base: c.address(offset),
+				Base: address,
 				// We could keep this as full cache length, but we might as well be exact here.
 				Len: uint64(segmentSize),
 			},
