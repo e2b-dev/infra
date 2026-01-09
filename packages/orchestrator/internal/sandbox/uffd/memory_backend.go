@@ -3,6 +3,7 @@ package uffd
 import (
 	"context"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/trace"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -13,4 +14,8 @@ type MemoryBackend interface {
 	Stop() error
 	Ready() chan struct{}
 	Exit() *utils.ErrorOnce
+	// SetTraceEnabled enables or disables page fault tracing.
+	SetTraceEnabled(enabled bool)
+	// GetPageFaultTrace returns page fault events (timestamp, offset, durations).
+	GetPageFaultTrace() []trace.Event
 }

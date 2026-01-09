@@ -115,6 +115,11 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 	return c.cache.Items()
 }
 
+// LayerStats returns statistics about build layers accessed from remote storage.
+func (c *Cache) LayerStats() (memfile, rootfs build.LayerStats) {
+	return c.buildStore.LayersFetched(build.Memfile), c.buildStore.LayersFetched(build.Rootfs)
+}
+
 func (c *Cache) GetTemplate(
 	ctx context.Context,
 	buildID string,

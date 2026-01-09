@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/trace"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -139,6 +140,16 @@ func (o *NBDProvider) Close(ctx context.Context) error {
 
 func (o *NBDProvider) Path() (string, error) {
 	return o.ready.Wait()
+}
+
+// SetTraceEnabled enables or disables NBD tracing.
+func (o *NBDProvider) SetTraceEnabled(enabled bool) {
+	o.mnt.SetTraceEnabled(enabled)
+}
+
+// GetNBDTrace returns NBD trace events.
+func (o *NBDProvider) GetNBDTrace() []trace.Event {
+	return o.mnt.GetTrace()
 }
 
 func (o *NBDProvider) sync(ctx context.Context) error {

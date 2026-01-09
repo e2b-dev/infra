@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	sbxtrace "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/trace"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -71,6 +72,9 @@ type Process struct {
 	Exit *utils.ErrorOnce
 
 	client *apiClient
+
+	// Phase tracing for FC operations
+	phaseTracer *sbxtrace.PhaseRecorder
 }
 
 func NewProcess(
@@ -133,9 +137,30 @@ func NewProcess(
 		files:                 files,
 		slot:                  slot,
 
-		kernelPath: startScript.KernelPath,
-		rootfsPath: startScript.RootfsPath,
+		kernelPath:  startScript.KernelPath,
+		rootfsPath:  startScript.RootfsPath,
+		phaseTracer: sbxtrace.NewPhaseRecorder(false),
 	}, nil
+}
+
+// SetTraceEnabled enables or disables phase tracing.
+func (p *Process) SetTraceEnabled(enabled bool) {
+	if p.phaseTracer != nil {
+		p.phaseTracer.SetEnabled(enabled)
+	}
+}
+
+// SetPhaseTracer sets the phase tracer (allows passing an externally created tracer).
+func (p *Process) SetPhaseTracer(tracer *sbxtrace.PhaseRecorder) {
+	p.phaseTracer = tracer
+}
+
+// GetPhaseTrace returns the recorded phase events.
+func (p *Process) GetPhaseTrace() []sbxtrace.PhaseEvent {
+	if p.phaseTracer == nil {
+		return nil
+	}
+	return p.phaseTracer.Events()
 }
 
 func (p *Process) configure(
@@ -166,7 +191,10 @@ func (p *Process) configure(
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
+	// Record FC process start
+	fcStartTime := time.Now()
 	err = p.cmd.Start()
+	p.phaseTracer.Record("fc_start", fcStartTime, sbxtrace.TypeFCStart)
 	if err != nil {
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
@@ -204,7 +232,9 @@ func (p *Process) configure(
 	}()
 
 	// Wait for the FC process to start so we can use FC API
+	socketWaitStart := time.Now()
 	err = socket.Wait(startCtx, p.firecrackerSocketPath)
+	p.phaseTracer.Record("fc_socket_wait", socketWaitStart, sbxtrace.TypeFCSocketWait)
 	if err != nil {
 		errMsg := fmt.Errorf("error waiting for fc socket: %w", err)
 
@@ -351,12 +381,15 @@ func (p *Process) Resume(
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
 
+	// Record configure phase
+	configureStart := time.Now()
 	err := p.configure(
 		ctx,
 		sbxMetadata,
 		nil,
 		nil,
 	)
+	p.phaseTracer.Record("fc_configure", configureStart, sbxtrace.TypeFCConfigure)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -370,19 +403,26 @@ func (p *Process) Resume(
 
 	telemetry.ReportEvent(ctx, "symlinked rootfs")
 
+	// Record load snapshot phase
+	loadSnapshotStart := time.Now()
 	err = p.client.loadSnapshot(
 		ctx,
 		uffdSocketPath,
 		uffdReady,
 		snapfile,
+		p.phaseTracer,
 	)
+	p.phaseTracer.Record("fc_load_snapshot", loadSnapshotStart, sbxtrace.TypeFCLoadSnapshot)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
+	// Record resume VM phase
+	resumeStart := time.Now()
 	err = p.client.resumeVM(ctx)
+	p.phaseTracer.Record("fc_resume", resumeStart, sbxtrace.TypeFCResume)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -395,7 +435,10 @@ func (p *Process) Resume(
 		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
 	}
 
+	// Record MMDS phase
+	mmdsStart := time.Now()
 	err = p.client.setMmds(ctx, meta)
+	p.phaseTracer.Record("fc_mmds", mmdsStart, sbxtrace.TypeFCMmds)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
