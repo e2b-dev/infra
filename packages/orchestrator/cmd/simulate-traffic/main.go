@@ -29,7 +29,7 @@ const implausibleTime = time.Millisecond * 4
 var experiments = map[string]map[string]experiment{
 	"concurrent requests": {
 		"1": &setConcurrentRequests{1},
-		//"2": &setConcurrentRequests{2},
+		// "2": &setConcurrentRequests{2},
 		"4": &setConcurrentRequests{4},
 		"8": &setConcurrentRequests{8},
 	},
@@ -45,7 +45,7 @@ var experiments = map[string]map[string]experiment{
 
 			return fp.ReadAt(buff, 0)
 		}},
-		//"Read": readMethodExperiment{func(path string) (int, error) {
+		// "Read": readMethodExperiment{func(path string) (int, error) {
 		//	fp, err := os.Open(path)
 		//	if err != nil {
 		//		return 0, fmt.Errorf("failed to open file: %w", err)
@@ -69,7 +69,7 @@ var experiments = map[string]map[string]experiment{
 		//	}
 		//
 		//	return total, nil
-		//}},
+		// }},
 	},
 	"nfs read ahead": {
 		// "128kb": &setReadAhead{readAhead: "128"}, // always bad
@@ -118,7 +118,7 @@ func main() {
 		return
 	}
 
-	println("getting filestore metadata ... ")
+	fmt.Println("getting filestore metadata ... ")
 	filestoreMetadata, err := getFilestoreMetadata(ctx, filestoreName, filestoreZone)
 	if err != nil {
 		log.Fatalf("failed to get filestore metadata for %q: %s", filestoreName, err)
@@ -183,6 +183,7 @@ func mustParseInt(s string) int {
 	if err != nil {
 		panic(err)
 	}
+
 	return n
 }
 
@@ -382,6 +383,7 @@ type setConcurrentRequests struct {
 
 func (s *setConcurrentRequests) setup(_ context.Context, p *processor) error {
 	p.concurrentRequests = s.concurrentRequests
+
 	return nil
 }
 
@@ -460,8 +462,7 @@ type element struct {
 }
 
 type scenario struct {
-	concurrency int
-	elements    map[string]element
+	elements map[string]element
 }
 
 func (s scenario) setup(ctx context.Context, p *processor) error {
@@ -643,6 +644,7 @@ func (p *processor) findFiles() error {
 	p.allFiles = paths
 
 	fmt.Printf("found %d files\n", len(p.allFiles))
+
 	return nil
 }
 

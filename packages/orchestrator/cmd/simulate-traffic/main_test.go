@@ -106,6 +106,8 @@ func TestDumpResultsToCSV(t *testing.T) {
 
 	results := []result{
 		{
+			totalSuccessfulReads: 10,
+			testDuration:         time.Second,
 			scenario: scenario{
 				elements: map[string]element{
 					"exp1": {name: "val1"},
@@ -113,7 +115,6 @@ func TestDumpResultsToCSV(t *testing.T) {
 				},
 			},
 			summary: durationSummary{
-				count:   10,
 				minTime: 100 * time.Millisecond,
 				p50:     200 * time.Millisecond,
 				p95:     300 * time.Millisecond,
@@ -123,6 +124,8 @@ func TestDumpResultsToCSV(t *testing.T) {
 			},
 		},
 		{
+			totalSuccessfulReads: 20,
+			testDuration:         time.Second,
 			scenario: scenario{
 				elements: map[string]element{
 					"exp1": {name: "val3"},
@@ -130,7 +133,6 @@ func TestDumpResultsToCSV(t *testing.T) {
 				},
 			},
 			summary: durationSummary{
-				count:   20,
 				minTime: 110 * time.Millisecond,
 				p50:     210 * time.Millisecond,
 				p95:     310 * time.Millisecond,
@@ -153,41 +155,47 @@ func TestDumpResultsToCSV(t *testing.T) {
 
 	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
 	assert.Len(t, lines, 3)
-	assert.Equal(t, "exp1,exp2,count,min,p50,p95,p99,max,stddev", lines[0])
-	assert.Equal(t, "val1,val2,10,100,200,300,400,500,50", lines[1])
-	assert.Equal(t, "val3,val4,20,110,210,310,410,510,51", lines[2])
+	assert.Equal(t, "capacity (GB),read iops,max read bandwidth (MBps),exp1,exp2,files per second,min,mean,p50,p95,p99,max,stddev", lines[0])
+	assert.Equal(t, "0,0,0,val1,val2,10,100,0,200,300,400,500,50", lines[1])
+	assert.Equal(t, "0,0,0,val3,val4,20,110,0,210,310,410,510,51", lines[2])
 }
 
 func TestSummarizeDurations(t *testing.T) {
 	t.Parallel()
 
 	t.Run("empty", func(t *testing.T) {
+		t.Parallel()
+
 		summary := summarizeDurations(nil)
 		assert.Equal(t, durationSummary{}, summary)
 	})
 
 	t.Run("single", func(t *testing.T) {
+		t.Parallel()
+
 		durations := []time.Duration{10 * time.Millisecond}
 		summary := summarizeDurations(durations)
-		assert.Equal(t, 1, summary.count)
 		assert.Equal(t, 10*time.Millisecond, summary.p50)
 		assert.Equal(t, 10*time.Millisecond, summary.p95)
 		assert.Equal(t, 10*time.Millisecond, summary.p99)
 	})
 
 	t.Run("multiple", func(t *testing.T) {
+		t.Parallel()
+
 		durations := make([]time.Duration, 100)
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			durations[i] = time.Duration(i+1) * time.Millisecond
 		}
 		summary := summarizeDurations(durations)
-		assert.Equal(t, 100, summary.count)
 		assert.Equal(t, 50*time.Millisecond, summary.p50)
 		assert.Equal(t, 95*time.Millisecond, summary.p95)
 		assert.Equal(t, 99*time.Millisecond, summary.p99)
 	})
 
 	t.Run("matches_user_report", func(t *testing.T) {
+		t.Parallel()
+
 		// 428 files, if p50 is 23ms, then throughput at concurrency 2 should be ~428 in 5s
 		// throughput = 2 / 0.023 = 86.9 files/s
 		// 5s * 86.9 = 434 files.
@@ -203,25 +211,35 @@ func TestSummarizeDurations(t *testing.T) {
 }
 
 func TestRemoveAtIndex(t *testing.T) {
+	t.Parallel()
+
 	t.Run("middle", func(t *testing.T) {
+		t.Parallel()
+
 		items := []int{1, 2, 3, 4, 5}
 		result := removeAtIndex(items, 2)
 		assert.Equal(t, []int{1, 2, 4, 5}, result)
 	})
 
 	t.Run("first", func(t *testing.T) {
+		t.Parallel()
+
 		items := []int{1, 2, 3}
 		result := removeAtIndex(items, 0)
 		assert.Equal(t, []int{2, 3}, result)
 	})
 
 	t.Run("last", func(t *testing.T) {
+		t.Parallel()
+
 		items := []int{1, 2, 3}
 		result := removeAtIndex(items, 2)
 		assert.Equal(t, []int{1, 2}, result)
 	})
 
 	t.Run("original_slice_is_modified", func(t *testing.T) {
+		t.Parallel()
+
 		items := []int{1, 2, 3, 4, 5}
 		_ = removeAtIndex(items, 2)
 		// slices.Delete modifies the original slice and zeros out the tail
@@ -229,18 +247,24 @@ func TestRemoveAtIndex(t *testing.T) {
 	})
 
 	t.Run("single_element", func(t *testing.T) {
+		t.Parallel()
+
 		items := []int{1}
 		result := removeAtIndex(items, 0)
 		assert.Equal(t, []int{}, result)
 	})
 
 	t.Run("empty_slice_panic", func(t *testing.T) {
+		t.Parallel()
+
 		assert.Panics(t, func() {
 			removeAtIndex([]int{}, 0)
 		})
 	})
 
 	t.Run("out_of_bounds_panic", func(t *testing.T) {
+		t.Parallel()
+
 		assert.Panics(t, func() {
 			removeAtIndex([]int{1, 2}, 2)
 		})
