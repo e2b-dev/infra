@@ -135,6 +135,14 @@ var (
 
 	// NBDConnectionsPerDevice the number of NBD socket connections per device
 	NBDConnectionsPerDevice = newIntFlag("nbd-connections-per-device", 4)
+
+	// MemoryPrefetchMaxFetchWorkers is the maximum number of parallel fetch workers per sandbox for memory prefetching.
+	// Fetching is I/O bound so we can have more parallelism.
+	MemoryPrefetchMaxFetchWorkers = newIntFlag("memory-prefetch-max-fetch-workers", 16)
+
+	// MemoryPrefetchMaxCopyWorkers is the maximum number of parallel copy workers per sandbox for memory prefetching.
+	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
+	MemoryPrefetchMaxCopyWorkers = newIntFlag("memory-prefetch-max-copy-workers", 8)
 )
 
 type StringFlag struct {

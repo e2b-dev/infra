@@ -471,6 +471,7 @@ func (f *Factory) ResumeSandbox(
 				memfile,
 				fcUffd,
 				meta.Prefetch.Memory,
+				f.featureFlags,
 			)
 			err := p.Start(execCtx)
 			if err != nil {

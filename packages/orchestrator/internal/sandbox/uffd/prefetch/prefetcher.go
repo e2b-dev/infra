@@ -12,20 +12,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/prefetch")
-
-const (
-	// DefaultMaxFetchWorkers is the default maximum number of parallel fetch workers.
-	// Fetching is I/O bound so we can have more parallelism.
-	DefaultMaxFetchWorkers = 16
-
-	// DefaultMaxCopyWorkers is the default maximum number of parallel copy workers.
-	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
-	DefaultMaxCopyWorkers = 8
-)
 
 type prefetchData struct {
 	offset int64
@@ -42,32 +33,26 @@ type prefetchData struct {
 //
 // Both phases run with their own parallelism limits and don't block each other.
 type Prefetcher struct {
-	logger          logger.Logger
-	source          block.Slicer
-	uffd            uffd.MemoryBackend
-	mapping         *metadata.PrefetchMapping
-	maxFetchWorkers int
-	maxCopyWorkers  int
+	logger       logger.Logger
+	source       block.Slicer
+	uffd         uffd.MemoryBackend
+	mapping      *metadata.PrefetchMapping
+	featureFlags *featureflags.Client
 }
 
-// New creates a new Prefetcher.
-// - source: the block source to fetch pages from (can be used immediately)
-// - uffdReady: channel that signals when uffd is ready
-// - getHandler: function to get the uffd handler (should be called after uffdReady)
-// - mapping: the prefetch mapping from template metadata
 func New(
 	logger logger.Logger,
 	source block.Slicer,
 	uffd uffd.MemoryBackend,
 	mapping *metadata.PrefetchMapping,
+	featureFlags *featureflags.Client,
 ) *Prefetcher {
 	return &Prefetcher{
-		logger:          logger,
-		source:          source,
-		uffd:            uffd,
-		mapping:         mapping,
-		maxFetchWorkers: DefaultMaxFetchWorkers,
-		maxCopyWorkers:  DefaultMaxCopyWorkers,
+		logger:       logger,
+		source:       source,
+		uffd:         uffd,
+		mapping:      mapping,
+		featureFlags: featureFlags,
 	}
 }
 
@@ -95,21 +80,25 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 		return nil
 	}
 
+	// Get worker counts from feature flags at runtime
+	maxFetchWorkers := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxFetchWorkers)
+	maxCopyWorkers := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxCopyWorkers)
+
 	blockSize := p.mapping.BlockSize
 	totalPages := pages.Count()
 
 	span.SetAttributes(
 		attribute.Int64("prefetch.total_pages", int64(totalPages)),
 		attribute.Int64("prefetch.block_size", blockSize),
-		attribute.Int("prefetch.max_fetch_workers", p.maxFetchWorkers),
-		attribute.Int("prefetch.max_copy_workers", p.maxCopyWorkers),
+		attribute.Int("prefetch.max_fetch_workers", maxFetchWorkers),
+		attribute.Int("prefetch.max_copy_workers", maxCopyWorkers),
 	)
 
 	p.logger.Debug(ctx, "prefetch: starting background prefetch",
 		zap.Uint("total_pages", totalPages),
 		zap.Int64("block_size", blockSize),
-		zap.Int("max_fetch_workers", p.maxFetchWorkers),
-		zap.Int("max_copy_workers", p.maxCopyWorkers),
+		zap.Int("max_fetch_workers", maxFetchWorkers),
+		zap.Int("max_copy_workers", maxCopyWorkers),
 	)
 
 	// Channels for work distribution
@@ -134,7 +123,7 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	close(fetchCh)
 
 	// Start fetch workers - they populate the cache and queue offsets for copy
-	for range p.maxFetchWorkers {
+	for range maxFetchWorkers {
 		fetchWg.Go(func() {
 			p.fetchWorker(ctx, fetchCh, copyCh, blockSize, &fetchedCount, &fetchSkippedCount)
 		})
@@ -142,7 +131,7 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 
 	// Start copy coordinator - waits for uffd ready, then spawns copy workers
 	copyWg.Go(func() {
-		p.startCopyWorkers(ctx, copyCh, &copiedCount, &copySkippedCount)
+		p.startCopyWorkers(ctx, copyCh, maxCopyWorkers, &copiedCount, &copySkippedCount)
 	})
 
 	// Wait for fetch workers to complete
@@ -168,6 +157,7 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 func (p *Prefetcher) startCopyWorkers(
 	ctx context.Context,
 	copyCh chan prefetchData,
+	maxCopyWorkers int,
 	copiedCount *atomic.Uint64,
 	copySkippedCount *atomic.Uint64,
 ) {
@@ -183,7 +173,7 @@ func (p *Prefetcher) startCopyWorkers(
 	// Start copy workers
 	var copyWorkerWg sync.WaitGroup
 
-	for range p.maxCopyWorkers {
+	for range maxCopyWorkers {
 		copyWorkerWg.Go(func() {
 			p.copyWorker(ctx, copyCh, copiedCount, copySkippedCount)
 		})
