@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/fs"
 	"iter"
 	"log"
@@ -22,23 +22,89 @@ import (
 	"time"
 )
 
-const defaultChunkSize = 4 * 1024 * 1024
+const expectedFileSize = 4 * 1024 * 1024
+
+const implausibleTime = time.Millisecond * 4
+
+var experiments = map[string]map[string]experiment{
+	"concurrent requests": {
+		"1": &setConcurrentRequests{1},
+		//"2": &setConcurrentRequests{2},
+		"4": &setConcurrentRequests{4},
+		"8": &setConcurrentRequests{8},
+	},
+	"read method": {
+		"ReadAt": readMethodExperiment{func(path string) (int, error) {
+			fp, err := os.Open(path)
+			if err != nil {
+				return 0, fmt.Errorf("failed to open file: %w", err)
+			}
+			defer safeClose(fp)
+
+			buff := make([]byte, expectedFileSize)
+
+			return fp.ReadAt(buff, 0)
+		}},
+		//"Read": readMethodExperiment{func(path string) (int, error) {
+		//	fp, err := os.Open(path)
+		//	if err != nil {
+		//		return 0, fmt.Errorf("failed to open file: %w", err)
+		//	}
+		//	defer safeClose(fp)
+		//
+		//	buff := make([]byte, defaultChunkSize)
+		//
+		//	var total int
+		//	for {
+		//		n, err := fp.Read(buff)
+		//		total += n
+		//
+		//		if err != nil {
+		//			if err == io.EOF {
+		//				break
+		//			}
+		//
+		//			return total, fmt.Errorf("failed to read from file: %w", err)
+		//		}
+		//	}
+		//
+		//	return total, nil
+		//}},
+	},
+	"nfs read ahead": {
+		// "128kb": &setReadAhead{readAhead: "128"}, // always bad
+		"4mb": &setReadAhead{readAhead: "4096"},
+	},
+	"net.core.rmem_max": {
+		"208kb (default)": &setSysFs{path: "net.core.rmem_max", newValue: "212992"},
+		"32mb":            &setSysFs{path: "net.core.rmem_max", newValue: "33554432"},
+	},
+	"net.ipv4.tcp_rmem": {
+		"4 kb / 128 kb / 6 mb (default)": &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 131072 6291456"},
+		"4 kb / 256 kb / 32 mb":          &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 262144 33554432"},
+	},
+	"sunrpc.tcp_slot_table_entries": {
+		"2 (default)": &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "2"},
+		"128":         &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "128"},
+	},
+}
 
 func main() {
 	ctx := context.Background()
 
 	var p processor
 	var csvPath string
+	var filestoreName, filestoreZone string
 
 	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	f.BoolVar(&p.nfsStat, "nfs-stat", false, "measure nfs stat")
 	f.BoolVar(&p.dropNfsCache, "drop-nfs-cache", true, "drop nfs cache")
-	f.IntVar(&p.bufferSize, "buffer-size", defaultChunkSize, "size of buffer to read files into")
-	f.DurationVar(&p.testDuration, "test-duration", 15*time.Second, "amount of time to run test")
-	f.IntVar(&p.onlyFileSize, "only-file-size", defaultChunkSize, "only read files of this size (in bytes)")
-	f.IntVar(&p.concurrentRequests, "concurrent-requests", 1, "number of concurrent requests to make")
+	f.IntVar(&p.limitFileCount, "limit-file-count", 10000, "limit number of files to read (0 = no limit)")
+	f.StringVar(&filestoreName, "filestore-name", "", "add filestore metadata to csv")
+	f.StringVar(&filestoreZone, "filestore-zone", "", "add filestore metadata to csv")
 	f.StringVar(&csvPath, "csv-path", "output.csv", "path to output csv file")
 	f.StringVar(&p.nfsStatFile, "nfs-stat-file", "/tmp/nfs-stat.txt", "file to store nfs stat")
+	f.DurationVar(&p.testDuration, "test-duration", 15*time.Second, "amount of time to run test")
 	_ = f.Parse(os.Args[1:])
 
 	switch paths := f.Args(); len(paths) {
@@ -52,33 +118,16 @@ func main() {
 		return
 	}
 
-	experiments := map[string]map[string]experiment{
-		"read method": {
-			"ReadAt": readMethodExperiment{p.readAtFile},
-			"Read":   readMethodExperiment{p.read},
-		},
-		"nfs read ahead": {
-			// "128kb": &setReadAhead{readAhead: "128"}, // always bad
-			"4mb": &setReadAhead{readAhead: "4096"},
-		},
-		"net.core.rmem_max": {
-			"208kb (default)": &setSysFs{path: "net.core.rmem_max", newValue: "212992"},
-			"32mb":            &setSysFs{path: "net.core.rmem_max", newValue: "33554432"},
-		},
-		"net.ipv4.tcp_rmem": {
-			"4 kb / 128 kb / 6 mb (default)": &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 131072 6291456"},
-			"4 kb / 256 kb / 32 mb":          &setSysFs{path: "net.ipv4.tcp_rmem", newValue: "4096 262144 33554432"},
-		},
-		"sunrpc.tcp_slot_table_entries": {
-			"2 (default)": &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "2"},
-			"128":         &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "128"},
-		},
+	println("getting filestore metadata ... ")
+	filestoreMetadata, err := getFilestoreMetadata(ctx, filestoreName, filestoreZone)
+	if err != nil {
+		log.Fatalf("failed to get filestore metadata for %q: %s", filestoreName, err)
 	}
 
 	var results []result
 
 	fmt.Println("generating files ... ")
-	if err := p.generateFiles(); err != nil {
+	if err := p.findFiles(); err != nil {
 		log.Fatalf("failed to generate files: %s", err)
 	}
 
@@ -94,17 +143,68 @@ func main() {
 	}
 
 	if csvPath != "" {
-		if err := dumpResultsToCSV(csvPath, results); err != nil {
+		if err := dumpResultsToCSV(csvPath, filestoreMetadata, results); err != nil {
 			log.Fatalf("failed to dump results to %q: %s", csvPath, err.Error())
 		}
 	}
 }
 
-func dumpResultsToCSV(path string, results []result) error {
+type filestoreMetadata struct {
+	CapacityGB  int
+	ReadIOPS    int
+	MaxReadMBps int
+}
+
+func getFilestoreMetadata(ctx context.Context, name, zone string) (filestoreMetadata, error) {
+	if name == "" {
+		return filestoreMetadata{}, nil
+	}
+
+	// get filestore metadata
+	output, err := exec.CommandContext(ctx, "gcloud", "filestore", "instances", "describe", name, "--zone", zone, "--format=json").CombinedOutput()
+	if err != nil {
+		return filestoreMetadata{}, fmt.Errorf("failed to get filestore metadata: %w", err)
+	}
+
+	var metadata filestoreInstance
+	if err := json.Unmarshal(output, &metadata); err != nil {
+		return filestoreMetadata{}, fmt.Errorf("failed to unmarshal filestore metadata: %w", err)
+	}
+
+	return filestoreMetadata{
+		CapacityGB:  mustParseInt(metadata.FileShares[0].CapacityGb),
+		ReadIOPS:    mustParseInt(metadata.PerformanceLimits.MaxReadIOPS),
+		MaxReadMBps: mustParseInt(metadata.PerformanceLimits.MaxReadThroughputBytesPerSecond) / 1024 / 1024,
+	}, nil
+}
+
+func mustParseInt(s string) int {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
+
+type filestoreInstance struct {
+	FileShares []struct {
+		CapacityGb string `json:"capacityGb"`
+	} `json:"fileShares"`
+	PerformanceLimits struct {
+		MaxReadThroughputBytesPerSecond string `json:"maxReadThroughputBps"`
+		MaxReadIOPS                     string `json:"maxReadIops"`
+	} `json:"performanceLimits"`
+}
+
+func toIntString(i int) string {
+	return strconv.Itoa(i)
+}
+
+func dumpResultsToCSV(path string, metadata filestoreMetadata, results []result) error {
 	// 1. Identify all experiment keys
 	experimentKeysMap := make(map[string]struct{})
 	for _, res := range results {
-		for k := range res.scenario {
+		for k := range res.scenario.elements {
 			experimentKeysMap[k] = struct{}{}
 		}
 	}
@@ -115,7 +215,7 @@ func dumpResultsToCSV(path string, results []result) error {
 	slices.Sort(experimentKeys)
 
 	// 2. Identify all metrics
-	metrics := []string{"count", "min", "p50", "p95", "p99", "max", "stddev"}
+	metrics := []string{"files per second", "min", "mean", "p50", "p95", "p99", "max", "stddev"}
 
 	// 3. Open output.csv
 	f, err := os.Create(path)
@@ -125,7 +225,9 @@ func dumpResultsToCSV(path string, results []result) error {
 	defer safeClose(f)
 
 	// 4. Write header
-	header := append(slices.Clone(experimentKeys), metrics...)
+	header := []string{"capacity (GB)", "read iops", "max read bandwidth (MBps)"}
+	header = append(header, experimentKeys...)
+	header = append(header, metrics...)
 	if _, err := fmt.Fprintln(f, strings.Join(header, ",")); err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
@@ -133,11 +235,16 @@ func dumpResultsToCSV(path string, results []result) error {
 	// 5. Write data rows
 	for _, res := range results {
 		row := make([]string, 0, len(header))
+		row = append(row,
+			toIntString(metadata.CapacityGB),
+			toIntString(metadata.ReadIOPS),
+			toIntString(metadata.MaxReadMBps),
+		)
 
 		// Experiment values
 		for _, k := range experimentKeys {
 			val := ""
-			if e, ok := res.scenario[k]; ok {
+			if e, ok := res.scenario.elements[k]; ok {
 				val = e.name
 			}
 			row = append(row, val)
@@ -146,8 +253,9 @@ func dumpResultsToCSV(path string, results []result) error {
 		// Metric values
 		s := res.summary
 		row = append(row,
-			fmt.Sprintf("%d", s.count),
+			toIntString(int(float64(res.totalSuccessfulReads)/res.testDuration.Seconds())),
 			toMillis(s.minTime),
+			toMillis(s.mean),
 			toMillis(s.p50),
 			toMillis(s.p95),
 			toMillis(s.p99),
@@ -160,7 +268,7 @@ func dumpResultsToCSV(path string, results []result) error {
 		}
 	}
 
-	fmt.Println("\nResults dumped to output.csv")
+	fmt.Println("\nResults dumped to " + path)
 
 	return nil
 }
@@ -172,6 +280,10 @@ func toMillis(minTime time.Duration) string {
 type result struct {
 	scenario scenario
 	summary  durationSummary
+
+	concurrency          int
+	totalSuccessfulReads int
+	testDuration         time.Duration
 }
 
 func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[scenario] {
@@ -187,8 +299,9 @@ func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[sc
 		generate = func(index int, current scenario) bool {
 			if index == len(keys) {
 				// Create a copy of the scenario to yield
-				s := make(scenario, len(current))
-				maps.Copy(s, current)
+				var s scenario
+				s.elements = make(map[string]element, len(current.elements))
+				maps.Copy(s.elements, current.elements)
 
 				return yield(s)
 			}
@@ -203,7 +316,7 @@ func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[sc
 			slices.Sort(optionNames)
 
 			for _, name := range optionNames {
-				current[key] = element{name: name, exp: options[name]}
+				current.elements[key] = element{name: name, exp: options[name]}
 				if !generate(index+1, current) {
 					return false
 				}
@@ -212,7 +325,9 @@ func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[sc
 			return true
 		}
 
-		generate(0, make(scenario, len(keys)))
+		var s scenario
+		s.elements = make(map[string]element, len(keys))
+		generate(0, s)
 	}
 }
 
@@ -260,6 +375,17 @@ func (s *setReadAhead) teardown(_ context.Context, _ *processor) error {
 }
 
 var _ experiment = (*setReadAhead)(nil)
+
+type setConcurrentRequests struct {
+	concurrentRequests int
+}
+
+func (s *setConcurrentRequests) setup(_ context.Context, p *processor) error {
+	p.concurrentRequests = s.concurrentRequests
+	return nil
+}
+
+func (s *setConcurrentRequests) teardown(_ context.Context, _ *processor) error { return nil }
 
 type setSysFs struct {
 	path     string
@@ -315,10 +441,9 @@ type processor struct {
 	dropNfsCache       bool
 	nfsStat            bool
 	testDuration       time.Duration
-	bufferSize         int
-	onlyFileSize       int
 	readMethod         func(string) (int, error)
 	concurrentRequests int
+	limitFileCount     int
 
 	allFiles    []string
 	nfsStatFile string
@@ -333,12 +458,16 @@ type element struct {
 	name string
 	exp  experiment
 }
-type scenario map[string]element
+
+type scenario struct {
+	concurrency int
+	elements    map[string]element
+}
 
 func (s scenario) setup(ctx context.Context, p *processor) error {
 	var errs []error
 
-	for _, e := range s {
+	for _, e := range s.elements {
 		if err := e.exp.setup(ctx, p); err != nil {
 			errs = append(errs, fmt.Errorf("failed to setup %q: %w", e, err))
 		}
@@ -350,7 +479,7 @@ func (s scenario) setup(ctx context.Context, p *processor) error {
 func (s scenario) teardown(ctx context.Context, p *processor) error {
 	var errs []error
 
-	for name, e := range s {
+	for name, e := range s.elements {
 		if err := e.exp.teardown(ctx, p); err != nil {
 			errs = append(errs, fmt.Errorf("failed to teardown %q: %w", name, err))
 		}
@@ -361,14 +490,14 @@ func (s scenario) teardown(ctx context.Context, p *processor) error {
 
 func (s scenario) Name() any {
 	var keys []string
-	for k := range s {
+	for k := range s.elements {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
 
 	var values []string
 	for _, k := range keys {
-		values = append(values, fmt.Sprintf("%s=%s", k, s[k].name))
+		values = append(values, fmt.Sprintf("%s=%s", k, s.elements[k].name))
 	}
 
 	return strings.Join(values, "; ")
@@ -408,7 +537,7 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 
 	allFiles := &files{
 		rand:  rand.New(rand.NewSource(time.Now().UnixNano())),
-		paths: p.allFiles,
+		paths: slices.Clone(p.allFiles),
 	}
 
 	for testCtx.Err() == nil {
@@ -446,6 +575,10 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 
 			sizes = append(sizes, size)
 			reads = append(reads, duration)
+
+			if duration < implausibleTime {
+				fmt.Printf("!! read %d bytes from %s in %s\n", size, f, duration.Round(time.Millisecond))
+			}
 		}()
 	}
 
@@ -457,7 +590,6 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 
 	// render times
 	readSummary := summarizeDurations(reads)
-	printDurationSummary("reads", readSummary)
 
 	if p.nfsStat {
 		if err := p.compareNfsStat(ctx); err != nil {
@@ -466,21 +598,18 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 	}
 
 	return result{
-		scenario: scenario,
-		summary:  readSummary,
+		scenario:             scenario,
+		summary:              readSummary,
+		concurrency:          p.concurrentRequests,
+		totalSuccessfulReads: len(reads),
+		testDuration:         p.testDuration,
 	}, nil
 }
 
-func printDurationSummary(label string, s durationSummary) {
-	fmt.Printf(`
-   %s: p50 / p95 / p99 (stddev): %s / %s / %s (%s) [%d reads]
-`, label, s.p50, s.p95, s.p99, s.stddev, s.count)
-}
-
-func (p *processor) findFiles(path string) ([]string, error) {
+func (p *processor) findFiles() error {
 	var paths []string
 
-	err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(p.path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -491,25 +620,30 @@ func (p *processor) findFiles(path string) ([]string, error) {
 		}
 
 		// If fixedSize is specified, check the file size
-		if p.onlyFileSize > 0 {
-			info, err := d.Info()
-			if err != nil {
-				return err
-			}
-			if info.Size() != int64(p.onlyFileSize) {
-				return nil
-			}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if info.Size() != expectedFileSize {
+			return nil
 		}
 
 		paths = append(paths, path)
 
+		if p.limitFileCount > 0 && len(paths) >= p.limitFileCount {
+			return filepath.SkipAll
+		}
+
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to find files in %q: %w", p.path, err)
 	}
 
-	return paths, nil
+	p.allFiles = paths
+
+	fmt.Printf("found %d files\n", len(p.allFiles))
+	return nil
 }
 
 type files struct {
@@ -522,51 +656,17 @@ func (f *files) selectFile() (string, error) {
 		return "", fmt.Errorf("no files found")
 	}
 
-	idx := rand.Intn(len(f.paths))
+	idx := f.rand.Intn(len(f.paths))
 	path := f.paths[idx]
 
 	// remove path from paths
-	f.paths = append(f.paths[:idx], f.paths[idx+1:]...)
+	f.paths = removeAtIndex(f.paths, idx)
 
 	return path, nil
 }
 
-func (p *processor) readAtFile(path string) (int, error) {
-	fp, err := os.Open(path)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer safeClose(fp)
-
-	buff := make([]byte, p.bufferSize)
-
-	return fp.ReadAt(buff, 0)
-}
-
-func (p *processor) read(path string) (int, error) {
-	fp, err := os.Open(path)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer safeClose(fp)
-
-	buff := make([]byte, p.bufferSize)
-
-	var total int
-	for {
-		n, err := fp.Read(buff)
-		total += n
-
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			return total, fmt.Errorf("failed to read from file: %w", err)
-		}
-	}
-
-	return total, nil
+func removeAtIndex[T any](items []T, idx int) []T {
+	return slices.Delete(items, idx, idx+1)
 }
 
 func (p *processor) storeNfsStat() error {
@@ -605,18 +705,6 @@ func (p *processor) compareNfsStat(ctx context.Context) error {
 
 	summarizeNfsstat(stats)
 
-	return nil
-}
-
-func (p *processor) generateFiles() error {
-	// find 4 MB files under $path
-	var err error
-	p.allFiles, err = p.findFiles(p.path)
-	if err != nil {
-		return fmt.Errorf("failed to find files in %q: %w", p.path, err)
-	}
-
-	fmt.Printf("found %d files\n", len(p.allFiles))
 	return nil
 }
 
@@ -684,8 +772,7 @@ func safeClose(fp *os.File) {
 }
 
 type durationSummary struct {
-	count                                   int
-	minTime, p50, p95, p99, maxTime, stddev time.Duration
+	minTime, mean, p50, p95, p99, maxTime, stddev time.Duration
 }
 
 func summarizeDurations(reads []time.Duration) durationSummary {
@@ -721,9 +808,9 @@ func summarizeDurations(reads []time.Duration) durationSummary {
 	stdDev := math.Sqrt(varianceSum / float64(n))
 
 	return durationSummary{
-		count:   n,
 		minTime: reads[0],
 		maxTime: reads[n-1],
+		mean:    time.Duration(mean),
 		p50:     percentile(50),
 		p95:     percentile(95),
 		p99:     percentile(99),

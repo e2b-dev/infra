@@ -81,18 +81,18 @@ func TestGenerateScenarios(t *testing.T) {
 
 	// Check if all combinations are present
 	expected := []scenario{
-		{"a": {"1", mockExperiment{"a1"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"1", mockExperiment{"a1"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"1", mockExperiment{"a1"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"1", mockExperiment{"a1"}}, "b": {"y", mockExperiment{"by"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"1", mockExperiment{"a1"}}, "b": {"y", mockExperiment{"by"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"1", mockExperiment{"a1"}}, "b": {"y", mockExperiment{"by"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"2", mockExperiment{"a2"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"2", mockExperiment{"a2"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"2", mockExperiment{"a2"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"2", mockExperiment{"a2"}}, "b": {"y", mockExperiment{"by"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"2", mockExperiment{"a2"}}, "b": {"y", mockExperiment{"by"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}},
-		{"a": {"2", mockExperiment{"a2"}}, "b": {"y", mockExperiment{"by"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}},
+		{elements: map[string]element{"a": {"1", mockExperiment{"a1"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"1", mockExperiment{"a1"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"1", mockExperiment{"a1"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"1", mockExperiment{"a1"}}, "b": {"y", mockExperiment{"by"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"1", mockExperiment{"a1"}}, "b": {"y", mockExperiment{"by"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"1", mockExperiment{"a1"}}, "b": {"y", mockExperiment{"by"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"2", mockExperiment{"a2"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"2", mockExperiment{"a2"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"2", mockExperiment{"a2"}}, "b": {"x", mockExperiment{"bx"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"2", mockExperiment{"a2"}}, "b": {"y", mockExperiment{"by"}}, "c": {"a", mockExperiment{"ca"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"2", mockExperiment{"a2"}}, "b": {"y", mockExperiment{"by"}}, "c": {"b", mockExperiment{"cb"}}, "d": {"only", mockExperiment{"donly"}}}},
+		{elements: map[string]element{"a": {"2", mockExperiment{"a2"}}, "b": {"y", mockExperiment{"by"}}, "c": {"c", mockExperiment{"cc"}}, "d": {"only", mockExperiment{"donly"}}}},
 	}
 
 	assert.Len(t, scenarios, len(expected))
@@ -107,8 +107,10 @@ func TestDumpResultsToCSV(t *testing.T) {
 	results := []result{
 		{
 			scenario: scenario{
-				"exp1": {name: "val1"},
-				"exp2": {name: "val2"},
+				elements: map[string]element{
+					"exp1": {name: "val1"},
+					"exp2": {name: "val2"},
+				},
 			},
 			summary: durationSummary{
 				count:   10,
@@ -122,8 +124,10 @@ func TestDumpResultsToCSV(t *testing.T) {
 		},
 		{
 			scenario: scenario{
-				"exp1": {name: "val3"},
-				"exp2": {name: "val4"},
+				elements: map[string]element{
+					"exp1": {name: "val3"},
+					"exp2": {name: "val4"},
+				},
 			},
 			summary: durationSummary{
 				count:   20,
@@ -141,7 +145,7 @@ func TestDumpResultsToCSV(t *testing.T) {
 	tempCSV := filepath.Join(tempDir, "output.csv")
 	defer os.Remove(tempCSV)
 
-	err := dumpResultsToCSV(tempCSV, results)
+	err := dumpResultsToCSV(tempCSV, filestoreMetadata{}, results)
 	require.NoError(t, err)
 
 	content, err := os.ReadFile(tempCSV)
@@ -196,4 +200,58 @@ func TestSummarizeDurations(t *testing.T) {
 		summary := summarizeDurations(durations)
 		assert.Equal(t, 23*time.Millisecond, summary.p50)
 	})
+}
+
+func TestRemoveAtIndex(t *testing.T) {
+	t.Run("middle", func(t *testing.T) {
+		items := []int{1, 2, 3, 4, 5}
+		result := removeAtIndex(items, 2)
+		assert.Equal(t, []int{1, 2, 4, 5}, result)
+	})
+
+	t.Run("first", func(t *testing.T) {
+		items := []int{1, 2, 3}
+		result := removeAtIndex(items, 0)
+		assert.Equal(t, []int{2, 3}, result)
+	})
+
+	t.Run("last", func(t *testing.T) {
+		items := []int{1, 2, 3}
+		result := removeAtIndex(items, 2)
+		assert.Equal(t, []int{1, 2}, result)
+	})
+
+	t.Run("original_slice_is_modified", func(t *testing.T) {
+		items := []int{1, 2, 3, 4, 5}
+		_ = removeAtIndex(items, 2)
+		// slices.Delete modifies the original slice and zeros out the tail
+		assert.Equal(t, []int{1, 2, 4, 5, 0}, items)
+	})
+
+	t.Run("single_element", func(t *testing.T) {
+		items := []int{1}
+		result := removeAtIndex(items, 0)
+		assert.Equal(t, []int{}, result)
+	})
+
+	t.Run("empty_slice_panic", func(t *testing.T) {
+		assert.Panics(t, func() {
+			removeAtIndex([]int{}, 0)
+		})
+	})
+
+	t.Run("out_of_bounds_panic", func(t *testing.T) {
+		assert.Panics(t, func() {
+			removeAtIndex([]int{1, 2}, 2)
+		})
+	})
+}
+
+func TestGetFilestoreMetadata(t *testing.T) {
+	t.Parallel()
+
+	metadata, err := getFilestoreMetadata(t.Context(), "e2b-shared-disk-store", "us-west1-a")
+	require.NoError(t, err)
+
+	assert.NotEqual(t, 0, metadata.ReadIOPS)
 }
