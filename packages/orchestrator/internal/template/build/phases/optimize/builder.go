@@ -3,6 +3,7 @@ package optimize
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
@@ -160,10 +162,9 @@ func (pb *OptimizeBuilder) Build(
 		}, nil
 	}
 
-	pageCount := uint(0)
+	pageCount := 0
 	if memoryPrefetchMapping != nil {
-		pages := memoryPrefetchMapping.Pages
-		pageCount = pages.Count()
+		pageCount = memoryPrefetchMapping.Count()
 	}
 
 	pb.logger.Info(ctx, fmt.Sprintf("Collected prefetch mapping with %d memory pages", pageCount))
@@ -178,7 +179,7 @@ func (pb *OptimizeBuilder) Build(
 func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 	ctx context.Context,
 	localTemplate sbxtemplate.Template,
-) (*metadata.PrefetchMapping, error) {
+) (*metadata.MemoryPrefetchMapping, error) {
 	ctx, span := tracer.Start(ctx, "collect prefetch-mapping")
 	defer span.End()
 
@@ -208,27 +209,54 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 	}
 	defer sbx.Close(ctx)
 
-	// Get the dirty pages from the memory backend
-	// These are the pages that were requested during the sandbox start
-	diffMetadata, err := sbx.MemoryDiffMetadata(ctx)
+	// Get the prefetch data from the memory backend
+	prefetchData, err := sbx.MemoryPrefetchData(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get diff metadata: %w", err)
+		return nil, fmt.Errorf("failed to get prefetch data: %w", err)
 	}
 
-	if diffMetadata.Dirty == nil || diffMetadata.Dirty.Count() == 0 {
-		pb.logger.Debug(ctx, "no dirty pages found for prefetch mapping")
+	if len(prefetchData.PageEntries) == 0 {
+		pb.logger.Debug(ctx, "no pages found for prefetch mapping")
 
 		return nil, nil
 	}
 
 	span.SetAttributes(
-		attribute.Int64("dirty_pages", int64(diffMetadata.Dirty.Count())),
-		attribute.Int64("block_size", diffMetadata.BlockSize),
+		attribute.Int64("prefetch_pages", int64(len(prefetchData.PageEntries))),
+		attribute.Int64("block_size", prefetchData.BlockSize),
 	)
 
-	// Create prefetch mapping from dirty pages
-	return &metadata.PrefetchMapping{
-		Pages:     diffMetadata.Dirty,
-		BlockSize: diffMetadata.BlockSize,
+	// Collect entries and sort by Order to get ordered indices
+	entries := make([]block.PageEntry, 0, len(prefetchData.PageEntries))
+	for _, entry := range prefetchData.PageEntries {
+		entries = append(entries, entry)
+	}
+	slices.SortFunc(entries, func(a, b block.PageEntry) int {
+		if a.Order < b.Order {
+			return -1
+		}
+		if a.Order > b.Order {
+			return 1
+		}
+
+		return 0
+	})
+
+	// Build ordered indices and metadata
+	orderedIndices := make([]uint64, len(entries))
+	pageMetadata := make(map[uint64]metadata.PageMetadata, len(entries))
+	for i, entry := range entries {
+		orderedIndices[i] = entry.Index
+		pageMetadata[entry.Index] = metadata.PageMetadata{
+			Order:     float64(entry.Order),
+			FaultType: entry.FaultType,
+		}
+	}
+
+	// Create prefetch mapping with ordered indices and metadata
+	return &metadata.MemoryPrefetchMapping{
+		Indices:   orderedIndices,
+		Metadata:  pageMetadata,
+		BlockSize: prefetchData.BlockSize,
 	}, nil
 }

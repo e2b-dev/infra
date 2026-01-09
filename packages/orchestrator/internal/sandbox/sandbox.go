@@ -833,13 +833,14 @@ func (s *Sandbox) Pause(
 	}, nil
 }
 
-func (s *Sandbox) MemoryDiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
-	diffMetadata, err := s.Resources.memory.DiffMetadata(ctx)
+// MemoryPrefetchData returns the ordered page fault data for prefetch mapping.
+func (s *Sandbox) MemoryPrefetchData(ctx context.Context) (*uffd.PrefetchData, error) {
+	prefetchData, err := s.Resources.memory.PrefetchData(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get diff metadata: %w", err)
+		return nil, fmt.Errorf("failed to get prefetch data: %w", err)
 	}
 
-	return diffMetadata, nil
+	return prefetchData, nil
 }
 
 func pauseProcessMemory(

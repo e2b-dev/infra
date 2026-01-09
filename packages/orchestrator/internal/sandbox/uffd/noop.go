@@ -58,6 +58,14 @@ func (m *NoopMemory) DiffMetadata(ctx context.Context) (*header.DiffMetadata, er
 	}, nil
 }
 
+func (m *NoopMemory) PrefetchData(_ context.Context) (*PrefetchData, error) {
+	// NoopMemory doesn't track page faults, so return empty data
+	return &PrefetchData{
+		PageEntries: nil,
+		BlockSize:   m.blockSize,
+	}, nil
+}
+
 func (m *NoopMemory) Start(context.Context, string) error {
 	return nil
 }

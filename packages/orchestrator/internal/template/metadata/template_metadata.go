@@ -8,9 +8,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ioutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -56,17 +56,36 @@ type TemplateMetadata struct {
 	FirecrackerVersion string `json:"firecracker_version"`
 }
 
-// PrefetchMapping stores page offsets that should be prefetched when starting a sandbox.
+// PageMetadata stores metadata about a prefetched page for statistics and analysis.
+type PageMetadata struct {
+	// Order is the sequence number when the page was faulted (1, 2, ...)
+	Order float64 `json:"order"`
+	// FaultType indicates what kind of access caused this page to be loaded
+	FaultType block.FaultType `json:"fault_type"`
+}
+
+// MemoryPrefetchMapping stores page offsets that should be prefetched when starting a sandbox.
 // This is used to speed up sandbox starts by proactively fetching pages that are likely to be needed.
-type PrefetchMapping struct {
-	// Pages is a bitset of page indices to prefetch
-	Pages *bitset.BitSet `json:"pages"`
+type MemoryPrefetchMapping struct {
+	// Indices is an ordered array of block indices to prefetch, preserving the order in which pages were faulted
+	Indices []uint64 `json:"indices"`
+	// Metadata contains per-page metadata keyed by block index
+	Metadata map[uint64]PageMetadata `json:"metadata"`
 	// BlockSize is the size of each page/block in bytes
 	BlockSize int64 `json:"block_size"`
 }
 
+// Count returns the number of pages to prefetch.
+func (p *MemoryPrefetchMapping) Count() int {
+	if p == nil {
+		return 0
+	}
+
+	return len(p.Indices)
+}
+
 type Prefetch struct {
-	Memory *PrefetchMapping `json:"memory"`
+	Memory *MemoryPrefetchMapping `json:"memory"`
 }
 
 type Template struct {

@@ -36,7 +36,7 @@ type Prefetcher struct {
 	logger       logger.Logger
 	source       block.Slicer
 	uffd         uffd.MemoryBackend
-	mapping      *metadata.PrefetchMapping
+	mapping      *metadata.MemoryPrefetchMapping
 	featureFlags *featureflags.Client
 }
 
@@ -44,7 +44,7 @@ func New(
 	logger logger.Logger,
 	source block.Slicer,
 	uffd uffd.MemoryBackend,
-	mapping *metadata.PrefetchMapping,
+	mapping *metadata.MemoryPrefetchMapping,
 	featureFlags *featureflags.Client,
 ) *Prefetcher {
 	return &Prefetcher{
@@ -73,8 +73,8 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 		return nil
 	}
 
-	pages := p.mapping.Pages
-	if pages == nil || pages.Count() == 0 {
+	indices := p.mapping.Indices
+	if len(indices) == 0 {
 		p.logger.Debug(ctx, "prefetch: no pages to prefetch")
 
 		return nil
@@ -85,7 +85,7 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	maxCopyWorkers := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxCopyWorkers)
 
 	blockSize := p.mapping.BlockSize
-	totalPages := pages.Count()
+	totalPages := len(indices)
 
 	span.SetAttributes(
 		attribute.Int64("prefetch.total_pages", int64(totalPages)),
@@ -95,7 +95,7 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	)
 
 	p.logger.Debug(ctx, "prefetch: starting background prefetch",
-		zap.Uint("total_pages", totalPages),
+		zap.Int("total_pages", totalPages),
 		zap.Int64("block_size", blockSize),
 		zap.Int("max_fetch_workers", maxFetchWorkers),
 		zap.Int("max_copy_workers", maxCopyWorkers),
@@ -116,9 +116,9 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	var fetchWg sync.WaitGroup
 	var copyWg sync.WaitGroup
 
-	// Queue all offsets to fetch
-	for i, exists := pages.NextSet(0); exists; i, exists = pages.NextSet(i + 1) {
-		fetchCh <- int64(i) * blockSize
+	// Queue all offsets to fetch in the order they were originally faulted
+	for _, idx := range indices {
+		fetchCh <- int64(idx) * blockSize
 	}
 	close(fetchCh)
 
@@ -147,7 +147,7 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 		zap.Uint64("copied", copiedCount.Load()),
 		zap.Uint64("fetch_skipped", fetchSkippedCount.Load()),
 		zap.Uint64("copy_skipped", copySkippedCount.Load()),
-		zap.Uint("total", totalPages),
+		zap.Int("total", totalPages),
 	)
 
 	return nil
