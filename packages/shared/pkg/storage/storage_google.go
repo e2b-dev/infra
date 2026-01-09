@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"cloud.google.com/go/storage/experimental"
 	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -80,7 +81,7 @@ var (
 )
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
-	client, err := storage.NewGRPCClient(ctx)
+	client, err := storage.NewGRPCClient(ctx, experimental.WithGRPCBidiReads())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
