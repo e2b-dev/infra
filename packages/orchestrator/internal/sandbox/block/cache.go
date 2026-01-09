@@ -321,18 +321,29 @@ func (c *Cache) address(off int64) *byte {
 	return &(*c.mmap)[off]
 }
 
-func (c *Cache) addressBytes(off, length int64) ([]byte, error) {
-	if c.isClosed() {
-		return nil, NewErrCacheClosed(c.filePath)
-	}
+// addressBytes returns a slice of the mmap and a function to release the read lock which blocks the cache from being closed.
+func (c *Cache) addressBytes(off, length int64) ([]byte, func(), error) {
+	c.mu.RLock()
 
 	if c.mmap == nil {
-		return nil, nil
+		c.mu.RUnlock()
+
+		return nil, func() {}, nil
+	}
+
+	if c.isClosed() {
+		c.mu.RUnlock()
+
+		return nil, func() {}, NewErrCacheClosed(c.filePath)
 	}
 
 	end := min(off+length, c.size)
 
-	return (*c.mmap)[off:end], nil
+	releaseCacheCloseLock := func() {
+		c.mu.RUnlock()
+	}
+
+	return (*c.mmap)[off:end], releaseCacheCloseLock, nil
 }
 
 func (c *Cache) BlockSize() int64 {

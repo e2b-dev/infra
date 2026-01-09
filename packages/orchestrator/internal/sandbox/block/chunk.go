@@ -149,10 +149,12 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				}
 
 				// The size of the buffer is adjusted if the last chunk is not a multiple of the block size.
-				b, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
+				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
 				if err != nil {
 					return err
 				}
+
+				defer releaseCacheCloseLock()
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
