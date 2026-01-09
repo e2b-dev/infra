@@ -1,0 +1,304 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"iter"
+	"log"
+	"maps"
+	"math"
+	"os"
+	"slices"
+	"sync"
+	"time"
+)
+
+const (
+	kilobyte        = 1024
+	megabyte        = 1024 * kilobyte
+	gigabyte        = 1024 * megabyte
+	implausibleTime = time.Millisecond * 4
+)
+
+func main() {
+	ctx := context.Background()
+
+	var p processor
+	var csvPath string
+
+	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	f.IntVar(&p.limitFileCount, "limit-file-count", 10000, "limit number of files to read (0 = no limit)")
+	f.Int64Var(&p.chunkSize, "chunk-size", 4*megabyte, "size of chunk to read")
+	f.Int64Var(&p.minFileSize, "min-file-size", 1*gigabyte, "number of concurrent requests")
+	f.StringVar(&csvPath, "csv-path", "output.csv", "path to output csv file")
+	f.DurationVar(&p.testDuration, "test-duration", 15*time.Second, "amount of time to run test")
+	_ = f.Parse(os.Args[1:])
+
+	switch paths := f.Args(); len(paths) {
+	case 0:
+		log.Fatal("bucket must be specified")
+	case 1:
+		p.bucket = paths[0]
+	default:
+		log.Fatal("only one bucket can be specified")
+
+		return
+	}
+
+	fmt.Println("getting metadata ... ")
+	environmentMetadata, err := getEnvironmentMetadata(ctx)
+	if err != nil {
+		log.Fatalf("failed to get metadata: %s", err)
+	}
+
+	var results []result
+
+	fmt.Println("generating files ... ")
+	if err := p.findFiles(); err != nil {
+		log.Fatalf("failed to generate files: %s", err)
+	}
+
+	for scenario := range generateScenarios(experiments) {
+		fmt.Printf("\n=== Scenario: %s ===\n", scenario.Name())
+
+		result, err := p.run(ctx, scenario)
+		if err != nil {
+			log.Fatalf("failed to run scenario: %s", err.Error())
+		}
+
+		results = append(results, result)
+	}
+
+	if csvPath != "" {
+		if err := dumpResultsToCSV(csvPath, environmentMetadata, results); err != nil {
+			log.Fatalf("failed to dump results to %q: %s", csvPath, err.Error())
+		}
+	}
+}
+
+type fileInfo struct {
+	path string
+	size int64
+}
+
+type readInfo struct {
+	path   string
+	offset int64
+	buffer []byte
+}
+
+type (
+	readMethod   func(context.Context, readInfo) (time.Duration, error)
+	bufferMethod func() []byte
+)
+
+type processor struct {
+	// configuration
+	minFileSize    int64
+	chunkSize      int64
+	bucket         string
+	testDuration   time.Duration
+	limitFileCount int
+
+	// state
+	allFiles []fileInfo
+}
+
+type options struct {
+	bucket             string
+	chunkSize          int64
+	concurrentRequests int
+	makeBuffer         bufferMethod
+	readMethod         readMethod
+	readMiddleware     []func(readMethod) readMethod
+}
+
+func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[scenario] {
+	return func(yield func(scenario) bool) {
+		keys := make([]string, 0, len(experiments))
+		for k := range experiments {
+			keys = append(keys, k)
+		}
+
+		slices.Sort(keys)
+
+		var generate func(int, scenario) bool
+		generate = func(index int, current scenario) bool {
+			if index == len(keys) {
+				// Create a copy of the scenario to yield
+				var s scenario
+				s.elements = make(map[string]element, len(current.elements))
+				maps.Copy(s.elements, current.elements)
+
+				return yield(s)
+			}
+
+			key := keys[index]
+			options := experiments[key]
+
+			optionNames := make([]string, 0, len(options))
+			for name := range options {
+				optionNames = append(optionNames, name)
+			}
+			slices.Sort(optionNames)
+
+			for _, name := range optionNames {
+				current.elements[key] = element{name: name, exp: options[name]}
+				if !generate(index+1, current) {
+					return false
+				}
+			}
+
+			return true
+		}
+
+		var s scenario
+		s.elements = make(map[string]element, len(keys))
+		generate(0, s)
+	}
+}
+
+func (p *processor) run(ctx context.Context, scenario scenario) (result, error) {
+	logger := log.New(os.Stdout, "", log.LstdFlags)
+
+	// logger.Println("setting up experiments ... ")
+	opts, err := scenario.setup(ctx, p)
+	if err != nil {
+		return result{}, fmt.Errorf("failed to setup experiments: %w", err)
+	}
+
+	// open/read files into buffer
+	// logger.Println("starting reads ... ")
+	var reads []time.Duration
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	semaphore := make(chan struct{}, opts.concurrentRequests)
+
+	testCtx, cancel := context.WithTimeout(ctx, p.testDuration)
+	defer cancel()
+
+	allFiles := newFiles(slices.Clone(p.allFiles), p.chunkSize)
+
+	for testCtx.Err() == nil {
+		path, offset, err := allFiles.nextRead()
+		if err != nil {
+			logger.Printf("failed to get file: %v", err)
+
+			break
+		}
+
+		semaphore <- struct{}{}
+
+		wg.Add(1)
+		go func() {
+			defer func() { <-semaphore }()
+			defer wg.Done()
+
+			readInfo := readInfo{
+				path:   path,
+				offset: offset,
+				buffer: opts.makeBuffer(),
+			}
+			duration, err := opts.readMethod(ctx, readInfo)
+			if err != nil {
+				logger.Println("failed to time file read", "error", err)
+
+				return
+			}
+
+			if testCtx.Err() != nil {
+				return
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			reads = append(reads, duration)
+
+			if duration < implausibleTime {
+				fmt.Printf("!! read from %s in %s\n", path, duration.Round(time.Millisecond))
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if err := scenario.teardown(ctx, opts); err != nil {
+		return result{}, fmt.Errorf("failed to teardown experiments: %w", err)
+	}
+
+	// render times
+	readSummary := summarizeDurations(reads)
+
+	return result{
+		scenario:             scenario,
+		summary:              readSummary,
+		concurrency:          opts.concurrentRequests,
+		totalSuccessfulReads: len(reads),
+		testDuration:         p.testDuration,
+	}, nil
+}
+
+type result struct {
+	scenario scenario
+	summary  durationSummary
+
+	concurrency          int
+	totalSuccessfulReads int
+	testDuration         time.Duration
+}
+
+func safeClose(fp interface{ Close() error }) {
+	if err := fp.Close(); err != nil {
+		log.Println("close failed", "error", err)
+	}
+}
+
+type durationSummary struct {
+	minTime, mean, p50, p95, p99, maxTime, stddev time.Duration
+}
+
+func summarizeDurations(reads []time.Duration) durationSummary {
+	if len(reads) == 0 {
+		return durationSummary{}
+	}
+
+	// Sort to find percentiles, min, and max
+	slices.Sort(reads)
+
+	n := len(reads)
+
+	// Helper for percentiles
+	percentile := func(p float64) time.Duration {
+		idx := max(int(math.Ceil(p/100*float64(n)))-1, 0)
+
+		return reads[idx]
+	}
+
+	// Basic stats
+	var sum float64
+	for _, r := range reads {
+		sum += float64(r)
+	}
+	mean := sum / float64(n)
+
+	// Standard deviation
+	var varianceSum float64
+	for _, r := range reads {
+		diff := float64(r) - mean
+		varianceSum += diff * diff
+	}
+	stdDev := math.Sqrt(varianceSum / float64(n))
+
+	return durationSummary{
+		minTime: reads[0],
+		maxTime: reads[n-1],
+		mean:    time.Duration(mean),
+		p50:     percentile(50),
+		p95:     percentile(95),
+		p99:     percentile(99),
+		stddev:  time.Duration(stdDev),
+	}
+}
