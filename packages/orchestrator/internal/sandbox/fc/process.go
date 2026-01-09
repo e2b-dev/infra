@@ -224,6 +224,7 @@ func (p *Process) Create(
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
 
+	// Symlink /dev/null to the rootfs link path, so we can start the FC process without the rootfs and then symlink the real rootfs.
 	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
