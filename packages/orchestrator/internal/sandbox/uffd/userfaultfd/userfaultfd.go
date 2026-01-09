@@ -324,6 +324,8 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	// EEXIST means the page is already mapped, which is fine - another request
 	// or the normal page fault handler already mapped this page
 	if errors.Is(copyErr, unix.EEXIST) {
+		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
+
 		return nil
 	}
 

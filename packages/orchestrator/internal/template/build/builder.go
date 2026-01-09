@@ -26,7 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/base"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/finalize"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/prefetch"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/optimize"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/user"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
@@ -323,12 +323,13 @@ func runBuild(
 		builder.logger,
 	)
 
-	prefetchBuilder := prefetch.New(
+	optimizeBuilder := optimize.New(
 		bc,
 		builder.sandboxFactory,
 		builder.templateStorage,
 		builder.templateCache,
 		builder.proxy,
+		layerExecutor,
 		builder.sandboxes,
 		builder.logger,
 	)
@@ -347,7 +348,7 @@ func runBuild(
 	}
 	builders = append(builders, stepBuilders...)
 	builders = append(builders, postProcessingBuilder)
-	builders = append(builders, prefetchBuilder)
+	builders = append(builders, optimizeBuilder)
 
 	lastLayerResult, err := phases.Run(ctx, builder.logger, userLogger, bc, builder.metrics, builders)
 	if err != nil {
