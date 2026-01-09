@@ -11,28 +11,58 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"google.golang.org/api/option"
+	"google.golang.org/grpc"
 )
 
 var experiments = map[string]map[string]experiment{
 	"concurrent requests": {
-		"1":  &setConcurrentRequests{1},
-		"4":  &setConcurrentRequests{4},
-		"8":  &setConcurrentRequests{8},
-		"16": &setConcurrentRequests{16},
+		"1": &setConcurrentRequests{1},
+		//"4": &setConcurrentRequests{4},
+		//"8":  &setConcurrentRequests{8},
+		//"16": &setConcurrentRequests{16},
 		"32": &setConcurrentRequests{32},
 		"64": &setConcurrentRequests{64},
 	},
 	"anywhere cache": {
 		"uncached": nil,
-		"cached":   &skipFirstRead{},
+		//"cached":   &skipFirstRead{},
 	},
 	"shared buffer": {
-		"shared buffer": &sharedBuffer{},
-		"fresh buffer":  &alwaysNewBuffer{},
+		//"shared buffer": &sharedBuffer{},
+		"fresh buffer": &alwaysNewBuffer{},
+	},
+	"grpc metrics": {
+		"disabled": &grpcOption{option.WithTelemetryDisabled()},
+	},
+	"client metrics": {
+		"disabled": &grpcOption{storage.WithDisabledClientMetrics()},
+	},
+	"grpc connection pool": {
+		"default": nil,
+		"1":       &grpcOption{option.WithGRPCConnectionPool(1)},
+		"8":       &grpcOption{option.WithGRPCConnectionPool(4)},
+		"16":      &grpcOption{option.WithGRPCConnectionPool(16)},
+	},
+	"grpc initial window size": {
+		//"default": nil,
+		//"4MB":  &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte))},
+		//"8MB":  &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(8 * megabyte))},
+		"16MB": &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(16 * megabyte))},
+	},
+	"grpc initial conn window size": {
+		"default": nil,
+		"16MB":    &grpcOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(16 * megabyte))},
+		"32MB":    &grpcOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte))},
+	},
+	"service config": {
+		//"disabled": &grpcOption{option.WithGRPCDialOption(grpc.WithDisableServiceConfig())},  // breaks the test
+		"enabled": nil,
 	},
 	"read method": {
-		"http reader": newGoogleCloudHTTPClient(),
-		"grpc reader": newGoogleCloudGRPCClient(),
+		//"http":      newGoogleCloudHTTPClient(),
+		"grpc": newGoogleCloudGRPCClient(),
+		//"bidi grpc": newGoogleCloudGRPCClient(experimental.WithGRPCBidiReads()), // "The BidiReadObject RPC is not yet available for general use"
 	},
 }
 
@@ -71,18 +101,27 @@ func (s scenario) setup(ctx context.Context, p *processor) (*options, error) {
 		o.readMethod = m(o.readMethod)
 	}
 
+	var err error
+	if o.client, err = storage.NewGRPCClient(ctx, o.clientOptions...); err != nil {
+		return nil, fmt.Errorf("failed to create storage client: %w", err)
+	}
+
 	return &o, errors.Join(errs...)
 }
 
-func (s scenario) teardown(ctx context.Context, p *options) error {
+func (s scenario) teardown(ctx context.Context, o *options) error {
 	var errs []error
 
 	for name, e := range s.elements {
 		if e.exp != nil {
-			if err := e.exp.teardown(ctx, p); err != nil {
+			if err := e.exp.teardown(ctx, o); err != nil {
 				errs = append(errs, fmt.Errorf("failed to teardown %q: %w", name, err))
 			}
 		}
+	}
+
+	if err := o.client.Close(); err != nil {
+		return fmt.Errorf("failed to close storage client: %w", err)
 	}
 
 	return errors.Join(errs...)
@@ -118,34 +157,22 @@ func (s *setConcurrentRequests) teardown(_ context.Context, _ *options) error { 
 var _ experiment = (*setConcurrentRequests)(nil)
 
 type googleCloudGRPCClient struct {
-	client *storage.Client
+	opts []option.ClientOption
 }
 
 var _ experiment = (*googleCloudGRPCClient)(nil)
 
-func newGoogleCloudGRPCClient() *googleCloudGRPCClient {
-	return &googleCloudGRPCClient{}
+func newGoogleCloudGRPCClient(opts ...option.ClientOption) *googleCloudGRPCClient {
+	return &googleCloudGRPCClient{opts: opts}
 }
 
 func (g *googleCloudGRPCClient) setup(ctx context.Context, o *options) error {
-	var err error
-	g.client, err = storage.NewGRPCClient(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create storage client: %w", err)
-	}
-
 	o.readMethod = g.read(o)
 
 	return nil
 }
 
 func (g *googleCloudGRPCClient) teardown(ctx context.Context, o *options) error {
-	if err := g.client.Close(); err != nil {
-		return fmt.Errorf("failed to close storage client: %w", err)
-	}
-
-	g.client = nil
-
 	return nil
 }
 
@@ -153,7 +180,7 @@ func (r *googleCloudGRPCClient) read(o *options) readMethod {
 	return func(ctx context.Context, info readInfo) (time.Duration, error) {
 		now := time.Now()
 
-		rc, err := r.client.Bucket(o.bucket).Object(info.path).NewRangeReader(ctx, info.offset, o.chunkSize)
+		rc, err := o.client.Bucket(o.bucket).Object(info.path).NewRangeReader(ctx, info.offset, o.chunkSize)
 		if err != nil {
 			return 0, fmt.Errorf("failed to create reader: %w", err)
 		}
@@ -303,5 +330,20 @@ func (s alwaysNewBuffer) setup(_ context.Context, o *options) error {
 }
 
 func (s alwaysNewBuffer) teardown(ctx context.Context, p *options) error {
+	return nil
+}
+
+type grpcOption struct {
+	opt option.ClientOption
+}
+
+var _ experiment = (*grpcOption)(nil)
+
+func (g grpcOption) setup(ctx context.Context, o *options) error {
+	o.clientOptions = append(o.clientOptions, g.opt)
+	return nil
+}
+
+func (g grpcOption) teardown(ctx context.Context, o *options) error {
 	return nil
 }

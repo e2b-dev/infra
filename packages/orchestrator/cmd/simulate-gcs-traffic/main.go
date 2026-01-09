@@ -12,6 +12,9 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"cloud.google.com/go/storage"
+	"google.golang.org/api/option"
 )
 
 const (
@@ -21,13 +24,24 @@ const (
 	implausibleTime = time.Millisecond * 4
 )
 
+var histogramDurations = []time.Duration{
+	25 * time.Millisecond,
+	50 * time.Millisecond,
+	75 * time.Millisecond,
+	100 * time.Millisecond,
+	250 * time.Millisecond,
+	2500 * time.Millisecond,
+}
+
 func main() {
 	ctx := context.Background()
 
 	var p processor
 	var csvPath string
+	var gatherMetadata bool
 
 	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	f.BoolVar(&gatherMetadata, "gather-metadata", true, "gather metadata about files")
 	f.IntVar(&p.limitFileCount, "limit-file-count", 10000, "limit number of files to read (0 = no limit)")
 	f.Int64Var(&p.chunkSize, "chunk-size", 4*megabyte, "size of chunk to read")
 	f.Int64Var(&p.minFileSize, "min-file-size", 1*gigabyte, "number of concurrent requests")
@@ -46,10 +60,18 @@ func main() {
 		return
 	}
 
-	fmt.Println("getting metadata ... ")
-	environmentMetadata, err := getEnvironmentMetadata(ctx)
-	if err != nil {
-		log.Fatalf("failed to get metadata: %s", err)
+	var err error
+	var metadata environmentMetadata
+	if gatherMetadata {
+		fmt.Println("getting metadata ... ")
+		metadata, err = getEnvironmentMetadata(ctx)
+		if err != nil {
+			log.Fatalf("failed to get metadata: %s", err)
+		}
+	} else {
+		metadata = environmentMetadata{
+			ClientMachineType: "disabled",
+		}
 	}
 
 	var results []result
@@ -60,7 +82,7 @@ func main() {
 	}
 
 	for scenario := range generateScenarios(experiments) {
-		fmt.Printf("\n=== Scenario: %s ===\n", scenario.Name())
+		fmt.Printf("\n=== Scenario [%s]: %s ===\n", p.testDuration.String(), scenario.Name())
 
 		result, err := p.run(ctx, scenario)
 		if err != nil {
@@ -71,7 +93,7 @@ func main() {
 	}
 
 	if csvPath != "" {
-		if err := dumpResultsToCSV(csvPath, environmentMetadata, results); err != nil {
+		if err := dumpResultsToCSV(csvPath, metadata, results); err != nil {
 			log.Fatalf("failed to dump results to %q: %s", csvPath, err.Error())
 		}
 	}
@@ -108,10 +130,12 @@ type processor struct {
 type options struct {
 	bucket             string
 	chunkSize          int64
+	client             *storage.Client
 	concurrentRequests int
 	makeBuffer         bufferMethod
 	readMethod         readMethod
 	readMiddleware     []func(readMethod) readMethod
+	clientOptions      []option.ClientOption
 }
 
 func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[scenario] {
@@ -191,10 +215,8 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 
 		semaphore <- struct{}{}
 
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			defer func() { <-semaphore }()
-			defer wg.Done()
 
 			readInfo := readInfo{
 				path:   path,
@@ -220,7 +242,7 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 			if duration < implausibleTime {
 				fmt.Printf("!! read from %s in %s\n", path, duration.Round(time.Millisecond))
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -258,6 +280,7 @@ func safeClose(fp interface{ Close() error }) {
 
 type durationSummary struct {
 	minTime, mean, p50, p95, p99, maxTime, stddev time.Duration
+	histogram                                     []int
 }
 
 func summarizeDurations(reads []time.Duration) durationSummary {
@@ -279,8 +302,15 @@ func summarizeDurations(reads []time.Duration) durationSummary {
 
 	// Basic stats
 	var sum float64
+	histogram := make([]int, len(histogramDurations))
 	for _, r := range reads {
 		sum += float64(r)
+		for idx, dur := range histogramDurations {
+			if r < dur {
+				histogram[idx]++
+				break
+			}
+		}
 	}
 	mean := sum / float64(n)
 
@@ -293,12 +323,13 @@ func summarizeDurations(reads []time.Duration) durationSummary {
 	stdDev := math.Sqrt(varianceSum / float64(n))
 
 	return durationSummary{
-		minTime: reads[0],
-		maxTime: reads[n-1],
-		mean:    time.Duration(mean),
-		p50:     percentile(50),
-		p95:     percentile(95),
-		p99:     percentile(99),
-		stddev:  time.Duration(stdDev),
+		minTime:   reads[0],
+		maxTime:   reads[n-1],
+		mean:      time.Duration(mean),
+		p50:       percentile(50),
+		p95:       percentile(95),
+		p99:       percentile(99),
+		stddev:    time.Duration(stdDev),
+		histogram: histogram,
 	}
 }

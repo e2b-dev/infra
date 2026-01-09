@@ -25,6 +25,9 @@ func dumpResultsToCSV(path string, metadata environmentMetadata, results []resul
 
 	// 2. Identify all metrics
 	metrics := []string{"files per second", "min", "mean", "p50", "p95", "p99", "max", "stddev"}
+	for _, h := range histogramDurations {
+		metrics = append(metrics, h.String())
+	}
 
 	// 3. Open output.csv
 	f, err := os.Create(path)
@@ -71,6 +74,10 @@ func dumpResultsToCSV(path string, metadata environmentMetadata, results []resul
 			toMillis(s.maxTime),
 			toMillis(s.stddev),
 		)
+
+		for _, count := range s.histogram {
+			row = append(row, toIntString(count))
+		}
 
 		if _, err := fmt.Fprintln(f, strings.Join(row, ",")); err != nil {
 			return fmt.Errorf("failed to write row: %w", err)
