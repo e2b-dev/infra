@@ -84,7 +84,6 @@ func ReportCriticalError(ctx context.Context, message string, err error, attrs .
 	errorAttrs := append(attrs, attribute.String("error.message", message))
 
 	span.RecordError(fmt.Errorf("%s: %w", message, err),
-		trace.WithStackTrace(true),
 		trace.WithAttributes(
 			errorAttrs...,
 		),
@@ -100,7 +99,6 @@ func ReportError(ctx context.Context, message string, err error, attrs ...attrib
 	logger.L().With(attributesToZapFields(attrs...)...).Warn(ctx, message, zap.Stringp("debug_id", debugID), zap.Error(err))
 
 	span.RecordError(fmt.Errorf("%s: %w", message, err),
-		trace.WithStackTrace(true),
 		trace.WithAttributes(
 			attrs...,
 		),

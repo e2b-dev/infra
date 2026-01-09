@@ -80,7 +80,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	headerKey, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
 		err = fmt.Errorf("%s: %w", a.errorMessage, err)
-		trace.SpanFromContext(ctx).RecordError(err, trace.WithStackTrace(true))
+		trace.SpanFromContext(ctx).RecordError(err)
 
 		return err
 	}
