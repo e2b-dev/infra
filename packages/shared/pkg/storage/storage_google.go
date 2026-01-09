@@ -80,7 +80,7 @@ var (
 )
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
-	client, err := storage.NewClient(ctx)
+	client, err := storage.NewGRPCClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
