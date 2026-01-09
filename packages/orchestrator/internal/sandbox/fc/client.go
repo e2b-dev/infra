@@ -8,7 +8,6 @@ import (
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
@@ -43,13 +42,6 @@ func (c *apiClient) loadSnapshot(
 	ctx, span := tracer.Start(ctx, "load-snapshot")
 	defer span.End()
 
-	err := socket.Wait(ctx, uffdSocketPath)
-	if err != nil {
-		return fmt.Errorf("error waiting for uffd socket: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "uffd socket ready")
-
 	backendType := models.MemoryBackendBackendTypeUffd
 	backend := &models.MemoryBackend{
 		BackendPath: &uffdSocketPath,
@@ -70,7 +62,7 @@ func (c *apiClient) loadSnapshot(
 		},
 	}
 
-	_, err = c.client.Operations.LoadSnapshot(&snapshotConfig)
+	_, err := c.client.Operations.LoadSnapshot(&snapshotConfig)
 	if err != nil {
 		return fmt.Errorf("error loading snapshot: %w", err)
 	}
