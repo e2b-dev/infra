@@ -17,12 +17,14 @@ import (
 
 var experiments = map[string]map[string]experiment{
 	"concurrent requests": {
-		"1": &setConcurrentRequests{1},
+		//"1": &setConcurrentRequests{1},
 		//"4": &setConcurrentRequests{4},
 		//"8":  &setConcurrentRequests{8},
 		//"16": &setConcurrentRequests{16},
-		"32": &setConcurrentRequests{32},
-		"64": &setConcurrentRequests{64},
+		//"32": &setConcurrentRequests{32},
+		"64":  &setConcurrentRequests{64},
+		"128": &setConcurrentRequests{128},
+		//"256": &setConcurrentRequests{256},
 	},
 	"anywhere cache": {
 		"uncached": nil,
@@ -39,21 +41,23 @@ var experiments = map[string]map[string]experiment{
 		"disabled": &grpcOption{storage.WithDisabledClientMetrics()},
 	},
 	"grpc connection pool": {
-		"default": nil,
-		"1":       &grpcOption{option.WithGRPCConnectionPool(1)},
-		"8":       &grpcOption{option.WithGRPCConnectionPool(4)},
-		"16":      &grpcOption{option.WithGRPCConnectionPool(16)},
+		//"default": nil,
+		"1": &grpcOption{option.WithGRPCConnectionPool(1)},
+		//"4": &grpcOption{option.WithGRPCConnectionPool(4)},
+		//"8": &grpcOption{option.WithGRPCConnectionPool(4)},
+		//"16":      &grpcOption{option.WithGRPCConnectionPool(16)},
 	},
 	"grpc initial window size": {
 		//"default": nil,
 		//"4MB":  &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte))},
 		//"8MB":  &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(8 * megabyte))},
 		"16MB": &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(16 * megabyte))},
+		"32MB": &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(32 * megabyte))},
 	},
 	"grpc initial conn window size": {
-		"default": nil,
-		"16MB":    &grpcOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(16 * megabyte))},
-		"32MB":    &grpcOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte))},
+		//"default": nil,
+		"16MB": &grpcOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(16 * megabyte))},
+		"32MB": &grpcOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte))},
 	},
 	"service config": {
 		//"disabled": &grpcOption{option.WithGRPCDialOption(grpc.WithDisableServiceConfig())},  // breaks the test
