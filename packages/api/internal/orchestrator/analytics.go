@@ -60,11 +60,11 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
-	instanceIds := make([]string, 0, len(instances))
-	executionIds := make([]string, 0, len(instances))
-	for _, i := range instances {
-		instanceIds = append(instanceIds, i.SandboxID)
-		executionIds = append(executionIds, i.ExecutionID)
+	instanceIds := make([]string, len(instances))
+	executionIds := make([]string, len(instances))
+	for i, instance := range instances {
+		instanceIds[i] = instance.SandboxID
+		executionIds[i] = instance.ExecutionID
 	}
 
 	_, err := analytics.RunningInstances(childCtx,
