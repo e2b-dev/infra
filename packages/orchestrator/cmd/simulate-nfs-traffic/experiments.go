@@ -14,7 +14,7 @@ var experiments = map[string]map[string]experiment{
 	"concurrent requests": {
 		// "1": &setConcurrentRequests{1},
 		// "2": &setConcurrentRequests{2},
-		//"4": &setConcurrentRequests{4},
+		// "4": &setConcurrentRequests{4},
 		"8":  &setConcurrentRequests{8},
 		"16": &setConcurrentRequests{16},
 		"32": &setConcurrentRequests{32},
