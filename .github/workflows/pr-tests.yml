@@ -18,6 +18,9 @@ jobs:
           - package: packages/client-proxy
             test_path: ./...
             sudo: false
+          - package: packages/db
+            test_path: ./...
+            sudo: false
           - package: packages/docker-reverse-proxy
             test_path: ./...
             sudo: false

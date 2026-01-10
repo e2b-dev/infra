@@ -91,6 +91,12 @@ func RegisterBuild(
 		}
 	}
 
+	// Add default tag if no tags are present
+	tags := data.Tags
+	if len(tags) == 0 {
+		tags = []string{id.DefaultTag}
+	}
+
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", data.Team.ID.String()),
 		attribute.String("env.team.name", data.Team.Name),
@@ -104,8 +110,8 @@ func RegisterBuild(
 	if data.Alias != nil {
 		telemetry.SetAttributes(ctx, attribute.String("env.alias", *data.Alias))
 	}
-	if len(data.Tags) > 0 {
-		telemetry.SetAttributes(ctx, attribute.StringSlice("env.tags", data.Tags))
+	if len(tags) > 0 {
+		telemetry.SetAttributes(ctx, attribute.StringSlice("env.tags", tags))
 	}
 	if data.StartCmd != nil {
 		telemetry.SetAttributes(ctx, attribute.String("env.start_cmd", *data.StartCmd))
@@ -166,15 +172,16 @@ func RegisterBuild(
 	}
 	telemetry.ReportEvent(ctx, "created or update template")
 
-	// Mark the previous not started builds as failed
+	// Mark the previous not started builds as failed for all tags
 	err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		Reason: dbtypes.BuildReason{
 			Message: "The build was canceled because it was superseded by a newer one.",
 		},
 		TemplateID: data.TemplateID,
+		Tags:       tags,
 	})
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when updating env", err)
+		telemetry.ReportCriticalError(ctx, "error when invalidating unstarted builds", err, attribute.StringSlice("tags", tags))
 
 		return nil, &api.APIError{
 			Err:       err,
@@ -295,10 +302,7 @@ func RegisterBuild(
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
 	}
 
-	// Add default tag if no tags are present
-	if len(data.Tags) == 0 {
-		data.Tags = []string{id.DefaultTag}
-	} else {
+	if len(data.Tags) != 0 {
 		// TODO: Remove this once the migration is deployed [ENG-3268](https://linear.app/e2b/issue/ENG-3268)
 		err = client.DeleteTriggerTemplateBuildAssignment(ctx, queries.DeleteTriggerTemplateBuildAssignmentParams{
 			TemplateID: data.TemplateID,
@@ -316,7 +320,7 @@ func RegisterBuild(
 		}
 	}
 
-	for _, tag := range data.Tags {
+	for _, tag := range tags {
 		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: data.TemplateID,
 			BuildID:    buildID,
