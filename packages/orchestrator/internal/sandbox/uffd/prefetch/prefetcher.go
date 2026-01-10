@@ -65,7 +65,7 @@ func New(
 // while simultaneously waiting for the uffd handler. Once the handler is ready, it starts
 // copying the fetched pages to guest memory.
 func (p *Prefetcher) Start(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "prefetch-start")
+	ctx, span := tracer.Start(ctx, "start prefetch")
 	defer span.End()
 
 	if p.mapping == nil {

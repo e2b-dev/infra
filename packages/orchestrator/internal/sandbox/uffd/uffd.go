@@ -89,6 +89,13 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 
 		// TODO: If the handle function fails, we should kill the sandbox
 		handleErr := u.handle(ctx, sandboxId)
+
+		// If handle failed before setting the handler value, set an error to unblock
+		// any waiters (e.g., prefetcher goroutines waiting on Prefault).
+		if handleErr != nil {
+			u.handler.SetError(handleErr)
+		}
+
 		closeErr := u.lis.Close()
 		fdExitErr := u.fdExit.Close()
 
