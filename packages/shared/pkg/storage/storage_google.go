@@ -83,8 +83,9 @@ var (
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
 	client, err := storage.NewGRPCClient(ctx,
-		option.WithGRPCDialOption(grpc.WithInitialWindowSize(16*megabyte)),
-		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(16*megabyte)),
+		option.WithGRPCConnectionPool(8),
+		option.WithGRPCDialOption(grpc.WithInitialWindowSize(32*megabyte)),
+		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
