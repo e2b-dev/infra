@@ -56,26 +56,26 @@ type TemplateMetadata struct {
 	FirecrackerVersion string `json:"firecracker_version"`
 }
 
-// PageMetadata stores metadata about a prefetched page for statistics and analysis.
-type PageMetadata struct {
-	// Order is the sequence number when the page was faulted (1, 2, ...)
+// BlockMetadata stores metadata about a prefetched block for statistics and analysis.
+type BlockMetadata struct {
+	// Order is the sequence number when the block was accessed (1, 2, ...)
 	Order float64 `json:"order"`
-	// FaultType indicates what kind of access caused this page to be loaded
-	FaultType block.FaultType `json:"fault_type"`
+	// Type indicates what kind of access caused this block to be loaded
+	Type block.Type `json:"type"`
 }
 
-// MemoryPrefetchMapping stores page offsets that should be prefetched when starting a sandbox.
-// This is used to speed up sandbox starts by proactively fetching pages that are likely to be needed.
+// MemoryPrefetchMapping stores block offsets that should be prefetched when starting a sandbox.
+// This is used to speed up sandbox starts by proactively fetching blocks that are likely to be needed.
 type MemoryPrefetchMapping struct {
-	// Indices is an ordered array of block indices to prefetch, preserving the order in which pages were faulted
+	// Indices is an ordered array of block indices to prefetch, preserving the order in which blocks were accessed
 	Indices []uint64 `json:"indices"`
-	// Metadata contains per-page metadata keyed by block index
-	Metadata map[uint64]PageMetadata `json:"metadata"`
-	// BlockSize is the size of each page/block in bytes
+	// Metadata contains per-block metadata keyed by block index
+	Metadata map[uint64]BlockMetadata `json:"metadata"`
+	// BlockSize is the size of each block in bytes
 	BlockSize int64 `json:"block_size"`
 }
 
-// Count returns the number of pages to prefetch.
+// Count returns the number of blocks to prefetch.
 func (p *MemoryPrefetchMapping) Count() int {
 	if p == nil {
 		return 0

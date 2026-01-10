@@ -29,7 +29,7 @@ var prefetchTimeout = 5 * time.Minute
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/optimize")
 
-// OptimizeBuilder resumes the template, waits for envd, and captures the dirty pages
+// OptimizeBuilder resumes the template, waits for envd, and captures the dirty blocks
 // to store as prefetch mapping in the template metadata.
 type OptimizeBuilder struct {
 	buildcontext.BuildContext
@@ -106,7 +106,7 @@ func (pb *OptimizeBuilder) Layer(
 // Build runs the optimize phase which:
 // 1. Resumes the template from the finalize snapshot
 // 2. Waits for envd to respond
-// 3. Captures the dirty pages from uffd
+// 3. Captures the dirty blocks from uffd
 // 4. Updates the metadata with the prefetch mapping
 // 5. Uploads the updated metadata
 func (pb *OptimizeBuilder) Build(
@@ -162,12 +162,12 @@ func (pb *OptimizeBuilder) Build(
 		}, nil
 	}
 
-	pageCount := 0
+	blockCount := 0
 	if memoryPrefetchMapping != nil {
-		pageCount = memoryPrefetchMapping.Count()
+		blockCount = memoryPrefetchMapping.Count()
 	}
 
-	pb.logger.Info(ctx, fmt.Sprintf("Collected prefetch mapping with %d memory pages", pageCount))
+	pb.logger.Info(ctx, fmt.Sprintf("Collected prefetch mapping with %d memory blocks", blockCount))
 
 	return phases.LayerResult{
 		Metadata: updatedMetadata,
@@ -215,23 +215,23 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 		return nil, fmt.Errorf("failed to get prefetch data: %w", err)
 	}
 
-	if len(prefetchData.PageEntries) == 0 {
-		pb.logger.Debug(ctx, "no pages found for prefetch mapping")
+	if len(prefetchData.BlockEntries) == 0 {
+		pb.logger.Debug(ctx, "no blocks found for prefetch mapping")
 
 		return nil, nil
 	}
 
 	span.SetAttributes(
-		attribute.Int64("prefetch_pages", int64(len(prefetchData.PageEntries))),
+		attribute.Int64("prefetch_blocks", int64(len(prefetchData.BlockEntries))),
 		attribute.Int64("block_size", prefetchData.BlockSize),
 	)
 
 	// Collect entries and sort by Order to get ordered indices
-	entries := make([]block.PageEntry, 0, len(prefetchData.PageEntries))
-	for _, entry := range prefetchData.PageEntries {
+	entries := make([]block.BlockEntry, 0, len(prefetchData.BlockEntries))
+	for _, entry := range prefetchData.BlockEntries {
 		entries = append(entries, entry)
 	}
-	slices.SortFunc(entries, func(a, b block.PageEntry) int {
+	slices.SortFunc(entries, func(a, b block.BlockEntry) int {
 		if a.Order < b.Order {
 			return -1
 		}
@@ -244,19 +244,19 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 
 	// Build ordered indices and metadata
 	orderedIndices := make([]uint64, len(entries))
-	pageMetadata := make(map[uint64]metadata.PageMetadata, len(entries))
+	blockMetadata := make(map[uint64]metadata.BlockMetadata, len(entries))
 	for i, entry := range entries {
 		orderedIndices[i] = entry.Index
-		pageMetadata[entry.Index] = metadata.PageMetadata{
-			Order:     float64(entry.Order),
-			FaultType: entry.FaultType,
+		blockMetadata[entry.Index] = metadata.BlockMetadata{
+			Order: float64(entry.Order),
+			Type:  entry.Type,
 		}
 	}
 
 	// Create prefetch mapping with ordered indices and metadata
 	return &metadata.MemoryPrefetchMapping{
 		Indices:   orderedIndices,
-		Metadata:  pageMetadata,
+		Metadata:  blockMetadata,
 		BlockSize: prefetchData.BlockSize,
 	}, nil
 }

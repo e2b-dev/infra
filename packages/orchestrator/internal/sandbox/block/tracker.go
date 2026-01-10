@@ -2,6 +2,7 @@ package block
 
 import (
 	"iter"
+	"maps"
 	"sync"
 
 	"github.com/bits-and-blooms/bitset"
@@ -10,23 +11,23 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// FaultType represents the type of memory access that caused a page to be loaded.
-type FaultType string
+// Type represents the type of access that caused a block to be loaded.
+type Type string
 
 const (
-	// FaultTypeRead indicates a page fault caused by a read operation
-	FaultTypeRead FaultType = "read"
-	// FaultTypeWrite indicates a page fault caused by a write operation
-	FaultTypeWrite FaultType = "write"
-	// FaultTypePrefault indicates a proactive prefetch, not a real page fault
-	FaultTypePrefault FaultType = "prefault"
+	// Read indicates a block loaded by a read operation.
+	Read Type = "read"
+	// Write indicates a block loaded by a write operation.
+	Write Type = "write"
+	// Prefetch indicates a proactively prefetched block, not a real fault.
+	Prefetch Type = "prefetch"
 )
 
-// PageEntry holds metadata about a tracked page.
-type PageEntry struct {
-	Index     uint64
-	Order     uint64
-	FaultType FaultType
+// BlockEntry holds metadata about a tracked block.
+type BlockEntry struct {
+	Index uint64
+	Order uint64
+	Type  Type
 }
 
 type Tracker struct {
@@ -35,8 +36,8 @@ type Tracker struct {
 
 	blockSize int64
 
-	// pageEntries stores metadata for each block index
-	pageEntries map[uint64]PageEntry
+	// blockEntries stores metadata for each block index
+	blockEntries map[uint64]BlockEntry
 	// orderCounter tracks the next order number to assign
 	orderCounter uint64
 }
@@ -46,7 +47,7 @@ func NewTracker(blockSize int64) *Tracker {
 		// The bitset resizes automatically based on the maximum set bit.
 		b:            bitset.New(0),
 		blockSize:    blockSize,
-		pageEntries:  make(map[uint64]PageEntry),
+		blockEntries: make(map[uint64]BlockEntry),
 		orderCounter: 1,
 	}
 }
@@ -55,7 +56,7 @@ func NewTrackerFromBitset(b *bitset.BitSet, blockSize int64) *Tracker {
 	return &Tracker{
 		b:            b,
 		blockSize:    blockSize,
-		pageEntries:  make(map[uint64]PageEntry),
+		blockEntries: make(map[uint64]BlockEntry),
 		orderCounter: 1,
 	}
 }
@@ -68,7 +69,7 @@ func (t *Tracker) Has(off int64) bool {
 }
 
 // Add adds an offset to the tracker with metadata about the access.
-func (t *Tracker) Add(off int64, faultType FaultType) {
+func (t *Tracker) Add(off int64, accessType Type) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -77,10 +78,10 @@ func (t *Tracker) Add(off int64, faultType FaultType) {
 	// Only add if not already tracked
 	if !t.b.Test(uint(idx)) {
 		t.b.Set(uint(idx))
-		t.pageEntries[idx] = PageEntry{
-			Index:     idx,
-			Order:     t.orderCounter,
-			FaultType: faultType,
+		t.blockEntries[idx] = BlockEntry{
+			Index: idx,
+			Order: t.orderCounter,
+			Type:  accessType,
 		}
 		t.orderCounter++
 	}
@@ -91,7 +92,7 @@ func (t *Tracker) Reset() {
 	defer t.mu.Unlock()
 
 	t.b.ClearAll()
-	t.pageEntries = make(map[uint64]PageEntry)
+	t.blockEntries = make(map[uint64]BlockEntry)
 	t.orderCounter = 1
 }
 
@@ -105,15 +106,13 @@ func (t *Tracker) BlockSize() int64 {
 	return t.blockSize
 }
 
-// PageEntries returns a copy of the page entries map.
-func (t *Tracker) PageEntries() map[uint64]PageEntry {
+// BlockEntries returns a copy of the block entries map.
+func (t *Tracker) BlockEntries() map[uint64]BlockEntry {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	result := make(map[uint64]PageEntry, len(t.pageEntries))
-	for k, v := range t.pageEntries {
-		result[k] = v
-	}
+	result := make(map[uint64]BlockEntry, len(t.blockEntries))
+	maps.Copy(result, t.blockEntries)
 
 	return result
 }
@@ -122,15 +121,13 @@ func (t *Tracker) Clone() *Tracker {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	pageEntries := make(map[uint64]PageEntry, len(t.pageEntries))
-	for k, v := range t.pageEntries {
-		pageEntries[k] = v
-	}
+	blockEntries := make(map[uint64]BlockEntry, len(t.blockEntries))
+	maps.Copy(blockEntries, t.blockEntries)
 
 	return &Tracker{
 		b:            t.b.Clone(),
 		blockSize:    t.BlockSize(),
-		pageEntries:  pageEntries,
+		blockEntries: blockEntries,
 		orderCounter: t.orderCounter,
 	}
 }

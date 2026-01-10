@@ -8,10 +8,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// PrefetchData contains page fault data for prefetch mapping.
+// PrefetchData contains block access data for prefetch mapping.
 type PrefetchData struct {
-	// PageEntries contains metadata for each block index
-	PageEntries map[uint64]block.PageEntry
+	// BlockEntries contains metadata for each block index
+	BlockEntries map[uint64]block.BlockEntry
 	// BlockSize is the size of each block in bytes
 	BlockSize int64
 }

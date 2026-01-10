@@ -59,10 +59,10 @@ func (m *NoopMemory) DiffMetadata(ctx context.Context) (*header.DiffMetadata, er
 }
 
 func (m *NoopMemory) PrefetchData(_ context.Context) (*PrefetchData, error) {
-	// NoopMemory doesn't track page faults, so return empty data
+	// NoopMemory doesn't track block accesses, so return empty data
 	return &PrefetchData{
-		PageEntries: nil,
-		BlockSize:   m.blockSize,
+		BlockEntries: nil,
+		BlockSize:    m.blockSize,
 	}, nil
 }
 

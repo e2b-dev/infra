@@ -191,7 +191,7 @@ outerLoop:
 		// If the event has WRITE flag, it was a write to a missing page.
 		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, block.FaultTypeWrite)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, block.Write)
 			if err != nil {
 				return fmt.Errorf("failed to handle missing write: %w", err)
 			}
@@ -202,7 +202,7 @@ outerLoop:
 		// Handle read to missing page ("MISSING" flag)
 		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, block.FaultTypeRead)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, block.Read)
 			if err != nil {
 				return fmt.Errorf("failed to handle missing: %w", err)
 			}
@@ -221,7 +221,7 @@ func (u *Userfaultfd) handleMissing(
 	addr,
 	pagesize uintptr,
 	offset int64,
-	faultType block.FaultType,
+	accessType block.Type,
 ) error {
 	u.wg.Go(func() error {
 		ctx, span := tracer.Start(ctx, "uffd-page-fault")
@@ -274,7 +274,7 @@ func (u *Userfaultfd) handleMissing(
 		}
 
 		// Add the offset to the missing requests tracker with metadata.
-		u.missingRequests.Add(offset, faultType)
+		u.missingRequests.Add(offset, accessType)
 
 		return nil
 	})
@@ -338,7 +338,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 
 	// Add the offset to the missing requests tracker.
 	// Prefaulted pages are proactive copies, not real page faults.
-	u.missingRequests.Add(offset, block.FaultTypePrefault)
+	u.missingRequests.Add(offset, block.Prefetch)
 
 	return nil
 }

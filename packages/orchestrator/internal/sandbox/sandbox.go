@@ -392,7 +392,7 @@ func (f *Factory) ResumeSandbox(
 	var ipsCh chan networkSlotRes
 	wg.Go(func() error {
 		ipsCh = getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
-		cleanup.Add(ctx, func(ctx context.Context) error {
+		cleanup.Add(ctx, func(_ context.Context) error {
 			// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
 			<-ipsCh
 

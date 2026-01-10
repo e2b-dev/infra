@@ -20,7 +20,7 @@ func TestTracker_AddAndHas(t *testing.T) {
 	assert.False(t, tr.Has(offset), "Expected offset %d not to be marked initially", offset)
 
 	// After adding, should be marked
-	tr.Add(offset, FaultTypeRead)
+	tr.Add(offset, Read)
 	assert.True(t, tr.Has(offset), "Expected offset %d to be marked after Add", offset)
 
 	// Other offsets should not be marked
@@ -43,7 +43,7 @@ func TestTracker_Reset(t *testing.T) {
 	offset := int64(pageSize * 4)
 
 	// Add offset and verify it's marked
-	tr.Add(offset, FaultTypeRead)
+	tr.Add(offset, Read)
 	assert.True(t, tr.Has(offset), "Expected offset %d to be marked after Add", offset)
 
 	// After reset, should not be marked
@@ -66,7 +66,7 @@ func TestTracker_MultipleOffsets(t *testing.T) {
 
 	// Add multiple offsets
 	for _, o := range offsets {
-		tr.Add(o, FaultTypeRead)
+		tr.Add(o, Read)
 	}
 
 	// Verify all offsets are marked
@@ -100,7 +100,7 @@ func TestTracker_ResetClearsAll(t *testing.T) {
 
 	// Add multiple offsets
 	for _, o := range offsets {
-		tr.Add(o, FaultTypeRead)
+		tr.Add(o, Read)
 	}
 
 	// Reset should clear all
@@ -124,7 +124,7 @@ func TestTracker_MisalignedOffset(t *testing.T) {
 
 	// Test with misaligned offset
 	misalignedOffset := int64(123)
-	tr.Add(misalignedOffset, FaultTypeRead)
+	tr.Add(misalignedOffset, Read)
 
 	// Should be set for the block containing the offset—that is, block 0 (0..4095)
 	assert.True(t, tr.Has(misalignedOffset), "Expected misaligned offset %d to be marked (should mark its containing block)", misalignedOffset)
@@ -162,7 +162,7 @@ func TestTracker_Offsets(t *testing.T) {
 		offset := base * pageSize
 
 		offsetsMap[offset] = struct{}{}
-		tr.Add(offset, FaultTypeRead)
+		tr.Add(offset, Read)
 	}
 
 	expectedOffsets := slices.Collect(maps.Keys(offsetsMap))

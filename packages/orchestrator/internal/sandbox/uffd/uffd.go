@@ -222,7 +222,7 @@ func (u *Uffd) PrefetchData(ctx context.Context) (*PrefetchData, error) {
 	tracker := uffd.Dirty()
 
 	return &PrefetchData{
-		PageEntries: tracker.PageEntries(),
-		BlockSize:   tracker.BlockSize(),
+		BlockEntries: tracker.BlockEntries(),
+		BlockSize:    tracker.BlockSize(),
 	}, nil
 }
