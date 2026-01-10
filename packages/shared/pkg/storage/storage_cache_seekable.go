@@ -213,7 +213,7 @@ func (c *CachedSeekableObjectProvider) makeTempChunkFilename(offset int64) strin
 }
 
 func (c *CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (n int, e error) {
-	ctx, span := c.tracer.Start(ctx, "read chunk at offset from cache")
+	ctx, span := c.tracer.Start(ctx, "read chunk from cache")
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -226,7 +226,7 @@ func (c *CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chun
 
 	defer utils.Cleanup(ctx, "failed to close chunk", fp.Close)
 
-	count, err := fp.ReadAt(buff, 0) // offset is in the filename
+	count, err := fp.Read(buff)
 	if ignoreEOF(err) != nil {
 		return 0, fmt.Errorf("failed to read from chunk: %w", err)
 	}
