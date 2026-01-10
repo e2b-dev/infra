@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/prefetch")
@@ -116,9 +117,9 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	var fetchWg sync.WaitGroup
 	var copyWg sync.WaitGroup
 
-	// Queue all offsets to fetch in the order they were originally faulted
+	// Queue all offsets to fetch in the order they were originally accessed
 	for _, idx := range indices {
-		fetchCh <- int64(idx) * blockSize
+		fetchCh <- header.BlockOffset(int64(idx), blockSize)
 	}
 	close(fetchCh)
 

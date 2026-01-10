@@ -11,23 +11,23 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// Type represents the type of access that caused a block to be loaded.
-type Type string
+// AccessType represents the type of access that caused a block to be loaded.
+type AccessType string
 
 const (
 	// Read indicates a block loaded by a read operation.
-	Read Type = "read"
+	Read AccessType = "read"
 	// Write indicates a block loaded by a write operation.
-	Write Type = "write"
+	Write AccessType = "write"
 	// Prefetch indicates a proactively prefetched block, not a real fault.
-	Prefetch Type = "prefetch"
+	Prefetch AccessType = "prefetch"
 )
 
 // BlockEntry holds metadata about a tracked block.
 type BlockEntry struct {
-	Index uint64
-	Order uint64
-	Type  Type
+	Index      uint64
+	Order      uint64
+	AccessType AccessType
 }
 
 type Tracker struct {
@@ -69,7 +69,7 @@ func (t *Tracker) Has(off int64) bool {
 }
 
 // Add adds an offset to the tracker with metadata about the access.
-func (t *Tracker) Add(off int64, accessType Type) {
+func (t *Tracker) Add(off int64, accessType AccessType) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -79,9 +79,9 @@ func (t *Tracker) Add(off int64, accessType Type) {
 	if !t.b.Test(uint(idx)) {
 		t.b.Set(uint(idx))
 		t.blockEntries[idx] = BlockEntry{
-			Index: idx,
-			Order: t.orderCounter,
-			Type:  accessType,
+			Index:      idx,
+			Order:      t.orderCounter,
+			AccessType: accessType,
 		}
 		t.orderCounter++
 	}

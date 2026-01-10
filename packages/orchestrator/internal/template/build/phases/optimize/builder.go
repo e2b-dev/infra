@@ -248,8 +248,8 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 	for i, entry := range entries {
 		orderedIndices[i] = entry.Index
 		blockMetadata[entry.Index] = metadata.BlockMetadata{
-			Order: float64(entry.Order),
-			Type:  entry.Type,
+			Order:      float64(entry.Order),
+			AccessType: entry.AccessType,
 		}
 	}
 

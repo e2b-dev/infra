@@ -221,7 +221,7 @@ func (u *Userfaultfd) handleMissing(
 	addr,
 	pagesize uintptr,
 	offset int64,
-	accessType block.Type,
+	accessType block.AccessType,
 ) error {
 	u.wg.Go(func() error {
 		ctx, span := tracer.Start(ctx, "uffd-page-fault")
@@ -341,9 +341,4 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	u.missingRequests.Add(offset, block.Prefetch)
 
 	return nil
-}
-
-// BlockSize returns the block size used by the source.
-func (u *Userfaultfd) BlockSize() int64 {
-	return u.src.BlockSize()
 }

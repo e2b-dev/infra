@@ -60,8 +60,8 @@ type TemplateMetadata struct {
 type BlockMetadata struct {
 	// Order is the sequence number when the block was accessed (1, 2, ...)
 	Order float64 `json:"order"`
-	// Type indicates what kind of access caused this block to be loaded
-	Type block.Type `json:"type"`
+	// AccessType indicates what kind of access caused this block to be loaded
+	AccessType block.AccessType `json:"access_type"`
 }
 
 // MemoryPrefetchMapping stores block offsets that should be prefetched when starting a sandbox.
@@ -153,7 +153,7 @@ func (t Template) WithPrefetch(prefetch *Prefetch) Template {
 }
 
 func (t Template) ToFile(path string) error {
-	mr, err := Serialize(t)
+	mr, err := serialize(t)
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func (t Template) Upload(ctx context.Context, s storage.StorageProvider) error {
 	}
 
 	// Serialize metadata to reader
-	metaReader, err := Serialize(t)
+	metaReader, err := serialize(t)
 	if err != nil {
 		return fmt.Errorf("failed to serialize metadata: %w", err)
 	}
@@ -273,8 +273,8 @@ func deserialize(reader io.Reader) (Template, error) {
 	return templateMetadata, nil
 }
 
-// Serialize serializes a template to a reader for uploading.
-func Serialize(template Template) (io.Reader, error) {
+// serialize serializes a template to a reader for uploading.
+func serialize(template Template) (io.Reader, error) {
 	marshaled, err := json.Marshal(template)
 	if err != nil {
 		return nil, fmt.Errorf("error serializing template metadata: %w", err)
