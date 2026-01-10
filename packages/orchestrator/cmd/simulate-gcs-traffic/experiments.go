@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"slices"
 	"strings"
 	"time"
@@ -15,64 +14,80 @@ import (
 	"google.golang.org/grpc"
 )
 
+type options struct {
+	bucket             string
+	chunkSize          int64
+	client             *storage.Client
+	concurrentRequests int
+
+	makeBuffer     bufferMethod
+	readMethod     readMethod
+	readMiddleware []func(readMethod) readMethod
+
+	clientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
+	clientOptions []option.ClientOption
+}
+
 var experiments = map[string]map[string]experiment{
 	"concurrent requests": {
-		//"1": &setConcurrentRequests{1},
-		//"4": &setConcurrentRequests{4},
-		//"8":  &setConcurrentRequests{8},
-		//"16": &setConcurrentRequests{16},
+		"1":  &setConcurrentRequests{1},
+		"4":  &setConcurrentRequests{4},
+		"12": &setConcurrentRequests{8},
+		// "16": &setConcurrentRequests{16},
 		//"32": &setConcurrentRequests{32},
-		"64":  &setConcurrentRequests{64},
-		"128": &setConcurrentRequests{128},
-		//"256": &setConcurrentRequests{256},
+		//"48": &setConcurrentRequests{48},
+		//"64": &setConcurrentRequests{64},
+		//"128": &setConcurrentRequests{128},
+		// "256": &setConcurrentRequests{256},
 	},
 	"anywhere cache": {
 		"uncached": nil,
-		//"cached":   &skipFirstRead{},
+		// "cached":   &skipFirstRead{},
 	},
 	"shared buffer": {
-		//"shared buffer": &sharedBuffer{},
+		// "shared buffer": &sharedBuffer{},
 		"fresh buffer": &alwaysNewBuffer{},
 	},
 	"grpc metrics": {
-		"disabled": &grpcOption{option.WithTelemetryDisabled()},
+		"disabled": &googleOption{option.WithTelemetryDisabled()},
 	},
 	"client metrics": {
-		"disabled": &grpcOption{storage.WithDisabledClientMetrics()},
+		"disabled": &googleOption{storage.WithDisabledClientMetrics()},
 	},
 	"grpc connection pool": {
-		//"default": nil,
-		"1": &grpcOption{option.WithGRPCConnectionPool(1)},
-		//"4": &grpcOption{option.WithGRPCConnectionPool(4)},
-		//"8": &grpcOption{option.WithGRPCConnectionPool(4)},
-		//"16":      &grpcOption{option.WithGRPCConnectionPool(16)},
+		// "default": nil,
+		"1":  &googleOption{option.WithGRPCConnectionPool(1)},
+		"4":  &googleOption{option.WithGRPCConnectionPool(4)},
+		"8":  &googleOption{option.WithGRPCConnectionPool(4)},
+		"16": &googleOption{option.WithGRPCConnectionPool(16)},
 	},
 	"grpc initial window size": {
-		//"default": nil,
-		//"4MB":  &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte))},
-		//"8MB":  &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(8 * megabyte))},
-		"16MB": &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(16 * megabyte))},
-		"32MB": &grpcOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(32 * megabyte))},
+		"default": nil,
+		"4MB":     &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte))},
+		"8MB":     &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(8 * megabyte))},
+		"16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(16 * megabyte))},
+		"32MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(32 * megabyte))},
 	},
 	"grpc initial conn window size": {
-		//"default": nil,
-		"16MB": &grpcOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(16 * megabyte))},
-		"32MB": &grpcOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte))},
+		"default": nil,
+		"16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(16 * megabyte))},
+		"32MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte))},
 	},
 	"service config": {
-		//"disabled": &grpcOption{option.WithGRPCDialOption(grpc.WithDisableServiceConfig())},  // breaks the test
+		// "disabled": &googleOption{option.WithGRPCDialOption(grpc.WithDisableServiceConfig())},  // breaks the test
 		"enabled": nil,
 	},
+	"client type": {
+		"http": &createClientFactory{storage.NewClient},
+		"grpc": &createClientFactory{storage.NewGRPCClient},
+	},
 	"read method": {
-		//"http":      newGoogleCloudHTTPClient(),
-		"grpc": newGoogleCloudGRPCClient(),
-		//"bidi grpc": newGoogleCloudGRPCClient(experimental.WithGRPCBidiReads()), // "The BidiReadObject RPC is not yet available for general use"
+		"google storage": &googleStorageRangeRead{},
 	},
 }
 
 type experiment interface {
-	setup(ctx context.Context, o *options) error
-	teardown(ctx context.Context, o *options) error
+	apply(ctx context.Context, o *options) error
 }
 
 type element struct {
@@ -95,7 +110,7 @@ func (s scenario) setup(ctx context.Context, p *processor) (*options, error) {
 
 	for _, e := range s.elements {
 		if e.exp != nil {
-			if err := e.exp.setup(ctx, &o); err != nil {
+			if err := e.exp.apply(ctx, &o); err != nil {
 				errs = append(errs, fmt.Errorf("failed to setup %q: %w", e, err))
 			}
 		}
@@ -113,16 +128,8 @@ func (s scenario) setup(ctx context.Context, p *processor) (*options, error) {
 	return &o, errors.Join(errs...)
 }
 
-func (s scenario) teardown(ctx context.Context, o *options) error {
+func (s scenario) teardown(_ context.Context, o *options) error {
 	var errs []error
-
-	for name, e := range s.elements {
-		if e.exp != nil {
-			if err := e.exp.teardown(ctx, o); err != nil {
-				errs = append(errs, fmt.Errorf("failed to teardown %q: %w", name, err))
-			}
-		}
-	}
 
 	if err := o.client.Close(); err != nil {
 		return fmt.Errorf("failed to close storage client: %w", err)
@@ -150,137 +157,19 @@ type setConcurrentRequests struct {
 	concurrentRequests int
 }
 
-func (s *setConcurrentRequests) setup(_ context.Context, o *options) error {
+func (s *setConcurrentRequests) apply(_ context.Context, o *options) error {
 	o.concurrentRequests = s.concurrentRequests
 
 	return nil
 }
 
-func (s *setConcurrentRequests) teardown(_ context.Context, _ *options) error { return nil }
-
 var _ experiment = (*setConcurrentRequests)(nil)
-
-type googleCloudGRPCClient struct {
-	opts []option.ClientOption
-}
-
-var _ experiment = (*googleCloudGRPCClient)(nil)
-
-func newGoogleCloudGRPCClient(opts ...option.ClientOption) *googleCloudGRPCClient {
-	return &googleCloudGRPCClient{opts: opts}
-}
-
-func (g *googleCloudGRPCClient) setup(ctx context.Context, o *options) error {
-	o.readMethod = g.read(o)
-
-	return nil
-}
-
-func (g *googleCloudGRPCClient) teardown(ctx context.Context, o *options) error {
-	return nil
-}
-
-func (r *googleCloudGRPCClient) read(o *options) readMethod {
-	return func(ctx context.Context, info readInfo) (time.Duration, error) {
-		now := time.Now()
-
-		rc, err := o.client.Bucket(o.bucket).Object(info.path).NewRangeReader(ctx, info.offset, o.chunkSize)
-		if err != nil {
-			return 0, fmt.Errorf("failed to create reader: %w", err)
-		}
-		defer safeClose(rc)
-
-		var bytesRead int64
-		for bytesRead < o.chunkSize {
-			n, err := rc.Read(info.buffer[bytesRead:])
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				return 0, fmt.Errorf("failed to read from gcs: %w", err)
-			}
-			bytesRead += int64(n)
-		}
-		if bytesRead != o.chunkSize {
-			return 0, fmt.Errorf("unexpected number of bytes read: %d", bytesRead)
-		}
-
-		return time.Since(now), nil
-	}
-}
-
-type googleCloudHTTPClient struct {
-	rand   *rand.Rand
-	client *storage.Client
-}
-
-func newGoogleCloudHTTPClient() *googleCloudHTTPClient {
-	source := rand.NewSource(time.Now().UnixNano())
-
-	return &googleCloudHTTPClient{
-		rand: rand.New(source),
-	}
-}
-
-func (r *googleCloudHTTPClient) setup(ctx context.Context, p *options) error {
-	var err error
-	if r.client, err = storage.NewClient(ctx); err != nil {
-		return fmt.Errorf("failed to create storage client: %w", err)
-	}
-
-	p.readMethod = r.read(p)
-
-	return nil
-}
-
-func (r *googleCloudHTTPClient) teardown(_ context.Context, p *options) error {
-	p.readMethod = nil
-
-	if err := r.client.Close(); err != nil {
-		return fmt.Errorf("failed to close storage client: %w", err)
-	}
-
-	r.client = nil
-
-	return nil
-}
-
-func (r *googleCloudHTTPClient) read(p *options) readMethod {
-	return func(ctx context.Context, fileInfo readInfo) (time.Duration, error) {
-		now := time.Now()
-
-		rc, err := r.client.Bucket(p.bucket).Object(fileInfo.path).NewRangeReader(ctx, fileInfo.offset, p.chunkSize)
-		if err != nil {
-			return 0, fmt.Errorf("failed to create reader: %w", err)
-		}
-		defer safeClose(rc)
-
-		var bytesRead int64
-		for bytesRead < p.chunkSize {
-			n, err := rc.Read(fileInfo.buffer[bytesRead:])
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				return 0, fmt.Errorf("failed to read from gcs: %w", err)
-			}
-			bytesRead += int64(n)
-		}
-		if bytesRead != p.chunkSize {
-			return 0, fmt.Errorf("unexpected number of bytes read: %d", bytesRead)
-		}
-
-		return time.Since(now), nil
-	}
-}
-
-var _ experiment = (*googleCloudHTTPClient)(nil)
 
 type skipFirstRead struct{}
 
 var _ experiment = (*skipFirstRead)(nil)
 
-func (s skipFirstRead) setup(_ context.Context, p *options) error {
+func (s skipFirstRead) apply(_ context.Context, p *options) error {
 	p.readMiddleware = append(p.readMiddleware, s.middleware)
 
 	return nil
@@ -297,17 +186,13 @@ func (s skipFirstRead) middleware(fn readMethod) readMethod {
 	}
 }
 
-func (s skipFirstRead) teardown(_ context.Context, _ *options) error {
-	return nil
-}
-
 type sharedBuffer struct {
 	buffer []byte
 }
 
 var _ experiment = (*sharedBuffer)(nil)
 
-func (s *sharedBuffer) setup(_ context.Context, o *options) error {
+func (s *sharedBuffer) apply(_ context.Context, o *options) error {
 	s.buffer = make([]byte, o.chunkSize)
 
 	o.makeBuffer = func() []byte {
@@ -317,15 +202,11 @@ func (s *sharedBuffer) setup(_ context.Context, o *options) error {
 	return nil
 }
 
-func (s *sharedBuffer) teardown(_ context.Context, _ *options) error {
-	return nil
-}
-
 type alwaysNewBuffer struct{}
 
 var _ experiment = (*alwaysNewBuffer)(nil)
 
-func (s alwaysNewBuffer) setup(_ context.Context, o *options) error {
+func (s alwaysNewBuffer) apply(_ context.Context, o *options) error {
 	o.makeBuffer = func() []byte {
 		return make([]byte, o.chunkSize)
 	}
@@ -333,21 +214,66 @@ func (s alwaysNewBuffer) setup(_ context.Context, o *options) error {
 	return nil
 }
 
-func (s alwaysNewBuffer) teardown(ctx context.Context, p *options) error {
-	return nil
-}
-
-type grpcOption struct {
+type googleOption struct {
 	opt option.ClientOption
 }
 
-var _ experiment = (*grpcOption)(nil)
+var _ experiment = (*googleOption)(nil)
 
-func (g grpcOption) setup(ctx context.Context, o *options) error {
+func (g googleOption) apply(_ context.Context, o *options) error {
 	o.clientOptions = append(o.clientOptions, g.opt)
+
 	return nil
 }
 
-func (g grpcOption) teardown(ctx context.Context, o *options) error {
+type googleStorageRangeRead struct{}
+
+var _ experiment = (*googleStorageRangeRead)(nil)
+
+func (g googleStorageRangeRead) apply(_ context.Context, o *options) error {
+	o.readMethod = g.read(o)
+
 	return nil
 }
+
+func (g googleStorageRangeRead) read(p *options) readMethod {
+	return func(ctx context.Context, fileInfo readInfo) (time.Duration, error) {
+		now := time.Now()
+
+		rc, err := p.client.Bucket(p.bucket).Object(fileInfo.path).NewRangeReader(ctx, fileInfo.offset, p.chunkSize)
+		if err != nil {
+			return 0, fmt.Errorf("failed to create reader: %w", err)
+		}
+		defer safeClose(rc)
+
+		var bytesRead int64
+		for bytesRead < p.chunkSize {
+			n, err := rc.Read(fileInfo.buffer[bytesRead:])
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+
+				return 0, fmt.Errorf("failed to read from gcs: %w", err)
+			}
+			bytesRead += int64(n)
+		}
+		if bytesRead != p.chunkSize {
+			return 0, fmt.Errorf("unexpected number of bytes read: %d", bytesRead)
+		}
+
+		return time.Since(now), nil
+	}
+}
+
+type createClientFactory struct {
+	factory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
+}
+
+func (c createClientFactory) apply(_ context.Context, o *options) error {
+	o.clientFactory = c.factory
+
+	return nil
+}
+
+var _ experiment = (*createClientFactory)(nil)

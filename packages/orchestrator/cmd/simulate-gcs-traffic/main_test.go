@@ -16,8 +16,7 @@ type mockExperiment struct {
 	id string
 }
 
-func (m mockExperiment) setup(_ context.Context, _ *options) error    { return nil }
-func (m mockExperiment) teardown(_ context.Context, _ *options) error { return nil }
+func (m mockExperiment) apply(_ context.Context, _ *options) error { return nil }
 
 func TestGenerateScenarios(t *testing.T) {
 	t.Parallel()
@@ -122,7 +121,7 @@ func TestDumpResultsToCSV(t *testing.T) {
 
 	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
 	assert.Len(t, lines, 3)
-	assert.Equal(t, "instance type,exp1,exp2,files per second,min,mean,p50,p95,p99,max,stddev", lines[0])
+	assert.Equal(t, "instance type,exp1,exp2,files per second,min,mean,p50,p95,p99,max,stddev,<25ms,<50ms,<75ms,<100ms,<250ms,<2.5s", lines[0])
 	assert.Equal(t, ",val1,val2,10,100,0,200,300,400,500,50", lines[1])
 	assert.Equal(t, ",val3,val4,35,110,0,210,310,410,510,51", lines[2])
 }

@@ -12,9 +12,6 @@ import (
 	"slices"
 	"sync"
 	"time"
-
-	"cloud.google.com/go/storage"
-	"google.golang.org/api/option"
 )
 
 const (
@@ -125,17 +122,6 @@ type processor struct {
 
 	// state
 	allFiles []fileInfo
-}
-
-type options struct {
-	bucket             string
-	chunkSize          int64
-	client             *storage.Client
-	concurrentRequests int
-	makeBuffer         bufferMethod
-	readMethod         readMethod
-	readMiddleware     []func(readMethod) readMethod
-	clientOptions      []option.ClientOption
 }
 
 func generateScenarios(experiments map[string]map[string]experiment) iter.Seq[scenario] {
@@ -308,6 +294,7 @@ func summarizeDurations(reads []time.Duration) durationSummary {
 		for idx, dur := range histogramDurations {
 			if r < dur {
 				histogram[idx]++
+
 				break
 			}
 		}

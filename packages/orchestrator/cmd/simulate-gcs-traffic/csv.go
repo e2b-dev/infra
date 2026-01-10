@@ -77,7 +77,7 @@ func dumpResultsToCSV(path string, metadata environmentMetadata, results []resul
 
 		for _, count := range s.histogram {
 			portion := float64(count) / float64(res.totalSuccessfulReads)
-			row = append(row, fmt.Sprintf("%.2f%%", portion*100))
+			row = append(row, fmt.Sprintf("%.0f%%", portion*100))
 		}
 
 		if _, err := fmt.Fprintln(f, strings.Join(row, ",")); err != nil {
