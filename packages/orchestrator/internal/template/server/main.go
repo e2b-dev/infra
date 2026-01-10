@@ -79,7 +79,7 @@ func New(
 		}
 	}()
 
-	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
+	artifactsRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
@@ -90,7 +90,7 @@ func New(
 	}
 	closers = append(closers, dockerhubRepository)
 
-	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
+	buildPersistence, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}
@@ -107,8 +107,8 @@ func New(
 		featureFlags,
 		sandboxFactory,
 		templatePersistence,
-		buildPersistance,
-		artifactsregistry,
+		buildPersistence,
+		artifactsRegistry,
 		dockerhubRepository,
 		proxy,
 		sandboxes,
@@ -121,9 +121,9 @@ func New(
 		builder:           builder,
 		buildCache:        buildCache,
 		buildLogger:       buildLogger,
-		artifactsregistry: artifactsregistry,
+		artifactsregistry: artifactsRegistry,
 		templateStorage:   templatePersistence,
-		buildStorage:      buildPersistance,
+		buildStorage:      buildPersistence,
 		info:              info,
 		wg:                &sync.WaitGroup{},
 		closers:           closers,
