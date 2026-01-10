@@ -95,21 +95,21 @@ copy-public-builds:
 ifeq ($(PROVIDER),aws)
 	mkdir -p ./.kernels
 	mkdir -p ./.firecrackers
-	gcloud storage cp -r gs://e2b-prod-public-builds/kernels/* ./.kernels/
-	gcloud storage cp -r gs://e2b-prod-public-builds/firecrackers/* ./.firecrackers/
+	gcloud storage cp -r gs://e2b-prod-public-builds/kernels/ ./.kernels/
+	gcloud storage cp -r gs://e2b-prod-public-builds/firecrackers/ ./.firecrackers/
 	aws s3 cp ./.kernels/ s3://${AWS_BUCKET_PREFIX}fc-kernels/ --recursive --profile ${AWS_PROFILE}
 	aws s3 cp ./.firecrackers/ s3://${AWS_BUCKET_PREFIX}fc-versions/ --recursive --profile ${AWS_PROFILE}
 	rm -rf ./.kernels
 	rm -rf ./.firecrackers
 else
-	gcloud storage cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
-	gcloud storage cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
+	gcloud storage cp -r gs://e2b-prod-public-builds/kernels/ gs://$(GCP_PROJECT_ID)-fc-kernels/
+	gcloud storage cp -r gs://e2b-prod-public-builds/firecrackers/ gs://$(GCP_PROJECT_ID)-fc-versions/
 endif
 
 .PHONY: download-public-kernels
 download-public-kernels:
 	mkdir -p ./packages/fc-kernels
-	gcloud storage cp -r gs://e2b-prod-public-builds/kernels/* ./packages/fc-kernels/
+	gcloud storage cp -r gs://e2b-prod-public-builds/kernels/ ./packages/fc-kernels/
 
 .PHONY: generate
 generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate/shared generate-tests generate-mocks
