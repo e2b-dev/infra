@@ -68,7 +68,7 @@ upload/clean-nfs-cache:
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/clean-nfs-cache "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/clean-nfs-cache "gs://${GCP_PROJECT_ID}-fc-env-pipeline/clean-nfs-cache"
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/clean-nfs-cache "gs://${GCP_PROJECT_ID}-fc-env-pipeline/clean-nfs-cache"
 endif
 
 .PHONY: upload/orchestrator
@@ -77,7 +77,7 @@ upload/orchestrator:
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/orchestrator" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_PROJECT_ID}-fc-env-pipeline/orchestrator"
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_PROJECT_ID}-fc-env-pipeline/orchestrator"
 endif
 
 .PHONY: upload/template-manager
@@ -86,7 +86,7 @@ upload/template-manager:
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/template-manager" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_PROJECT_ID}-fc-env-pipeline/template-manager"
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_PROJECT_ID}-fc-env-pipeline/template-manager"
 endif
 
 .PHONY: build-and-upload/clean-nfs-cache

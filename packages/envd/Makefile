@@ -14,7 +14,7 @@ upload:
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/envd "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp bin/envd "gs://${GCP_PROJECT_ID}-fc-env-pipeline/envd"
+	gcloud storage cp --cache-control="no-cache, max-age=0" bin/envd "gs://${GCP_PROJECT_ID}-fc-env-pipeline/envd"
 endif
 
 build:
