@@ -342,14 +342,16 @@ func (c *Cache) addressBytes(off, length int64) ([]byte, func(), error) {
 	}
 
 	if off >= c.size {
+		c.mu.RUnlock()
+
 		return nil, func() {}, fmt.Errorf("offset %d is out of bounds", off)
 	}
-
-	end := min(off+length, c.size)
 
 	releaseCacheCloseLock := func() {
 		c.mu.RUnlock()
 	}
+
+	end := min(off+length, c.size)
 
 	return (*c.mmap)[off:end], releaseCacheCloseLock, nil
 }
