@@ -32,6 +32,10 @@ func NewNoopMemory(
 	}
 }
 
+func (m *NoopMemory) Prefault(_ context.Context, _ int64, _ []byte) error {
+	return nil
+}
+
 func (m *NoopMemory) DiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
 	diffInfo, err := m.getDiffMetadata(ctx, m.blockSize)
 	if err != nil {
@@ -51,6 +55,14 @@ func (m *NoopMemory) DiffMetadata(ctx context.Context) (*header.DiffMetadata, er
 		Dirty:     dirty,
 		Empty:     empty,
 		BlockSize: m.blockSize,
+	}, nil
+}
+
+func (m *NoopMemory) PrefetchData(_ context.Context) (*PrefetchData, error) {
+	// NoopMemory doesn't track block accesses, so return empty data
+	return &PrefetchData{
+		BlockEntries: nil,
+		BlockSize:    m.blockSize,
 	}, nil
 }
 

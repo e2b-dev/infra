@@ -94,3 +94,13 @@ func (m *Mapping) getHostVirtRegion(off int64) (*Region, error) {
 
 	return nil, OffsetNotFoundError{offset: off}
 }
+
+// GetHostVirtAddr returns the host virtual address and page size for the given offset.
+func (m *Mapping) GetHostVirtAddr(off int64) (uintptr, uintptr, error) {
+	region, err := m.getHostVirtRegion(off)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return region.shiftedHostVirtAddr(off), region.PageSize, nil
+}
