@@ -21,7 +21,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	orchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -42,6 +44,19 @@ type OptimizeBuilder struct {
 	sandboxes       *sandbox.Map
 
 	logger logger.Logger
+
+	// disableNetwork blocks all internet access for the sandbox during optimization
+	disableNetwork bool
+}
+
+// Option is a functional option for configuring OptimizeBuilder
+type Option func(*OptimizeBuilder)
+
+// WithDisableNetwork disables internet access for the sandbox during optimization
+func WithDisableNetwork() Option {
+	return func(ob *OptimizeBuilder) {
+		ob.disableNetwork = true
+	}
 }
 
 func New(
@@ -53,8 +68,9 @@ func New(
 	layerExecutor *layer.LayerExecutor,
 	sandboxes *sandbox.Map,
 	logger logger.Logger,
+	opts ...Option,
 ) *OptimizeBuilder {
-	return &OptimizeBuilder{
+	ob := &OptimizeBuilder{
 		BuildContext: buildContext,
 
 		sandboxFactory:  sandboxFactory,
@@ -66,6 +82,12 @@ func New(
 
 		logger: logger,
 	}
+
+	for _, opt := range opts {
+		opt(ob)
+	}
+
+	return ob
 }
 
 func (pb *OptimizeBuilder) Prefix() string {
@@ -197,6 +219,15 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 			KernelVersion:      pb.Config.KernelVersion,
 			FirecrackerVersion: pb.Config.FirecrackerVersion,
 		},
+	}
+
+	// Block all internet access if configured
+	if pb.disableNetwork {
+		sbxConfig.Network = &orchestrator.SandboxNetworkConfig{
+			Egress: &orchestrator.SandboxNetworkEgressConfig{
+				DeniedCidrs: []string{sandbox_network.AllInternetTrafficCIDR},
+			},
+		}
 	}
 
 	// Create sandbox creator for resuming
