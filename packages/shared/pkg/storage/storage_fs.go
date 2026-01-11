@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,12 +19,15 @@ type FileSystemStorageProvider struct {
 var _ StorageProvider = (*FileSystemStorageProvider)(nil)
 
 type FileSystemStorageObjectProvider struct {
-	path string
+	path     string
+	size     atomic.Int64
+	sizeOnce sync.Once
 }
 
 var (
 	_ SeekableObjectProvider = (*FileSystemStorageObjectProvider)(nil)
 	_ ObjectProvider         = (*FileSystemStorageObjectProvider)(nil)
+	_ ReaderAtWithSizeCtx    = (*FileSystemStorageObjectProvider)(nil)
 )
 
 func NewFileSystemStorageProvider(basePath string) (*FileSystemStorageProvider, error) {
@@ -116,14 +121,27 @@ func (f *FileSystemStorageObjectProvider) Write(_ context.Context, data []byte) 
 	return count, err
 }
 
-func (f *FileSystemStorageObjectProvider) ReadAt(_ context.Context, buff []byte, off int64) (n int, err error) {
+func (f *FileSystemStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+	n, _, err = f.ReadAtWithSize(ctx, buff, off)
+	return n, err
+}
+
+func (f *FileSystemStorageObjectProvider) ReadAtWithSize(_ context.Context, buff []byte, off int64) (n int, totalSize int64, err error) {
 	handle, err := f.getHandle(true)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer handle.Close()
 
-	return handle.ReadAt(buff, off)
+	f.sizeOnce.Do(func() {
+		fileInfo, statErr := handle.Stat()
+		if statErr == nil {
+			f.size.Store(fileInfo.Size())
+		}
+	})
+
+	n, err = handle.ReadAt(buff, off)
+	return n, f.size.Load(), err
 }
 
 func (f *FileSystemStorageObjectProvider) Exists(_ context.Context) (bool, error) {
@@ -136,6 +154,10 @@ func (f *FileSystemStorageObjectProvider) Exists(_ context.Context) (bool, error
 }
 
 func (f *FileSystemStorageObjectProvider) Size(_ context.Context) (int64, error) {
+	if size := f.size.Load(); size > 0 {
+		return size, nil
+	}
+
 	handle, err := f.getHandle(true)
 	if err != nil {
 		return 0, err
@@ -147,6 +169,7 @@ func (f *FileSystemStorageObjectProvider) Size(_ context.Context) (int64, error)
 		return 0, err
 	}
 
+	f.size.Store(fileInfo.Size())
 	return fileInfo.Size(), nil
 }
 

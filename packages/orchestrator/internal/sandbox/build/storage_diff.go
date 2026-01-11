@@ -3,7 +3,6 @@ package build
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -86,23 +85,12 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		return err
 	}
 
-	size, err := obj.Size(ctx)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to get object size: %w", err)
-		b.chunker.SetError(errMsg)
-
-		return errMsg
+	readerWithSize, ok := obj.(storage.ReaderAtWithSizeCtx)
+	if !ok {
+		return fmt.Errorf("storage provider does not implement ReaderAtWithSizeCtx")
 	}
 
-	chunker, err := block.NewChunker(size, b.blockSize, obj, b.cachePath, b.metrics)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create chunker: %w", err)
-		b.chunker.SetError(errMsg)
-
-		return errMsg
-	}
-
-	return b.chunker.SetValue(chunker)
+	return b.chunker.SetValue(block.NewChunker(b.blockSize, readerWithSize, b.cachePath, b.metrics))
 }
 
 func (b *StorageDiff) Close() error {
@@ -130,15 +118,6 @@ func (b *StorageDiff) Slice(ctx context.Context, off, length int64) ([]byte, err
 	}
 
 	return c.Slice(ctx, off, length)
-}
-
-func (b *StorageDiff) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
-	c, err := b.chunker.Wait()
-	if err != nil {
-		return 0, err
-	}
-
-	return c.WriteTo(ctx, w)
 }
 
 // The local file might not be synced.

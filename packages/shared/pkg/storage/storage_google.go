@@ -77,6 +77,7 @@ type GCPBucketStorageObjectProvider struct {
 var (
 	_ SeekableObjectProvider = (*GCPBucketStorageObjectProvider)(nil)
 	_ ObjectProvider         = (*GCPBucketStorageObjectProvider)(nil)
+	_ ReaderAtWithSizeCtx    = (*GCPBucketStorageObjectProvider)(nil)
 )
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
@@ -218,20 +219,24 @@ func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 }
 
 func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+	n, _, err = g.ReadAtWithSize(ctx, buff, off)
+	return n, err
+}
+
+func (g *GCPBucketStorageObjectProvider) ReadAtWithSize(ctx context.Context, buff []byte, off int64) (n int, totalSize int64, err error) {
 	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 	defer cancel()
 
-	// The file should not be gzip compressed
 	reader, err := g.handle.NewRangeReader(ctx, off, int64(len(buff)))
 	if err != nil {
 		timer.Failure(ctx, int64(n))
-
-		return 0, fmt.Errorf("failed to create GCS reader for %q: %w", g.path, err)
+		return 0, 0, fmt.Errorf("failed to create GCS reader for %q: %w", g.path, err)
 	}
-
 	defer reader.Close()
+
+	totalSize = reader.Attrs.Size
 
 	for reader.Remain() > 0 {
 		nr, err := reader.Read(buff[n:])
@@ -246,13 +251,11 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 		}
 
 		timer.Failure(ctx, int64(n))
-
-		return n, fmt.Errorf("failed to read %q: %w", g.path, err)
+		return n, totalSize, fmt.Errorf("failed to read %q: %w", g.path, err)
 	}
 
 	timer.Success(ctx, int64(n))
-
-	return n, nil
+	return n, totalSize, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (n int, e error) {

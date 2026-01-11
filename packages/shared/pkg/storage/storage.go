@@ -82,6 +82,11 @@ type ReaderAtCtx interface {
 	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
 }
 
+type ReaderAtWithSizeCtx interface {
+	ReaderAtCtx
+	ReadAtWithSize(ctx context.Context, p []byte, off int64) (n int, totalSize int64, err error)
+}
+
 type ObjectProvider interface {
 	// write
 	WriterCtx

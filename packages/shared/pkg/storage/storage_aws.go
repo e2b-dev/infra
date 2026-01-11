@@ -41,8 +41,9 @@ type AWSBucketStorageObjectProvider struct {
 }
 
 var (
-	_ SeekableObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
-	_ ObjectProvider         = (*AWSBucketStorageObjectProvider)(nil)
+	_ SeekableObjectProvider  = (*AWSBucketStorageObjectProvider)(nil)
+	_ ObjectProvider          = (*AWSBucketStorageObjectProvider)(nil)
+	_ ReaderAtWithSizeCtx     = (*AWSBucketStorageObjectProvider)(nil)
 )
 
 func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {
@@ -216,6 +217,11 @@ func (a *AWSBucketStorageObjectProvider) Write(ctx context.Context, data []byte)
 }
 
 func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+	n, _, err = a.ReadAtWithSize(ctx, buff, off)
+	return n, err
+}
+
+func (a *AWSBucketStorageObjectProvider) ReadAtWithSize(ctx context.Context, buff []byte, off int64) (n int, totalSize int64, err error) {
 	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
@@ -228,22 +234,35 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrObjectNotExist
+			return 0, 0, ErrObjectNotExist
 		}
 
-		return 0, err
+		return 0, 0, err
 	}
 
 	defer resp.Body.Close()
 
-	// When the object is smaller than requested range there will be unexpected EOF,
-	// but backend expects to return EOF in this case.
+	if resp.ContentRange != nil {
+		totalSize = parseContentRangeTotalSize(*resp.ContentRange)
+	}
+
 	n, err = io.ReadFull(resp.Body, buff)
 	if errors.Is(err, io.ErrUnexpectedEOF) {
 		err = io.EOF
 	}
 
-	return n, err
+	return n, totalSize, err
+}
+
+func parseContentRangeTotalSize(contentRange string) int64 {
+	idx := strings.LastIndex(contentRange, "/")
+	if idx == -1 || contentRange[idx+1:] == "*" {
+		return 0
+	}
+
+	var size int64
+	fmt.Sscanf(contentRange[idx+1:], "%d", &size)
+	return size
 }
 
 func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
