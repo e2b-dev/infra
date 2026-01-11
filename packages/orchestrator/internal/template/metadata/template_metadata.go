@@ -23,6 +23,22 @@ const (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata")
 
+// AccessType is a compact representation of block access type for JSON serialization.
+type AccessType string
+
+const (
+	AccessRead     AccessType = "r"
+	AccessWrite    AccessType = "w"
+	AccessPrefetch AccessType = "p"
+)
+
+// blockToAccessType maps block.AccessType to metadata.AccessType.
+var blockToAccessType = map[block.AccessType]AccessType{
+	block.Read:     AccessRead,
+	block.Write:    AccessWrite,
+	block.Prefetch: AccessPrefetch,
+}
+
 type Version struct {
 	Version any `json:"version"`
 }
@@ -56,23 +72,20 @@ type TemplateMetadata struct {
 	FirecrackerVersion string `json:"firecracker_version"`
 }
 
-// BlockMetadata stores metadata about a prefetched block for statistics and analysis.
-type BlockMetadata struct {
-	// Order is the sequence number when the block was accessed (1, 2, ...)
-	Order float64 `json:"order"`
-	// AccessType indicates what kind of access caused this block to be loaded
-	AccessType block.AccessType `json:"access_type"`
-}
-
 // MemoryPrefetchMapping stores block offsets that should be prefetched when starting a sandbox.
 // This is used to speed up sandbox starts by proactively fetching blocks that are likely to be needed.
 type MemoryPrefetchMapping struct {
 	// Indices is an ordered array of block indices to prefetch, preserving the order in which blocks were accessed
 	Indices []uint64 `json:"indices"`
-	// Metadata contains per-block metadata keyed by block index
-	Metadata map[uint64]BlockMetadata `json:"metadata"`
+	// AccessTypes stores the access type ("r"/"w"/"p") for each block, aligned with Indices
+	AccessTypes []AccessType `json:"access_types"`
 	// BlockSize is the size of each block in bytes
 	BlockSize int64 `json:"block_size"`
+}
+
+// AccessTypeFromBlock converts a block.AccessType to metadata.AccessType.
+func AccessTypeFromBlock(at block.AccessType) AccessType {
+	return blockToAccessType[at]
 }
 
 // Count returns the number of blocks to prefetch.

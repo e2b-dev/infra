@@ -242,21 +242,18 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 		return 0
 	})
 
-	// Build ordered indices and metadata
+	// Build ordered indices and access types
 	orderedIndices := make([]uint64, len(entries))
-	blockMetadata := make(map[uint64]metadata.BlockMetadata, len(entries))
+	accessTypes := make([]metadata.AccessType, len(entries))
 	for i, entry := range entries {
 		orderedIndices[i] = entry.Index
-		blockMetadata[entry.Index] = metadata.BlockMetadata{
-			Order:      float64(entry.Order),
-			AccessType: entry.AccessType,
-		}
+		accessTypes[i] = metadata.AccessTypeFromBlock(entry.AccessType)
 	}
 
-	// Create prefetch mapping with ordered indices and metadata
+	// Create prefetch mapping with ordered indices and access types
 	return &metadata.MemoryPrefetchMapping{
-		Indices:   orderedIndices,
-		Metadata:  blockMetadata,
-		BlockSize: prefetchData.BlockSize,
+		Indices:     orderedIndices,
+		AccessTypes: accessTypes,
+		BlockSize:   prefetchData.BlockSize,
 	}, nil
 }
