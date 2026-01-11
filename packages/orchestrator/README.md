@@ -51,3 +51,24 @@ TEMPLATE_BUCKET_NAME=<template-bucket-name> go run cmd/inspect-data/main.go -bui
 
 > Kind can be `memfile` or `rootfs`.
 > Start and end block are optional. If not provided, the entire data will be inspected.
+
+### Optimize Build
+
+Run the optimize step on an existing template build. This resumes the template, waits for envd to respond, and collects memory block access patterns to create a prefetch mapping that speeds up future sandbox starts.
+
+```bash
+TEMPLATE_BUCKET_NAME=<template-bucket-name> go run cmd/optimize-build/main.go -build <build-id> -vcpu <vcpu-count> -memory <memory-mb>
+```
+
+> Required flags:
+> - `-build`: The build ID of the existing template to optimize
+> - `-vcpu`: Number of vCPUs to use when resuming the sandbox
+> - `-memory`: Amount of memory in MB to use when resuming the sandbox
+>
+> Optional flags:
+> - `-kernel`: Kernel version (defaults to version from build metadata)
+> - `-firecracker`: Firecracker version (defaults to version from build metadata)
+>
+> Notes:
+> - Hugepages are always enabled
+> - Internet access is disabled for the sandbox during optimization
