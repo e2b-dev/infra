@@ -227,11 +227,11 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 	)
 
 	// Collect entries and sort by Order to get ordered indices
-	entries := make([]block.BlockEntry, 0, len(prefetchData.BlockEntries))
+	entries := make([]block.PrefetchBlockEntry, 0, len(prefetchData.BlockEntries))
 	for _, entry := range prefetchData.BlockEntries {
 		entries = append(entries, entry)
 	}
-	slices.SortFunc(entries, func(a, b block.BlockEntry) int {
+	slices.SortFunc(entries, func(a, b block.PrefetchBlockEntry) int {
 		if a.Order < b.Order {
 			return -1
 		}

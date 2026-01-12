@@ -220,16 +220,11 @@ func (u *Uffd) DiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
 }
 
 // PrefetchData returns page fault data for prefetch mapping.
-func (u *Uffd) PrefetchData(ctx context.Context) (*PrefetchData, error) {
+func (u *Uffd) PrefetchData(ctx context.Context) (block.PrefetchData, error) {
 	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get uffd: %w", err)
+		return block.PrefetchData{}, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	tracker := uffd.Dirty()
-
-	return &PrefetchData{
-		BlockEntries: tracker.BlockEntries(),
-		BlockSize:    tracker.BlockSize(),
-	}, nil
+	return uffd.PrefetchData(), nil
 }

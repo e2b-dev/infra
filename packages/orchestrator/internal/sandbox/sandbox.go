@@ -868,10 +868,10 @@ func (s *Sandbox) Pause(
 }
 
 // MemoryPrefetchData returns the ordered page fault data for prefetch mapping.
-func (s *Sandbox) MemoryPrefetchData(ctx context.Context) (*uffd.PrefetchData, error) {
+func (s *Sandbox) MemoryPrefetchData(ctx context.Context) (block.PrefetchData, error) {
 	prefetchData, err := s.Resources.memory.PrefetchData(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get prefetch data: %w", err)
+		return block.PrefetchData{}, fmt.Errorf("failed to get prefetch data: %w", err)
 	}
 
 	return prefetchData, nil

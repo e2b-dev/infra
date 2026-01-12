@@ -38,6 +38,8 @@ type Userfaultfd struct {
 	// We use the settleRequests to guard the missingRequests so we can access a consistent state of the missingRequests after the requests are finished.
 	settleRequests sync.RWMutex
 
+	prefetchTracker *block.PrefetchTracker
+
 	wg errgroup.Group
 
 	logger logger.Logger
@@ -57,6 +59,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		fd:              Fd(fd),
 		src:             src,
 		missingRequests: block.NewTracker(blockSize),
+		prefetchTracker: block.NewPrefetchTracker(blockSize),
 		ma:              m,
 		logger:          logger,
 	}
@@ -225,6 +228,10 @@ func (u *Userfaultfd) Dirty() *block.Tracker {
 	return u.missingRequests.Clone()
 }
 
+func (u *Userfaultfd) PrefetchData() block.PrefetchData {
+	return u.prefetchTracker.PrefetchData()
+}
+
 func (u *Userfaultfd) handleMissing(
 	ctx context.Context,
 	onFailure func() error,
@@ -337,6 +344,7 @@ func (u *Userfaultfd) faultPage(
 
 	// Add the offset to the missing requests tracker with metadata.
 	u.missingRequests.Add(offset, accessType)
+	u.prefetchTracker.Add(offset, accessType)
 
 	return nil
 }
