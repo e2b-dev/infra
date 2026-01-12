@@ -142,11 +142,6 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
-type networkSlotRes struct {
-	slot *network.Slot
-	err  error
-}
-
 type Factory struct {
 	config       cfg.BuilderConfig
 	networkPool  *network.Pool
@@ -198,11 +193,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
-	defer func() {
-		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
-		<-ipsCh
-	}()
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -250,16 +241,16 @@ func (f *Factory) CreateSandbox(
 	}
 
 	// / ==== END of resources initialization ====
-	ips := <-ipsCh
-	if ips.err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
+	ips, err := ipsPromise.Wait(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	fcHandle, err := fc.NewProcess(
 		ctx,
 		execCtx,
 		f.config,
-		ips.slot,
+		ips,
 		sandboxFiles,
 		config.FirecrackerConfig,
 		rootfsProvider,
@@ -289,7 +280,7 @@ func (f *Factory) CreateSandbox(
 	telemetry.ReportEvent(ctx, "created fc process")
 
 	resources := &Resources{
-		Slot:   ips.slot,
+		Slot:   ips,
 		rootfs: rootfsProvider,
 		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize(), fcHandle.MemoryInfo),
 	}
@@ -448,28 +439,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	// Slot initialization
-	ipsPromise := utils.NewPromise(func() (*network.Slot, error) {
-		slot, err := f.networkPool.Get(ctx, config.Network)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get network slot: %w", err)
-		}
-
-		cleanup.Add(ctx, func(ctx context.Context) error {
-			ctx, span := tracer.Start(ctx, "clean network-slot")
-			defer span.End()
-
-			go func(ctx context.Context) {
-				returnErr := f.networkPool.Return(ctx, slot)
-				if returnErr != nil {
-					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
-				}
-			}(ctx)
-
-			return nil
-		})
-
-		return slot, nil
-	})
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
@@ -1002,25 +972,19 @@ func pauseProcessRootfs(
 	return rootfsDiff, rootfsHeader, nil
 }
 
-func getNetworkSlotAsync(
+func getNetworkSlot(
 	ctx context.Context,
 	networkPool *network.Pool,
 	cleanup *Cleanup,
-	network *orchestrator.SandboxNetworkConfig,
-) chan networkSlotRes {
-	ctx, span := tracer.Start(ctx, "get-network-slot")
-	defer span.End()
+	networkConfig *orchestrator.SandboxNetworkConfig,
+) *utils.Promise[*network.Slot] {
+	return utils.NewPromise(func() (*network.Slot, error) {
+		ctx, span := tracer.Start(ctx, "get-network-slot")
+		defer span.End()
 
-	r := make(chan networkSlotRes, 1)
-
-	go func() {
-		defer close(r)
-
-		ips, err := networkPool.Get(ctx, network)
+		slot, err := networkPool.Get(ctx, networkConfig)
 		if err != nil {
-			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
-
-			return
+			return nil, fmt.Errorf("failed to get network slot: %w", err)
 		}
 
 		cleanup.Add(ctx, func(ctx context.Context) error {
@@ -1029,7 +993,7 @@ func getNetworkSlotAsync(
 
 			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
 			go func(ctx context.Context) {
-				returnErr := networkPool.Return(ctx, ips)
+				returnErr := networkPool.Return(ctx, slot)
 				if returnErr != nil {
 					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
 				}
@@ -1038,10 +1002,8 @@ func getNetworkSlotAsync(
 			return nil
 		})
 
-		r <- networkSlotRes{ips, nil}
-	}()
-
-	return r
+		return slot, nil
+	})
 }
 
 func serveMemory(

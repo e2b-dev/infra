@@ -194,10 +194,9 @@ outerLoop:
 		// If the event has WRITE flag, it was a write to a missing page.
 		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, block.Write)
-			if err != nil {
-				return fmt.Errorf("failed to handle missing write: %w", err)
-			}
+			u.wg.Go(func() error {
+				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Write)
+			})
 
 			continue
 		}
@@ -205,10 +204,9 @@ outerLoop:
 		// Handle read to missing page ("MISSING" flag)
 		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset, block.Read)
-			if err != nil {
-				return fmt.Errorf("failed to handle missing: %w", err)
-			}
+			u.wg.Go(func() error {
+				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Read)
+			})
 
 			continue
 		}
@@ -236,21 +234,6 @@ func (u *Userfaultfd) PrefetchData() block.PrefetchData {
 	defer u.settleRequests.Unlock()
 
 	return u.prefetchTracker.PrefetchData()
-}
-
-func (u *Userfaultfd) handleMissing(
-	ctx context.Context,
-	onFailure func() error,
-	addr,
-	pagesize uintptr,
-	offset int64,
-	accessType block.AccessType,
-) error {
-	u.wg.Go(func() error {
-		return u.faultPage(ctx, addr, offset, pagesize, u.src, onFailure, accessType)
-	})
-
-	return nil
 }
 
 // Prefault proactively copies a page to guest memory at the given offset.
