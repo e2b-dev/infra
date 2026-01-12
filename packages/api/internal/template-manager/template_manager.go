@@ -33,8 +33,7 @@ type processingBuilds struct {
 }
 
 type TemplateManager struct {
-	clusters *clusters.Pool
-
+	clusters      *clusters.Pool
 	lock          sync.Mutex
 	processing    map[uuid.UUID]processingBuilds
 	buildCache    *templatecache.TemplatesBuildCache
@@ -58,7 +57,7 @@ const (
 
 func New(
 	sqlcDB *sqlcdb.Client,
-	edgePool *clusters.Pool,
+	clusters *clusters.Pool,
 	buildCache *templatecache.TemplatesBuildCache,
 	templateCache *templatecache.TemplateCache,
 	featureFlags *featureflags.Client,
@@ -67,7 +66,7 @@ func New(
 		sqlcDB:        sqlcDB,
 		buildCache:    buildCache,
 		templateCache: templateCache,
-		clusters:      edgePool,
+		clusters:      clusters,
 		featureFlags:  featureFlags,
 
 		lock:       sync.Mutex{},
@@ -159,7 +158,7 @@ func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID str
 		return nil, fmt.Errorf("failed to get builder by id '%s': %w", nodeID, err)
 	}
 
-	return instance.GetConnection(), nil
+	return instance.GetClient(), nil
 }
 
 func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) error {
