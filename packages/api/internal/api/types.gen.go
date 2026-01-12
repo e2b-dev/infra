@@ -889,6 +889,7 @@ type TemplateBuildRequestV2 struct {
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
 	// TeamID Identifier of the team
+	// Deprecated:
 	TeamID *string `json:"teamID,omitempty"`
 }
 
@@ -908,6 +909,7 @@ type TemplateBuildRequestV3 struct {
 	Names *[]string `json:"names,omitempty"`
 
 	// TeamID Identifier of the team
+	// Deprecated:
 	TeamID *string `json:"teamID,omitempty"`
 }
 

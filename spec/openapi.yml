@@ -907,6 +907,7 @@ components:
           items:
             type: string
         teamID:
+          deprecated: true
           type: string
           description: Identifier of the team
         cpuCount:
@@ -922,6 +923,7 @@ components:
           description: Alias of the template
           type: string
         teamID:
+          deprecated: true
           type: string
           description: Identifier of the team
         cpuCount:
@@ -2107,6 +2109,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
