@@ -12,6 +12,7 @@ import (
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -110,4 +111,72 @@ func logsFromBuilderInstance(ctx context.Context, instance *Instance, templateID
 
 		return entries, nil
 	}
+}
+
+// getBuildLogsWithSources implements the shared logic for fetching build logs from multiple sources.
+// This function extracts the common pattern used by both local and remote cluster resource providers,
+// avoiding code duplication between the two implementations.
+//
+// The function tries log sources in order based on availability and configuration:
+// 1. Temporary logs from the builder instance (if nodeID is provided and source allows)
+// 2. Persistent logs from backend storage (strategy provided by caller)
+//
+// It returns the first successful result, logging warnings for any failures encountered.
+// This unified approach ensures consistent behavior and makes maintenance easier by centralizing
+// the source selection and fallback logic.
+func getBuildLogsWithSources(
+	ctx context.Context,
+	instances *smap.Map[*Instance],
+	nodeID *string,
+	templateID string,
+	buildID string,
+	offset int32,
+	limit int32,
+	level *logs.LogLevel,
+	cursor *time.Time,
+	direction api.LogsDirection,
+	source *api.LogsSource,
+	persistentLogFetcher logSourceFunc, // Backend-specific strategy for persistent logs (Loki for local, Edge API for remote)
+) ([]logs.LogEntry, error) {
+	ctx, span := tracer.Start(ctx, "get build-logs")
+	defer span.End()
+
+	start, end := logQueryWindow(cursor, direction)
+
+	var sources []logSourceFunc
+
+	// Handle temporary logs from builder instance
+	if nodeID != nil && logCheckSourceType(source, api.LogsSourceTemporary) {
+		instance, found := instances.Get(*nodeID)
+		if found {
+			sourceCallback := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
+			sources = append(sources, sourceCallback)
+		} else {
+			logger.L().Warn(
+				ctx, "Node instance not found for build logs, falling back to other sources",
+				logger.WithNodeID(*nodeID),
+				logger.WithTemplateID(templateID),
+				logger.WithBuildID(buildID),
+			)
+		}
+	}
+
+	// Handle persistent logs (backend-specific implementation provided by caller)
+	if logCheckSourceType(source, api.LogsSourcePersistent) {
+		sources = append(sources, persistentLogFetcher)
+	}
+
+	// Iterate through sources and return the first successful fetch
+	for _, sourceFetch := range sources {
+		entries, err := sourceFetch()
+		if err != nil {
+			logger.L().Warn(ctx, "Error fetching build logs", logger.WithTemplateID(templateID), logger.WithBuildID(buildID), zap.Error(err))
+
+			continue
+		}
+
+		return entries, nil
+	}
+
+	return nil, nil
 }

@@ -152,53 +152,17 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 	direction api.LogsDirection,
 	source *api.LogsSource,
 ) ([]logs.LogEntry, error) {
-	ctx, span := tracer.Start(ctx, "get build-logs")
-	defer span.End()
-
+	// Use shared implementation with Loki as the persistent log backend
 	start, end := logQueryWindow(cursor, direction)
 
-	var sources []logSourceFunc
-
-	if nodeID != nil && logCheckSourceType(source, api.LogsSourceTemporary) {
-		instance, found := l.instances.Get(*nodeID)
-		if found {
-			sourceCallback := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
-			sources = append(sources, sourceCallback)
-		} else {
-			logger.L().Warn(
-				ctx, "Node instance not found for build logs, falling back to other sources",
-				logger.WithNodeID(*nodeID),
-				logger.WithTemplateID(templateID),
-				logger.WithBuildID(buildID),
-			)
-		}
+	lokiDirection := defaultDirection
+	if direction == api.LogsDirectionBackward {
+		lokiDirection = logproto.BACKWARD
 	}
 
-	// Fetch logs from Loki backend (explicit persistent source or default)
-	if logCheckSourceType(source, api.LogsSourcePersistent) {
-		lokiDirection := defaultDirection
-		if direction == api.LogsDirectionBackward {
-			lokiDirection = logproto.BACKWARD
-		}
+	persistentFetcher := l.logsFromLocalLoki(ctx, templateID, buildID, start, end, int(limit), offset, level, lokiDirection)
 
-		sourceCallback := l.logsFromLocalLoki(ctx, templateID, buildID, start, end, int(limit), offset, level, lokiDirection)
-		sources = append(sources, sourceCallback)
-	}
-
-	// Iterate through sources and return the first successful fetch,
-	// it depends on nodeID and source what sources are available here.
-	for _, sourceFetch := range sources {
-		entries, err := sourceFetch()
-		if err != nil {
-			logger.L().Warn(ctx, "Error fetching build logs", logger.WithTemplateID(templateID), logger.WithBuildID(buildID), zap.Error(err))
-
-			continue
-		}
-
-		return entries, nil
-	}
-
-	return nil, nil
+	return getBuildLogsWithSources(ctx, l.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)
 }
 
 func (l *LocalClusterResourceProvider) logsFromLocalLoki(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int32, level *logs.LogLevel, direction logproto.Direction) logSourceFunc {

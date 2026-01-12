@@ -7,11 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -147,47 +144,11 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 	direction api.LogsDirection,
 	source *api.LogsSource,
 ) ([]logs.LogEntry, error) {
-	ctx, span := tracer.Start(ctx, "get build-logs")
-	defer span.End()
-
+	// Use shared implementation with Edge API as the persistent log backend
 	start, end := logQueryWindow(cursor, direction)
+	persistentFetcher := r.getBuildLogsFromEdge(ctx, templateID, buildID, offset, limit, level, start, end, direction)
 
-	var sources []logSourceFunc
-
-	if nodeID != nil && logCheckSourceType(source, api.LogsSourceTemporary) {
-		instance, found := r.instances.Get(*nodeID)
-		if found {
-			sourceCallback := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
-			sources = append(sources, sourceCallback)
-		} else {
-			logger.L().Warn(
-				ctx, "Node instance not found for build logs, falling back to other sources",
-				logger.WithNodeID(*nodeID),
-				logger.WithTemplateID(templateID),
-				logger.WithBuildID(buildID),
-			)
-		}
-	}
-
-	if logCheckSourceType(source, api.LogsSourcePersistent) {
-		sourceCallback := r.getBuildLogsFromEdge(ctx, templateID, buildID, offset, limit, level, start, end, direction)
-		sources = append(sources, sourceCallback)
-	}
-
-	// Iterate through sources and return the first successful fetch,
-	// it depends on nodeID and source what sources are available here.
-	for _, sourceFetch := range sources {
-		entries, err := sourceFetch()
-		if err != nil {
-			logger.L().Warn(ctx, "Error fetching build logs", logger.WithTemplateID(templateID), logger.WithBuildID(buildID), zap.Error(err))
-
-			continue
-		}
-
-		return entries, nil
-	}
-
-	return nil, nil
+	return getBuildLogsWithSources(ctx, r.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)
 }
 
 func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) logSourceFunc {
