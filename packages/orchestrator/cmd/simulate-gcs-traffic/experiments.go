@@ -96,6 +96,10 @@ var experiments = map[string]map[string]experiment{
 	"read method": {
 		"google storage": &googleStorageRangeRead{},
 	},
+	"chunk size": {
+		"2MB": &setChunkSize{2 * megabyte},
+		"4MB": &setChunkSize{4 * megabyte},
+	},
 }
 
 type experiment interface {
@@ -114,7 +118,6 @@ type scenario struct {
 func (s scenario) setup(ctx context.Context, p *processor) (*options, error) {
 	o := options{
 		bucket:             p.bucket,
-		chunkSize:          p.chunkSize,
 		concurrentRequests: 1,
 	}
 
@@ -176,6 +179,18 @@ func (s *setConcurrentRequests) apply(_ context.Context, o *options) error {
 }
 
 var _ experiment = (*setConcurrentRequests)(nil)
+
+type setChunkSize struct {
+	chunkSize int64
+}
+
+func (s *setChunkSize) apply(_ context.Context, o *options) error {
+	o.chunkSize = s.chunkSize
+
+	return nil
+}
+
+var _ experiment = (*setChunkSize)(nil)
 
 type skipFirstRead struct{}
 

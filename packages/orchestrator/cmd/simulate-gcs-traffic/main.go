@@ -41,7 +41,6 @@ func main() {
 	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	f.BoolVar(&gatherMetadata, "gather-metadata", true, "gather metadata about files")
 	f.IntVar(&p.limitFileCount, "limit-file-count", 10000, "limit number of files to read (0 = no limit)")
-	f.Int64Var(&p.chunkSize, "chunk-size", 4*megabyte, "size of chunk to read")
 	f.Int64Var(&p.minFileSize, "min-file-size", 1*gigabyte, "number of concurrent requests")
 	f.StringVar(&csvPath, "csv-path", "output.csv", "path to output csv file")
 	f.DurationVar(&p.testDuration, "test-duration", 15*time.Second, "amount of time to run test")
@@ -123,7 +122,6 @@ type (
 type processor struct {
 	// configuration
 	minFileSize    int64
-	chunkSize      int64
 	bucket         string
 	testDuration   time.Duration
 	limitFileCount int
@@ -197,7 +195,7 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 	testCtx, cancel := context.WithTimeout(ctx, p.testDuration)
 	defer cancel()
 
-	allFiles := newFiles(slices.Clone(p.allFiles), p.chunkSize)
+	allFiles := newFiles(slices.Clone(p.allFiles), opts.chunkSize)
 
 	for testCtx.Err() == nil {
 		path, offset, err := allFiles.nextRead()
