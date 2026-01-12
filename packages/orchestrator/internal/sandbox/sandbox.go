@@ -979,7 +979,7 @@ func getNetworkSlot(
 	networkConfig *orchestrator.SandboxNetworkConfig,
 ) *utils.Promise[*network.Slot] {
 	return utils.NewPromise(func() (*network.Slot, error) {
-		ctx, span := tracer.Start(ctx, "get-network-slot")
+		ctx, span := tracer.Start(ctx, "get network-slot")
 		defer span.End()
 
 		slot, err := networkPool.Get(ctx, networkConfig)
@@ -988,7 +988,7 @@ func getNetworkSlot(
 		}
 
 		cleanup.Add(ctx, func(ctx context.Context) error {
-			ctx, span := tracer.Start(ctx, "network-slot-clean")
+			ctx, span := tracer.Start(ctx, "clean network-slot")
 			defer span.End()
 
 			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
