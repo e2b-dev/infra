@@ -7,12 +7,9 @@ type StaticServiceDiscovery struct {
 }
 
 func NewStaticServiceDiscovery(results []string, port uint16) *StaticServiceDiscovery {
-	items := make([]DiscoveredInstance, 0)
-
-	for _, result := range results {
-		items = append(
-			items, DiscoveredInstance{InstanceIPAddress: result, InstancePort: port},
-		)
+	items := make([]DiscoveredInstance, len(results))
+	for i, result := range results {
+		items[i] = DiscoveredInstance{InstanceIPAddress: result, InstancePort: port}
 	}
 
 	return &StaticServiceDiscovery{items: items}
