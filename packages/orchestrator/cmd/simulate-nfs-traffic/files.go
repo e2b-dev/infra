@@ -54,8 +54,9 @@ func removeAtIndex[T any](items []T, idx int) []T {
 }
 
 type files struct {
-	rand  *rand.Rand
-	paths []string
+	rand             *rand.Rand
+	paths            []string
+	allowRepeatReads bool
 }
 
 func (f *files) selectFile() (string, error) {
@@ -66,8 +67,10 @@ func (f *files) selectFile() (string, error) {
 	idx := f.rand.Intn(len(f.paths))
 	path := f.paths[idx]
 
-	// remove path from paths
-	f.paths = removeAtIndex(f.paths, idx)
+	if !f.allowRepeatReads {
+		// remove path from paths
+		f.paths = removeAtIndex(f.paths, idx)
+	}
 
 	return path, nil
 }

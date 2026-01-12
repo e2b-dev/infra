@@ -8,6 +8,8 @@ import (
 	"log"
 	"maps"
 	"math"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"slices"
 	"sync"
@@ -37,15 +39,29 @@ func main() {
 	var csvPath string
 	var repeat int
 	var gatherMetadata bool
+	var pprofAddr string
+	var allOptionsToCSV bool
 
 	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	f.BoolVar(&allOptionsToCSV, "all-options-to-csv", false, "write all options to csv")
 	f.BoolVar(&gatherMetadata, "gather-metadata", true, "gather metadata about files")
 	f.IntVar(&p.limitFileCount, "limit-file-count", 10000, "limit number of files to read (0 = no limit)")
-	f.Int64Var(&p.minFileSize, "min-file-size", 1*gigabyte, "number of concurrent requests")
-	f.StringVar(&csvPath, "csv-path", "output.csv", "path to output csv file")
-	f.DurationVar(&p.testDuration, "test-duration", 15*time.Second, "amount of time to run test")
 	f.IntVar(&repeat, "repeat", 1, "number of times to repeat each test")
+	f.Int64Var(&p.minFileSize, "min-file-size", 100*megabyte, "number of concurrent requests")
+	f.StringVar(&csvPath, "csv-path", "output.csv", "path to output csv file")
+	f.StringVar(&p.bucketPrefix, "bucket-prefix", "", "prefix to filter objects by")
+	f.StringVar(&pprofAddr, "pprof", "", "address to listen on for pprof (e.g. localhost:6060)")
+
 	_ = f.Parse(os.Args[1:])
+
+	if pprofAddr != "" {
+		go func() {
+			log.Printf("starting pprof on %s", pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				log.Printf("failed to start pprof: %s", err)
+			}
+		}()
+	}
 
 	switch paths := f.Args(); len(paths) {
 	case 0:
@@ -89,10 +105,11 @@ func main() {
 	for scenario := range generateScenarios(experiments) {
 		for i := 0; i < repeat; i++ {
 			currentScenario++
+
 			if repeat > 1 {
-				fmt.Printf("\n=== Scenario %d/%d [%s]: %s (run %d/%d) ===\n", currentScenario, totalScenarios, p.testDuration.String(), scenario.Name(), i+1, repeat)
+				fmt.Printf("\n=== Scenario %d/%d [%s] (run %d/%d) ===\n", currentScenario, totalScenarios, scenario.Name(), i+1, repeat)
 			} else {
-				fmt.Printf("\n=== Scenario %d/%d [%s]: %s ===\n", currentScenario, totalScenarios, p.testDuration.String(), scenario.Name())
+				fmt.Printf("\n=== Scenario %d/%d [%s] ===\n", currentScenario, totalScenarios, scenario.Name())
 			}
 
 			result, err := p.run(ctx, scenario)
@@ -105,7 +122,7 @@ func main() {
 	}
 
 	if csvPath != "" {
-		if err := dumpResultsToCSV(csvPath, metadata, results); err != nil {
+		if err := dumpResultsToCSV(csvPath, metadata, results, allOptionsToCSV); err != nil {
 			log.Fatalf("failed to dump results to %q: %s", csvPath, err.Error())
 		}
 	}
@@ -131,7 +148,7 @@ type processor struct {
 	// configuration
 	minFileSize    int64
 	bucket         string
-	testDuration   time.Duration
+	bucketPrefix   string
 	limitFileCount int
 
 	// state
@@ -200,12 +217,12 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 
 	semaphore := make(chan struct{}, opts.concurrentRequests)
 
-	testCtx, cancel := context.WithTimeout(ctx, p.testDuration)
-	defer cancel()
+	testStart := time.Now()
 
-	allFiles := newFiles(slices.Clone(p.allFiles), opts.chunkSize)
+	allFiles := newFiles(slices.Clone(p.allFiles), opts.chunkSize, opts.allowRepeatReads)
 
-	for testCtx.Err() == nil {
+	for i := 0; i < opts.readCount; i++ {
+
 		path, offset, err := allFiles.nextRead()
 		if err != nil {
 			logger.Printf("failed to get file: %v", err)
@@ -230,7 +247,7 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 				return
 			}
 
-			if testCtx.Err() != nil {
+			if i < opts.skipCount {
 				return
 			}
 
@@ -259,7 +276,7 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 		summary:              readSummary,
 		concurrency:          opts.concurrentRequests,
 		totalSuccessfulReads: len(reads),
-		testDuration:         p.testDuration,
+		testDuration:         time.Since(testStart),
 	}, nil
 }
 

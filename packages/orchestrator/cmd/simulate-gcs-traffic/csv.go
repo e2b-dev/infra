@@ -9,16 +9,20 @@ import (
 	"time"
 )
 
-func dumpResultsToCSV(path string, metadata environmentMetadata, results []result) error {
+func dumpResultsToCSV(path string, metadata environmentMetadata, results []result, allExperiments bool) error {
 	// 1. Identify all experiment keys
 	experimentKeys := make([]string, 0, len(experiments))
-	for k := range experiments {
+	for k, opts := range experiments {
+		if !allExperiments && len(opts) == 1 {
+			continue
+		}
+
 		experimentKeys = append(experimentKeys, k)
 	}
 	slices.Sort(experimentKeys)
 
 	// 2. Identify all metrics
-	metrics := []string{"files per second", "min", "mean", "p50", "p95", "p99", "max", "stddev"}
+	metrics := []string{"min", "mean", "p50", "p95", "p99", "max", "stddev"}
 	for _, h := range histogramDurations {
 		metrics = append(metrics, fmt.Sprintf("<%s", h))
 	}
@@ -59,7 +63,6 @@ func dumpResultsToCSV(path string, metadata environmentMetadata, results []resul
 		// Metric values
 		s := res.summary
 		row = append(row,
-			toIntString(int(float64(res.totalSuccessfulReads)/res.testDuration.Seconds())),
 			toMillis(s.minTime),
 			toMillis(s.mean),
 			toMillis(s.p50),

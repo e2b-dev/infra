@@ -19,6 +19,9 @@ type options struct {
 	chunkSize          int64
 	client             *storage.Client
 	concurrentRequests int
+	readCount          int
+	skipCount          int
+	allowRepeatReads   bool
 
 	makeBuffer     bufferMethod
 	readMethod     readMethod
@@ -28,21 +31,47 @@ type options struct {
 	clientOptions []option.ClientOption
 }
 
+func (o options) validate() interface{} {
+	var errs []error
+
+	if o.bucket == "" {
+		errs = append(errs, errors.New("bucket must be set"))
+	}
+
+	if o.readCount == 0 {
+		errs = append(errs, errors.New("read-count must be set"))
+	}
+
+	if o.skipCount >= o.readCount {
+		errs = append(errs, errors.New("skip-count must be less than read-count"))
+	}
+
+	if o.concurrentRequests < 1 {
+		errs = append(errs, errors.New("concurrent-requests must be greater than 0"))
+	}
+
+	if o.chunkSize <= 0 {
+		errs = append(errs, errors.New("chunk-size must be greater than 0"))
+	}
+
+	return errors.Join(errs...)
+}
+
 var experiments = map[string]map[string]experiment{
 	"concurrent requests": {
-		//"1": &setConcurrentRequests{1},
+		"1": &setConcurrentRequests{1},
 		//"4":  &setConcurrentRequests{4},
-		"12": &setConcurrentRequests{12},
-		// "16": &setConcurrentRequests{16},
+		//"12": &setConcurrentRequests{12},
+		"16": &setConcurrentRequests{16},
 		//"32": &setConcurrentRequests{32},
 		// "48": &setConcurrentRequests{48},
 		// "64": &setConcurrentRequests{64},
 		//"128": &setConcurrentRequests{128},
 		// "256": &setConcurrentRequests{256},
 	},
-	"anywhere cache": {
-		"uncached": nil,
-		// "cached":   &skipFirstRead{},
+	"cache warmup": {
+		"no": nil,
+		//"yes":   &skipReads{2, 50 * time.Millisecond},
 	},
 	"shared buffer": {
 		// "shared buffer": &sharedBuffer{},
@@ -64,7 +93,7 @@ var experiments = map[string]map[string]experiment{
 	"grpc initial window size": {
 		//"default": nil,
 		"4MB": &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte))},
-		"8MB": &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(8 * megabyte))},
+		//"8MB": &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(8 * megabyte))},
 		//"16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(16 * megabyte))},
 		//"32MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(32 * megabyte))},
 	},
@@ -97,9 +126,18 @@ var experiments = map[string]map[string]experiment{
 		"google storage": &googleStorageRangeRead{},
 	},
 	"chunk size": {
-		"2MB": &setChunkSize{2 * megabyte},
+		//"2MB": &setChunkSize{2 * megabyte},
 		"4MB": &setChunkSize{4 * megabyte},
-		"8MB": &setChunkSize{8 * megabyte},
+		//"8MB": &setChunkSize{8 * megabyte},
+	},
+	"read count": {
+		//"150":  &setReadCount{150},
+		"500": &setReadCount{500},
+		//"1000": &setReadCount{1000},
+	},
+	"allow repeat reads": {
+		//"disabled": &setAllowRepeatReads{false},
+		"enabled": &setAllowRepeatReads{true},
 	},
 }
 
@@ -120,6 +158,7 @@ func (s scenario) setup(ctx context.Context, p *processor) (*options, error) {
 	o := options{
 		bucket:             p.bucket,
 		concurrentRequests: 1,
+		readCount:          100,
 	}
 
 	var errs []error
@@ -136,6 +175,10 @@ func (s scenario) setup(ctx context.Context, p *processor) (*options, error) {
 		o.readMethod = m(o.readMethod)
 	}
 
+	if err := o.validate(); err != nil {
+		return nil, fmt.Errorf("failed to validate options: %w", err)
+	}
+
 	var err error
 	if o.client, err = o.clientFactory(ctx, o.clientOptions...); err != nil {
 		return nil, fmt.Errorf("failed to create storage client: %w", err)
@@ -150,6 +193,8 @@ func (s scenario) teardown(_ context.Context, o *options) error {
 	if err := o.client.Close(); err != nil {
 		return fmt.Errorf("failed to close storage client: %w", err)
 	}
+
+	o.client = nil
 
 	return errors.Join(errs...)
 }
@@ -193,21 +238,66 @@ func (s *setChunkSize) apply(_ context.Context, o *options) error {
 
 var _ experiment = (*setChunkSize)(nil)
 
-type skipFirstRead struct{}
+type setReadCount struct {
+	readCount int
+}
 
-var _ experiment = (*skipFirstRead)(nil)
+func (s *setReadCount) apply(_ context.Context, o *options) error {
+	o.readCount = s.readCount
 
-func (s skipFirstRead) apply(_ context.Context, p *options) error {
+	return nil
+}
+
+var _ experiment = (*setReadCount)(nil)
+
+type setSkipCount struct {
+	skipCount int
+}
+
+func (s *setSkipCount) apply(_ context.Context, o *options) error {
+	o.skipCount = s.skipCount
+
+	return nil
+}
+
+var _ experiment = (*setSkipCount)(nil)
+
+type setAllowRepeatReads struct {
+	allowRepeatReads bool
+}
+
+func (s *setAllowRepeatReads) apply(_ context.Context, o *options) error {
+	o.allowRepeatReads = s.allowRepeatReads
+
+	return nil
+}
+
+var _ experiment = (*setAllowRepeatReads)(nil)
+
+type skipReads struct {
+	skipCount     int
+	sleepDuration time.Duration
+}
+
+var _ experiment = (*skipReads)(nil)
+
+func (s skipReads) apply(_ context.Context, p *options) error {
 	p.readMiddleware = append(p.readMiddleware, s.middleware)
 
 	return nil
 }
 
-func (s skipFirstRead) middleware(fn readMethod) readMethod {
+func (s skipReads) middleware(fn readMethod) readMethod {
 	return func(ctx context.Context, info readInfo) (time.Duration, error) {
-		_, err := fn(ctx, info)
-		if err != nil {
-			return 0, fmt.Errorf("failed to make uncached gcs read: %w", err)
+		for range s.skipCount {
+			_, err := fn(ctx, info)
+			if err != nil {
+				return 0, fmt.Errorf("failed to make uncached gcs read: %w", err)
+			}
+		}
+
+		if s.sleepDuration > 0 {
+			time.Sleep(s.sleepDuration)
 		}
 
 		return fn(ctx, info)

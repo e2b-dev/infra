@@ -9,6 +9,8 @@ import (
 	"maps"
 	"math"
 	"math/rand"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"slices"
 	"strconv"
@@ -26,6 +28,7 @@ func main() {
 	var p processor
 	var csvPath string
 	var repeat int
+	var pprofAddr string
 	var filestoreName, filestoreZone string
 
 	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -36,9 +39,19 @@ func main() {
 	f.StringVar(&filestoreZone, "filestore-zone", "", "add filestore metadata to csv")
 	f.StringVar(&csvPath, "csv-path", "output.csv", "path to output csv file")
 	f.StringVar(&p.nfsStatFile, "nfs-stat-file", "/tmp/nfs-stat.txt", "file to store nfs stat")
-	f.DurationVar(&p.testDuration, "test-duration", 15*time.Second, "amount of time to run test")
 	f.IntVar(&repeat, "repeat", 1, "number of times to repeat each test")
+	f.StringVar(&pprofAddr, "pprof", "", "address to listen on for pprof (e.g. localhost:6060)")
+
 	_ = f.Parse(os.Args[1:])
+
+	if pprofAddr != "" {
+		go func() {
+			log.Printf("starting pprof on %s", pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				log.Printf("failed to start pprof: %s", err)
+			}
+		}()
+	}
 
 	switch paths := f.Args(); len(paths) {
 	case 0:
@@ -59,6 +72,8 @@ func main() {
 
 	var results []result
 
+	p.readCount = 100
+
 	fmt.Println("generating files ... ")
 	if err := p.findFiles(); err != nil {
 		log.Fatalf("failed to generate files: %s", err)
@@ -74,15 +89,17 @@ func main() {
 	for scenario := range generateScenarios(experiments) {
 		for i := 0; i < repeat; i++ {
 			currentScenario++
-			if repeat > 1 {
-				fmt.Printf("\n=== Scenario %d/%d: %s (run %d/%d) ===\n", currentScenario, totalScenarios, scenario.Name(), i+1, repeat)
-			} else {
-				fmt.Printf("\n=== Scenario %d/%d: %s ===\n", currentScenario, totalScenarios, scenario.Name())
-			}
 
 			result, err := p.run(ctx, scenario)
 			if err != nil {
 				log.Fatalf("failed to run scenario: %s", err.Error())
+			}
+
+			limit := fmt.Sprintf("%d reads", result.totalSuccessfulReads)
+			if repeat > 1 {
+				fmt.Printf("\n=== Scenario %d/%d [%s]: %s (run %d/%d) ===\n", currentScenario, totalScenarios, limit, scenario.Name(), i+1, repeat)
+			} else {
+				fmt.Printf("\n=== Scenario %d/%d [%s]: %s ===\n", currentScenario, totalScenarios, limit, scenario.Name())
 			}
 
 			results = append(results, result)
@@ -163,9 +180,11 @@ type processor struct {
 	path               string
 	dropNfsCache       bool
 	nfsStat            bool
-	testDuration       time.Duration
 	readMethod         func(string) (int, error)
 	concurrentRequests int
+	readCount          int
+	skipCount          int
+	allowRepeatReads   bool
 	limitFileCount     int
 
 	allFiles    []string
@@ -201,15 +220,18 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 
 	semaphore := make(chan struct{}, p.concurrentRequests)
 
-	testCtx, cancel := context.WithTimeout(ctx, p.testDuration)
+	testStart := time.Now()
+	testCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	allFiles := &files{
-		rand:  rand.New(rand.NewSource(time.Now().UnixNano())),
-		paths: slices.Clone(p.allFiles),
+		rand:             rand.New(rand.NewSource(time.Now().UnixNano())),
+		paths:            slices.Clone(p.allFiles),
+		allowRepeatReads: p.allowRepeatReads,
 	}
 
-	for testCtx.Err() == nil {
+	for i := 0; i < p.readCount && testCtx.Err() == nil; i++ {
+
 		f, err := allFiles.selectFile()
 		if err != nil {
 			logger.Println("failed to get file", "error", err)
@@ -219,6 +241,7 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 
 		semaphore <- struct{}{}
 
+		iteration := i
 		wg.Add(1)
 		go func() {
 			defer func() { <-semaphore }()
@@ -236,6 +259,10 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 			duration := time.Since(start)
 
 			if testCtx.Err() != nil {
+				return
+			}
+
+			if iteration < p.skipCount {
 				return
 			}
 
@@ -271,7 +298,7 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 		summary:              readSummary,
 		concurrency:          p.concurrentRequests,
 		totalSuccessfulReads: len(reads),
-		testDuration:         p.testDuration,
+		testDuration:         time.Since(testStart),
 	}, nil
 }
 

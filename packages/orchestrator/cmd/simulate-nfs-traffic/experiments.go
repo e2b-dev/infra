@@ -73,6 +73,16 @@ var experiments = map[string]map[string]experiment{
 		"2 (default)": &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "2"},
 		"128":         &setSysFs{path: "sunrpc.tcp_slot_table_entries", newValue: "128"},
 	},
+	"read count": {
+		"100": &setReadCount{100},
+	},
+	"skip count": {
+		"0": &setSkipCount{0},
+	},
+	"allow repeat reads": {
+		"disabled": nil,
+		"enabled":  &setAllowRepeatReads{true},
+	},
 }
 
 type experiment interface {
@@ -233,3 +243,45 @@ func (r readMethodExperiment) teardown(_ context.Context, _ *processor) error {
 }
 
 var _ experiment = (*readMethodExperiment)(nil)
+
+type setReadCount struct {
+	readCount int
+}
+
+func (s *setReadCount) setup(_ context.Context, p *processor) error {
+	p.readCount = s.readCount
+
+	return nil
+}
+
+func (s *setReadCount) teardown(_ context.Context, _ *processor) error { return nil }
+
+var _ experiment = (*setReadCount)(nil)
+
+type setSkipCount struct {
+	skipCount int
+}
+
+func (s *setSkipCount) setup(_ context.Context, p *processor) error {
+	p.skipCount = s.skipCount
+
+	return nil
+}
+
+func (s *setSkipCount) teardown(_ context.Context, _ *processor) error { return nil }
+
+var _ experiment = (*setSkipCount)(nil)
+
+type setAllowRepeatReads struct {
+	allowRepeatReads bool
+}
+
+func (s *setAllowRepeatReads) setup(_ context.Context, p *processor) error {
+	p.allowRepeatReads = s.allowRepeatReads
+
+	return nil
+}
+
+func (s *setAllowRepeatReads) teardown(_ context.Context, _ *processor) error { return nil }
+
+var _ experiment = (*setAllowRepeatReads)(nil)

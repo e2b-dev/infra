@@ -22,7 +22,14 @@ func (p *processor) findFiles() error {
 
 	var paths []fileInfo
 
-	it := client.Bucket(p.bucket).Objects(ctx, nil)
+	var q *storage.Query
+	if p.bucketPrefix != "" {
+		q = &storage.Query{
+			Prefix: p.bucketPrefix,
+		}
+	}
+
+	it := client.Bucket(p.bucket).Objects(ctx, q)
 	for {
 		attrs, err := it.Next()
 		if errors.Is(err, iterator.Done) {
@@ -55,17 +62,20 @@ func removeAtIndex[T any](items []T, idx int) []T {
 }
 
 type files struct {
-	rand       *rand.Rand
-	paths      []fileInfo
-	chunkSize  int64
-	usedRanges map[string]map[int64]struct{}
+	rand             *rand.Rand
+	allowRepeatReads bool
+	paths            []fileInfo
+	chunkSize        int64
+	usedRanges       map[string]map[int64]struct{}
 }
 
-func newFiles(paths []fileInfo, chunkSize int64) *files {
+func newFiles(paths []fileInfo, chunkSize int64, allowRepeatReads bool) *files {
 	return &files{
+		paths:            paths,
+		chunkSize:        chunkSize,
+		allowRepeatReads: allowRepeatReads,
+
 		rand:       rand.New(rand.NewSource(time.Now().UnixNano())),
-		paths:      paths,
-		chunkSize:  chunkSize,
 		usedRanges: make(map[string]map[int64]struct{}),
 	}
 }
@@ -78,8 +88,9 @@ func (f *files) nextRead() (string, int64, error) {
 	idx := f.rand.Intn(len(f.paths))
 	info := f.paths[idx]
 
+	const totalAttempts = 10
 	totalChunks := info.size / f.chunkSize
-	for {
+	for range totalAttempts {
 		offset := f.rand.Int63n(totalChunks - 1) // the last one might not be full, just skip it
 		usedOffsets, isFileUsed := f.usedRanges[info.path]
 		if !isFileUsed {
@@ -96,4 +107,6 @@ func (f *files) nextRead() (string, int64, error) {
 			return info.path, offset, nil
 		}
 	}
+
+	return "", 0, fmt.Errorf("failed to find a free offset for file %q", info.path)
 }
