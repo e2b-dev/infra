@@ -14,8 +14,9 @@ type Config struct {
 
 	ClickhouseConnectionString string `env:"CLICKHOUSE_CONNECTION_STRING"`
 
-	LocalClusterEndpoint string `env:"LOCAL_CLUSTER_ENDPOINT"`
-	LocalClusterToken    string `env:"LOCAL_CLUSTER_TOKEN"`
+	LokiPassword string `env:"LOKI_PASSWORD"`
+	LokiURL      string `env:"LOKI_URL,required"`
+	LokiUser     string `env:"LOKI_USER"`
 
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`

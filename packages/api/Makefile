@@ -43,8 +43,7 @@ run:
 	ENVIRONMENT=$(ENVIRONMENT) \
 	ORCHESTRATOR_PORT=5008 \
 	NODE_ID=integration-tests \
-	LOCAL_CLUSTER_ENDPOINT=localhost:3001 \
-	LOCAL_CLUSTER_TOKEN=$(EDGE_TOKEN) \
+	LOKI_URL=unset \
 	./bin/api --port 3000
 
 define setup_local_env
