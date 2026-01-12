@@ -25,6 +25,7 @@ func main() {
 
 	var p processor
 	var csvPath string
+	var repeat int
 	var filestoreName, filestoreZone string
 
 	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -36,6 +37,7 @@ func main() {
 	f.StringVar(&csvPath, "csv-path", "output.csv", "path to output csv file")
 	f.StringVar(&p.nfsStatFile, "nfs-stat-file", "/tmp/nfs-stat.txt", "file to store nfs stat")
 	f.DurationVar(&p.testDuration, "test-duration", 15*time.Second, "amount of time to run test")
+	f.IntVar(&repeat, "repeat", 1, "number of times to repeat each test")
 	_ = f.Parse(os.Args[1:])
 
 	switch paths := f.Args(); len(paths) {
@@ -63,14 +65,20 @@ func main() {
 	}
 
 	for scenario := range generateScenarios(experiments) {
-		fmt.Printf("\n=== Scenario: %s ===\n", scenario.Name())
+		for i := 0; i < repeat; i++ {
+			if repeat > 1 {
+				fmt.Printf("\n=== Scenario: %s (run %d/%d) ===\n", scenario.Name(), i+1, repeat)
+			} else {
+				fmt.Printf("\n=== Scenario: %s ===\n", scenario.Name())
+			}
 
-		result, err := p.run(ctx, scenario)
-		if err != nil {
-			log.Fatalf("failed to run scenario: %s", err.Error())
+			result, err := p.run(ctx, scenario)
+			if err != nil {
+				log.Fatalf("failed to run scenario: %s", err.Error())
+			}
+
+			results = append(results, result)
 		}
-
-		results = append(results, result)
 	}
 
 	if csvPath != "" {

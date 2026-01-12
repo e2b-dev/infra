@@ -35,6 +35,7 @@ func main() {
 
 	var p processor
 	var csvPath string
+	var repeat int
 	var gatherMetadata bool
 
 	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -44,6 +45,7 @@ func main() {
 	f.Int64Var(&p.minFileSize, "min-file-size", 1*gigabyte, "number of concurrent requests")
 	f.StringVar(&csvPath, "csv-path", "output.csv", "path to output csv file")
 	f.DurationVar(&p.testDuration, "test-duration", 15*time.Second, "amount of time to run test")
+	f.IntVar(&repeat, "repeat", 1, "number of times to repeat each test")
 	_ = f.Parse(os.Args[1:])
 
 	switch paths := f.Args(); len(paths) {
@@ -79,14 +81,20 @@ func main() {
 	}
 
 	for scenario := range generateScenarios(experiments) {
-		fmt.Printf("\n=== Scenario [%s]: %s ===\n", p.testDuration.String(), scenario.Name())
+		for i := 0; i < repeat; i++ {
+			if repeat > 1 {
+				fmt.Printf("\n=== Scenario [%s]: %s (run %d/%d) ===\n", p.testDuration.String(), scenario.Name(), i+1, repeat)
+			} else {
+				fmt.Printf("\n=== Scenario [%s]: %s ===\n", p.testDuration.String(), scenario.Name())
+			}
 
-		result, err := p.run(ctx, scenario)
-		if err != nil {
-			log.Fatalf("failed to run scenario: %s", err.Error())
+			result, err := p.run(ctx, scenario)
+			if err != nil {
+				log.Fatalf("failed to run scenario: %s", err.Error())
+			}
+
+			results = append(results, result)
 		}
-
-		results = append(results, result)
 	}
 
 	if csvPath != "" {
