@@ -2,6 +2,7 @@ package optimize
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -153,7 +154,7 @@ func (pb *OptimizeBuilder) Build(
 	})
 
 	// Upload the updated metadata
-	err = updatedMetadata.Upload(ctx, pb.templateStorage)
+	err = pb.updateMetadata(ctx, updatedMetadata)
 	if err != nil {
 		pb.logger.Warn(ctx, "failed to upload prefetch metadata, continuing without prefetch",
 			zap.Error(err),
@@ -289,50 +290,34 @@ func (pb *OptimizeBuilder) runSandboxAndCollectPrefetch(
 	return prefetchData, nil
 }
 
-// computeCommonPrefetchEntries computes the intersection of multiple prefetch data sets.
-// Only pages that appear in ALL runs are included.
-// For common pages, it uses the average order and prefers "read" access type if any run differs.
-func computeCommonPrefetchEntries(allData []block.PrefetchData) []block.PrefetchBlockEntry {
-	if len(allData) == 0 {
-		return nil
+// updateMetadata updates the template metadata in storages.
+func (pb *OptimizeBuilder) updateMetadata(ctx context.Context, t metadata.Template) error {
+	ctx, span := tracer.Start(ctx, "upload-metadata")
+	defer span.End()
+
+	templateFiles := storage.TemplateFiles{BuildID: t.Template.BuildID}
+	metadataPath := templateFiles.StorageMetadataPath()
+
+	// Open the object for writing
+	object, err := pb.templateStorage.OpenObject(ctx, metadataPath, storage.MetadataObjectType)
+	if err != nil {
+		return fmt.Errorf("failed to open metadata object: %w", err)
 	}
 
-	var commonEntries []block.PrefetchBlockEntry
-
-	// Use the first run as the base and check against all other runs
-	for idx, entry1 := range allData[0].BlockEntries {
-		// Check if this index exists in all other runs
-		totalOrder := entry1.Order
-		accessType := entry1.AccessType
-		allMatch := true
-
-		for i := 1; i < len(allData); i++ {
-			entry, exists := allData[i].BlockEntries[idx]
-			if !exists {
-				allMatch = false
-
-				break
-			}
-			totalOrder += entry.Order
-			// If any access type differs, prefer "read"
-			if entry.AccessType != accessType {
-				accessType = block.Read
-			}
-		}
-
-		if !allMatch {
-			continue
-		}
-
-		// Compute average order across all runs
-		avgOrder := totalOrder / uint64(len(allData))
-
-		commonEntries = append(commonEntries, block.PrefetchBlockEntry{
-			Index:      idx,
-			Order:      avgOrder,
-			AccessType: accessType,
-		})
+	// Serialize metadata
+	metaBytes, err := json.Marshal(t)
+	if err != nil {
+		return fmt.Errorf("failed to serialize metadata: %w", err)
 	}
 
-	return commonEntries
+	// Write to storage
+	_, err = object.Write(ctx, metaBytes)
+	if err != nil {
+		return fmt.Errorf("failed to write metadata: %w", err)
+	}
+
+	// Invalidate local cache to force refetch with updated metadata
+	pb.templateCache.Invalidate(t.Template.BuildID)
+
+	return nil
 }

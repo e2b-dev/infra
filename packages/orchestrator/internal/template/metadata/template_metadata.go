@@ -179,41 +179,6 @@ func (t Template) ToFile(path string) error {
 	return nil
 }
 
-// Upload uploads the template metadata to storage.
-func (t Template) Upload(ctx context.Context, s storage.StorageProvider) error {
-	ctx, span := tracer.Start(ctx, "upload-metadata")
-	defer span.End()
-
-	templateFiles := storage.TemplateFiles{BuildID: t.Template.BuildID}
-	metadataPath := templateFiles.StorageMetadataPath()
-
-	// Open the object for writing
-	object, err := s.OpenObject(ctx, metadataPath, storage.MetadataObjectType)
-	if err != nil {
-		return fmt.Errorf("failed to open metadata object: %w", err)
-	}
-
-	// Serialize metadata to reader
-	metaReader, err := serialize(t)
-	if err != nil {
-		return fmt.Errorf("failed to serialize metadata: %w", err)
-	}
-
-	// Read all bytes from the reader
-	metaBytes, err := io.ReadAll(metaReader)
-	if err != nil {
-		return fmt.Errorf("failed to read metadata bytes: %w", err)
-	}
-
-	// Write to storage
-	_, err = object.Write(ctx, metaBytes)
-	if err != nil {
-		return fmt.Errorf("failed to write metadata: %w", err)
-	}
-
-	return nil
-}
-
 func FromFile(path string) (Template, error) {
 	f, err := os.Open(path)
 	if err != nil {

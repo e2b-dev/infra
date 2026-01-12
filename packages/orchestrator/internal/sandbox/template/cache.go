@@ -116,6 +116,11 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 	return c.cache.Items()
 }
 
+// Invalidate removes a template from the cache, forcing a refetch on next access.
+func (c *Cache) Invalidate(buildID string) {
+	c.cache.Delete(buildID)
+}
+
 func (c *Cache) GetTemplate(
 	ctx context.Context,
 	buildID string,
