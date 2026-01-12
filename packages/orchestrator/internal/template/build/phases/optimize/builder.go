@@ -29,6 +29,10 @@ var prefetchTimeout = 5 * time.Minute
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/optimize")
 
+// prefetchIterations is the number of sandbox runs to perform for prefetch collection.
+// Only pages that appear in ALL runs are included in the final prefetch mapping.
+const prefetchIterations = 2
+
 // OptimizeBuilder resumes the template, waits for envd, and captures the dirty blocks
 // to store as prefetch mapping in the template metadata.
 type OptimizeBuilder struct {
@@ -202,36 +206,43 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 	// Create sandbox creator for resuming
 	sandboxCreator := layer.NewResumeSandbox(sbxConfig, pb.sandboxFactory, prefetchTimeout)
 
-	// Resume the sandbox
-	sbx, err := sandboxCreator.Sandbox(ctx, pb.layerExecutor, localTemplate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resume sandbox: %w", err)
-	}
-	defer sbx.Close(ctx)
-
-	// Get the prefetch data from the memory backend
-	prefetchData, err := sbx.MemoryPrefetchData(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get prefetch data: %w", err)
+	// Run sandbox multiple times and collect prefetch data
+	var allPrefetchData []block.PrefetchData
+	for i := 0; i < prefetchIterations; i++ {
+		pb.logger.Debug(ctx, fmt.Sprintf("starting sandbox run %d/%d for prefetch collection", i+1, prefetchIterations))
+		prefetchData, err := pb.runSandboxAndCollectPrefetch(ctx, sandboxCreator, localTemplate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to collect prefetch data from run %d: %w", i+1, err)
+		}
+		allPrefetchData = append(allPrefetchData, prefetchData)
 	}
 
-	if len(prefetchData.BlockEntries) == 0 {
-		pb.logger.Debug(ctx, "no blocks found for prefetch mapping")
+	// Compute intersection with average order across all runs
+	commonEntries := computeCommonPrefetchEntries(allPrefetchData)
+
+	if len(commonEntries) == 0 {
+		pb.logger.Debug(ctx, "no common blocks found for prefetch mapping")
 
 		return nil, nil
 	}
 
+	// Log block counts per run
+	runCounts := make([]int, len(allPrefetchData))
+	for i, data := range allPrefetchData {
+		runCounts[i] = len(data.BlockEntries)
+	}
+
 	span.SetAttributes(
-		attribute.Int64("prefetch_blocks", int64(len(prefetchData.BlockEntries))),
-		attribute.Int64("block_size", prefetchData.BlockSize),
+		attribute.Int64("prefetch_iterations", int64(prefetchIterations)),
+		attribute.Int64("prefetch_blocks_common", int64(len(commonEntries))),
+		attribute.Int64("block_size", allPrefetchData[0].BlockSize),
 	)
 
-	// Collect entries and sort by Order to get ordered indices
-	entries := make([]block.PrefetchBlockEntry, 0, len(prefetchData.BlockEntries))
-	for _, entry := range prefetchData.BlockEntries {
-		entries = append(entries, entry)
-	}
-	slices.SortFunc(entries, func(a, b block.PrefetchBlockEntry) int {
+	pb.logger.Debug(ctx, fmt.Sprintf("prefetch intersection: iterations=%d, run_counts=%v, common=%d",
+		prefetchIterations, runCounts, len(commonEntries)))
+
+	// Sort by average order
+	slices.SortFunc(commonEntries, func(a, b block.PrefetchBlockEntry) int {
 		if a.Order < b.Order {
 			return -1
 		}
@@ -243,9 +254,9 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 	})
 
 	// Build ordered indices and access types
-	orderedIndices := make([]uint64, len(entries))
-	accessTypes := make([]metadata.AccessType, len(entries))
-	for i, entry := range entries {
+	orderedIndices := make([]uint64, len(commonEntries))
+	accessTypes := make([]metadata.AccessType, len(commonEntries))
+	for i, entry := range commonEntries {
 		orderedIndices[i] = entry.Index
 		accessTypes[i] = metadata.AccessTypeFromBlock(entry.AccessType)
 	}
@@ -254,6 +265,74 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 	return &metadata.MemoryPrefetchMapping{
 		Indices:     orderedIndices,
 		AccessTypes: accessTypes,
-		BlockSize:   prefetchData.BlockSize,
+		BlockSize:   allPrefetchData[0].BlockSize,
 	}, nil
+}
+
+// runSandboxAndCollectPrefetch runs a sandbox and collects the prefetch data.
+func (pb *OptimizeBuilder) runSandboxAndCollectPrefetch(
+	ctx context.Context,
+	sandboxCreator *layer.ResumeSandbox,
+	localTemplate sbxtemplate.Template,
+) (block.PrefetchData, error) {
+	sbx, err := sandboxCreator.Sandbox(ctx, pb.layerExecutor, localTemplate)
+	if err != nil {
+		return block.PrefetchData{}, fmt.Errorf("failed to resume sandbox: %w", err)
+	}
+	defer sbx.Close(ctx)
+
+	prefetchData, err := sbx.MemoryPrefetchData(ctx)
+	if err != nil {
+		return block.PrefetchData{}, fmt.Errorf("failed to get prefetch data: %w", err)
+	}
+
+	return prefetchData, nil
+}
+
+// computeCommonPrefetchEntries computes the intersection of multiple prefetch data sets.
+// Only pages that appear in ALL runs are included.
+// For common pages, it uses the average order and prefers "read" access type if any run differs.
+func computeCommonPrefetchEntries(allData []block.PrefetchData) []block.PrefetchBlockEntry {
+	if len(allData) == 0 {
+		return nil
+	}
+
+	var commonEntries []block.PrefetchBlockEntry
+
+	// Use the first run as the base and check against all other runs
+	for idx, entry1 := range allData[0].BlockEntries {
+		// Check if this index exists in all other runs
+		var totalOrder uint64 = entry1.Order
+		accessType := entry1.AccessType
+		allMatch := true
+
+		for i := 1; i < len(allData); i++ {
+			entry, exists := allData[i].BlockEntries[idx]
+			if !exists {
+				allMatch = false
+
+				break
+			}
+			totalOrder += entry.Order
+			// If any access type differs, prefer "read"
+			if entry.AccessType != accessType {
+				accessType = block.Read
+			}
+		}
+
+		if !allMatch {
+			continue
+		}
+
+		// Compute average order across all runs
+		avgOrder := totalOrder / uint64(len(allData))
+
+		commonEntries = append(commonEntries, block.PrefetchBlockEntry{
+			Index:      idx,
+			Order:      avgOrder,
+			AccessType: accessType,
+		})
+	}
+
+	return commonEntries
 }
