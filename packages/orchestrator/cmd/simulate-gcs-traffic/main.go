@@ -79,12 +79,20 @@ func main() {
 		log.Fatalf("failed to generate files: %s", err)
 	}
 
+	totalScenarios := 1
+	for _, options := range experiments {
+		totalScenarios *= len(options)
+	}
+	totalScenarios *= repeat
+
+	currentScenario := 0
 	for scenario := range generateScenarios(experiments) {
 		for i := 0; i < repeat; i++ {
+			currentScenario++
 			if repeat > 1 {
-				fmt.Printf("\n=== Scenario [%s]: %s (run %d/%d) ===\n", p.testDuration.String(), scenario.Name(), i+1, repeat)
+				fmt.Printf("\n=== Scenario %d/%d [%s]: %s (run %d/%d) ===\n", currentScenario, totalScenarios, p.testDuration.String(), scenario.Name(), i+1, repeat)
 			} else {
-				fmt.Printf("\n=== Scenario [%s]: %s ===\n", p.testDuration.String(), scenario.Name())
+				fmt.Printf("\n=== Scenario %d/%d [%s]: %s ===\n", currentScenario, totalScenarios, p.testDuration.String(), scenario.Name())
 			}
 
 			result, err := p.run(ctx, scenario)
