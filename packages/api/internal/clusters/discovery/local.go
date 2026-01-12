@@ -47,7 +47,7 @@ func (sd *LocalServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 				NodeID:               "local",
 				InstanceID:           "unknown",
 				LocalIPAddress:       testsInstanceHost,
-				LocalInstanceApiPort: consts.OrchestratorApiPort,
+				LocalInstanceApiPort: consts.OrchestratorAPIPort,
 			},
 		}, nil
 	}
@@ -73,7 +73,7 @@ func (sd *LocalServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 			// For now, we assume ports that are used for gRPC api and proxy are static,
 			// in future we should be able to take port numbers from Nomad API and map them accordingly here.
 			LocalIPAddress:       v.AllocationIP,
-			LocalInstanceApiPort: consts.OrchestratorApiPort,
+			LocalInstanceApiPort: consts.OrchestratorAPIPort,
 		}
 
 		result[i] = item

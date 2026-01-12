@@ -14,4 +14,4 @@ const NodeIDLength = 8
 // We don't want to use some obviously dummy value such as empty zeros, because for users it will look like something is wrong with the sandbox id
 const ClientID = "6532622b"
 
-var OrchestratorApiPort = uint16(utils.Must(strconv.ParseUint(env.GetEnv("ORCHESTRATOR_PORT", "5008"), 10, 16)))
+var OrchestratorAPIPort = uint16(utils.Must(strconv.ParseUint(env.GetEnv("ORCHESTRATOR_PORT", "5008"), 10, 16)))
