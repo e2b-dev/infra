@@ -32,17 +32,11 @@ func (t *Tracker) Has(off int64) bool {
 	return t.b.Test(uint(header.BlockIdx(off, t.blockSize)))
 }
 
-// Add adds an offset to the tracker with metadata about the access.
-func (t *Tracker) Add(off int64, accessType AccessType) {
+func (t *Tracker) Add(off int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	idx := uint64(header.BlockIdx(off, t.blockSize))
-
-	// Only add if not already tracked
-	if !t.b.Test(uint(idx)) {
-		t.b.Set(uint(idx))
-	}
+	t.b.Set(uint(header.BlockIdx(off, t.blockSize)))
 }
 
 func (t *Tracker) Reset() {

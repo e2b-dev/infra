@@ -208,7 +208,7 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 
 	// Run sandbox multiple times and collect prefetch data
 	var allPrefetchData []block.PrefetchData
-	for i := 0; i < prefetchIterations; i++ {
+	for i := range prefetchIterations {
 		pb.logger.Debug(ctx, fmt.Sprintf("starting sandbox run %d/%d for prefetch collection", i+1, prefetchIterations))
 		prefetchData, err := pb.runSandboxAndCollectPrefetch(ctx, sandboxCreator, localTemplate)
 		if err != nil {
@@ -302,7 +302,7 @@ func computeCommonPrefetchEntries(allData []block.PrefetchData) []block.Prefetch
 	// Use the first run as the base and check against all other runs
 	for idx, entry1 := range allData[0].BlockEntries {
 		// Check if this index exists in all other runs
-		var totalOrder uint64 = entry1.Order
+		totalOrder := entry1.Order
 		accessType := entry1.AccessType
 		allMatch := true
 

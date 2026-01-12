@@ -343,7 +343,7 @@ func (u *Userfaultfd) faultPage(
 	}
 
 	// Add the offset to the missing requests tracker with metadata.
-	u.missingRequests.Add(offset, accessType)
+	u.missingRequests.Add(offset)
 	u.prefetchTracker.Add(offset, accessType)
 
 	return nil

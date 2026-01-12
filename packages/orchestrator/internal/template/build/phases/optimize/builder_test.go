@@ -9,7 +9,10 @@ import (
 )
 
 func TestComputeCommonPrefetchEntries(t *testing.T) {
+	t.Parallel()
+
 	t.Run("empty input returns nil", func(t *testing.T) {
+		t.Parallel()
 		result := computeCommonPrefetchEntries(nil)
 		assert.Nil(t, result)
 
@@ -18,6 +21,7 @@ func TestComputeCommonPrefetchEntries(t *testing.T) {
 	})
 
 	t.Run("single run returns all entries", func(t *testing.T) {
+		t.Parallel()
 		data := []block.PrefetchData{
 			{
 				BlockEntries: map[uint64]block.PrefetchBlockEntry{
@@ -43,6 +47,7 @@ func TestComputeCommonPrefetchEntries(t *testing.T) {
 	})
 
 	t.Run("two runs with complete overlap", func(t *testing.T) {
+		t.Parallel()
 		data := []block.PrefetchData{
 			{
 				BlockEntries: map[uint64]block.PrefetchBlockEntry{
@@ -73,6 +78,7 @@ func TestComputeCommonPrefetchEntries(t *testing.T) {
 	})
 
 	t.Run("two runs with partial overlap", func(t *testing.T) {
+		t.Parallel()
 		data := []block.PrefetchData{
 			{
 				BlockEntries: map[uint64]block.PrefetchBlockEntry{
@@ -110,6 +116,7 @@ func TestComputeCommonPrefetchEntries(t *testing.T) {
 	})
 
 	t.Run("two runs with no overlap", func(t *testing.T) {
+		t.Parallel()
 		data := []block.PrefetchData{
 			{
 				BlockEntries: map[uint64]block.PrefetchBlockEntry{
@@ -129,10 +136,11 @@ func TestComputeCommonPrefetchEntries(t *testing.T) {
 
 		result := computeCommonPrefetchEntries(data)
 
-		assert.Len(t, result, 0)
+		assert.Empty(t, result)
 	})
 
 	t.Run("different access types prefers read", func(t *testing.T) {
+		t.Parallel()
 		data := []block.PrefetchData{
 			{
 				BlockEntries: map[uint64]block.PrefetchBlockEntry{
@@ -163,6 +171,7 @@ func TestComputeCommonPrefetchEntries(t *testing.T) {
 	})
 
 	t.Run("same access types preserved", func(t *testing.T) {
+		t.Parallel()
 		data := []block.PrefetchData{
 			{
 				BlockEntries: map[uint64]block.PrefetchBlockEntry{
@@ -193,6 +202,7 @@ func TestComputeCommonPrefetchEntries(t *testing.T) {
 	})
 
 	t.Run("three runs intersection", func(t *testing.T) {
+		t.Parallel()
 		data := []block.PrefetchData{
 			{
 				BlockEntries: map[uint64]block.PrefetchBlockEntry{
@@ -230,6 +240,7 @@ func TestComputeCommonPrefetchEntries(t *testing.T) {
 	})
 
 	t.Run("average order rounds down", func(t *testing.T) {
+		t.Parallel()
 		data := []block.PrefetchData{
 			{
 				BlockEntries: map[uint64]block.PrefetchBlockEntry{
@@ -253,6 +264,7 @@ func TestComputeCommonPrefetchEntries(t *testing.T) {
 	})
 
 	t.Run("three runs with mixed access types", func(t *testing.T) {
+		t.Parallel()
 		data := []block.PrefetchData{
 			{
 				BlockEntries: map[uint64]block.PrefetchBlockEntry{
