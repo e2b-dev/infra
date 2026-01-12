@@ -3,6 +3,7 @@ package block
 import (
 	"maps"
 	"sync"
+	"sync/atomic"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -44,26 +45,28 @@ type PrefetchTracker struct {
 	// orderCounter tracks the next order number to assign
 	orderCounter uint64
 
-	isTracking bool
+	isTracking atomic.Bool
 }
 
 func NewPrefetchTracker(blockSize int64) *PrefetchTracker {
-	return &PrefetchTracker{
+	t := &PrefetchTracker{
 		blockSize:    blockSize,
 		blockEntries: make(map[uint64]PrefetchBlockEntry),
 		orderCounter: 1,
-		isTracking:   true,
 	}
+	t.isTracking.Store(true)
+
+	return t
 }
 
 // Add adds an offset to the tracker with metadata about the access.
 func (t *PrefetchTracker) Add(off int64, accessType AccessType) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if !t.isTracking {
+	if !t.isTracking.Load() {
 		return
 	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
 	idx := uint64(header.BlockIdx(off, t.blockSize))
 
@@ -79,14 +82,14 @@ func (t *PrefetchTracker) Add(off int64, accessType AccessType) {
 }
 
 func (t *PrefetchTracker) PrefetchData() PrefetchData {
+	// Stop tracking new blocks
+	t.isTracking.Store(false)
+
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
 	result := make(map[uint64]PrefetchBlockEntry, len(t.blockEntries))
 	maps.Copy(result, t.blockEntries)
-
-	// Stop tracking new blocks
-	t.isTracking = false
 
 	return PrefetchData{
 		BlockEntries: result,
