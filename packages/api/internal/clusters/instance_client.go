@@ -33,7 +33,7 @@ func (a instanceAuthorization) RequireTransportSecurity() bool {
 	return a.tls
 }
 
-func createConnection(tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool) (*GRPCClient, error) {
+func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool) (*GRPCClient, error) {
 	grpcOptions := []grpc.DialOption{
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(

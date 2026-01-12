@@ -33,7 +33,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 }
 
 func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *clusters.Cluster, i *clusters.Instance) {
-	orchestratorNode, err := nodemanager.NewClusterNode(ctx, i.GetConnection(), cluster.ID, cluster.SandboxDomain, i)
+	orchestratorNode, err := nodemanager.NewClusterNode(ctx, i.GetClient(), cluster.ID, cluster.SandboxDomain, i)
 	if err != nil {
 		logger.L().Error(ctx, "Failed to create node", zap.Error(err))
 

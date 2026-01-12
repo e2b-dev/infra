@@ -70,7 +70,7 @@ func newInstance(
 	connAddr string,
 	connTls bool,
 ) (*Instance, error) {
-	conn, err := createConnection(tel, clusterAuth, connAddr, connTls)
+	client, err := createClient(tel, clusterAuth, connAddr, connTls)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cluster instance client client: %w", err)
 	}
@@ -86,13 +86,13 @@ func newInstance(
 		NodeID:            sd.NodeID,
 		ClusterID:         clusterID,
 
-		client: conn,
+		client: client,
 		mutex:  sync.RWMutex{},
 	}
 
 	err = i.Sync(ctx)
 	if err != nil {
-		closeErr := conn.Close()
+		closeErr := client.Close()
 		if closeErr != nil {
 			logger.L().Error(
 				ctx, "Failed to close gRPC Connection after instance sync failure",
@@ -181,7 +181,7 @@ func (i *Instance) GetInfo() InstanceInfo {
 	}
 }
 
-func (i *Instance) GetConnection() *GRPCClient {
+func (i *Instance) GetClient() *GRPCClient {
 	return i.client
 }
 

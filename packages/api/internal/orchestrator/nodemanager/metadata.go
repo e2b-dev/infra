@@ -49,8 +49,8 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 		)
 	}
 
-	// Merge medata from connection (auth, routing with service instance id) and event metadata.
-	return n.connection, appendMetadataCtx(ctx, md)
+	// Merge medata from client (auth, routing with service instance id) and event metadata.
+	return n.client, appendMetadataCtx(ctx, md)
 }
 
 func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) (*clusters.GRPCClient, context.Context) {
@@ -65,8 +65,8 @@ func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, execut
 		)
 	}
 
-	// Merge medata from connection (auth, routing with service instance id) and event metadata.
-	return n.connection, appendMetadataCtx(ctx, md)
+	// Merge medata from client (auth, routing with service instance id) and event metadata.
+	return n.client, appendMetadataCtx(ctx, md)
 }
 
 func appendMetadataCtx(ctx context.Context, md metadata.MD) context.Context {

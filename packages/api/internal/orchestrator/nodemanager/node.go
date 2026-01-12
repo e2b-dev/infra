@@ -39,8 +39,8 @@ type Node struct {
 	IPAddress     string
 	SandboxDomain *string
 
-	connection *clusters.GRPCClient
-	status     api.NodeStatus
+	client *clusters.GRPCClient
+	status api.NodeStatus
 
 	metrics   Metrics
 	metricsMu sync.RWMutex
@@ -95,9 +95,9 @@ func New(
 		IPAddress:        discoveredNode.IPAddress,
 		SandboxDomain:    nil,
 
-		connection: client,
-		status:     nodeStatus,
-		meta:       nodeMetadata,
+		client: client,
+		status: nodeStatus,
+		meta:   nodeMetadata,
 
 		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
@@ -142,9 +142,9 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 			createFails:         atomic.Uint64{},
 		},
 
-		connection: client,
-		status:     status,
-		meta:       nodeMetadata,
+		client: client,
+		status: status,
+		meta:   nodeMetadata,
 
 		buildCache: buildCache,
 	}
@@ -166,21 +166,21 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 func (n *Node) Close(ctx context.Context) error {
 	if n.IsNomadManaged() {
 		logger.L().Info(ctx, "Closing local node", logger.WithNodeID(n.ID))
-		if err := n.connection.Close(); err != nil {
-			logger.L().Error(ctx, "Error closing connection to node", zap.Error(err), logger.WithNodeID(n.ID))
+		if err := n.client.Close(); err != nil {
+			logger.L().Error(ctx, "Error closing client to node", zap.Error(err), logger.WithNodeID(n.ID))
 		}
 	} else {
 		logger.L().Info(ctx, "Closing cluster node", logger.WithNodeID(n.ID), logger.WithClusterID(n.ClusterID))
-		// We are not closing grpc connection, because it is managed by cluster instance
+		// We are not closing grpc client, because it is managed by cluster instance
 	}
 	n.buildCache.Stop()
 
 	return nil
 }
 
-// Ensures that GRPC connection request context always has the latest service instance ID
+// Ensures that GRPC client request context always has the latest service instance ID
 func (n *Node) GetClient(ctx context.Context) (*clusters.GRPCClient, context.Context) {
-	return n.connection, ctx
+	return n.client, ctx
 }
 
 func (n *Node) IsNomadManaged() bool {

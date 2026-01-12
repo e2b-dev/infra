@@ -78,7 +78,7 @@ func logsFromBuilderInstance(ctx context.Context, instance *Instance, templateID
 			lvlReq = templatemanagergrpc.LogLevel(*level).Enum()
 		}
 
-		res, err := instance.GetConnection().Template.TemplateBuildStatus(
+		res, err := instance.GetClient().Template.TemplateBuildStatus(
 			ctx, &templatemanagergrpc.TemplateStatusRequest{
 				TemplateID: templateID,
 				BuildID:    buildID,
