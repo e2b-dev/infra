@@ -2139,6 +2139,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2168,6 +2169,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - in: path
@@ -2201,6 +2203,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - in: query
           required: false
@@ -2229,6 +2232,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2280,6 +2284,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2307,6 +2312,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -2323,6 +2329,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2349,6 +2356,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2367,6 +2375,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2392,6 +2401,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2438,6 +2448,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
