@@ -194,6 +194,13 @@ func (u *Uffd) Stop() error {
 	return u.fdExit.SignalExit()
 }
 
+// Close closes the uffd resources. It is safe to call multiple times and can be
+// called whether or not Start() was called. This ensures proper cleanup of the
+// fdExit pipe file descriptors even if initialization fails before Start() runs.
+func (u *Uffd) Close() error {
+	return u.fdExit.Close()
+}
+
 func (u *Uffd) Ready() chan struct{} {
 	return u.readyCh
 }

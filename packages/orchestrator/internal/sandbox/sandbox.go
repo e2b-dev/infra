@@ -450,6 +450,8 @@ func (f *Factory) ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
+	cleanup.AddNoContext(ctx, fcUffd.Close)
+
 	wg.Go(func() error {
 		err := serveMemory(
 			execCtx,
