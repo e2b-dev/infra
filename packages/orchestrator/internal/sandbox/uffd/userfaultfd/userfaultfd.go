@@ -8,6 +8,9 @@ import (
 	"syscall"
 	"unsafe"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
@@ -17,6 +20,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd")
 
 const maxRequestsInProgress = 4096
 
@@ -33,6 +38,8 @@ type Userfaultfd struct {
 	missingRequests *block.Tracker
 	// We use the settleRequests to guard the missingRequests so we can access a consistent state of the missingRequests after the requests are finished.
 	settleRequests sync.RWMutex
+
+	prefetchTracker *block.PrefetchTracker
 
 	wg errgroup.Group
 
@@ -53,6 +60,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		fd:              Fd(fd),
 		src:             src,
 		missingRequests: block.NewTracker(blockSize),
+		prefetchTracker: block.NewPrefetchTracker(blockSize),
 		ma:              m,
 		logger:          logger,
 	}
@@ -187,10 +195,9 @@ outerLoop:
 		// If the event has WRITE flag, it was a write to a missing page.
 		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset)
-			if err != nil {
-				return fmt.Errorf("failed to handle missing write: %w", err)
-			}
+			u.wg.Go(func() error {
+				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Write)
+			})
 
 			continue
 		}
@@ -198,10 +205,9 @@ outerLoop:
 		// Handle read to missing page ("MISSING" flag)
 		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
-			err := u.handleMissing(ctx, fdExit.SignalExit, addr, pagesize, offset)
-			if err != nil {
-				return fmt.Errorf("failed to handle missing: %w", err)
-			}
+			u.wg.Go(func() error {
+				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Read)
+			})
 
 			continue
 		}
@@ -209,66 +215,6 @@ outerLoop:
 		// MINOR and WP flags are not expected as we don't register the uffd with these flags.
 		return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
 	}
-}
-
-func (u *Userfaultfd) handleMissing(
-	ctx context.Context,
-	onFailure func() error,
-	addr,
-	pagesize uintptr,
-	offset int64,
-) error {
-	u.wg.Go(func() error {
-		// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
-		// even if the errgroup is cancelled or the goroutine returns early.
-		// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
-		// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
-		u.settleRequests.RLock()
-		defer u.settleRequests.RUnlock()
-
-		defer func() {
-			if r := recover(); r != nil {
-				u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
-			}
-		}()
-
-		b, sliceErr := u.src.Slice(ctx, offset, int64(pagesize))
-		if sliceErr != nil {
-			signalErr := onFailure()
-
-			joinedErr := errors.Join(sliceErr, signalErr)
-
-			u.logger.Error(ctx, "UFFD serve slice error", zap.Error(joinedErr))
-
-			return fmt.Errorf("failed to read from source: %w", joinedErr)
-		}
-
-		var copyMode CULong
-
-		copyErr := u.fd.copy(addr, pagesize, b, copyMode)
-		if errors.Is(copyErr, unix.EEXIST) {
-			// Page is already mapped
-
-			return nil
-		}
-
-		if copyErr != nil {
-			signalErr := onFailure()
-
-			joinedErr := errors.Join(copyErr, signalErr)
-
-			u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
-
-			return fmt.Errorf("failed uffdio copy %w", joinedErr)
-		}
-
-		// Add the offset to the missing requests tracker.
-		u.missingRequests.Add(offset)
-
-		return nil
-	})
-
-	return nil
 }
 
 func (u *Userfaultfd) Dirty() *block.Tracker {
@@ -279,4 +225,118 @@ func (u *Userfaultfd) Dirty() *block.Tracker {
 	defer u.settleRequests.Unlock()
 
 	return u.missingRequests.Clone()
+}
+
+func (u *Userfaultfd) PrefetchData() block.PrefetchData {
+	// This will be at worst cancelled when the uffd is closed.
+	u.settleRequests.Lock()
+	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
+	// so it is consistent even if there is a another uffd call after.
+	defer u.settleRequests.Unlock()
+
+	return u.prefetchTracker.PrefetchData()
+}
+
+// Prefault proactively copies a page to guest memory at the given offset.
+// This is used to speed up sandbox starts by prefetching pages that are known to be needed.
+// Returns nil on success, or if the page is already mapped (EEXIST is handled gracefully).
+func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) error {
+	ctx, span := tracer.Start(ctx, "prefault page")
+	defer span.End()
+
+	// Get host virtual address and page size for this offset
+	addr, pagesize, err := u.ma.GetHostVirtAddr(offset)
+	if err != nil {
+		return fmt.Errorf("failed to get host virtual address: %w", err)
+	}
+
+	if len(data) != int(pagesize) {
+		return fmt.Errorf("data length (%d) is less than pagesize (%d)", len(data), pagesize)
+	}
+
+	return u.faultPage(ctx, addr, offset, pagesize, directDataSource{data, int64(pagesize)}, nil, block.Prefetch)
+}
+
+// directDataSource wraps a byte slice to implement block.Slicer for prefaulting.
+type directDataSource struct {
+	data     []byte
+	pagesize int64
+}
+
+func (d directDataSource) Slice(_ context.Context, _, _ int64) ([]byte, error) {
+	return d.data, nil
+}
+
+func (d directDataSource) BlockSize() int64 {
+	return d.pagesize
+}
+
+func (u *Userfaultfd) faultPage(
+	ctx context.Context,
+	addr uintptr,
+	offset int64,
+	pagesize uintptr,
+	source block.Slicer,
+	onFailure func() error,
+	accessType block.AccessType,
+) error {
+	span := trace.SpanFromContext(ctx)
+
+	// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
+	// even if the errgroup is cancelled or the goroutine returns early.
+	// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
+	// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
+	u.settleRequests.RLock()
+	defer u.settleRequests.RUnlock()
+
+	defer func() {
+		if r := recover(); r != nil {
+			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
+		}
+	}()
+
+	b, dataErr := source.Slice(ctx, offset, int64(pagesize))
+	if dataErr != nil {
+		var signalErr error
+		if onFailure != nil {
+			signalErr = onFailure()
+		}
+
+		joinedErr := errors.Join(dataErr, signalErr)
+
+		span.RecordError(joinedErr)
+		u.logger.Error(ctx, "UFFD serve data fetch error", zap.Error(joinedErr))
+
+		return fmt.Errorf("failed to read from source: %w", joinedErr)
+	}
+
+	var copyMode CULong
+
+	copyErr := u.fd.copy(addr, pagesize, b, copyMode)
+	if errors.Is(copyErr, unix.EEXIST) {
+		// Page is already mapped
+		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
+
+		return nil
+	}
+
+	if copyErr != nil {
+		var signalErr error
+		if onFailure != nil {
+			signalErr = onFailure()
+		}
+
+		joinedErr := errors.Join(copyErr, signalErr)
+
+		span.RecordError(joinedErr)
+		u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
+
+		return fmt.Errorf("failed uffdio copy %w", joinedErr)
+	}
+
+	// Add the offset to the missing requests tracker with metadata.
+	u.missingRequests.Add(offset)
+	u.prefetchTracker.Add(offset, accessType)
+
+	return nil
 }
