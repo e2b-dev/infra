@@ -121,7 +121,7 @@ func (s scenario) setup(ctx context.Context, p *processor) (*options, error) {
 	}
 
 	var err error
-	if o.client, err = storage.NewGRPCClient(ctx, o.clientOptions...); err != nil {
+	if o.client, err = o.clientFactory(ctx, o.clientOptions...); err != nil {
 		return nil, fmt.Errorf("failed to create storage client: %w", err)
 	}
 
