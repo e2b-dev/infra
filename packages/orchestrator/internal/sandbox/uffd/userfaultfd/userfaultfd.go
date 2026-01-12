@@ -10,6 +10,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
@@ -240,6 +241,9 @@ func (u *Userfaultfd) PrefetchData() block.PrefetchData {
 // This is used to speed up sandbox starts by prefetching pages that are known to be needed.
 // Returns nil on success, or if the page is already mapped (EEXIST is handled gracefully).
 func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) error {
+	ctx, span := tracer.Start(ctx, "prefault page")
+	defer span.End()
+
 	// Get host virtual address and page size for this offset
 	addr, pagesize, err := u.ma.GetHostVirtAddr(offset)
 	if err != nil {
@@ -276,8 +280,7 @@ func (u *Userfaultfd) faultPage(
 	onFailure func() error,
 	accessType block.AccessType,
 ) error {
-	ctx, span := tracer.Start(ctx, "fault page")
-	defer span.End()
+	span := trace.SpanFromContext(ctx)
 
 	// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 	// even if the errgroup is cancelled or the goroutine returns early.
