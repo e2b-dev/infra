@@ -11,15 +11,11 @@ import (
 
 func dumpResultsToCSV(path string, metadata environmentMetadata, results []result) error {
 	// 1. Identify all experiment keys
-	experimentKeysMap := make(map[string]struct{})
-	for _, res := range results {
-		for k := range res.scenario.elements {
-			experimentKeysMap[k] = struct{}{}
+	experimentKeys := make([]string, 0, len(experiments))
+	for k, options := range experiments {
+		if len(options) > 1 {
+			experimentKeys = append(experimentKeys, k)
 		}
-	}
-	experimentKeys := make([]string, 0, len(experimentKeysMap))
-	for k := range experimentKeysMap {
-		experimentKeys = append(experimentKeys, k)
 	}
 	slices.Sort(experimentKeys)
 

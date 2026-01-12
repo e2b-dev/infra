@@ -30,11 +30,11 @@ type options struct {
 
 var experiments = map[string]map[string]experiment{
 	"concurrent requests": {
-		"1":  &setConcurrentRequests{1},
-		"4":  &setConcurrentRequests{4},
-		"12": &setConcurrentRequests{8},
+		"1": &setConcurrentRequests{1},
+		//"4":  &setConcurrentRequests{4},
+		"12": &setConcurrentRequests{12},
 		// "16": &setConcurrentRequests{16},
-		// "32": &setConcurrentRequests{32},
+		"32": &setConcurrentRequests{32},
 		// "48": &setConcurrentRequests{48},
 		// "64": &setConcurrentRequests{64},
 		//"128": &setConcurrentRequests{128},
@@ -56,29 +56,41 @@ var experiments = map[string]map[string]experiment{
 	},
 	"grpc connection pool": {
 		// "default": nil,
-		"1":  &googleOption{option.WithGRPCConnectionPool(1)},
-		"4":  &googleOption{option.WithGRPCConnectionPool(4)},
-		"8":  &googleOption{option.WithGRPCConnectionPool(4)},
-		"16": &googleOption{option.WithGRPCConnectionPool(16)},
+		//"1": &googleOption{option.WithGRPCConnectionPool(1)},
+		"4": &googleOption{option.WithGRPCConnectionPool(4)},
+		//"8": &googleOption{option.WithGRPCConnectionPool(4)},
+		//"16": &googleOption{option.WithGRPCConnectionPool(16)},
 	},
 	"grpc initial window size": {
-		"default": nil,
-		"4MB":     &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte))},
-		"8MB":     &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(8 * megabyte))},
-		"16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(16 * megabyte))},
-		"32MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(32 * megabyte))},
+		//"default": nil,
+		"4MB": &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte))},
+		//"8MB":     &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(8 * megabyte))},
+		//"16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(16 * megabyte))},
+		//"32MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(32 * megabyte))},
 	},
 	"grpc initial conn window size": {
+		//"default": nil,
+		//"16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(16 * megabyte))},
+		"32MB": &googleOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte))},
+	},
+	"grpc read buffer": {
 		"default": nil,
-		"16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(16 * megabyte))},
-		"32MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte))},
+		//"1 MB":    &googleOption{option.WithGRPCDialOption(grpc.WithReadBufferSize(1 * megabyte))},
+		//"4 MB":    &googleOption{option.WithGRPCDialOption(grpc.WithReadBufferSize(4 * megabyte))},
+		//"16 MB":   &googleOption{option.WithGRPCDialOption(grpc.WithReadBufferSize(16 * megabyte))},
+	},
+	"compression": {
+		"default": nil,
+		//"gzip": &googleOption{option.WithGRPCDialOption(grpc.WithDefaultCallOptions(
+		//	grpc.UseCompressor("gzip"),
+		//))},
 	},
 	"service config": {
 		// "disabled": &googleOption{option.WithGRPCDialOption(grpc.WithDisableServiceConfig())},  // breaks the test
 		"enabled": nil,
 	},
 	"client type": {
-		"http": &createClientFactory{storage.NewClient},
+		//"http": &createClientFactory{storage.NewClient},
 		"grpc": &createClientFactory{storage.NewGRPCClient},
 	},
 	"read method": {
