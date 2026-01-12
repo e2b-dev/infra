@@ -201,27 +201,25 @@ func (p *Prefetcher) fetchWorker(
 				return
 			}
 
-			func() {
-				// Fetch from source - this populates the cache
-				data, err := p.source.Slice(ctx, offset, blockSize)
-				if err != nil {
-					p.logger.Debug(ctx, "prefetch: failed to fetch page",
-						zap.Int64("offset", offset),
-						zap.Error(err),
-					)
-					skippedCount.Add(1)
+			// Fetch from source - this populates the cache
+			data, err := p.source.Slice(ctx, offset, blockSize)
+			if err != nil {
+				p.logger.Debug(ctx, "prefetch: failed to fetch page",
+					zap.Int64("offset", offset),
+					zap.Error(err),
+				)
+				skippedCount.Add(1)
 
-					return
-				}
+				continue
+			}
 
-				fetchedCount.Add(1)
+			fetchedCount.Add(1)
 
-				// Queue for copy (non-blocking - channel has enough capacity)
-				select {
-				case copyCh <- prefetchData{offset: offset, data: data}:
-				case <-ctx.Done():
-				}
-			}()
+			// Queue for copy (non-blocking - channel has enough capacity)
+			select {
+			case copyCh <- prefetchData{offset: offset, data: data}:
+			case <-ctx.Done():
+			}
 		}
 	}
 }
@@ -242,20 +240,18 @@ func (p *Prefetcher) copyWorker(
 				return
 			}
 
-			func() {
-				err := p.uffd.Prefault(ctx, d.offset, d.data)
-				if err != nil {
-					p.logger.Debug(ctx, "prefetch: failed to copy page",
-						zap.Int64("offset", d.offset),
-						zap.Error(err),
-					)
-					skippedCount.Add(1)
+			err := p.uffd.Prefault(ctx, d.offset, d.data)
+			if err != nil {
+				p.logger.Debug(ctx, "prefetch: failed to copy page",
+					zap.Int64("offset", d.offset),
+					zap.Error(err),
+				)
+				skippedCount.Add(1)
 
-					return
-				}
+				continue
+			}
 
-				copiedCount.Add(1)
-			}()
+			copiedCount.Add(1)
 		}
 	}
 }

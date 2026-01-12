@@ -15,6 +15,7 @@ func computeCommonPrefetchEntries(allData []block.PrefetchData) []block.Prefetch
 	var commonEntries []block.PrefetchBlockEntry
 
 	// Use the first run as the base and check against all other runs
+	// This is a simple intersection algorithm.
 	for idx, entry1 := range allData[0].BlockEntries {
 		// Check if this index exists in all other runs
 		totalOrder := entry1.Order

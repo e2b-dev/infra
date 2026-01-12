@@ -172,7 +172,7 @@ func (pb *OptimizeBuilder) Build(
 		blockCount = memoryPrefetchMapping.Count()
 	}
 
-	pb.logger.Info(ctx, fmt.Sprintf("Collected prefetch mapping with %d memory blocks", blockCount))
+	pb.logger.Info(ctx, "Collected prefetch mapping with memory blocks", zap.Int("block_count", blockCount))
 
 	return phases.LayerResult{
 		Metadata: updatedMetadata,
@@ -227,20 +227,11 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 		return nil, nil
 	}
 
-	// Log block counts per run
-	runCounts := make([]int, len(allPrefetchData))
-	for i, data := range allPrefetchData {
-		runCounts[i] = len(data.BlockEntries)
-	}
-
 	span.SetAttributes(
 		attribute.Int64("prefetch_iterations", int64(prefetchIterations)),
 		attribute.Int64("prefetch_blocks_common", int64(len(commonEntries))),
 		attribute.Int64("block_size", allPrefetchData[0].BlockSize),
 	)
-
-	pb.logger.Debug(ctx, fmt.Sprintf("prefetch intersection: iterations=%d, run_counts=%v, common=%d",
-		prefetchIterations, runCounts, len(commonEntries)))
 
 	// Sort by average order
 	slices.SortFunc(commonEntries, func(a, b block.PrefetchBlockEntry) int {

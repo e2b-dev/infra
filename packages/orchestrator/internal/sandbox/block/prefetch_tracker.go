@@ -82,7 +82,8 @@ func (t *PrefetchTracker) Add(off int64, accessType AccessType) {
 }
 
 func (t *PrefetchTracker) PrefetchData() PrefetchData {
-	// Stop tracking new blocks
+	// Stop tracking new blocks, only optimization as we don't need to track blocks after the prefetch data is collected.
+	// There might be a race condition with the lock, but we don't care.
 	t.isTracking.Store(false)
 
 	t.mu.RLock()
