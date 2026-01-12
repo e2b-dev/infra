@@ -246,7 +246,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("failed to get host virtual address: %w", err)
 	}
 
-	if len(data) < int(pagesize) {
+	if len(data) != int(pagesize) {
 		return fmt.Errorf("data length (%d) is less than pagesize (%d)", len(data), pagesize)
 	}
 
