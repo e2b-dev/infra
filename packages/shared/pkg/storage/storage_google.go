@@ -16,6 +16,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
+	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
@@ -80,7 +82,11 @@ var (
 )
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
-	client, err := storage.NewClient(ctx)
+	client, err := storage.NewGRPCClient(ctx,
+		option.WithGRPCConnectionPool(4),
+		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
+		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4*megabyte)),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
