@@ -103,7 +103,7 @@ func main() {
 
 	currentScenario := 0
 	for scenario := range generateScenarios(experiments) {
-		for i := 0; i < repeat; i++ {
+		for i := range repeat {
 			currentScenario++
 
 			if repeat > 1 {
@@ -122,7 +122,7 @@ func main() {
 	}
 
 	if csvPath != "" {
-		if err := dumpResultsToCSV(csvPath, metadata, results, allOptionsToCSV); err != nil {
+		if err := dumpResultsToCSV(experiments, csvPath, metadata, results, allOptionsToCSV); err != nil {
 			log.Fatalf("failed to dump results to %q: %s", csvPath, err.Error())
 		}
 	}
@@ -221,8 +221,7 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 
 	allFiles := newFiles(slices.Clone(p.allFiles), opts.chunkSize, opts.allowRepeatReads)
 
-	for i := 0; i < opts.readCount; i++ {
-
+	for i := range opts.readCount {
 		path, offset, err := allFiles.nextRead()
 		if err != nil {
 			logger.Printf("failed to get file: %v", err)

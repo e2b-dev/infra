@@ -70,6 +70,11 @@ func TestGenerateScenarios(t *testing.T) {
 func TestDumpResultsToCSV(t *testing.T) {
 	t.Parallel()
 
+	experiments := map[string]map[string]experiment{
+		"exp1": {"val1": mockExperiment{"val1"}},
+		"exp2": {"val2": mockExperiment{"val2"}},
+	}
+
 	results := []result{
 		{
 			totalSuccessfulReads: 10,
@@ -113,7 +118,7 @@ func TestDumpResultsToCSV(t *testing.T) {
 	tempCSV := filepath.Join(tempDir, "output.csv")
 	defer os.Remove(tempCSV)
 
-	err := dumpResultsToCSV(tempCSV, environmentMetadata{}, results)
+	err := dumpResultsToCSV(experiments, tempCSV, environmentMetadata{}, results, true)
 	require.NoError(t, err)
 
 	content, err := os.ReadFile(tempCSV)
@@ -121,9 +126,9 @@ func TestDumpResultsToCSV(t *testing.T) {
 
 	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
 	assert.Len(t, lines, 3)
-	assert.Equal(t, "instance type,exp1,exp2,files per second,min,mean,p50,p95,p99,max,stddev,<25ms,<50ms,<75ms,<100ms,<250ms,<2.5s", lines[0])
-	assert.Equal(t, ",val1,val2,10,100,0,200,300,400,500,50", lines[1])
-	assert.Equal(t, ",val3,val4,35,110,0,210,310,410,510,51", lines[2])
+	assert.Equal(t, "instance type,exp1,exp2,min,mean,p50,p95,p99,max,stddev,<25ms,<50ms,<75ms,<100ms,<250ms,<2.5s", lines[0])
+	assert.Equal(t, ",val1,val2,100,0,200,300,400,500,50", lines[1])
+	assert.Equal(t, ",val3,val4,110,0,210,310,410,510,51", lines[2])
 }
 
 func TestSummarizeDurations(t *testing.T) {

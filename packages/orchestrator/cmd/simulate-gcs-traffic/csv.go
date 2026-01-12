@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func dumpResultsToCSV(path string, metadata environmentMetadata, results []result, allExperiments bool) error {
+func dumpResultsToCSV(experiments map[string]map[string]experiment, path string, metadata environmentMetadata, results []result, allExperiments bool) error {
 	// 1. Identify all experiment keys
 	experimentKeys := make([]string, 0, len(experiments))
 	for k, opts := range experiments {
@@ -89,8 +89,4 @@ func dumpResultsToCSV(path string, metadata environmentMetadata, results []resul
 
 func toMillis(minTime time.Duration) string {
 	return strconv.FormatInt(minTime.Milliseconds(), 10)
-}
-
-func toIntString(i int) string {
-	return strconv.Itoa(i)
 }

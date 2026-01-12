@@ -31,7 +31,7 @@ type options struct {
 	clientOptions []option.ClientOption
 }
 
-func (o options) validate() interface{} {
+func (o options) validate() error {
 	var errs []error
 
 	if o.bucket == "" {
@@ -60,18 +60,18 @@ func (o options) validate() interface{} {
 var experiments = map[string]map[string]experiment{
 	"concurrent requests": {
 		"1": &setConcurrentRequests{1},
-		//"4":  &setConcurrentRequests{4},
-		//"12": &setConcurrentRequests{12},
+		// "4":  &setConcurrentRequests{4},
+		// "12": &setConcurrentRequests{12},
 		"16": &setConcurrentRequests{16},
-		//"32": &setConcurrentRequests{32},
+		// "32": &setConcurrentRequests{32},
 		// "48": &setConcurrentRequests{48},
 		// "64": &setConcurrentRequests{64},
-		//"128": &setConcurrentRequests{128},
+		// "128": &setConcurrentRequests{128},
 		// "256": &setConcurrentRequests{256},
 	},
 	"cache warmup": {
 		"no": nil,
-		//"yes":   &skipReads{2, 50 * time.Millisecond},
+		// "yes":   &skipReads{2, 50 * time.Millisecond},
 	},
 	"shared buffer": {
 		// "shared buffer": &sharedBuffer{},
@@ -85,58 +85,58 @@ var experiments = map[string]map[string]experiment{
 	},
 	"grpc connection pool": {
 		// "default": nil,
-		//"1": &googleOption{option.WithGRPCConnectionPool(1)},
+		// "1": &googleOption{option.WithGRPCConnectionPool(1)},
 		"4": &googleOption{option.WithGRPCConnectionPool(4)},
-		//"8": &googleOption{option.WithGRPCConnectionPool(4)},
-		//"16": &googleOption{option.WithGRPCConnectionPool(16)},
+		// "8": &googleOption{option.WithGRPCConnectionPool(4)},
+		// "16": &googleOption{option.WithGRPCConnectionPool(16)},
 	},
 	"grpc initial window size": {
-		//"default": nil,
+		// "default": nil,
 		"4MB": &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte))},
-		//"8MB": &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(8 * megabyte))},
-		//"16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(16 * megabyte))},
-		//"32MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(32 * megabyte))},
+		// "8MB": &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(8 * megabyte))},
+		// "16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(16 * megabyte))},
+		// "32MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialWindowSize(32 * megabyte))},
 	},
 	"grpc initial conn window size": {
-		//"default": nil,
-		//"16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(16 * megabyte))},
+		// "default": nil,
+		// "16MB":    &googleOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(16 * megabyte))},
 		"32MB": &googleOption{option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte))},
 	},
 	"grpc read buffer": {
 		"default": nil,
-		//"1 MB":    &googleOption{option.WithGRPCDialOption(grpc.WithReadBufferSize(1 * megabyte))},
-		//"4 MB":    &googleOption{option.WithGRPCDialOption(grpc.WithReadBufferSize(4 * megabyte))},
-		//"16 MB":   &googleOption{option.WithGRPCDialOption(grpc.WithReadBufferSize(16 * megabyte))},
+		// "1 MB":    &googleOption{option.WithGRPCDialOption(grpc.WithReadBufferSize(1 * megabyte))},
+		// "4 MB":    &googleOption{option.WithGRPCDialOption(grpc.WithReadBufferSize(4 * megabyte))},
+		// "16 MB":   &googleOption{option.WithGRPCDialOption(grpc.WithReadBufferSize(16 * megabyte))},
 	},
 	"compression": {
 		"default": nil,
-		//"gzip": &googleOption{option.WithGRPCDialOption(grpc.WithDefaultCallOptions(
+		// "gzip": &googleOption{option.WithGRPCDialOption(grpc.WithDefaultCallOptions(
 		//	grpc.UseCompressor("gzip"),
-		//))},
+		// ))},
 	},
 	"service config": {
 		// "disabled": &googleOption{option.WithGRPCDialOption(grpc.WithDisableServiceConfig())},  // breaks the test
 		"enabled": nil,
 	},
 	"client type": {
-		//"http": &createClientFactory{storage.NewClient},
+		// "http": &createClientFactory{storage.NewClient},
 		"grpc": &createClientFactory{storage.NewGRPCClient},
 	},
 	"read method": {
 		"google storage": &googleStorageRangeRead{},
 	},
 	"chunk size": {
-		//"2MB": &setChunkSize{2 * megabyte},
+		// "2MB": &setChunkSize{2 * megabyte},
 		"4MB": &setChunkSize{4 * megabyte},
-		//"8MB": &setChunkSize{8 * megabyte},
+		// "8MB": &setChunkSize{8 * megabyte},
 	},
 	"read count": {
-		//"150":  &setReadCount{150},
+		// "150":  &setReadCount{150},
 		"500": &setReadCount{500},
-		//"1000": &setReadCount{1000},
+		// "1000": &setReadCount{1000},
 	},
 	"allow repeat reads": {
-		//"disabled": &setAllowRepeatReads{false},
+		// "disabled": &setAllowRepeatReads{false},
 		"enabled": &setAllowRepeatReads{true},
 	},
 }
