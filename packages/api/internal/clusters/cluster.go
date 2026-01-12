@@ -90,10 +90,12 @@ func newRemoteCluster(
 	clusterID uuid.UUID,
 	sandboxDomain *string,
 ) (*Cluster, error) {
-	endpointBaseUrl := fmt.Sprintf("http://%s", endpoint)
+	scheme := "http"
 	if endpointTLS {
-		endpointBaseUrl = fmt.Sprintf("https://%s", endpoint)
+		scheme = "https"
 	}
+
+	endpointBaseUrl := fmt.Sprintf("%s://%s", scheme, endpoint)
 
 	httpClient, err := api.NewClientWithResponses(
 		endpointBaseUrl,
