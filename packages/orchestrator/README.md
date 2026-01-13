@@ -2,6 +2,19 @@
 
 ## Commands
 
+> **Prerequisite:** Enable NBD module first:
+>
+> ```bash
+> modprobe nbd nbds_max=4096
+>
+> cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
+> # Disable inotify watching of change events for NBD devices
+> ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
+> EOH
+> udevadm control --reload-rules
+> udevadm trigger
+> ```
+
 ### Build Template
 
 Build sandbox templates locally or to remote storage.
@@ -11,19 +24,19 @@ sudo go run ./cmd/build-template -build <uuid> -storage .local-build
 ```
 
 Flags:
-- `-build` - Build ID (UUID, required)
-- `-storage` - Local path or `gs://bucket` (default: `.local-build`)
-- `-from-build` - Base build ID for incremental builds
-- `-kernel` - Kernel version (default: `vmlinux-6.1.102`)
-- `-kernel-path` - Local kernel binary path (overrides version)
-- `-firecracker` - Firecracker version (default: `v1.12.1_717921c`)
-- `-firecracker-path` - Local firecracker binary path (overrides version)
-- `-envd` - Path to envd binary (default: `../envd/bin/envd`)
-- `-vcpu` - vCPUs (default: `1`)
-- `-memory` - Memory in MB (default: `512`)
-- `-disk` - Disk in MB (default: `1000`)
-- `-start-cmd` - Start command
-- `-ready-cmd` - Ready check command
+
+- `-build <uuid>` - Build ID (UUID, required)
+- `-template <id>` - Template ID (default: `local-template`)
+- `-storage <path>` - Local path or `gs://bucket` (default: `.local-build`)
+- `-from-build <uuid>` - Base build ID for incremental builds
+- `-kernel <version>` - Kernel version (default: `vmlinux-6.1.102`)
+- `-firecracker <version>` - Firecracker version (default: `v1.12.1_717921c`)
+- `-vcpu <n>` - vCPUs (default: `1`)
+- `-memory <mb>` - Memory in MB (default: `512`)
+- `-disk <mb>` - Disk in MB (default: `1000`)
+- `-hugepages` - Use huge pages (default: `true`)
+- `-start-cmd <cmd>` - Start command
+- `-ready-cmd <cmd>` - Ready check command
 
 ### Resume Sandbox
 
@@ -34,9 +47,10 @@ sudo go run ./cmd/resume-sandbox -build <uuid> -from .local-build -iterations 10
 ```
 
 Flags:
-- `-build` - Build ID (UUID, required)
-- `-from` - Local path or `gs://bucket` (default: `.local-build`)
-- `-iterations` - Number of iterations, 0 = interactive (default: `0`)
+
+- `-build <uuid>` - Build ID (UUID, required)
+- `-from <path>` - Local path or `gs://bucket` (default: `.local-build`)
+- `-iterations <n>` - Number of iterations, 0 = interactive (default: `0`)
 
 ### Copy Build
 
@@ -47,19 +61,6 @@ go run cmd/copy-build/main.go -build <build-id> -from <from-bucket> -to <to-buck
 ```
 
 ### Mount Rootfs
-
-> Enable NBD module first:
-
-```bash
-modprobe nbd nbds_max=4096
-
-cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
-# Disable inotify watching of change events for NBD devices
-ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
-EOH
-udevadm control --reload-rules
-udevadm trigger
-```
 
 ```bash
 ./cmd/mount-rootfs/start.sh <bucket> <build-id> <mount-path>

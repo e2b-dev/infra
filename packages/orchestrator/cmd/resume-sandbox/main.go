@@ -63,15 +63,26 @@ func main() {
 }
 
 func setupEnv(from string) error {
-	dataDir := ".local-build"
 	abs := func(s string) string { return utils.Must(filepath.Abs(s)) }
 
+	// Derive dataDir from 'from' when it's a local path
+	var dataDir string
+	if strings.HasPrefix(from, "gs://") {
+		dataDir = ".local-build"
+	} else {
+		dataDir = from
+	}
+
 	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "snapshot-cache", "fc-versions", "envd"} {
-		os.MkdirAll(filepath.Join(dataDir, d), 0o755)
+		if err := os.MkdirAll(filepath.Join(dataDir, d), 0o755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", d, err)
+		}
 	}
 
 	for _, d := range []string{"build", "build-templates", "sandbox", "snapshot-cache", "template"} {
-		os.MkdirAll(filepath.Join(dataDir, "orchestrator", d), 0o755)
+		if err := os.MkdirAll(filepath.Join(dataDir, "orchestrator", d), 0o755); err != nil {
+			return fmt.Errorf("mkdir orchestrator/%s: %w", d, err)
+		}
 	}
 
 	env := map[string]string{
@@ -90,7 +101,7 @@ func setupEnv(from string) error {
 		env["TEMPLATE_BUCKET_NAME"] = strings.TrimPrefix(from, "gs://")
 	} else {
 		env["STORAGE_PROVIDER"] = "Local"
-		env["LOCAL_TEMPLATE_STORAGE_BASE_PATH"] = abs(filepath.Join(from, "templates"))
+		env["LOCAL_TEMPLATE_STORAGE_BASE_PATH"] = abs(filepath.Join(dataDir, "templates"))
 	}
 
 	for k, v := range env {

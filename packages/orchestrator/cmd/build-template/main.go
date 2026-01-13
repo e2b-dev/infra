@@ -53,10 +53,7 @@ func main() {
 	fromBuild := flag.String("from-build", "", "base build ID to rebuild from")
 	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
 	kernel := flag.String("kernel", defaultKernel, "kernel version")
-	kernelPath := flag.String("kernel-path", "", "local path to kernel binary (overrides -kernel)")
 	fc := flag.String("firecracker", defaultFC, "firecracker version")
-	fcPath := flag.String("firecracker-path", "", "local path to firecracker binary (overrides -firecracker)")
-	envdPath := flag.String("envd", "", "path to envd binary (default: ../envd/bin/envd)")
 	vcpu := flag.Int("vcpu", 1, "vCPUs")
 	memory := flag.Int("memory", 512, "memory MB")
 	disk := flag.Int("disk", 1000, "disk MB")
@@ -65,10 +62,14 @@ func main() {
 	readyCmd := flag.String("ready-cmd", "", "ready check command")
 	flag.Parse()
 
+	if *buildID == "" {
+		log.Fatal("-build required")
+	}
+
 	ctx := context.Background()
 
 	localMode := !strings.HasPrefix(*storagePath, "gs://")
-	if err := setupEnv(ctx, *storagePath, *kernel, *kernelPath, *fc, *fcPath, *envdPath, localMode); err != nil {
+	if err := setupEnv(ctx, *storagePath, *kernel, *fc, localMode); err != nil {
 		log.Fatal(err)
 	}
 
@@ -87,7 +88,7 @@ func main() {
 	}
 }
 
-func setupEnv(ctx context.Context, storagePath, kernel, kernelPath, fc, fcPath, envdPath string, localMode bool) error {
+func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode bool) error {
 	abs := func(s string) string { return utils.Must(filepath.Abs(s)) }
 
 	if localMode {
@@ -98,10 +99,14 @@ func setupEnv(ctx context.Context, storagePath, kernel, kernelPath, fc, fcPath, 
 		dataDir := storagePath
 		dirs := []string{"kernels", "templates", "sandbox", "orchestrator", "snapshot-cache", "fc-versions", "envd"}
 		for _, d := range dirs {
-			os.MkdirAll(filepath.Join(dataDir, d), 0o755)
+			if err := os.MkdirAll(filepath.Join(dataDir, d), 0o755); err != nil {
+				return fmt.Errorf("mkdir %s: %w", d, err)
+			}
 		}
 		for _, d := range []string{"build", "build-templates", "sandbox", "snapshot-cache", "template"} {
-			os.MkdirAll(filepath.Join(dataDir, "orchestrator", d), 0o755)
+			if err := os.MkdirAll(filepath.Join(dataDir, "orchestrator", d), 0o755); err != nil {
+				return fmt.Errorf("mkdir orchestrator/%s: %w", d, err)
+			}
 		}
 
 		env := map[string]string{
@@ -120,13 +125,13 @@ func setupEnv(ctx context.Context, storagePath, kernel, kernelPath, fc, fcPath, 
 			os.Setenv(k, v)
 		}
 
-		if err := setupKernel(ctx, filepath.Join(dataDir, "kernels"), kernel, kernelPath); err != nil {
+		if err := setupKernel(ctx, filepath.Join(dataDir, "kernels"), kernel); err != nil {
 			return err
 		}
-		if err := setupFC(ctx, filepath.Join(dataDir, "fc-versions"), fc, fcPath); err != nil {
+		if err := setupFC(ctx, filepath.Join(dataDir, "fc-versions"), fc); err != nil {
 			return err
 		}
-		if err := copyBinary(filepath.Join(dataDir, "envd", "envd"), envdPath, "../envd/bin/envd", "Envd"); err != nil {
+		if err := copyEnvd(filepath.Join(dataDir, "envd", "envd")); err != nil {
 			return err
 		}
 
@@ -293,12 +298,10 @@ func doBuild(
 	return nil
 }
 
-func setupKernel(ctx context.Context, dir, version, localPath string) error {
+func setupKernel(ctx context.Context, dir, version string) error {
 	dstPath := filepath.Join(dir, version, "vmlinux.bin")
-	os.MkdirAll(filepath.Dir(dstPath), 0o755)
-
-	if localPath != "" {
-		return copyFile(dstPath, localPath, "Kernel", 0o644)
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir kernel dir: %w", err)
 	}
 
 	if _, err := os.Stat(dstPath); err == nil {
@@ -313,12 +316,10 @@ func setupKernel(ctx context.Context, dir, version, localPath string) error {
 	return download(ctx, kernelURL, dstPath, 0o644)
 }
 
-func setupFC(ctx context.Context, dir, version, localPath string) error {
+func setupFC(ctx context.Context, dir, version string) error {
 	dstPath := filepath.Join(dir, version, "firecracker")
-	os.MkdirAll(filepath.Dir(dstPath), 0o755)
-
-	if localPath != "" {
-		return copyFile(dstPath, localPath, "Firecracker", 0o755)
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir firecracker dir: %w", err)
 	}
 
 	if _, err := os.Stat(dstPath); err == nil {
@@ -359,15 +360,12 @@ func download(ctx context.Context, url, path string, perm os.FileMode) error {
 	return err
 }
 
-func copyBinary(dst, srcPath, defaultSrc, name string) error {
-	src := srcPath
-	if src == "" {
-		src, _ = filepath.Abs(defaultSrc)
-	}
+func copyEnvd(dst string) error {
+	src, _ := filepath.Abs("../envd/bin/envd")
 
 	srcInfo, err := os.Stat(src)
 	if os.IsNotExist(err) {
-		return fmt.Errorf("%s not found at %s", name, src)
+		return fmt.Errorf("envd not found at %s (run 'make build' in packages/envd first)", src)
 	}
 	if err != nil {
 		return err
@@ -375,13 +373,13 @@ func copyBinary(dst, srcPath, defaultSrc, name string) error {
 
 	if dstInfo, err := os.Stat(dst); err == nil {
 		if !dstInfo.ModTime().Before(srcInfo.ModTime()) {
-			fmt.Printf("✓ %s up-to-date\n", name)
+			fmt.Printf("✓ Envd up-to-date\n")
 
 			return nil
 		}
 	}
 
-	return copyFile(dst, src, name, 0o755)
+	return copyFile(dst, src, "Envd", 0o755)
 }
 
 func copyFile(dst, src, name string, perm os.FileMode) error {
@@ -408,7 +406,9 @@ func copyFile(dst, src, name string, perm os.FileMode) error {
 	}
 	defer srcFile.Close()
 
-	os.MkdirAll(filepath.Dir(dst), 0o755)
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(dst), err)
+	}
 	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
 		return err
