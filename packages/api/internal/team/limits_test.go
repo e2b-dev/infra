@@ -12,12 +12,15 @@ import (
 )
 
 func TestLimitResources(t *testing.T) {
+	t.Parallel()
+
 	defaultLimits := &types.TeamLimits{
 		MaxVcpu:  32,
 		MaxRamMb: 8192,
 	}
 
 	t.Run("valid CPU counts", func(t *testing.T) {
+		t.Parallel()
 		validCPUs := []int32{1, 2, 4, 8, 16, 32}
 		for _, cpuCount := range validCPUs {
 			cpu := cpuCount
@@ -28,6 +31,7 @@ func TestLimitResources(t *testing.T) {
 	})
 
 	t.Run("invalid CPU count - odd number greater than 1", func(t *testing.T) {
+		t.Parallel()
 		invalidCPUs := []int32{3, 5, 7, 9, 31}
 		for _, cpuCount := range invalidCPUs {
 			cpu := cpuCount
@@ -39,11 +43,12 @@ func TestLimitResources(t *testing.T) {
 	})
 
 	t.Run("invalid CPU count - exceeds Firecracker max", func(t *testing.T) {
-		invalidCPUs := []int32{33, 34, 64, 100}
+		t.Parallel()
 		highLimits := &types.TeamLimits{
 			MaxVcpu:  100,
 			MaxRamMb: 8192,
 		}
+		invalidCPUs := []int32{33, 34, 64, 100}
 		for _, cpuCount := range invalidCPUs {
 			cpu := cpuCount
 			_, _, apiErr := LimitResources(highLimits, &cpu, nil)
@@ -54,6 +59,7 @@ func TestLimitResources(t *testing.T) {
 	})
 
 	t.Run("invalid CPU count - below minimum", func(t *testing.T) {
+		t.Parallel()
 		cpu := int32(0)
 		_, _, apiErr := LimitResources(defaultLimits, &cpu, nil)
 		require.NotNil(t, apiErr)
@@ -62,6 +68,7 @@ func TestLimitResources(t *testing.T) {
 	})
 
 	t.Run("invalid CPU count - exceeds team limit", func(t *testing.T) {
+		t.Parallel()
 		lowLimits := &types.TeamLimits{
 			MaxVcpu:  8,
 			MaxRamMb: 8192,
@@ -74,12 +81,14 @@ func TestLimitResources(t *testing.T) {
 	})
 
 	t.Run("defaults when CPU is nil", func(t *testing.T) {
+		t.Parallel()
 		cpuResult, _, apiErr := LimitResources(defaultLimits, nil, nil)
 		require.Nil(t, apiErr)
 		assert.Equal(t, constants.DefaultTemplateCPU, cpuResult)
 	})
 
 	t.Run("valid memory", func(t *testing.T) {
+		t.Parallel()
 		validMemory := []int32{128, 256, 512, 1024, 2048}
 		for _, memMB := range validMemory {
 			mem := memMB
@@ -90,6 +99,7 @@ func TestLimitResources(t *testing.T) {
 	})
 
 	t.Run("invalid memory - not divisible by 2", func(t *testing.T) {
+		t.Parallel()
 		mem := int32(129)
 		_, _, apiErr := LimitResources(defaultLimits, nil, &mem)
 		require.NotNil(t, apiErr)
@@ -98,6 +108,7 @@ func TestLimitResources(t *testing.T) {
 	})
 
 	t.Run("invalid memory - below minimum", func(t *testing.T) {
+		t.Parallel()
 		mem := int32(64)
 		_, _, apiErr := LimitResources(defaultLimits, nil, &mem)
 		require.NotNil(t, apiErr)
@@ -106,6 +117,7 @@ func TestLimitResources(t *testing.T) {
 	})
 
 	t.Run("invalid memory - exceeds team limit", func(t *testing.T) {
+		t.Parallel()
 		mem := int32(16384)
 		_, _, apiErr := LimitResources(defaultLimits, nil, &mem)
 		require.NotNil(t, apiErr)
@@ -114,6 +126,7 @@ func TestLimitResources(t *testing.T) {
 	})
 
 	t.Run("defaults when memory is nil", func(t *testing.T) {
+		t.Parallel()
 		_, memResult, apiErr := LimitResources(defaultLimits, nil, nil)
 		require.Nil(t, apiErr)
 		assert.Equal(t, constants.DefaultTemplateMemory, memResult)
