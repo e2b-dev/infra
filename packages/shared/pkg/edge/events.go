@@ -58,7 +58,9 @@ func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD
 			sbxExecutionIdHeader:      e.ExecutionID,
 			sbxOrchestratorIdHeader:   e.OrchestratorID,
 			sbxStartTimeHeader:        e.SandboxStartTime.Format(time.RFC3339),
-			sbxMaxLengthInHoursHeader: strconv.Itoa(int(e.SandboxMaxLengthInHours)),
+			// use FormatInt instead of Itoa to avoid int overflow in 32 bit systems
+			// or when SandboxMaxLengthInHours is larger than math.MaxInt32
+			sbxMaxLengthInHoursHeader: strconv.FormatInt(e.SandboxMaxLengthInHours, 10),
 		},
 	)
 }
@@ -94,8 +96,8 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 	if !found {
 		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: sbxMaxLengthInHoursHeader}
 	}
-
-	maxLengthInHours, err := strconv.Atoi(maxLengthInHoursStr)
+// Parse as int64 to match SandboxMaxLengthInHours type and avoid truncation.
+	maxLengthInHours, err := strconv.ParseInt(maxLengthInHoursStr, 10, 64)
 	if err != nil {
 		return nil, ErrSandboxLifetimeParse
 	}
