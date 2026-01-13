@@ -4,10 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/db/apikeys")
 
 type TeamForbiddenError struct {
 	message string
@@ -38,6 +42,9 @@ func validateTeamUsage(team queries.Team) error {
 }
 
 func GetTeamAuth(ctx context.Context, db *sqlcdb.Client, apiKey string) (*types.Team, error) {
+	ctx, span := tracer.Start(ctx, "get team auth")
+	defer span.End()
+
 	result, err := db.GetTeamWithTierByAPIKeyWithUpdateLastUsed(ctx, apiKey)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get team from API key: %w", err)
