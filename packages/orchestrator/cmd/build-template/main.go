@@ -289,6 +289,7 @@ func doBuild(
 	}
 
 	fmt.Printf("\n✅ Build finished: %s\n", buildID)
+
 	return nil
 }
 
@@ -302,11 +303,13 @@ func setupKernel(ctx context.Context, dir, version, localPath string) error {
 
 	if _, err := os.Stat(dstPath); err == nil {
 		fmt.Printf("✓ Kernel %s exists\n", version)
+
 		return nil
 	}
 
 	kernelURL, _ := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "vmlinux.bin")
 	fmt.Printf("⬇ Downloading kernel %s...\n", version)
+
 	return download(ctx, kernelURL, dstPath, 0o644)
 }
 
@@ -320,11 +323,13 @@ func setupFC(ctx context.Context, dir, version, localPath string) error {
 
 	if _, err := os.Stat(dstPath); err == nil {
 		fmt.Printf("✓ Firecracker %s exists\n", version)
+
 		return nil
 	}
 
 	fcURL := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/firecracker", version)
 	fmt.Printf("⬇ Downloading Firecracker %s...\n", version)
+
 	return download(ctx, fcURL, dstPath, 0o755)
 }
 
@@ -350,6 +355,7 @@ func download(ctx context.Context, url, path string, perm os.FileMode) error {
 	if err == nil {
 		fmt.Printf("✓ Downloaded %s\n", filepath.Base(path))
 	}
+
 	return err
 }
 
@@ -370,6 +376,7 @@ func copyBinary(dst, srcPath, defaultSrc, name string) error {
 	if dstInfo, err := os.Stat(dst); err == nil {
 		if !dstInfo.ModTime().Before(srcInfo.ModTime()) {
 			fmt.Printf("✓ %s up-to-date\n", name)
+
 			return nil
 		}
 	}
@@ -389,6 +396,7 @@ func copyFile(dst, src, name string, perm os.FileMode) error {
 	if dstInfo, err := os.Stat(dst); err == nil {
 		if !dstInfo.ModTime().Before(srcInfo.ModTime()) {
 			fmt.Printf("✓ %s up-to-date\n", name)
+
 			return nil
 		}
 	}
@@ -412,5 +420,6 @@ func copyFile(dst, src, name string, perm os.FileMode) error {
 		fmt.Printf("✓ %s ready\n", name)
 	}
 	_ = srcInfo // suppress unused warning
+
 	return err
 }

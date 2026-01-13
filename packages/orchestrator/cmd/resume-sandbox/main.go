@@ -44,18 +44,20 @@ func main() {
 		log.Fatal("run as root")
 	}
 
+	if err := setupEnv(*from); err != nil {
+		log.Fatal(err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	go func() { <-sig; fmt.Println("\n🛑 Stopping..."); cancel() }()
 
-	if err := setupEnv(*from); err != nil {
-		log.Fatal(err)
-	}
+	err := run(ctx, *buildID, *iterations)
+	cancel()
 
-	if err := run(ctx, *buildID, *iterations); err != nil && ctx.Err() == nil {
+	if err != nil && ctx.Err() == nil {
 		log.Fatal(err)
 	}
 }
@@ -99,14 +101,13 @@ func setupEnv(from string) error {
 }
 
 type runner struct {
-	ctx       context.Context
 	factory   *sandbox.Factory
 	tmpl      template.Template
 	sbxConfig sandbox.Config
 	buildID   string
 }
 
-func (r *runner) resumeOnce(iter int) (time.Duration, error) {
+func (r *runner) resumeOnce(ctx context.Context, iter int) (time.Duration, error) {
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  r.buildID,
 		TeamID:      "local",
@@ -115,17 +116,17 @@ func (r *runner) resumeOnce(iter int) (time.Duration, error) {
 	}
 
 	t0 := time.Now()
-	sbx, err := r.factory.ResumeSandbox(r.ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	sbx, err := r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
 	dur := time.Since(t0)
 
 	if sbx != nil {
-		sbx.Close(context.Background())
+		sbx.Close(context.WithoutCancel(ctx))
 	}
 
 	return dur, err
 }
 
-func (r *runner) interactive() error {
+func (r *runner) interactive(ctx context.Context) error {
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  r.buildID,
 		TeamID:      "local",
@@ -135,7 +136,7 @@ func (r *runner) interactive() error {
 
 	fmt.Println("🚀 Starting...")
 	t0 := time.Now()
-	sbx, err := r.factory.ResumeSandbox(r.ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	sbx, err := r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
 	if err != nil {
 		return err
 	}
@@ -144,24 +145,24 @@ func (r *runner) interactive() error {
 	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
 	fmt.Println("Ctrl+C to stop")
 
-	<-r.ctx.Done()
+	<-ctx.Done()
 	fmt.Println("🧹 Cleanup...")
-	sbx.Close(context.Background())
+	sbx.Close(context.WithoutCancel(ctx))
 
 	return nil
 }
 
-func (r *runner) benchmark(n int) error {
+func (r *runner) benchmark(ctx context.Context, n int) error {
 	var durations []time.Duration
 	var lastErr error
 
 	for i := range n {
-		if r.ctx.Err() != nil {
+		if ctx.Err() != nil {
 			break
 		}
 
 		fmt.Printf("[%d/%d] Starting...\n", i+1, n)
-		dur, err := r.resumeOnce(i)
+		dur, err := r.resumeOnce(ctx, i)
 		durations = append(durations, dur)
 
 		if err != nil {
@@ -214,14 +215,14 @@ func run(ctx context.Context, buildID string, iterations int) error {
 
 	networkPool := network.NewPool(8, 8, slotStorage, config.NetworkConfig)
 	go networkPool.Populate(ctx)
-	defer networkPool.Close(context.Background())
+	defer networkPool.Close(context.WithoutCancel(ctx))
 
 	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		return fmt.Errorf("nbd pool: %w", err)
 	}
 	go devicePool.Populate(ctx)
-	defer devicePool.Close(context.Background())
+	defer devicePool.Close(context.WithoutCancel(ctx))
 
 	flags, _ := featureflags.NewClient()
 	persistence, _ := storage.GetTemplateStorageProvider(ctx, nil)
@@ -249,7 +250,6 @@ func run(ctx context.Context, buildID string, iterations int) error {
 
 	token := "local"
 	r := &runner{
-		ctx:     ctx,
 		factory: factory,
 		tmpl:    tmpl,
 		buildID: buildID,
@@ -267,8 +267,8 @@ func run(ctx context.Context, buildID string, iterations int) error {
 	}
 
 	if iterations > 0 {
-		return r.benchmark(iterations)
+		return r.benchmark(ctx, iterations)
 	}
 
-	return r.interactive()
+	return r.interactive(ctx)
 }
