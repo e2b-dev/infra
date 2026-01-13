@@ -121,6 +121,13 @@ func (c *Cache) Invalidate(buildID string) {
 	c.cache.Delete(buildID)
 }
 
+// InvalidateAll clears all cached templates and build diffs.
+// Used for cold start benchmarks to ensure no cached data is reused.
+func (c *Cache) InvalidateAll() {
+	c.cache.DeleteAll()
+	c.buildStore.RemoveCache()
+}
+
 func (c *Cache) GetTemplate(
 	ctx context.Context,
 	buildID string,

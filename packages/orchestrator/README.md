@@ -42,7 +42,12 @@ Flags:
 Resume sandboxes from built templates.
 
 ```bash
+# Local storage
 sudo go run ./cmd/resume-sandbox -build <uuid> -from .local-build -iterations 10
+
+# Remote GCS storage (pass credentials to sudo)
+sudo GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gcloud/application_default_credentials.json \
+  go run ./cmd/resume-sandbox -build <uuid> -from gs://bucket -iterations 10
 ```
 
 Flags:
@@ -50,6 +55,9 @@ Flags:
 - `-build <uuid>` - Build ID (UUID, required)
 - `-from <path>` - Local path or `gs://bucket` (default: `.local-build`)
 - `-iterations <n>` - Number of iterations, 0 = interactive (default: `0`)
+- `-cold` - Clear cache between iterations (cold start each time)
+- `-no-prefetch` - Disable memory prefetching
+- `-v` - Verbose logging (show debug output)
 
 ### Copy Build
 

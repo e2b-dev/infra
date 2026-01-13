@@ -4,7 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/metric/noop"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -34,6 +37,9 @@ func main() {
 	buildID := flag.String("build", "", "build ID (UUID)")
 	from := flag.String("from", ".local-build", "template source: local path or gs://bucket")
 	iterations := flag.Int("iterations", 0, "run N iterations (0 = interactive)")
+	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
+	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
+	verbose := flag.Bool("v", false, "verbose logging")
 
 	flag.Parse()
 
@@ -55,11 +61,15 @@ func main() {
 	signal.Notify(sig, os.Interrupt)
 	go func() { <-sig; fmt.Println("\n🛑 Stopping..."); cancel() }()
 
-	err := run(ctx, *buildID, *iterations)
+	err := run(ctx, *buildID, *iterations, *coldStart, *noPrefetch, *verbose)
 	cancel()
 
-	if err != nil && ctx.Err() == nil {
-		log.Fatal(err)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		if ctx.Err() != nil {
+			fmt.Fprintf(os.Stderr, "(context: %v)\n", ctx.Err())
+		}
+		os.Exit(1)
 	}
 }
 
@@ -117,6 +127,8 @@ type runner struct {
 	tmpl      template.Template
 	sbxConfig sandbox.Config
 	buildID   string
+	cache     *template.Cache
+	coldStart bool
 }
 
 func (r *runner) resumeOnce(ctx context.Context, iter int) (time.Duration, error) {
@@ -165,7 +177,7 @@ func (r *runner) interactive(ctx context.Context) error {
 }
 
 func (r *runner) benchmark(ctx context.Context, n int) error {
-	var durations []time.Duration
+	results := make([]benchResult, 0, n)
 	var lastErr error
 
 	for i := range n {
@@ -173,62 +185,70 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 			break
 		}
 
-		fmt.Printf("[%d/%d] Starting...\n", i+1, n)
+		// Clear all caches for cold start
+		if r.coldStart && i > 0 {
+			r.cache.InvalidateAll()
+			if err := dropPageCache(); err != nil {
+				return fmt.Errorf("drop page cache: %w", err)
+			}
+			tmpl, err := r.cache.GetTemplate(ctx, r.buildID, false, false)
+			if err != nil {
+				return fmt.Errorf("reload template: %w", err)
+			}
+			r.tmpl = tmpl
+		}
+
+		fmt.Printf("\r[%d/%d] Running...    ", i+1, n)
 		dur, err := r.resumeOnce(ctx, i)
-		durations = append(durations, dur)
+		results = append(results, benchResult{dur, err})
 
 		if err != nil {
-			fmt.Printf("[%d/%d] ❌ Failed after %s: %v\n", i+1, n, dur, err)
+			fmt.Printf("\r[%d/%d] ❌ Failed\n", i+1, n)
 			lastErr = err
 
 			break
 		}
-
-		fmt.Printf("[%d/%d] Resumed in %s\n", i+1, n, dur)
 	}
+	fmt.Print("\r                    \r") // Clear progress line
 
-	printStats(durations)
+	printResults(results)
 
 	return lastErr
 }
 
-func printStats(durations []time.Duration) {
-	if len(durations) == 0 {
-		return
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, verbose bool) error {
+	// Silence loggers unless verbose mode
+	if !verbose {
+		log.SetOutput(io.Discard)
 	}
+	sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 
-	sorted := slices.Clone(durations)
-	slices.Sort(sorted)
-
-	var total time.Duration
-	for _, d := range sorted {
-		total += d
+	if verbose {
+		fmt.Println("🔧 Parsing config...")
 	}
-
-	n := len(sorted)
-	fmt.Printf("\n📊 Results (%d runs):\n", n)
-	fmt.Printf("   Min: %s | Max: %s | Avg: %s\n", sorted[0], sorted[n-1], total/time.Duration(n))
-	fmt.Printf("   P95: %s | P99: %s\n", sorted[int(float64(n-1)*0.95)], sorted[int(float64(n-1)*0.99)])
-}
-
-func run(ctx context.Context, buildID string, iterations int) error {
-	l, _ := logger.NewDevelopmentLogger()
-	sbxlogger.SetSandboxLoggerInternal(l)
-
 	config, err := cfg.Parse()
 	if err != nil {
-		return err
+		return fmt.Errorf("config: %w", err)
 	}
 
+	if verbose {
+		fmt.Println("🔧 Creating network storage...")
+	}
 	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig)
 	if err != nil {
-		return err
+		return fmt.Errorf("network storage: %w", err)
 	}
 
+	if verbose {
+		fmt.Println("🔧 Creating network pool...")
+	}
 	networkPool := network.NewPool(8, 8, slotStorage, config.NetworkConfig)
 	go networkPool.Populate(ctx)
 	defer networkPool.Close(context.WithoutCancel(ctx))
 
+	if verbose {
+		fmt.Println("🔧 Creating NBD device pool...")
+	}
 	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		return fmt.Errorf("nbd pool: %w", err)
@@ -236,21 +256,43 @@ func run(ctx context.Context, buildID string, iterations int) error {
 	go devicePool.Populate(ctx)
 	defer devicePool.Close(context.WithoutCancel(ctx))
 
+	if verbose {
+		fmt.Println("🔧 Creating feature flags client...")
+	}
 	flags, _ := featureflags.NewClient()
+
+	if verbose {
+		fmt.Println("🔧 Creating storage provider...")
+	}
 	persistence, err := storage.GetTemplateStorageProvider(ctx, nil)
+	if verbose {
+		fmt.Println("🔧 Storage provider created, err:", err)
+	}
 	if err != nil {
 		return fmt.Errorf("storage provider: %w", err)
 	}
+	if persistence == nil {
+		return fmt.Errorf("storage provider is nil")
+	}
 
+	if verbose {
+		fmt.Println("🔧 Creating block metrics...")
+	}
 	blockMetrics, _ := blockmetrics.NewMetrics(&noop.MeterProvider{})
 
+	if verbose {
+		fmt.Println("🔧 Creating template cache...")
+	}
 	cache, err := template.NewCache(config, flags, persistence, blockMetrics)
 	if err != nil {
-		return err
+		return fmt.Errorf("template cache: %w", err)
 	}
 	cache.Start(ctx)
 	defer cache.Stop()
 
+	if verbose {
+		fmt.Println("🔧 Creating sandbox factory...")
+	}
 	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags)
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
@@ -266,11 +308,19 @@ func run(ctx context.Context, buildID string, iterations int) error {
 
 	printTemplateInfo(ctx, tmpl, meta)
 
+	// Wrap template to disable prefetching if requested
+	if noPrefetch {
+		tmpl = &noPrefetchTemplate{tmpl}
+		fmt.Println("   Prefetch: disabled")
+	}
+
 	token := "local"
 	r := &runner{
-		factory: factory,
-		tmpl:    tmpl,
-		buildID: buildID,
+		factory:   factory,
+		tmpl:      tmpl,
+		buildID:   buildID,
+		cache:     cache,
+		coldStart: coldStart,
 		sbxConfig: sandbox.Config{
 			BaseTemplateID: buildID,
 			Vcpu:           1,
@@ -309,4 +359,129 @@ func printTemplateInfo(ctx context.Context, tmpl template.Template, meta metadat
 	if meta.Prefetch != nil && meta.Prefetch.Memory != nil {
 		fmt.Printf("   Prefetch: %d blocks\n", meta.Prefetch.Memory.Count())
 	}
+}
+
+// Benchmark output formatting
+
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+)
+
+type benchResult struct {
+	dur time.Duration
+	err error
+}
+
+func fmtDur(d time.Duration) string {
+	ms := float64(d) / float64(time.Millisecond)
+
+	return fmt.Sprintf("%.1fms", ms)
+}
+
+// dropPageCache drops the OS page cache to simulate cold starts.
+// This ensures files aren't served from memory on subsequent runs.
+func dropPageCache() error {
+	// Sync first to flush dirty pages
+	unix.Sync()
+
+	// Drop page cache (requires root)
+	// 3 = free pagecache, dentries, and inodes
+	return os.WriteFile("/proc/sys/vm/drop_caches", []byte("3"), 0o644)
+}
+
+func printResults(results []benchResult) {
+	if len(results) == 0 {
+		return
+	}
+
+	// Calculate average
+	var total time.Duration
+	var successCount int
+	for _, r := range results {
+		if r.err == nil {
+			total += r.dur
+			successCount++
+		}
+	}
+
+	if successCount == 0 {
+		fmt.Println("\n❌ All runs failed")
+
+		return
+	}
+
+	avg := total / time.Duration(successCount)
+
+	// Print individual results
+	fmt.Printf("\n📋 Run times:\n")
+	for i, r := range results {
+		if r.err != nil {
+			fmt.Printf("   [%2d] ❌ Failed: %v\n", i+1, r.err)
+
+			continue
+		}
+
+		diff := r.dur - avg
+		pct := float64(diff) / float64(avg) * 100
+
+		var color string
+		switch {
+		case diff < 0:
+			color = colorGreen
+		case diff > 0:
+			color = colorRed
+		default:
+			color = colorYellow
+		}
+
+		fmt.Printf("   [%2d] %s  %s%+.1f%%%s\n", i+1, fmtDur(r.dur), color, pct, colorReset)
+	}
+
+	// Print summary stats
+	durations := make([]time.Duration, 0, successCount)
+	for _, r := range results {
+		if r.err == nil {
+			durations = append(durations, r.dur)
+		}
+	}
+
+	sorted := slices.Clone(durations)
+	slices.Sort(sorted)
+
+	// Calculate standard deviation
+	var variance float64
+	avgFloat := float64(avg)
+	for _, d := range durations {
+		diff := float64(d) - avgFloat
+		variance += diff * diff
+	}
+	variance /= float64(len(durations))
+	stdDev := time.Duration(math.Sqrt(variance))
+
+	n := len(sorted)
+	fmt.Printf("\n📊 Summary (%d runs):\n", n)
+	fmt.Printf("   Min: %s | Max: %s | Avg: %s | StdDev: %s\n", fmtDur(sorted[0]), fmtDur(sorted[n-1]), fmtDur(avg), fmtDur(stdDev))
+	if n > 1 {
+		p95idx := int(float64(n-1) * 0.95)
+		p99idx := int(float64(n-1) * 0.99)
+		fmt.Printf("   P95: %s | P99: %s\n", fmtDur(sorted[p95idx]), fmtDur(sorted[p99idx]))
+	}
+}
+
+// noPrefetchTemplate wraps a template to disable prefetching by returning nil Prefetch in metadata.
+type noPrefetchTemplate struct {
+	template.Template
+}
+
+func (t *noPrefetchTemplate) Metadata() (metadata.Template, error) {
+	meta, err := t.Template.Metadata()
+	if err != nil {
+		return meta, err
+	}
+	meta.Prefetch = nil
+
+	return meta, nil
 }
