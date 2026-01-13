@@ -27,6 +27,11 @@ const maxRequestsInProgress = 4096
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
+// hasEvent checks if a specific poll event flag is set in revents.
+func hasEvent(revents, event int16) bool {
+	return revents&event != 0
+}
+
 type Userfaultfd struct {
 	fd Fd
 
@@ -92,6 +97,18 @@ func (u *Userfaultfd) Serve(
 	noDataCounter := newCounterReporter(u.logger, "uffd: no data in fd (accumulated)")
 	defer noDataCounter.Close(ctx)
 
+	exitFdErrorCounter := newCounterReporter(u.logger, "uffd: exit fd poll errors (accumulated)")
+	defer exitFdErrorCounter.Close(ctx)
+
+	uffdErrorCounter := newCounterReporter(u.logger, "uffd: uffd fd poll errors (accumulated)")
+	defer uffdErrorCounter.Close(ctx)
+
+	pollErrorEvents := map[int16]string{
+		unix.POLLHUP:  "POLLHUP",
+		unix.POLLERR:  "POLLERR",
+		unix.POLLNVAL: "POLLNVAL",
+	}
+
 outerLoop:
 	for {
 		if _, err := unix.Poll(
@@ -116,7 +133,7 @@ outerLoop:
 		}
 
 		exitFd := pollFds[1]
-		if exitFd.Revents&unix.POLLIN != 0 {
+		if hasEvent(exitFd.Revents, unix.POLLIN) {
 			errMsg := u.wg.Wait()
 			if errMsg != nil {
 				u.logger.Warn(ctx, "UFFD fd exit error while waiting for goroutines to finish", zap.Error(errMsg))
@@ -127,8 +144,23 @@ outerLoop:
 			return nil
 		}
 
+		// Track exit fd error events
+		for event, name := range pollErrorEvents {
+			if hasEvent(exitFd.Revents, event) {
+				exitFdErrorCounter.Increase(name)
+			}
+		}
+
 		uffdFd := pollFds[0]
-		if uffdFd.Revents&unix.POLLIN == 0 {
+
+		// Track uffd error events
+		for event, name := range pollErrorEvents {
+			if hasEvent(uffdFd.Revents, event) {
+				uffdErrorCounter.Increase(name)
+			}
+		}
+
+		if !hasEvent(uffdFd.Revents, unix.POLLIN) {
 			// Uffd is not ready for reading as there is nothing to read on the fd.
 			// https://github.com/firecracker-microvm/firecracker/issues/5056
 			// https://elixir.bootlin.com/linux/v6.8.12/source/fs/userfaultfd.c#L1149
@@ -138,7 +170,7 @@ outerLoop:
 			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
 			// It might be possible to just check for data != 0 in the syscall.Read loop
 			// but I don't feel confident about doing that.
-			noDataCounter.Increase()
+			noDataCounter.Increase("POLLIN")
 
 			continue
 		}
@@ -163,7 +195,7 @@ outerLoop:
 			}
 
 			if err == syscall.EAGAIN {
-				eagainCounter.Increase()
+				eagainCounter.Increase("EAGAIN")
 
 				// Continue polling the fd.
 				continue outerLoop
