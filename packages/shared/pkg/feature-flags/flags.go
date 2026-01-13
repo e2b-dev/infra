@@ -1,6 +1,8 @@
 package feature_flags
 
 import (
+	"context"
+
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 
@@ -190,3 +192,30 @@ var (
 	BuildNodeInfo           = newJSONFlag("preferred-build-node", ldvalue.Null())
 	FirecrackerVersions     = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
 )
+
+// defaultTrackedTemplates is the default list of template aliases tracked for metrics.
+// This is used to reduce metric cardinality.
+var defaultTrackedTemplates = []string{
+	"base",
+	"code-interpreter-v1",
+	"code-interpreter-beta",
+	"desktop",
+}
+
+// TrackedTemplatesForMetrics is a JSON flag that defines which template aliases
+// should be tracked in sandbox start time metrics. Templates not in this list
+// will be grouped under "other" to reduce metric cardinality.
+var TrackedTemplatesForMetrics = newJSONFlag("tracked-templates-for-metrics", ldvalue.FromJSONMarshal(defaultTrackedTemplates))
+
+// GetTrackedTemplatesSet fetches the TrackedTemplatesForMetrics flag and returns it as a set for efficient lookup.
+func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{} {
+	value := ff.JSONFlag(ctx, TrackedTemplatesForMetrics)
+	result := make(map[string]struct{})
+	for i := 0; i < value.Count(); i++ {
+		if str := value.GetByIndex(i).StringValue(); str != "" {
+			result[str] = struct{}{}
+		}
+	}
+
+	return result
+}

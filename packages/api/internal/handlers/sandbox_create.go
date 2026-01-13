@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/types"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -36,15 +37,6 @@ const (
 	// Network validation error messages
 	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
 )
-
-// mostUsedTemplates is a map of the most used template aliases.
-// It is used for monitoring and to reduce metric cardinality.
-var mostUsedTemplates = map[string]struct{}{
-	"base":                  {},
-	"code-interpreter-v1":   {},
-	"code-interpreter-beta": {},
-	"desktop":               {},
-}
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -94,7 +86,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
-	setTemplateNameMetric(c, env.Aliases)
+	setTemplateNameMetric(c, a.featureFlags, env.Aliases)
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -256,16 +248,19 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	return key, nil
 }
 
-func setTemplateNameMetric(c *gin.Context, aliases []string) {
+func setTemplateNameMetric(c *gin.Context, ff *featureflags.Client, aliases []string) {
+	ctx := c.Request.Context()
+	trackedTemplates := featureflags.GetTrackedTemplatesSet(ctx, ff)
+
 	for _, alias := range aliases {
-		if _, exists := mostUsedTemplates[alias]; exists {
+		if _, exists := trackedTemplates[alias]; exists {
 			c.Set(metricTemplateAlias, alias)
 
 			return
 		}
 	}
 
-	// Fallback to 'other' if no match of mostUsedTemplates found
+	// Fallback to 'other' if no match of tracked templates found
 	c.Set(metricTemplateAlias, "other")
 }
 
