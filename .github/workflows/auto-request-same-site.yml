@@ -39,6 +39,10 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install shared slack-utils
+        run: npm install
+        working-directory: .github/actions/slack-utils
+
       - name: Install deps
         run: npm install
         working-directory: .github/actions/auto-request-same-site

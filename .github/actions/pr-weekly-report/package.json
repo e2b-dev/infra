@@ -1,0 +1,11 @@
+{
+  "name": "pr-weekly-report",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Action to generate weekly PR reports with Slack notifications",
+  "main": "script.js",
+  "dependencies": {
+    "@octokit/rest": "^21.0.0",
+    "@slack/web-api": "^7.0.0"
+  }
+}

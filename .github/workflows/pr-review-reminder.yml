@@ -1,0 +1,63 @@
+name: PR Review Reminder
+
+on:
+  schedule:
+    # Run at 9 AM UTC, Monday through Friday
+    - cron: "0 9 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      stale_days:
+        description: "Number of days before a PR is considered stale"
+        required: false
+        default: "2"
+        type: string
+      dry_run:
+        description: "Only log, do not send Slack notifications"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check-stuck-reviews:
+    name: Check for stuck PR reviews
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitHub App installation token
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.E2B_GH_APP_AUTO_REQUEST_SAME_SITE_APP_ID }}
+          private-key: ${{ secrets.E2B_GH_APP_AUTO_REQUEST_SAME_SITE_APP_PRIVATE_KEY }}
+          owner: e2b-dev
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install shared slack-utils
+        run: npm install
+        working-directory: .github/actions/slack-utils
+
+      - name: Install pr-review-reminder deps
+        run: npm install
+        working-directory: .github/actions/pr-review-reminder
+
+      - name: Run PR review reminder
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ORG: e2b-dev
+          STALE_DAYS: ${{ inputs.stale_days || '2' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: node .github/actions/pr-review-reminder/script.js

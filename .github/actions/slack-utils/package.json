@@ -1,0 +1,11 @@
+{
+  "name": "slack-utils",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared Slack utilities for GitHub Actions - handles GitHub-to-Slack user lookup and messaging",
+  "main": "index.js",
+  "dependencies": {
+    "@octokit/rest": "^21.0.0",
+    "@slack/web-api": "^7.0.0"
+  }
+}

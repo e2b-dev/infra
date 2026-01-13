@@ -1,0 +1,58 @@
+name: Weekly PR Report
+
+on:
+  schedule:
+    # Run at 10 AM UTC every Monday
+    - cron: "0 10 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only log, do not send Slack notifications"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  generate-report:
+    name: Generate weekly PR report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitHub App installation token
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.E2B_GH_APP_AUTO_REQUEST_SAME_SITE_APP_ID }}
+          private-key: ${{ secrets.E2B_GH_APP_AUTO_REQUEST_SAME_SITE_APP_PRIVATE_KEY }}
+          owner: e2b-dev
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install shared slack-utils
+        run: npm install
+        working-directory: .github/actions/slack-utils
+
+      - name: Install pr-weekly-report deps
+        run: npm install
+        working-directory: .github/actions/pr-weekly-report
+
+      - name: Run weekly PR report
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: C084HM1MKDW  # #code-review-requests
+          ORG: e2b-dev
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: node .github/actions/pr-weekly-report/script.js
