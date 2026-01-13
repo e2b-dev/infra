@@ -237,7 +237,11 @@ func run(ctx context.Context, buildID string, iterations int) error {
 	defer devicePool.Close(context.WithoutCancel(ctx))
 
 	flags, _ := featureflags.NewClient()
-	persistence, _ := storage.GetTemplateStorageProvider(ctx, nil)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("storage provider: %w", err)
+	}
+
 	blockMetrics, _ := blockmetrics.NewMetrics(&noop.MeterProvider{})
 
 	cache, err := template.NewCache(config, flags, persistence, blockMetrics)
