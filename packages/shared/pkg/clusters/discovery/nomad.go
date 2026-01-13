@@ -74,7 +74,9 @@ func ListOrchestratorAndTemplateBuilderAllocations(ctx context.Context, client *
 
 		net := nets[0]
 		item := Allocation{
-			NodeID:       v.NodeID,
+			// For some historical reasons and better developer experience we are using cloud instances name
+			// so we can easily map Nomad nodes to cloud instances and skip searching by Nomad client UUIDs.
+			NodeID:       v.NodeName,
 			AllocationID: v.ID,
 			AllocationIP: net.IP,
 		}
