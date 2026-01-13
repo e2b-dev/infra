@@ -81,14 +81,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Parsed template ID and tag")
 
-	_, templateSpan := tracer.Start(ctx, "get-template")
+	templateCtx, templateSpan := tracer.Start(ctx, "get template")
 	defer templateSpan.End()
 
 	// Check if team has access to the environment
 	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
-	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, tag, teamInfo.Team.ID, clusterID, true)
+	env, build, checkErr := a.templateCache.Get(templateCtx, cleanedAliasOrEnvID, tag, teamInfo.Team.ID, clusterID, true)
 	if checkErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
+		telemetry.ReportCriticalError(templateCtx, "error when getting template", checkErr.Err)
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
 
 		return

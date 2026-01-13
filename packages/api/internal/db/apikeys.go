@@ -11,7 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/db/apikeys")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/db")
 
 type TeamForbiddenError struct {
 	message string
