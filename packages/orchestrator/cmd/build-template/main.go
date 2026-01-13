@@ -126,7 +126,9 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 			"USE_LOCAL_NAMESPACE_STORAGE":      "true",
 		}
 		for k, v := range env {
-			os.Setenv(k, v)
+			if os.Getenv(k) == "" {
+				os.Setenv(k, v)
+			}
 		}
 
 		if err := setupKernel(ctx, filepath.Join(dataDir, "kernels"), kernel); err != nil {
@@ -149,8 +151,12 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 		fmt.Printf("✓ Storage: %s (local)\n", dataDir)
 	} else {
 		bucket := strings.TrimPrefix(storagePath, "gs://")
-		os.Setenv("STORAGE_PROVIDER", "GCPBucket")
-		os.Setenv("TEMPLATE_BUCKET_NAME", bucket)
+		if os.Getenv("STORAGE_PROVIDER") == "" {
+			os.Setenv("STORAGE_PROVIDER", "GCPBucket")
+		}
+		if os.Getenv("TEMPLATE_BUCKET_NAME") == "" {
+			os.Setenv("TEMPLATE_BUCKET_NAME", bucket)
+		}
 		fmt.Printf("✓ Storage: gs://%s\n", bucket)
 	}
 

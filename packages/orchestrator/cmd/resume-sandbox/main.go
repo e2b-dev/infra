@@ -116,7 +116,9 @@ func setupEnv(from string) error {
 	}
 
 	for k, v := range env {
-		os.Setenv(k, v)
+		if os.Getenv(k) == "" {
+			os.Setenv(k, v)
+		}
 	}
 
 	return nil
