@@ -202,7 +202,7 @@ func CreateAuthenticationFunc(
 
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		ginCtx := middleware.GetGinContext(ctx)
-		ctx, span := tracer.Start(ginCtx.Request.Context(), "authenticate")
+		ctx, span := tracer.Start(ginCtx.Request.Context(), "authenticate") //nolint:contextcheck // We use the gin request context here by design.
 		defer span.End()
 
 		for _, validator := range authenticators {
