@@ -123,12 +123,13 @@ func setupEnv(from string) error {
 }
 
 type runner struct {
-	factory   *sandbox.Factory
-	tmpl      template.Template
-	sbxConfig sandbox.Config
-	buildID   string
-	cache     *template.Cache
-	coldStart bool
+	factory    *sandbox.Factory
+	tmpl       template.Template
+	sbxConfig  sandbox.Config
+	buildID    string
+	cache      *template.Cache
+	coldStart  bool
+	noPrefetch bool
 }
 
 func (r *runner) resumeOnce(ctx context.Context, iter int) (time.Duration, error) {
@@ -194,6 +195,9 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 			tmpl, err := r.cache.GetTemplate(ctx, r.buildID, false, false)
 			if err != nil {
 				return fmt.Errorf("reload template: %w", err)
+			}
+			if r.noPrefetch {
+				tmpl = &noPrefetchTemplate{tmpl}
 			}
 			r.tmpl = tmpl
 		}
@@ -316,11 +320,12 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 
 	token := "local"
 	r := &runner{
-		factory:   factory,
-		tmpl:      tmpl,
-		buildID:   buildID,
-		cache:     cache,
-		coldStart: coldStart,
+		factory:    factory,
+		tmpl:       tmpl,
+		buildID:    buildID,
+		cache:      cache,
+		coldStart:  coldStart,
+		noPrefetch: noPrefetch,
 		sbxConfig: sandbox.Config{
 			BaseTemplateID: buildID,
 			Vcpu:           1,
