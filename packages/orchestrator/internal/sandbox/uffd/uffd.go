@@ -40,8 +40,7 @@ type Uffd struct {
 	socketPath string
 	memfile    block.ReadonlyDevice
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
-
-	signalExit func() error
+	fdExit     utils.SetOnce[*fdexit.FdExit]
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
@@ -53,6 +52,7 @@ func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 		socketPath: socketPath,
 		memfile:    memfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
+		fdExit:     *utils.NewSetOnce[*fdexit.FdExit](),
 	}
 }
 
@@ -87,7 +87,7 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("failed to create fd exit: %w", errors.Join(err, closeErr))
 	}
 
-	u.signalExit = sync.OnceValue(fdExit.SignalExit)
+	u.fdExit.SetValue(fdExit)
 
 	go func() {
 		ctx, span := tracer.Start(ctx, "serve uffd")
@@ -197,12 +197,12 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 }
 
 func (u *Uffd) Stop() error {
-	se := u.signalExit
-	if se == nil {
-		return nil
+	fdExit, err := u.fdExit.Result()
+	if err != nil {
+		return fmt.Errorf("fdExit not set or failed: %w", err)
 	}
 
-	return se()
+	return fdExit.SignalExit()
 }
 
 func (u *Uffd) Ready() chan struct{} {
