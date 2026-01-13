@@ -143,28 +143,6 @@ func recordError(span trace.Span, err error) {
 	span.SetStatus(codes.Error, err.Error())
 }
 
-// StoreFile is a convenience wrapper that reads the entire file at path and
-// stores it as a blob.
-func StoreFile(ctx context.Context, b Blob, path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", path, err)
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", path, err)
-	}
-
-	err = b.Put(ctx, data)
-	if err != nil {
-		return fmt.Errorf("failed to write data to object: %w", err)
-	}
-
-	return nil
-}
-
 // GetBlob is a convenience wrapper that wraps b.WriteTo interface to return a
 // byte slice.
 func GetBlob(ctx context.Context, b Blob) ([]byte, error) {

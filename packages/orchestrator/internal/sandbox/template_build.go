@@ -3,6 +3,8 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 
 	"golang.org/x/sync/errgroup"
 
@@ -110,7 +112,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err = storage.StoreFile(ctx, object, path); err != nil {
+	if err = uploadFileAsBlob(ctx, object, path); err != nil {
 		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
@@ -124,8 +126,28 @@ func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err := storage.StoreFile(ctx, object, path); err != nil {
+	if err := uploadFileAsBlob(ctx, object, path); err != nil {
 		return fmt.Errorf("error when uploading metadata: %w", err)
+	}
+
+	return nil
+}
+
+func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", path, err)
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", path, err)
+	}
+
+	err = b.Put(ctx, data)
+	if err != nil {
+		return fmt.Errorf("failed to write data to object: %w", err)
 	}
 
 	return nil
