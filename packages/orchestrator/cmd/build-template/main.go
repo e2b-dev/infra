@@ -52,7 +52,7 @@ func main() {
 	templateID := flag.String("template", "local-template", "template id")
 	buildID := flag.String("build", "", "build id (UUID)")
 	fromBuild := flag.String("from-build", "", "base build ID to rebuild from")
-	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
+	storagePath := flag.String("storage", "", "storage: local path or gs://bucket (default: gs://$TEMPLATE_BUCKET_NAME or .local-build)")
 	kernel := flag.String("kernel", defaultKernel, "kernel version")
 	fc := flag.String("firecracker", defaultFC, "firecracker version")
 	vcpu := flag.Int("vcpu", 1, "vCPUs")
@@ -67,10 +67,20 @@ func main() {
 		log.Fatal("-build required")
 	}
 
+	// Default storage: check TEMPLATE_BUCKET_NAME env, then fall back to .local-build
+	storage := *storagePath
+	if storage == "" {
+		if bucket := os.Getenv("TEMPLATE_BUCKET_NAME"); bucket != "" {
+			storage = "gs://" + bucket
+		} else {
+			storage = ".local-build"
+		}
+	}
+
 	ctx := context.Background()
 
-	localMode := !strings.HasPrefix(*storagePath, "gs://")
-	if err := setupEnv(ctx, *storagePath, *kernel, *fc, localMode); err != nil {
+	localMode := !strings.HasPrefix(storage, "gs://")
+	if err := setupEnv(ctx, storage, *kernel, *fc, localMode); err != nil {
 		log.Fatal(err)
 	}
 
