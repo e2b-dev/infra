@@ -27,7 +27,7 @@ Flags:
 
 - `-build <uuid>` - Build ID (UUID, required)
 - `-template <id>` - Template ID (default: `local-template`)
-- `-storage <path>` - Local path or `gs://bucket` (default: `.local-build`)
+- `-storage <path>` - Local path or `gs://bucket` (enables local mode with auto-download of kernel/FC)
 - `-from-build <uuid>` - Base build ID for incremental builds
 - `-kernel <version>` - Kernel version (default: `vmlinux-6.1.102`)
 - `-firecracker <version>` - Firecracker version (default: `v1.12.1_717921c`)

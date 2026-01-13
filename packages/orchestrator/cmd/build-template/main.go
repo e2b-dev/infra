@@ -66,21 +66,16 @@ func main() {
 		log.Fatal("-build required")
 	}
 
-	// Default storage: check TEMPLATE_BUCKET_NAME env, then fall back to .local-build
-	storage := *storagePath
-	if storage == "" {
-		if bucket := os.Getenv("TEMPLATE_BUCKET_NAME"); bucket != "" {
-			storage = "gs://" + bucket
-		} else {
-			storage = ".local-build"
-		}
-	}
-
 	ctx := context.Background()
 
-	localMode := !strings.HasPrefix(storage, "gs://")
-	if err := setupEnv(ctx, storage, *kernel, *fc, localMode); err != nil {
-		log.Fatal(err)
+	// Only run setupEnv when -storage is explicitly passed (for local development)
+	// Otherwise, use existing environment variables (like the original code did)
+	localMode := false
+	if *storagePath != "" {
+		localMode = !strings.HasPrefix(*storagePath, "gs://")
+		if err := setupEnv(ctx, *storagePath, *kernel, *fc, localMode); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	builderConfig, err := cfg.ParseBuilder()
