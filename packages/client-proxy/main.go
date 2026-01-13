@@ -24,7 +24,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -133,7 +132,7 @@ func run() int {
 	}
 
 	info := &e2binfo.ServiceInfo{}
-	info.SetStatus(ctx, api.Healthy)
+	info.SetStatus(ctx, e2binfo.Healthy)
 
 	// Proxy sandbox http traffic to orchestrator nodes
 	trafficProxy, err := e2bproxy.NewClientProxy(
@@ -151,12 +150,13 @@ func run() int {
 	// Health check server
 	healthMux := http.NewServeMux()
 	healthMux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		if info.GetStatus() == api.Healthy {
+		if info.GetStatus() == e2binfo.Healthy {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("healthy"))
 
 			return
 		}
+
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Write([]byte("unhealthy"))
 	})
@@ -226,7 +226,7 @@ func run() int {
 		shutdownLogger := l.With(zap.Uint16("proxy_port", config.ProxyPort), zap.Uint16("health_port", config.HealthPort))
 		shutdownLogger.Info(ctx, "Shutting down proxy")
 
-		info.SetStatus(ctx, api.Draining)
+		info.SetStatus(ctx, e2binfo.Draining)
 
 		// We should wait for health check manager to notice that we are not ready for new traffic
 		shutdownLogger.Info(ctx, "Waiting for draining state propagation", zap.Float64("wait_in_seconds", shutdownDrainingWait.Seconds()))
@@ -244,7 +244,7 @@ func run() int {
 			shutdownLogger.Info(ctx, "Http proxy shutdown successfully")
 		}
 
-		info.SetStatus(ctx, api.Unhealthy)
+		info.SetStatus(ctx, e2binfo.Unhealthy)
 
 		// Wait for the health check manager to notice that we are not healthy at all
 		shutdownLogger.Info(ctx, "Waiting for unhealthy state propagation", zap.Float64("wait_in_seconds", shutdownUnhealthyWait.Seconds()))
