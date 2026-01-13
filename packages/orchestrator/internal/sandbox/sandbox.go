@@ -392,7 +392,7 @@ func (f *Factory) ResumeSandbox(
 			return nil, fmt.Errorf("failed to create uffd: %w", err)
 		}
 
-		cleanup.AddNoContext(ctx, fcUffd.Close)
+		// cleanup.AddNoContext(ctx, fcUffd.Close)
 
 		return fcUffd, nil
 	})
