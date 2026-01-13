@@ -139,7 +139,7 @@ resource "nomad_job" "docker_reverse_proxy" {
 }
 
 resource "nomad_job" "client_proxy" {
-  jobspec = templatefile("${path.module}/jobs/edge.hcl",
+  jobspec = templatefile("${path.module}/jobs/client-proxy.hcl",
     {
       update_stanza       = var.api_machine_count > 1
       count               = var.client_proxy_count

@@ -5,6 +5,7 @@ import "github.com/caarlos0/env/v11"
 type Config struct {
 	EdgePort                              uint16                 `env:"EDGE_PORT"                                 envDefault:"3001"`
 	EdgeSecret                            string                 `env:"EDGE_SECRET"`
+	HealthPort                            uint16                 `env:"HEALTH_PORT"                               envDefault:"3003"`
 	LokiPassword                          string                 `env:"LOKI_PASSWORD"`
 	LokiURL                               string                 `env:"LOKI_URL,required"`
 	LokiUser                              string                 `env:"LOKI_USER"`

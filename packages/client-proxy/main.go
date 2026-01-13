@@ -48,7 +48,7 @@ const (
 	shutdownDrainingWait  = 15 * time.Second
 	shutdownUnhealthyWait = 15 * time.Second
 
-	version = "1.1.0"
+	version = "1.2.0"
 )
 
 var commitSHA string
@@ -173,6 +173,25 @@ func run() int {
 		return 1
 	}
 
+	// Health check server
+	healthMux := http.NewServeMux()
+	healthMux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		if info.GetStatus() == api.Healthy {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("healthy"))
+
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("unhealthy"))
+	})
+
+	healthAddr := fmt.Sprintf("0.0.0.0:%d", config.HealthPort)
+	healthSrv := &http.Server{
+		Addr:    healthAddr,
+		Handler: healthMux,
+	}
+
 	authorizationManager := authorization.NewStaticTokenAuthorizationService(config.EdgeSecret)
 
 	var closers []Closeable
@@ -288,6 +307,24 @@ func run() int {
 		}
 	})
 
+	wg.Go(func() {
+		defer sigCancel()
+
+		healthLogger := l.With(zap.Uint16("port", config.HealthPort))
+		healthLogger.Info(ctx, "Health server starting")
+
+		err := healthSrv.ListenAndServe()
+		switch {
+		case errors.Is(err, http.ErrServerClosed):
+			healthLogger.Info(ctx, "Health server shutdown successfully")
+		case err != nil:
+			exitCode.Add(1)
+			healthLogger.Error(ctx, "Health server encountered error", zap.Error(err))
+		default:
+			healthLogger.Error(ctx, "Health server exited without error")
+		}
+	})
+
 	// Service gracefully shutdown flow
 	//
 	// Endpoints reporting health status for different consumers
@@ -345,6 +382,15 @@ func run() int {
 		err = restSrv.Shutdown(restShutdownCtx)
 		if err != nil {
 			shutdownLogger.Error(ctx, "Edge rest api shutdown error", zap.Error(err))
+		}
+
+		// Shutdown health server
+		healthShutdownCtx, healthShutdownCtxCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer healthShutdownCtxCancel()
+
+		err = healthSrv.Shutdown(healthShutdownCtx)
+		if err != nil {
+			shutdownLogger.Error(ctx, "Health server shutdown error", zap.Error(err))
 		}
 
 		// used by instances management for notify that instance is ready for termination

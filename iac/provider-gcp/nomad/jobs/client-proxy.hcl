@@ -38,6 +38,9 @@ job "client-proxy" {
       port "${api_port_name}" {
         static = "${api_port}"
       }
+
+      port "health" {
+      }
     }
 
     service {
@@ -47,10 +50,10 @@ job "client-proxy" {
       check {
         type     = "http"
         name     = "health"
-        path     = "/health/traffic"
+        path     = "/health"
         interval = "3s"
         timeout  = "3s"
-        port     = "${api_port_name}"
+        port     = "health"
       }
     }
 
@@ -107,6 +110,7 @@ job "client-proxy" {
 
         EDGE_PORT         = "${api_port}"
         EDGE_SECRET       = "${api_secret}"
+        HEALTH_PORT       = "$${NOMAD_PORT_health}"
         PROXY_PORT        = "${proxy_port}"
         ORCHESTRATOR_PORT = "${orchestrator_port}"
 
@@ -132,7 +136,7 @@ job "client-proxy" {
       config {
         network_mode = "host"
         image        = "${image_name}"
-        ports        = ["${proxy_port_name}", "${api_port_name}"]
+        ports        = ["${proxy_port_name}", "${api_port_name}", "health"]
       }
     }
   }
