@@ -89,7 +89,7 @@ job "client-proxy" {
         NODE_ID = "$${node.unique.id}"
         NODE_IP = "$${attr.unique.network.ip-address}"
 
-        HEALTH_PORT = "$${NOMAD_PORT_health}"
+        HEALTH_PORT = "${health_port}"
         PROXY_PORT  = "${proxy_port}"
 
         ENVIRONMENT = "${environment}"
