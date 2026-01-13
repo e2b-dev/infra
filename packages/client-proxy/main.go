@@ -18,8 +18,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal"
 	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
-	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2bproxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
@@ -132,16 +132,8 @@ func run() int {
 		catalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
 
-	info := &e2binfo.ServiceInfo{
-		NodeID:               nodeID,
-		ServiceInstanceID:    uuid.NewString(),
-		ServiceVersion:       version,
-		ServiceVersionCommit: commitSHA,
-		ServiceStartup:       time.Now(),
-	}
-
-	// service starts in unhealthy state, and we are waiting for initial health check to pass
-	info.SetStatus(ctx, api.Unhealthy)
+	info := &e2binfo.ServiceInfo{}
+	info.SetStatus(ctx, api.Healthy)
 
 	// Proxy sandbox http traffic to orchestrator nodes
 	trafficProxy, err := e2bproxy.NewClientProxy(

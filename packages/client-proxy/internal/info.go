@@ -1,9 +1,8 @@
-package info
+package internal
 
 import (
 	"context"
 	"sync"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -12,16 +11,8 @@ import (
 )
 
 type ServiceInfo struct {
-	NodeID string
-
-	ServiceInstanceID    string
-	ServiceVersion       string
-	ServiceVersionCommit string
-	ServiceStartup       time.Time
-
-	terminating bool
-	status      api.ClusterNodeStatus
-	statusMu    sync.RWMutex
+	status   api.ClusterNodeStatus
+	statusMu sync.RWMutex
 }
 
 func (s *ServiceInfo) GetStatus() api.ClusterNodeStatus {
@@ -39,17 +30,4 @@ func (s *ServiceInfo) SetStatus(ctx context.Context, status api.ClusterNodeStatu
 		logger.L().Info(ctx, "Service status changed", zap.String("status", string(status)))
 		s.status = status
 	}
-}
-
-func (s *ServiceInfo) SetTerminating() {
-	s.statusMu.Lock()
-	defer s.statusMu.Unlock()
-	s.terminating = true
-}
-
-func (s *ServiceInfo) IsTerminating() bool {
-	s.statusMu.RLock()
-	defer s.statusMu.RUnlock()
-
-	return s.terminating
 }
