@@ -86,8 +86,11 @@ func (u *Userfaultfd) Serve(
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
 	}
 
-	eagainCounter := newEagainCounter(u.logger, "uffd: eagain during fd read (accumulated)")
+	eagainCounter := newCounterReporter(u.logger, "uffd: eagain during fd read (accumulated)")
 	defer eagainCounter.Close(ctx)
+
+	noDataCounter := newCounterReporter(u.logger, "uffd: no data in fd (accumulated)")
+	defer noDataCounter.Close(ctx)
 
 outerLoop:
 	for {
@@ -135,7 +138,7 @@ outerLoop:
 			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
 			// It might be possible to just check for data != 0 in the syscall.Read loop
 			// but I don't feel confident about doing that.
-			u.logger.Debug(ctx, "uffd: no data in fd, going back to polling")
+			noDataCounter.Increase()
 
 			continue
 		}
@@ -154,6 +157,7 @@ outerLoop:
 				// There is no error so we can proceed.
 
 				eagainCounter.Log(ctx)
+				noDataCounter.Log(ctx)
 
 				break
 			}
