@@ -170,7 +170,7 @@ outerLoop:
 			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
 			// It might be possible to just check for data != 0 in the syscall.Read loop
 			// but I don't feel confident about doing that.
-			noDataCounter.Increase("count")
+			noDataCounter.Increase("POLLIN")
 
 			continue
 		}
@@ -195,7 +195,7 @@ outerLoop:
 			}
 
 			if err == syscall.EAGAIN {
-				eagainCounter.Increase("count")
+				eagainCounter.Increase("EAGAIN")
 
 				// Continue polling the fd.
 				continue outerLoop
