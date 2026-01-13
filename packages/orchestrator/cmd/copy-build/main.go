@@ -105,7 +105,7 @@ func (o *osFileBlob) Exists(_ context.Context) (bool, error) {
 	return true, nil
 }
 
-func (o *osFileBlob) Put(_ context.Context, data []byte) error {
+func (o *osFileBlob) Put(_ context.Context, _ []byte) error {
 	return fmt.Errorf("not implemented")
 }
 

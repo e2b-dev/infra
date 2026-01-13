@@ -155,7 +155,7 @@ func (b *StorageDiff) FileSize() (int64, error) {
 	return c.FileSize()
 }
 
-func (b *StorageDiff) Size(ctx context.Context) (int64, error) {
+func (b *StorageDiff) Size(_ context.Context) (int64, error) {
 	return b.FileSize()
 }
 
