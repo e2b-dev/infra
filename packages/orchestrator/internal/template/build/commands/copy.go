@@ -26,7 +26,7 @@ import (
 )
 
 type Copy struct {
-	FilesStorage storage.Storage
+	FilesStorage storage.StorageProvider
 	CacheScope   string
 }
 

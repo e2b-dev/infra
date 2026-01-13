@@ -40,7 +40,7 @@ func TestCachedObjectProvider_Put(t *testing.T) {
 		featureFlags := storagemocks.NewMockFeatureFlagsClient(t)
 		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
 
-		c := cachedObject{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
+		c := cachedBlob{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
 		// write temp file
 		err = c.Put(t.Context(), data)
@@ -76,7 +76,7 @@ func TestCachedObjectProvider_Put(t *testing.T) {
 				return int64(n), err
 			})
 
-		c := cachedObject{path: cacheDir, inner: inner, chunkSize: 1024, tracer: noopTracer}
+		c := cachedBlob{path: cacheDir, inner: inner, chunkSize: 1024, tracer: noopTracer}
 
 		read, err := GetBlob(t.Context(), &c)
 		require.NoError(t, err)
@@ -95,7 +95,7 @@ func TestCachedObjectProvider_Put(t *testing.T) {
 func TestCachedObjectProvider_WriteFileToCache(t *testing.T) {
 	t.Parallel()
 
-	c := cachedObject{
+	c := cachedBlob{
 		path:   t.TempDir(),
 		tracer: noopTracer,
 	}

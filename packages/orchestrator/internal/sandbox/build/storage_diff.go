@@ -24,7 +24,7 @@ type StorageDiff struct {
 
 	blockSize   int64
 	metrics     blockmetrics.Metrics
-	persistence storage.Storage
+	persistence storage.StorageProvider
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -43,7 +43,7 @@ func newStorageDiff(
 	diffType DiffType,
 	blockSize int64,
 	metrics blockmetrics.Metrics,
-	persistence storage.Storage,
+	persistence storage.StorageProvider,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
 	storageObjectType, ok := storageObjectType(diffType)

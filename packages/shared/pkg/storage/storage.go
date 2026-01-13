@@ -60,7 +60,7 @@ const (
 	LayerMetadataObjectType
 )
 
-type Storage interface {
+type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
 	OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error)
@@ -71,16 +71,12 @@ type Storage interface {
 type Blob interface {
 	WriteTo(ctx context.Context, dst io.Writer) (int64, error)
 	Put(ctx context.Context, data []byte) error
-	// CopyTo(ctx context.Context, w io.Writer) (int64, error)
-	// CopyFrom(ctx context.Context, r io.Reader) (int64, error)
 	Exists(ctx context.Context) (bool, error)
 }
 
 type SeekableReader interface {
-	// Random slice access
+	// Random slice access, off and buffer length must be aligned to block size
 	ReadAt(ctx context.Context, buffer []byte, off int64) (int, error)
-
-	// utility
 	Size(ctx context.Context) (int64, error)
 }
 
@@ -94,7 +90,7 @@ type Seekable interface {
 	SeekableWriter
 }
 
-func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (Storage, error) {
+func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
 	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {
@@ -110,13 +106,13 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 	case AWSStorageProvider:
 		return newAWSStorage(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPStorage(ctx, bucketName, limiter)
+		return NewGCP(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
 }
 
-func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (Storage, error) {
+func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
 	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {
@@ -132,7 +128,7 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	case AWSStorageProvider:
 		return newAWSStorage(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPStorage(ctx, bucketName, limiter)
+		return NewGCP(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
@@ -147,7 +143,9 @@ func recordError(span trace.Span, err error) {
 	span.SetStatus(codes.Error, err.Error())
 }
 
-func StoreFile(ctx context.Context, obj Blob, path string) error {
+// StoreFile is a convenience wrapper that reads the entire file at path and
+// stores it as a blob.
+func StoreFile(ctx context.Context, b Blob, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", path, err)
@@ -159,7 +157,7 @@ func StoreFile(ctx context.Context, obj Blob, path string) error {
 		return fmt.Errorf("failed to read file %s: %w", path, err)
 	}
 
-	err = obj.Put(ctx, data)
+	err = b.Put(ctx, data)
 	if err != nil {
 		return fmt.Errorf("failed to write data to object: %w", err)
 	}
@@ -167,6 +165,8 @@ func StoreFile(ctx context.Context, obj Blob, path string) error {
 	return nil
 }
 
+// GetBlob is a convenience wrapper that wraps b.WriteTo interface to return a
+// byte slice.
 func GetBlob(ctx context.Context, b Blob) ([]byte, error) {
 	var buf bytes.Buffer
 	if _, err := b.WriteTo(ctx, &buf); err != nil {

@@ -40,8 +40,8 @@ type ServerStore struct {
 	buildCache        *cache.BuildCache
 	buildLogger       logger.Logger
 	artifactsregistry artifactsregistry.ArtifactsRegistry
-	templateStorage   storage.Storage
-	buildStorage      storage.Storage
+	templateStorage   storage.StorageProvider
+	buildStorage      storage.StorageProvider
 
 	wg   *sync.WaitGroup // wait group for running builds
 	info *service.ServiceInfo
@@ -60,7 +60,7 @@ func New(
 	proxy *proxy.SandboxProxy,
 	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
-	templatePersistence storage.Storage,
+	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
 ) (s *ServerStore, e error) {

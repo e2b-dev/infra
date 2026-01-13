@@ -18,7 +18,7 @@ import (
 )
 
 type Chunker struct {
-	base    storage.Seekable
+	base    storage.SeekableReader
 	cache   *Cache
 	metrics metrics.Metrics
 

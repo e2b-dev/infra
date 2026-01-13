@@ -23,7 +23,7 @@ type Snapshot struct {
 
 func (s *Snapshot) Upload(
 	ctx context.Context,
-	persistence storage.Storage,
+	persistence storage.StorageProvider,
 	templateFiles storage.TemplateFiles,
 ) error {
 	var memfilePath *string

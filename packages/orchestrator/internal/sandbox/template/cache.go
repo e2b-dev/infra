@@ -45,7 +45,7 @@ type Cache struct {
 	config        cfg.BuilderConfig
 	flags         *featureflags.Client
 	cache         *ttlcache.Cache[string, Template]
-	persistence   storage.Storage
+	persistence   storage.StorageProvider
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
 	rootCachePath string
@@ -57,7 +57,7 @@ type Cache struct {
 func NewCache(
 	config cfg.Config,
 	flags *featureflags.Client,
-	persistence storage.Storage,
+	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 ) (*Cache, error) {
 	cache := ttlcache.New(
@@ -135,7 +135,7 @@ func (c *Cache) GetTemplate(
 	// it will start working only for new orchestrators or new builds.
 	if path, enabled := c.useNFSCache(ctx, isBuilding, isSnapshot); enabled {
 		logger.L().Info(ctx, "using local template cache", zap.String("path", c.rootCachePath))
-		persistence = storage.NFSCache(ctx, path, persistence, c.flags)
+		persistence = storage.WrapInNFSCache(ctx, path, persistence, c.flags)
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else {
 		span.SetAttributes(attribute.Bool("use_cache", false))

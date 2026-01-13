@@ -25,18 +25,18 @@ const (
 type cache struct {
 	rootPath  string
 	chunkSize int64
-	inner     Storage
+	inner     StorageProvider
 	flags     *featureflags.Client
 
 	tracer trace.Tracer
 }
 
-var _ Storage = (*cache)(nil)
+var _ StorageProvider = (*cache)(nil)
 
-func NFSCache(
+func WrapInNFSCache(
 	ctx context.Context,
 	rootPath string,
-	inner Storage,
+	inner StorageProvider,
 	flags *featureflags.Client,
 ) *cache {
 	cacheTracer := tracer
@@ -79,7 +79,7 @@ func (c cache) OpenBlob(ctx context.Context, path string, objectType ObjectType)
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &cachedObject{
+	return &cachedBlob{
 		path:      localPath,
 		chunkSize: c.chunkSize,
 		inner:     innerObject,
@@ -99,7 +99,7 @@ func (c cache) OpenSeekable(ctx context.Context, path string, objectType Seekabl
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &cachedSeekableObject{
+	return &cachedSeekable{
 		path:      localPath,
 		chunkSize: c.chunkSize,
 		inner:     innerObject,

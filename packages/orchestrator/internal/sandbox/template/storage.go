@@ -51,7 +51,7 @@ func NewStorage(
 	buildId string,
 	fileType build.DiffType,
 	h *header.Header,
-	persistence storage.Storage,
+	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 ) (*Storage, error) {
 	if h == nil {

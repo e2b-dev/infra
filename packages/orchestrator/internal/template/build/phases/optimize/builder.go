@@ -41,7 +41,7 @@ type OptimizeBuilder struct {
 
 	layerExecutor   *layer.LayerExecutor
 	sandboxFactory  *sandbox.Factory
-	templateStorage storage.Storage
+	templateStorage storage.StorageProvider
 	templateCache   *sbxtemplate.Cache
 	proxy           *proxy.SandboxProxy
 	sandboxes       *sandbox.Map
@@ -52,7 +52,7 @@ type OptimizeBuilder struct {
 func New(
 	buildContext buildcontext.BuildContext,
 	sandboxFactory *sandbox.Factory,
-	templateStorage storage.Storage,
+	templateStorage storage.StorageProvider,
 	templateCache *sbxtemplate.Cache,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,

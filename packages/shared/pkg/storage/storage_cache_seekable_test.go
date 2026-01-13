@@ -18,7 +18,7 @@ import (
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
 	t.Parallel()
 
-	c := cachedSeekableObject{path: "/a/b/c", chunkSize: 1024, tracer: noopTracer}
+	c := cachedSeekable{path: "/a/b/c", chunkSize: 1024, tracer: noopTracer}
 	filename := c.makeChunkFilename(1024 * 4)
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
 }
@@ -34,7 +34,7 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 		inner := storagemocks.NewMockSeekable(t)
 		inner.EXPECT().Size(mock.Anything).Return(expectedSize, nil)
 
-		c := cachedSeekableObject{path: t.TempDir(), inner: inner, tracer: noopTracer}
+		c := cachedSeekable{path: t.TempDir(), inner: inner, tracer: noopTracer}
 
 		// first call will write to cache
 		size, err := c.Size(t.Context())
@@ -79,7 +79,7 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
 		featureFlags.EXPECT().IntFlag(mock.Anything, mock.Anything).Return(10)
 
-		c := cachedSeekableObject{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
+		c := cachedSeekable{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
 		// write temp file
 		err = c.StoreFile(t.Context(), tempFilename)
@@ -113,7 +113,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		tempDir := t.TempDir()
 
 		tempPath := filepath.Join(tempDir, "a", "b", "c")
-		c := cachedSeekableObject{path: tempPath, chunkSize: 3, tracer: noopTracer}
+		c := cachedSeekable{path: tempPath, chunkSize: 3, tracer: noopTracer}
 
 		// create cache file
 		cacheFilename := c.makeChunkFilename(0)
@@ -148,7 +148,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			})
 
 		tempDir := t.TempDir()
-		c := cachedSeekableObject{
+		c := cachedSeekable{
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
@@ -188,7 +188,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			})
 
 		tempDir := t.TempDir()
-		c := cachedObject{
+		c := cachedBlob{
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
@@ -251,7 +251,7 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			c := cachedSeekableObject{
+			c := cachedSeekable{
 				chunkSize: tc.chunkSize,
 				tracer:    noopTracer,
 			}
@@ -271,7 +271,7 @@ func TestCachedSeekableObjectProvider_ReadAt(t *testing.T) {
 	t.Run("failed but returns count on short read", func(t *testing.T) {
 		t.Parallel()
 
-		c := cachedSeekableObject{chunkSize: 10, tracer: noopTracer}
+		c := cachedSeekable{chunkSize: 10, tracer: noopTracer}
 		errTarget := errors.New("find me")
 		mockSeeker := storagemocks.NewMockSeekable(t)
 		mockSeeker.EXPECT().ReadAt(mock.Anything, mock.Anything, mock.Anything).Return(5, errTarget)

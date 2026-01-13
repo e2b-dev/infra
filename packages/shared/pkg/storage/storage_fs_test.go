@@ -10,7 +10,7 @@ import (
 )
 
 // helper to create a FileSystemStorageProvider rooted in a temp directory.
-func newTempProvider(t *testing.T) *FileSystemStorage {
+func newTempProvider(t *testing.T) *fsStorage {
 	t.Helper()
 
 	base := t.TempDir()

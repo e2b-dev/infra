@@ -10,71 +10,71 @@ import (
 	"time"
 )
 
-type FileSystemStorage struct {
+type fsStorage struct {
 	basePath string
 	opened   map[string]*os.File
 }
 
-var _ Storage = (*FileSystemStorage)(nil)
+var _ StorageProvider = (*fsStorage)(nil)
 
-type FileSystemObject struct {
+type fsObject struct {
 	path string
 }
 
 var (
-	_ Seekable = (*FileSystemObject)(nil)
-	_ Blob     = (*FileSystemObject)(nil)
+	_ Seekable = (*fsObject)(nil)
+	_ Blob     = (*fsObject)(nil)
 )
 
-func newFileSystemStorage(basePath string) (*FileSystemStorage, error) {
-	return &FileSystemStorage{
+func newFileSystemStorage(basePath string) (*fsStorage, error) {
+	return &fsStorage{
 		basePath: basePath,
 		opened:   make(map[string]*os.File),
 	}, nil
 }
 
-func (fs *FileSystemStorage) DeleteObjectsWithPrefix(_ context.Context, prefix string) error {
-	filePath := fs.getPath(prefix)
+func (s *fsStorage) DeleteObjectsWithPrefix(_ context.Context, prefix string) error {
+	filePath := s.getPath(prefix)
 
 	return os.RemoveAll(filePath)
 }
 
-func (fs *FileSystemStorage) GetDetails() string {
-	return fmt.Sprintf("[Local file storage, base path set to %s]", fs.basePath)
+func (s *fsStorage) GetDetails() string {
+	return fmt.Sprintf("[Local file storage, base path set to %s]", s.basePath)
 }
 
-func (fs *FileSystemStorage) UploadSignedURL(_ context.Context, _ string, _ time.Duration) (string, error) {
+func (s *fsStorage) UploadSignedURL(_ context.Context, _ string, _ time.Duration) (string, error) {
 	return "", fmt.Errorf("file system storage does not support signed URLs")
 }
 
-func (fs *FileSystemStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
-	dir := filepath.Dir(fs.getPath(path))
+func (s *fsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
+	dir := filepath.Dir(s.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 
-	return &FileSystemObject{
-		path: fs.getPath(path),
+	return &fsObject{
+		path: s.getPath(path),
 	}, nil
 }
 
-func (fs *FileSystemStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
-	dir := filepath.Dir(fs.getPath(path))
+func (s *fsStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
+	dir := filepath.Dir(s.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 
-	return &FileSystemObject{
-		path: fs.getPath(path),
+	return &fsObject{
+		path: s.getPath(path),
 	}, nil
 }
 
-func (fs *FileSystemStorage) getPath(path string) string {
-	return filepath.Join(fs.basePath, path)
+func (s *fsStorage) getPath(path string) string {
+	return filepath.Join(s.basePath, path)
 }
 
-func (f *FileSystemObject) WriteTo(_ context.Context, dst io.Writer) (int64, error) {
-	handle, err := f.getHandle(true)
+func (o *fsObject) WriteTo(_ context.Context, dst io.Writer) (int64, error) {
+	handle, err := o.getHandle(true)
 	if err != nil {
 		return 0, err
 	}
@@ -84,8 +84,8 @@ func (f *FileSystemObject) WriteTo(_ context.Context, dst io.Writer) (int64, err
 	return io.Copy(dst, handle)
 }
 
-func (f *FileSystemObject) Put(_ context.Context, data []byte) error {
-	handle, err := f.getHandle(false)
+func (o *fsObject) Put(_ context.Context, data []byte) error {
+	handle, err := o.getHandle(false)
 	if err != nil {
 		return err
 	}
@@ -95,14 +95,14 @@ func (f *FileSystemObject) Put(_ context.Context, data []byte) error {
 	return err
 }
 
-func (f *FileSystemObject) StoreFile(_ context.Context, path string) error {
+func (o *fsObject) StoreFile(_ context.Context, path string) error {
 	r, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", path, err)
 	}
 	defer r.Close()
 
-	handle, err := f.getHandle(false)
+	handle, err := o.getHandle(false)
 	if err != nil {
 		return err
 	}
@@ -116,8 +116,8 @@ func (f *FileSystemObject) StoreFile(_ context.Context, path string) error {
 	return nil
 }
 
-func (f *FileSystemObject) ReadAt(_ context.Context, buff []byte, off int64) (n int, err error) {
-	handle, err := f.getHandle(true)
+func (o *fsObject) ReadAt(_ context.Context, buff []byte, off int64) (n int, err error) {
+	handle, err := o.getHandle(true)
 	if err != nil {
 		return 0, err
 	}
@@ -126,8 +126,8 @@ func (f *FileSystemObject) ReadAt(_ context.Context, buff []byte, off int64) (n 
 	return handle.ReadAt(buff, off)
 }
 
-func (f *FileSystemObject) Exists(_ context.Context) (bool, error) {
-	_, err := os.Stat(f.path)
+func (o *fsObject) Exists(_ context.Context) (bool, error) {
+	_, err := os.Stat(o.path)
 	if os.IsNotExist(err) {
 		return false, nil
 	}
@@ -135,8 +135,8 @@ func (f *FileSystemObject) Exists(_ context.Context) (bool, error) {
 	return err == nil, err
 }
 
-func (f *FileSystemObject) Size(_ context.Context) (int64, error) {
-	handle, err := f.getHandle(true)
+func (o *fsObject) Size(_ context.Context) (int64, error) {
+	handle, err := o.getHandle(true)
 	if err != nil {
 		return 0, err
 	}
@@ -150,13 +150,13 @@ func (f *FileSystemObject) Size(_ context.Context) (int64, error) {
 	return fileInfo.Size(), nil
 }
 
-func (f *FileSystemObject) Delete(_ context.Context) error {
-	return os.Remove(f.path)
+func (o *fsObject) Delete(_ context.Context) error {
+	return os.Remove(o.path)
 }
 
-func (f *FileSystemObject) getHandle(checkExistence bool) (*os.File, error) {
+func (o *fsObject) getHandle(checkExistence bool) (*os.File, error) {
 	if checkExistence {
-		info, err := os.Stat(f.path)
+		info, err := os.Stat(o.path)
 		if err != nil {
 			if os.IsNotExist(err) {
 				return nil, ErrObjectNotExist
@@ -166,11 +166,11 @@ func (f *FileSystemObject) getHandle(checkExistence bool) (*os.File, error) {
 		}
 
 		if info.IsDir() {
-			return nil, fmt.Errorf("path %s is a directory", f.path)
+			return nil, fmt.Errorf("path %s is a directory", o.path)
 		}
 	}
 
-	handle, err := os.OpenFile(f.path, os.O_RDWR|os.O_CREATE, 0o644)
+	handle, err := os.OpenFile(o.path, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, err
 	}
