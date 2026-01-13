@@ -83,8 +83,10 @@ func Visualize(mappings []*BuildMap, size, blockSize, cols uint64, bottomGroup, 
 // ValidateMappings validates the mappings.
 // It is used to check if the mappings are valid.
 //
-// It checks if the mappings are contiguous and if the length of each mapping is a multiple of the block size.
+// It checks if the mappings are contiguous and if the length of each mapping is a multiple of the page size (4KB).
 // It also checks if the mappings cover the whole size.
+// Note: blockSize is used only for formatting; actual alignment is checked against PageSize (4KB)
+// since 4KB deduplication creates page-aligned mappings.
 func ValidateMappings(mappings []*BuildMap, size, blockSize uint64) error {
 	var currentOffset uint64
 
@@ -93,8 +95,8 @@ func ValidateMappings(mappings []*BuildMap, size, blockSize uint64) error {
 			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\ndoes not start at the correct offset: expected %d (block %d), got %d (block %d)", mapping.Format(blockSize), currentOffset, currentOffset/blockSize, mapping.Offset, mapping.Offset/blockSize)
 		}
 
-		if mapping.Length%blockSize != 0 {
-			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\nhas an invalid length: %d. It should be a multiple of block size: %d", mapping.Format(blockSize), mapping.Length, blockSize)
+		if mapping.Length%PageSize != 0 {
+			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\nhas an invalid length: %d. It should be a multiple of page size: %d", mapping.Format(blockSize), mapping.Length, PageSize)
 		}
 
 		if currentOffset+mapping.Length > size {

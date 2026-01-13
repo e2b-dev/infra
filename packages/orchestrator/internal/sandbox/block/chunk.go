@@ -128,14 +128,13 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 	var eg errgroup.Group
 
-	chunks := header.BlocksOffsets(length, storage.MemoryChunkSize)
+	// Calculate which chunks we need based on the byte range [off, off+length)
+	startChunk := header.BlockIdx(off, storage.MemoryChunkSize)
+	endChunk := header.BlockIdx(off+length-1, storage.MemoryChunkSize)
 
-	startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
-	startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
-
-	for _, chunkOff := range chunks {
+	for chunkIdx := startChunk; chunkIdx <= endChunk; chunkIdx++ {
 		// Ensure the closure captures the correct block offset.
-		fetchOff := startingChunkOffset + chunkOff
+		fetchOff := header.BlockOffset(chunkIdx, storage.MemoryChunkSize)
 
 		eg.Go(func() (err error) {
 			defer func() {

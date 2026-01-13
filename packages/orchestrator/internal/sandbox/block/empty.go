@@ -16,11 +16,23 @@ type Empty struct {
 var _ ReadonlyDevice = (*Empty)(nil)
 
 func NewEmpty(size int64, blockSize int64, buildID uuid.UUID) (*Empty, error) {
-	h, err := header.NewHeader(header.NewTemplateMetadata(
+	metadata := header.NewTemplateMetadata(
 		buildID,
 		uint64(blockSize),
 		uint64(size),
-	), nil)
+	)
+
+	// Create a single mapping covering the entire size with uuid.Nil
+	// This indicates that all data is "empty" (zeros) and should be skipped during reads.
+	// When merged with actual dirty mappings, the split parts remain uuid.Nil.
+	emptyMapping := []*header.BuildMap{{
+		Offset:             0,
+		Length:             uint64(size),
+		BuildId:            uuid.Nil,
+		BuildStorageOffset: 0,
+	}}
+
+	h, err := header.NewHeader(metadata, emptyMapping)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
