@@ -30,7 +30,7 @@ type Chunker struct {
 
 func NewChunker(
 	size, blockSize int64,
-	base storage.Seekable,
+	base storage.SeekableReader,
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*Chunker, error) {
