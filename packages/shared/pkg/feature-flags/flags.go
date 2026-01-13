@@ -210,13 +210,16 @@ var defaultTrackedTemplates = map[string]bool{
 var TrackedTemplatesForMetrics = newJSONFlag("tracked-templates-for-metrics", ldvalue.FromJSONMarshal(defaultTrackedTemplates))
 
 // GetTrackedTemplatesSet fetches the TrackedTemplatesForMetrics flag and returns it as a set for efficient lookup.
+// Only keys with a truthy value are included; keys set to false are ignored.
 func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{} {
 	value := ff.JSONFlag(ctx, TrackedTemplatesForMetrics)
 	valueMap := value.AsValueMap()
 	keys := valueMap.Keys(nil)
 	result := make(map[string]struct{}, len(keys))
 	for _, key := range keys {
-		result[key] = struct{}{}
+		if valueMap.Get(key).BoolValue() {
+			result[key] = struct{}{}
+		}
 	}
 
 	return result
