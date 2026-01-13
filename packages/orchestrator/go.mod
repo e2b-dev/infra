@@ -33,6 +33,7 @@ require (
 	github.com/go-openapi/strfmt v0.23.0
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/nftables v0.3.0
+	github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/hashicorp/consul/api v1.30.0

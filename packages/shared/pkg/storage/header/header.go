@@ -35,13 +35,13 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
 		}}
 	}
 
-	blocks := TotalBlocks(int64(metadata.Size), int64(metadata.BlockSize))
+	blocks := TotalBlocks(int64(metadata.Size), int64(PageSize))
 
 	intervals := bitset.New(uint(blocks))
 	startMap := make(map[int64]*BuildMap, len(mapping))
 
 	for _, mapping := range mapping {
-		block := BlockIdx(int64(mapping.Offset), int64(metadata.BlockSize))
+		block := BlockIdx(int64(mapping.Offset), int64(PageSize))
 
 		intervals.Set(uint(block))
 		startMap[block] = mapping
@@ -99,19 +99,19 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 			logger.WithBuildID(t.Metadata.BuildId.String()),
 		)
 	}
-	if offset%int64(t.Metadata.BlockSize) != 0 {
+	if offset%int64(PageSize) != 0 {
 		if t.IsNormalizeFixApplied() {
-			return nil, 0, fmt.Errorf("offset %d is not aligned to block size %d", offset, t.Metadata.BlockSize)
+			return nil, 0, fmt.Errorf("offset %d is not aligned to page size %d", offset, PageSize)
 		}
 
-		logger.L().Warn(ctx, "offset is not aligned to block size, but normalize fix is not applied",
+		logger.L().Warn(ctx, "offset is not aligned to page size, but normalize fix is not applied",
 			zap.Int64("offset", offset),
-			zap.Int64("blockSize", int64(t.Metadata.BlockSize)),
+			zap.Int64("pageSize", int64(PageSize)),
 			logger.WithBuildID(t.Metadata.BuildId.String()),
 		)
 	}
 
-	block := BlockIdx(offset, int64(t.Metadata.BlockSize))
+	block := BlockIdx(offset, int64(PageSize))
 
 	start, ok := t.blockStarts.PreviousSet(uint(block))
 	if !ok {
@@ -123,7 +123,7 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 		return nil, 0, fmt.Errorf("no mapping found for offset %d", offset)
 	}
 
-	shift := (block - int64(start)) * int64(t.Metadata.BlockSize)
+	shift := (block - int64(start)) * int64(PageSize)
 
 	// Verify that the offset falls within this mapping's range
 	if shift >= int64(mapping.Length) {

@@ -51,3 +51,19 @@ func (p *Process) ExportMemory(
 
 	return cache, nil
 }
+
+// ProcessMemoryReader returns a reader that reads directly from the process memory.
+// The returned reader translates offsets using the memory mapping.
+func (p *Process) ProcessMemoryReader(ctx context.Context) (*block.ProcessMemoryReader, error) {
+	m, err := p.client.memoryMapping(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memory mappings: %w", err)
+	}
+
+	pid, err := p.Pid()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pid: %w", err)
+	}
+
+	return block.NewProcessMemoryReader(pid, m)
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -94,7 +95,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		return errMsg
 	}
 
-	chunker, err := block.NewChunker(size, b.blockSize, obj, b.cachePath, b.metrics)
+	chunker, err := block.NewChunker(size, header.PageSize, obj, b.cachePath, b.metrics)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
 		b.chunker.SetError(errMsg)
@@ -157,4 +158,14 @@ func (b *StorageDiff) FileSize() (int64, error) {
 
 func (b *StorageDiff) BlockSize() int64 {
 	return b.blockSize
+}
+
+// ChunksFetched returns the number of unique chunks fetched from remote storage.
+func (b *StorageDiff) ChunksFetched() int64 {
+	c, err := b.chunker.Wait()
+	if err != nil {
+		return 0
+	}
+
+	return c.ChunksFetched()
 }

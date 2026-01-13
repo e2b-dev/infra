@@ -30,16 +30,17 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-// MemorySlicer exposes byte slice via the Slicer interface.
+// MemorySlicer exposes byte slice via the ReadonlyDevice interface.
 // This is used for testing purposes.
 type MemorySlicer struct {
 	content  []byte
 	pagesize int64
 }
 
-var _ block.Slicer = (*MemorySlicer)(nil)
+var _ block.ReadonlyDevice = (*MemorySlicer)(nil)
 
 func NewMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
 	return &MemorySlicer{
@@ -62,6 +63,19 @@ func (s *MemorySlicer) Content() []byte {
 
 func (s *MemorySlicer) BlockSize() int64 {
 	return s.pagesize
+}
+
+func (s *MemorySlicer) Close() error {
+	return nil
+}
+
+func (s *MemorySlicer) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
+	n := copy(p, s.content[off:])
+	return n, nil
+}
+
+func (s *MemorySlicer) Header() *header.Header {
+	return nil
 }
 
 func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {

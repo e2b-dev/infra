@@ -31,7 +31,7 @@ func (d *DiffMetadata) toDiffMapping(
 	dirtyMappings := CreateMapping(
 		&buildID,
 		d.Dirty,
-		d.BlockSize,
+		PageSize,
 	)
 	telemetry.ReportEvent(ctx, "created dirty mapping")
 

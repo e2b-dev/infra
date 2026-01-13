@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -128,6 +129,31 @@ func (s *DiffStore) Add(d Diff) {
 
 func (s *DiffStore) Has(d Diff) bool {
 	return s.cache.Has(d.CacheKey())
+}
+
+// LayerStats holds statistics about build layers accessed.
+type LayerStats struct {
+	UniqueLayerCount int64 // Number of distinct build layers touched
+	TotalChunks      int64 // Total chunks fetched across all layers
+}
+
+// LayersFetched returns statistics about build layers accessed for a given diff type.
+// Each unique layer has overhead (opening GCS object, getting size, etc.).
+func (s *DiffStore) LayersFetched(diffType DiffType) LayerStats {
+	var stats LayerStats
+	suffix := "/" + string(diffType)
+	s.cache.Range(func(item *ttlcache.Item[DiffStoreKey, Diff]) bool {
+		key := string(item.Key())
+		// Check if this diff matches the requested type (key format: "buildID/diffType")
+		if strings.HasSuffix(key, suffix) {
+			stats.UniqueLayerCount++
+			if provider, ok := item.Value().(interface{ ChunksFetched() int64 }); ok {
+				stats.TotalChunks += provider.ChunksFetched()
+			}
+		}
+		return true
+	})
+	return stats
 }
 
 func (s *DiffStore) startDiskSpaceEviction(

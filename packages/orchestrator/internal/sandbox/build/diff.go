@@ -6,9 +6,9 @@ import (
 	"io"
 	"path/filepath"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type DiffType string
@@ -27,7 +27,7 @@ const (
 type Diff interface {
 	io.Closer
 	storage.ReaderAtCtx
-	block.Slicer
+	header.Slicer
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
 	FileSize() (int64, error)
@@ -64,10 +64,6 @@ func (n *NoDiff) CacheKey() DiffStoreKey {
 
 func (n *NoDiff) Init(context.Context) error {
 	return NoDiffError{}
-}
-
-func (n *NoDiff) BlockSize() int64 {
-	return 0
 }
 
 func GenerateDiffCachePath(basePath string, buildId string, diffType DiffType) string {
