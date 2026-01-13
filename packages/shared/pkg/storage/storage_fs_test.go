@@ -44,7 +44,7 @@ func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
 	require.Equal(t, contents, data)
 }
 
-func TestWriteFromFileSystem(t *testing.T) {
+func TestFSPut(t *testing.T) {
 	t.Parallel()
 	p := newTempProvider(t)
 	ctx := t.Context()
@@ -57,7 +57,7 @@ func TestWriteFromFileSystem(t *testing.T) {
 	obj, err := p.OpenBlob(ctx, "copy/dst.txt", UnknownObjectType)
 	require.NoError(t, err)
 
-	require.NoError(t, StoreFile(t.Context(), obj, srcPath))
+	require.NoError(t, obj.Put(t.Context(), []byte(payload)))
 
 	data, err := GetBlob(t.Context(), obj)
 	require.NoError(t, err)
