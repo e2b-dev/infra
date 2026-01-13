@@ -316,7 +316,11 @@ func (bb *BaseBuilder) Layer(
 		// If the template is built from another template, use its metadata
 		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.GetBuildID())
 		if err != nil {
-			return phases.LayerResult{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
+			if errors.Is(err, storage.ErrObjectNotExist) {
+				return phases.LayerResult{}, phases.NewPhaseBuildError(bb.Metadata(), fmt.Errorf("error getting base template, you may need to rebuild it first: %w", err))
+			}
+
+			return phases.LayerResult{}, fmt.Errorf("error getting base template: %w", err)
 		}
 
 		// From template is always cached, never needs to be built
