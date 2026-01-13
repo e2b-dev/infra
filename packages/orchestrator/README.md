@@ -34,7 +34,6 @@ Flags:
 - `-vcpu <n>` - vCPUs (default: `1`)
 - `-memory <mb>` - Memory in MB (default: `512`)
 - `-disk <mb>` - Disk in MB (default: `1000`)
-- `-hugepages` - Use huge pages (default: `true`)
 - `-start-cmd <cmd>` - Start command
 - `-ready-cmd <cmd>` - Ready check command
 

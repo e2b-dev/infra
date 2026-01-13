@@ -58,7 +58,6 @@ func main() {
 	vcpu := flag.Int("vcpu", 1, "vCPUs")
 	memory := flag.Int("memory", 512, "memory MB")
 	disk := flag.Int("disk", 1000, "disk MB")
-	hugePages := flag.Bool("hugepages", true, "huge pages")
 	startCmd := flag.String("start-cmd", "", "start command")
 	readyCmd := flag.String("ready-cmd", "", "ready check command")
 	flag.Parse()
@@ -93,7 +92,7 @@ func main() {
 		log.Fatalf("network config: %v", err)
 	}
 
-	err = doBuild(ctx, *templateID, *buildID, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *readyCmd, localMode, builderConfig, networkConfig)
+	err = doBuild(ctx, *templateID, *buildID, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *startCmd, *readyCmd, localMode, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -142,16 +141,15 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 			return err
 		}
 
-		// HOST_ENVD_PATH from env, or default to local dev path
+		// HOST_ENVD_PATH: use env if set, otherwise default to local dev path
 		envdPath := os.Getenv("HOST_ENVD_PATH")
 		if envdPath == "" {
 			envdPath = abs("../envd/bin/envd")
+			os.Setenv("HOST_ENVD_PATH", envdPath)
 		}
-		if _, err := os.Stat(envdPath); err != nil {
-			return fmt.Errorf("envd not found at %s (set HOST_ENVD_PATH or run 'make build' in packages/envd)", envdPath)
+		if _, err := os.Stat(envdPath); err == nil {
+			fmt.Printf("✓ Envd: %s\n", envdPath)
 		}
-		os.Setenv("HOST_ENVD_PATH", envdPath)
-		fmt.Printf("✓ Envd: %s\n", envdPath)
 
 		fmt.Printf("✓ Storage: %s (local)\n", dataDir)
 	} else {
@@ -168,7 +166,6 @@ func doBuild(
 	ctx context.Context,
 	templateID, buildID, fromBuild, kernel, fc string,
 	vcpu, memory, disk int,
-	hugePages bool,
 	startCmd, readyCmd string,
 	localMode bool,
 	builderConfig cfg.BuilderConfig,
@@ -292,7 +289,7 @@ func doBuild(
 		VCpuCount:          int64(vcpu),
 		MemoryMB:           int64(memory),
 		DiskSizeMB:         int64(disk),
-		HugePages:          hugePages,
+		HugePages:          true,
 		StartCmd:           startCmd,
 		ReadyCmd:           readyCmd,
 		KernelVersion:      kernel,
