@@ -55,9 +55,9 @@ func main() {
 	storagePath := flag.String("storage", "", "storage: local path or gs://bucket (default: gs://$TEMPLATE_BUCKET_NAME or .local-build)")
 	kernel := flag.String("kernel", defaultKernel, "kernel version")
 	fc := flag.String("firecracker", defaultFC, "firecracker version")
-	vcpu := flag.Int("vcpu", 1, "vCPUs")
-	memory := flag.Int("memory", 512, "memory MB")
-	disk := flag.Int("disk", 1000, "disk MB")
+	vcpu := flag.Int("vcpu", 2, "vCPUs")
+	memory := flag.Int("memory", 1024, "memory MB")
+	disk := flag.Int("disk", 1024, "disk MB")
 	startCmd := flag.String("start-cmd", "", "start command")
 	readyCmd := flag.String("ready-cmd", "", "ready check command")
 	flag.Parse()
@@ -164,7 +164,7 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 }
 
 func doBuild(
-	ctx context.Context,
+	parentCtx context.Context,
 	templateID, buildID, fromBuild, kernel, fc string,
 	vcpu, memory, disk int,
 	startCmd, readyCmd string,
@@ -172,7 +172,7 @@ func doBuild(
 	builderConfig cfg.BuilderConfig,
 	networkConfig network.Config,
 ) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Minute)
 	defer cancel()
 
 	var cores []zapcore.Core
@@ -207,15 +207,15 @@ func doBuild(
 		return fmt.Errorf("proxy: %w", err)
 	}
 	go func() {
-		if err := sandboxProxy.Start(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := sandboxProxy.Start(parentCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			l.Error(ctx, "proxy error", zap.Error(err))
 		}
 	}()
-	defer sandboxProxy.Close(ctx)
+	defer sandboxProxy.Close(parentCtx)
 
 	tcpFirewall := tcpfirewall.New(l, networkConfig, sandboxes, noop.NewMeterProvider())
 	go tcpFirewall.Start(ctx)
-	defer tcpFirewall.Close(ctx)
+	defer tcpFirewall.Close(parentCtx)
 
 	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
@@ -231,7 +231,7 @@ func doBuild(
 		return fmt.Errorf("nbd pool: %w", err)
 	}
 	go devicePool.Populate(ctx)
-	defer devicePool.Close(ctx)
+	defer devicePool.Close(parentCtx)
 
 	slotStorage, err := network.NewStorageLocal(ctx, networkConfig)
 	if err != nil {
@@ -239,7 +239,7 @@ func doBuild(
 	}
 	networkPool := network.NewPool(8, 8, slotStorage, networkConfig)
 	go networkPool.Populate(ctx)
-	defer networkPool.Close(ctx)
+	defer networkPool.Close(parentCtx)
 
 	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
@@ -280,7 +280,7 @@ func doBuild(
 
 	force := true
 	if startCmd == "" {
-		startCmd = "echo 'sandbox ready'"
+		startCmd = "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'"
 	}
 
 	tmpl := config.TemplateConfig{
