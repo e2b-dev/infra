@@ -280,6 +280,7 @@ EOF
   "node_name": "$instance_id",
   "leave_on_terminate": true,
   "skip_leave_on_interrupt": true,
+  "rejoin_after_leave": true,
   $recursors_config
   $retry_join_json
   "server": $server,
