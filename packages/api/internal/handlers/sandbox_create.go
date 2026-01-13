@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -86,7 +87,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
-	setTemplateNameMetric(c, a.featureFlags, env.Aliases)
+	setTemplateNameMetric(ctx, c, a.featureFlags, env.Aliases)
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -248,8 +249,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	return key, nil
 }
 
-func setTemplateNameMetric(c *gin.Context, ff *featureflags.Client, aliases []string) {
-	ctx := c.Request.Context()
+func setTemplateNameMetric(ctx context.Context, c *gin.Context, ff *featureflags.Client, aliases []string) {
 	trackedTemplates := featureflags.GetTrackedTemplatesSet(ctx, ff)
 
 	for _, alias := range aliases {
