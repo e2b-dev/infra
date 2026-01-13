@@ -12,7 +12,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
-	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
@@ -250,7 +249,7 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 	c.String(http.StatusServiceUnavailable, "Service is unavailable")
 }
 
-func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (*types.Team, *api.APIError) {
+func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, _ *gin.Context, apiKey string) (*types.Team, *api.APIError) {
 	hashedApiKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
 	if err != nil {
 		return nil, &api.APIError{
@@ -292,7 +291,7 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (*types
 	return team, nil
 }
 
-func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken string) (uuid.UUID, *api.APIError) {
+func (a *APIStore) GetUserFromAccessToken(ctx context.Context, _ *gin.Context, accessToken string) (uuid.UUID, *api.APIError) {
 	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
@@ -358,7 +357,7 @@ func getJWTClaims(ctx context.Context, secrets []string, token string) (*supabas
 	return nil, errors.Join(errs...)
 }
 
-func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
+func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, _ *gin.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
 	claims, err := getJWTClaims(ctx, a.config.SupabaseJWTSecrets, supabaseToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
@@ -389,8 +388,8 @@ func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken
 	return userIDParsed, nil
 }
 
-func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (*types.Team, *api.APIError) {
-	userID := a.GetUserID(middleware.GetGinContext(ctx))
+func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
+	userID := a.GetUserID(ginCtx)
 
 	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
 	team, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (*types.Team, error) {

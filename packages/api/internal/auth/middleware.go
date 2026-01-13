@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.opentelemetry.io/otel"
@@ -44,13 +45,13 @@ type headerKey struct {
 type commonAuthenticator[T any] struct {
 	securitySchemeName string
 	headerKey          headerKey
-	validationFunction func(context.Context, string) (T, *api.APIError)
+	validationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (T, *api.APIError)
 	contextKey         string
 	errorMessage       string
 }
 
 type authenticator interface {
-	Authenticate(ctx context.Context, input *openapi3filter.AuthenticationInput) error
+	Authenticate(ctx context.Context, ginCtx *gin.Context, input *openapi3filter.AuthenticationInput) error
 	SecuritySchemeName() string
 }
 
@@ -75,7 +76,7 @@ func (a *commonAuthenticator[T]) getHeaderKeysFromRequest(req *http.Request) (st
 }
 
 // Authenticate uses the specified validator to ensure an API key is valid.
-func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.Context, input *openapi3filter.AuthenticationInput) error {
 	// Now, we need to get the API key from the request
 	headerKey, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
@@ -88,7 +89,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	telemetry.ReportEvent(ctx, "api key extracted")
 
 	// If the API key is valid, we will get a result back
-	result, validationError := a.validationFunction(ctx, headerKey)
+	result, validationError := a.validationFunction(ctx, ginCtx, headerKey)
 	if validationError != nil {
 		logger.L().Info(ctx, "validation error", zap.Error(validationError.Err))
 		telemetry.ReportError(ctx, a.errorMessage, validationError.Err)
@@ -110,7 +111,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 
 	// Set the property on the gin context
 	if a.contextKey != "" {
-		middleware.GetGinContext(ctx).Set(a.contextKey, result)
+		ginCtx.Set(a.contextKey, result)
 	}
 
 	return nil
@@ -120,8 +121,8 @@ func (a *commonAuthenticator[T]) SecuritySchemeName() string {
 	return a.securitySchemeName
 }
 
-func adminValidationFunction(adminToken string) func(context.Context, string) (struct{}, *api.APIError) {
-	return func(_ context.Context, token string) (struct{}, *api.APIError) {
+func adminValidationFunction(adminToken string) func(ctx context.Context, ginCtx *gin.Context, token string) (struct{}, *api.APIError) {
+	return func(_ context.Context, _ *gin.Context, token string) (struct{}, *api.APIError) {
 		if token != adminToken {
 			return struct{}{}, &api.APIError{
 				Code:      http.StatusUnauthorized,
@@ -136,10 +137,10 @@ func adminValidationFunction(adminToken string) func(context.Context, string) (s
 
 func CreateAuthenticationFunc(
 	config cfg.Config,
-	teamValidationFunction func(context.Context, string) (*types.Team, *api.APIError),
-	userValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),
-	supabaseTokenValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),
-	supabaseTeamValidationFunction func(context.Context, string) (*types.Team, *api.APIError),
+	teamValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *api.APIError),
+	userValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *api.APIError),
+	supabaseTokenValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *api.APIError),
+	supabaseTeamValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *api.APIError),
 ) openapi3filter.AuthenticationFunc {
 	authenticators := []authenticator{
 		&commonAuthenticator[*types.Team]{
@@ -200,12 +201,13 @@ func CreateAuthenticationFunc(
 	}
 
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
-		ctx, span := tracer.Start(ctx, "authenticate")
+		ginCtx := middleware.GetGinContext(ctx)
+		ctx, span := tracer.Start(ginCtx.Request.Context(), "authenticate")
 		defer span.End()
 
 		for _, validator := range authenticators {
 			if input.SecuritySchemeName == validator.SecuritySchemeName() {
-				return validator.Authenticate(ctx, input)
+				return validator.Authenticate(ctx, ginCtx, input)
 			}
 		}
 
