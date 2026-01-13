@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal"
+	"github.com/e2b-dev/infra/packages/proxy/internal"
 	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
 	e2bproxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -131,8 +131,8 @@ func run() int {
 		catalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
 
-	info := &e2binfo.ServiceInfo{}
-	info.SetStatus(ctx, e2binfo.Healthy)
+	info := &internal.ServiceInfo{}
+	info.SetStatus(ctx, internal.Healthy)
 
 	// Proxy sandbox http traffic to orchestrator nodes
 	trafficProxy, err := e2bproxy.NewClientProxy(
@@ -148,9 +148,9 @@ func run() int {
 	}
 
 	// Health check server
-	healthMux := http.NewServeMux()
-	healthMux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		if info.GetStatus() == e2binfo.Healthy {
+	healthAddr := fmt.Sprintf("0.0.0.0:%d", config.HealthPort)
+	healthHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if info.GetStatus() == internal.Healthy {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("healthy"))
 
@@ -160,12 +160,6 @@ func run() int {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Write([]byte("unhealthy"))
 	})
-
-	healthAddr := fmt.Sprintf("0.0.0.0:%d", config.HealthPort)
-	healthSrv := &http.Server{
-		Addr:    healthAddr,
-		Handler: healthMux,
-	}
 
 	var closers []Closeable
 	closers = append(closers, featureFlagsClient, catalog)
@@ -201,7 +195,7 @@ func run() int {
 		healthLogger := l.With(zap.Uint16("port", config.HealthPort))
 		healthLogger.Info(ctx, "Health server starting")
 
-		err := healthSrv.ListenAndServe()
+		err := http.ListenAndServe(healthAddr, healthHandler)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
 			healthLogger.Info(ctx, "Health server shutdown successfully")
@@ -226,7 +220,7 @@ func run() int {
 		shutdownLogger := l.With(zap.Uint16("proxy_port", config.ProxyPort), zap.Uint16("health_port", config.HealthPort))
 		shutdownLogger.Info(ctx, "Shutting down proxy")
 
-		info.SetStatus(ctx, e2binfo.Draining)
+		info.SetStatus(ctx, internal.Draining)
 
 		// We should wait for health check manager to notice that we are not ready for new traffic
 		shutdownLogger.Info(ctx, "Waiting for draining state propagation", zap.Float64("wait_in_seconds", shutdownDrainingWait.Seconds()))
@@ -244,20 +238,11 @@ func run() int {
 			shutdownLogger.Info(ctx, "Http proxy shutdown successfully")
 		}
 
-		info.SetStatus(ctx, e2binfo.Unhealthy)
+		info.SetStatus(ctx, internal.Unhealthy)
 
 		// Wait for the health check manager to notice that we are not healthy at all
 		shutdownLogger.Info(ctx, "Waiting for unhealthy state propagation", zap.Float64("wait_in_seconds", shutdownUnhealthyWait.Seconds()))
 		time.Sleep(shutdownUnhealthyWait)
-
-		// Shutdown health server
-		healthShutdownCtx, healthShutdownCtxCancel := context.WithTimeout(ctx, 5*time.Second)
-		defer healthShutdownCtxCancel()
-
-		err = healthSrv.Shutdown(healthShutdownCtx)
-		if err != nil {
-			shutdownLogger.Error(ctx, "Health server shutdown error", zap.Error(err))
-		}
 
 		closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 		defer cancelCloseCtx()
