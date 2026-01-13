@@ -387,14 +387,7 @@ func (f *Factory) ResumeSandbox(
 
 		telemetry.ReportEvent(ctx, "got template memfile")
 
-		fcUffd, err := uffd.New(memfile, fcUffdPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create uffd: %w", err)
-		}
-
-		// cleanup.AddNoContext(ctx, fcUffd.Close)
-
-		return fcUffd, nil
+		return uffd.New(memfile, fcUffdPath), nil
 	})
 
 	// Prefetching
