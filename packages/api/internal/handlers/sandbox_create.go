@@ -87,7 +87,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
-	setTemplateNameMetric(ctx, c, a.featureFlags, env.Aliases)
+	setTemplateNameMetric(ctx, c, a.featureFlags, env.TemplateID, env.Aliases)
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -249,9 +249,17 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	return key, nil
 }
 
-func setTemplateNameMetric(ctx context.Context, c *gin.Context, ff *featureflags.Client, aliases []string) {
+func setTemplateNameMetric(ctx context.Context, c *gin.Context, ff *featureflags.Client, templateID string, aliases []string) {
 	trackedTemplates := featureflags.GetTrackedTemplatesSet(ctx, ff)
 
+	// Check template ID first
+	if _, exists := trackedTemplates[templateID]; exists {
+		c.Set(metricTemplateAlias, templateID)
+
+		return
+	}
+
+	// Then check aliases
 	for _, alias := range aliases {
 		if _, exists := trackedTemplates[alias]; exists {
 			c.Set(metricTemplateAlias, alias)
