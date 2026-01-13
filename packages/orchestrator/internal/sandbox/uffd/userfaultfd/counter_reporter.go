@@ -9,7 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-type eagainCounter struct {
+type counterReporter struct {
 	count     uint64
 	startTime time.Time
 	endTime   time.Time
@@ -17,8 +17,8 @@ type eagainCounter struct {
 	msg       string
 }
 
-func newEagainCounter(logger logger.Logger, msg string) *eagainCounter {
-	return &eagainCounter{
+func newCounterReporter(logger logger.Logger, msg string) *counterReporter {
+	return &counterReporter{
 		count:     0,
 		startTime: time.Time{},
 		endTime:   time.Time{},
@@ -27,7 +27,7 @@ func newEagainCounter(logger logger.Logger, msg string) *eagainCounter {
 	}
 }
 
-func (c *eagainCounter) Increase() {
+func (c *counterReporter) Increase() {
 	if c.count == 0 {
 		c.startTime = time.Now()
 	}
@@ -37,7 +37,7 @@ func (c *eagainCounter) Increase() {
 	c.endTime = time.Now()
 }
 
-func (c *eagainCounter) log(ctx context.Context, closing bool) {
+func (c *counterReporter) log(ctx context.Context, closing bool) {
 	if c.count > 0 {
 		c.logger.Debug(ctx,
 			c.msg,
@@ -51,10 +51,10 @@ func (c *eagainCounter) log(ctx context.Context, closing bool) {
 	}
 }
 
-func (c *eagainCounter) Close(ctx context.Context) {
+func (c *counterReporter) Close(ctx context.Context) {
 	c.log(ctx, true)
 }
 
-func (c *eagainCounter) Log(ctx context.Context) {
+func (c *counterReporter) Log(ctx context.Context) {
 	c.log(ctx, false)
 }
