@@ -1,8 +1,6 @@
 job "client-proxy" {
-  datacenters = ["${gcp_zone}"]
   node_pool = "${node_pool}"
-
-  priority = 80
+  priority  = 80
 
   group "client-proxy" {
     // If the service fails, try up to 2 restarts in 10 minutes
@@ -35,11 +33,8 @@ job "client-proxy" {
         static = "${proxy_port}"
       }
 
-      port "${api_port_name}" {
-        static = "${api_port}"
-      }
-
-      port "health" {
+      port "${health_port_name}" {
+        static = "${health_port}"
       }
     }
 
@@ -53,21 +48,7 @@ job "client-proxy" {
         path     = "/health"
         interval = "3s"
         timeout  = "3s"
-        port     = "health"
-      }
-    }
-
-    service {
-      name = "edge-api"
-      port = "${api_port}"
-
-      check {
-        type     = "http"
-        name     = "health"
-        path     = "/health"
-        interval = "3s"
-        timeout  = "3s"
-        port     = "${api_port_name}"
+        port     = "${health_port_name}"
       }
     }
 
@@ -108,25 +89,17 @@ job "client-proxy" {
         NODE_ID = "$${node.unique.id}"
         NODE_IP = "$${attr.unique.network.ip-address}"
 
-        EDGE_PORT         = "${api_port}"
-        EDGE_SECRET       = "${api_secret}"
-        HEALTH_PORT       = "$${NOMAD_PORT_health}"
-        PROXY_PORT        = "${proxy_port}"
-        ORCHESTRATOR_PORT = "${orchestrator_port}"
-
-        SD_ORCHESTRATOR_PROVIDER       = "NOMAD"
-        SD_ORCHESTRATOR_NOMAD_ENDPOINT = "${nomad_endpoint}"
-        SD_ORCHESTRATOR_NOMAD_TOKEN    = "${nomad_token}"
+        HEALTH_PORT = "$${NOMAD_PORT_health}"
+        PROXY_PORT  = "${proxy_port}"
 
         ENVIRONMENT = "${environment}"
 
-        OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
-        LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
-        REDIS_URL                     = "${redis_url}"
-        REDIS_CLUSTER_URL             = "${redis_cluster_url}"
-        REDIS_TLS_CA_BASE64           = "${redis_tls_ca_base64}"
-        LOKI_URL                      = "${loki_url}"
-        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+        OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
+        LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
+
+        REDIS_URL           = "${redis_url}"
+        REDIS_CLUSTER_URL   = "${redis_cluster_url}"
+        REDIS_TLS_CA_BASE64 = "${redis_tls_ca_base64}"
 
         %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
@@ -136,7 +109,7 @@ job "client-proxy" {
       config {
         network_mode = "host"
         image        = "${image_name}"
-        ports        = ["${proxy_port_name}", "${api_port_name}", "health"]
+        ports        = ["${proxy_port_name}", "${health_port_name}"]
       }
     }
   }

@@ -19,8 +19,6 @@ type ServiceInfo struct {
 	ServiceVersionCommit string
 	ServiceStartup       time.Time
 
-	Host string
-
 	terminating bool
 	status      api.ClusterNodeStatus
 	statusMu    sync.RWMutex

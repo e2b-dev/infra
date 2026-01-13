@@ -52,13 +52,13 @@ resource "google_compute_instance_group_manager" "api_pool" {
   }
 
   named_port {
-    name = var.edge_api_port.name
-    port = var.edge_api_port.port
+    name = var.client_proxy_health_port.name
+    port = var.client_proxy_health_port.port
   }
 
   named_port {
-    name = var.edge_proxy_port.name
-    port = var.edge_proxy_port.port
+    name = var.client_proxy_port.name
+    port = var.client_proxy_port.port
   }
 
   named_port {

@@ -93,9 +93,10 @@ module "cluster" {
   api_nat_ips              = var.api_nat_ips
   api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
+  client_proxy_port        = var.client_proxy_port
+  client_proxy_health_port = var.client_proxy_health_port
+
   ingress_port                 = var.ingress_port
-  edge_api_port                = var.edge_api_port
-  edge_proxy_port              = var.edge_proxy_port
   api_port                     = var.api_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
   nomad_port                   = var.nomad_port
@@ -187,9 +188,8 @@ module "nomad" {
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
   client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
-  edge_proxy_port = var.edge_proxy_port
-  edge_api_port   = var.edge_api_port
-  edge_api_secret = random_password.edge_api_secret.result
+  client_proxy_port        = var.client_proxy_port
+  client_proxy_health_port = var.client_proxy_health_port
 
   domain_name = var.domain_name
 
