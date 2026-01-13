@@ -22,23 +22,23 @@ const (
 	cacheDirPermissions  = 0o700
 )
 
-type CachedProvider struct {
+type cache struct {
 	rootPath  string
 	chunkSize int64
-	inner     StorageProvider
+	inner     Storage
 	flags     *featureflags.Client
 
 	tracer trace.Tracer
 }
 
-var _ StorageProvider = (*CachedProvider)(nil)
+var _ Storage = (*cache)(nil)
 
-func NewCachedProvider(
+func NFSCache(
 	ctx context.Context,
 	rootPath string,
-	inner StorageProvider,
+	inner Storage,
 	flags *featureflags.Client,
-) *CachedProvider {
+) *cache {
 	cacheTracer := tracer
 
 	createCacheSpans := flags.BoolFlag(ctx, featureflags.CreateStorageCacheSpansFlag)
@@ -46,7 +46,7 @@ func NewCachedProvider(
 		cacheTracer = noop.NewTracerProvider().Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
 	}
 
-	return &CachedProvider{
+	return &cache{
 		rootPath:  rootPath,
 		inner:     inner,
 		chunkSize: MemoryChunkSize,
@@ -55,7 +55,7 @@ func NewCachedProvider(
 	}
 }
 
-func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+func (c cache) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
 	// no need to wait for cache deletion before returning
 	go func(ctx context.Context) {
 		c.deleteCachedObjectsWithPrefix(ctx, prefix)
@@ -64,12 +64,12 @@ func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix stri
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
 }
 
-func (c CachedProvider) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+func (c cache) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
 	return c.inner.UploadSignedURL(ctx, path, ttl)
 }
 
-func (c CachedProvider) OpenObject(ctx context.Context, path string, objectType ObjectType) (ObjectProvider, error) {
-	innerObject, err := c.inner.OpenObject(ctx, path, objectType)
+func (c cache) OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error) {
+	innerObject, err := c.inner.OpenBlob(ctx, path, objectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -79,7 +79,7 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string, objectType 
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &CachedObjectProvider{
+	return &cachedObject{
 		path:      localPath,
 		chunkSize: c.chunkSize,
 		inner:     innerObject,
@@ -88,8 +88,8 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string, objectType 
 	}, nil
 }
 
-func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, objectType SeekableObjectType) (SeekableObjectProvider, error) {
-	innerObject, err := c.inner.OpenSeekableObject(ctx, path, objectType)
+func (c cache) OpenSeekable(ctx context.Context, path string, objectType SeekableObjectType) (Seekable, error) {
+	innerObject, err := c.inner.OpenSeekable(ctx, path, objectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -99,7 +99,7 @@ func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, obj
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &CachedSeekableObjectProvider{
+	return &cachedSeekableObject{
 		path:      localPath,
 		chunkSize: c.chunkSize,
 		inner:     innerObject,
@@ -108,12 +108,12 @@ func (c CachedProvider) OpenSeekableObject(ctx context.Context, path string, obj
 	}, nil
 }
 
-func (c CachedProvider) GetDetails() string {
+func (c cache) GetDetails() string {
 	return fmt.Sprintf("[Caching file storage, base path set to %s, which wraps %s]",
 		c.rootPath, c.inner.GetDetails())
 }
 
-func (c CachedProvider) deleteCachedObjectsWithPrefix(ctx context.Context, prefix string) {
+func (c cache) deleteCachedObjectsWithPrefix(ctx context.Context, prefix string) {
 	fullPrefix := filepath.Join(c.rootPath, prefix)
 	if err := os.RemoveAll(fullPrefix); err != nil {
 		logger.L().Error(ctx, "failed to remove object with prefix",

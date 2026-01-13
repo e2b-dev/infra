@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -20,7 +19,7 @@ import (
 
 var noopTracer = noop.TracerProvider{}.Tracer("")
 
-func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
+func TestCachedObjectProvider_Put(t *testing.T) {
 	t.Parallel()
 
 	t.Run("can be cached successfully", func(t *testing.T) {
@@ -28,27 +27,23 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 
 		tempDir := t.TempDir()
 		cacheDir := filepath.Join(tempDir, "cache")
-		tempFilename := filepath.Join(tempDir, "temp.bin")
 		data := []byte("hello world")
 
 		err := os.MkdirAll(cacheDir, os.ModePerm)
 		require.NoError(t, err)
 
-		err = os.WriteFile(tempFilename, data, 0o644)
-		require.NoError(t, err)
-
-		inner := storagemocks.NewMockObjectProvider(t)
+		inner := storagemocks.NewMockBlob(t)
 		inner.EXPECT().
-			WriteFromFileSystem(mock.Anything, mock.Anything).
+			Put(mock.Anything, mock.Anything).
 			Return(nil)
 
 		featureFlags := storagemocks.NewMockFeatureFlagsClient(t)
 		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
 
-		c := CachedObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
+		c := cachedObject{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
 		// write temp file
-		err = c.WriteFromFileSystem(t.Context(), tempFilename)
+		err = c.Put(t.Context(), data)
 		require.NoError(t, err)
 
 		// file is written asynchronously, wait for it to finish
@@ -57,11 +52,9 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 		// prevent the provider from falling back to cache
 		c.inner = nil
 
-		var buff bytes.Buffer
-		bytesRead, err := c.WriteTo(t.Context(), &buff)
+		gotData, err := GetBlob(t.Context(), &c)
 		require.NoError(t, err)
-		assert.Equal(t, data, buff.Bytes())
-		assert.Equal(t, int64(len(data)), bytesRead)
+		assert.Equal(t, data, gotData)
 	})
 
 	t.Run("uncached reads will be cached the second time", func(t *testing.T) {
@@ -75,39 +68,34 @@ func TestCachedObjectProvider_WriteFromFileSystem(t *testing.T) {
 		const dataSize = 10 * megabyte
 		actualData := generateData(t, dataSize)
 
-		inner := storagemocks.NewMockObjectProvider(t)
+		inner := storagemocks.NewMockBlob(t)
 		inner.EXPECT().
 			WriteTo(mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, w io.Writer) (int64, error) {
-				num, err := w.Write(actualData)
-
-				return int64(num), err
+			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
+				n, err := dst.Write(actualData)
+				return int64(n), err
 			})
 
-		c := CachedObjectProvider{path: cacheDir, inner: inner, chunkSize: 1024, tracer: noopTracer}
+		c := cachedObject{path: cacheDir, inner: inner, chunkSize: 1024, tracer: noopTracer}
 
-		buff := bytes.NewBuffer(nil)
-		bytesRead, err := c.WriteTo(t.Context(), buff)
+		read, err := GetBlob(t.Context(), &c)
 		require.NoError(t, err)
-		assert.Equal(t, int64(dataSize), bytesRead)
-		assert.Equal(t, actualData, buff.Bytes())
+		assert.Equal(t, actualData, read)
 
 		c.wg.Wait()
 
 		c.inner = nil
 
-		buff = bytes.NewBuffer(nil)
-		bytesRead, err = c.WriteTo(t.Context(), buff)
+		read, err = GetBlob(t.Context(), &c)
 		require.NoError(t, err)
-		assert.Equal(t, int64(dataSize), bytesRead)
-		assert.Equal(t, actualData, buff.Bytes())
+		assert.Equal(t, actualData, read)
 	})
 }
 
 func TestCachedObjectProvider_WriteFileToCache(t *testing.T) {
 	t.Parallel()
 
-	c := CachedObjectProvider{
+	c := cachedObject{
 		path:   t.TempDir(),
 		tracer: noopTracer,
 	}

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -59,17 +60,17 @@ var (
 	))
 )
 
-type GCPBucketStorageProvider struct {
+type gcpStorage struct {
 	client *storage.Client
 	bucket *storage.BucketHandle
 
 	limiter *limit.Limiter
 }
 
-var _ StorageProvider = (*GCPBucketStorageProvider)(nil)
+var _ Storage = (*gcpStorage)(nil)
 
-type GCPBucketStorageObjectProvider struct {
-	storage *GCPBucketStorageProvider
+type gcpStorageObject struct {
+	storage *gcpStorage
 	path    string
 	handle  *storage.ObjectHandle
 
@@ -77,11 +78,11 @@ type GCPBucketStorageObjectProvider struct {
 }
 
 var (
-	_ SeekableObjectProvider = (*GCPBucketStorageObjectProvider)(nil)
-	_ ObjectProvider         = (*GCPBucketStorageObjectProvider)(nil)
+	_ Seekable = (*gcpStorageObject)(nil)
+	_ Blob     = (*gcpStorageObject)(nil)
 )
 
-func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
+func NewGCPStorage(ctx context.Context, bucketName string, limiter *limit.Limiter) (*gcpStorage, error) {
 	client, err := storage.NewGRPCClient(ctx,
 		option.WithGRPCConnectionPool(4),
 		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
@@ -91,14 +92,14 @@ func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
 
-	return &GCPBucketStorageProvider{
+	return &gcpStorage{
 		client:  client,
 		bucket:  client.Bucket(bucketName),
 		limiter: limiter,
 	}, nil
 }
 
-func (g *GCPBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+func (g *gcpStorage) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
 	objects := g.bucket.Objects(ctx, &storage.Query{Prefix: prefix + "/"})
 
 	for {
@@ -120,11 +121,11 @@ func (g *GCPBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 	return nil
 }
 
-func (g *GCPBucketStorageProvider) GetDetails() string {
+func (g *gcpStorage) GetDetails() string {
 	return fmt.Sprintf("[GCP Storage, bucket set to %s]", g.bucket.BucketName())
 }
 
-func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
+func (g *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
 	token, err := parseServiceAccountBase64(consts.GoogleServiceAccountSecret)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse GCP service account: %w", err)
@@ -145,7 +146,7 @@ func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path strin
 	return url, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
+func (g *gcpStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -158,7 +159,7 @@ func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path st
 		),
 	)
 
-	return &GCPBucketStorageObjectProvider{
+	return &gcpStorageObject{
 		storage: g,
 		path:    path,
 		handle:  handle,
@@ -167,7 +168,7 @@ func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path st
 	}, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
+func (g *gcpStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -180,7 +181,7 @@ func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string, _ 
 		),
 	)
 
-	return &GCPBucketStorageObjectProvider{
+	return &gcpStorageObject{
 		storage: g,
 		path:    path,
 		handle:  handle,
@@ -189,7 +190,7 @@ func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string, _ 
 	}, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
+func (g *gcpStorageObject) Delete(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -200,13 +201,13 @@ func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
 	return nil
 }
 
-func (g *GCPBucketStorageObjectProvider) Exists(ctx context.Context) (bool, error) {
+func (g *gcpStorageObject) Exists(ctx context.Context) (bool, error) {
 	_, err := g.Size(ctx)
 
 	return err == nil, ignoreNotExists(err)
 }
 
-func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+func (g *gcpStorageObject) Size(ctx context.Context) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -223,7 +224,7 @@ func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 	return attrs.Size, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+func (g *gcpStorageObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
@@ -261,7 +262,7 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (n int, e error) {
+func (g *gcpStorageObject) Put(ctx context.Context, data []byte) (e error) {
 	timer := googleWriteTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
 	w := g.handle.NewWriter(ctx)
@@ -271,19 +272,19 @@ func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte)
 		}
 	}()
 
-	n, err := w.Write(data)
+	c, err := io.Copy(w, bytes.NewReader(data))
 	if err != nil && !errors.Is(err, io.EOF) {
-		timer.Failure(ctx, int64(n))
+		timer.Failure(ctx, c)
 
-		return n, fmt.Errorf("failed to write to %q: %w", g.path, err)
+		return fmt.Errorf("failed to write to %q: %w", g.path, err)
 	}
 
-	timer.Success(ctx, int64(n))
+	timer.Success(ctx, c)
 
-	return n, nil
+	return nil
 }
 
-func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+func (g *gcpStorageObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWriteTo))
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
@@ -315,7 +316,7 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (e error) {
+func (g *gcpStorageObject) StoreFile(ctx context.Context, path string) (e error) {
 	ctx, span := tracer.Start(ctx, "write to gcp from file system")
 	defer func() {
 		recordError(span, e)
@@ -324,9 +325,8 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 
 	bucketName := g.storage.bucket.BucketName()
 	objectName := g.path
-	filePath := path
 
-	fileInfo, err := os.Stat(filePath)
+	fileInfo, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("failed to get file size: %w", err)
 	}
@@ -345,14 +345,14 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 			return fmt.Errorf("failed to read file: %w", err)
 		}
 
-		count, err := g.Write(ctx, data)
+		err = g.Put(ctx, data)
 		if err != nil {
-			timer.Failure(ctx, int64(count))
+			timer.Failure(ctx, int64(len(data)))
 
 			return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
 		}
 
-		timer.Success(ctx, int64(count))
+		timer.Success(ctx, int64(len(data)))
 
 		return nil
 	}
@@ -390,7 +390,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	}
 
 	start := time.Now()
-	count, err := uploader.UploadFileInParallel(ctx, filePath, maxConcurrency)
+	count, err := uploader.UploadFileInParallel(ctx, path, maxConcurrency)
 	if err != nil {
 		timer.Failure(ctx, count)
 
@@ -400,7 +400,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	logger.L().Debug(ctx, "Uploaded file in parallel",
 		zap.String("bucket", bucketName),
 		zap.String("object", objectName),
-		zap.String("path", filePath),
+		zap.String("path", path),
 		zap.Int("max_concurrency", maxConcurrency),
 		zap.Int64("file_size", fileInfo.Size()),
 		zap.Int64("duration", time.Since(start).Milliseconds()),

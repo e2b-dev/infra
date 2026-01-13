@@ -194,28 +194,27 @@ func FromFile(path string) (Template, error) {
 	return templateMetadata, nil
 }
 
-func FromBuildID(ctx context.Context, s storage.StorageProvider, buildID string) (Template, error) {
+func FromBuildID(ctx context.Context, s storage.Storage, buildID string) (Template, error) {
 	return fromTemplate(ctx, s, storage.TemplateFiles{
 		BuildID: buildID,
 	})
 }
 
-func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.TemplateFiles) (Template, error) {
+func fromTemplate(ctx context.Context, s storage.Storage, files storage.TemplateFiles) (Template, error) {
 	ctx, span := tracer.Start(ctx, "from template")
 	defer span.End()
 
-	obj, err := s.OpenObject(ctx, files.StorageMetadataPath(), storage.MetadataObjectType)
+	obj, err := s.OpenBlob(ctx, files.StorageMetadataPath(), storage.MetadataObjectType)
 	if err != nil {
 		return Template{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}
 
-	var buf bytes.Buffer
-	_, err = obj.WriteTo(ctx, &buf)
+	data, err := storage.GetBlob(ctx, obj)
 	if err != nil {
 		return Template{}, fmt.Errorf("error reading template metadata from object: %w", err)
 	}
 
-	templateMetadata, err := deserialize(&buf)
+	templateMetadata, err := deserialize(bytes.NewReader(data))
 	if err != nil {
 		return Template{}, err
 	}

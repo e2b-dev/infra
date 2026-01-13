@@ -75,12 +75,12 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 }
 
 func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string, objectType storage.ObjectType) (*header.Header, error) {
-	b, err := storage.NewGCPBucketStorageProvider(ctx, bucketName, nil)
+	b, err := storage.NewGCPStorage(ctx, bucketName, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
 	}
 
-	obj, err := b.OpenObject(ctx, headerPath, objectType)
+	obj, err := b.OpenBlob(ctx, headerPath, objectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}

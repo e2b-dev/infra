@@ -52,8 +52,8 @@ type Builder struct {
 
 	config              cfg.BuilderConfig
 	sandboxFactory      *sandbox.Factory
-	templateStorage     storage.StorageProvider
-	buildStorage        storage.StorageProvider
+	templateStorage     storage.Storage
+	buildStorage        storage.Storage
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 	proxy               *proxy.SandboxProxy
@@ -68,8 +68,8 @@ func NewBuilder(
 	logger logger.Logger,
 	featureFlags *featureflags.Client,
 	sandboxFactory *sandbox.Factory,
-	templateStorage storage.StorageProvider,
-	buildStorage storage.StorageProvider,
+	templateStorage storage.Storage,
+	buildStorage storage.Storage,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
 	proxy *proxy.SandboxProxy,
@@ -249,7 +249,7 @@ func runBuild(
 
 	templateStorage := builder.templateStorage
 	if path, ok := builder.useNFSCache(ctx); ok {
-		templateStorage = storage.NewCachedProvider(ctx, path, templateStorage, builder.featureFlags)
+		templateStorage = storage.NFSCache(ctx, path, templateStorage, builder.featureFlags)
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else {
 		span.SetAttributes(attribute.Bool("use_cache", false))
@@ -398,10 +398,10 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 
 func getRootfsSize(
 	ctx context.Context,
-	s storage.StorageProvider,
+	s storage.Storage,
 	metadata storage.TemplateFiles,
 ) (uint64, error) {
-	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
+	obj, err := s.OpenBlob(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

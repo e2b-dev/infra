@@ -25,13 +25,13 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type CommandExecutor struct {
 	buildcontext.BuildContext
 
-	buildStorage storage.StorageProvider
+	buildStorage storage.Storage
 	proxy        *proxy.SandboxProxy
 }
 
 func NewCommandExecutor(
 	buildContext buildcontext.BuildContext,
-	buildStorage storage.StorageProvider,
+	buildStorage storage.Storage,
 	proxy *proxy.SandboxProxy,
 ) *CommandExecutor {
 	return &CommandExecutor{
