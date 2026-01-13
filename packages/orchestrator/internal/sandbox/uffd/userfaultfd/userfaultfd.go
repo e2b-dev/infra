@@ -191,9 +191,6 @@ outerLoop:
 				eagainCounter.Log(ctx)
 				noDataCounter.Log(ctx)
 
-				exitFdErrorCounter.Log(ctx)
-				uffdErrorCounter.Log(ctx)
-
 				break
 			}
 
