@@ -184,6 +184,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			WriteTo(mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
 				n, err := dst.Write(fakeData)
+
 				return int64(n), err
 			})
 

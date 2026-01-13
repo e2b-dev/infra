@@ -93,12 +93,20 @@ func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath stri
 	return h, nil
 }
 
-type osFileWriterToCtx struct {
+type osFileBlob struct {
 	f *os.File
 }
 
-func (o *osFileWriterToCtx) WriteTo(_ context.Context, w io.Writer) (int64, error) {
+func (o *osFileBlob) WriteTo(_ context.Context, w io.Writer) (int64, error) {
 	return io.Copy(w, o.f)
+}
+
+func (o *osFileBlob) Exists(_ context.Context) (bool, error) {
+	return true, nil
+}
+
+func (o *osFileBlob) Put(_ context.Context, data []byte) error {
+	return fmt.Errorf("not implemented")
 }
 
 func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.Header, error) {
@@ -108,7 +116,7 @@ func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.He
 	}
 	defer f.Close()
 
-	h, err := header.Deserialize(ctx, &osFileWriterToCtx{f: f})
+	h, err := header.Deserialize(ctx, &osFileBlob{f: f})
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}

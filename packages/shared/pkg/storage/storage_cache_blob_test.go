@@ -73,6 +73,7 @@ func TestCachedObjectProvider_Put(t *testing.T) {
 			WriteTo(mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
 				n, err := dst.Write(actualData)
+
 				return int64(n), err
 			})
 

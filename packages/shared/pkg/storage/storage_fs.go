@@ -92,6 +92,7 @@ func (o *fsObject) Put(_ context.Context, data []byte) error {
 	defer handle.Close()
 
 	_, err = io.Copy(handle, bytes.NewReader(data))
+
 	return err
 }
 

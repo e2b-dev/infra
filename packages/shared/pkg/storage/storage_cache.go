@@ -38,7 +38,7 @@ func WrapInNFSCache(
 	rootPath string,
 	inner StorageProvider,
 	flags *featureflags.Client,
-) *cache {
+) StorageProvider {
 	cacheTracer := tracer
 
 	createCacheSpans := flags.BoolFlag(ctx, featureflags.CreateStorageCacheSpansFlag)

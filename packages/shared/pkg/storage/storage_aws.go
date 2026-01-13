@@ -42,7 +42,7 @@ type awsObject struct {
 
 var (
 	_ Seekable = (*awsObject)(nil)
-	_ Blob   = (*awsObject)(nil)
+	_ Blob     = (*awsObject)(nil)
 )
 
 func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) {

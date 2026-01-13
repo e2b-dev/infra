@@ -82,7 +82,7 @@ var (
 	_ Blob     = (*gcpObject)(nil)
 )
 
-func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (*gcpStorage, error) {
+func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
 	client, err := storage.NewGRPCClient(ctx,
 		option.WithGRPCConnectionPool(4),
 		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
