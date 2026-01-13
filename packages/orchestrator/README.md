@@ -82,11 +82,11 @@ TEMPLATE_BUCKET_NAME=<bucket> go run cmd/inspect-data/main.go -build <build-id> 
 
 ## Environment Variables
 
-Automatically set in local mode, override for custom paths:
+Automatically set in local mode. Set before running to override:
 
-- `ORCHESTRATOR_BASE_PATH` - Base orchestrator data (local: `{storage}/orchestrator`, prod: `/orchestrator`)
-- `SNAPSHOT_CACHE_DIR` - Snapshot cache, ideally on NVMe (local: `{storage}/snapshot-cache`, prod: `/mnt/snapshot-cache`)
+- `HOST_ENVD_PATH` - Envd binary path (default: `../envd/bin/envd`)
 - `HOST_KERNELS_DIR` - Kernel versions dir (local: `{storage}/kernels`, prod: `/fc-kernels`)
 - `FIRECRACKER_VERSIONS_DIR` - Firecracker versions dir (local: `{storage}/fc-versions`, prod: `/fc-versions`)
-- `HOST_ENVD_PATH` - Envd binary path (local: `{storage}/envd/envd`, prod: `/fc-envd/envd`)
+- `ORCHESTRATOR_BASE_PATH` - Base orchestrator data (local: `{storage}/orchestrator`, prod: `/orchestrator`)
+- `SNAPSHOT_CACHE_DIR` - Snapshot cache, ideally on NVMe (local: `{storage}/snapshot-cache`, prod: `/mnt/snapshot-cache`)
 - `SANDBOX_DIR` - Sandbox working dir (local: `{storage}/sandbox`, prod: `/fc-vm`)

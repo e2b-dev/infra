@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -259,6 +260,8 @@ func run(ctx context.Context, buildID string, iterations int) error {
 		return fmt.Errorf("metadata: %w", err)
 	}
 
+	printTemplateInfo(ctx, tmpl, meta)
+
 	token := "local"
 	r := &runner{
 		factory: factory,
@@ -282,4 +285,24 @@ func run(ctx context.Context, buildID string, iterations int) error {
 	}
 
 	return r.interactive(ctx)
+}
+
+func printTemplateInfo(ctx context.Context, tmpl template.Template, meta metadata.Template) {
+	fmt.Printf("   Kernel: %s, Firecracker: %s\n", meta.Template.KernelVersion, meta.Template.FirecrackerVersion)
+
+	if memfile, err := tmpl.Memfile(ctx); err == nil {
+		if size, err := memfile.Size(); err == nil {
+			fmt.Printf("   Memfile: %d MB (%d KB blocks)\n", size>>20, memfile.BlockSize()>>10)
+		}
+	}
+
+	if rootfs, err := tmpl.Rootfs(); err == nil {
+		if size, err := rootfs.Size(); err == nil {
+			fmt.Printf("   Rootfs: %d MB (%d KB blocks)\n", size>>20, rootfs.BlockSize()>>10)
+		}
+	}
+
+	if meta.Prefetch != nil && meta.Prefetch.Memory != nil {
+		fmt.Printf("   Prefetch: %d blocks\n", meta.Prefetch.Memory.Count())
+	}
 }

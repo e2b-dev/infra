@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel/metric/noop"
@@ -97,7 +98,7 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 		}
 
 		dataDir := storagePath
-		dirs := []string{"kernels", "templates", "sandbox", "orchestrator", "snapshot-cache", "fc-versions", "envd"}
+		dirs := []string{"kernels", "templates", "sandbox", "orchestrator", "snapshot-cache", "fc-versions"}
 		for _, d := range dirs {
 			if err := os.MkdirAll(filepath.Join(dataDir, d), 0o755); err != nil {
 				return fmt.Errorf("mkdir %s: %w", d, err)
@@ -112,7 +113,6 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 		env := map[string]string{
 			"ARTIFACTS_REGISTRY_PROVIDER":      "Local",
 			"FIRECRACKER_VERSIONS_DIR":         abs(filepath.Join(dataDir, "fc-versions")),
-			"HOST_ENVD_PATH":                   abs(filepath.Join(dataDir, "envd", "envd")),
 			"HOST_KERNELS_DIR":                 abs(filepath.Join(dataDir, "kernels")),
 			"LOCAL_TEMPLATE_STORAGE_BASE_PATH": abs(filepath.Join(dataDir, "templates")),
 			"ORCHESTRATOR_BASE_PATH":           abs(filepath.Join(dataDir, "orchestrator")),
@@ -131,9 +131,17 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 		if err := setupFC(ctx, filepath.Join(dataDir, "fc-versions"), fc); err != nil {
 			return err
 		}
-		if err := copyEnvd(filepath.Join(dataDir, "envd", "envd")); err != nil {
-			return err
+
+		// HOST_ENVD_PATH from env, or default to local dev path
+		envdPath := os.Getenv("HOST_ENVD_PATH")
+		if envdPath == "" {
+			envdPath = abs("../envd/bin/envd")
 		}
+		if _, err := os.Stat(envdPath); err != nil {
+			return fmt.Errorf("envd not found at %s (set HOST_ENVD_PATH or run 'make build' in packages/envd)", envdPath)
+		}
+		os.Setenv("HOST_ENVD_PATH", envdPath)
+		fmt.Printf("✓ Envd: %s\n", envdPath)
 
 		fmt.Printf("✓ Storage: %s (local)\n", dataDir)
 	} else {
@@ -288,14 +296,96 @@ func doBuild(
 		tmpl.FromImage = baseImage
 	}
 
-	_, err = builder.Build(ctx, storage.TemplateFiles{BuildID: buildID}, tmpl, l.Detach(ctx).Core())
+	result, err := builder.Build(ctx, storage.TemplateFiles{BuildID: buildID}, tmpl, l.Detach(ctx).Core())
 	if err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
 
 	fmt.Printf("\n✅ Build finished: %s\n", buildID)
 
+	// Print artifact sizes
+	printArtifactSizes(ctx, persistenceTemplate, buildID, result)
+
 	return nil
+}
+
+func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, result *build.Result) {
+	files := storage.TemplateFiles{BuildID: buildID}
+	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
+
+	fmt.Printf("\n📦 Artifacts:\n")
+	fmt.Printf("   Rootfs (logical): %d MB\n", result.RootfsSizeMB)
+
+	// For local storage, get actual file sizes on disk
+	if basePath != "" {
+		printLocalFileSizes(basePath, buildID)
+	} else {
+		// For remote storage, get sizes from storage provider
+		if memfile, err := persistence.OpenSeekableObject(ctx, files.StorageMemfilePath(), storage.MemfileObjectType); err == nil {
+			if size, err := memfile.Size(ctx); err == nil {
+				fmt.Printf("   Memfile: %d MB\n", size>>20)
+			}
+		}
+	}
+}
+
+func printLocalFileSizes(basePath, buildID string) {
+	dir := filepath.Join(basePath, buildID)
+
+	// Main artifacts with logical sizes (for sparse file comparison)
+	mainArtifacts := []struct {
+		name string
+		file string
+	}{
+		{"Rootfs", storage.RootfsName},
+		{"Memfile", storage.MemfileName},
+	}
+
+	for _, a := range mainArtifacts {
+		path := filepath.Join(dir, a.file)
+		logical, actual, err := getFileSizes(path)
+		if err != nil {
+			continue
+		}
+		pct := float64(actual) / float64(logical) * 100
+		fmt.Printf("   %s: %d MB on disk / %d MB logical (%.1f%%)\n", a.name, actual>>20, logical>>20, pct)
+	}
+
+	// Small files (headers, snapfile, metadata)
+	smallArtifacts := []struct {
+		name string
+		file string
+	}{
+		{"Rootfs header", storage.RootfsName + storage.HeaderSuffix},
+		{"Memfile header", storage.MemfileName + storage.HeaderSuffix},
+		{"Snapfile", storage.SnapfileName},
+		{"Metadata", storage.MetadataName},
+	}
+
+	for _, a := range smallArtifacts {
+		path := filepath.Join(dir, a.file)
+		if actual, err := getActualFileSize(path); err == nil {
+			fmt.Printf("   %s: %d KB\n", a.name, actual>>10)
+		}
+	}
+}
+
+func getFileSizes(path string) (logical, actual int64, err error) {
+	var stat syscall.Stat_t
+	if err := syscall.Stat(path, &stat); err != nil {
+		return 0, 0, err
+	}
+
+	return stat.Size, stat.Blocks * 512, nil
+}
+
+func getActualFileSize(path string) (int64, error) {
+	var stat syscall.Stat_t
+	if err := syscall.Stat(path, &stat); err != nil {
+		return 0, err
+	}
+
+	return stat.Blocks * 512, nil
 }
 
 func setupKernel(ctx context.Context, dir, version string) error {
@@ -356,70 +446,6 @@ func download(ctx context.Context, url, path string, perm os.FileMode) error {
 	if err == nil {
 		fmt.Printf("✓ Downloaded %s\n", filepath.Base(path))
 	}
-
-	return err
-}
-
-func copyEnvd(dst string) error {
-	src, _ := filepath.Abs("../envd/bin/envd")
-
-	srcInfo, err := os.Stat(src)
-	if os.IsNotExist(err) {
-		return fmt.Errorf("envd not found at %s (run 'make build' in packages/envd first)", src)
-	}
-	if err != nil {
-		return err
-	}
-
-	if dstInfo, err := os.Stat(dst); err == nil {
-		if !dstInfo.ModTime().Before(srcInfo.ModTime()) {
-			fmt.Printf("✓ Envd up-to-date\n")
-
-			return nil
-		}
-	}
-
-	return copyFile(dst, src, "Envd", 0o755)
-}
-
-func copyFile(dst, src, name string, perm os.FileMode) error {
-	srcInfo, err := os.Stat(src)
-	if os.IsNotExist(err) {
-		return fmt.Errorf("%s not found at %s", name, src)
-	}
-	if err != nil {
-		return err
-	}
-
-	if dstInfo, err := os.Stat(dst); err == nil {
-		if !dstInfo.ModTime().Before(srcInfo.ModTime()) {
-			fmt.Printf("✓ %s up-to-date\n", name)
-
-			return nil
-		}
-	}
-
-	fmt.Printf("📋 Copying %s from %s...\n", name, src)
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", filepath.Dir(dst), err)
-	}
-	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, srcFile)
-	if err == nil {
-		fmt.Printf("✓ %s ready\n", name)
-	}
-	_ = srcInfo // suppress unused warning
 
 	return err
 }
