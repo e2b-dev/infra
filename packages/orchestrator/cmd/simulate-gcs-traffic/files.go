@@ -91,7 +91,10 @@ func (f *files) nextRead() (string, int64, error) {
 	const totalAttempts = 10
 	totalChunks := info.size / f.chunkSize
 	for range totalAttempts {
-		offset := f.rand.Int63n(totalChunks - 1) // the last one might not be full, just skip it
+		offset := f.rand.Int63n(totalChunks-1) * f.chunkSize // the last one might not be full, just skip it
+		if f.allowRepeatReads {
+			return info.path, offset, nil
+		}
 		usedOffsets, isFileUsed := f.usedRanges[info.path]
 		if !isFileUsed {
 			f.usedRanges[info.path] = map[int64]struct{}{

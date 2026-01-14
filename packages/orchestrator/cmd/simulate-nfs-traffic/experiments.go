@@ -103,8 +103,10 @@ func (s scenario) setup(ctx context.Context, p *processor) error {
 	var errs []error
 
 	for _, e := range s.elements {
-		if err := e.exp.setup(ctx, p); err != nil {
-			errs = append(errs, fmt.Errorf("failed to setup %q: %w", e, err))
+		if e.exp != nil {
+			if err := e.exp.setup(ctx, p); err != nil {
+				errs = append(errs, fmt.Errorf("failed to setup %q: %w", e, err))
+			}
 		}
 	}
 
@@ -115,8 +117,10 @@ func (s scenario) teardown(ctx context.Context, p *processor) error {
 	var errs []error
 
 	for name, e := range s.elements {
-		if err := e.exp.teardown(ctx, p); err != nil {
-			errs = append(errs, fmt.Errorf("failed to teardown %q: %w", name, err))
+		if e.exp != nil {
+			if err := e.exp.teardown(ctx, p); err != nil {
+				errs = append(errs, fmt.Errorf("failed to teardown %q: %w", name, err))
+			}
 		}
 	}
 

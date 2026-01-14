@@ -14,49 +14,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-type options struct {
-	bucket             string
-	chunkSize          int64
-	client             *storage.Client
-	concurrentRequests int
-	readCount          int
-	skipCount          int
-	allowRepeatReads   bool
-
-	makeBuffer     bufferMethod
-	readMethod     readMethod
-	readMiddleware []func(readMethod) readMethod
-
-	clientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
-	clientOptions []option.ClientOption
-}
-
-func (o options) validate() error {
-	var errs []error
-
-	if o.bucket == "" {
-		errs = append(errs, errors.New("bucket must be set"))
-	}
-
-	if o.readCount == 0 {
-		errs = append(errs, errors.New("read-count must be set"))
-	}
-
-	if o.skipCount >= o.readCount {
-		errs = append(errs, errors.New("skip-count must be less than read-count"))
-	}
-
-	if o.concurrentRequests < 1 {
-		errs = append(errs, errors.New("concurrent-requests must be greater than 0"))
-	}
-
-	if o.chunkSize <= 0 {
-		errs = append(errs, errors.New("chunk-size must be greater than 0"))
-	}
-
-	return errors.Join(errs...)
-}
-
 var experiments = map[string]map[string]experiment{
 	"concurrent requests": {
 		"1": &setConcurrentRequests{1},
@@ -139,6 +96,49 @@ var experiments = map[string]map[string]experiment{
 		// "disabled": &setAllowRepeatReads{false},
 		"enabled": &setAllowRepeatReads{true},
 	},
+}
+
+type options struct {
+	bucket             string
+	chunkSize          int64
+	client             *storage.Client
+	concurrentRequests int
+	readCount          int
+	skipCount          int
+	allowRepeatReads   bool
+
+	makeBuffer     bufferMethod
+	readMethod     readMethod
+	readMiddleware []func(readMethod) readMethod
+
+	clientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
+	clientOptions []option.ClientOption
+}
+
+func (o options) validate() error {
+	var errs []error
+
+	if o.bucket == "" {
+		errs = append(errs, errors.New("bucket must be set"))
+	}
+
+	if o.readCount == 0 {
+		errs = append(errs, errors.New("read-count must be set"))
+	}
+
+	if o.skipCount >= o.readCount {
+		errs = append(errs, errors.New("skip-count must be less than read-count"))
+	}
+
+	if o.concurrentRequests < 1 {
+		errs = append(errs, errors.New("concurrent-requests must be greater than 0"))
+	}
+
+	if o.chunkSize <= 0 {
+		errs = append(errs, errors.New("chunk-size must be greater than 0"))
+	}
+
+	return errors.Join(errs...)
 }
 
 type experiment interface {

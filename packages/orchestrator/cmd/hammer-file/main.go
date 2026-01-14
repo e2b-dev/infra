@@ -108,6 +108,7 @@ func run(bucketName, objectName string) error {
 	fmt.Printf("%-20s %-15s %-15s %-15s %-15d\n", "Sequential", seqStats.mean, seqStats.p50, seqTotalDuration.Round(time.Millisecond), seqStats.count)
 
 	// Scenario 2: Parallel range reads
+	firstRequestStart = time.Time{}
 	fmt.Printf("\nScenario 2: Parallel range reads...\n")
 	for _, concurrency := range []int{10} {
 		// for concurrency := 2; concurrency <= 15; concurrency++ {
