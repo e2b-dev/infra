@@ -352,13 +352,13 @@ func printTemplateInfo(ctx context.Context, tmpl template.Template, meta metadat
 	fmt.Printf("   Kernel: %s, Firecracker: %s\n", meta.Template.KernelVersion, meta.Template.FirecrackerVersion)
 
 	if memfile, err := tmpl.Memfile(ctx); err == nil {
-		if size, err := memfile.Size(); err == nil {
+		if size, err := memfile.Size(ctx); err == nil {
 			fmt.Printf("   Memfile: %d MB (%d KB blocks)\n", size>>20, memfile.BlockSize()>>10)
 		}
 	}
 
 	if rootfs, err := tmpl.Rootfs(); err == nil {
-		if size, err := rootfs.Size(); err == nil {
+		if size, err := rootfs.Size(ctx); err == nil {
 			fmt.Printf("   Rootfs: %d MB (%d KB blocks)\n", size>>20, rootfs.BlockSize()>>10)
 		}
 	}
