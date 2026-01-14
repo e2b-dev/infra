@@ -106,6 +106,13 @@ func parseFlags() {
 	flag.Parse()
 }
 
+func withProtocolLogging(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("request: %s %s proto=%s", r.Method, r.URL.Path, r.Proto)
+		h.ServeHTTP(w, r)
+	})
+}
+
 func withCORS(h http.Handler) http.Handler {
 	middleware := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
@@ -191,13 +198,21 @@ func main() {
 	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
+	// Enable both HTTP/1.1 and HTTP/2 cleartext (h2c) for Connect RPC compatibility
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+
 	s := &http.Server{
-		Handler: withCORS(
-			service.WithAuthorization(
-				middleware.Wrap(handler),
+		Handler: withProtocolLogging(
+			withCORS(
+				service.WithAuthorization(
+					middleware.Wrap(handler),
+				),
 			),
 		),
-		Addr: fmt.Sprintf("0.0.0.0:%d", port),
+		Addr:      fmt.Sprintf("0.0.0.0:%d", port),
+		Protocols: protocols,
 		// We remove the timeouts as the connection is terminated by closing of the sandbox and keepalive close.
 		ReadTimeout:  0,
 		WriteTimeout: 0,
