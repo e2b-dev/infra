@@ -2,6 +2,63 @@
 
 ## Commands
 
+> **Prerequisite:** Enable NBD module first:
+>
+> ```bash
+> modprobe nbd nbds_max=4096
+>
+> cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
+> # Disable inotify watching of change events for NBD devices
+> ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
+> EOH
+> udevadm control --reload-rules
+> udevadm trigger
+> ```
+
+### Build Template
+
+Build sandbox templates locally or to remote storage.
+
+```bash
+sudo go run ./cmd/build-template -build <uuid> -storage .local-build
+```
+
+Flags:
+
+- `-build <uuid>` - Build ID (UUID, required)
+- `-template <id>` - Template ID (default: `local-template`)
+- `-storage <path>` - Local path or `gs://bucket` (enables local mode with auto-download of kernel/FC)
+- `-from-build <uuid>` - Base build ID for incremental builds
+- `-kernel <version>` - Kernel version (default: `vmlinux-6.1.102`)
+- `-firecracker <version>` - Firecracker version (default: `v1.12.1_717921c`)
+- `-vcpu <n>` - vCPUs (default: `1`)
+- `-memory <mb>` - Memory in MB (default: `512`)
+- `-disk <mb>` - Disk in MB (default: `1000`)
+- `-start-cmd <cmd>` - Start command
+- `-ready-cmd <cmd>` - Ready check command
+
+### Resume Sandbox
+
+Resume sandboxes from built templates.
+
+```bash
+# Local storage
+sudo go run ./cmd/resume-sandbox -build <uuid> -from .local-build -iterations 10
+
+# Remote GCS storage (pass credentials to sudo)
+sudo GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gcloud/application_default_credentials.json \
+  go run ./cmd/resume-sandbox -build <uuid> -from gs://bucket -iterations 10
+```
+
+Flags:
+
+- `-build <uuid>` - Build ID (UUID, required)
+- `-from <path>` - Local path or `gs://bucket` (default: `.local-build`)
+- `-iterations <n>` - Number of iterations, 0 = interactive (default: `0`)
+- `-cold` - Clear cache between iterations (cold start each time)
+- `-no-prefetch` - Disable memory prefetching
+- `-v` - Verbose logging (show debug output)
+
 ### Copy Build
 
 > Works only for GCP buckets right now.
@@ -12,42 +69,31 @@ go run cmd/copy-build/main.go -build <build-id> -from <from-bucket> -to <to-buck
 
 ### Mount Rootfs
 
-> Before calling the script, you need to enable the NBD module in the kernel from root account.
-
-```bash
-modprobe nbd nbds_max=4096
-
-cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
-# Disable inotify watching of change events for NBD devices
-ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
-EOH
-udevadm control --reload-rules
-udevadm trigger
-```
-
-> We need root permissions to use NBD, so we cannot use `go run` directly, but we also need GCP credentials to access the template bucket.
-
 ```bash
 ./cmd/mount-rootfs/start.sh <bucket> <build-id> <mount-path>
 ```
 
 ### Inspect Header
 
-Inspect the header of a build.
-
 ```bash
-TEMPLATE_BUCKET_NAME=<template-bucket-name> go run cmd/inspect-header/main.go -build <build-id> -kind <kind>
+TEMPLATE_BUCKET_NAME=<bucket> go run cmd/inspect-header/main.go -build <build-id> -kind <memfile|rootfs>
 ```
-
-> Kind can be `memfile` or `rootfs`.
 
 ### Inspect Data
 
-Inspect the data of a build.
-
 ```bash
-TEMPLATE_BUCKET_NAME=<template-bucket-name> go run cmd/inspect-data/main.go -build <build-id> -kind <kind> -start [start-block] -end [end-block]
+TEMPLATE_BUCKET_NAME=<bucket> go run cmd/inspect-data/main.go -build <build-id> -kind <memfile|rootfs> -start [start] -end [end]
 ```
 
-> Kind can be `memfile` or `rootfs`.
-> Start and end block are optional. If not provided, the entire data will be inspected.
+---
+
+## Environment Variables
+
+Automatically set in local mode. Set before running to override:
+
+- `HOST_ENVD_PATH` - Envd binary path (default: `../envd/bin/envd`)
+- `HOST_KERNELS_DIR` - Kernel versions dir (local: `{storage}/kernels`, prod: `/fc-kernels`)
+- `FIRECRACKER_VERSIONS_DIR` - Firecracker versions dir (local: `{storage}/fc-versions`, prod: `/fc-versions`)
+- `ORCHESTRATOR_BASE_PATH` - Base orchestrator data (local: `{storage}/orchestrator`, prod: `/orchestrator`)
+- `SNAPSHOT_CACHE_DIR` - Snapshot cache, ideally on NVMe (local: `{storage}/snapshot-cache`, prod: `/mnt/snapshot-cache`)
+- `SANDBOX_DIR` - Sandbox working dir (local: `{storage}/sandbox`, prod: `/fc-vm`)

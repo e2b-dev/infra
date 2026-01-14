@@ -28,7 +28,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
-		cluster, ok := a.clustersPool.GetClusterById(*team.ClusterID)
+		cluster, ok := a.clusters.GetClusterById(*team.ClusterID)
 		if !ok {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("cluster with ID '%s' not found", *team.ClusterID), nil)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", *team.ClusterID))

@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -39,6 +40,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := run(bucketName, objectName); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(bucketName, objectName string) error {
 	ctx := context.Background()
 	client, err := storage.NewGRPCClient(ctx,
 		option.WithGRPCConnectionPool(4),
@@ -46,7 +53,7 @@ func main() {
 		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4*megabyte)),
 	)
 	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
+		return fmt.Errorf("failed to create gcp client: %w", err)
 	}
 	defer client.Close()
 
@@ -55,7 +62,7 @@ func main() {
 
 	attrs, err := obj.Attrs(ctx)
 	if err != nil {
-		log.Fatalf("Failed to get object attributes: %v", err)
+		return fmt.Errorf("failed to get object attributes: %w", err)
 	}
 	fileSize := attrs.Size
 	fmt.Printf("File size: %d bytes (%.2f MB)\n", fileSize, float64(fileSize)/(1024*1024))
@@ -82,13 +89,13 @@ func main() {
 		err := readRange(ctx, obj, offset, length)
 		duration := time.Since(start)
 		if err != nil {
-			log.Fatalf("Sequential read failed at offset %d: %v", offset, err)
+			return fmt.Errorf("sequential read failed at offset %d: %w", offset, err)
 		}
 		seqChunkDurations = append(seqChunkDurations, duration)
 		seqTimings = append(seqTimings, readTiming{
 			scenario: "Sequential",
 			startMs:  start.Sub(firstRequestStart).Milliseconds(),
-			endMs:    time.Now().Sub(firstRequestStart).Milliseconds(),
+			endMs:    time.Since(firstRequestStart).Milliseconds(),
 		})
 	}
 	seqTotalDuration := time.Since(seqStart)
@@ -103,18 +110,18 @@ func main() {
 	// Scenario 2: Parallel range reads
 	fmt.Printf("\nScenario 2: Parallel range reads...\n")
 	for _, concurrency := range []int{10} {
-		//for concurrency := 2; concurrency <= 15; concurrency++ {
+		// for concurrency := 2; concurrency <= 15; concurrency++ {
 		parStart := time.Now()
 		parChunkDurations := make([]time.Duration, 0)
 		var mu sync.Mutex
 
 		g, gCtx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
-		for chunk := 0; chunk < int(fileSize/chunkSize); chunk++ {
-			offset := int64(chunk) * chunkSize
+		for chunk := range fileSize / chunkSize {
+			offset := chunk * chunkSize
 			g.Go(func() error {
 				length := min(chunkSize, fileSize-offset)
-				//println(fmt.Sprintf("Reading chunk [%d] (start)", chunk))
+				// println(fmt.Sprintf("Reading chunk [%d] (start)", chunk))
 				start := time.Now()
 				mu.Lock()
 				if firstRequestStart.IsZero() {
@@ -133,14 +140,15 @@ func main() {
 				parTimings = append(parTimings, readTiming{
 					scenario: fmt.Sprintf("Parallel-%d", concurrency),
 					startMs:  start.Sub(firstRequestStart).Milliseconds(),
-					endMs:    time.Now().Sub(firstRequestStart).Milliseconds(),
+					endMs:    time.Since(firstRequestStart).Milliseconds(),
 				})
 				mu.Unlock()
+
 				return nil
 			})
 		}
 		if err := g.Wait(); err != nil {
-			log.Fatalf("Parallel reads failed (concurrency %d): %v", concurrency, err)
+			return fmt.Errorf("parallel reads failed (concurrency %d): %w", concurrency, err)
 		}
 		parTotalDuration := time.Since(parStart)
 
@@ -148,14 +156,21 @@ func main() {
 		fmt.Printf("%-20s %-15s %-15s %-15s %-15d\n", fmt.Sprintf("Parallel (%d)", concurrency), parStats.mean, parStats.p50, parTotalDuration.Round(time.Millisecond), parStats.count)
 	}
 
-	writeMermaidGantt("scenario1.mmd", seqTimings)
-	writeMermaidGantt("scenario2.mmd", parTimings)
+	var errs []error
+	if err := writeMermaidGantt("scenario1.mmd", seqTimings); err != nil {
+		errs = append(errs, err)
+	}
+	if err := writeMermaidGantt("scenario2.mmd", parTimings); err != nil {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
 }
 
-func writeMermaidGantt(filename string, timings []readTiming) {
+func writeMermaidGantt(filename string, timings []readTiming) error {
 	f, err := os.Create(filename)
 	if err != nil {
-		log.Fatalf("Failed to create Gantt file %s: %v", filename, err)
+		return fmt.Errorf("failed to create Gantt file %s: %w", filename, err)
 	}
 	defer f.Close()
 
@@ -172,6 +187,8 @@ func writeMermaidGantt(filename string, timings []readTiming) {
 		}
 		fmt.Fprintf(f, "    Chunk %d : %d, %d\n", i, t.startMs, t.endMs)
 	}
+
+	return nil
 }
 
 func readRange(ctx context.Context, obj *storage.ObjectHandle, offset, length int64) error {
@@ -182,6 +199,7 @@ func readRange(ctx context.Context, obj *storage.ObjectHandle, offset, length in
 	defer r.Close()
 
 	_, err = io.Copy(io.Discard, r)
+
 	return err
 }
 
@@ -202,9 +220,7 @@ func getStats(durations []time.Duration) stats {
 	}
 	mean := total / time.Duration(len(durations))
 
-	sort.Slice(durations, func(i, j int) bool {
-		return durations[i] < durations[j]
-	})
+	slices.Sort(durations)
 	p50 := durations[len(durations)/2]
 
 	return stats{

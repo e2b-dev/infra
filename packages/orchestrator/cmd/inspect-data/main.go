@@ -46,7 +46,7 @@ func main() {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	obj, err := storage.OpenSeekableObject(ctx, storagePath, objectType)
+	obj, err := storage.OpenSeekable(ctx, storagePath, objectType)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}

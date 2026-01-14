@@ -1,4 +1,4 @@
-package edge
+package clusters
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -20,22 +19,22 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-type clientAuthorization struct {
-	secret string
-	tls    bool
+type instanceAuthorization struct {
+	secret            string
+	serviceInstanceID string
+	tls               bool
 }
 
-func (a clientAuthorization) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
-	return map[string]string{consts.EdgeRpcAuthHeader: a.secret}, nil
+func (a instanceAuthorization) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
+	return map[string]string{consts.EdgeRpcAuthHeader: a.secret, consts.EdgeRpcServiceInstanceIDHeader: a.serviceInstanceID}, nil
 }
 
-func (a clientAuthorization) RequireTransportSecurity() bool {
+func (a instanceAuthorization) RequireTransportSecurity() bool {
 	return a.tls
 }
 
-func createClusterClient(tel *telemetry.Client, auth clientAuthorization, endpoint string, endpointTLS bool) (*grpclient.GRPCClient, error) {
+func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool) (*GRPCClient, error) {
 	grpcOptions := []grpc.DialOption{
-		grpc.WithPerRPCCredentials(auth),
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(
 				otelgrpc.WithTracerProvider(tel.TracerProvider),
@@ -51,6 +50,10 @@ func createClusterClient(tel *telemetry.Client, auth clientAuthorization, endpoi
 		),
 	}
 
+	if auth != nil {
+		grpcOptions = append(grpcOptions, grpc.WithPerRPCCredentials(auth))
+	}
+
 	if endpointTLS {
 		// (2025-06) AWS ALB with TLS termination is using TLS 1.2 as default so this is why we are not using TLS 1.3+ here
 		cred := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
@@ -61,10 +64,10 @@ func createClusterClient(tel *telemetry.Client, auth clientAuthorization, endpoi
 
 	conn, err := grpc.NewClient(endpoint, grpcOptions...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create grpc client: %w", err)
+		return nil, fmt.Errorf("failed to create client client: %w", err)
 	}
 
-	return &grpclient.GRPCClient{
+	return &GRPCClient{
 		Info:       infogrpc.NewInfoServiceClient(conn),
 		Sandbox:    orchestratorgrpc.NewSandboxServiceClient(conn),
 		Template:   templatemanagergrpc.NewTemplateServiceClient(conn),

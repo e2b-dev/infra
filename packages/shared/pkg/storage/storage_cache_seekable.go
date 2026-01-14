@@ -50,19 +50,19 @@ type featureFlagsClient interface {
 	IntFlag(ctx context.Context, flag featureflags.IntFlag, ldctx ...ldcontext.Context) int
 }
 
-type CachedSeekableObjectProvider struct {
+type cachedSeekable struct {
 	path      string
 	chunkSize int64
-	inner     SeekableObjectProvider
+	inner     Seekable
 	flags     featureFlagsClient
 	tracer    trace.Tracer
 
 	wg sync.WaitGroup
 }
 
-var _ SeekableObjectProvider = (*CachedSeekableObjectProvider)(nil)
+var _ Seekable = (*cachedSeekable)(nil)
 
-func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
+func (c *cachedSeekable) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
 	ctx, span := c.tracer.Start(ctx, "read object at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int("buff_len", len(buff)),
@@ -122,7 +122,7 @@ func (c *CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, 
 	return readCount, err
 }
 
-func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (n int64, e error) {
+func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 	ctx, span := c.tracer.Start(ctx, "get size of object")
 	defer func() {
 		recordError(span, e)
@@ -158,7 +158,7 @@ func (c *CachedSeekableObjectProvider) Size(ctx context.Context) (n int64, e err
 	return size, nil
 }
 
-func (c *CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, path string) (e error) {
+func (c *cachedSeekable) StoreFile(ctx context.Context, path string) (e error) {
 	ctx, span := c.tracer.Start(ctx, "write object from file system",
 		trace.WithAttributes(attribute.String("path", path)),
 	)
@@ -193,27 +193,27 @@ func (c *CachedSeekableObjectProvider) WriteFromFileSystem(ctx context.Context, 
 		})
 	}
 
-	return c.inner.WriteFromFileSystem(ctx, path)
+	return c.inner.StoreFile(ctx, path)
 }
 
-func (c *CachedSeekableObjectProvider) goCtx(ctx context.Context, fn func(context.Context)) {
+func (c *cachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {
 	c.wg.Go(func() {
 		fn(context.WithoutCancel(ctx))
 	})
 }
 
-func (c *CachedSeekableObjectProvider) makeChunkFilename(offset int64) string {
+func (c *cachedSeekable) makeChunkFilename(offset int64) string {
 	return fmt.Sprintf("%s/%012d-%d.bin", c.path, offset/c.chunkSize, c.chunkSize)
 }
 
-func (c *CachedSeekableObjectProvider) makeTempChunkFilename(offset int64) string {
+func (c *cachedSeekable) makeTempChunkFilename(offset int64) string {
 	tempFilename := uuid.NewString()
 
 	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
 }
 
-func (c *CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (n int, e error) {
-	ctx, span := c.tracer.Start(ctx, "read chunk from cache")
+func (c *cachedSeekable) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (n int, e error) {
+	ctx, span := c.tracer.Start(ctx, "read chunk at offset from cache")
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -234,11 +234,11 @@ func (c *CachedSeekableObjectProvider) readAtFromCache(ctx context.Context, chun
 	return count, err // return `err` in case it's io.EOF
 }
 
-func (c *CachedSeekableObjectProvider) sizeFilename() string {
+func (c *cachedSeekable) sizeFilename() string {
 	return filepath.Join(c.path, "size.txt")
 }
 
-func (c *CachedSeekableObjectProvider) readLocalSize(context.Context) (int64, error) {
+func (c *cachedSeekable) readLocalSize(context.Context) (int64, error) {
 	filename := c.sizeFilename()
 	content, err := os.ReadFile(filename)
 	if err != nil {
@@ -253,7 +253,7 @@ func (c *CachedSeekableObjectProvider) readLocalSize(context.Context) (int64, er
 	return size, nil
 }
 
-func (c *CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int64) error {
+func (c *cachedSeekable) validateReadAtParams(buffSize, offset int64) error {
 	if buffSize == 0 {
 		return ErrBufferTooSmall
 	}
@@ -270,7 +270,7 @@ func (c *CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int
 	return nil
 }
 
-func (c *CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) error {
+func (c *cachedSeekable) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) error {
 	writeTimer := cacheSlabWriteTimerFactory.Begin()
 
 	// Try to acquire lock for this chunk write to NFS cache
@@ -316,7 +316,7 @@ func (c *CachedSeekableObjectProvider) writeChunkToCache(ctx context.Context, of
 	return nil
 }
 
-func (c *CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size int64) error {
+func (c *cachedSeekable) writeLocalSize(ctx context.Context, size int64) error {
 	finalFilename := c.sizeFilename()
 
 	// Try to acquire lock for this chunk write to NFS cache
@@ -351,7 +351,7 @@ func (c *CachedSeekableObjectProvider) writeLocalSize(ctx context.Context, size 
 	return nil
 }
 
-func (c *CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Context, inputPath string) (count int64, err error) {
+func (c *cachedSeekable) createCacheBlocksFromFile(ctx context.Context, inputPath string) (count int64, err error) {
 	ctx, span := c.tracer.Start(ctx, "create cache blocks from filesystem")
 	defer func() {
 		recordError(span, err)
@@ -397,7 +397,7 @@ func (c *CachedSeekableObjectProvider) createCacheBlocksFromFile(ctx context.Con
 // writeChunkFromFile writes a piece of a local file. It does not need to worry about race conditions, as it will only
 // be called in the build layer, which cannot be built on multiple machines at the same time, or multiple times on the
 // same machine..
-func (c *CachedSeekableObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, input *os.File) (err error) {
+func (c *cachedSeekable) writeChunkFromFile(ctx context.Context, offset int64, input *os.File) (err error) {
 	_, span := c.tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 	))

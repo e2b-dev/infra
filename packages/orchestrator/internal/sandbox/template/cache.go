@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -116,21 +117,36 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 	return c.cache.Items()
 }
 
+// Invalidate removes a template from the cache, forcing a refetch on next access.
+func (c *Cache) Invalidate(buildID string) {
+	c.cache.Delete(buildID)
+}
+
+// InvalidateAll clears all cached templates and build diffs.
+// Used for cold start benchmarks to ensure no cached data is reused.
+func (c *Cache) InvalidateAll() {
+	c.cache.DeleteAll()
+	c.buildStore.RemoveCache()
+}
+
 func (c *Cache) GetTemplate(
 	ctx context.Context,
 	buildID string,
 	isSnapshot bool,
 	isBuilding bool,
 ) (Template, error) {
-	ctx, span := tracer.Start(ctx, "get template")
+	ctx, span := tracer.Start(ctx, "get template", trace.WithAttributes(
+		attribute.Bool("is_snapshot", isSnapshot),
+		attribute.Bool("is_building", isBuilding),
+	))
 	defer span.End()
 
 	persistence := c.persistence
-	// Because of the template caching, if we enable the shared cache feature flag,
+	// Because of the template caching, if we enable the NFS cache feature flag,
 	// it will start working only for new orchestrators or new builds.
 	if path, enabled := c.useNFSCache(ctx, isBuilding, isSnapshot); enabled {
 		logger.L().Info(ctx, "using local template cache", zap.String("path", c.rootCachePath))
-		persistence = storage.NewCachedProvider(ctx, path, persistence, c.flags)
+		persistence = storage.WrapInNFSCache(ctx, path, persistence, c.flags)
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else {
 		span.SetAttributes(attribute.Bool("use_cache", false))

@@ -172,7 +172,7 @@ variable "fc_versions_bucket_name" {
 # NFS CONFIGURATION
 
 variable "filestore_cache_enabled" {
-  description = "Whether Filestore-based shared cache is enabled"
+  description = "Whether Filestore-based shared NFS cache is enabled"
   type        = bool
 }
 

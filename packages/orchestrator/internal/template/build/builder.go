@@ -26,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/base"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/finalize"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/optimize"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/user"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
@@ -248,7 +249,7 @@ func runBuild(
 
 	templateStorage := builder.templateStorage
 	if path, ok := builder.useNFSCache(ctx); ok {
-		templateStorage = storage.NewCachedProvider(ctx, path, templateStorage, builder.featureFlags)
+		templateStorage = storage.WrapInNFSCache(ctx, path, templateStorage, builder.featureFlags)
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else {
 		span.SetAttributes(attribute.Bool("use_cache", false))
@@ -322,6 +323,17 @@ func runBuild(
 		builder.logger,
 	)
 
+	optimizeBuilder := optimize.New(
+		bc,
+		builder.sandboxFactory,
+		builder.templateStorage,
+		builder.templateCache,
+		builder.proxy,
+		layerExecutor,
+		builder.sandboxes,
+		builder.logger,
+	)
+
 	// Construct the phases/steps to run
 	builders := []phases.BuilderPhase{
 		baseBuilder,
@@ -336,6 +348,7 @@ func runBuild(
 	}
 	builders = append(builders, stepBuilders...)
 	builders = append(builders, postProcessingBuilder)
+	builders = append(builders, optimizeBuilder)
 
 	lastLayerResult, err := phases.Run(ctx, builder.logger, userLogger, bc, builder.metrics, builders)
 	if err != nil {
@@ -388,7 +401,7 @@ func getRootfsSize(
 	s storage.StorageProvider,
 	metadata storage.TemplateFiles,
 ) (uint64, error) {
-	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
+	obj, err := s.OpenBlob(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

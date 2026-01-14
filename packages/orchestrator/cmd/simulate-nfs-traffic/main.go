@@ -87,7 +87,7 @@ func main() {
 
 	currentScenario := 0
 	for scenario := range generateScenarios(experiments) {
-		for i := 0; i < repeat; i++ {
+		for i := range repeat {
 			currentScenario++
 
 			result, err := p.run(ctx, scenario)
@@ -231,7 +231,6 @@ func (p *processor) run(ctx context.Context, scenario scenario) (result, error) 
 	}
 
 	for i := 0; i < p.readCount && testCtx.Err() == nil; i++ {
-
 		f, err := allFiles.selectFile()
 		if err != nil {
 			logger.Println("failed to get file", "error", err)

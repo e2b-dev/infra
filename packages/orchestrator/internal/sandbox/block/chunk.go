@@ -18,7 +18,7 @@ import (
 )
 
 type Chunker struct {
-	base    storage.ReaderAtCtx
+	base    storage.SeekableReader
 	cache   *Cache
 	metrics metrics.Metrics
 
@@ -30,7 +30,7 @@ type Chunker struct {
 
 func NewChunker(
 	size, blockSize int64,
-	base storage.ReaderAtCtx,
+	base storage.SeekableReader,
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*Chunker, error) {
@@ -148,30 +148,36 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				default:
 				}
 
-				b := make([]byte, storage.MemoryChunkSize)
+				// The size of the buffer is adjusted if the last chunk is not a multiple of the block size.
+				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
+				if err != nil {
+					return err
+				}
+
+				defer releaseCacheCloseLock()
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
+
 				readBytes, err := c.base.ReadAt(ctx, b, fetchOff)
-				if err != nil && !errors.Is(err, io.EOF) {
+				if err != nil {
 					fetchSW.Failure(ctx, int64(readBytes),
 						attribute.String(failureReason, failureTypeRemoteRead),
 					)
 
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
-				fetchSW.Success(ctx, int64(readBytes))
 
-				writeSW := c.metrics.WriteChunksTimerFactory.Begin()
-				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
-				if cacheErr != nil {
-					writeSW.Failure(ctx, int64(readBytes),
-						attribute.String(failureReason, failureTypeLocalWrite),
+				if readBytes != len(b) {
+					fetchSW.Failure(ctx, int64(readBytes),
+						attribute.String(failureReason, failureTypeRemoteRead),
 					)
 
-					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
+					return fmt.Errorf("failed to read chunk from base %d: expected %d bytes, got %d bytes", fetchOff, len(b), readBytes)
 				}
 
-				writeSW.Success(ctx, int64(readBytes))
+				c.cache.setIsCached(fetchOff, int64(readBytes))
+
+				fetchSW.Success(ctx, int64(readBytes))
 
 				return nil
 			})
@@ -205,7 +211,6 @@ const (
 
 	failureTypeLocalRead      = "local-read"
 	failureTypeLocalReadAgain = "local-read-again"
-	failureTypeLocalWrite     = "local-write"
 	failureTypeRemoteRead     = "remote-read"
 	failureTypeCacheFetch     = "cache-fetch"
 )
