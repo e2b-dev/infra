@@ -56,8 +56,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	const (
 		testType        = onlyStart
 		baseImage       = "e2bdev/base"
-		kernelVersion   = "vmlinux-6.1.102"
-		fcVersion       = "v1.10.1_1fcdaec08"
+		kernelVersion   = "vmlinux-6.1.158"
+		fcVersion       = featureflags.DefaultFirecrackerVersion
 		templateID      = "fcb33d09-3141-42c4-8d3b-c2df411681db"
 		buildID         = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
 		useHugePages    = false
@@ -67,7 +67,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	sbxNetwork := &orchestrator.SandboxNetworkConfig{}
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
-	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
+	persistenceDir := getPersistenceDir()
 	kernelsDir := filepath.Join(persistenceDir, "kernels")
 	sandboxDir := filepath.Join(persistenceDir, "sandbox")
 	err := os.MkdirAll(kernelsDir, 0o755)
@@ -323,6 +323,14 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	for b.Loop() {
 		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
 	}
+}
+
+func getPersistenceDir() string {
+	home := os.Getenv("HOME")
+	if home != "" {
+		return filepath.Join(home, ".cache", "e2b-orchestrator-benchmark")
+	}
+	return filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
 }
 
 type testCycle string
