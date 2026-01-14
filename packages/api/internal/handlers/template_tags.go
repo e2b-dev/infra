@@ -178,7 +178,9 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	)
 
 	c.JSON(http.StatusCreated, api.TemplateTag{
-		Tags:    slices.Collect(maps.Keys(tags)),
+		Names: sharedUtils.Map(slices.Collect(maps.Keys(tags)), func(tag string) string {
+			return fmt.Sprintf("%s:%s", targetAlias, tag)
+		}),
 		BuildID: buildID,
 	})
 }
