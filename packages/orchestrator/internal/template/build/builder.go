@@ -249,7 +249,7 @@ func runBuild(
 
 	templateStorage := builder.templateStorage
 	if path, ok := builder.useNFSCache(ctx); ok {
-		templateStorage = storage.NewCachedProvider(ctx, path, templateStorage, builder.featureFlags)
+		templateStorage = storage.WrapInNFSCache(ctx, path, templateStorage, builder.featureFlags)
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else {
 		span.SetAttributes(attribute.Bool("use_cache", false))
@@ -401,7 +401,7 @@ func getRootfsSize(
 	s storage.StorageProvider,
 	metadata storage.TemplateFiles,
 ) (uint64, error) {
-	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
+	obj, err := s.OpenBlob(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

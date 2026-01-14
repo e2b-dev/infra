@@ -53,12 +53,12 @@ func main() {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	baseObj, err := storageProvider.OpenObject(ctx, baseStoragePath, objectType)
+	baseObj, err := storageProvider.OpenBlob(ctx, baseStoragePath, objectType)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}
 
-	diffObj, err := storageProvider.OpenObject(ctx, diffStoragePath, objectType)
+	diffObj, err := storageProvider.OpenBlob(ctx, diffStoragePath, objectType)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}

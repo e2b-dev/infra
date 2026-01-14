@@ -15,12 +15,12 @@ packages:
           filename: mockfeatureflagsclient.go
           pkgname: storagemocks
           structname: MockFeatureFlagsClient
-      ObjectProvider:
+      Blob:
         config:
           dir: packages/shared/pkg/storage/mocks
           filename: mockobjectprovider.go
           pkgname: storagemocks
-      SeekableObjectProvider:
+      Seekable:
         config:
           dir: packages/shared/pkg/storage/mocks
           filename: mockseekableobjectprovider.go

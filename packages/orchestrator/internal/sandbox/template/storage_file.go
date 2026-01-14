@@ -27,7 +27,7 @@ func newStorageFile(
 
 	defer f.Close()
 
-	object, err := persistence.OpenObject(ctx, objectPath, objectType)
+	object, err := persistence.OpenBlob(ctx, objectPath, objectType)
 	if err != nil {
 		return nil, err
 	}

@@ -142,11 +142,11 @@ func (c *Cache) GetTemplate(
 	defer span.End()
 
 	persistence := c.persistence
-	// Because of the template caching, if we enable the shared cache feature flag,
+	// Because of the template caching, if we enable the NFS cache feature flag,
 	// it will start working only for new orchestrators or new builds.
 	if path, enabled := c.useNFSCache(ctx, isBuilding, isSnapshot); enabled {
 		logger.L().Info(ctx, "using local template cache", zap.String("path", c.rootCachePath))
-		persistence = storage.NewCachedProvider(ctx, path, persistence, c.flags)
+		persistence = storage.WrapInNFSCache(ctx, path, persistence, c.flags)
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else {
 		span.SetAttributes(attribute.Bool("use_cache", false))

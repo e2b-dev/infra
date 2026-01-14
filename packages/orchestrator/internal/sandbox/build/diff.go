@@ -26,7 +26,7 @@ const (
 
 type Diff interface {
 	io.Closer
-	storage.ReaderAtCtx
+	storage.SeekableReader
 	block.Slicer
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
@@ -55,6 +55,10 @@ func (n *NoDiff) ReadAt(_ context.Context, _ []byte, _ int64) (int, error) {
 }
 
 func (n *NoDiff) FileSize() (int64, error) {
+	return 0, NoDiffError{}
+}
+
+func (n *NoDiff) Size(_ context.Context) (int64, error) {
 	return 0, NoDiffError{}
 }
 

@@ -70,7 +70,7 @@ func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {
 	return o.cache.WriteAt(p, off)
 }
 
-func (o *Overlay) Size() (int64, error) {
+func (o *Overlay) Size(_ context.Context) (int64, error) {
 	return o.cache.Size()
 }
 
