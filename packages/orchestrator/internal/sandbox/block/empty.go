@@ -39,7 +39,7 @@ func (e *Empty) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	return copy(p, slice), nil
 }
 
-func (e *Empty) Size() (int64, error) {
+func (e *Empty) Size(_ context.Context) (int64, error) {
 	return int64(e.header.Metadata.Size), nil
 }
 

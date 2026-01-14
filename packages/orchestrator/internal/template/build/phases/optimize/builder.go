@@ -290,7 +290,7 @@ func (pb *OptimizeBuilder) updateMetadata(ctx context.Context, t metadata.Templa
 	metadataPath := templateFiles.StorageMetadataPath()
 
 	// Open the object for writing
-	object, err := pb.templateStorage.OpenObject(ctx, metadataPath, storage.MetadataObjectType)
+	object, err := pb.templateStorage.OpenBlob(ctx, metadataPath, storage.MetadataObjectType)
 	if err != nil {
 		return fmt.Errorf("failed to open metadata object: %w", err)
 	}
@@ -302,7 +302,7 @@ func (pb *OptimizeBuilder) updateMetadata(ctx context.Context, t metadata.Templa
 	}
 
 	// Write to storage
-	_, err = object.Write(ctx, metaBytes)
+	err = object.Put(ctx, metaBytes)
 	if err != nil {
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}

@@ -206,6 +206,7 @@ func (f *Factory) CreateSandbox(
 	var rootfsProvider rootfs.Provider
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
+			ctx,
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 			f.devicePool,
@@ -213,6 +214,7 @@ func (f *Factory) CreateSandbox(
 		)
 	} else {
 		rootfsProvider, err = rootfs.NewDirectProvider(
+			ctx,
 			rootFS,
 			// Populate direct cache directly from the source file
 			// This is needed for marking all blocks as dirty and being able to read them directly
@@ -235,7 +237,7 @@ func (f *Factory) CreateSandbox(
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
 
-	memfileSize, err := memfile.Size()
+	memfileSize, err := memfile.Size(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile size: %w", err)
 	}
@@ -451,6 +453,7 @@ func (f *Factory) ResumeSandbox(
 		telemetry.ReportEvent(ctx, "got template rootfs")
 
 		overlay, err := rootfs.NewNBDProvider(
+			ctx,
 			readonlyRootfs,
 			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 			f.devicePool,
