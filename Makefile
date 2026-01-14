@@ -111,6 +111,12 @@ download-public-kernels:
 	mkdir -p ./packages/fc-kernels
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* ./packages/fc-kernels/
 
+.PHONY: download-public-firecrackers
+download-public-firecrackers:
+	mkdir -p ./packages/fc-versions/builds/
+	gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* ./packages/fc-versions/builds/
+	find ./packages/fc-versions/builds/ -name firecracker -exec chmod +x {} \;
+
 .PHONY: generate
 generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate/shared generate-tests generate-mocks
 generate/%:
