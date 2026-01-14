@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -134,7 +135,10 @@ func (c *Cache) GetTemplate(
 	isSnapshot bool,
 	isBuilding bool,
 ) (Template, error) {
-	ctx, span := tracer.Start(ctx, "get template")
+	ctx, span := tracer.Start(ctx, "get template", trace.WithAttributes(
+		attribute.Bool("is_snapshot", isSnapshot),
+		attribute.Bool("is_building", isBuilding),
+	))
 	defer span.End()
 
 	persistence := c.persistence
