@@ -330,6 +330,7 @@ func getPersistenceDir() string {
 	if home != "" {
 		return filepath.Join(home, ".cache", "e2b-orchestrator-benchmark")
 	}
+
 	return filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
 }
 
