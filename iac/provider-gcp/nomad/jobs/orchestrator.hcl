@@ -4,18 +4,14 @@ job "orchestrator-${latest_orchestrator_job_id}" {
 
   priority = 90
 
-  group "client-orchestrator" {
-    // For future as we can remove static and allow multiple instances on one machine if needed.
-    // Also network allocation is used by Nomad service discovery on API and edge API to find jobs and register them.
-    network {
-      port "orchestrator" {
-        static = "${port}"
-      }
+  constraint {
+    attribute = "$${meta.orchestrator_version}"
+    operator  = "is_not_set"
+  }
 
-      port "orchestrator-proxy" {
-        static = "${proxy_port}"
-      }
-    }
+  group "client-orchestrator" {
+    // THERE MUST NOT BE ANY NETWORK ALLOCATION STANZA
+    // Excessive network allocation across orchestrator jobs can cause issues with nomad servers.
 
     service {
       name = "orchestrator"
@@ -62,11 +58,18 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         destination = "local/check-placement.sh"
         data = <<EOT
 #!/bin/bash
+set -e
 
 if [ "{{with nomadVar "nomad/jobs" }}{{ .latest_orchestrator_job_id }}{{ end }}" != "${latest_orchestrator_job_id}" ]; then
   echo "This orchestrator is not the latest version, exiting"
   exit 1
 fi
+
+# Mark this node with the orchestrator version to prevent further scheduling
+# This works with the job-level constraint (meta.orchestrator_version = "") to lock the node
+nomad node meta apply -node-id="$NOMAD_NODE_ID" -token="${nomad_token}" orchestrator_version=${latest_orchestrator_job_id}
+
+echo "Node $NOMAD_NODE_ID marked with orchestrator_version=${latest_orchestrator_job_id}"
 EOT
       }
 

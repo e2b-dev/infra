@@ -403,6 +403,7 @@ locals {
     redis_cluster_url            = local.redis_cluster_url
     redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
     shared_chunk_cache_path      = var.shared_chunk_cache_path
+    nomad_token                  = var.nomad_acl_token_secret
   }
 
   orchestrator_job_check = templatefile("${path.module}/jobs/orchestrator.hcl", merge(
