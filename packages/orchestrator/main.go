@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
@@ -442,6 +444,21 @@ func run(config cfg.Config) (success bool) {
 			}
 
 			return nil
+		},
+	})
+
+	// nfs proxy server
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", config.NetworkConfig.NFSProxyPort))
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to listen on nfs port", zap.Error(err))
+	}
+	nfsServer := nfs.NewProxy()
+	startService("nfs proxy", func() error {
+		return nfsServer.Serve(lis)
+	})
+	closers = append(closers, closer{
+		"nfs proxy server", func(ctx context.Context) error {
+			return nfsServer.Stop(ctx)
 		},
 	})
 
