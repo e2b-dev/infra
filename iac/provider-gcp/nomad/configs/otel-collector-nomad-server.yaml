@@ -97,9 +97,7 @@ processors:
   transform/set-name:
     metric_statements:
       - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
-      - delete_key(datapoint.attributes, "instance")
-      - delete_key(datapoint.attributes, "service_name")
-      - delete_key(datapoint.attributes, "job")
+      - delete_key(resource.attributes, "service.name")
 
 extensions:
   basicauth/grafana_cloud:
@@ -134,5 +132,3 @@ service:
         - batch
       exporters:
         - otlphttp/grafana_cloud
-
-
