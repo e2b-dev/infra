@@ -94,19 +94,12 @@ processors:
         gcp.gce.instance_group_manager.name:
           enabled: false
 
-  # For some reason, the metrics require us to set datapoint.attribute and won't accept the resource.attribute
-  # That is why we can't use the resource/set_attributes processor
   transform/set-name:
     metric_statements:
-      # We have to set the service instance here as it's necessary to set it as a datapoint attribute
       - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
-      - delete_key(datapoint.attributes, "datacenter")
       - delete_key(datapoint.attributes, "instance")
-      - delete_key(datapoint.attributes, "node_id")
-      - delete_key(datapoint.attributes, "node_scheduling_eligibility")
-      - delete_key(datapoint.attributes, "node_class")
-      - delete_key(datapoint.attributes, "node_status")
       - delete_key(datapoint.attributes, "service_name")
+      - delete_key(datapoint.attributes, "job")
 
 extensions:
   basicauth/grafana_cloud:
