@@ -22,7 +22,7 @@ job "otel-collector-nomad-server" {
     }
 
     service {
-      name = "otel-collector"
+      name = "otel-collector-nomad-server"
 
       check {
         type     = "http"
