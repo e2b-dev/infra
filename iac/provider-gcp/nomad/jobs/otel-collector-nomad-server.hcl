@@ -4,7 +4,7 @@ job "otel-collector-nomad-server" {
 
   priority = 95
 
-  group "otel-collector" {
+  group "otel-collector-nomad-server" {
 
     // Try to restart the task indefinitely
     // Tries to restart every 5 seconds
