@@ -78,6 +78,9 @@ exporters:
     auth:
       authenticator: basicauth/grafana_cloud
 service:
+  telemetry:
+    metrics:
+      level: none
   extensions:
     - basicauth/grafana_cloud
     - health_check
