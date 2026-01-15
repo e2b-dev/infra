@@ -34,7 +34,7 @@ job "otel-collector-nomad-server" {
       }
     }
 
-    task "start-collector" {
+    task "start-collector-nomad-server" {
       driver = "docker"
 
       config {
@@ -43,7 +43,6 @@ job "otel-collector-nomad-server" {
 
         volumes = [
           "local/config:/config",
-          "/:/hostfs:ro",
         ]
         args = [
           "--config=local/config/otel-collector-config.yaml",

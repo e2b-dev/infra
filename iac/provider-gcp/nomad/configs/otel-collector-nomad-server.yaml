@@ -72,9 +72,6 @@ extensions:
   health_check:
     endpoint: 0.0.0.0:13134
 exporters:
-  debug:
-    verbosity: detailed
-    use_internal_logger: false
   otlphttp/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
     endpoint: "${grafana_otlp_url}/otlp"
