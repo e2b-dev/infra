@@ -155,7 +155,7 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 	}
 	defer func() {
 		if err := df.Close(); err != nil {
-			c.log.Error(ctx, "failed to close directory", zap.Error(err))
+			c.Error(ctx, "failed to close directory", zap.Error(err))
 		}
 	}()
 
