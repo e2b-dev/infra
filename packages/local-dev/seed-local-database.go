@@ -47,7 +47,11 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close database connection: %v\n", err)
+		}
+	}()
 
 	// create user
 	if err := upsertUser(ctx, db); err != nil {
