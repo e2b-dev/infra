@@ -20,7 +20,6 @@ linters:
     - depguard
     - dupl
     - dupword
-    - errcheck
     - errchkjson
     - exhaustive
     - exhaustruct
