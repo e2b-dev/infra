@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
@@ -54,7 +55,11 @@ func (c *Client) QueryLatestMetrics(ctx context.Context, sandboxIDs []string, te
 	if err != nil {
 		return nil, fmt.Errorf("query metrics: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}()
 
 	var out []Metrics
 	for rows.Next() {
@@ -119,7 +124,11 @@ func (c *Client) QuerySandboxMetrics(ctx context.Context, sandboxID string, team
 		return nil, fmt.Errorf("query metrics: %w", err)
 	}
 
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}()
 	var out []Metrics
 	for rows.Next() {
 		var m Metrics

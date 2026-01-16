@@ -113,8 +113,12 @@ func (c *ClickhouseDelivery) Publish(_ context.Context, _ string, event events.S
 	return nil
 }
 
-func (c *ClickhouseDelivery) Close(context.Context) error {
-	defer c.conn.Close()
+func (c *ClickhouseDelivery) Close(ctx context.Context) error {
+	defer func() {
+		if err := c.conn.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close clickhouse connection", zap.Error(err))
+		}
+	}()
 
 	return c.batcher.Stop()
 }

@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
@@ -65,7 +66,11 @@ func (c *Client) QueryTeamMetrics(ctx context.Context, teamID string, start time
 		return nil, fmt.Errorf("query team metrics: %w", err)
 	}
 
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}()
 	var out []TeamMetrics
 	for rows.Next() {
 		var m TeamMetrics
@@ -115,7 +120,11 @@ func (c *Client) QueryMaxStartRateTeamMetrics(ctx context.Context, teamID string
 	if err != nil {
 		return MaxTeamMetric{}, fmt.Errorf("query max start rate team metrics: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}()
 
 	// No data -> return 0
 	if !rows.Next() {
@@ -154,7 +163,11 @@ func (c *Client) QueryMaxConcurrentTeamMetrics(ctx context.Context, teamID strin
 		return MaxTeamMetric{}, fmt.Errorf("query max concurrent team metrics: %w", err)
 	}
 
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}()
 
 	// No data -> return 0
 	if !rows.Next() {

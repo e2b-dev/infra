@@ -152,7 +152,9 @@ func TestBatcherConcurrentPush(t *testing.T) {
 	for range 10 {
 		wg.Go(func() {
 			for i := range 100 {
-				b.Push(uint32(i))
+				if _, err := b.Push(uint32(i)); err != nil {
+					t.Errorf("failed to push item: %v", err)
+				}
 				time.Sleep(time.Millisecond)
 				atomic.AddUint32(&ss, uint32(i))
 			}
