@@ -3,6 +3,7 @@ package tcpfirewall
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"strings"
 	"syscall"
@@ -37,14 +38,18 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 	if err != nil {
 		logger.Error(ctx, "Egress check failed", zap.Error(err))
 		metrics.RecordError(ctx, ErrorTypeEgressCheck, protocol)
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close connection: %v", err)
+		}
 
 		return
 	}
 
 	if !allowed {
 		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType)
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close connection: %v", err)
+		}
 
 		return
 	}
@@ -75,14 +80,18 @@ func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort i
 	if err != nil {
 		logger.Error(ctx, "Egress check failed", zap.Error(err))
 		metrics.RecordError(ctx, ErrorTypeEgressCheck, protocol)
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close connection: %v", err)
+		}
 
 		return
 	}
 
 	if !allowed {
 		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType)
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close connection: %v", err)
+		}
 
 		return
 	}

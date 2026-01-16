@@ -95,12 +95,13 @@ func (bb *BaseBuilder) provisionSandbox(
 
 	// read all incoming logs and detect message "{exitPrefix}:X" where X is the exit code
 	done := utils.NewErrorOnce()
-	go func() (e error) {
+	go func() {
+		var scanErr error
 		defer func() {
 			_, _ = io.Copy(io.Discard, exitCodeReader)
 		}()
 		defer func() {
-			_ = done.SetError(e)
+			_ = done.SetError(scanErr)
 		}()
 
 		scanner := bufio.NewScanner(exitCodeReader)
@@ -110,18 +111,24 @@ func (bb *BaseBuilder) provisionSandbox(
 				exitStatus := after
 				if exitStatus == "0" {
 					// Success exit code
-					return nil
+					scanErr = nil
+
+					return
 				}
 
-				return fmt.Errorf("exit status: %s", exitStatus)
+				scanErr = fmt.Errorf("exit status: %s", exitStatus)
+
+				return
 			}
 		}
 
 		if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
-			return err
+			scanErr = err
+
+			return
 		}
 
-		return errors.New("exit code not detected")
+		scanErr = errors.New("exit code not detected")
 	}()
 
 	logsWriter := io.MultiWriter(prefixedLogsWriter, exitCodeWriter)

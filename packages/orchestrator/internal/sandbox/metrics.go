@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type Metrics struct {
@@ -48,7 +51,11 @@ func (c *Checks) GetMetrics(ctx context.Context, timeout time.Duration) (*Metric
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close response body", zap.Error(err), logger.WithSandboxID(c.sandbox.Runtime.SandboxID))
+		}
+	}()
 
 	if response.StatusCode != http.StatusOK {
 		err = fmt.Errorf("unexpected status code: %d", response.StatusCode)

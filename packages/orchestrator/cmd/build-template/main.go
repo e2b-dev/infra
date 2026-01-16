@@ -127,7 +127,9 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 		}
 		for k, v := range env {
 			if os.Getenv(k) == "" {
-				os.Setenv(k, v)
+				if err := os.Setenv(k, v); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to set env var %s: %v\n", k, err)
+				}
 			}
 		}
 
@@ -142,7 +144,9 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 		envdPath := os.Getenv("HOST_ENVD_PATH")
 		if envdPath == "" {
 			envdPath = abs("../envd/bin/envd")
-			os.Setenv("HOST_ENVD_PATH", envdPath)
+			if err := os.Setenv("HOST_ENVD_PATH", envdPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to set HOST_ENVD_PATH: %v\n", err)
+			}
 		}
 		if _, err := os.Stat(envdPath); err == nil {
 			fmt.Printf("✓ Envd: %s\n", envdPath)
@@ -152,10 +156,14 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 	} else {
 		bucket := strings.TrimPrefix(storagePath, "gs://")
 		if os.Getenv("STORAGE_PROVIDER") == "" {
-			os.Setenv("STORAGE_PROVIDER", "GCPBucket")
+			if err := os.Setenv("STORAGE_PROVIDER", "GCPBucket"); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to set STORAGE_PROVIDER: %v\n", err)
+			}
 		}
 		if os.Getenv("TEMPLATE_BUCKET_NAME") == "" {
-			os.Setenv("TEMPLATE_BUCKET_NAME", bucket)
+			if err := os.Setenv("TEMPLATE_BUCKET_NAME", bucket); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to set TEMPLATE_BUCKET_NAME: %v\n", err)
+			}
 		}
 		fmt.Printf("✓ Storage: gs://%s\n", bucket)
 	}
@@ -211,11 +219,23 @@ func doBuild(
 			l.Error(ctx, "proxy error", zap.Error(err))
 		}
 	}()
-	defer sandboxProxy.Close(parentCtx)
+	defer func() {
+		if err := sandboxProxy.Close(parentCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close sandbox proxy: %v\n", err)
+		}
+	}()
 
 	tcpFirewall := tcpfirewall.New(l, networkConfig, sandboxes, noop.NewMeterProvider())
-	go tcpFirewall.Start(ctx)
-	defer tcpFirewall.Close(parentCtx)
+	go func() {
+		if err := tcpFirewall.Start(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: tcp firewall error: %v\n", err)
+		}
+	}()
+	defer func() {
+		if err := tcpFirewall.Close(parentCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close tcp firewall: %v\n", err)
+		}
+	}()
 
 	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
@@ -231,7 +251,11 @@ func doBuild(
 		return fmt.Errorf("nbd pool: %w", err)
 	}
 	go devicePool.Populate(ctx)
-	defer devicePool.Close(parentCtx)
+	defer func() {
+		if err := devicePool.Close(parentCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close device pool: %v\n", err)
+		}
+	}()
 
 	slotStorage, err := network.NewStorageLocal(ctx, networkConfig)
 	if err != nil {
@@ -239,7 +263,11 @@ func doBuild(
 	}
 	networkPool := network.NewPool(8, 8, slotStorage, networkConfig)
 	go networkPool.Populate(ctx)
-	defer networkPool.Close(parentCtx)
+	defer func() {
+		if err := networkPool.Close(parentCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close network pool: %v\n", err)
+		}
+	}()
 
 	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
@@ -250,7 +278,11 @@ func doBuild(
 	if err != nil {
 		return fmt.Errorf("dockerhub: %w", err)
 	}
-	defer dockerhubRepo.Close()
+	defer func() {
+		if err := dockerhubRepo.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close dockerhub repo: %v\n", err)
+		}
+	}()
 
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
 	featureFlags, _ := featureflags.NewClient()
@@ -438,7 +470,11 @@ func download(ctx context.Context, url, path string, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, url)
@@ -448,7 +484,11 @@ func download(ctx context.Context, url, path string, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file: %v\n", err)
+		}
+	}()
 
 	_, err = io.Copy(f, resp.Body)
 	if err == nil {

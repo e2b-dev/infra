@@ -3,6 +3,7 @@ package tcpfirewall
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"strings"
 
@@ -71,7 +72,9 @@ func (p *Proxy) Start(ctx context.Context) error {
 
 	go func() {
 		<-ctx.Done()
-		p.proxy.Close()
+		if err := p.proxy.Close(); err != nil {
+			log.Printf("failed to close proxy: %v", err)
+		}
 	}()
 
 	err := p.proxy.Run()
@@ -132,7 +135,9 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	if err != nil {
 		t.logger.Error(ctx, "failed to find sandbox for connection", zap.String("source", sourceAddr), zap.Error(err))
 		t.metrics.RecordError(ctx, ErrorTypeSandboxLookup, t.protocol)
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close connection: %v", err)
+		}
 
 		return
 	}
@@ -142,7 +147,9 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	if err != nil {
 		t.logger.Error(ctx, "failed to get original destination", zap.Error(err))
 		t.metrics.RecordError(ctx, ErrorTypeOrigDst, t.protocol)
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close connection: %v", err)
+		}
 
 		return
 	}

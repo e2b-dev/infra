@@ -330,7 +330,7 @@ func (f *Factory) CreateSandbox(
 		fcErr := fcHandle.Exit.Wait()
 		err := sbx.Stop(ctx)
 
-		exit.SetError(errors.Join(err, fcErr))
+		_ = exit.SetError(errors.Join(err, fcErr))
 	}()
 
 	return sbx, nil
@@ -655,7 +655,7 @@ func (f *Factory) ResumeSandbox(
 
 		uffdWaitErr := fcUffd.Exit().Wait()
 		fcErr := fcHandle.Exit.Wait()
-		exit.SetError(errors.Join(err, fcErr, uffdWaitErr))
+		_ = exit.SetError(errors.Join(err, fcErr, uffdWaitErr))
 	}()
 
 	return sbx, nil
@@ -740,11 +740,19 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create template files: %w", err)
 	}
-	defer tf.Close()
+	defer func() {
+		if err := tf.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close template files", zap.Error(err), logger.WithSandboxID(s.Runtime.SandboxID))
+		}
+	}()
 
 	// The snapfile is required only because the FC API doesn't support passing /dev/null
 	snapfile := template.NewLocalFileLink(tf.CacheSnapfilePath())
-	defer snapfile.Close()
+	defer func() {
+		if err := snapfile.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close snapfile", zap.Error(err), logger.WithSandboxID(s.Runtime.SandboxID))
+		}
+	}()
 
 	err = s.process.CreateSnapshot(ctx, snapfile.Path())
 	if err != nil {

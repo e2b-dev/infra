@@ -117,7 +117,9 @@ func setupEnv(from string) error {
 
 	for k, v := range env {
 		if os.Getenv(k) == "" {
-			os.Setenv(k, v)
+			if err := os.Setenv(k, v); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to set env var %s: %v\n", k, err)
+			}
 		}
 	}
 
@@ -147,7 +149,9 @@ func (r *runner) resumeOnce(ctx context.Context, iter int) (time.Duration, error
 	dur := time.Since(t0)
 
 	if sbx != nil {
-		sbx.Close(context.WithoutCancel(ctx))
+		if closeErr := sbx.Close(context.WithoutCancel(ctx)); closeErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close sandbox: %v\n", closeErr)
+		}
 	}
 
 	return dur, err
@@ -174,7 +178,9 @@ func (r *runner) interactive(ctx context.Context) error {
 
 	<-ctx.Done()
 	fmt.Println("🧹 Cleanup...")
-	sbx.Close(context.WithoutCancel(ctx))
+	if err := sbx.Close(context.WithoutCancel(ctx)); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to close sandbox: %v\n", err)
+	}
 
 	return nil
 }
@@ -250,7 +256,11 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 	networkPool := network.NewPool(8, 8, slotStorage, config.NetworkConfig)
 	go networkPool.Populate(ctx)
-	defer networkPool.Close(context.WithoutCancel(ctx))
+	defer func() {
+		if err := networkPool.Close(context.WithoutCancel(ctx)); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close network pool: %v\n", err)
+		}
+	}()
 
 	if verbose {
 		fmt.Println("🔧 Creating NBD device pool...")
@@ -260,7 +270,11 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		return fmt.Errorf("nbd pool: %w", err)
 	}
 	go devicePool.Populate(ctx)
-	defer devicePool.Close(context.WithoutCancel(ctx))
+	defer func() {
+		if err := devicePool.Close(context.WithoutCancel(ctx)); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close device pool: %v\n", err)
+		}
+	}()
 
 	if verbose {
 		fmt.Println("🔧 Creating feature flags client...")

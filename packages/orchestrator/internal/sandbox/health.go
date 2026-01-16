@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (c *Checks) getHealth(ctx context.Context, timeout time.Duration) (bool, error) {
@@ -30,8 +33,12 @@ func (c *Checks) getHealth(ctx context.Context, timeout time.Duration) (bool, er
 		// From response.Body docstring:
 		//  // The default HTTP client's Transport may not reuse HTTP/1.x "keep-alive" TCP connections
 		//  if the Body is not read to completion and closed.
-		io.Copy(io.Discard, response.Body)
-		response.Body.Close()
+		if _, err := io.Copy(io.Discard, response.Body); err != nil {
+			logger.L().Error(ctx, "failed to drain response body", zap.Error(err), logger.WithSandboxID(c.sandbox.Runtime.SandboxID))
+		}
+		if err := response.Body.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close response body", zap.Error(err), logger.WithSandboxID(c.sandbox.Runtime.SandboxID))
+		}
 	}()
 
 	if response.StatusCode != http.StatusNoContent {

@@ -59,7 +59,11 @@ func (h *APIStore) Logs(c *gin.Context) {
 
 		return
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			h.logger.Error(ctx, "failed to close response body", zap.Error(err), logger.WithSandboxID(sbxID))
+		}
+	}()
 
 	c.Status(http.StatusOK)
 }

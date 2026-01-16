@@ -271,7 +271,11 @@ func (pb *OptimizeBuilder) runSandboxAndCollectPrefetch(
 	if err != nil {
 		return block.PrefetchData{}, fmt.Errorf("failed to resume sandbox: %w", err)
 	}
-	defer sbx.Close(ctx)
+	defer func() {
+		if err := sbx.Close(ctx); err != nil {
+			logger.L().Error(ctx, "failed to close sandbox", zap.Error(err))
+		}
+	}()
 
 	prefetchData, err := sbx.MemoryPrefetchData(ctx)
 	if err != nil {

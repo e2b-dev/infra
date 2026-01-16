@@ -78,7 +78,11 @@ func (lb *LayerExecutor) BuildLayer(
 	if err != nil {
 		return metadata.Template{}, err
 	}
-	defer sbx.Close(ctx)
+	defer func() {
+		if err := sbx.Close(ctx); err != nil {
+			logger.L().Error(ctx, "failed to close sandbox", zap.Error(err))
+		}
+	}()
 
 	// Add to proxy so we can call envd and route traffic from the sandbox
 	lb.sandboxes.Insert(sbx)

@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -138,7 +140,11 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close file", zap.Error(err), zap.String("path", path))
+		}
+	}()
 
 	data, err := io.ReadAll(f)
 	if err != nil {

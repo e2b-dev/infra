@@ -184,7 +184,7 @@ func run(ctx, nbdContext context.Context, featureFlags *featureflags.Client, bui
 			return fmt.Errorf("failed to create mount path directory: %w", err)
 		}
 
-		fmt.Fprintf(os.Stdout, "creating mount path directory: %s\n", mountPath)
+		_, _ = fmt.Fprintf(os.Stdout, "creating mount path directory: %s\n", mountPath)
 
 		mountCleanup, err := testutils.MountNBDDevice(devicePath, mountPath)
 		defer func() {

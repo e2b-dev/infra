@@ -222,7 +222,9 @@ func TestEmptyRanges(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		c.Close()
+		if err := c.Close(); err != nil {
+			t.Errorf("failed to close cache: %v", err)
+		}
 	})
 }
 

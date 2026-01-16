@@ -143,7 +143,11 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 	// Track successful envd init
 	envdInitCalls.Add(ctx, 1, metric.WithAttributes(attributesSuccess...))
 
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close response body", zap.Error(err), logger.WithSandboxID(s.Runtime.SandboxID))
+		}
+	}()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read envd init response body: %w", err)
