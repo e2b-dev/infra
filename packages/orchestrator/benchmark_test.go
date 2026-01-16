@@ -422,11 +422,19 @@ func downloadKernel(b *testing.B, filename, url string) {
 	response, err := client.Do(req)
 	require.NoError(b, err)
 	require.Equal(b, http.StatusOK, response.StatusCode)
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			b.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
 	require.NoError(b, err)
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			b.Errorf("failed to close file: %v", err)
+		}
+	}()
 
 	_, err = file.ReadFrom(response.Body)
 	require.NoError(b, err)

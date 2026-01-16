@@ -80,17 +80,27 @@ func (bb *BaseBuilder) provisionSandbox(
 
 	zapWriter := &zapio.Writer{Log: userLogger.Detach(ctx), Level: zap.DebugLevel}
 	prefixedLogsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
-	defer prefixedLogsWriter.Close()
+	defer func() {
+		if err := prefixedLogsWriter.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close prefixed logs writer", zap.Error(err))
+		}
+	}()
 
 	exitCodeReader, exitCodeWriter := io.Pipe()
-	defer exitCodeWriter.Close()
+	defer func() {
+		if err := exitCodeWriter.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close exit code writer", zap.Error(err))
+		}
+	}()
 
 	// read all incoming logs and detect message "{exitPrefix}:X" where X is the exit code
 	done := utils.NewErrorOnce()
 	go func() (e error) {
-		defer io.Copy(io.Discard, exitCodeReader)
 		defer func() {
-			done.SetError(e)
+			_, _ = io.Copy(io.Discard, exitCodeReader)
+		}()
+		defer func() {
+			_ = done.SetError(e)
 		}()
 
 		scanner := bufio.NewScanner(exitCodeReader)
@@ -143,7 +153,11 @@ func (bb *BaseBuilder) provisionSandbox(
 	if err != nil {
 		return fmt.Errorf("error creating sandbox: %w", err)
 	}
-	defer sbx.Close(ctx)
+	defer func() {
+		if err := sbx.Close(ctx); err != nil {
+			logger.L().Error(ctx, "failed to close sandbox", zap.Error(err))
+		}
+	}()
 
 	// Add to proxy so we can call envd and route traffic from the sandbox
 	bb.sandboxes.Insert(sbx)

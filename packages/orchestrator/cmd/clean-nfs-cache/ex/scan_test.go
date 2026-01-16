@@ -18,7 +18,9 @@ func TestScanDir(t *testing.T) {
 	path := t.TempDir()
 	CreateTestDir(path, 157, 10000, 1000)
 	t.Cleanup(func() {
-		os.RemoveAll(path)
+		if err := os.RemoveAll(path); err != nil {
+			t.Errorf("failed to remove path: %v", err)
+		}
 	})
 
 	c := NewCleaner(Options{
@@ -37,7 +39,11 @@ func TestScanDir(t *testing.T) {
 
 	df, err := os.Open(path)
 	require.NoError(t, err)
-	defer df.Close()
+	defer func() {
+		if err := df.Close(); err != nil {
+			t.Errorf("failed to close directory: %v", err)
+		}
+	}()
 
 	dir, err := c.scanDir(ctx, []*Dir{c.root})
 	require.NoError(t, err)
@@ -48,7 +54,11 @@ func TestScanDir(t *testing.T) {
 	sub := dir.Dirs[0]
 	dfsub, err := os.Open(filepath.Join(path, sub.Name))
 	require.NoError(t, err)
-	defer dfsub.Close()
+	defer func() {
+		if err := dfsub.Close(); err != nil {
+			t.Errorf("failed to close subdirectory: %v", err)
+		}
+	}()
 
 	sub, err = c.scanDir(ctx, []*Dir{c.root, sub})
 	require.NoError(t, err)

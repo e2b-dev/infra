@@ -107,7 +107,9 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			if err != nil {
 				return math.MaxUint32, err
 			}
-			server.Close()
+			if err := server.Close(); err != nil {
+				logger.L().Error(ctx, "failed to close server file", zap.Error(err))
+			}
 
 			dispatch := NewDispatch(serverc, d.Backend)
 			// Start reading commands on the socket and dispatching them to our provider
@@ -147,10 +149,14 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
 		for _, sock := range d.socksClient {
-			sock.Close()
+			if err := sock.Close(); err != nil {
+				logger.L().Error(ctx, "failed to close client socket", zap.Error(err))
+			}
 		}
 		for _, sock := range d.socksServer {
-			sock.Close()
+			if err := sock.Close(); err != nil {
+				logger.L().Error(ctx, "failed to close server socket", zap.Error(err))
+			}
 		}
 		// Release the device back to the pool
 		releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)

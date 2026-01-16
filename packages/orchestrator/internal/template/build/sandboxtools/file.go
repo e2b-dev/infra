@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -39,7 +40,11 @@ func CopyFile(
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("failed to close source file: %v", err)
+		}
+	}()
 
 	// Pipe to stream data
 	pr, pw := io.Pipe()
@@ -49,11 +54,15 @@ func CopyFile(
 	go func() {
 		var err error
 		defer func() {
-			writer.Close()
+			if err := writer.Close(); err != nil {
+				log.Printf("failed to close multipart writer: %v", err)
+			}
 			if err != nil {
-				pw.CloseWithError(err)
+				_ = pw.CloseWithError(err)
 			} else {
-				pw.Close()
+				if err := pw.Close(); err != nil {
+					log.Printf("failed to close pipe writer: %v", err)
+				}
 			}
 			errChan <- err
 		}()
@@ -108,10 +117,14 @@ func CopyFile(
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	if uploadErr := <-errChan; uploadErr != nil {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 
 		return fmt.Errorf("file upload failed: %w", uploadErr)
 	}

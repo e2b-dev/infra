@@ -72,7 +72,7 @@ func (m *NoopMemory) Start(context.Context, string) error {
 }
 
 func (m *NoopMemory) Stop() error {
-	m.exit.SetSuccess()
+	_ = m.exit.SetSuccess()
 
 	// This should be idempotent, so no need to return an error if it's already set.
 	return nil

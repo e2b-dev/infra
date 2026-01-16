@@ -191,7 +191,11 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}
 	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
-	defer localTemplate.Close(ctx)
+	defer func() {
+		if err := localTemplate.Close(ctx); err != nil {
+			logger.L().Error(ctx, "failed to close local template", zap.Error(err))
+		}
+	}()
 
 	// Env variables from the Docker image
 	baseMetadata.Context.EnvVars = oci.ParseEnvs(envsImg.Env)

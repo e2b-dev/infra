@@ -93,7 +93,9 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		uffdFd.close()
+		if err := uffdFd.close(); err != nil {
+			t.Errorf("failed to close uffd: %v", err)
+		}
 	})
 
 	err = configureApi(uffdFd, tt.pagesize)
@@ -131,14 +133,18 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		offsetsReader.Close()
+		if err := offsetsReader.Close(); err != nil {
+			t.Errorf("failed to close offsets reader: %v", err)
+		}
 	})
 
 	readyReader, readyWriter, err := os.Pipe()
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		readyReader.Close()
+		if err := readyReader.Close(); err != nil {
+			t.Errorf("failed to close ready reader: %v", err)
+		}
 	})
 
 	readySignal := make(chan struct{}, 1)
@@ -161,10 +167,18 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	err = cmd.Start()
 	require.NoError(t, err)
 
-	contentReader.Close()
-	offsetsWriter.Close()
-	readyWriter.Close()
-	uffdFile.Close()
+	if err := contentReader.Close(); err != nil {
+		t.Errorf("failed to close content reader: %v", err)
+	}
+	if err := offsetsWriter.Close(); err != nil {
+		t.Errorf("failed to close offsets writer: %v", err)
+	}
+	if err := readyWriter.Close(); err != nil {
+		t.Errorf("failed to close ready writer: %v", err)
+	}
+	if err := uffdFile.Close(); err != nil {
+		t.Errorf("failed to close uffd file: %v", err)
+	}
 
 	t.Cleanup(func() {
 		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
@@ -252,12 +266,20 @@ func crossProcessServe() error {
 	memoryStart := uintptr(startRaw)
 
 	uffdFile := os.NewFile(uintptr(3), os.Getenv("GO_UFFD_FILE"))
-	defer uffdFile.Close()
+	defer func() {
+		if err := uffdFile.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close uffd file: %v\n", err)
+		}
+	}()
 
 	uffdFd := uffdFile.Fd()
 
 	contentFile := os.NewFile(uintptr(4), "content")
-	defer contentFile.Close()
+	defer func() {
+		if err := contentFile.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close content file: %v\n", err)
+		}
+	}()
 
 	content, err := io.ReadAll(contentFile)
 	if err != nil {
@@ -300,7 +322,11 @@ func crossProcessServe() error {
 	defer signal.Stop(offsetsSignal)
 
 	go func() {
-		defer offsetsFile.Close()
+		defer func() {
+			if err := offsetsFile.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to close offsets file: %v\n", err)
+			}
+		}()
 
 		for {
 			select {
@@ -329,7 +355,11 @@ func crossProcessServe() error {
 	if err != nil {
 		return fmt.Errorf("exit creating fd exit: %w", err)
 	}
-	defer fdExit.Close()
+	defer func() {
+		if err := fdExit.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close fd exit: %v\n", err)
+		}
+	}()
 
 	go func() {
 		defer func() {

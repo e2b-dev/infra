@@ -31,7 +31,11 @@ func executeScript(t *testing.T, script string, workDir string) (stdout, stderr 
 	t.Helper()
 	scriptFile := filepath.Join(workDir, "test_script.sh")
 	err := os.WriteFile(scriptFile, []byte(script), 0o755)
-	defer os.Remove(scriptFile)
+	defer func() {
+		if err := os.Remove(scriptFile); err != nil {
+			t.Errorf("failed to remove script file: %v", err)
+		}
+	}()
 
 	require.NoError(t, err, "Failed to write script file")
 
@@ -706,7 +710,9 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 						fullPath := filepath.Join(targetBaseDir, path)
 						perms := getFilePermissions(t, fullPath)
 						expectedPerms := os.FileMode(0)
-						fmt.Sscanf(tc.permissions, "%o", &expectedPerms)
+						if _, err := fmt.Sscanf(tc.permissions, "%o", &expectedPerms); err != nil {
+							t.Errorf("failed to parse permissions: %v", err)
+						}
 						assert.Equal(t, expectedPerms, perms, "File %s should have %s permissions", path, tc.permissions)
 					}
 				}

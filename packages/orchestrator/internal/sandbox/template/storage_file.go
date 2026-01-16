@@ -25,7 +25,12 @@ func newStorageFile(
 		return nil, fmt.Errorf("failed to create file: %w", err)
 	}
 
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			// Log error but don't fail - file already written
+			fmt.Fprintf(os.Stderr, "failed to close file: %v\n", err)
+		}
+	}()
 
 	object, err := persistence.OpenBlob(ctx, objectPath, objectType)
 	if err != nil {

@@ -87,7 +87,7 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("failed to create fd exit: %w", errors.Join(err, closeErr))
 	}
 
-	u.fdExit.SetValue(fdExit)
+	_ = u.fdExit.SetValue(fdExit)
 
 	go func() {
 		ctx, span := tracer.Start(ctx, "serve uffd")
@@ -99,13 +99,13 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 		// If handle failed before setting the handler value, set an error to unblock
 		// any waiters (e.g., prefetcher goroutines waiting on Prefault).
 		if handleErr != nil {
-			u.handler.SetError(handleErr)
+			_ = u.handler.SetError(handleErr)
 		}
 
 		closeErr := u.lis.Close()
 		fdExitErr := fdExit.Close()
 
-		u.exit.SetError(errors.Join(handleErr, closeErr, fdExitErr))
+		_ = u.exit.SetError(errors.Join(handleErr, closeErr, fdExitErr))
 
 		// Close the ready channel to unblock any waiters (safe to call multiple times via Once)
 		u.readyOnce.Do(func() { close(u.readyCh) })
@@ -174,7 +174,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		return fmt.Errorf("failed to create uffd: %w", err)
 	}
 
-	u.handler.SetValue(uffd)
+	_ = u.handler.SetValue(uffd)
 
 	defer func() {
 		closeErr := uffd.Close()

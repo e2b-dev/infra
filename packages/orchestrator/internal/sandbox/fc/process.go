@@ -172,8 +172,16 @@ func (p *Process) configure(
 	defer cancelStart(fmt.Errorf("fc finished starting"))
 
 	go func() {
-		defer stderrWriter.Close()
-		defer stdoutWriter.Close()
+		defer func() {
+			if err := stderrWriter.Close(); err != nil {
+				logger.L().Error(ctx, "failed to close stderr writer", zap.Error(err))
+			}
+		}()
+		defer func() {
+			if err := stdoutWriter.Close(); err != nil {
+				logger.L().Error(ctx, "failed to close stdout writer", zap.Error(err))
+			}
+		}()
 
 		waitErr := p.cmd.Wait()
 		if waitErr != nil {
@@ -181,7 +189,7 @@ func (p *Process) configure(
 			if errors.As(waitErr, &exitErr) {
 				// Check if the process was killed by a signal
 				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && (status.Signal() == syscall.SIGKILL || status.Signal() == syscall.SIGTERM) {
-					p.Exit.SetError(nil)
+					_ = p.Exit.SetError(nil)
 
 					return
 				}
@@ -190,14 +198,14 @@ func (p *Process) configure(
 			logger.L().Error(ctx, "error waiting for fc process", zap.Error(waitErr))
 
 			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
-			p.Exit.SetError(errMsg)
+			_ = p.Exit.SetError(errMsg)
 
 			cancelStart(errMsg)
 
 			return
 		}
 
-		p.Exit.SetError(nil)
+		_ = p.Exit.SetError(nil)
 	}()
 
 	// Wait for the FC process to start so we can use FC API

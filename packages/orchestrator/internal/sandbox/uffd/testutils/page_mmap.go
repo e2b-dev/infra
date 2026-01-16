@@ -45,7 +45,9 @@ func newMmap(t *testing.T, size, pagesize uint64, flags int) ([]byte, uintptr, e
 	}
 
 	t.Cleanup(func() {
-		syscall.Munmap(b)
+		if err := syscall.Munmap(b); err != nil {
+			t.Errorf("failed to munmap: %v", err)
+		}
 	})
 
 	return b, uintptr(unsafe.Pointer(&b[0])), nil

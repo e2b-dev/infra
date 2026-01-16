@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -166,7 +167,9 @@ func runCommandWithAllOptions(
 	}
 	defer func() {
 		processCancel()
-		commandStream.Close()
+		if err := commandStream.Close(); err != nil {
+			log.Printf("failed to close command stream: %v", err)
+		}
 	}()
 
 	msgCh, msgErrCh := grpc.StreamToChannel(ctx, commandStream)

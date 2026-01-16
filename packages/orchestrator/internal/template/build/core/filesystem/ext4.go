@@ -278,7 +278,12 @@ func MountOverlayFS(ctx context.Context, layers []string, mountPoint string) err
 	if err != nil {
 		return fmt.Errorf("fsopen failed: %w", err)
 	}
-	defer unix.Close(fsfd)
+	defer func() {
+		if err := unix.Close(fsfd); err != nil {
+			// Log error but don't fail - we're in defer
+			fmt.Fprintf(os.Stderr, "failed to close fsfd: %v\n", err)
+		}
+	}()
 
 	// Set lowerdir using FSCONFIG_SET_STRING
 	for _, layer := range layers {
@@ -298,7 +303,12 @@ func MountOverlayFS(ctx context.Context, layers []string, mountPoint string) err
 	if err != nil {
 		return fmt.Errorf("fsmount failed: %w", err)
 	}
-	defer unix.Close(mfd)
+	defer func() {
+		if err := unix.Close(mfd); err != nil {
+			// Log error but don't fail - we're in defer
+			fmt.Fprintf(os.Stderr, "failed to close mfd: %v\n", err)
+		}
+	}()
 
 	// Mount to target
 	if err := unix.MoveMount(mfd, "", -1, mountPoint, unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {

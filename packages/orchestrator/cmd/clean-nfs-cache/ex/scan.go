@@ -153,7 +153,11 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 	if err != nil {
 		return nil, fmt.Errorf("failed to open directory %s: %w", absPath, err)
 	}
-	defer df.Close()
+	defer func() {
+		if err := df.Close(); err != nil {
+			c.log.Error(ctx, "failed to close directory", zap.Error(err))
+		}
+	}()
 
 	entries := []os.DirEntry{}
 	for {

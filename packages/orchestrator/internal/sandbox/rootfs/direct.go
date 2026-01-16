@@ -39,7 +39,11 @@ func NewDirectProvider(ctx context.Context, rootfs block.ReadonlyDevice, path st
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close file", zap.Error(err))
+		}
+	}()
 
 	size, err := rootfs.Size(ctx)
 	if err != nil {
@@ -137,7 +141,11 @@ func (o *DirectProvider) exportToDiff(ctx context.Context, out io.Writer) (*head
 	if err != nil {
 		return nil, fmt.Errorf("error opening path: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close file", zap.Error(err))
+		}
+	}()
 
 	block := make([]byte, o.blockSize)
 	for i := int64(0); i < int64(o.header.Metadata.Size); i += o.blockSize {

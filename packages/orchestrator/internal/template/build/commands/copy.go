@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,9 +89,13 @@ func (c *Copy) Execute(
 	pr, pw := io.Pipe()
 	// Start writing tar data to the pipe writer in a goroutine
 	go func() {
-		defer pw.Close()
+		defer func() {
+			if err := pw.Close(); err != nil {
+				log.Printf("failed to close pipe writer: %v", err)
+			}
+		}()
 		if _, err := obj.WriteTo(ctx, pw); err != nil {
-			pw.CloseWithError(err)
+			_ = pw.CloseWithError(err)
 		}
 	}()
 
@@ -98,8 +103,16 @@ func (c *Copy) Execute(
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to create temporary file for layer tar: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			log.Printf("failed to remove temporary file: %v", err)
+		}
+	}()
+	defer func() {
+		if err := tmpFile.Close(); err != nil {
+			log.Printf("failed to close temporary file: %v", err)
+		}
+	}()
 
 	_, err = io.Copy(tmpFile, pr)
 	if err != nil {

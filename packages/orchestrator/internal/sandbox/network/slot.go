@@ -276,7 +276,12 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
-	defer n.Close()
+	defer func() {
+		if err := n.Close(); err != nil {
+			// Log error but don't fail - we're in defer
+			log.Printf("failed to close namespace: %v", err)
+		}
+	}()
 
 	err = n.Do(func(_ ns.NetNS) error {
 		for _, cidr := range network.GetEgress().GetAllowedCidrs() {
@@ -316,7 +321,12 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
-	defer n.Close()
+	defer func() {
+		if err := n.Close(); err != nil {
+			// Log error but don't fail - we're in defer
+			log.Printf("failed to close namespace: %v", err)
+		}
+	}()
 
 	err = n.Do(func(_ ns.NetNS) error {
 		err := s.Firewall.Reset()

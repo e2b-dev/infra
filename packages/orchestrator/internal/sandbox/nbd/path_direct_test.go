@@ -36,7 +36,9 @@ func TestPathDirect_Direct4MBWrite(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		unix.Munmap(buf)
+		if err := unix.Munmap(buf); err != nil {
+			t.Errorf("failed to munmap buffer: %v", err)
+		}
 	})
 
 	n, err := deviceFile.WriteAt(buf, 0)
@@ -65,7 +67,9 @@ func TestPathDirect_Direct32MBWrite(t *testing.T) {
 	require.NoError(t, err, "failed to mmap")
 
 	t.Cleanup(func() {
-		unix.Munmap(buf)
+		if err := unix.Munmap(buf); err != nil {
+			t.Errorf("failed to munmap buffer: %v", err)
+		}
 	})
 
 	n, err := deviceFile.WriteAt(buf, 0)
@@ -179,7 +183,9 @@ func setupNBDDevice(t *testing.T, featureFlags *featureflags.Client, size, block
 
 	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-rootfs.ext4.cow.cache-%s", uuid.New().String()))
 	t.Cleanup(func() {
-		os.RemoveAll(cowCachePath)
+		if err := os.RemoveAll(cowCachePath); err != nil {
+			t.Errorf("failed to remove cache path: %v", err)
+		}
 	})
 
 	cache, err := block.NewCache(
@@ -192,13 +198,17 @@ func setupNBDDevice(t *testing.T, featureFlags *featureflags.Client, size, block
 
 	overlay := block.NewOverlay(emptyDevice, cache)
 	t.Cleanup(func() {
-		overlay.Close()
+		if err := overlay.Close(); err != nil {
+			t.Errorf("failed to close overlay: %v", err)
+		}
 	})
 
 	nbdContext := context.Background()
 	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, overlay, featureFlags)
 	t.Cleanup(func() {
-		deviceCleanup.Run(t.Context(), 30*time.Second)
+		if err := deviceCleanup.Run(t.Context(), 30*time.Second); err != nil {
+			t.Errorf("failed to cleanup device: %v", err)
+		}
 	})
 	require.NoError(t, err, "failed to get nbd device")
 
@@ -207,7 +217,9 @@ func setupNBDDevice(t *testing.T, featureFlags *featureflags.Client, size, block
 	deviceFile, err := os.OpenFile(devicePath, flags, 0)
 	require.NoError(t, err, "failed to open device")
 	t.Cleanup(func() {
-		deviceFile.Close()
+		if err := deviceFile.Close(); err != nil {
+			t.Errorf("failed to close device file: %v", err)
+		}
 	})
 
 	return deviceFile

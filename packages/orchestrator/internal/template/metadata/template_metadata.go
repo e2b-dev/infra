@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 
 	"go.opentelemetry.io/otel"
@@ -184,7 +185,11 @@ func FromFile(path string) (Template, error) {
 	if err != nil {
 		return Template{}, fmt.Errorf("failed to open metadata file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("failed to close metadata file: %v", err)
+		}
+	}()
 
 	templateMetadata, err := deserialize(f)
 	if err != nil {

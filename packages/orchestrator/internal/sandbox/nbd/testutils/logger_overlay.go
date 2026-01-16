@@ -20,15 +20,15 @@ func NewLoggerOverlay(overlay *block.Overlay) *LoggerOverlay {
 func (l *LoggerOverlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stdout, "[read panic recovered]: [%d, %d] -> %v\n", off, len(p), r)
+			_, _ = fmt.Fprintf(os.Stdout, "[read panic recovered]: [%d, %d] -> %v\n", off, len(p), r)
 		}
 	}()
 
-	fmt.Fprintf(os.Stdout, "[read started]: [%d, %d]\n", off, len(p))
+	_, _ = fmt.Fprintf(os.Stdout, "[read started]: [%d, %d]\n", off, len(p))
 
 	n, err := l.overlay.ReadAt(ctx, p, off)
 
-	fmt.Fprintf(os.Stdout, "[read completed]: [%d, %d] -> %d\n", off, len(p), n)
+	_, _ = fmt.Fprintf(os.Stdout, "[read completed]: [%d, %d] -> %d\n", off, len(p), n)
 
 	return n, err
 }
@@ -36,15 +36,15 @@ func (l *LoggerOverlay) ReadAt(ctx context.Context, p []byte, off int64) (int, e
 func (l *LoggerOverlay) WriteAt(p []byte, off int64) (int, error) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stdout, "[write panic recovered]: [%d, %d] -> %v\n", off, len(p), r)
+			_, _ = fmt.Fprintf(os.Stdout, "[write panic recovered]: [%d, %d] -> %v\n", off, len(p), r)
 		}
 	}()
 
-	fmt.Fprintf(os.Stdout, "[write started]: [%d, %d]\n", off, len(p))
+	_, _ = fmt.Fprintf(os.Stdout, "[write started]: [%d, %d]\n", off, len(p))
 
 	n, err := l.overlay.WriteAt(p, off)
 
-	fmt.Fprintf(os.Stdout, "[write completed]: [%d, %d] -> %d\n", off, len(p), n)
+	_, _ = fmt.Fprintf(os.Stdout, "[write completed]: [%d, %d] -> %d\n", off, len(p), n)
 
 	return n, err
 }

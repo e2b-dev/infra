@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -266,7 +267,11 @@ func unpackRootfs(ctx context.Context, l logger.Logger, srcImage containerregist
 		return fmt.Errorf("while creating temporary file for squashed image: %w", err)
 	}
 	defer func() {
-		go os.RemoveAll(ociPath)
+		go func() {
+			if err := os.RemoveAll(ociPath); err != nil {
+				log.Printf("failed to remove oci path: %v", err)
+			}
+		}()
 	}()
 
 	// Create export of layers in the temporary directory
@@ -281,7 +286,11 @@ func unpackRootfs(ctx context.Context, l logger.Logger, srcImage containerregist
 		return fmt.Errorf("while creating temporary file for squashed image: %w", err)
 	}
 	defer func() {
-		go os.RemoveAll(mountPath)
+		go func() {
+			if err := os.RemoveAll(mountPath); err != nil {
+				log.Printf("failed to remove mount path: %v", err)
+			}
+		}()
 	}()
 
 	err = filesystem.MountOverlayFS(ctx, layers, mountPath)
@@ -393,7 +402,11 @@ func createExport(ctx context.Context, logger logger.Logger, srcImage containerr
 			if err != nil {
 				return fmt.Errorf("failed to get uncompressed layer %d: %w", i, err)
 			}
-			defer rc.Close()
+			defer func() {
+				if err := rc.Close(); err != nil {
+					log.Printf("failed to close layer reader: %v", err)
+				}
+			}()
 
 			err = archive.Untar(rc, layerPath, &archive.TarOptions{
 				IgnoreChownErrors: true,

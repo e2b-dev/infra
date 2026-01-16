@@ -82,6 +82,6 @@ func (w *PrefixFilteredWriter) log(b []byte) {
 	noPrefixLine := strings.TrimPrefix(line, w.PrefixFilter)
 	if w.PrefixFilter == "" || noPrefixLine != line {
 		toWrite := []byte(noPrefixLine + "\n")
-		w.Writer.Write(toWrite)
+		_, _ = w.Writer.Write(toWrite)
 	}
 }

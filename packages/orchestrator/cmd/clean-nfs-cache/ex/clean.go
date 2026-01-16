@@ -408,7 +408,9 @@ func (c *Cleaner) timeit(ctx context.Context, message string, fn func()) {
 }
 
 func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {
-	os.MkdirAll(path, 0o755)
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		panic(err)
+	}
 
 	for i := range nDirs {
 		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i))

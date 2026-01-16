@@ -53,7 +53,11 @@ func main() {
 	if err != nil {
 		return
 	}
-	defer log.Sync()
+	defer func() {
+		if err := log.Sync(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to sync logger: %v\n", err)
+		}
+	}()
 	if !opts.Experimental {
 		_, err = cleanNFSCache(ctx, os.Args, int64(opts.TargetBytesToDelete), int64(opts.TargetFilesToDelete))
 
@@ -143,7 +147,11 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 	if err != nil {
 		return opts, nil, err
 	}
-	defer ffc.Close(ctx)
+	defer func() {
+		if err := ffc.Close(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close feature flags client: %v\n", err)
+		}
+	}()
 
 	v := ffc.JSONFlag(ctx, featureflags.CleanNFSCacheExperimental)
 	if v.Type() == ldvalue.ObjectType {

@@ -46,7 +46,9 @@ func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
 	if _, err := tw.Write(content); err != nil {
 		t.Fatal(err)
 	}
-	tw.Close()
+	if err := tw.Close(); err != nil {
+		t.Fatalf("failed to close tar writer: %v", err)
+	}
 
 	return &buf
 }

@@ -3,6 +3,7 @@ package build
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -51,7 +52,11 @@ func (f *LocalDiffFile) Close() error {
 func (f *LocalDiffFile) CloseToDiff(
 	blockSize int64,
 ) (Diff, error) {
-	defer f.File.Close()
+	defer func() {
+		if err := f.File.Close(); err != nil {
+			log.Printf("failed to close local diff file: %v", err)
+		}
+	}()
 
 	err := f.File.Sync()
 	if err != nil {

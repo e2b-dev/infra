@@ -27,13 +27,11 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 	}
 
 	defer func() {
-		err = netns.Set(hostNS)
-		if err != nil {
+		if err := netns.Set(hostNS); err != nil {
 			logger.L().Error(ctx, "error resetting network namespace back to the host namespace", zap.Error(err))
 		}
 
-		err = hostNS.Close()
-		if err != nil {
+		if err := hostNS.Close(); err != nil {
 			logger.L().Error(ctx, "error closing host network namespace", zap.Error(err))
 		}
 	}()
@@ -44,7 +42,11 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("cannot create new namespace: %w", err)
 	}
 
-	defer ns.Close()
+	defer func() {
+		if err := ns.Close(); err != nil {
+			logger.L().Error(ctx, "error closing namespace", zap.Error(err))
+		}
+	}()
 
 	// Create the Veth and Vpeer
 	vethAttrs := netlink.NewLinkAttrs()

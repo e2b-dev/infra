@@ -61,7 +61,12 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			// Log error but don't fail - file is already opened
+			fmt.Fprintf(os.Stderr, "failed to close file: %v\n", err)
+		}
+	}()
 
 	if size == 0 {
 		return &Cache{

@@ -52,7 +52,11 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file: %w", err)
 		}
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Printf("failed to close file: %v", err)
+			}
+		}()
 
 		h := crc32.New(crc32.MakeTable(crc32.Castagnoli))
 		_, err = io.Copy(h, f)
@@ -114,7 +118,11 @@ func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.He
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("failed to close file: %v", err)
+		}
+	}()
 
 	h, err := header.Deserialize(ctx, &osFileBlob{f: f})
 	if err != nil {

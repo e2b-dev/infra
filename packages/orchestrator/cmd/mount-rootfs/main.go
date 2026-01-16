@@ -84,7 +84,11 @@ func runEmpty(ctx, nbdContext context.Context, featureFlags *featureflags.Client
 		return fmt.Errorf("failed to create zero device: %w", err)
 	}
 
-	defer os.RemoveAll(cowCachePath)
+	defer func() {
+		if err := os.RemoveAll(cowCachePath); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to remove cache path: %v\n", err)
+		}
+	}()
 
 	cache, err := block.NewCache(
 		size,
@@ -99,10 +103,18 @@ func runEmpty(ctx, nbdContext context.Context, featureFlags *featureflags.Client
 	fmt.Printf("caching writes to: %+v\n", cowCachePath)
 
 	overlay := block.NewOverlay(emptyDevice, cache)
-	defer overlay.Close()
+	defer func() {
+		if err := overlay.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close overlay: %v\n", err)
+		}
+	}()
 
 	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, testutils.NewLoggerOverlay(overlay), featureFlags)
-	defer deviceCleanup.Run(ctx, 30*time.Second)
+	defer func() {
+		if err := deviceCleanup.Run(ctx, 30*time.Second); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to cleanup device: %v\n", err)
+		}
+	}()
 	if err != nil {
 		return fmt.Errorf("failed to get nbd device: %w", err)
 	}
@@ -118,14 +130,22 @@ func runEmpty(ctx, nbdContext context.Context, featureFlags *featureflags.Client
 
 func run(ctx, nbdContext context.Context, featureFlags *featureflags.Client, buildID, mountPath string, verify bool) error {
 	rootfs, rootfsCleanup, err := testutils.TemplateRootfs(ctx, buildID)
-	defer rootfsCleanup.Run(ctx, 30*time.Second)
+	defer func() {
+		if err := rootfsCleanup.Run(ctx, 30*time.Second); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to cleanup rootfs: %v\n", err)
+		}
+	}()
 	if err != nil {
 		return fmt.Errorf("failed to get template rootfs: %w", err)
 	}
 
 	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.ext4.cow.cache-%s", buildID, uuid.New().String()))
 
-	defer os.RemoveAll(cowCachePath)
+	defer func() {
+		if err := os.RemoveAll(cowCachePath); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to remove cache path: %v\n", err)
+		}
+	}()
 
 	cache, err := block.NewCache(
 		int64(rootfs.Header().Metadata.Size),
@@ -140,10 +160,18 @@ func run(ctx, nbdContext context.Context, featureFlags *featureflags.Client, bui
 	fmt.Printf("caching writes to: %+v\n", cowCachePath)
 
 	overlay := block.NewOverlay(rootfs, cache)
-	defer overlay.Close()
+	defer func() {
+		if err := overlay.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close overlay: %v\n", err)
+		}
+	}()
 
 	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, overlay, featureFlags)
-	defer deviceCleanup.Run(ctx, 30*time.Second)
+	defer func() {
+		if err := deviceCleanup.Run(ctx, 30*time.Second); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to cleanup device: %v\n", err)
+		}
+	}()
 	if err != nil {
 		return fmt.Errorf("failed to get nbd device: %w", err)
 	}
@@ -159,7 +187,11 @@ func run(ctx, nbdContext context.Context, featureFlags *featureflags.Client, bui
 		fmt.Fprintf(os.Stdout, "creating mount path directory: %s\n", mountPath)
 
 		mountCleanup, err := testutils.MountNBDDevice(devicePath, mountPath)
-		defer mountCleanup.Run(ctx, 30*time.Second)
+		defer func() {
+			if err := mountCleanup.Run(ctx, 30*time.Second); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to cleanup mount: %v\n", err)
+			}
+		}()
 		if err != nil {
 			return fmt.Errorf("failed to mount device to mount path: %w", err)
 		}

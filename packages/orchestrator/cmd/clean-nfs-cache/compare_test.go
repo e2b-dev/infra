@@ -44,7 +44,9 @@ func TestCompare(t *testing.T) {
 					path := t.TempDir()
 					ex.CreateTestDir(path, NDirs, NFiles, testFileSize)
 					t.Cleanup(func() {
-						os.RemoveAll(path)
+						if err := os.RemoveAll(path); err != nil {
+							t.Errorf("failed to remove test directory: %v", err)
+						}
 					})
 					start := time.Now()
 					// log, _ := logger.NewDevelopmentLogger()
@@ -76,7 +78,9 @@ func TestCompare(t *testing.T) {
 		path := t.TempDir()
 		ex.CreateTestDir(path, NDirs, NFiles, testFileSize)
 		t.Cleanup(func() {
-			os.RemoveAll(path)
+			if err := os.RemoveAll(path); err != nil {
+				t.Errorf("failed to remove test directory: %v", err)
+			}
 		})
 
 		start := time.Now()

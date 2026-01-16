@@ -46,7 +46,11 @@ func TestCleanDeletesOldestFiles(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	defer os.RemoveAll(root)
+	defer func() {
+		if err := os.RemoveAll(root); err != nil {
+			t.Errorf("failed to remove root directory: %v", err)
+		}
+	}()
 
 	// create root path used by Cleaner
 	rootPath := filepath.Join(root, "root")

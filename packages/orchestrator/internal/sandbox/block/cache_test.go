@@ -52,7 +52,9 @@ func TestCopyFromProcess_FullRange(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		cache.Close()
+		if err := cache.Close(); err != nil {
+			t.Errorf("failed to close cache: %v", err)
+		}
 	})
 
 	data := make([]byte, size)
@@ -87,7 +89,9 @@ func TestCopyFromProcess_LargeRanges(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		cache.Close()
+		if err := cache.Close(); err != nil {
+			t.Errorf("failed to close cache: %v", err)
+		}
 	})
 
 	data1 := make([]byte, pageSize)
@@ -138,7 +142,9 @@ func TestCopyFromProcess_MultipleRanges(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		cache.Close()
+		if err := cache.Close(); err != nil {
+			t.Errorf("failed to close cache: %v", err)
+		}
 	})
 
 	checkCount := min(numRanges, 10)
@@ -185,7 +191,9 @@ func TestCopyFromProcess_HugepageToRegularPage(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		cache.Close()
+		if err := cache.Close(); err != nil {
+			t.Errorf("failed to close cache: %v", err)
+		}
 	})
 
 	data := make([]byte, pageSize*2)
@@ -388,7 +396,9 @@ func TestCopyFromProcess_Exceed_MAX_RW_COUNT(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		cache.Close()
+		if err := cache.Close(); err != nil {
+			t.Errorf("failed to close cache: %v", err)
+		}
 	})
 
 	data := make([]byte, size)
@@ -427,7 +437,9 @@ func TestCopyFromProcess_MAX_RW_COUNT_Misalignment_Hugepage(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		cache.Close()
+		if err := cache.Close(); err != nil {
+			t.Errorf("failed to close cache: %v", err)
+		}
 	})
 
 	for _, offset := range header.BlocksOffsets(size, pageSize) {
@@ -453,8 +465,9 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 			syscall.PROT_READ|syscall.PROT_WRITE,
 			syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS|unix.MAP_HUGETLB|unix.MAP_HUGE_2MB,
 		)
-
-		require.NoError(b, err)
+		if err != nil {
+			b.Fatalf("failed to mmap: %v", err)
+		}
 
 		addr := uintptr(unsafe.Pointer(&mem[0]))
 
@@ -509,8 +522,9 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 		err = cache.Close()
 		require.NoError(b, err)
 
-		err = syscall.Munmap(mem)
-		require.NoError(b, err)
+		if err := syscall.Munmap(mem); err != nil {
+			b.Errorf("failed to munmap: %v", err)
+		}
 
 		b.SetBytes(GetSize(ranges))
 	}
