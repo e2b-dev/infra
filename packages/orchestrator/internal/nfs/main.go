@@ -5,10 +5,10 @@ import (
 	"errors"
 	"net"
 
+	"cloud.google.com/go/storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/go-git/go-billy/v5/memfs"
-	nfs "github.com/willscott/go-nfs"
-	nfshelper "github.com/willscott/go-nfs/helpers"
+	"github.com/willscott/go-nfs"
+	helper "github.com/willscott/go-nfs/helpers"
 )
 
 const cacheLimit = 1024
@@ -23,13 +23,9 @@ func NewProxy(sandboxes *sandbox.Map) *Proxy {
 	return &Proxy{sandboxes: sandboxes}
 }
 
-func (p *Proxy) Start(ctx context.Context, lis net.Listener) error {
-	fs := memfs.New()
-	handler := nfshelper.NewNullAuthHandler(fs)
-	handler = nfshelper.NewCachingHandler(handler, 1024)
-
-	//handler := newSandboxJailsHandler(p.sandboxes)
-	//handler = helpers.NewCachingHandler(handler, cacheLimit)
+func (p *Proxy) Start(ctx context.Context, lis net.Listener, client *storage.Client) error {
+	handler := newSandboxJailsHandler(p.sandboxes, client, "e2b-staging-joe-fc-build-cache")
+	handler = helper.NewCachingHandler(handler, cacheLimit)
 	handler = newErrorReporter(handler)
 
 	ctx, p.cancel = context.WithCancel(ctx)

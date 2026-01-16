@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"testing"
 
+	"cloud.google.com/go/storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/google/uuid"
@@ -40,8 +41,11 @@ func TestRoundTrip(t *testing.T) {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
+	gcsClient, err := storage.NewGRPCClient(t.Context(), storage.WithDisabledClientMetrics())
+	require.NoError(t, err)
+
 	go func() {
-		err := s.Start(t.Context(), lis)
+		err := s.Start(t.Context(), lis, gcsClient)
 		assert.NoError(t, err)
 	}()
 
@@ -58,13 +62,22 @@ func TestRoundTrip(t *testing.T) {
 	port, err := strconv.Atoi(portText)
 	require.NoError(t, err)
 
-	client, err := nfs.DialServiceAtPort(host, port)
+	nfsClient, err := nfs.DialServiceAtPort(host, port)
 	require.NoError(t, err)
 
 	mount := &nfs.Mount{
-		Client: client,
+		Client: nfsClient,
 	}
 	target, err := mount.Mount(".", auth.Auth())
+	require.NoError(t, err)
+
+	fp, err := target.OpenFile("/sandbox-id.txt", 0o666)
+	require.NoError(t, err)
+	data := []byte(sandboxID)
+	n, err := fp.Write(data)
+	require.NoError(t, err)
+	assert.Equal(t, len(data), n)
+	err = fp.Close()
 	require.NoError(t, err)
 
 	items, err := target.ReadDirPlus("/")
@@ -74,7 +87,7 @@ func TestRoundTrip(t *testing.T) {
 	item := items[0]
 	assert.Equal(t, "sandbox-id.txt", item.Name())
 
-	fp, err := target.Open("sandbox-id.txt")
+	fp, err = target.Open("sandbox-id.txt")
 	require.NoError(t, err)
 	buff := make([]byte, 1024) // way more bytes than we need
 	read, err := fp.Read(buff)

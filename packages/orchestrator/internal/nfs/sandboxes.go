@@ -4,23 +4,27 @@ import (
 	"context"
 	"log/slog"
 	"net"
-	"os"
 
+	"cloud.google.com/go/storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/go-git/go-billy/v5"
-	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/willscott/go-nfs"
 )
 
 type sandboxJailsHandler struct {
+	client    *storage.Client
 	sandboxes *sandbox.Map
+
+	gcsBucketName string
 }
 
 var _ nfs.Handler = (*sandboxJailsHandler)(nil)
 
-func newSandboxJailsHandler(sandboxes *sandbox.Map) nfs.Handler {
+func newSandboxJailsHandler(sandboxes *sandbox.Map, client *storage.Client, gcsBucketName string) nfs.Handler {
 	return &sandboxJailsHandler{
-		sandboxes: sandboxes,
+		client:        client,
+		sandboxes:     sandboxes,
+		gcsBucketName: gcsBucketName,
 	}
 }
 
@@ -31,18 +35,7 @@ func (s sandboxJailsHandler) Mount(ctx context.Context, conn net.Conn, request n
 		return nfs.MountStatusErrIO, nil, nil
 	}
 
-	fs := memfs.New()
-	fp, err := fs.OpenFile("/sandbox-id.txt", os.O_WRONLY|os.O_CREATE, 0o666)
-	if err != nil {
-		slog.Warn("failed to open /sandbox-id.txt", "error", err)
-		return nfs.MountStatusErrIO, nil, nil
-	}
-	defer logDefer("failed to close sandbox-id.txt", fp.Close)
-
-	if _, err := fp.Write([]byte(sbx.Metadata.Runtime.SandboxID)); err != nil {
-		slog.Warn("failed to write /sandbox-id.txt", "error", err)
-		return nfs.MountStatusErrIO, nil, nil
-	}
+	fs := newPrefixedGCSBucket(ctx, s.client, s.gcsBucketName, sbx.Metadata.Runtime.SandboxID)
 
 	return nfs.MountStatusOk, fs, nil
 }
