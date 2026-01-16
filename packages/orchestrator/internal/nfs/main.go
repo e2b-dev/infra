@@ -2,37 +2,54 @@ package nfs
 
 import (
 	"context"
+	"errors"
 	"net"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/go-git/go-billy/v5/memfs"
 	nfs "github.com/willscott/go-nfs"
 	nfshelper "github.com/willscott/go-nfs/helpers"
 )
 
+const cacheLimit = 1024
+
 type Proxy struct {
-	server *nfs.Server
-	cancel func()
+	sandboxes *sandbox.Map
+	server    *nfs.Server
+	cancel    func()
 }
 
-func NewProxy() *Proxy {
-	return &Proxy{}
+func NewProxy(sandboxes *sandbox.Map) *Proxy {
+	return &Proxy{sandboxes: sandboxes}
 }
 
-func (p *Proxy) Serve(ctx context.Context, lis net.Listener) error {
-	mem := memfs.New()
+func (p *Proxy) Start(ctx context.Context, lis net.Listener) error {
+	fs := memfs.New()
+	handler := nfshelper.NewNullAuthHandler(fs)
+	handler = nfshelper.NewCachingHandler(handler, 1024)
 
-	handler := nfshelper.NewNullAuthHandler(mem)
-	cacheHelper := nfshelper.NewCachingHandler(handler, 1)
+	//handler := newSandboxJailsHandler(p.sandboxes)
+	//handler = helpers.NewCachingHandler(handler, cacheLimit)
+	handler = newErrorReporter(handler)
 
 	ctx, p.cancel = context.WithCancel(ctx)
 	p.server = &nfs.Server{
-		Handler: cacheHelper,
+		Handler: handler,
 		Context: ctx,
 	}
 
 	return p.server.Serve(lis)
 }
 
-func (p *Proxy) Stop(ctx context.Context) error {
-	
+var ErrServerStopped = errors.New("server is stopped")
+
+func (p *Proxy) Stop(_ context.Context) error {
+	if p.cancel == nil {
+		return ErrServerStopped
+	}
+
+	p.cancel()
+	p.cancel = nil
+
+	return nil
 }

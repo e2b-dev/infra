@@ -454,7 +454,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	nfsServer := nfs.NewProxy()
 	startService("nfs proxy", func() error {
-		return nfsServer.Serve(lis)
+		return nfsServer.Start(ctx, lis)
 	})
 	closers = append(closers, closer{
 		"nfs proxy server", func(ctx context.Context) error {
