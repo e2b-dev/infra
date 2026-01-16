@@ -131,7 +131,7 @@ func ginErrorHandler(c *gin.Context, message string, statusCode int) {
 
 	telemetry.ReportError(ctx, message, errMsg)
 
-	c.Error(errMsg)
+	_ = c.Error(errMsg)
 
 	// Handle forbidden errors
 	if after, ok := strings.CutPrefix(message, forbiddenErrPrefix); ok {

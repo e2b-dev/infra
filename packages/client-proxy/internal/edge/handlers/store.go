@@ -124,7 +124,7 @@ func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
 		Message: message,
 	}
 
-	c.Error(errors.New(message))
+	_ = c.Error(errors.New(message))
 	c.JSON(code, apiErr)
 }
 

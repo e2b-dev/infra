@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -14,37 +15,49 @@ func (a *APIStore) HealthCheck(c *gin.Context) {
 
 	if status == api.Healthy || status == api.Draining {
 		c.Status(http.StatusOK)
-		c.Writer.Write([]byte("healthy"))
+		if _, err := c.Writer.Write([]byte("healthy")); err != nil {
+			log.Printf("failed to write health check response: %v", err)
+		}
 
 		return
 	}
 
 	c.Status(http.StatusServiceUnavailable)
-	c.Writer.Write([]byte("unhealthy"))
+	if _, err := c.Writer.Write([]byte("unhealthy")); err != nil {
+		log.Printf("failed to write health check response: %v", err)
+	}
 }
 
 // HealthCheckTraffic is used by load balancer target group to check if sandbox traffic should be routed to this instance.
 func (a *APIStore) HealthCheckTraffic(c *gin.Context) {
 	if a.info.GetStatus() == api.Healthy {
 		c.Status(http.StatusOK)
-		c.Writer.Write([]byte("healthy"))
+		if _, err := c.Writer.Write([]byte("healthy")); err != nil {
+			log.Printf("failed to write health check traffic response: %v", err)
+		}
 
 		return
 	}
 
 	c.Status(http.StatusServiceUnavailable)
-	c.Writer.Write([]byte("unhealthy"))
+	if _, err := c.Writer.Write([]byte("unhealthy")); err != nil {
+		log.Printf("failed to write health check traffic response: %v", err)
+	}
 }
 
 // HealthCheckMachine is used mainly for instances management such as autoscaling group to notify instance is ready for safe termination.
 func (a *APIStore) HealthCheckMachine(c *gin.Context) {
 	if a.info.IsTerminating() {
 		c.Status(http.StatusServiceUnavailable)
-		c.Writer.Write([]byte("service is terminating"))
+		if _, err := c.Writer.Write([]byte("service is terminating")); err != nil {
+			log.Printf("failed to write health check machine response: %v", err)
+		}
 
 		return
 	}
 
 	c.Status(http.StatusOK)
-	c.Writer.Write([]byte("running"))
+	if _, err := c.Writer.Write([]byte("running")); err != nil {
+		log.Printf("failed to write health check machine response: %v", err)
+	}
 }

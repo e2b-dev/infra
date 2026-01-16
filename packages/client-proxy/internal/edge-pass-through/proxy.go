@@ -147,7 +147,10 @@ func (s *NodePassThroughServer) handler(_ any, serverStream grpc.ServerStream) (
 			if errors.Is(s2cErr, io.EOF) {
 				// this is the happy case where the sender has encountered io.EOF, and won't be sending anymore./
 				// the clientStream>serverStream may continue pumping though.
-				clientStream.CloseSend()
+				if err := clientStream.CloseSend(); err != nil {
+					// Log but continue - the stream is already done sending
+					return status.Errorf(codes.Internal, "failed closing client stream: %v", err)
+				}
 			} else {
 				// however, we may have gotten a receive error (stream disconnected, a read error etc) in which case we need
 				// to cancel the clientStream to the backend, let all of its goroutines be freed up by the CancelFunc and
