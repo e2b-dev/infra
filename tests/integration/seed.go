@@ -53,7 +53,11 @@ func run(ctx context.Context) int {
 
 		return 1
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("Failed to close database: %v", err)
+		}
+	}()
 
 	data := SeedData{
 		AccessToken: os.Getenv("TESTS_E2B_ACCESS_TOKEN"),

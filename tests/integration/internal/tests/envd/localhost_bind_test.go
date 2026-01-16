@@ -85,7 +85,11 @@ func TestBindLocalhost(t *testing.T) {
 			req := utils.NewRequest(sbx, baseURL, port, nil)
 			resp, err := httpClient.Do(req)
 			require.NoErrorf(t, err, "Failed to connect to server bound to %s", tc.bindAddress)
-			defer resp.Body.Close()
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					t.Errorf("failed to close response body: %v", err)
+				}
+			}()
 
 			assert.Equalf(t, tc.expectStatus, resp.StatusCode, "Unexpected status code %d for bind address %s", resp.StatusCode, tc.bindAddress)
 		})

@@ -128,7 +128,11 @@ func TestFilePermissions(t *testing.T) {
 
 	require.NoError(t, err)
 
-	defer stream.Close()
+	defer func() {
+		if err := stream.Close(); err != nil {
+			t.Errorf("failed to close stream: %v", err)
+		}
+	}()
 
 	out := []string{}
 

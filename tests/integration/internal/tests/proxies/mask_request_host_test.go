@@ -63,7 +63,9 @@ func TestMaskRequestHostAPIParameter(t *testing.T) {
 		if err != nil {
 			return
 		}
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("failed to close response body: %v", err)
+		}
 	}()
 
 	// Give netcat listener time to receive and write to file

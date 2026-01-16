@@ -39,9 +39,11 @@ VALUES ($1, $2, $3, $4, $5)
 	}
 
 	t.Cleanup(func() {
-		db.TestsRawSQL(t.Context(), `
+		if err := db.TestsRawSQL(t.Context(), `
 DELETE FROM teams WHERE id = $1
-`, teamID)
+`, teamID); err != nil {
+			t.Errorf("failed to cleanup team: %v", err)
+		}
 	})
 
 	return teamID
@@ -60,9 +62,11 @@ VALUES ($1, $2, $3)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		db.TestsRawSQL(t.Context(), `
+		if err := db.TestsRawSQL(t.Context(), `
 DELETE FROM users_teams WHERE user_id = $1 and team_id = $2
-`, userUUID, teamID)
+`, userUUID, teamID); err != nil {
+			t.Errorf("failed to cleanup user team: %v", err)
+		}
 	})
 }
 

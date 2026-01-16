@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -23,7 +24,9 @@ func GetOrchestratorClient(tb testing.TB, ctx context.Context) orchestrator.Sand
 
 	go func() {
 		<-ctx.Done()
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close grpc connection: %v\n", err)
+		}
 	}()
 
 	return orchestrator.NewSandboxServiceClient(conn)

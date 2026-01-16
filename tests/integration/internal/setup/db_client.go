@@ -15,7 +15,9 @@ func GetTestDBClient(tb testing.TB) *client.Client {
 	require.NoError(tb, err)
 
 	tb.Cleanup(func() {
-		db.Close()
+		if err := db.Close(); err != nil {
+			tb.Errorf("failed to close database client: %v", err)
+		}
 	})
 
 	return db

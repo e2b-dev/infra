@@ -26,9 +26,11 @@ VALUES ($1, $2)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		db.TestsRawSQL(t.Context(), `
+		if err := db.TestsRawSQL(t.Context(), `
 DELETE FROM auth.users WHERE id = $1
-`, userID)
+`, userID); err != nil {
+			t.Errorf("failed to cleanup user: %v", err)
+		}
 	})
 
 	return userID

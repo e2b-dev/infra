@@ -44,7 +44,9 @@ func TestCommandKillNextApp(t *testing.T) {
 	require.NoError(t, err)
 	defer func() {
 		serverCancel()
-		runDevStream.Close()
+		if err := runDevStream.Close(); err != nil {
+			t.Errorf("failed to close run dev stream: %v", err)
+		}
 	}()
 
 	// Read dev output
