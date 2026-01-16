@@ -42,7 +42,9 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 		log.Printf("Invalid access token: '%s'\n", accessToken)
 
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte("invalid access token"))
+		if _, err := w.Write([]byte("invalid access token")); err != nil {
+			log.Printf("failed to write response: %v", err)
+		}
 
 		return fmt.Errorf("invalid access token")
 	}
@@ -56,7 +58,9 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 		jsonResponse := a.AuthCache.Create("not-yet-known", "undefined-docker-token", int(time.Hour.Seconds()))
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(jsonResponse))
+		if _, err := w.Write([]byte(jsonResponse)); err != nil {
+			log.Printf("failed to write response: %v", err)
+		}
 
 		return nil
 	}
@@ -103,7 +107,9 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	jsonResponse := a.AuthCache.Create(templateID, dockerToken.Token, dockerToken.ExpiresIn)
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(jsonResponse))
+	if _, err := w.Write([]byte(jsonResponse)); err != nil {
+		log.Printf("failed to write response: %v", err)
+	}
 
 	return nil
 }
@@ -135,7 +141,11 @@ func getToken(ctx context.Context, templateID string) (*DockerToken, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token for scope - %s: %w", templateID, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body := make([]byte, resp.ContentLength)
@@ -143,7 +153,6 @@ func getToken(ctx context.Context, templateID string) (*DockerToken, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read body for failed token acquisition (%d) for scope - %s: %w", resp.StatusCode, templateID, err)
 		}
-		defer resp.Body.Close()
 
 		return nil, fmt.Errorf("failed to get token (%d) for scope - %s: %s", resp.StatusCode, templateID, string(body))
 	}
