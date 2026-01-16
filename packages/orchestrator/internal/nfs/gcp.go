@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -28,33 +29,68 @@ func newPrefixedGCSBucket(ctx context.Context, client *storage.Client, bucketNam
 }
 
 func (p prefixedGCSBucket) Create(filename string) (billy.File, error) {
-	//TODO implement me
-	panic("implement me")
+	return p.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 }
 
 func (p prefixedGCSBucket) Open(filename string) (billy.File, error) {
-	//TODO implement me
-	panic("implement me")
+	return p.OpenFile(filename, os.O_RDONLY, 0)
 }
 
 func (p prefixedGCSBucket) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
-	//TODO implement me
-	panic("implement me")
+	if err := p.requirePrefix(filename); err != nil {
+		return nil, err
+	}
+
+	f := &gcsFile{
+		p:    p,
+		name: filename,
+		flag: flag,
+	}
+
+	if flag&os.O_CREATE != 0 {
+		if flag&os.O_EXCL != 0 {
+			_, err := p.bucket.Object(filename).Attrs(p.ctx)
+			if err == nil {
+				return nil, os.ErrExist
+			}
+		}
+	} else {
+		_, err := p.bucket.Object(filename).Attrs(p.ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return f, nil
 }
 
 func (p prefixedGCSBucket) Stat(filename string) (os.FileInfo, error) {
-	//TODO implement me
-	panic("implement me")
+	return p.Lstat(filename)
 }
 
 func (p prefixedGCSBucket) Rename(oldpath, newpath string) error {
-	//TODO implement me
-	panic("implement me")
+	if err := p.requirePrefix(oldpath); err != nil {
+		return err
+	}
+	if err := p.requirePrefix(newpath); err != nil {
+		return err
+	}
+
+	src := p.bucket.Object(oldpath)
+	dst := p.bucket.Object(newpath)
+
+	if _, err := dst.CopierFrom(src).Run(p.ctx); err != nil {
+		return err
+	}
+
+	return src.Delete(p.ctx)
 }
 
 func (p prefixedGCSBucket) Remove(filename string) error {
-	//TODO implement me
-	panic("implement me")
+	if err := p.requirePrefix(filename); err != nil {
+		return err
+	}
+	return p.bucket.Object(filename).Delete(p.ctx)
 }
 
 func (p prefixedGCSBucket) Join(elem ...string) string {
@@ -63,8 +99,7 @@ func (p prefixedGCSBucket) Join(elem ...string) string {
 }
 
 func (p prefixedGCSBucket) TempFile(dir, prefix string) (billy.File, error) {
-	//TODO implement me
-	panic("implement me")
+	return nil, errors.New("TempFile not implemented")
 }
 
 func (p prefixedGCSBucket) ReadDir(path string) ([]os.FileInfo, error) {
@@ -88,8 +123,7 @@ func (p prefixedGCSBucket) ReadDir(path string) ([]os.FileInfo, error) {
 }
 
 func (p prefixedGCSBucket) MkdirAll(filename string, perm os.FileMode) error {
-	//TODO implement me
-	panic("implement me")
+	return nil // GCS is an object store, directories are virtual
 }
 
 var ErrInvalidPrefix = errors.New("invalid prefix")
@@ -113,10 +147,18 @@ func (p prefixedGCSBucket) Lstat(filename string) (os.FileInfo, error) {
 
 	attr, err := p.bucket.Object(filename).Attrs(p.ctx)
 	if err != nil {
-		return nil, err
+		return nil, translateError(err)
 	}
 
 	return fileInfo{attr}, nil
+}
+
+func translateError(err error) error {
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		return os.ErrNotExist
+	}
+
+	return err
 }
 
 type rootListing struct {
@@ -181,21 +223,93 @@ func (f fileInfo) Sys() any {
 var _ os.FileInfo = (*fileInfo)(nil)
 
 func (p prefixedGCSBucket) Symlink(target, link string) error {
-	//TODO implement me
-	panic("implement me")
+	return errors.New("symlink not supported")
 }
 
 func (p prefixedGCSBucket) Readlink(link string) (string, error) {
-	//TODO implement me
-	panic("implement me")
+	return "", errors.New("readlink not supported")
 }
 
 func (p prefixedGCSBucket) Chroot(path string) (billy.Filesystem, error) {
-	//TODO implement me
-	panic("implement me")
+	if err := p.requirePrefix(path); err != nil {
+		return nil, err
+	}
+	return &prefixedGCSBucket{
+		ctx:    p.ctx,
+		bucket: p.bucket,
+		prefix: path,
+	}, nil
 }
 
 func (p prefixedGCSBucket) Root() string {
-	//TODO implement me
-	panic("implement me")
+	return p.prefix
+}
+
+type gcsFile struct {
+	p      prefixedGCSBucket
+	name   string
+	flag   int
+	offset int64
+	writer *storage.Writer
+}
+
+func (f *gcsFile) Name() string { return f.name }
+
+func (f *gcsFile) Write(p []byte) (n int, err error) {
+	if f.flag&os.O_RDONLY != 0 {
+		return 0, errors.New("file is read-only")
+	}
+	if f.writer == nil {
+		f.writer = f.p.bucket.Object(f.name).NewWriter(f.p.ctx)
+	}
+	return f.writer.Write(p)
+}
+
+func (f *gcsFile) Read(p []byte) (n int, err error) {
+	rc, err := f.p.bucket.Object(f.name).NewRangeReader(f.p.ctx, f.offset, int64(len(p)))
+	if err != nil {
+		return 0, err
+	}
+	defer rc.Close()
+	n, err = rc.Read(p)
+	f.offset += int64(n)
+	return n, err
+}
+
+func (f *gcsFile) ReadAt(p []byte, off int64) (n int, err error) {
+	rc, err := f.p.bucket.Object(f.name).NewRangeReader(f.p.ctx, off, int64(len(p)))
+	if err != nil {
+		return 0, err
+	}
+	defer rc.Close()
+	return rc.Read(p)
+}
+
+func (f *gcsFile) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekStart:
+		f.offset = offset
+	case io.SeekCurrent:
+		f.offset += offset
+	case io.SeekEnd:
+		attr, err := f.p.bucket.Object(f.name).Attrs(f.p.ctx)
+		if err != nil {
+			return 0, err
+		}
+		f.offset = attr.Size + offset
+	}
+	return f.offset, nil
+}
+
+func (f *gcsFile) Close() error {
+	if f.writer != nil {
+		return f.writer.Close()
+	}
+	return nil
+}
+
+func (f *gcsFile) Lock() error   { return nil }
+func (f *gcsFile) Unlock() error { return nil }
+func (f *gcsFile) Truncate(size int64) error {
+	return errors.New("truncate not supported")
 }

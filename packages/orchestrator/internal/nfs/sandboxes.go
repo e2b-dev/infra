@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"os"
+	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -47,9 +49,29 @@ func logDefer(msg string, fn func() error) {
 }
 
 func (s sandboxJailsHandler) Change(filesystem billy.Filesystem) billy.Change {
-	//TODO implement me
-	panic("implement me: Change")
+	return noopChange{}
 }
+
+type noopChange struct {
+}
+
+func (n noopChange) Chmod(name string, mode os.FileMode) error {
+	return nil
+}
+
+func (n noopChange) Lchown(name string, uid, gid int) error {
+	return nil
+}
+
+func (n noopChange) Chown(name string, uid, gid int) error {
+	return nil
+}
+
+func (n noopChange) Chtimes(name string, atime time.Time, mtime time.Time) error {
+	return nil
+}
+
+var _ billy.Change = (*noopChange)(nil)
 
 func (s sandboxJailsHandler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) error {
 	//TODO implement me
