@@ -383,7 +383,9 @@ func (p *Handler) Wait() {
 
 	err := p.cmd.Wait()
 
-	p.tty.Close()
+	if closeErr := p.tty.Close(); closeErr != nil {
+		p.logger.Error().Err(closeErr).Msg("failed to close tty")
+	}
 
 	var errMsg *string
 

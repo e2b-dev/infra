@@ -47,7 +47,11 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("error creating watcher: %w", err))
 	}
-	defer w.Close()
+	defer func() {
+		if err := w.Close(); err != nil {
+			s.logger.Error().Err(err).Msg("failed to close watcher")
+		}
+	}()
 
 	err = w.Add(utils.FsnotifyPath(watchPath, req.Msg.GetRecursive()))
 	if err != nil {

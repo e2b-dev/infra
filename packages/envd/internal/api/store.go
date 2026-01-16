@@ -36,7 +36,11 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 }
 
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			a.logger.Error().Err(err).Msg("failed to close request body")
+		}
+	}()
 
 	a.logger.Trace().Msg("Health check")
 
@@ -47,7 +51,11 @@ func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			a.logger.Error().Err(err).Msg("failed to close request body")
+		}
+	}()
 
 	a.logger.Trace().Msg("Get metrics")
 
@@ -63,5 +71,7 @@ func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(metrics)
+	if err := json.NewEncoder(w).Encode(metrics); err != nil {
+		a.logger.Error().Err(err).Msg("failed to encode metrics response")
+	}
 }

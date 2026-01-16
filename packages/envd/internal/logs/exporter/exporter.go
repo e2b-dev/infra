@@ -64,13 +64,19 @@ func (w *HTTPExporter) sendInstanceLogs(ctx context.Context, logs []byte, addres
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	return nil
 }
 
 func printLog(logs []byte) {
-	fmt.Fprintf(os.Stdout, "%v", string(logs))
+	if _, err := fmt.Fprintf(os.Stdout, "%v", string(logs)); err != nil {
+		log.Printf("failed to write log to stdout: %v", err)
+	}
 }
 
 func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <-chan *host.MMDSOpts) {
@@ -103,8 +109,10 @@ func (w *HTTPExporter) start(ctx context.Context) {
 		}
 
 		if w.isNotFC {
-			for _, log := range logs {
-				fmt.Fprintf(os.Stdout, "%v", string(log))
+			for _, logEntry := range logs {
+				if _, err := fmt.Fprintf(os.Stdout, "%v", string(logEntry)); err != nil {
+					log.Printf("failed to write log to stdout: %v", err)
+				}
 			}
 
 			continue

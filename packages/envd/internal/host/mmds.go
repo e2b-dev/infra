@@ -61,7 +61,11 @@ func getMMDSToken(ctx context.Context, client *http.Client) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close response body: %v\n", err)
+		}
+	}()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -91,7 +95,11 @@ func getMMDSOpts(ctx context.Context, client *http.Client, token string) (*MMDSO
 		return nil, err
 	}
 
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close response body: %v\n", err)
+		}
+	}()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {

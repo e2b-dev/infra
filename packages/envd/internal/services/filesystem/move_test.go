@@ -230,8 +230,12 @@ func TestMoveRelativePath(t *testing.T) {
 	assert.Equal(t, testContent, content)
 
 	// Clean up
-	os.RemoveAll(testFolderPath)
-	os.RemoveAll(destFolderPath)
+	if err := os.RemoveAll(testFolderPath); err != nil {
+		t.Errorf("failed to clean up test folder: %v", err)
+	}
+	if err := os.RemoveAll(destFolderPath); err != nil {
+		t.Errorf("failed to clean up dest folder: %v", err)
+	}
 }
 
 func TestMove_Symlinks(t *testing.T) { //nolint:tparallel // this test cannot be executed in parallel

@@ -14,7 +14,11 @@ import (
 )
 
 func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesParams) {
-	defer r.Body.Close()
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			a.logger.Error().Err(err).Msg("failed to close request body")
+		}
+	}()
 
 	var errorCode int
 	var errMsg error
@@ -109,7 +113,11 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 
 		return
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			a.logger.Error().Err(err).Str("path", resolvedPath).Msg("failed to close file")
+		}
+	}()
 
 	http.ServeContent(w, r, path, time.Now(), file)
 }

@@ -30,7 +30,11 @@ const (
 )
 
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			a.logger.Error().Err(err).Msg("failed to close request body")
+		}
+	}()
 
 	operationID := logs.AssignOperationID()
 	logger := a.logger.With().Str(string(logs.OperationIDKey), operationID).Logger()
@@ -60,7 +64,9 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 					logger.Error().Msgf("Failed to set data: %v", err)
 					w.WriteHeader(http.StatusBadRequest)
 				}
-				w.Write([]byte(err.Error()))
+				if _, writeErr := w.Write([]byte(err.Error())); writeErr != nil {
+					logger.Error().Msgf("Failed to write error response: %v", writeErr)
+				}
 
 				return
 			}

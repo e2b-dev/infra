@@ -77,7 +77,11 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, log
 		return http.StatusInternalServerError, err
 	}
 
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.Error().Err(err).Str("path", path).Msg("failed to close file")
+		}
+	}()
 
 	if !hasBeenChowned {
 		err = os.Chown(path, uid, gid)
@@ -149,7 +153,11 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 }
 
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
-	defer r.Body.Close()
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			a.logger.Error().Err(err).Msg("failed to close request body")
+		}
+	}()
 
 	var errorCode int
 	var errMsg error
@@ -268,7 +276,9 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 			})
 		}
 
-		part.Close()
+		if err := part.Close(); err != nil {
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to close multipart part")
+		}
 	}
 
 	data, err := json.Marshal(paths)
