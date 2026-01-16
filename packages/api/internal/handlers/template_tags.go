@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -55,7 +56,11 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			logger.L().Error(ctx, "failed to rollback transaction", zap.Error(err))
+		}
+	}()
 
 	// Get template and build from the target tag
 	targetTagValue := sharedUtils.DerefOrDefault(targetTag, id.DefaultTag)

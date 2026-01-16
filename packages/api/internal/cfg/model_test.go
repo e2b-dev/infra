@@ -47,11 +47,15 @@ func removeEnv(t *testing.T, key string) {
 
 	if ok {
 		t.Cleanup(func() {
-			os.Setenv(key, prevValue) //nolint:usetesting // we're doing fancy things here
+			if err := os.Setenv(key, prevValue); err != nil { //nolint:usetesting // we're doing fancy things here
+				t.Errorf("failed to restore environment variable %s: %v", key, err)
+			}
 		})
 	} else {
 		t.Cleanup(func() {
-			os.Unsetenv(key)
+			if err := os.Unsetenv(key); err != nil {
+				t.Errorf("failed to unset environment variable %s: %v", key, err)
+			}
 		})
 	}
 }

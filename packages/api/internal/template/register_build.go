@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
@@ -147,7 +148,11 @@ func RegisterBuild(
 			Code:      http.StatusInternalServerError,
 		}
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			logger.L().Error(ctx, "failed to rollback transaction", zap.Error(err))
+		}
+	}()
 
 	var clusterID *uuid.UUID
 	if data.ClusterID != consts.LocalClusterID {

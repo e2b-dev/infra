@@ -291,7 +291,7 @@ func TestReservation_FailedStartWithWaiters(t *testing.T) {
 		})
 	}
 
-	wg.Wait()
+	require.NoError(t, wg.Wait())
 
 	// Finish with an error
 	expectedErr := errors.New("start failed")
@@ -379,7 +379,7 @@ func TestReservation_ConcurrentSameSandbox(t *testing.T) {
 		})
 	}
 
-	wg.Wait()
+	require.NoError(t, wg.Wait())
 
 	// Only one should get finishStart, all others should get waitForStart
 	assert.Equal(t, int32(1), finishStartCount.Load())
@@ -419,7 +419,7 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 		})
 	}
 
-	wg.Wait()
+	require.NoError(t, wg.Wait())
 
 	// Finish the start operation
 	expectedSbx := sandbox.Sandbox{

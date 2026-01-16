@@ -239,7 +239,11 @@ func run() int {
 		Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
 		EnableConsole: true,
 	}))
-	defer l.Sync()
+	defer func() {
+		if err := l.Sync(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to sync logger: %v\n", err)
+		}
+	}()
 	logger.ReplaceGlobals(ctx, l)
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
@@ -251,7 +255,11 @@ func run() int {
 			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
-	defer sbxLoggerExternal.Sync()
+	defer func() {
+		if err := sbxLoggerExternal.Sync(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to sync sandbox logger external: %v\n", err)
+		}
+	}()
 	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
 
 	sbxLoggerInternal := sbxlogger.NewLogger(
@@ -263,7 +271,11 @@ func run() int {
 			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
-	defer sbxLoggerInternal.Sync()
+	defer func() {
+		if err := sbxLoggerInternal.Sync(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to sync sandbox logger internal: %v\n", err)
+		}
+	}()
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
 	// Convert the string expectedMigrationTimestamp  to a int64
