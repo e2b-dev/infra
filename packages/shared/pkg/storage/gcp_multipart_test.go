@@ -79,7 +79,9 @@ func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
 		xmlData, _ := xml.Marshal(response)
 		w.Header().Set("Content-Type", "application/xml")
 		w.WriteHeader(http.StatusOK)
-		w.Write(xmlData)
+		if _, err := w.Write(xmlData); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
@@ -188,7 +190,9 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 			xmlData, _ := xml.Marshal(response)
 			w.Header().Set("Content-Type", "application/xml")
 			w.WriteHeader(http.StatusOK)
-			w.Write(xmlData)
+			if _, err := w.Write(xmlData); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			// Upload part
@@ -242,7 +246,9 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 		}
 		xmlData, _ := xml.Marshal(response)
 		w.WriteHeader(http.StatusOK)
-		w.Write(xmlData)
+		if _, err := w.Write(xmlData); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	})
 
 	config := RetryConfig{
@@ -287,7 +293,9 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 			}
 			xmlData, _ := xml.Marshal(response)
 			w.WriteHeader(http.StatusOK)
-			w.Write(xmlData)
+			if _, err := w.Write(xmlData); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			// Track concurrent part uploads
@@ -361,7 +369,9 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 			}
 			xmlData, _ := xml.Marshal(response)
 			w.WriteHeader(http.StatusOK)
-			w.Write(xmlData)
+			if _, err := w.Write(xmlData); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			atomic.AddInt32(&attemptCount, 1)
@@ -423,7 +433,9 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 			}
 			xmlData, _ := xml.Marshal(response)
 			w.WriteHeader(http.StatusOK)
-			w.Write(xmlData)
+			if _, err := w.Write(xmlData); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			partNumStr := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
@@ -436,7 +448,9 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 			// Fail first few attempts for each part, then succeed
 			if currentAttempts < int32(maxAttempts-1) {
 				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte("simulated failure"))
+				if _, err := w.Write([]byte("simulated failure")); err != nil {
+					t.Errorf("failed to write response: %v", err)
+				}
 
 				return
 			}
@@ -489,7 +503,9 @@ func TestMultipartUploader_EdgeCases_EmptyFile(t *testing.T) {
 			}
 			xmlData, _ := xml.Marshal(response)
 			w.WriteHeader(http.StatusOK)
-			w.Write(xmlData)
+			if _, err := w.Write(xmlData); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			atomic.AddInt32(&partCalls, 1)
@@ -534,7 +550,9 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 			}
 			xmlData, _ := xml.Marshal(response)
 			w.WriteHeader(http.StatusOK)
-			w.Write(xmlData)
+			if _, err := w.Write(xmlData); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			body, _ := io.ReadAll(r.Body)
@@ -607,7 +625,9 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 			}
 			xmlData, _ := xml.Marshal(response)
 			w.WriteHeader(http.StatusOK)
-			w.Write(xmlData)
+			if _, err := w.Write(xmlData); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			current := activeConcurrency.Add(1)
@@ -666,7 +686,9 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 			}
 			xmlData, _ := xml.Marshal(response)
 			w.WriteHeader(http.StatusOK)
-			w.Write(xmlData)
+			if _, err := w.Write(xmlData); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			body, _ := io.ReadAll(r.Body)
@@ -725,7 +747,9 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 			}
 			xmlData, _ := xml.Marshal(response)
 			w.WriteHeader(http.StatusOK)
-			w.Write(xmlData)
+			if _, err := w.Write(xmlData); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			partNumStr := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
@@ -911,10 +935,14 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 
 		if count < 3 {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("server error"))
+			if _, err := w.Write([]byte("server error")); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 		} else {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("success"))
+			if _, err := w.Write([]byte("success")); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 		}
 	}))
 	defer server.Close()
@@ -936,7 +964,9 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Errorf("failed to close response body: %v", err)
+	}
 
 	// Should have made 3 requests (initial + 2 retries)
 	require.Equal(t, int32(3), atomic.LoadInt32(&requestCount))

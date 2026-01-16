@@ -67,7 +67,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close database connection: %v\n", err)
+		}
+	}()
 
 	// Open .e2b/config.json
 	// Delete existing user and recreate (simpler for seeding)

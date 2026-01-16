@@ -178,7 +178,11 @@ func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -216,7 +220,11 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -260,7 +268,11 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 	if err != nil {
 		return fmt.Errorf("http request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -277,7 +289,11 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close file", zap.Error(err))
+		}
+	}()
 
 	// Get file size
 	fileInfo, err := file.Stat()

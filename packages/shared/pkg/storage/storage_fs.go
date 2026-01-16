@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -79,7 +80,11 @@ func (o *fsObject) WriteTo(_ context.Context, dst io.Writer) (int64, error) {
 		return 0, err
 	}
 
-	defer handle.Close()
+	defer func() {
+		if err := handle.Close(); err != nil {
+			log.Printf("failed to close file handle: %v", err)
+		}
+	}()
 
 	return io.Copy(dst, handle)
 }
@@ -89,7 +94,11 @@ func (o *fsObject) Put(_ context.Context, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer handle.Close()
+	defer func() {
+		if err := handle.Close(); err != nil {
+			log.Printf("failed to close file handle: %v", err)
+		}
+	}()
 
 	_, err = io.Copy(handle, bytes.NewReader(data))
 
@@ -101,13 +110,21 @@ func (o *fsObject) StoreFile(_ context.Context, path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", path, err)
 	}
-	defer r.Close()
+	defer func() {
+		if err := r.Close(); err != nil {
+			log.Printf("failed to close reader: %v", err)
+		}
+	}()
 
 	handle, err := o.getHandle(false)
 	if err != nil {
 		return err
 	}
-	defer handle.Close()
+	defer func() {
+		if err := handle.Close(); err != nil {
+			log.Printf("failed to close file handle: %v", err)
+		}
+	}()
 
 	_, err = io.Copy(handle, r)
 	if err != nil {
@@ -122,7 +139,11 @@ func (o *fsObject) ReadAt(_ context.Context, buff []byte, off int64) (n int, err
 	if err != nil {
 		return 0, err
 	}
-	defer handle.Close()
+	defer func() {
+		if err := handle.Close(); err != nil {
+			log.Printf("failed to close file handle: %v", err)
+		}
+	}()
 
 	return handle.ReadAt(buff, off)
 }
@@ -141,7 +162,11 @@ func (o *fsObject) Size(_ context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer handle.Close()
+	defer func() {
+		if err := handle.Close(); err != nil {
+			log.Printf("failed to close file handle: %v", err)
+		}
+	}()
 
 	fileInfo, err := handle.Stat()
 	if err != nil {

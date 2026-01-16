@@ -15,19 +15,19 @@ func TestSetOnce(t *testing.T) {
 	t.Parallel()
 	setOnce := NewSetOnce[int]()
 
-	setOnce.SetValue(1)
+	_ = setOnce.SetValue(1)
 
 	value, err := setOnce.Wait()
 	require.NoError(t, err)
 	assert.Equal(t, 1, value)
 
-	setOnce.SetValue(2)
+	_ = setOnce.SetValue(2)
 
 	value, err = setOnce.Wait()
 	require.NoError(t, err)
 	assert.Equal(t, 1, value)
 
-	setOnce.SetError(fmt.Errorf("error"))
+	_ = setOnce.SetError(fmt.Errorf("error"))
 
 	value, err = setOnce.Wait()
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestSetOnceWait(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Go(func() {
 		time.Sleep(200 * time.Millisecond)
-		setOnce.SetValue(1)
+		_ = setOnce.SetValue(1)
 	})
 
 	value, err := setOnce.Wait()
@@ -81,7 +81,7 @@ func TestSetOnceWaitWithContext(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Go(func() {
 		time.Sleep(200 * time.Millisecond)
-		setOnce.SetValue(1)
+		_ = setOnce.SetValue(1)
 	})
 
 	value, err := setOnce.WaitWithContext(ctx)
@@ -127,7 +127,7 @@ func TestSetOnceSetResultConcurrent(t *testing.T) {
 		go func(i int) {
 			time.Sleep(time.Microsecond)
 
-			setOnce.SetValue(i)
+			_ = setOnce.SetValue(i)
 
 			if even {
 				wg1.Done()
@@ -167,7 +167,7 @@ func TestSetOnceSetResultConcurrentWithContext(t *testing.T) {
 		go func(i int) {
 			time.Sleep(time.Microsecond)
 
-			setOnce.SetValue(i)
+			_ = setOnce.SetValue(i)
 
 			if even {
 				wg1.Done()
@@ -222,7 +222,7 @@ func TestSetOnceConcurrentReadsWithContext(t *testing.T) {
 	defer cancel()
 
 	// Set value first
-	setOnce.SetValue(42)
+	_ = setOnce.SetValue(42)
 
 	// Start multiple concurrent readers
 	var wg sync.WaitGroup
@@ -265,7 +265,7 @@ func TestSetOnceConcurrentReadersBeforeWrite(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Set the value
-	setOnce.SetValue(42)
+	_ = setOnce.SetValue(42)
 
 	// Wait for all readers
 	wg.Wait()
@@ -326,7 +326,7 @@ func TestResultAfterDone(t *testing.T) {
 	wg := sync.WaitGroup{}
 
 	wg.Go(func() {
-		setOnce.SetValue(1)
+		_ = setOnce.SetValue(1)
 	})
 
 	<-setOnce.Done
@@ -350,7 +350,7 @@ func TestMultipleDone(t *testing.T) {
 		})
 	}
 
-	setOnce.SetValue(1)
+	_ = setOnce.SetValue(1)
 
 	wg.Wait()
 

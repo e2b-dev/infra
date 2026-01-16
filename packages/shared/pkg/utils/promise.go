@@ -18,7 +18,7 @@ func NewPromise[T any](fn func() (T, error)) *Promise[T] {
 
 	go func() {
 		value, err := fn()
-		p.result.SetResult(value, err)
+		_ = p.result.SetResult(value, err) // Error only occurs if result already set (programming error)
 	}()
 
 	return p

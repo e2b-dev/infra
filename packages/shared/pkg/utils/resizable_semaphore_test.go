@@ -56,7 +56,7 @@ func TestAcquireWithLimitIncrease(t *testing.T) {
 	time.Sleep(50 * time.Millisecond) // ensure goroutine is blocked
 
 	// Increase limit to allow the second acquire
-	s.SetLimit(3)
+	_ = s.SetLimit(3)
 
 	select {
 	case <-done:
@@ -237,7 +237,7 @@ func TestAcquireUnblocksOnSetLimit(t *testing.T) {
 	}()
 
 	time.Sleep(10 * time.Millisecond) // ensure waiter is parked
-	s.SetLimit(2)                     // enlarges limit
+	_ = s.SetLimit(2)                 // enlarges limit
 
 	select {
 	case <-done:

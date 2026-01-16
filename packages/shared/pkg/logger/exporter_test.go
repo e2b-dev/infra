@@ -142,7 +142,9 @@ func TestHTTPWriterConcurrentWriteSync(t *testing.T) {
 					return
 				default:
 					logLine := `{"level":"info","msg":"test"}` + "\n"
-					writer.Write([]byte(logLine))
+					if _, err := writer.Write([]byte(logLine)); err != nil {
+						t.Logf("failed to write log: %v", err)
+					}
 					// Small sleep to avoid overwhelming the server
 					time.Sleep(1 * time.Millisecond)
 					runtime.Gosched()
@@ -166,7 +168,9 @@ func TestHTTPWriterConcurrentWriteSync(t *testing.T) {
 				case <-stopChan:
 					return
 				default:
-					writer.Sync()
+					if err := writer.Sync(); err != nil {
+						t.Logf("failed to sync writer: %v", err)
+					}
 					// Small sleep to avoid overwhelming the server
 					time.Sleep(2 * time.Millisecond)
 					runtime.Gosched()

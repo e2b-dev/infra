@@ -157,7 +157,11 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 		return 0, err
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close response body", zap.Error(err))
+		}
+	}()
 
 	return io.Copy(dst, resp.Body)
 }
@@ -170,7 +174,11 @@ func (o *awsObject) StoreFile(ctx context.Context, path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close file", zap.Error(err))
+		}
+	}()
 
 	uploader := manager.NewUploader(
 		o.client,
@@ -230,7 +238,11 @@ func (o *awsObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 		return 0, err
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close response body", zap.Error(err))
+		}
+	}()
 
 	// When the object is smaller than requested range there will be unexpected EOF,
 	// but backend expects to return EOF in this case.

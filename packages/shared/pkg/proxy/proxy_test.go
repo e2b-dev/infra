@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -74,7 +75,10 @@ func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 					}
 				}
 
-				w.Write([]byte(id))
+				if _, err := w.Write([]byte(id)); err != nil {
+					// Log error but don't fail - this is in a background handler
+					fmt.Fprintf(os.Stderr, "failed to write response: %v\n", err)
+				}
 			}),
 		},
 		listener:     listener,
@@ -84,12 +88,20 @@ func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 	}
 
 	// Start the server
-	go backend.server.Serve(backend.listener)
+	go func() {
+		if err := backend.server.Serve(backend.listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			// Log error but don't fail - this is in a background goroutine
+			fmt.Fprintf(os.Stderr, "failed to serve: %v\n", err)
+		}
+	}()
 
 	// Parse the URL
 	backendURL, err := url.Parse(fmt.Sprintf("http://%s", listener.Addr().String()))
 	if err != nil {
-		listener.Close()
+		if closeErr := listener.Close(); closeErr != nil {
+			// Log error but don't fail - we're already returning an error
+			fmt.Fprintf(os.Stderr, "failed to close listener: %v\n", closeErr)
+		}
 
 		return nil, fmt.Errorf("failed to parse backend URL: %w", err)
 	}
@@ -160,7 +172,9 @@ func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Dest
 
 	// Start the proxy server
 	go func() {
-		proxy.Serve(l)
+		if err := proxy.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("failed to serve proxy: %v", err)
+		}
 	}()
 
 	return proxy, uint(port), nil
@@ -174,7 +188,11 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 
 	backend, err := newTestBackend(listener, "backend-1")
 	require.NoError(t, err)
-	defer backend.Close()
+	defer func() {
+		if err := backend.Close(); err != nil {
+			t.Errorf("failed to close backend: %v", err)
+		}
+	}()
 
 	// Set up a routing function that always returns the backend
 	getDestination := func(*http.Request) (*pool.Destination, error) {
@@ -188,7 +206,11 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
-	defer proxy.Close()
+	defer func() {
+		if err := proxy.Close(); err != nil {
+			t.Errorf("failed to close proxy: %v", err)
+		}
+	}()
 
 	assert.Equal(t, uint64(0), proxy.TotalPoolConnections())
 	assert.Equal(t, uint64(0), backend.RequestCount())
@@ -197,7 +219,11 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 	resp, err := httpGet(t, proxyURL)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	assertBackendOutput(t, backend, resp)
 
@@ -291,7 +317,11 @@ func TestProxyReusesConnections(t *testing.T) {
 
 	backend, err := newTestBackend(listener, "backend-1")
 	require.NoError(t, err)
-	defer backend.Close()
+	defer func() {
+		if err := backend.Close(); err != nil {
+			t.Errorf("failed to close backend: %v", err)
+		}
+	}()
 
 	// Set up a routing function that always returns the backend
 	getDestination := func(*http.Request) (*pool.Destination, error) {
@@ -305,7 +335,11 @@ func TestProxyReusesConnections(t *testing.T) {
 
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
-	defer proxy.Close()
+	defer func() {
+		if err := proxy.Close(); err != nil {
+			t.Errorf("failed to close proxy: %v", err)
+		}
+	}()
 
 	// Make two requests to the proxy
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
@@ -313,14 +347,22 @@ func TestProxyReusesConnections(t *testing.T) {
 	// First request
 	resp1, err := httpGet(t, proxyURL)
 	require.NoError(t, err)
-	defer resp1.Body.Close()
+	defer func() {
+		if err := resp1.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	assertBackendOutput(t, backend, resp1)
 
 	// Second request
 	resp2, err := httpGet(t, proxyURL)
 	require.NoError(t, err)
-	defer resp2.Body.Close()
+	defer func() {
+		if err := resp2.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	assertBackendOutput(t, backend, resp2)
 
@@ -337,7 +379,11 @@ func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
 
 	backend, err := newTestBackend(listener, "backend-1")
 	require.NoError(t, err)
-	defer backend.Close()
+	defer func() {
+		if err := backend.Close(); err != nil {
+			t.Errorf("failed to close backend: %v", err)
+		}
+	}()
 
 	getDestination := func(*http.Request) (*pool.Destination, error) {
 		return &pool.Destination{
@@ -350,13 +396,21 @@ func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
 
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
-	defer proxy.Close()
+	defer func() {
+		if err := proxy.Close(); err != nil {
+			t.Errorf("failed to close proxy: %v", err)
+		}
+	}()
 
 	// Make a request to the proxy
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 	resp, err := httpGet(t, proxyURL)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	assertBackendOutput(t, backend, resp)
 
@@ -383,7 +437,11 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 
 	backend, err := newTestBackend(instrumentedListener, "backend-1")
 	require.NoError(t, err)
-	defer backend.Close()
+	defer func() {
+		if err := backend.Close(); err != nil {
+			t.Errorf("failed to close backend: %v", err)
+		}
+	}()
 
 	getDestination := func(*http.Request) (*pool.Destination, error) {
 		return &pool.Destination{
@@ -396,7 +454,11 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
-	defer proxy.Close()
+	defer func() {
+		if err := proxy.Close(); err != nil {
+			t.Errorf("failed to close proxy: %v", err)
+		}
+	}()
 
 	requestEnded := make(chan struct{}, 1)
 
@@ -407,7 +469,11 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 		resp, err := httpGetWithBodyWriteDelay(t, proxyURL, 10*time.Second)
 		assert.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				t.Errorf("failed to close response body: %v", err)
+			}
+		}()
 
 		assertStreamError(t, resp)
 	}()
@@ -456,7 +522,11 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 
 	backend1, err := newTestBackend(listener, "backend-1")
 	require.NoError(t, err)
-	defer backend1.Close()
+	defer func() {
+		if err := backend1.Close(); err != nil {
+			t.Errorf("failed to close backend: %v", err)
+		}
+	}()
 
 	// Get the address of the first backend
 	backendAddr := backend1.listener.Addr().String()
@@ -487,14 +557,22 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	// Create proxy with the initial routing function
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
-	defer proxy.Close()
+	defer func() {
+		if err := proxy.Close(); err != nil {
+			t.Errorf("failed to close proxy: %v", err)
+		}
+	}()
 
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 
 	// Make request to first backend
 	resp1, err := httpGet(t, proxyURL)
 	require.NoError(t, err)
-	defer resp1.Body.Close()
+	defer func() {
+		if err := resp1.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	assertBackendOutput(t, backend1, resp1)
 
@@ -502,7 +580,9 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	assert.Equal(t, uint64(1), backend1.RequestCount(), "first backend should have been called once")
 
 	// Close the first backend
-	backend1.Interrupt()
+	if err := backend1.Interrupt(); err != nil {
+		t.Errorf("failed to interrupt backend: %v", err)
+	}
 
 	// Create second backend on the same address
 	listener, err = lisCfg.Listen(t.Context(), "tcp", backendAddr)
@@ -510,12 +590,20 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 
 	backend2, err := newTestBackend(listener, "backend-2")
 	require.NoError(t, err)
-	defer backend2.Close()
+	defer func() {
+		if err := backend2.Close(); err != nil {
+			t.Errorf("failed to close backend: %v", err)
+		}
+	}()
 
 	// Make request to second backend
 	resp2, err := httpGet(t, proxyURL)
 	require.NoError(t, err)
-	defer resp2.Body.Close()
+	defer func() {
+		if err := resp2.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	assert.Equal(t, http.StatusBadGateway, resp2.StatusCode, "status code should be 502")
 }
@@ -529,7 +617,11 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 
 	backend1, err := newTestBackend(listener, "backend-1")
 	require.NoError(t, err)
-	defer backend1.Close()
+	defer func() {
+		if err := backend1.Close(); err != nil {
+			t.Errorf("failed to close backend: %v", err)
+		}
+	}()
 
 	// Get the address of the first backend
 	backendAddr := backend1.listener.Addr().String()
@@ -560,14 +652,22 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	// Create proxy with the initial routing function
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
-	defer proxy.Close()
+	defer func() {
+		if err := proxy.Close(); err != nil {
+			t.Errorf("failed to close proxy: %v", err)
+		}
+	}()
 
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 
 	// Make request to first backend
 	resp1, err := httpGet(t, proxyURL)
 	require.NoError(t, err)
-	defer resp1.Body.Close()
+	defer func() {
+		if err := resp1.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	assertBackendOutput(t, backend1, resp1)
 
@@ -575,7 +675,9 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	assert.Equal(t, uint64(1), backend1.RequestCount(), "first backend should have been called once")
 
 	// Close the first backend
-	backend1.Interrupt()
+	if err := backend1.Interrupt(); err != nil {
+		t.Errorf("failed to interrupt backend: %v", err)
+	}
 
 	// Create second backend on the same address
 	listener, err = lisCfg.Listen(t.Context(), "tcp", backendAddr)
@@ -583,7 +685,11 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 
 	backend2, err := newTestBackend(listener, "backend-2")
 	require.NoError(t, err)
-	defer backend2.Close()
+	defer func() {
+		if err := backend2.Close(); err != nil {
+			t.Errorf("failed to close backend: %v", err)
+		}
+	}()
 
 	backendMappingMutex.Lock()
 	backendMapping[backend2.listener.Addr().String()] = backend2.id
@@ -592,7 +698,11 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	// Make request to second backend
 	resp2, err := httpGet(t, proxyURL)
 	require.NoError(t, err)
-	defer resp2.Body.Close()
+	defer func() {
+		if err := resp2.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	assertBackendOutput(t, backend2, resp2)
 
@@ -609,7 +719,9 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 	tempListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	backendAddr := tempListener.Addr().String()
-	tempListener.Close() // Close to simulate "connection refused" - small race is acceptable
+	if err := tempListener.Close(); err != nil {
+		t.Errorf("failed to close listener: %v", err)
+	} // Close to simulate "connection refused" - small race is acceptable
 
 	backendURL, err := url.Parse(fmt.Sprintf("http://%s", backendAddr))
 	require.NoError(t, err)
@@ -625,7 +737,11 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
-	defer proxy.Close()
+	defer func() {
+		if err := proxy.Close(); err != nil {
+			t.Errorf("failed to close proxy: %v", err)
+		}
+	}()
 
 	type backendResult struct {
 		backend *testBackend
@@ -647,7 +763,9 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 
 		backend, err := newTestBackend(listener, "delayed-backend")
 		if err != nil {
-			listener.Close()
+			if closeErr := listener.Close(); closeErr != nil {
+				t.Errorf("failed to close listener: %v", closeErr)
+			}
 			backendReady <- backendResult{nil, fmt.Errorf("failed to create delayed backend: %w", err)}
 
 			return
@@ -662,7 +780,11 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 
 	resp, err := httpGet(t, proxyURL)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	elapsed := time.Since(start)
 
@@ -670,7 +792,11 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 	result := <-backendReady
 	require.NoError(t, result.err)
 	backend := result.backend
-	defer backend.Close()
+	defer func() {
+		if err := backend.Close(); err != nil {
+			t.Errorf("failed to close backend: %v", err)
+		}
+	}()
 
 	assertBackendOutput(t, backend, resp)
 

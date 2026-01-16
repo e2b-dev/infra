@@ -238,7 +238,11 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 		return 0, fmt.Errorf("failed to create GCS reader for %q: %w", o.path, err)
 	}
 
-	defer reader.Close()
+	defer func() {
+		if err := reader.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close reader", zap.Error(err))
+		}
+	}()
 
 	for reader.Remain() > 0 {
 		nr, err := reader.Read(buff[n:])
@@ -301,7 +305,11 @@ func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 		return 0, fmt.Errorf("failed to create reader for %q: %w", o.path, err)
 	}
 
-	defer reader.Close()
+	defer func() {
+		if err := reader.Close(); err != nil {
+			logger.L().Error(ctx, "failed to close reader", zap.Error(err))
+		}
+	}()
 
 	buff := make([]byte, googleBufferSize)
 	n, err := io.CopyBuffer(dst, reader, buff)

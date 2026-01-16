@@ -53,7 +53,11 @@ func TestTryAcquireLock_AlreadyHeld(t *testing.T) {
 	file1, err1 := TryAcquireLock(ctx, testPath)
 	require.NoError(t, err1)
 	assert.NotNil(t, file1)
-	defer ReleaseLock(ctx, file1)
+	defer func() {
+		if err := ReleaseLock(ctx, file1); err != nil {
+			t.Errorf("failed to release lock: %v", err)
+		}
+	}()
 
 	// Second acquisition should fail (lock already held)
 	file2, err2 := TryAcquireLock(ctx, testPath)
