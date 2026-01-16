@@ -21,7 +21,6 @@ linters:
     - dupl
     - dupword
     - errcheck
-    - errchkjson
     - exhaustive
     - exhaustruct
     - funcorder
