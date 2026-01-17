@@ -16,16 +16,16 @@ func storagePath(buildId string, diffType DiffType) string {
 }
 
 type StorageDiff struct {
-	chunker           *utils.SetOnce[*block.Chunker]
-	cachePath         string
-	cacheKey          DiffStoreKey
-	storagePath       string
-	storageObjectType storage.SeekableObjectType
+	chunker   *utils.SetOnce[*block.Chunker]
+	cachePath string
+	cacheKey  DiffStoreKey
 
-	blockSize   int64
-	metrics     blockmetrics.Metrics
-	persistence storage.StorageProvider
-	frameTable  *storage.FrameTable
+	blockSize int64
+	metrics   blockmetrics.Metrics
+
+	persistence     *storage.API
+	persistencePath string
+	frameTable      *storage.FrameTable
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -44,11 +44,11 @@ func newStorageDiff(
 	diffType DiffType,
 	blockSize int64,
 	metrics blockmetrics.Metrics,
-	persistence storage.StorageProvider,
+	persistence storage.Provider,
 	frameTable *storage.FrameTable,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
-	storageObjectType, ok := storageObjectType(diffType)
+	_, ok := storageObjectType(diffType)
 	if !ok {
 		return nil, UnknownDiffTypeError{diffType}
 	}
@@ -56,8 +56,7 @@ func newStorageDiff(
 	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 
 	return &StorageDiff{
-		storagePath:       storagePath,
-		storageObjectType: storageObjectType,
+		persistencePath:   storagePath,
 		cachePath:         cachePath,
 		chunker:           utils.NewSetOnce[*block.Chunker](),
 		blockSize:         blockSize,
@@ -84,7 +83,7 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	obj, err := b.persistence.OpenFramedReader(ctx, b.storagePath)
+	obj, err := b.persistence.OpenFramedReader(ctx, b.persistencePath)
 	if err != nil {
 		return err
 	}
@@ -156,6 +155,10 @@ func (b *StorageDiff) FileSize() (int64, error) {
 	}
 
 	return c.FileSize()
+}
+
+func (b *StorageDiff) Size(_ context.Context) (int64, error) {
+	return b.FileSize()
 }
 
 func (b *StorageDiff) BlockSize() int64 {

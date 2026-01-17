@@ -837,6 +837,18 @@ components:
           items:
             $ref: "#/components/schemas/TemplateBuild"
 
+    TemplateAliasResponse:
+      required:
+        - templateID
+        - public
+      properties:
+        templateID:
+          type: string
+          description: Identifier of the template
+        public:
+          type: boolean
+          description: Whether the template is public or only accessible by the team
+
     TemplateBuildRequest:
       required:
         - dockerfile
@@ -895,6 +907,7 @@ components:
           items:
             type: string
         teamID:
+          deprecated: true
           type: string
           description: Identifier of the team
         cpuCount:
@@ -910,6 +923,7 @@ components:
           description: Alias of the template
           type: string
         teamID:
+          deprecated: true
           type: string
           description: Identifier of the team
         cpuCount:
@@ -2095,6 +2109,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2124,6 +2139,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2153,6 +2169,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - in: path
@@ -2186,6 +2203,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - in: query
           required: false
@@ -2214,6 +2232,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2265,6 +2284,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2292,6 +2312,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -2308,6 +2329,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2334,6 +2356,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2352,6 +2375,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2377,6 +2401,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2423,6 +2448,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2520,6 +2546,37 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/aliases/{alias}:
+    get:
+      description: Check if template with given alias exists
+      tags: [templates]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - name: alias
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Template alias
+      responses:
+        "200":
+          description: Successfully queried template by alias
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateAliasResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
         "404":
           $ref: "#/components/responses/404"
         "500":

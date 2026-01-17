@@ -18,6 +18,16 @@ const (
 	PhaseBase     Phase = "base"
 	PhaseSteps    Phase = "steps"
 	PhaseFinalize Phase = "finalize"
+	PhaseOptimize Phase = "optimize"
+)
+
+// BuildResultType represents the type of build result
+type BuildResultType string
+
+const (
+	BuildResultSuccess       BuildResultType = "success"
+	BuildResultUserError     BuildResultType = "user_error"
+	BuildResultInternalError BuildResultType = "internal_error"
 )
 
 // BuildMetrics contains all metrics related to template building
@@ -97,11 +107,11 @@ func (m *BuildMetrics) RecordPhaseDuration(ctx context.Context, duration time.Du
 	m.BuildPhaseDurationHistogram.Record(ctx, duration.Milliseconds(), metric.WithAttributes(attrs...))
 }
 
-// RecordBuildResult records the result of a build (success or failure)
-func (m *BuildMetrics) RecordBuildResult(ctx context.Context, teamID string, success bool) {
+// RecordBuildResult records the result of a build (success, user_error, or internal_error)
+func (m *BuildMetrics) RecordBuildResult(ctx context.Context, teamID string, resultType BuildResultType) {
 	attrs := []attribute.KeyValue{
 		telemetry.WithTeamID(teamID),
-		attribute.Bool("success", success),
+		attribute.String("result", string(resultType)),
 	}
 	m.BuildResultCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
 }

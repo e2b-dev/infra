@@ -8,7 +8,7 @@ permissions:
 jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
-    runs-on: ubuntu-24.04
+    runs-on: infra-tests
     strategy:
       matrix:
         include:
@@ -16,6 +16,9 @@ jobs:
             test_path: ./...
             sudo: false
           - package: packages/client-proxy
+            test_path: ./...
+            sudo: false
+          - package: packages/db
             test_path: ./...
             sudo: false
           - package: packages/docker-reverse-proxy
@@ -53,16 +56,16 @@ jobs:
           # Enable hugepages
           sudo mkdir -p /mnt/hugepages
           sudo mount -t hugetlbfs none /mnt/hugepages
-          echo 128 | sudo tee /proc/sys/vm/nr_hugepages
-          
+          echo 2000 | sudo tee /proc/sys/vm/nr_hugepages
+
           # Enable NBD
           sudo modprobe nbd nbds_max=256
-          
+
           # Disable inotify watching of change events for NBD devices
           echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger
-          
+
         if: matrix.package == 'packages/orchestrator'
 
       - name: Run tests that require sudo

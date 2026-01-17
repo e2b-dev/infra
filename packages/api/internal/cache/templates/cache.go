@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
+	"go.opentelemetry.io/otel"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -25,6 +26,8 @@ const (
 	refreshInterval        = 1 * time.Minute
 	refreshTimeout         = 30 * time.Second
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/cache/templates")
 
 type TemplateInfo struct {
 	template  *api.Template
@@ -96,6 +99,9 @@ func buildCacheKey(templateID string, tag *string) string {
 }
 
 func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, tag *string, teamID uuid.UUID, clusterID uuid.UUID, public bool) (*api.Template, *queries.EnvBuild, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get template")
+	defer span.End()
+
 	// Resolve alias to template ID if needed
 	templateID, found := c.aliasCache.Get(aliasOrEnvID)
 	if !found {
@@ -129,6 +135,9 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, tag *strin
 
 // fetchTemplateInfo fetches template info from the database
 func (c *TemplateCache) fetchTemplateInfo(ctx context.Context, cacheKey string) (*TemplateInfo, error) {
+	ctx, span := tracer.Start(ctx, "fetch template info")
+	defer span.End()
+
 	aliasOrEnvID, tag, err := id.ParseTemplateIDOrAliasWithTag(cacheKey)
 	if err != nil {
 		return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("invalid template ID: %s", err), Err: err}

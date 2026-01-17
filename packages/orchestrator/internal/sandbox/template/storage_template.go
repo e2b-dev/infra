@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -69,6 +72,11 @@ func newTemplateFromStorage(
 }
 
 func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
+	ctx, span := tracer.Start(ctx, "fetch storage template", trace.WithAttributes(
+		telemetry.WithBuildID(t.files.BuildID),
+	))
+	defer span.End()
+
 	var wg errgroup.Group
 
 	// fmt.Printf("<>/<> Starting to fetch template files for build %s\n", t.files.BuildID)
@@ -224,6 +232,9 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 	err := wg.Wait()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+
 		logger.L().Error(ctx, "failed to fetch template files",
 			logger.WithBuildID(t.files.BuildID),
 			zap.Error(err),

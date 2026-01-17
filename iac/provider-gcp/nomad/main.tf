@@ -2,6 +2,7 @@ locals {
   clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
   redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
   redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+  loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
 }
 
 # API
@@ -98,12 +99,10 @@ resource "nomad_job" "api" {
     redis_cluster_url              = local.redis_cluster_url
     redis_tls_ca_base64            = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
     clickhouse_connection_string   = local.clickhouse_connection_string
+    loki_url                       = local.loki_url
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = data.google_artifact_registry_docker_image.db_migrator_image.self_link
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-
-    local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
-    local_cluster_token    = var.edge_api_secret
   })
 }
 
@@ -157,7 +156,7 @@ resource "nomad_job" "client_proxy" {
       redis_cluster_url   = local.redis_cluster_url
       redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
-      loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
+      loki_url                     = local.loki_url
       clickhouse_connection_string = local.clickhouse_connection_string
 
       proxy_port_name   = var.edge_proxy_port.name
@@ -388,6 +387,7 @@ locals {
     proxy_port       = var.orchestrator_proxy_port
     environment      = var.environment
     consul_acl_token = var.consul_acl_token_secret
+    domain_name      = var.domain_name
 
     envd_timeout                 = var.envd_timeout
     bucket_name                  = var.fc_env_pipeline_bucket_name
@@ -462,10 +462,25 @@ data "external" "template_manager" {
   }
 }
 
+# Get current template-manager count from Nomad to preserve autoscaler-managed value
+# This prevents Terraform from resetting count on job updates
+# Default depends on whether scaling is enabled (min=2) or not (min=1)
+data "external" "template_manager_count" {
+  program = ["bash", "${path.module}/scripts/get-nomad-job-count.sh"]
+
+  query = {
+    nomad_addr  = "https://nomad.${var.domain_name}"
+    nomad_token = var.nomad_acl_token_secret
+    job_name    = "template-manager"
+    min_count   = var.template_manages_clusters_size_gt_1 ? "2" : "1"
+  }
+}
+
 resource "nomad_job" "template_manager" {
   jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
     update_stanza = var.template_manages_clusters_size_gt_1
     node_pool     = var.builder_node_pool
+    current_count = tonumber(data.external.template_manager_count.result.count)
 
     gcp_project      = var.gcp_project_id
     gcp_region       = var.gcp_region
@@ -473,6 +488,7 @@ resource "nomad_job" "template_manager" {
     port             = var.template_manager_port
     environment      = var.environment
     consul_acl_token = var.consul_acl_token_secret
+    domain_name      = var.domain_name
 
     api_secret                      = var.api_secret
     bucket_name                     = var.fc_env_pipeline_bucket_name
@@ -488,11 +504,40 @@ resource "nomad_job" "template_manager" {
     clickhouse_connection_string    = local.clickhouse_connection_string
     dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
     launch_darkly_api_key           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-
-    # For now we DISABLE the shared chunk cache in the template manager
-    shared_chunk_cache_path = ""
+    shared_chunk_cache_path         = var.shared_chunk_cache_path
   })
 }
+
+data "google_storage_bucket_object" "nomad_nodepool_apm" {
+  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
+
+  name   = "nomad-nodepool-apm"
+  bucket = var.fc_env_pipeline_bucket_name
+}
+
+data "external" "nomad_nodepool_apm_checksum" {
+  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
+
+  program = ["bash", "${path.module}/scripts/checksum.sh"]
+
+  query = {
+    base64 = data.google_storage_bucket_object.nomad_nodepool_apm[0].md5hash
+  }
+}
+
+# Nomad Autoscaler - required for template-manager dynamic scaling
+resource "nomad_job" "nomad_nodepool_apm" {
+  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
+
+  jobspec = templatefile("${path.module}/jobs/nomad-autoscaler.hcl", {
+    node_pool                   = var.api_node_pool
+    autoscaler_version          = var.nomad_autoscaler_version
+    bucket_name                 = var.fc_env_pipeline_bucket_name
+    nomad_token                 = var.nomad_acl_token_secret
+    nomad_nodepool_apm_checksum = data.external.nomad_nodepool_apm_checksum[0].result.hex
+  })
+}
+
 resource "nomad_job" "loki" {
   jobspec = templatefile("${path.module}/jobs/loki.hcl", {
     gcp_zone = var.gcp_zone

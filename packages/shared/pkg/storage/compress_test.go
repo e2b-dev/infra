@@ -97,19 +97,19 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 			}
 		})
 
-		uploader := createTestMultipartUploader(t, handler)
+		testGCP := createTestMultipartUploader(t, handler)
 
-		opts := CompressionOptions{
+		opts := FramedUploadOptions{
 			CompressionType: CompressionZstd,
-			Level:           int(zstdCompressionLevel),
+			Level:           int(defaultZstdCompressionLevel),
 			ChunkSize:       chunkSize,
 			TargetFrameSize: frameSize,
 		}
-		e := newFrameEncoder(&opts, uploader, 3)
+		e := newFrameEncoder(&opts, testGCP)
 		e.targetPartSize = partSize
 
 		var err error
-		frameTable, err = e.upload(t.Context(), bytes.NewReader(origData))
+		frameTable, err = e.FramedUpload(t.Context(), "test-path", bytes.NewReader(origData))
 		require.NoError(t, err)
 		require.Equal(t, 1, initiateC)
 		require.Equal(t, 1, completeC)
@@ -150,21 +150,22 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 
 	t.Run("Verify downloading slices", func(t *testing.T) {
 		t.Logf("original data %d bytes, received data %d bytes\n", len(origData), len(receivedData))
-		rr := &fakeRanger{data: receivedData}
+		fake := &Storage{
+			Provider: &Provider{
+				RangeGetter: &fakeRanger{data: receivedData},
+			},
+		}
 
 		for range 10 {
 			s := seeded.Intn(len(origData) - 1)
-			e := seeded.Intn(len(origData) - 1)
-			if s > e {
-				s, e = e, s
-			}
+			e := s + 1
 
 			t.Logf("requesting frames for range %#x to %#x, %#x bytes\n", s, e, e-s)
 			t.Logf("<>/<> frame table: %+v\n", frameTable)
-			start, frames, err := DownloadFrames(t.Context(), rr, int64(s), e-s, frameTable)
+			r, rc, err := fake.GetFrame(t.Context(), "test-path", Range{Start: int64(s), Length: e - s}, frameTable, true)
 			require.NoError(t, err)
-			require.LessOrEqual(t, int(start), s)
-			require.GreaterOrEqual(t, len(frames), 1)
+			require.LessOrEqual(t, int(r.Start), s)
+			rc.Close()
 		}
 	})
 }
@@ -173,21 +174,21 @@ type fakeRanger struct {
 	data []byte
 }
 
-func (r *fakeRanger) RangeGet(_ context.Context, offset, length int64) (io.ReadCloser, error) {
-	return io.NopCloser(bytes.NewReader(r.data[offset : offset+length])), nil
+func (r *fakeRanger) RangeGet(_ context.Context, path string, offset int64, length int) (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(r.data[offset : offset+int64(length)])), nil
 }
 
 func TestCompressedInfo_Subset(t *testing.T) {
-	// Create a CompressedInfo with frames of known sizes
-	// Frame 0: U=1000, C=500 (offset 0-1000)
-	// Frame 1: U=2000, C=1000 (offset 1000-3000)
-	// Frame 2: U=1500, C=750 (offset 3000-4500)
-	// Frame 3: U=3000, C=1500 (offset 4500-7500)
+	// Create a FrameTable with frames of known sizes
+	// Frame 0: U=1000, C=500 (100-1100)
+	// Frame 1: U=2000, C=1000 (1100-3100)
+	// Frame 2: U=1500, C=750 (3100-4600)
+	// Frame 3: U=3000, C=1500 (4600-7600)
 	// Total uncompressed: 7500 bytes
-	ci := &FrameTable{
+	ft := &FrameTable{
 		CompressionType: CompressionZstd,
-		StartAt:         Offset{U: 100, C: 50},
-		Frames: []Frame{
+		StartAt:         FrameOffset{U: 100, C: 50},
+		Frames: []FrameSize{
 			{U: 1000, C: 500},
 			{U: 2000, C: 1000},
 			{U: 1500, C: 750},
@@ -197,130 +198,157 @@ func TestCompressedInfo_Subset(t *testing.T) {
 
 	t.Run("subset at the beginning", func(t *testing.T) {
 		// Request range [0, 500) - should include only frame 0
-		subset := ci.Subset(0, 500)
+		subset, err := ft.Subset(Range{Start: 100, Length: 500})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Equal(t, CompressionZstd, subset.CompressionType)
 		require.Len(t, subset.Frames, 1)
-		require.Equal(t, Frame{U: 1000, C: 500}, subset.Frames[0])
+		require.Equal(t, int64(100), subset.StartAt.U)
+		require.Equal(t, int64(50), subset.StartAt.C)
+		require.Equal(t, FrameSize{U: 1000, C: 500}, subset.Frames[0])
 	})
 
 	t.Run("subset exactly one frame", func(t *testing.T) {
-		// Request range [1000, 2000) - should include frame 1
-		subset := ci.Subset(1000, 2000)
+		// Request range [3100, 4600) - should include frame 2
+		subset, err := ft.Subset(Range{Start: 3100, Length: 1500})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 1)
-		require.Equal(t, Frame{U: 2000, C: 1000}, subset.Frames[0])
+		require.Equal(t, int64(3100), subset.StartAt.U)
+		require.Equal(t, int64(1550), subset.StartAt.C)
+		require.Equal(t, FrameSize{U: 1500, C: 750}, subset.Frames[0])
 	})
 
 	t.Run("subset spanning multiple frames", func(t *testing.T) {
 		// Request range [500, 3500) - should include frames 0, 1, 2
-		subset := ci.Subset(500, 3000)
+		subset, err := ft.Subset(Range{Start: 500, Length: 3000})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 3)
-		require.Equal(t, Frame{U: 1000, C: 500}, subset.Frames[0])
-		require.Equal(t, Frame{U: 2000, C: 1000}, subset.Frames[1])
-		require.Equal(t, Frame{U: 1500, C: 750}, subset.Frames[2])
+		require.Equal(t, FrameSize{U: 1000, C: 500}, subset.Frames[0])
+		require.Equal(t, FrameSize{U: 2000, C: 1000}, subset.Frames[1])
+		require.Equal(t, FrameSize{U: 1500, C: 750}, subset.Frames[2])
 	})
 
 	t.Run("subset at the end", func(t *testing.T) {
 		// Request range [6000, 1500) - should include only frame 3
-		subset := ci.Subset(6000, 1500)
+		subset, err := ft.Subset(Range{Start: 6000, Length: 1500})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 1)
-		require.Equal(t, Frame{U: 3000, C: 1500}, subset.Frames[0])
+		require.Equal(t, int64(4600), subset.StartAt.U)
+		require.Equal(t, int64(2300), subset.StartAt.C)
+		require.Equal(t, FrameSize{U: 3000, C: 1500}, subset.Frames[0])
 	})
 
 	t.Run("subset entire range", func(t *testing.T) {
 		// Request range [0, 7500) - should include all frames
-		subset := ci.Subset(0, 7500)
+		subset, err := ft.Subset(Range{Start: 100, Length: 7500})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 4)
-		require.Equal(t, ci.Frames, subset.Frames)
+		require.Equal(t, int64(100), subset.StartAt.U)
+		require.Equal(t, int64(50), subset.StartAt.C)
+		require.Equal(t, ft.Frames, subset.Frames)
 	})
 
 	t.Run("subset with frame boundaries aligned", func(t *testing.T) {
-		// Request range [1000, 3000) - exactly frames 1 and 2
-		subset := ci.Subset(1000, 3000)
+		// Request range [1100, 3000) - exactly frames 1 and 2
+		subset, err := ft.Subset(Range{Start: 1100, Length: 3000})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 2)
-		require.Equal(t, Frame{U: 2000, C: 1000}, subset.Frames[0])
-		require.Equal(t, Frame{U: 1500, C: 750}, subset.Frames[1])
+		require.Equal(t, int64(1100), subset.StartAt.U)
+		require.Equal(t, int64(550), subset.StartAt.C)
+		require.Equal(t, FrameSize{U: 2000, C: 1000}, subset.Frames[0])
+		require.Equal(t, FrameSize{U: 1500, C: 750}, subset.Frames[1])
 	})
 
 	t.Run("subset starting in middle of frame", func(t *testing.T) {
 		// Request range [1500, 2000) - starts in frame 1, needs entire frames 1 and 2
-		subset := ci.Subset(1500, 2000)
+		subset, err := ft.Subset(Range{Start: 1500, Length: 2000})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 2)
-		require.Equal(t, Frame{U: 2000, C: 1000}, subset.Frames[0])
-		require.Equal(t, Frame{U: 1500, C: 750}, subset.Frames[1])
+		require.Equal(t, FrameSize{U: 2000, C: 1000}, subset.Frames[0])
+		require.Equal(t, FrameSize{U: 1500, C: 750}, subset.Frames[1])
 	})
 
 	t.Run("subset ending in middle of frame", func(t *testing.T) {
-		// Request range [3000, 500) - ends in frame 2, includes frame 2
-		subset := ci.Subset(3000, 500)
+		// Request range [3200, 500) - ends in frame 2, includes frame 2
+		subset, err := ft.Subset(Range{Start: 3100, Length: 500})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 1)
-		require.Equal(t, Frame{U: 1500, C: 750}, subset.Frames[0])
+		require.Equal(t, int64(3100), subset.StartAt.U)
+		require.Equal(t, int64(1550), subset.StartAt.C)
+		require.Equal(t, FrameSize{U: 1500, C: 750}, subset.Frames[0])
 	})
 
 	t.Run("subset beyond total size stops at end", func(t *testing.T) {
 		// Request range [7000, 1000) - end exceeds total size, stops at frame 3
-		subset := ci.Subset(7000, 1000)
+		subset, err := ft.Subset(Range{Start: 7000, Length: 1000})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 1)
-		require.Equal(t, Frame{U: 3000, C: 1500}, subset.Frames[0])
+		require.Equal(t, int64(4600), subset.StartAt.U)
+		require.Equal(t, int64(2300), subset.StartAt.C)
+		require.Equal(t, FrameSize{U: 3000, C: 1500}, subset.Frames[0])
 	})
 
 	t.Run("subset starting beyond total size returns empty", func(t *testing.T) {
 		// Request range [8000, 100) - start beyond total size, no frames included
-		subset := ci.Subset(8000, 100)
-		require.NotNil(t, subset)
-		require.Len(t, subset.Frames, 0)
+		subset, err := ft.Subset(Range{Start: 8000, Length: 100})
+		require.Contains(t, err.Error(), "requested range is beyond the end of the frame table")
+		require.Nil(t, subset)
 	})
 
-	t.Run("subset with zero length", func(t *testing.T) {
+	t.Run("subset with zero length is nil", func(t *testing.T) {
 		// Request range [1000, 0) - zero length, should return empty subset
-		subset := ci.Subset(1000, 0)
-		require.NotNil(t, subset)
-		require.Len(t, subset.Frames, 0)
+		subset, err := ft.Subset(Range{Start: 1000, Length: 0})
+		require.NoError(t, err)
+		require.Nil(t, subset)
 	})
 
 	t.Run("subset single byte at start", func(t *testing.T) {
 		// Request range [0, 1) - single byte, needs entire first frame
-		subset := ci.Subset(0, 1)
+		subset, err := ft.Subset(Range{Start: 100, Length: 1})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 1)
-		require.Equal(t, Frame{U: 1000, C: 500}, subset.Frames[0])
+		require.Equal(t, FrameSize{U: 1000, C: 500}, subset.Frames[0])
 	})
 
 	t.Run("subset single byte in middle", func(t *testing.T) {
 		// Request range [2500, 1) - single byte in frame 1, needs entire frame
-		subset := ci.Subset(2500, 1)
+		subset, err := ft.Subset(Range{Start: 2500, Length: 1})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 1)
-		require.Equal(t, Frame{U: 2000, C: 1000}, subset.Frames[0])
+		require.Equal(t, FrameSize{U: 2000, C: 1000}, subset.Frames[0])
 	})
 
 	t.Run("subset single byte at end", func(t *testing.T) {
 		// Request range [7499, 1) - last byte, needs entire last frame
-		subset := ci.Subset(7499, 1)
+		subset, err := ft.Subset(Range{Start: 7499, Length: 1})
+		require.NoError(t, err)
 		require.NotNil(t, subset)
 		require.Len(t, subset.Frames, 1)
-		require.Equal(t, Frame{U: 3000, C: 1500}, subset.Frames[0])
+		require.Equal(t, FrameSize{U: 3000, C: 1500}, subset.Frames[0])
 	})
 
 	t.Run("subset preserves compression type", func(t *testing.T) {
 		// Verify compression type is preserved
-		subset := ci.Subset(0, 1000)
+		subset, err := ft.Subset(Range{Start: 100, Length: 1000})
+		require.NoError(t, err)
 		require.Equal(t, CompressionZstd, subset.CompressionType)
 	})
 
 	t.Run("subset with large frames", func(t *testing.T) {
-		// Create CompressedInfo with larger frames
+		// Create FrameTable with larger frames
 		largeCi := &FrameTable{
 			CompressionType: CompressionZstd,
-			Frames: []Frame{
+			Frames: []FrameSize{
 				{U: 1000000, C: 500000},  // 1MB uncompressed
 				{U: 2000000, C: 1000000}, // 2MB uncompressed
 				{U: 1000000, C: 500000},  // 1MB uncompressed
@@ -328,40 +356,49 @@ func TestCompressedInfo_Subset(t *testing.T) {
 		}
 
 		// Request middle portion
-		subset := largeCi.Subset(500000, 2000000)
+		subset, err := largeCi.Subset(Range{Start: 500000, Length: 2000000})
+		require.NoError(t, err)
 		require.Len(t, subset.Frames, 2)
-		require.Equal(t, Frame{U: 1000000, C: 500000}, subset.Frames[0])
-		require.Equal(t, Frame{U: 2000000, C: 1000000}, subset.Frames[1])
+		require.Equal(t, FrameSize{U: 1000000, C: 500000}, subset.Frames[0])
+		require.Equal(t, FrameSize{U: 2000000, C: 1000000}, subset.Frames[1])
 	})
 
-	t.Run("subset from empty CompressedInfo returns empty", func(t *testing.T) {
+	t.Run("subset from empty FrameTable returns empty", func(t *testing.T) {
 		emptyCi := &FrameTable{
 			CompressionType: CompressionZstd,
-			Frames:          []Frame{},
+			Frames:          []FrameSize{},
 		}
 
 		// Request returns empty subset
-		subset := emptyCi.Subset(0, 100)
-		require.NotNil(t, subset)
-		require.Len(t, subset.Frames, 0)
+		subset, err := emptyCi.Subset(Range{Start: 0, Length: 100})
+		require.Contains(t, err.Error(), "requested range is beyond the end of the frame table")
+		require.Nil(t, subset)
 	})
 
 	t.Run("subset beyond end stops gracefully", func(t *testing.T) {
-		totalSize := ci.TotalUncompressedSize()
-		require.Equal(t, int64(7500), totalSize)
+		totalSize := int(ft.TotalUncompressedSize())
+		require.Equal(t, 7500, totalSize)
 
 		// Requesting exactly the total size should work
-		subset := ci.Subset(0, int64(totalSize))
+		subset, err := ft.Subset(Range{Start: 100, Length: totalSize})
+		require.NoError(t, err)
 		require.Len(t, subset.Frames, 4)
 
 		// Requesting one byte more stops at the end
-		subset = ci.Subset(0, int64(totalSize)+1)
+		subset, err = ft.Subset(Range{Start: 100, Length: totalSize + 1})
+		require.NoError(t, err)
 		require.Len(t, subset.Frames, 4)
 	})
 
 	t.Run("Subset of nil is nil", func(t *testing.T) {
 		var nilCi *FrameTable
-		subset := nilCi.Subset(0, 100)
+		subset, err := nilCi.Subset(Range{Start: 0, Length: 100})
+		require.NoError(t, err)
 		require.Nil(t, subset)
+	})
+
+	t.Run("Subset starts before the start of the frameTable", func(t *testing.T) {
+		_, err := ft.Subset(Range{Start: 50, Length: 100})
+		require.Contains(t, err.Error(), "requested range starts before the beginning of the frame table")
 	})
 }

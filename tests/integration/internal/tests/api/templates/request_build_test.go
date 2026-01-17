@@ -14,6 +14,7 @@ import (
 )
 
 func TestRequestTemplateBuild(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
@@ -25,6 +26,7 @@ func TestRequestTemplateBuild(t *testing.T) {
 }
 
 func TestRequestTemplateTooLowCPU(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
@@ -37,6 +39,7 @@ func TestRequestTemplateTooLowCPU(t *testing.T) {
 }
 
 func TestRequestTemplateTooLowRAM(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
@@ -49,6 +52,7 @@ func TestRequestTemplateTooLowRAM(t *testing.T) {
 }
 
 func TestRequestTemplateTooHighCPU(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
@@ -57,10 +61,24 @@ func TestRequestTemplateTooHighCPU(t *testing.T) {
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
-	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "CPU count can't be higher than"), "error should have prefix 'CPU count can't be higher than', the error is '%s'", resp.JSON400.Message)
+	assert.Equal(t, "CPU count must be at most 32", resp.JSON400.Message)
+}
+
+func TestRequestTemplateOddCPU(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+
+	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
+		CpuCount: utils.ToPtr[int32](3),
+		MemoryMB: utils.ToPtr[int32](1024),
+	}, setup.WithAccessToken())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+	assert.Equal(t, "CPU count must be 1 or an even number", resp.JSON400.Message)
 }
 
 func TestRequestTemplateTooHighMemory(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
@@ -73,6 +91,7 @@ func TestRequestTemplateTooHighMemory(t *testing.T) {
 }
 
 func TestRequestTemplateMemoryNonDivisibleBy2(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{

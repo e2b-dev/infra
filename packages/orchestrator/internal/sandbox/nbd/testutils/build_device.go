@@ -1,7 +1,7 @@
 package testutils
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -37,6 +37,6 @@ func (m *BuildDevice) Header() *header.Header {
 	return m.header
 }
 
-func (m *BuildDevice) Size() (int64, error) {
+func (m *BuildDevice) Size(_ context.Context) (int64, error) {
 	return int64(m.header.Metadata.Size), nil
 }

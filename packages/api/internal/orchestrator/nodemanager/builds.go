@@ -34,9 +34,7 @@ func (n *Node) listCachedBuilds(ctx context.Context) ([]*orchestrator.CachedBuil
 	childCtx, childSpan := tracer.Start(ctx, "list-cached-builds")
 	defer childSpan.End()
 
-	client, childCtx := n.GetClient(childCtx)
-	res, err := client.Sandbox.ListCachedBuilds(childCtx, &empty.Empty{})
-
+	res, err := n.client.Sandbox.ListCachedBuilds(childCtx, &empty.Empty{})
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sandboxes: %w", err)

@@ -9,7 +9,9 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -115,21 +117,39 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 	return c.cache.Items()
 }
 
+// Invalidate removes a template from the cache, forcing a refetch on next access.
+func (c *Cache) Invalidate(buildID string) {
+	c.cache.Delete(buildID)
+}
+
+// InvalidateAll clears all cached templates and build diffs.
+// Used for cold start benchmarks to ensure no cached data is reused.
+func (c *Cache) InvalidateAll() {
+	c.cache.DeleteAll()
+	c.buildStore.RemoveCache()
+}
+
 func (c *Cache) GetTemplate(
 	ctx context.Context,
 	buildID string,
 	isSnapshot bool,
 	isBuilding bool,
 ) (Template, error) {
-	ctx, span := tracer.Start(ctx, "get template")
+	ctx, span := tracer.Start(ctx, "get template", trace.WithAttributes(
+		attribute.Bool("is_snapshot", isSnapshot),
+		attribute.Bool("is_building", isBuilding),
+	))
 	defer span.End()
 
 	persistence := c.persistence
-	// Because of the template caching, if we enable the shared cache feature flag,
+	// Because of the template caching, if we enable the NFS cache feature flag,
 	// it will start working only for new orchestrators or new builds.
-	if c.useNFSCache(ctx, isBuilding, isSnapshot) {
+	if path, enabled := c.useNFSCache(ctx, isBuilding, isSnapshot); enabled {
 		logger.L().Info(ctx, "using local template cache", zap.String("path", c.rootCachePath))
-		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
+		persistence = storage.WrapInNFSCache(ctx, path, persistence, c.flags)
+		span.SetAttributes(attribute.Bool("use_cache", true))
+	} else {
+		span.SetAttributes(attribute.Bool("use_cache", false))
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
@@ -190,28 +210,30 @@ func (c *Cache) AddSnapshot(
 	return nil
 }
 
-func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot bool) bool {
+func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot bool) (string, bool) {
 	if isBuilding {
 		// caching this layer doesn't speed up the next sandbox launch,
 		// as the previous template isn't used to load the one that's being built.
-		return false
-	}
-
-	if c.rootCachePath == "" {
-		// can't enable cache if we don't have a cache path
-		return false
+		return "", false
 	}
 
 	var flagName featureflags.BoolFlag
 	if isSnapshot {
-		flagName = featureflags.SnapshotFeatureFlagName
+		flagName = featureflags.SnapshotFeatureFlag
 	} else {
-		flagName = featureflags.TemplateFeatureFlagName
+		flagName = featureflags.TemplateFeatureFlag
 	}
 
-	flag := c.flags.BoolFlag(ctx, flagName)
+	useNFSCache := c.flags.BoolFlag(ctx, flagName)
+	if useNFSCache {
+		if c.rootCachePath == "" {
+			logger.L().Warn(ctx, "NFSCache feature flag is enabled but cache path is not set")
 
-	return flag
+			return "", false
+		}
+	}
+
+	return c.rootCachePath, useNFSCache
 }
 
 func cleanDir(path string) error {

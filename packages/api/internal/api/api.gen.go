@@ -99,6 +99,9 @@ type ServerInterface interface {
 	// (POST /templates)
 	PostTemplates(c *gin.Context)
 
+	// (GET /templates/aliases/{alias})
+	GetTemplatesAliasesAlias(c *gin.Context, alias string)
+
 	// (POST /templates/tags)
 	PostTemplatesTags(c *gin.Context)
 
@@ -938,6 +941,8 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesParams
 
@@ -966,6 +971,8 @@ func (siw *ServerInterfaceWrapper) PostTemplates(c *gin.Context) {
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -974,6 +981,36 @@ func (siw *ServerInterfaceWrapper) PostTemplates(c *gin.Context) {
 	}
 
 	siw.Handler.PostTemplates(c)
+}
+
+// GetTemplatesAliasesAlias operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesAliasesAlias(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "alias" -------------
+	var alias string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "alias", c.Param("alias"), &alias, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter alias: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesAliasesAlias(c, alias)
 }
 
 // PostTemplatesTags operation middleware
@@ -1044,6 +1081,8 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTemplateID(c *gin.Context) {
 	c.Set(AccessTokenAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -1124,6 +1163,8 @@ func (siw *ServerInterfaceWrapper) PatchTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -1151,6 +1192,8 @@ func (siw *ServerInterfaceWrapper) PostTemplatesTemplateID(c *gin.Context) {
 	c.Set(AccessTokenAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -1188,6 +1231,8 @@ func (siw *ServerInterfaceWrapper) PostTemplatesTemplateIDBuildsBuildID(c *gin.C
 	c.Set(AccessTokenAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -1227,6 +1272,8 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gi
 	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesTemplateIDBuildsBuildIDLogsParams
@@ -1310,6 +1357,8 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesTemplateIDBuildsBuildIDStatusParams
 
@@ -1375,6 +1424,8 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDFilesHash(c *gin.Contex
 	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -1449,6 +1500,8 @@ func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -1486,6 +1539,8 @@ func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -1502,6 +1557,8 @@ func (siw *ServerInterfaceWrapper) PostV3Templates(c *gin.Context) {
 	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -1568,6 +1625,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/teams/:teamID/metrics/max", wrapper.GetTeamsTeamIDMetricsMax)
 	router.GET(options.BaseURL+"/templates", wrapper.GetTemplates)
 	router.POST(options.BaseURL+"/templates", wrapper.PostTemplates)
+	router.GET(options.BaseURL+"/templates/aliases/:alias", wrapper.GetTemplatesAliasesAlias)
 	router.POST(options.BaseURL+"/templates/tags", wrapper.PostTemplatesTags)
 	router.DELETE(options.BaseURL+"/templates/tags/:name", wrapper.DeleteTemplatesTagsName)
 	router.DELETE(options.BaseURL+"/templates/:templateID", wrapper.DeleteTemplatesTemplateID)

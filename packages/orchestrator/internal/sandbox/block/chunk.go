@@ -18,22 +18,22 @@ import (
 )
 
 type Chunker struct {
-	base    storage.FramedReader
-	cache   *Cache
-	metrics metrics.Metrics
+	persistence *storage.API
+	objectPath  string
+	cache       *Cache
+	metrics     metrics.Metrics
 
 	size int64
 
 	// TODO: Optimize this so we don't need to keep the fetchers in memory.
-	fetchers *utils.WaitMap
-
-	// frameTable is used to access the underlying compressed memory diff file.
+	fetchers   *utils.WaitMap
 	frameTable *storage.FrameTable
 }
 
 func NewChunker(
 	size, blockSize int64,
-	base storage.FramedReader,
+	persistence *storage.API,
+	objectPath string,
 	cachePath string,
 	metrics metrics.Metrics,
 	frameTable *storage.FrameTable,
@@ -44,12 +44,13 @@ func NewChunker(
 	}
 
 	chunker := &Chunker{
-		size:       size,
-		base:       base,
-		cache:      cache,
-		fetchers:   utils.NewWaitMap(),
-		metrics:    metrics,
-		frameTable: frameTable,
+		size:        size,
+		persistence: persistence,
+		objectPath:  objectPath,
+		cache:       cache,
+		fetchers:    utils.NewWaitMap(),
+		metrics:     metrics,
+		frameTable:  frameTable,
 	}
 
 	return chunker, nil
@@ -85,46 +86,41 @@ func (c *Chunker) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
 func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
-	// b, err := c.cache.Slice(off, length)
-	// if err == nil {
-	// 	timer.End(ctx, length,
-	// 		attribute.String(result, resultTypeSuccess),
-	// 		attribute.String(pullType, pullTypeLocal))
+	b, err := c.cache.Slice(off, length)
+	if err == nil {
+		timer.Success(ctx, length,
+			attribute.String(pullType, pullTypeLocal))
 
-	// 	return b, nil
-	// }
+		return b, nil
+	}
 
-	// if !errors.As(err, &BytesNotAvailableError{}) {
-	// 	timer.End(ctx, length,
-	// 		attribute.String(result, "failure"),
-	// 		attribute.String(pullType, pullTypeLocal),
-	// 		attribute.String(failureReason, failureTypeLocalRead))
+	if !errors.As(err, &BytesNotAvailableError{}) {
+		timer.Failure(ctx, length,
+			attribute.String(pullType, pullTypeLocal),
+			attribute.String(failureReason, failureTypeLocalRead))
 
-	// 	return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
-	// }
+		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
+	}
 
 	chunkErr := c.fetchToCache(ctx, off, length)
 	if chunkErr != nil {
-		timer.End(ctx, length,
-			attribute.String(result, resultTypeFailure),
+		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeRemote),
 			attribute.String(failureReason, failureTypeCacheFetch))
 
-		return nil, fmt.Errorf("failed to ensure data at x%x-x%x: %w", off, off+length, chunkErr)
+		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
-		timer.End(ctx, length,
-			attribute.String(result, resultTypeFailure),
+		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalReadAgain))
 
-		return nil, fmt.Errorf("failed to read from cache after ensuring data at x%x-x%x: %w", off, off+length, cacheErr)
+		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	timer.End(ctx, length,
-		attribute.String(result, resultTypeSuccess),
+	timer.Success(ctx, length,
 		attribute.String(pullType, pullTypeRemote))
 
 	return b, nil
@@ -134,6 +130,9 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 	var eg errgroup.Group
 
+	if c.frameTable != nil && c.frameTable.CompressionType != 0 {
+		return c.fetchFramedToCache(ctx, off, length)
+	}
 
 	chunks := header.BlocksOffsets(length, storage.MemoryChunkSize)
 
@@ -159,35 +158,102 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				default:
 				}
 
-				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
-				start, frames, err := c.base.ReadFrames(ctx, fetchOff, storage.MemoryChunkSize, c.frameTable)
-				totalBytesRead := int64(0)
-				for _, frame := range frames {
-					totalBytesRead += int64(len(frame))
+				// The size of the buffer is adjusted if the last chunk is not a multiple of the block size.
+				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
+				if err != nil {
+					return err
 				}
-				if err != nil && !errors.Is(err, io.EOF) {
-					fetchSW.End(ctx, int64(totalBytesRead),
-						attribute.String(result, resultTypeFailure),
+
+				defer releaseCacheCloseLock()
+
+				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
+
+				readBytes, err := c.base.ReadFrame(ctx, b, fetchOff)
+				if err != nil {
+					fetchSW.Failure(ctx, int64(readBytes),
 						attribute.String(failureReason, failureTypeRemoteRead),
 					)
 
-					return fmt.Errorf("failed to read chunk from base %#x: %w", fetchOff, err)
+					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
-				fetchSW.End(ctx, int64(totalBytesRead), attribute.String("result", resultTypeSuccess))
 
-				writeSW := c.metrics.WriteChunksTimerFactory.Begin()
-				_, cacheErr := c.cache.WriteAtWithoutLock(frames, totalBytesRead, start)
-				if cacheErr != nil {
-					writeSW.End(ctx,
-						int64(totalBytesRead),
-						attribute.String(result, resultTypeFailure),
-						attribute.String(failureReason, failureTypeLocalWrite),
+				if readBytes != len(b) {
+					fetchSW.Failure(ctx, int64(readBytes),
+						attribute.String(failureReason, failureTypeRemoteRead),
 					)
 
-					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
+					return fmt.Errorf("failed to read chunk from base %d: expected %d bytes, got %d bytes", fetchOff, len(b), readBytes)
 				}
 
-				writeSW.End(ctx, int64(totalBytesRead), attribute.String("result", resultTypeSuccess))
+				c.cache.setIsCached(fetchOff, int64(readBytes))
+
+				fetchSW.Success(ctx, int64(readBytes))
+
+				return nil
+			})
+
+			return err
+		})
+	}
+
+	err := eg.Wait()
+	if err != nil {
+		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
+	}
+
+	return nil
+}
+
+// fetchFramedToCache ensures that the data at the given offset and length is
+// available in the cache, but fetches and cachesthe entire compressed frames,
+// more than was requested
+func (c *Chunker) fetchFramedToCache(ctx context.Context, off, length int64) error {
+	var eg errgroup.Group
+
+	subset := c.frameTable.Subset(off, length)
+	if subset == nil || len(subset.Frames) == 0 {
+		return fmt.Errorf("no frames to fetch for range %#x-%#x", off, off+length)
+	}
+
+	fetchOff := subset.StartAt.U
+	for _, frameSize := range subset.Frames {
+		// Ensure the closure captures the correct block offset.
+		eg.Go(func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.L().Error(ctx, "recovered from panic in the fetch handler", zap.Any("error", r))
+					err = fmt.Errorf("recovered from panic in the fetch handler: %v", r)
+				}
+			}()
+
+			err = c.fetchers.Wait(fetchOff, func() error {
+				select {
+				case <-ctx.Done():
+					return fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+storage.MemoryChunkSize, ctx.Err())
+				default:
+				}
+
+				// The size of the buffer is adjusted if the last chunk is not a multiple of the block size.
+				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, int64(frameSize.U))
+				if err != nil {
+					return err
+				}
+				defer releaseCacheCloseLock()
+
+				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
+
+				err = c.persistence.ReadFrame(ctx, c.objectPath, fetchOff, b)
+				if err != nil {
+					fetchSW.Failure(ctx, int64(len(b)),
+						attribute.String(failureReason, failureTypeRemoteRead),
+					)
+
+					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
+				}
+
+				c.cache.setIsCached(fetchOff, int64(len(b)))
+
+				fetchSW.Success(ctx, int64(len(b)))
 
 				return nil
 			})
@@ -213,10 +279,6 @@ func (c *Chunker) FileSize() (int64, error) {
 }
 
 const (
-	result            = "result"
-	resultTypeSuccess = "success"
-	resultTypeFailure = "failure"
-
 	pullType       = "pull-type"
 	pullTypeLocal  = "local"
 	pullTypeRemote = "remote"
@@ -225,7 +287,6 @@ const (
 
 	failureTypeLocalRead      = "local-read"
 	failureTypeLocalReadAgain = "local-read-again"
-	failureTypeLocalWrite     = "local-write"
 	failureTypeRemoteRead     = "remote-read"
 	failureTypeCacheFetch     = "cache-fetch"
 )

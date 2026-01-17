@@ -34,7 +34,7 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
-	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c
+	github.com/hashicorp/nomad/api v0.0.0-20240813123601-b34a6fe10b82
 	github.com/miekg/dns v1.1.63
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/soheilhy/cmux v0.1.5

@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -19,8 +20,9 @@ import (
 )
 
 type NBDProvider struct {
-	overlay *block.Overlay
-	mnt     *nbd.DirectPathMount
+	overlay      *block.Overlay
+	mnt          *nbd.DirectPathMount
+	featureFlags *featureflags.Client
 
 	ready *utils.SetOnce[string]
 
@@ -30,8 +32,8 @@ type NBDProvider struct {
 	devicePool         *nbd.DevicePool
 }
 
-func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (Provider, error) {
-	size, err := rootfs.Size()
+func NewNBDProvider(ctx context.Context, rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool, featureFlags *featureflags.Client) (Provider, error) {
+	size, err := rootfs.Size(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
 	}
@@ -45,11 +47,12 @@ func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *n
 
 	overlay := block.NewOverlay(rootfs, cache)
 
-	mnt := nbd.NewDirectPathMount(overlay, devicePool)
+	mnt := nbd.NewDirectPathMount(overlay, devicePool, featureFlags)
 
 	return &NBDProvider{
 		mnt:                mnt,
 		overlay:            overlay,
+		featureFlags:       featureFlags,
 		ready:              utils.NewSetOnce[string](),
 		finishedOperations: make(chan struct{}, 1),
 		blockSize:          blockSize,

@@ -19,6 +19,7 @@ import (
 )
 
 func TestSandboxNotFound(t *testing.T) {
+	t.Parallel()
 	url, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
 

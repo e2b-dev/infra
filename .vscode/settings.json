@@ -93,5 +93,6 @@
   "mise.configureExtensionsAutomaticallyIgnoreList": [
     "ms-vscode.js-debug"
   ],
-  "python.defaultInterpreterPath": "${workspaceFolder}/.vscode/mise-tools/python"
+  "python.defaultInterpreterPath": "${workspaceFolder}/.vscode/mise-tools/python",
+  "makefile.configureOnOpen": false
 }

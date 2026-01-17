@@ -443,7 +443,8 @@ variable "client_clusters_config" {
       count     = number
     })
 
-    hugepages_percentage = optional(number)
+    hugepages_percentage   = optional(number)
+    network_interface_type = optional(string)
   }))
 
   description = <<EOT
@@ -501,7 +502,8 @@ variable "build_clusters_config" {
       count     = number
     })
 
-    hugepages_percentage = optional(number)
+    hugepages_percentage   = optional(number)
+    network_interface_type = optional(string)
   }))
   description = <<EOT
 Configuration for the build clusters.

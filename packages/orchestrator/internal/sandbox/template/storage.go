@@ -61,7 +61,7 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		headerObject, err := persistence.OpenObject(ctx, headerObjectPath, headerObjectType)
+		headerObject, err := persistence.OpenBlob(ctx, headerObjectPath, headerObjectType)
 		if err != nil {
 			return nil, err
 		}
@@ -85,8 +85,12 @@ func NewStorage(
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
+<<<<<<< HEAD
 		// Old style must not be compressed
 		object, err := persistence.OpenFramedReader(ctx, objectPath)
+=======
+		object, err := persistence.OpenSeekable(ctx, objectPath, objectType)
+>>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b
 		if err != nil {
 			return nil, err
 		}
@@ -139,7 +143,7 @@ func (d *Storage) ReadAt(ctx context.Context, p []byte, off int64) (int, error) 
 	return d.source.ReadAt(ctx, p, off)
 }
 
-func (d *Storage) Size() (int64, error) {
+func (d *Storage) Size(_ context.Context) (int64, error) {
 	return int64(d.header.Metadata.Size), nil
 }
 

@@ -16,6 +16,7 @@ generate:
 	$(codegen) -old-config-style -generate gin --package api $(openapi) > internal/api/api.gen.go
 	$(codegen) -old-config-style -generate types --package api $(openapi) > internal/api/types.gen.go
 	$(codegen) -old-config-style -generate spec --package api $(openapi) > internal/api/spec.gen.go
+	$(codegen) -old-config-style -generate client --package api $(openapi) > internal/api/client.gen.go
 
 .PHONY: build
 build:
@@ -42,8 +43,7 @@ run:
 	ENVIRONMENT=$(ENVIRONMENT) \
 	ORCHESTRATOR_PORT=5008 \
 	NODE_ID=integration-tests \
-	LOCAL_CLUSTER_ENDPOINT=localhost:3001 \
-	LOCAL_CLUSTER_TOKEN=$(EDGE_TOKEN) \
+	LOKI_URL=unset \
 	./bin/api --port 3000
 
 define setup_local_env

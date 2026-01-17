@@ -82,8 +82,8 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 
 	var v any
 	for _, mapping := range mappings {
-		var offset *storage.Offset
-		var frames []storage.Frame
+		var offset *storage.FrameOffset
+		var frames []storage.FrameSize
 		if metadata.Version <= 3 {
 			v = &v3SerializableBuildMap{
 				Offset:             mapping.Offset,
@@ -138,19 +138,9 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func Deserialize(ctx context.Context, in storage.WriterToCtx) (*Header, error) {
-	var buf bytes.Buffer
-
-	_, err := in.WriteTo(ctx, &buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write to buffer: %w", err)
-	}
-
-	reader := bytes.NewReader(buf.Bytes())
-
+func Deserialize(ctx context.Context, in io.Reader) (*Header, error) {
 	var metadata Metadata
-
-	err = binary.Read(reader, binary.LittleEndian, &metadata)
+	err := binary.Read(in, binary.LittleEndian, &metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
@@ -166,7 +156,7 @@ MAPPINGS:
 		switch metadata.Version {
 		case 0, 1, 2, 3:
 			var v3 v3SerializableBuildMap
-			err = binary.Read(reader, binary.LittleEndian, &v3)
+			err = binary.Read(in, binary.LittleEndian, &v3)
 			if errors.Is(err, io.EOF) {
 				break MAPPINGS
 			}
@@ -178,7 +168,7 @@ MAPPINGS:
 
 		case 4:
 			var v4 v4SerializableBuildMap
-			err = binary.Read(reader, binary.LittleEndian, &v4)
+			err = binary.Read(in, binary.LittleEndian, &v4)
 			if errors.Is(err, io.EOF) {
 				break MAPPINGS
 			}
@@ -194,8 +184,8 @@ MAPPINGS:
 				numFrames := v4.CompressionTypeNumFrames & 0xFFFFFF
 
 				for range numFrames {
-					var frame storage.Frame
-					err = binary.Read(reader, binary.LittleEndian, &frame)
+					var frame storage.FrameSize
+					err = binary.Read(in, binary.LittleEndian, &frame)
 					if err != nil {
 						return nil, fmt.Errorf("failed to read the expected compression frame: %w", err)
 					}

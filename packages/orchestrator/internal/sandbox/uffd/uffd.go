@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,6 +35,7 @@ const (
 type Uffd struct {
 	exit       *utils.ErrorOnce
 	readyCh    chan struct{}
+	readyOnce  sync.Once
 	fdExit     *fdexit.FdExit
 	lis        *net.UnixListener
 	socketPath string
@@ -51,12 +53,21 @@ func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 
 	return &Uffd{
 		exit:       utils.NewErrorOnce(),
-		readyCh:    make(chan struct{}, 1),
+		readyCh:    make(chan struct{}),
 		fdExit:     fdExit,
 		socketPath: socketPath,
 		memfile:    memfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 	}, nil
+}
+
+func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) error {
+	handler, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	return handler.Prefault(ctx, offset, data)
 }
 
 func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
@@ -78,12 +89,20 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 
 		// TODO: If the handle function fails, we should kill the sandbox
 		handleErr := u.handle(ctx, sandboxId)
+
+		// If handle failed before setting the handler value, set an error to unblock
+		// any waiters (e.g., prefetcher goroutines waiting on Prefault).
+		if handleErr != nil {
+			u.handler.SetError(handleErr)
+		}
+
 		closeErr := u.lis.Close()
 		fdExitErr := u.fdExit.Close()
 
 		u.exit.SetError(errors.Join(handleErr, closeErr, fdExitErr))
 
-		close(u.readyCh)
+		// Close the ready channel to unblock any waiters (safe to call multiple times via Once)
+		u.readyOnce.Do(func() { close(u.readyCh) })
 	}()
 
 	return nil
@@ -158,7 +177,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		}
 	}()
 
-	u.readyCh <- struct{}{}
+	u.readyOnce.Do(func() { close(u.readyCh) })
 
 	err = uffd.Serve(
 		ctx,
@@ -173,6 +192,13 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 func (u *Uffd) Stop() error {
 	return u.fdExit.SignalExit()
+}
+
+// Close closes the uffd resources. It is safe to call multiple times and can be
+// called whether or not Start() was called. This ensures proper cleanup of the
+// fdExit pipe file descriptors even if initialization fails before Start() runs.
+func (u *Uffd) Close() error {
+	return u.fdExit.Close()
 }
 
 func (u *Uffd) Ready() chan struct{} {
@@ -198,4 +224,14 @@ func (u *Uffd) DiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
 		Empty:     bitset.New(0),
 		BlockSize: u.memfile.BlockSize(),
 	}, nil
+}
+
+// PrefetchData returns page fault data for prefetch mapping.
+func (u *Uffd) PrefetchData(ctx context.Context) (block.PrefetchData, error) {
+	uffd, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return block.PrefetchData{}, fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	return uffd.PrefetchData(), nil
 }

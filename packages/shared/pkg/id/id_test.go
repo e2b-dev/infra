@@ -5,6 +5,8 @@ import (
 )
 
 func TestParseTemplateIDWithTag(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		input          string
@@ -86,6 +88,8 @@ func TestParseTemplateIDWithTag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			gotTemplateID, gotTag, err := ParseTemplateIDOrAliasWithTag(tt.input)
 
 			if (err != nil) != tt.wantErr {
