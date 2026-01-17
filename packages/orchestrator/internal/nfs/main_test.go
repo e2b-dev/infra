@@ -10,17 +10,20 @@ import (
 	"testing"
 
 	"cloud.google.com/go/storage"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/gcs"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/willscott/go-nfs-client/nfs"
 	"github.com/willscott/go-nfs-client/nfs/rpc"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/gcs"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 )
 
 func TestRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	// setup data
 	sandboxID := uuid.NewString()
 	bucketName := "e2b-staging-joe-fc-build-cache"
@@ -51,16 +54,17 @@ func TestRoundTrip(t *testing.T) {
 	bucket := gcsClient.Bucket(bucketName)
 
 	// setup nfs proxy server
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	cfg := net.ListenConfig{}
+	lis, err := cfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := lis.Close()
 		assert.NoError(t, err)
 	})
 
-	s := NewProxy(sandboxes)
+	s := NewProxy(t.Context(), sandboxes, bucket)
 	go func() {
-		err := s.Start(t.Context(), lis, bucket)
+		err := s.Serve(lis)
 		assert.NoError(t, err)
 	}()
 
@@ -125,6 +129,7 @@ func TestRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	buff := make([]byte, 1024) // way more bytes than we need
 	n, err = fp.Read(buff)
+	require.NoError(t, err)
 	assert.Equal(t, len(sandboxID), n)
 	assert.Equal(t, sandboxID, string(buff[:n]))
 }

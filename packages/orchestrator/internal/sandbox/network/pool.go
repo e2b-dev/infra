@@ -54,7 +54,7 @@ type Config struct {
 	HyperloopIPAddress string `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
 	HyperloopProxyPort uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
 
-	NFSProxyIPAddress string `env:"SANDBOX_NFS_PROXY_IP" envDefault:"192.0.2.1"`
+	NFSProxyIPAddress string `env:"SANDBOX_NFS_PROXY_IP"   envDefault:"192.0.2.1"`
 	NFSProxyPort      uint16 `env:"SANDBOX_NFS_PROXY_PORT" envDefault:"5011"`
 
 	UseLocalNamespaceStorage bool `env:"USE_LOCAL_NAMESPACE_STORAGE"`
@@ -108,7 +108,7 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 		return nil, fmt.Errorf("failed to acquire network slot: %w", err)
 	}
 
-	err = ips.CreateNetwork(ctx)
+	err = ips.CreateNetwork(ctx, p.config)
 	if err != nil {
 		releaseErr := p.slotStorage.Release(ips)
 		err = errors.Join(err, releaseErr)
@@ -224,7 +224,7 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 	var errs []error
 
-	err := slot.RemoveNetwork()
+	err := slot.RemoveNetwork(p.config)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}

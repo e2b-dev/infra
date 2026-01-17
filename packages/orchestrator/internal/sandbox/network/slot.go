@@ -77,12 +77,14 @@ type Slot struct {
 	hostNet  *net.IPNet
 	hostCIDR string
 
-	hyperloopIP, hyperloopPort string
+	hyperloopPort string
 
 	// TCP firewall ports for different traffic types
 	tcpFirewallHTTPPort  string // Port 80 traffic
 	tcpFirewallTLSPort   string // Port 443 traffic
 	tcpFirewallOtherPort string // All other traffic
+
+	config Config
 }
 
 func NewSlot(key string, idx int, config Config) (*Slot, error) {
@@ -138,12 +140,13 @@ func NewSlot(key string, idx int, config Config) (*Slot, error) {
 		hostNet:  hostNet,
 		hostCIDR: hostCIDR,
 
-		hyperloopIP:   config.HyperloopIPAddress,
 		hyperloopPort: strconv.FormatUint(uint64(config.HyperloopProxyPort), 10),
 
 		tcpFirewallHTTPPort:  strconv.FormatUint(uint64(config.SandboxTCPFirewallHTTPPort), 10),
 		tcpFirewallTLSPort:   strconv.FormatUint(uint64(config.SandboxTCPFirewallTLSPort), 10),
 		tcpFirewallOtherPort: strconv.FormatUint(uint64(config.SandboxTCPFirewallOtherPort), 10),
+
+		config: config,
 	}
 
 	return slot, nil
@@ -174,7 +177,7 @@ func (s *Slot) HostIPString() string {
 }
 
 func (s *Slot) HyperloopIPString() string {
-	return s.hyperloopIP
+	return s.config.HyperloopIPAddress
 }
 
 func (s *Slot) HostMask() net.IPMask {
@@ -232,7 +235,7 @@ func (s *Slot) InitializeFirewall() error {
 		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
 	}
 
-	fw, err := NewFirewall(s.TapName(), s.HyperloopIPString())
+	fw, err := NewFirewall(s.TapName(), s.HyperloopIPString(), s.config.NFSProxyIPAddress)
 	if err != nil {
 		return fmt.Errorf("error initializing firewall: %w", err)
 	}

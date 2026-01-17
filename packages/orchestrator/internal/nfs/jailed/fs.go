@@ -42,12 +42,12 @@ func (j jailedFS) Stat(filename string) (os.FileInfo, error) {
 }
 
 func (j jailedFS) Rename(oldpath, newpath string) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (j jailedFS) Remove(filename string) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
@@ -60,7 +60,7 @@ func (j jailedFS) Join(elem ...string) string {
 }
 
 func (j jailedFS) TempFile(dir, prefix string) (billy.File, error) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
@@ -79,7 +79,7 @@ func (j jailedFS) ReadDir(path string) ([]os.FileInfo, error) {
 }
 
 func (j jailedFS) MkdirAll(filename string, perm os.FileMode) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
@@ -88,22 +88,22 @@ func (j jailedFS) Lstat(filename string) (os.FileInfo, error) {
 }
 
 func (j jailedFS) Symlink(target, link string) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (j jailedFS) Readlink(link string) (string, error) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (j jailedFS) Chroot(path string) (billy.Filesystem, error) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (j jailedFS) Root() string {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 

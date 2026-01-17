@@ -26,6 +26,7 @@ func (l loggedFS) Create(filename string) (f billy.File, err error) {
 
 	f, err = l.inner.Create(filename)
 	f = wrapFile(f)
+
 	return
 }
 
@@ -35,6 +36,7 @@ func (l loggedFS) Open(filename string) (f billy.File, err error) {
 
 	f, err = l.inner.Open(filename)
 	f = wrapFile(f)
+
 	return
 }
 
@@ -44,6 +46,7 @@ func (l loggedFS) OpenFile(filename string, flag int, perm os.FileMode) (f billy
 
 	f, err = l.inner.OpenFile(filename, flag, perm)
 	f = wrapFile(f)
+
 	return
 }
 
@@ -81,6 +84,7 @@ func (l loggedFS) TempFile(dir, prefix string) (f billy.File, err error) {
 
 	f, err = l.inner.TempFile(dir, prefix)
 	f = wrapFile(f)
+
 	return
 }
 

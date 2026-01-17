@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs"
+	storage2 "cloud.google.com/go/storage"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
@@ -31,6 +31,7 @@ import (
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -448,17 +449,22 @@ func run(config cfg.Config) (success bool) {
 	})
 
 	// nfs proxy server
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", config.NetworkConfig.NFSProxyPort))
+	var netConfig net.ListenConfig
+	lis, err := netConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.NFSProxyPort))
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to listen on nfs port", zap.Error(err))
 	}
-	nfsServer := nfs.NewProxy(sandboxes)
+	gcsClientForNFS, err := storage2.NewGRPCClient(ctx)
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create GCS client", zap.Error(err))
+	}
+	nfsServer := nfs.NewProxy(ctx, sandboxes, gcsClientForNFS.Bucket(config.SandboxPersistence.BucketName))
 	startService("nfs proxy", func() error {
-		return nfsServer.Start(ctx, lis)
+		return nfsServer.Serve(lis)
 	})
 	closers = append(closers, closer{
-		"nfs proxy server", func(ctx context.Context) error {
-			return nfsServer.Stop(ctx)
+		"nfs proxy server", func(_ context.Context) error {
+			return lis.Close()
 		},
 	})
 

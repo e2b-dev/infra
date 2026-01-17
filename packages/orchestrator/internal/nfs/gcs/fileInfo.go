@@ -40,7 +40,7 @@ func (f fileInfo) Mode() fs.FileMode {
 		}
 	}
 
-	return 0666
+	return 0o666
 }
 
 func (f fileInfo) ModTime() time.Time {

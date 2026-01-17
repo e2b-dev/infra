@@ -20,6 +20,7 @@ type API struct {
 
 	mmdsChan      chan *host.MMDSOpts
 	hyperloopLock sync.Mutex
+	nfsLock       sync.Mutex
 
 	lastSetTime *utils.AtomicMax
 	initLock    sync.Mutex

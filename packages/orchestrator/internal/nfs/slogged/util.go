@@ -16,6 +16,7 @@ func slogEnd(s string, args ...any) {
 func slogEndWithError(s string, err error, args ...any) {
 	if err == nil {
 		slog.Debug("Finishing "+s, "return", args)
+
 		return
 	}
 

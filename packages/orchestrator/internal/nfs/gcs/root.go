@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-type rootListing struct {
-}
+type rootListing struct{}
 
 func (r rootListing) Name() string {
 	return ""

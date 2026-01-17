@@ -27,6 +27,7 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 	prefix, err := h.getPrefix(conn)
 	if err != nil {
 		slog.Warn("failed to get prefix", "error", err)
+
 		return nfs.MountStatusErrIO, nil, nil
 	}
 
@@ -35,8 +36,9 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 	request.Dirpath = []byte(dirPath)
 
 	status, fs, auth := h.inner.Mount(ctx, conn, request)
-	if err = fs.MkdirAll(dirPath, 0755); err != nil {
+	if err = fs.MkdirAll(dirPath, 0o755); err != nil {
 		slog.Error("failed to create jail cell", "error", err)
+
 		return nfs.MountStatusErrIO, nil, nil
 	}
 
@@ -45,6 +47,7 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 
 func (h Handler) Change(filesystem billy.Filesystem) billy.Change {
 	change := h.inner.Change(filesystem)
+
 	return wrapChange(change)
 }
 
@@ -85,6 +88,7 @@ func (h Handler) findJailedFS(fs billy.Filesystem) (jailedFS, bool) {
 
 		if wfs, ok := fs.(unwrappable); ok {
 			fs = wfs.Unwrap()
+
 			continue
 		}
 

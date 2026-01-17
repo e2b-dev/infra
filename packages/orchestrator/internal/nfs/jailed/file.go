@@ -20,6 +20,7 @@ func hidePrefix(item os.FileInfo, prefix string) os.FileInfo {
 
 func (j jailedFile) Name() string {
 	name := j.inner.Name()
+
 	return strings.TrimPrefix(name, j.prefix)
 }
 

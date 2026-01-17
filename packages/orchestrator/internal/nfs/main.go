@@ -6,53 +6,55 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
+	"github.com/willscott/go-nfs"
+	helper "github.com/willscott/go-nfs/helpers"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/gcs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/jailed"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/slogged"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/willscott/go-nfs"
-	helper "github.com/willscott/go-nfs/helpers"
 )
 
 const cacheLimit = 1024
 
 type Proxy struct {
-	sandboxes *sandbox.Map
-	server    *nfs.Server
-	cancel    func()
+	server *nfs.Server
 }
 
-func NewProxy(sandboxes *sandbox.Map) *Proxy {
-	return &Proxy{sandboxes: sandboxes}
+func getPrefixFromSandbox(sandboxes *sandbox.Map) func(conn net.Conn) (string, error) {
+	return func(conn net.Conn) (string, error) {
+		sbx, err := sandboxes.GetByHostPort(conn.RemoteAddr().String())
+		if err != nil {
+			return "", err
+		}
+
+		return sbx.Metadata.Runtime.SandboxID, nil
+	}
 }
 
-func (p *Proxy) Start(ctx context.Context, lis net.Listener, bucket *storage.BucketHandle) error {
+func NewProxy(ctx context.Context, sandboxes *sandbox.Map, bucket *storage.BucketHandle) *Proxy {
 	var handler nfs.Handler
-	handler = gcs.NewNFSHandler(ctx, bucket)
+	handler = gcs.NewNFSHandler(bucket)
 	handler = helper.NewCachingHandler(handler, cacheLimit)
 	handler = slogged.NewHandler(handler)
-	handler = jailed.NewNFSHandler(handler, p.getPrefixFromSandbox)
+	handler = jailed.NewNFSHandler(handler, getPrefixFromSandbox(sandboxes))
 
-	ctx, p.cancel = context.WithCancel(ctx)
-	p.server = &nfs.Server{
+	s := &nfs.Server{
 		Handler: handler,
 		Context: ctx,
 	}
 
+	return &Proxy{server: s}
+}
+
+func (p *Proxy) Serve(lis net.Listener) error {
 	if err := p.server.Serve(lis); err != nil {
-		if !strings.Contains(err.Error(), "use of closed network connection") {
-			return err
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			return nil
 		}
+
+		return err
 	}
 
 	return nil
-}
-
-func (p *Proxy) getPrefixFromSandbox(conn net.Conn) (string, error) {
-	sbx, err := p.sandboxes.GetByHostPort(conn.RemoteAddr().String())
-	if err != nil {
-		return "", err
-	}
-
-	return sbx.Metadata.Runtime.SandboxID, nil
 }

@@ -23,7 +23,7 @@ func (i impliedDirInfo) Size() int64 {
 }
 
 func (i impliedDirInfo) Mode() fs.FileMode {
-	return 0777
+	return 0o777
 }
 
 func (i impliedDirInfo) ModTime() time.Time {
@@ -53,7 +53,7 @@ func (d dirInfo) Size() int64 {
 }
 
 func (d dirInfo) Mode() fs.FileMode {
-	return fromBucketAttrs(d.attrs)
+	return fromBucketAttrs(d.attrs.Metadata)
 }
 
 func (d dirInfo) ModTime() time.Time {

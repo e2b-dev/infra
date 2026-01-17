@@ -22,16 +22,16 @@ func (c jailedChange) Chmod(name string, mode os.FileMode) error {
 }
 
 func (c jailedChange) Lchown(name string, uid, gid int) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (c jailedChange) Chown(name string, uid, gid int) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (c jailedChange) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }

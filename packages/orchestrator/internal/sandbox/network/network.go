@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"runtime"
+	"strconv"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
@@ -15,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (s *Slot) CreateNetwork(ctx context.Context) error {
+func (s *Slot) CreateNetwork(ctx context.Context, config Config) error {
 	// Prevent thread changes so we can safely manipulate with namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -227,6 +228,16 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
 	}
 
+	// Redirect traffic destined for NFS proxy
+	err = tables.Append("nat", "PREROUTING",
+		"--in-interface", s.VethName(), "--protocol", "tcp",
+		"--destination", config.NFSProxyIPAddress, "--dport", "2049",
+		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(config.NFSProxyPort)),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating NFS redirect rule to sandbox NFS proxy server: %w", err)
+	}
+
 	// Redirect TCP traffic to appropriate egress proxy ports based on destination port.
 	// This preserves the original destination IP for SO_ORIGINAL_DST.
 	err = s.tcpProxyConfig().append(tables)
@@ -237,7 +248,7 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 	return nil
 }
 
-func (s *Slot) RemoveNetwork() error {
+func (s *Slot) RemoveNetwork(config Config) error {
 	var errs []error
 
 	err := s.CloseFirewall()
@@ -274,6 +285,16 @@ func (s *Slot) RemoveNetwork() error {
 		)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
+		}
+
+		// Delete NFS proxy redirect rule
+		err = tables.Append("nat", "PREROUTING",
+			"--in-interface", s.VethName(), "--protocol", "tcp",
+			"--destination", config.NFSProxyIPAddress, "--dport", "2049",
+			"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(config.NFSProxyPort)),
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting sandbox NFS proxy redirect rule: %w", err))
 		}
 
 		// Delete egress proxy redirect rules

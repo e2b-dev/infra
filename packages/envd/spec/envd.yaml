@@ -19,8 +19,8 @@ paths:
     get:
       summary: Get the stats of the service
       security:
-        - AccessTokenAuth: []
-        - {}
+        - AccessTokenAuth: [ ]
+        - { }
       responses:
         "200":
           description: The resource usage metrics of the service
@@ -33,14 +33,27 @@ paths:
     post:
       summary: Set initial vars, ensure the time and metadata is synced with the host
       security:
-        - AccessTokenAuth: []
-        - {}
+        - AccessTokenAuth: [ ]
+        - { }
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
+                nfs:
+                  type: object
+                  description: NFS configuration
+                  properties:
+                    ip:
+                      type: string
+                      description: IP address of the NFS server to mount
+                    path:
+                      type: string
+                      description: Path on the NFS server to mount
+                  required:
+                    - ip
+                    - path
                 hyperloopIP:
                   type: string
                   description: IP address of the hyperloop server to connect to
@@ -67,8 +80,8 @@ paths:
     get:
       summary: Get the environment variables
       security:
-        - AccessTokenAuth: []
-        - {}
+        - AccessTokenAuth: [ ]
+        - { }
       responses:
         "200":
           description: Environment variables
@@ -80,10 +93,10 @@ paths:
   /files:
     get:
       summary: Download a file
-      tags: [files]
+      tags: [ files ]
       security:
-        - AccessTokenAuth: []
-        - {}
+        - AccessTokenAuth: [ ]
+        - { }
       parameters:
         - $ref: "#/components/parameters/FilePath"
         - $ref: "#/components/parameters/User"
@@ -102,10 +115,10 @@ paths:
           $ref: "#/components/responses/InternalServerError"
     post:
       summary: Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
-      tags: [files]
+      tags: [ files ]
       security:
-        - AccessTokenAuth: []
-        - {}
+        - AccessTokenAuth: [ ]
+        - { }
       parameters:
         - $ref: "#/components/parameters/FilePath"
         - $ref: "#/components/parameters/User"

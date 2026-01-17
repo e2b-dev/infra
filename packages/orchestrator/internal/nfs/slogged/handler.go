@@ -31,6 +31,7 @@ func (e loggedHandler) Mount(ctx context.Context, conn net.Conn, request nfs.Mou
 
 	s, fs, auth = e.inner.Mount(ctx, conn, request)
 	fs = newFS(fs)
+
 	return
 }
 
@@ -39,6 +40,7 @@ func (e loggedHandler) Change(filesystem billy.Filesystem) billy.Change {
 	defer slogEnd("Handler.Change")
 
 	change := e.inner.Change(filesystem)
+
 	return newChange(change)
 }
 
