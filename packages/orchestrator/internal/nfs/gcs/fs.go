@@ -1,0 +1,263 @@
+package gcs
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+
+	"cloud.google.com/go/storage"
+	"github.com/go-git/go-billy/v5"
+	"google.golang.org/api/iterator"
+)
+
+const (
+	MetadataPermsAttr = "e2b-perms"
+)
+
+type BucketFS struct {
+	ctx    context.Context
+	bucket *storage.BucketHandle
+}
+
+var _ billy.Filesystem = (*BucketFS)(nil)
+
+func NewPrefixedGCSBucket(ctx context.Context, bucket *storage.BucketHandle) *BucketFS {
+	return &BucketFS{ctx: ctx, bucket: bucket}
+}
+
+func (p BucketFS) Symlink(target, link string) error {
+	return errors.New("symlink not supported")
+}
+
+func (p BucketFS) Readlink(link string) (string, error) {
+	return "", errors.New("readlink not supported")
+}
+
+func (p BucketFS) Chroot(path string) (billy.Filesystem, error) {
+	return &BucketFS{
+		ctx:    p.ctx,
+		bucket: p.bucket,
+	}, nil
+}
+
+func (p BucketFS) Root() string {
+	return ""
+}
+
+func (p BucketFS) Create(filename string) (billy.File, error) {
+	return p.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+}
+
+func (p BucketFS) Open(filename string) (billy.File, error) {
+	return p.OpenFile(filename, os.O_RDONLY, 0)
+}
+
+func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
+	obj := p.bucket.Object(filename)
+
+	// get the file's attrs
+	attrs, err := obj.Attrs(p.ctx)
+
+	// the file exists
+	if err == nil {
+		// we demanded to create the file, but it already exists
+		if flag&os.O_CREATE != 0 && flag&os.O_EXCL != 0 {
+			// return an error
+			return nil, os.ErrExist
+		}
+
+		return newGcsFile(p, filename, attrs.Metadata), nil
+	}
+
+	// the file does not exist
+	if flag&os.O_CREATE == 0 {
+		// we do not want to create it
+		return nil, os.ErrNotExist
+	}
+
+	// create it
+	w := obj.NewWriter(p.ctx)
+	if err := w.Close(); err != nil {
+		return nil, translateError(err)
+	}
+
+	// set the attributes
+	if attrs, err = obj.Update(p.ctx, storage.ObjectAttrsToUpdate{Metadata: toObjectMetadata(perm)}); err != nil {
+		return nil, translateError(err)
+	}
+
+	return newGcsFile(p, filename, attrs.Metadata), nil
+}
+
+func fromPermToObjectMetadata(perm os.FileMode) (string, string) {
+	return MetadataPermsAttr, fmt.Sprintf("%03o", perm)
+}
+
+func toObjectMetadata(perm os.FileMode) map[string]string {
+	metadata := make(map[string]string, 2)
+
+	permKey, permValue := fromPermToObjectMetadata(perm)
+	metadata[permKey] = permValue
+
+	return metadata
+}
+
+func fromBucketAttrs(file *storage.ObjectAttrs) os.FileMode {
+	var perm os.FileMode
+
+	if file.Metadata != nil {
+		if val, ok := file.Metadata[MetadataPermsAttr]; ok {
+			p, err := strconv.ParseUint(val, 8, 32)
+			if err == nil {
+				perm = os.FileMode(p)
+			}
+		}
+	}
+
+	return perm
+}
+
+func (p BucketFS) Stat(filename string) (os.FileInfo, error) {
+	return p.Lstat(filename)
+}
+
+func (p BucketFS) Rename(oldPath, newPath string) error {
+	src := p.bucket.Object(oldPath)
+	dst := p.bucket.Object(newPath)
+
+	if _, err := dst.CopierFrom(src).Run(p.ctx); err != nil {
+		return err
+	}
+
+	return src.Delete(p.ctx)
+}
+
+func (p BucketFS) Remove(filename string) error {
+	return p.bucket.Object(filename).Delete(p.ctx)
+}
+
+func (p BucketFS) Join(elem ...string) string {
+	return filepath.Join(elem...)
+}
+
+func (p BucketFS) TempFile(dir, prefix string) (billy.File, error) {
+	return nil, errors.New("TempFile not implemented")
+}
+
+func (p BucketFS) ReadDir(path string) ([]os.FileInfo, error) {
+	objects := p.bucket.Objects(p.ctx, &storage.Query{Prefix: path + "/"})
+
+	var results []os.FileInfo
+	for {
+		object, err := objects.Next()
+		if errors.Is(err, iterator.Done) {
+			break
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("error when iterating over template object: %w", err)
+		}
+
+		if filepath.Base(object.Name) == dirMagicFilename {
+			continue
+		}
+
+		results = append(results, fileInfo{object})
+	}
+
+	return results, nil
+}
+
+const dirMagicFilename = ".__.dir.__."
+
+func (p BucketFS) MkdirAll(filename string, perm os.FileMode) error {
+	if filename == "" || filename == "/" {
+		return nil
+	}
+
+	dirName := filepath.Join(filename, dirMagicFilename)
+	w := p.bucket.Object(dirName).NewWriter(p.ctx)
+	n, err := w.Write([]byte{})
+	if err != nil {
+		return translateError(err)
+	}
+	if n != 0 {
+		return fmt.Errorf("expected to write 0 bytes, got %d", n)
+	}
+
+	err = w.Close()
+	if err != nil {
+		return translateError(err)
+	}
+
+	return nil
+}
+
+func (p BucketFS) Lstat(filename string) (os.FileInfo, error) {
+	if filename == "" || filename == "/" {
+		return rootListing{}, nil
+	}
+
+	if file, done, err := p.tryGetFile(filename); done {
+		return file, err
+	}
+
+	if dir, done, err := p.tryGetDirList(filename); done {
+		return dir, err
+	}
+
+	if dir, done, err := p.tryGetMagicDir(filename); done {
+		return dir, err
+	}
+
+	return nil, os.ErrNotExist
+}
+
+func (p BucketFS) tryGetFile(filename string) (os.FileInfo, bool, error) {
+	attrs, err := p.bucket.Object(filename).Attrs(p.ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, false, nil
+		}
+
+		return nil, true, translateError(err)
+	}
+
+	return fileInfo{attrs}, true, nil
+}
+
+func (p BucketFS) tryGetDirList(filename string) (os.FileInfo, bool, error) {
+	results := p.bucket.Objects(p.ctx, &storage.Query{Prefix: filename + "/"})
+	for {
+		_, err := results.Next()
+		if err != nil {
+			if errors.Is(err, iterator.Done) {
+				// couldn't find it, but that's not the end
+				return nil, false, nil
+			}
+
+			return nil, true, translateError(err)
+		}
+
+		// a nested file was found, that means the requested path is a directory
+		return impliedDirInfo{filename}, true, nil
+	}
+}
+
+func (p BucketFS) tryGetMagicDir(filename string) (os.FileInfo, bool, error) {
+	dirName := filepath.Join(filename, dirMagicFilename)
+
+	attrs, err := p.bucket.Object(dirName).Attrs(p.ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, false, nil
+		}
+
+		return nil, true, translateError(err)
+	}
+
+	return dirInfo{attrs}, true, nil
+}

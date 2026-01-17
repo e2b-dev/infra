@@ -452,7 +452,7 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to listen on nfs port", zap.Error(err))
 	}
-	nfsServer := nfs.NewProxy()
+	nfsServer := nfs.NewProxy(sandboxes)
 	startService("nfs proxy", func() error {
 		return nfsServer.Start(ctx, lis)
 	})
