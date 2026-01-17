@@ -142,20 +142,20 @@ variable "client_proxy_update_max_parallel" {
   default     = 1
 }
 
-variable "edge_api_port" {
+variable "client_proxy_health_port" {
   type = object({
     name = string
     port = number
     path = string
   })
   default = {
-    name = "edge-api"
+    name = "client-proxy"
     port = 3001
-    path = "/health/traffic"
+    path = "/health"
   }
 }
 
-variable "edge_proxy_port" {
+variable "client_proxy_port" {
   type = object({
     name = string
     port = number

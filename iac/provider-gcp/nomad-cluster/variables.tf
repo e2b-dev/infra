@@ -57,7 +57,7 @@ variable "build_image_family" {
   default = "e2b-orch"
 }
 
-variable "edge_api_port" {
+variable "client_proxy_health_port" {
   type = object({
     name = string
     port = number
@@ -65,7 +65,7 @@ variable "edge_api_port" {
   })
 }
 
-variable "edge_proxy_port" {
+variable "client_proxy_port" {
   type = object({
     name = string
     port = number
