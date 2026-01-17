@@ -2,6 +2,7 @@ package clusters
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -95,7 +96,7 @@ func logsFromBuilderInstance(ctx context.Context, instance *Instance, templateID
 			telemetry.ReportError(ctx, "error when returning logs for template build", err)
 			logger.L().Error(ctx, "error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
 
-			return nil, err
+			return nil, fmt.Errorf("templateManager.getBuildLogs: request failed (templateID=%s buildID=%s): %w", templateID, buildID, err)
 		}
 
 		raw := res.GetLogEntries()
@@ -167,15 +168,20 @@ func getBuildLogsWithSources(
 	}
 
 	// Iterate through sources and return the first successful fetch
+	var lastError error
 	for _, sourceFetch := range sources {
 		entries, err := sourceFetch()
 		if err != nil {
+			lastError = err
 			logger.L().Warn(ctx, "Error fetching build logs", logger.WithTemplateID(templateID), logger.WithBuildID(buildID), zap.Error(err))
 
 			continue
 		}
 
 		return entries, nil
+	}
+	if lastError != nil {
+		return nil, lastError
 	}
 
 	return nil, nil
