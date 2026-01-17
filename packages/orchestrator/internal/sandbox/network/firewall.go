@@ -34,7 +34,7 @@ type Firewall struct {
 	allowedRanges []string
 }
 
-func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
+func NewFirewall(tapIf string, hyperloopIP, nfsProxyIP string) (*Firewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
@@ -84,8 +84,11 @@ func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 		userDenySet:        denySet,
 		userAllowSet:       allowSet,
 		tapInterface:       tapIf,
-		allowedRanges:      []string{fmt.Sprintf("%s/32", hyperloopIP)},
-		filterChain:        filterChain,
+		allowedRanges: []string{
+			fmt.Sprintf("%s/32", hyperloopIP),
+			fmt.Sprintf("%s/32", nfsProxyIP),
+		},
+		filterChain: filterChain,
 	}
 
 	// Add firewall rules to the chain
