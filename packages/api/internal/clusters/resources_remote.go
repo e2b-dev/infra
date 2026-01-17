@@ -35,7 +35,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 
 	res, err := r.client.V1SandboxMetricsWithResponse(ctx, sandboxID, req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("edge.getSandboxMetrics: request failed (teamID=%s sandboxID=%s): %w", teamID, sandboxID, err)
 	}
 
 	if res.StatusCode() != http.StatusOK {
@@ -67,7 +67,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, error) {
 	res, err := r.client.V1SandboxesMetricsWithResponse(ctx, &edgeapi.V1SandboxesMetricsParams{TeamID: teamID, SandboxIds: sandboxIDs})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("edge.getSandboxesMetrics: request failed (teamID=%s sandboxIDs=%v): %w", teamID, sandboxIDs, err)
 	}
 
 	if res.StatusCode() != http.StatusOK {
@@ -99,7 +99,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, error) {
 	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, Limit: limit})
 	if err != nil {
-		return api.SandboxLogs{}, err
+		return api.SandboxLogs{}, fmt.Errorf("edge.getSandboxLogs: request failed (teamID=%s sandboxID=%s): %w", teamID, sandboxID, err)
 	}
 
 	if res.StatusCode() != http.StatusOK {
