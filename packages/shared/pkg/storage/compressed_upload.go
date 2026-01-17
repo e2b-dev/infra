@@ -38,7 +38,6 @@ type encoder struct {
 	targetPartSize int64
 	partIndex      int
 	partLen        int64
-	starter        MultipartUploaderStarter
 	uploader       MultipartUploader
 }
 
@@ -61,48 +60,44 @@ type frame struct {
 
 var _ io.Writer = (*frame)(nil) // for compression output
 
-func newFrameEncoder(opts *FramedUploadOptions, starter MultipartUploaderStarter) *encoder {
+func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader) *encoder {
 	return &encoder{
 		opts:        opts,
 		readyFrames: make([][]byte, 0, 8),
-		starter:     starter,
+		uploader:    u,
 		frameTable: &FrameTable{
 			CompressionType: opts.CompressionType,
 		},
 	}
 }
 
-func (e *encoder) FramedUpload(ctx context.Context, asPath string, file io.Reader) (*FrameTable, error) {
+func (e *encoder) uploadFramed(ctx context.Context, asPath string, in io.Reader) (*FrameTable, error) {
 	// Set up the uploader
 	uploadEG, uploadCtx := errgroup.WithContext(ctx)
 	if e.opts.UploadConcurrency > 0 {
 		uploadEG.SetLimit(e.opts.UploadConcurrency)
-	}
-	var err error
-	e.uploader, err = e.starter.StartMultipartUpload(ctx, asPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
 	// Start copying file to the compression encoder. Use a return channel
 	// instead of errgroup to be able to detect completion in the event loop.
 	chunkCh := make(chan []byte)
 	readErrorCh := make(chan error)
-	go readFile(ctx, file, e.opts.ChunkSize, chunkCh, readErrorCh)
+	go readFile(ctx, in, e.opts.ChunkSize, chunkCh, readErrorCh)
 
+	var err error
 	for {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 
-		case err := <-readErrorCh:
+		case err = <-readErrorCh:
 			return nil, err
 
-		case chunk, ok := <-chunkCh:
+		case chunk, haveData := <-chunkCh:
 			// See if we need to flush and to start a new frame
 			e.mu.Lock()
 			var flush *frame
-			if !ok {
+			if !haveData {
 				// No more data; flush current frame
 				flush = e.frame
 			} else {
@@ -119,14 +114,14 @@ func (e *encoder) FramedUpload(ctx context.Context, asPath string, file io.Reade
 			e.mu.Unlock()
 
 			if flush != nil {
-				if err := e.flushFrame(uploadEG, uploadCtx, flush, !ok); err != nil {
+				if err = e.flushFrame(uploadEG, uploadCtx, flush, !haveData); err != nil {
 					return nil, fmt.Errorf("failed to flush frame: %w", err)
 				}
 			}
 
 			// If we have data, write it to the current frame and continue
-			if ok {
-				if err := e.writeChunk(frame, chunk); err != nil {
+			if haveData {
+				if err = e.writeChunk(frame, chunk); err != nil {
 					return nil, fmt.Errorf("failed to encode to frame: %w", err)
 				}
 				continue
@@ -186,11 +181,11 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 	return nil
 }
 
-func readFile(ctx context.Context, file io.Reader, chunkSize int, chunkCh chan<- []byte, errorCh chan<- error) {
+func readFile(ctx context.Context, in io.Reader, chunkSize int, chunkCh chan<- []byte, errorCh chan<- error) {
 	var err error
 	for i := 0; err == nil; i++ {
 		var chunk []byte
-		chunk, err = readChunk(file, chunkSize)
+		chunk, err = readChunk(in, chunkSize)
 		if err == nil {
 			err = ctx.Err()
 		}

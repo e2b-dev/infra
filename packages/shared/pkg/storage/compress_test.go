@@ -97,7 +97,9 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 			}
 		})
 
-		testGCP := createTestMultipartUploader(t, handler)
+		uploader := testMultipartUploaderGCP(t, handler)
+		err := uploader.start(t.Context())
+		require.NoError(t, err)
 
 		opts := FramedUploadOptions{
 			CompressionType: CompressionZstd,
@@ -105,17 +107,15 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 			ChunkSize:       chunkSize,
 			TargetFrameSize: frameSize,
 		}
-		e := newFrameEncoder(&opts, testGCP)
+		e := newFrameEncoder(&opts, uploader)
 		e.targetPartSize = partSize
 
-		var err error
-		frameTable, err = e.FramedUpload(t.Context(), "test-path", bytes.NewReader(origData))
+		frameTable, err = e.uploadFramed(t.Context(), "test-path", bytes.NewReader(origData))
 		require.NoError(t, err)
 		require.Equal(t, 1, initiateC)
 		require.Equal(t, 1, completeC)
 		require.Equal(t, 7, len(receivedParts), "should have been at least 4 parts uploaded")
 		require.Len(t, frameTable.Frames, 13)
-		t.Logf("<>/<> !!!!!!!! frame table: %+v\n", frameTable)
 
 		totalUncompressed := 0
 		for _, frame := range frameTable.Frames {
@@ -161,7 +161,6 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 			e := s + 1
 
 			t.Logf("requesting frames for range %#x to %#x, %#x bytes\n", s, e, e-s)
-			t.Logf("<>/<> frame table: %+v\n", frameTable)
 			r, rc, err := fake.GetFrame(t.Context(), "test-path", Range{Start: int64(s), Length: e - s}, frameTable, true)
 			require.NoError(t, err)
 			require.LessOrEqual(t, int(r.Start), s)

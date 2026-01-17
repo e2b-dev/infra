@@ -33,7 +33,7 @@ type Part struct {
 }
 
 type gcpMultipartUploader struct {
-	p           *GCP
+	g           *GCP
 	objectName  string
 	token       string
 	client      *retryablehttp.Client
@@ -42,11 +42,21 @@ type gcpMultipartUploader struct {
 	uploadID    string
 }
 
-func (p *GCP) StartMultipartUpload(ctx context.Context, objectName string) (MultipartUploader, error) {
-	return p.startMultipartUpload(ctx, objectName, DefaultRetryConfig())
+func (g *GCP) StartMultipartUpload(ctx context.Context, objectName string) (MultipartUploader, error) {
+	u, err := g.createMultipartUpload(ctx, objectName, DefaultRetryConfig())
+	if err != nil {
+		return nil, err
+	}
+
+	err = u.start(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return u, nil
 }
 
-func (p *GCP) startMultipartUpload(ctx context.Context, objectName string, retryConfig RetryConfig) (*gcpMultipartUploader, error) {
+func (g *GCP) createMultipartUpload(ctx context.Context, objectName string, retryConfig RetryConfig) (*gcpMultipartUploader, error) {
 	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials: %w", err)
@@ -57,20 +67,22 @@ func (p *GCP) startMultipartUpload(ctx context.Context, objectName string, retry
 		return nil, fmt.Errorf("failed to get token: %w", err)
 	}
 
-	u := &gcpMultipartUploader{
-		p:           p,
+	return &gcpMultipartUploader{
+		g:           g,
 		etags:       &sync.Map{},
 		objectName:  objectName,
 		token:       token.AccessToken,
 		client:      createRetryableClient(ctx, retryConfig),
 		retryConfig: retryConfig,
-	}
+	}, nil
+}
 
-	url := fmt.Sprintf("%s/%s?uploads", p.baseUploadURL, objectName)
+func (u *gcpMultipartUploader) start(ctx context.Context) error {
+	url := fmt.Sprintf("%s/%s?uploads", u.g.baseUploadURL, u.objectName)
 
 	req, err := retryablehttp.NewRequestWithContext(ctx, "POST", url, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+u.token)
@@ -79,21 +91,21 @@ func (p *GCP) startMultipartUpload(ctx context.Context, objectName string, retry
 
 	resp, err := u.client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 
-		return nil, fmt.Errorf("failed to initiate upload (status %d): %s", resp.StatusCode, string(body))
+		return fmt.Errorf("failed to initiate upload (status %d): %s", resp.StatusCode, string(body))
 	}
 	var result InitiateMultipartUploadResult
 	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to parse initiate response: %w", err)
+		return fmt.Errorf("failed to parse initiate response: %w", err)
 	}
 	u.uploadID = result.UploadID
 
-	return u, nil
+	return nil
 }
 
 func (u *gcpMultipartUploader) UploadPart(ctx context.Context, partNumber int, dataList ...[]byte) error {
@@ -107,7 +119,7 @@ func (u *gcpMultipartUploader) UploadPart(ctx context.Context, partNumber int, d
 	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
-		u.p.baseUploadURL, u.objectName, partNumber, u.uploadID)
+		u.g.baseUploadURL, u.objectName, partNumber, u.uploadID)
 
 	var r io.Reader
 	if len(dataList) == 1 {
@@ -177,7 +189,7 @@ func (u *gcpMultipartUploader) Complete(ctx context.Context) error {
 	}
 
 	url := fmt.Sprintf("%s/%s?uploadId=%s",
-		u.p.baseUploadURL, u.objectName, u.uploadID)
+		u.g.baseUploadURL, u.objectName, u.uploadID)
 
 	req, err := retryablehttp.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(xmlData))
 	if err != nil {

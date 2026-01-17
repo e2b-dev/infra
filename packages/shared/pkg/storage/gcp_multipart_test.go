@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,10 +22,11 @@ const (
 	testObjectName = "test-object"
 	testToken      = "test-token"
 	uploadsPath    = "uploads"
+	testUploadId   = "test-upload-id"
 )
 
-// createTestMultipartUploader creates a test uploader with a mock HTTP client
-func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryConfig ...RetryConfig) *GCP {
+// testMultipartUploaderGCP creates a test uploader with a mock HTTP client
+func testMultipartUploaderGCP(t *testing.T, handler http.HandlerFunc, retryConfig ...RetryConfig) *gcpMultipartUploader {
 	t.Helper()
 
 	server := httptest.NewServer(handler)
@@ -39,10 +41,16 @@ func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryCo
 	retryableClient := createRetryableClient(t.Context(), config)
 	retryableClient.HTTPClient = server.Client()
 
-	provider := &GCP{
-		baseUploadURL: server.URL, // Override to use test server for uploads
+	return &gcpMultipartUploader{
+		g: &GCP{
+			baseUploadURL: server.URL, // Override to use test server for uploads
+		},
+		etags:       &sync.Map{},
+		objectName:  testObjectName,
+		token:       testToken,
+		client:      retryableClient,
+		retryConfig: config,
 	}
-	return provider
 }
 
 func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
@@ -68,8 +76,8 @@ func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
 		w.Write(xmlData)
 	})
 
-	uploader, err := createTestMultipartUploader(t, handler).
-		startMultipartUpload(t.Context(), testObjectName, DefaultRetryConfig())
+	uploader := testMultipartUploaderGCP(t, handler)
+	err := uploader.start(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, expectedUploadID, uploader.uploadID)
 }
@@ -93,10 +101,9 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	uploader, err := createTestMultipartUploader(t, handler).
-		startMultipartUpload(t.Context(), testObjectName, DefaultRetryConfig())
-	require.NoError(t, err)
-	err = uploader.UploadPart(t.Context(), 1, testData)
+	uploader := testMultipartUploaderGCP(t, handler)
+	uploader.uploadID = testUploadId // since we're skipping start
+	err := uploader.UploadPart(t.Context(), 1, testData)
 	require.NoError(t, err)
 	etag, ok := uploader.etags.Load(1)
 	require.True(t, ok)
@@ -110,11 +117,8 @@ func TestMultipartUploader_UploadPart_MissingETag(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	uploader, err := createTestMultipartUploader(t, handler).
-		startMultipartUpload(t.Context(), testObjectName, DefaultRetryConfig())
-	require.NoError(t, err)
-	err = uploader.UploadPart(t.Context(), 1, []byte("test"))
-
+	uploader := testMultipartUploaderGCP(t, handler)
+	err := uploader.UploadPart(t.Context(), 1, []byte("test"))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no ETag returned for part 1")
 	_, ok := uploader.etags.Load(1)
@@ -143,12 +147,11 @@ func TestMultipartUploader_CompleteUpload_Success(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	uploader, err := createTestMultipartUploader(t, handler).
-		startMultipartUpload(t.Context(), testObjectName, DefaultRetryConfig())
-	require.NoError(t, err)
+	uploader := testMultipartUploaderGCP(t, handler)
 	uploader.etags.Store(1, `"etag1"`)
 	uploader.etags.Store(2, `"etag2"`)
-	err = uploader.Complete(t.Context())
+	uploader.uploadID = testUploadId
+	err := uploader.Complete(t.Context())
 	require.NoError(t, err)
 }
 
@@ -243,8 +246,8 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 		BackoffMultiplier: 2,
 	}
 
-	uploader, err := createTestMultipartUploader(t, handler).
-		startMultipartUpload(t.Context(), testObjectName, config)
+	uploader := testMultipartUploaderGCP(t, handler, config)
+	err := uploader.start(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, expectedUploadID, uploader.uploadID)
 	require.Equal(t, int32(2), atomic.LoadInt32(&requestCount))

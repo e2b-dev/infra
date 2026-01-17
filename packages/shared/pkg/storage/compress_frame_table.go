@@ -64,13 +64,11 @@ func (ft *FrameTable) Subset(r Range) (*FrameTable, error) {
 		CompressionType: ft.CompressionType,
 	}
 
-	fmt.Printf("<>/<> current frame table starts at %d, requested range %d/%d\n", ft.StartAt.U, r.Start, r.Length) // --- IGNORE ---
 	startSet := false
 	currentOffset := ft.StartAt
 	requestedEnd := r.Start + int64(r.Length)
 	for _, frame := range ft.Frames {
 		frameEnd := currentOffset.U + int64(frame.U)
-		fmt.Printf("<>/<> checking frame U=%d C=%d at offset %d-%d\n", frame.U, frame.C, currentOffset.U, frameEnd) // --- IGNORE ---
 		if frameEnd <= r.Start {
 			// frame is before the requested range
 			currentOffset.Add(frame)
@@ -81,18 +79,13 @@ func (ft *FrameTable) Subset(r Range) (*FrameTable, error) {
 			break
 		}
 
-		fmt.Printf("<>/<> including frame U=%d C=%d at offset %d\n", frame.U, frame.C, currentOffset.U) // --- IGNORE ---
-
 		if !startSet {
 			newFrameTable.StartAt = currentOffset
 			startSet = true
-			fmt.Printf("<>/<> subset frame table starts at %d\n", newFrameTable.StartAt.U) // --- IGNORE ---
 		}
 		// frame overlaps with the requested range
 		newFrameTable.Frames = append(newFrameTable.Frames, frame)
 		currentOffset.Add(frame)
-
-		fmt.Printf("<>/<> advanced current offset to %d/%d\n", currentOffset.U, currentOffset.C) // --- IGNORE ---
 	}
 
 	if !startSet {

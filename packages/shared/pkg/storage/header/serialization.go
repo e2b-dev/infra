@@ -68,13 +68,6 @@ func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
 func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	var buf bytes.Buffer
 
-	fmt.Printf("<>/<> Serializing header %+v\n", metadata) // DEBUG --- IGNORE ---
-	fmt.Printf("<>/<>   for build %s, version %d, %d mappings\n",
-		metadata.BuildId.String(),
-		metadata.Version,
-		len(mappings),
-	) // DEBUG --- IGNORE ---
-
 	err := binary.Write(&buf, binary.LittleEndian, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
@@ -92,17 +85,6 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 				BuildStorageOffset: mapping.BuildStorageOffset,
 			}
 		} else {
-			if mapping.FrameTable != nil {
-				fmt.Printf("<>/<> Serializing V4 mapping for build %q, %d many frames\n",
-					mapping.BuildId.String(),
-					len(mapping.FrameTable.Frames),
-				) // DEBUG --- IGNORE ---
-			} else {
-				fmt.Printf("<>/<> Serializing V4 mapping for build %q, no frames\n",
-					mapping.BuildId.String(),
-				) // DEBUG --- IGNORE ---
-			}
-
 			v4 := &v4SerializableBuildMap{
 				Offset:             mapping.Offset,
 				Length:             mapping.Length,
@@ -144,8 +126,6 @@ func Deserialize(ctx context.Context, in io.Reader) (*Header, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
-
-	fmt.Printf(("<>/<> Deserializing header %+v\n"), &metadata) // DEBUG --- IGNORE ---
 
 	mappings := make([]*BuildMap, 0)
 

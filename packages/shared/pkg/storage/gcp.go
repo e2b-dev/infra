@@ -91,8 +91,8 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Pr
 	}, nil
 }
 
-func (p *GCP) DeleteWithPrefix(ctx context.Context, prefix string) error {
-	objects := p.bucket.Objects(ctx, &storage.Query{Prefix: prefix + "/"})
+func (g *GCP) DeleteWithPrefix(ctx context.Context, prefix string) error {
+	objects := g.bucket.Objects(ctx, &storage.Query{Prefix: prefix + "/"})
 
 	for {
 		object, err := objects.Next()
@@ -104,7 +104,7 @@ func (p *GCP) DeleteWithPrefix(ctx context.Context, prefix string) error {
 			return fmt.Errorf("error when iterating over template objects: %w", err)
 		}
 
-		err = p.bucket.Object(object.Name).Delete(ctx)
+		err = g.bucket.Object(object.Name).Delete(ctx)
 		if err != nil {
 			return fmt.Errorf("error when deleting template object: %w", err)
 		}
@@ -113,7 +113,7 @@ func (p *GCP) DeleteWithPrefix(ctx context.Context, prefix string) error {
 	return nil
 }
 
-func (p *GCP) PublicUploadURL(_ context.Context, path string, ttl time.Duration) (string, error) {
+func (g *GCP) PublicUploadURL(_ context.Context, path string, ttl time.Duration) (string, error) {
 	token, err := parseServiceAccountBase64(consts.GoogleServiceAccountSecret)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse GCP service account: %w", err)
@@ -126,7 +126,7 @@ func (p *GCP) PublicUploadURL(_ context.Context, path string, ttl time.Duration)
 		Expires:        time.Now().Add(ttl),
 	}
 
-	url, err := storage.SignedURL(p.bucket.BucketName(), path, opts)
+	url, err := storage.SignedURL(g.bucket.BucketName(), path, opts)
 	if err != nil {
 		return "", fmt.Errorf("failed to create signed URL for GCS object (%s): %w", path, err)
 	}
@@ -134,8 +134,8 @@ func (p *GCP) PublicUploadURL(_ context.Context, path string, ttl time.Duration)
 	return url, nil
 }
 
-func (p *GCP) handle(path string) *storage.ObjectHandle {
-	return p.bucket.Object(path).Retryer(
+func (g *GCP) handle(path string) *storage.ObjectHandle {
+	return g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
 		storage.WithBackoff(
@@ -148,11 +148,11 @@ func (p *GCP) handle(path string) *storage.ObjectHandle {
 	)
 }
 
-func (p *GCP) Size(ctx context.Context, path string) (int64, error) {
+func (g *GCP) Size(ctx context.Context, path string) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
-	h := p.handle(path)
+	h := g.handle(path)
 	attrs, err := h.Attrs(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
@@ -166,11 +166,11 @@ func (p *GCP) Size(ctx context.Context, path string) (int64, error) {
 	return attrs.Size, nil
 }
 
-func (p *GCP) Put(ctx context.Context, path string, value io.Reader) (e error) {
+func (g *GCP) Put(ctx context.Context, path string, value io.Reader) (e error) {
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
-	w := p.handle(path).NewWriter(ctx)
+	w := g.handle(path).NewWriter(ctx)
 	defer func() {
 		if err := w.Close(); err != nil {
 			e = errors.Join(e, fmt.Errorf("failed to write to %q: %w", path, err))
@@ -189,11 +189,11 @@ func (p *GCP) Put(ctx context.Context, path string, value io.Reader) (e error) {
 	return nil
 }
 
-func (p *GCP) Get(ctx context.Context, path string) (io.ReadCloser, error) {
+func (g *GCP) Get(ctx context.Context, path string) (io.ReadCloser, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 	defer cancel()
 
-	r, err := p.handle(path).NewReader(ctx)
+	r, err := g.handle(path).NewReader(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			return nil, fmt.Errorf("failed to create reader for %q: %w", path, ErrObjectNotExist)
@@ -224,6 +224,6 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	return &sa, nil
 }
 
-func (p *GCP) RangeGet(ctx context.Context, path string, offset int64, length int) (io.ReadCloser, error) {
-	return p.handle(path).NewRangeReader(ctx, offset, int64(length))
+func (g *GCP) RangeGet(ctx context.Context, path string, offset int64, length int) (io.ReadCloser, error) {
+	return g.handle(path).NewRangeReader(ctx, offset, int64(length))
 }
