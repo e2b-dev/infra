@@ -437,7 +437,7 @@ resource "random_id" "orchestrator_job" {
 }
 
 locals {
-  latest_orchestrator_job_id = random_id.orchestrator_job.hex
+  latest_orchestrator_job_id = var.environment == "dev" ? "dev" : random_id.orchestrator_job.hex
 }
 
 resource "nomad_variable" "orchestrator_hash" {
