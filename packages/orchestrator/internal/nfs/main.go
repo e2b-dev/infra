@@ -21,8 +21,8 @@ type Proxy struct {
 	server *nfs.Server
 }
 
-func getPrefixFromSandbox(sandboxes *sandbox.Map) func(conn net.Conn) (string, error) {
-	return func(conn net.Conn) (string, error) {
+func getPrefixFromSandbox(sandboxes *sandbox.Map) jailed.GetPrefix {
+	return func(_ context.Context, conn net.Conn, _ nfs.MountRequest) (string, error) {
 		sbx, err := sandboxes.GetByHostPort(conn.RemoteAddr().String())
 		if err != nil {
 			return "", err

@@ -10,7 +10,7 @@ import (
 	"github.com/willscott/go-nfs"
 )
 
-type GetPrefix func(net.Conn) (string, error)
+type GetPrefix func(context.Context, net.Conn, nfs.MountRequest) (string, error)
 
 type Handler struct {
 	getPrefix GetPrefix
@@ -24,7 +24,7 @@ func NewNFSHandler(inner nfs.Handler, prefix GetPrefix) Handler {
 }
 
 func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
-	prefix, err := h.getPrefix(conn)
+	prefix, err := h.getPrefix(ctx, conn, request)
 	if err != nil {
 		slog.Warn("failed to get prefix", "error", err)
 
