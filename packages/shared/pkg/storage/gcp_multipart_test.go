@@ -2,10 +2,15 @@ package storage
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -25,8 +30,8 @@ const (
 	testUploadId   = "test-upload-id"
 )
 
-// testMultipartUploaderGCP creates a test uploader with a mock HTTP client
-func testMultipartUploaderGCP(t *testing.T, handler http.HandlerFunc, retryConfig ...RetryConfig) *gcpMultipartUploader {
+// createTestMultipartUploader creates a test uploader with a mock HTTP client
+func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryConfig ...RetryConfig) *gcpMultipartUploader {
 	t.Helper()
 
 	server := httptest.NewServer(handler)
@@ -76,8 +81,8 @@ func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
 		w.Write(xmlData)
 	})
 
-	uploader := testMultipartUploaderGCP(t, handler)
-	err := uploader.start(t.Context())
+	uploader := createTestMultipartUploader(t, handler)
+	err := uploader.Start(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, expectedUploadID, uploader.uploadID)
 }
@@ -101,7 +106,7 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	uploader := testMultipartUploaderGCP(t, handler)
+	uploader := createTestMultipartUploader(t, handler)
 	uploader.uploadID = testUploadId // since we're skipping start
 	err := uploader.UploadPart(t.Context(), 1, testData)
 	require.NoError(t, err)
@@ -117,7 +122,7 @@ func TestMultipartUploader_UploadPart_MissingETag(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	uploader := testMultipartUploaderGCP(t, handler)
+	uploader := createTestMultipartUploader(t, handler)
 	err := uploader.UploadPart(t.Context(), 1, []byte("test"))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no ETag returned for part 1")
@@ -147,7 +152,7 @@ func TestMultipartUploader_CompleteUpload_Success(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	uploader := testMultipartUploaderGCP(t, handler)
+	uploader := createTestMultipartUploader(t, handler)
 	uploader.etags.Store(1, `"etag1"`)
 	uploader.etags.Store(2, `"etag2"`)
 	uploader.uploadID = testUploadId
@@ -155,66 +160,77 @@ func TestMultipartUploader_CompleteUpload_Success(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
-// 	t.Parallel()
-// 	// Create a test file
-// 	tempDir := t.TempDir()
-// 	testFile := filepath.Join(tempDir, "test.txt")
-// 	testContent := strings.Repeat("test data content ", 1000) // Make it large enough for multiple chunks
-// 	err := os.WriteFile(testFile, []byte(testContent), 0o644)
-// 	require.NoError(t, err)
+func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
+	t.Parallel()
+	// Create a test file
+	tempDir := t.TempDir()
+	testFile := filepath.Join(tempDir, "test.txt")
+	testContent := strings.Repeat("test data content ", 1000)
+	err := os.WriteFile(testFile, []byte(testContent), 0o644)
+	require.NoError(t, err)
 
-// 	var uploadID string
-// 	var initiateCount, uploadPartCount, completeCount int32
-// 	receivedParts := make(map[int]string)
+	var uploadID string
+	var initiateCount, uploadPartCount, completeCount int32
+	receivedParts := make(map[int]string)
 
-// 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		switch {
-// 		case r.URL.RawQuery == uploadsPath:
-// 			// Initiate upload
-// 			atomic.AddInt32(&initiateCount, 1)
-// 			uploadID = "test-upload-id-123"
-// 			response := InitiateMultipartUploadResult{
-// 				Bucket:   testBucketName,
-// 				Key:      testObjectName,
-// 				UploadID: uploadID,
-// 			}
-// 			xmlData, _ := xml.Marshal(response)
-// 			w.Header().Set("Content-Type", "application/xml")
-// 			w.WriteHeader(http.StatusOK)
-// 			w.Write(xmlData)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.RawQuery == uploadsPath:
+			// Initiate upload
+			atomic.AddInt32(&initiateCount, 1)
+			uploadID = "test-upload-id-123"
+			response := InitiateMultipartUploadResult{
+				Bucket:   testBucketName,
+				Key:      testObjectName,
+				UploadID: uploadID,
+			}
+			xmlData, _ := xml.Marshal(response)
+			w.Header().Set("Content-Type", "application/xml")
+			w.WriteHeader(http.StatusOK)
+			w.Write(xmlData)
 
-// 		case strings.Contains(r.URL.RawQuery, "partNumber"):
-// 			// Upload part
-// 			partNum := atomic.AddInt32(&uploadPartCount, 1)
-// 			body, _ := io.ReadAll(r.Body)
-// 			receivedParts[int(partNum)] = string(body)
+		case strings.Contains(r.URL.RawQuery, "partNumber"):
+			// Upload part
+			partNumStr := r.URL.Query().Get("partNumber")
+			require.NotEmpty(t, partNumStr)
+			partNum, err := strconv.Atoi(partNumStr)
+			require.NoError(t, err)
 
-// 			w.Header().Set("ETag", fmt.Sprintf(`"etag%d"`, partNum))
-// 			w.WriteHeader(http.StatusOK)
+			atomic.AddInt32(&uploadPartCount, 1)
+			body, _ := io.ReadAll(r.Body)
+			receivedParts[partNum] = string(body)
 
-// 		case strings.Contains(r.URL.RawQuery, "uploadId"):
-// 			// Complete upload
-// 			atomic.AddInt32(&completeCount, 1)
-// 			w.WriteHeader(http.StatusOK)
-// 		}
-// 	})
+			w.Header().Set("ETag", fmt.Sprintf(`"etag%d"`, partNum))
+			w.WriteHeader(http.StatusOK)
 
-// 	uploader := createTestMultipartUploader(t, handler)
-// 	_, err = uploader.UploadFileInParallel(t.Context(), testFile, 2)
-// 	require.NoError(t, err)
+		case strings.Contains(r.URL.RawQuery, "uploadId"):
+			// Complete upload
+			atomic.AddInt32(&completeCount, 1)
+			w.WriteHeader(http.StatusOK)
+		}
+	})
 
-// 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCount))
-// 	require.Equal(t, int32(1), atomic.LoadInt32(&completeCount))
-// 	require.Positive(t, atomic.LoadInt32(&uploadPartCount))
+	uploader := createTestMultipartUploader(t, handler)
+	f, err := os.Open(testFile)
+	require.NoError(t, err)
+	defer f.Close()
 
-// 	// Verify all parts were uploaded and content matches
-// 	var reconstructed strings.Builder
-// 	for i := 1; i <= int(atomic.LoadInt32(&uploadPartCount)); i++ {
-// 		reconstructed.WriteString(receivedParts[i])
-// 	}
-// 	require.Equal(t, testContent, reconstructed.String())
-// }
+	err = uploadFileInParallel(t.Context(), testObjectName, f, int64(len(testContent)), uploader, 5*1024, 2)
+	require.NoError(t, err)
+
+	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCount))
+	require.Equal(t, int32(1), atomic.LoadInt32(&completeCount))
+	require.Positive(t, atomic.LoadInt32(&uploadPartCount))
+
+	// Verify all parts were uploaded and content matches
+	var reconstructed strings.Builder
+	for i := 1; i <= int(atomic.LoadInt32(&uploadPartCount)); i++ {
+		content, ok := receivedParts[i]
+		require.True(t, ok, "missing part %d", i)
+		reconstructed.WriteString(content)
+	}
+	require.Equal(t, testContent, reconstructed.String())
+}
 
 func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 	t.Parallel()
@@ -246,8 +262,8 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 		BackoffMultiplier: 2,
 	}
 
-	uploader := testMultipartUploaderGCP(t, handler, config)
-	err := uploader.start(t.Context())
+	uploader := createTestMultipartUploader(t, handler, config)
+	err := uploader.Start(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, expectedUploadID, uploader.uploadID)
 	require.Equal(t, int32(2), atomic.LoadInt32(&requestCount))

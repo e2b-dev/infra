@@ -26,7 +26,8 @@ func (c CompressionType) String() string {
 
 type encoder struct {
 	// ctx  context.Context
-	opts *FramedUploadOptions
+	opts                 *FramedUploadOptions
+	maxUploadConcurrency int
 
 	// frame rotation is protected by mutex
 	mu          sync.Mutex
@@ -60,11 +61,12 @@ type frame struct {
 
 var _ io.Writer = (*frame)(nil) // for compression output
 
-func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader) *encoder {
+func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader, maxUploadConcurrency int) *encoder {
 	return &encoder{
-		opts:        opts,
-		readyFrames: make([][]byte, 0, 8),
-		uploader:    u,
+		opts:                 opts,
+		maxUploadConcurrency: maxUploadConcurrency,
+		readyFrames:          make([][]byte, 0, 8),
+		uploader:             u,
 		frameTable: &FrameTable{
 			CompressionType: opts.CompressionType,
 		},
@@ -74,8 +76,13 @@ func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader) *encoder {
 func (e *encoder) uploadFramed(ctx context.Context, asPath string, in io.Reader) (*FrameTable, error) {
 	// Set up the uploader
 	uploadEG, uploadCtx := errgroup.WithContext(ctx)
-	if e.opts.UploadConcurrency > 0 {
-		uploadEG.SetLimit(e.opts.UploadConcurrency)
+	if e.maxUploadConcurrency > 0 {
+		uploadEG.SetLimit(e.maxUploadConcurrency)
+	}
+
+	err := e.uploader.Start(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start multipart upload: %w", err)
 	}
 
 	// Start copying file to the compression encoder. Use a return channel
@@ -84,7 +91,6 @@ func (e *encoder) uploadFramed(ctx context.Context, asPath string, in io.Reader)
 	readErrorCh := make(chan error)
 	go readFile(ctx, in, e.opts.ChunkSize, chunkCh, readErrorCh)
 
-	var err error
 	for {
 		select {
 		case <-ctx.Done():
@@ -132,8 +138,6 @@ func (e *encoder) uploadFramed(ctx context.Context, asPath string, in io.Reader)
 				return nil, fmt.Errorf("failed to upload frames: %w", err)
 			}
 
-			// Complete the multipart upload if no error occurred. The caller
-			// should cancel the upload (ctx cancel) on error.
 			if err == nil && e.uploader != nil {
 				err = e.uploader.Complete(ctx)
 				if err != nil {

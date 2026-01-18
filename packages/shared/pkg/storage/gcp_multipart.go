@@ -42,30 +42,30 @@ type gcpMultipartUploader struct {
 	uploadID    string
 }
 
-func (g *GCP) StartMultipartUpload(ctx context.Context, objectName string) (MultipartUploader, error) {
-	u, err := g.createMultipartUpload(ctx, objectName, DefaultRetryConfig())
-	if err != nil {
-		return nil, err
-	}
-
-	err = u.start(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return u, nil
-}
-
-func (g *GCP) createMultipartUpload(ctx context.Context, objectName string, retryConfig RetryConfig) (*gcpMultipartUploader, error) {
+func (g *GCP) MakeMultipartUpload(ctx context.Context, objectName string, retryConfig RetryConfig) (MultipartUploader, func(), int, error) {
+	cleanup := func() {}
 	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get credentials: %w", err)
+		return nil, cleanup, 0, fmt.Errorf("failed to get credentials: %w", err)
 	}
 
 	token, err := creds.TokenSource.Token()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get token: %w", err)
+		return nil, cleanup, 0, fmt.Errorf("failed to get token: %w", err)
 	}
+
+	if g.limiter != nil {
+		uploadLimiter := g.limiter.GCloudUploadLimiter()
+		if uploadLimiter != nil {
+			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
+			if semaphoreErr != nil {
+				return nil, cleanup, 0, fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+			}
+			cleanup = func() { uploadLimiter.Release(1) }
+		}
+	}
+
+	uploadConcurrency := g.limiter.GCloudMaxTasks(ctx)
 
 	return &gcpMultipartUploader{
 		g:           g,
@@ -74,10 +74,10 @@ func (g *GCP) createMultipartUpload(ctx context.Context, objectName string, retr
 		token:       token.AccessToken,
 		client:      createRetryableClient(ctx, retryConfig),
 		retryConfig: retryConfig,
-	}, nil
+	}, cleanup, uploadConcurrency, nil
 }
 
-func (u *gcpMultipartUploader) start(ctx context.Context) error {
+func (u *gcpMultipartUploader) Start(ctx context.Context) error {
 	url := fmt.Sprintf("%s/%s?uploads", u.g.baseUploadURL, u.objectName)
 
 	req, err := retryablehttp.NewRequestWithContext(ctx, "POST", url, nil)

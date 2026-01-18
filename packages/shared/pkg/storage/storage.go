@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"github.com/klauspost/compress/zstd"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -60,7 +61,6 @@ type FramedUploadOptions struct {
 	CompressionType        CompressionType
 	Level                  int
 	CompressionConcurrency int
-	UploadConcurrency      int
 	ChunkSize              int // frames are made of whole chunks
 	TargetFrameSize        int // frames may be bigger than this due to chunk alignment and async compression.
 	TargetPartSize         int
@@ -72,7 +72,6 @@ var DefaultCompressionOptions = &FramedUploadOptions{
 	TargetFrameSize:        defaultTargetFrameSizeC,
 	Level:                  int(defaultZstdCompressionLevel),
 	CompressionConcurrency: defaultCompressionConcurrency,
-	UploadConcurrency:      8,
 }
 
 type ReaderAt interface {
@@ -94,20 +93,22 @@ type FrameGetter interface {
 	GetFrame(ctx context.Context, path string, rangeU Range, frameTable *FrameTable, decompress bool) (Range, io.ReadCloser, error)
 }
 
-type FramedUploader interface {
-	UploadFramed(ctx context.Context, asPath string, in io.Reader, size int64, opts *FramedUploadOptions) (ft *FrameTable, err error)
+type Storer interface {
+	Store(ctx context.Context, asPath string, in io.Reader, size int64, opts *FramedUploadOptions) (ft *FrameTable, err error)
 }
 
+// TODO LEV <>/<> do away with the API type and use functions(Provider?)
 type API interface {
+	// Provider-independent higher level APIs
 	FrameGetter
-	FramedUploader
+	Storer
 	GetBlob(ctx context.Context, path string, userBuffer []byte) ([]byte, error)
-	Exists(ctx context.Context, path string) (bool, error)
-	Size(ctx context.Context, path string) (int64, error)
 }
 
 type Storage struct {
 	*Provider
+
+	uploadLimiter *utils.AdjustableSemaphore
 }
 
 var _ API = (*Storage)(nil)
@@ -115,35 +116,58 @@ var _ API = (*Storage)(nil)
 // UploadFileFramed compresses the given file and uploads it using multipart
 // upload. If the compression type is unset, the file is uploaded in its
 // entirety.
-func (s *Storage) UploadFramed(ctx context.Context, asPath string, in io.Reader, sizeU int64, opts *FramedUploadOptions) (*FrameTable, error) {
+func (s *Storage) Store(ctx context.Context, asPath string, in io.Reader, sizeU int64, opts *FramedUploadOptions) (ft *FrameTable, e error) {
+	ctx, span := tracer.Start(ctx, "store file")
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
+
 	compression := CompressionNone
 	partSize := defaultUploadPartSize
-	uploadConcurrency := defaultUploadConcurrency
 	if opts != nil {
 		compression = opts.CompressionType
 		if opts.TargetPartSize > 0 {
 			partSize = opts.TargetPartSize
 		}
-		if opts.UploadConcurrency > 0 {
-			uploadConcurrency = opts.UploadConcurrency
-		}
-	}
-	if compression == CompressionNone {
-		// No compression, just upload the file as-is.
-		readerAt, ok := in.(io.ReaderAt)
-		if ok && s.Provider.MultipartUploaderStarter != nil && sizeU > int64(partSize) {
-			return nil, s.uploadFileInParallel(ctx, asPath, readerAt, sizeU, partSize, uploadConcurrency)
-		} else {
-			return nil, s.Provider.Put(ctx, asPath, in)
-		}
 	}
 
-	partUploader, err := s.Provider.StartMultipartUpload(ctx, asPath)
+	readerAt, canReadAt := in.(io.ReaderAt)
+	if compression == CompressionNone && (!canReadAt || s.Provider.MultipartUploaderFactory == nil || sizeU <= int64(partSize)) {
+		// If not using multipart or compressed upload, fall through to simple put.
+		return nil, s.Provider.Put(ctx, asPath, in)
+	}
+
+	timer := googleWriteTimerFactory.Begin(
+		attribute.String(gcsOperationAttr, gcsOperationAttrStore))
+
+	partUploader, cleanup, maxConcurrency, err := s.Provider.MakeMultipartUpload(ctx, asPath, DefaultRetryConfig())
+	defer cleanup()
 	if err != nil {
+		timer.Failure(ctx, 0)
+
 		return nil, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
-	return newFrameEncoder(opts, partUploader).uploadFramed(ctx, asPath, in)
+	switch {
+	case compression != CompressionNone:
+		ft, err = newFrameEncoder(opts, partUploader, maxConcurrency).uploadFramed(ctx, asPath, in)
+
+	case canReadAt && s.Provider.MultipartUploaderFactory != nil && sizeU > int64(partSize):
+		err = uploadFileInParallel(ctx, asPath, readerAt, sizeU, partUploader, partSize, maxConcurrency)
+
+	default:
+		return nil, s.Provider.Put(ctx, asPath, in)
+	}
+	if err != nil {
+		timer.Failure(ctx, 0)
+
+		return nil, err
+	}
+
+	timer.Success(ctx, sizeU)
+
+	return ft, err
 }
 
 // See convenience function GetFrameData() that takes an arbitrary offset/length
@@ -222,21 +246,22 @@ func (s *Storage) Exists(ctx context.Context, path string) (bool, error) {
 	return err == nil, ignoreNotExists(err)
 }
 
-func (s *Storage) uploadFileInParallel(ctx context.Context, asPath string, in io.ReaderAt, size int64, partSize, concurrency int) error {
+func uploadFileInParallel(ctx context.Context, asPath string, in io.ReaderAt, size int64, uploader MultipartUploader, partSize, maxConcurrency int) error {
 	// Calculate number of parts
 	numParts := int(math.Ceil(float64(size) / float64(partSize)))
 	if numParts == 0 {
 		numParts = 1 // Always upload at least 1 part, even for empty files
 	}
 
-	// Initiate multipart upload
-	uploader, err := s.Provider.StartMultipartUpload(ctx, asPath)
-	if err != nil {
-		return fmt.Errorf("failed to initiate upload: %w", err)
+	if err := uploader.Start(ctx); err != nil {
+		return fmt.Errorf("failed to initiate multipart upload: %w", err)
 	}
 
-	eg, ctx := errgroup.WithContext(ctx) // Context ONLY for waitgroup goroutines; canceled after errgroup finishes
-	eg.SetLimit(concurrency)             // Limit concurrent goroutines
+	// Initiate multipart upload
+	eg, egCtx := errgroup.WithContext(ctx) // Create a separate context for the error group
+	if maxConcurrency > 0 {
+		eg.SetLimit(maxConcurrency) // Limit concurrent goroutines
+	}
 
 	// Upload each part concurrently
 	for partNumber := 1; partNumber <= numParts; partNumber++ {
@@ -254,13 +279,13 @@ func (s *Storage) uploadFileInParallel(ctx context.Context, asPath string, in io
 		eg.Go(func() error {
 			// Check if context was cancelled
 			select {
-			case <-ctx.Done():
-				return fmt.Errorf("part %d failed: %w", partNumber, ctx.Err())
+			case <-egCtx.Done():
+				return fmt.Errorf("part %d failed: %w", partNumber, egCtx.Err())
 			default:
 			}
 
 			// Upload part
-			err = uploader.UploadPart(ctx, partNumber, part)
+			err := uploader.UploadPart(egCtx, partNumber, part)
 			if err != nil {
 				return fmt.Errorf("failed to upload part %d: %w", partNumber, err)
 			}
@@ -274,7 +299,7 @@ func (s *Storage) uploadFileInParallel(ctx context.Context, asPath string, in io
 		return fmt.Errorf("upload failed: %w", err)
 	}
 
-	if err := uploader.Complete(ctx); err != nil {
+	if err := uploader.Complete(ctx); err != nil { // Use original ctx, not egCtx
 		return fmt.Errorf("failed to complete upload: %w", err)
 	}
 

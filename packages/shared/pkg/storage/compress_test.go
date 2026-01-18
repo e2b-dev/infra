@@ -31,24 +31,25 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 	var origData []byte
 	seeded := rand.New(rand.NewSource(42))
 
-	t.Run("Generate test data", func(t *testing.T) {
-		for range chunksInData {
-			// read in some random bytes
-			chunk := make([]byte, 0, chunkSize*2)
-			for len(chunk) < chunkSize {
-				n := seeded.Intn(64) + 1
-				b := seeded.Intn(256)
-				for range n {
-					chunk = append(chunk, byte(b))
-				}
+	// t.Run("Generate test data", func(t *testing.T) {
+	for range chunksInData {
+		// read in some random bytes
+		chunk := make([]byte, 0, chunkSize*2)
+		for len(chunk) < chunkSize {
+			n := seeded.Intn(64) + 1
+			b := seeded.Intn(256)
+			for range n {
+				chunk = append(chunk, byte(b))
 			}
-			chunk = chunk[:chunkSize]
-			origData = append(origData, chunk...)
 		}
-	})
+		chunk = chunk[:chunkSize]
+		origData = append(origData, chunk...)
+	}
+	// })
 
 	var data []byte
 	var frameTable *FrameTable
+	var err error
 	receivedParts := make(map[string][]byte)
 	receivedData := make([]byte, 0)
 	t.Run("Frame compressed parallel upload", func(t *testing.T) {
@@ -97,9 +98,7 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 			}
 		})
 
-		uploader := testMultipartUploaderGCP(t, handler)
-		err := uploader.start(t.Context())
-		require.NoError(t, err)
+		uploader := createTestMultipartUploader(t, handler)
 
 		opts := FramedUploadOptions{
 			CompressionType: CompressionZstd,
@@ -107,7 +106,7 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 			ChunkSize:       chunkSize,
 			TargetFrameSize: frameSize,
 		}
-		e := newFrameEncoder(&opts, uploader)
+		e := newFrameEncoder(&opts, uploader, 4)
 		e.targetPartSize = partSize
 
 		frameTable, err = e.uploadFramed(t.Context(), "test-path", bytes.NewReader(origData))
@@ -149,7 +148,6 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 	})
 
 	t.Run("Verify downloading slices", func(t *testing.T) {
-		t.Logf("original data %d bytes, received data %d bytes\n", len(origData), len(receivedData))
 		fake := &Storage{
 			Provider: &Provider{
 				RangeGetter: &fakeRanger{data: receivedData},

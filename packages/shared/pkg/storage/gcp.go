@@ -33,12 +33,12 @@ const (
 	googleMaxAttempts              = 10
 	gcloudDefaultUploadConcurrency = 16
 
-	gcsOperationAttr            = "operation"
-	gcsOperationAttrReadAt      = "ReadAt"
-	gcsOperationAttrWrite       = "Write"
-	gcsOperationAttrUploadParts = "WriteFromFileSystem"
-	gcsOperationAttrUpload      = "WriteFromFileSystemOneShot"
-	gcsOperationAttrWriteTo     = "WriteTo"
+	gcsOperationAttr        = "operation"
+	gcsOperationAttrReadAt  = "ReadAt"
+	gcsOperationAttrWrite   = "Write"
+	gcsOperationAttrStore   = "Store"
+	gcsOperationAttrUpload  = "WriteFromFileSystemOneShot"
+	gcsOperationAttrWriteTo = "WriteTo"
 )
 
 var (
@@ -83,7 +83,7 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Pr
 	}
 	return &Provider{
 		KV:                       gcp,
-		MultipartUploaderStarter: gcp,
+		MultipartUploaderFactory: gcp,
 		PublicUploader:           gcp,
 		RangeGetter:              gcp,
 

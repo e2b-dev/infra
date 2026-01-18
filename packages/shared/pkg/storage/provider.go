@@ -84,11 +84,12 @@ type PublicUploader interface {
 	PublicUploadURL(ctx context.Context, path string, ttl time.Duration) (string, error)
 }
 
-type MultipartUploaderStarter interface {
-	StartMultipartUpload(ctx context.Context, path string) (MultipartUploader, error)
+type MultipartUploaderFactory interface {
+	MakeMultipartUpload(ctx context.Context, path string, retryConfig RetryConfig) (MultipartUploader, func(), int, error)
 }
 
 type MultipartUploader interface {
+	Start(ctx context.Context) error
 	UploadPart(ctx context.Context, partIndex int, data ...[]byte) error
 	Complete(ctx context.Context) error
 }
@@ -96,7 +97,7 @@ type MultipartUploader interface {
 type Provider struct {
 	KV
 	PublicUploader
-	MultipartUploaderStarter
+	MultipartUploaderFactory
 	RangeGetter
 
 	info string
