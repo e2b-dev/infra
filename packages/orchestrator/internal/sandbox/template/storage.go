@@ -51,20 +51,21 @@ func NewStorage(
 	buildId string,
 	fileType build.DiffType,
 	h *header.Header,
-	persistence storage.StorageProvider,
+	persistence storage.API,
 	metrics blockmetrics.Metrics,
 ) (*Storage, error) {
 	if h == nil {
 		headerObjectPath := buildId + "/" + string(fileType) + storage.HeaderSuffix
-		headerObjectType, ok := storageHeaderObjectType(fileType)
+		_, ok := storageHeaderObjectType(fileType)
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		headerObject, err := persistence.OpenBlob(ctx, headerObjectPath, headerObjectType)
+		headerObject, err := persistence.Get(ctx, headerObjectPath)
 		if err != nil {
 			return nil, err
 		}
+		defer headerObject.Close()
 
 		diffHeader, err := header.Deserialize(ctx, headerObject)
 
@@ -85,17 +86,8 @@ func NewStorage(
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
-<<<<<<< HEAD
-		// Old style must not be compressed
-		object, err := persistence.OpenFramedReader(ctx, objectPath)
-=======
-		object, err := persistence.OpenSeekable(ctx, objectPath, objectType)
->>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b
-		if err != nil {
-			return nil, err
-		}
 
-		size, err := object.Size(ctx)
+		size, err := persistence.Size(ctx, objectPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object size: %w", err)
 		}

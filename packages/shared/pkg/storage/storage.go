@@ -75,13 +75,12 @@ var DefaultCompressionOptions = &FramedUploadOptions{
 }
 
 type ReaderAt interface {
-	io.ReaderAt
-	ReadAtCtx(ctx context.Context, p []byte, off int64) (n int, err error)
+	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
+	Size(ctx context.Context) (int64, error)
 }
 
 type Reader interface {
-	io.Reader
-	ReadCtx(ctx context.Context, p []byte) (n int, err error)
+	Read(ctx context.Context, p []byte) (n int, err error)
 }
 
 type AnyReader interface {
@@ -102,13 +101,13 @@ type API interface {
 	// Provider-independent higher level APIs
 	FrameGetter
 	Storer
+	Getter
+	Sizer
 	GetBlob(ctx context.Context, path string, userBuffer []byte) ([]byte, error)
 }
 
 type Storage struct {
 	*Provider
-
-	uploadLimiter *utils.AdjustableSemaphore
 }
 
 var _ API = (*Storage)(nil)

@@ -68,11 +68,15 @@ type Getter interface {
 	Get(ctx context.Context, path string) (io.ReadCloser, error)
 }
 
+type Sizer interface {
+	Size(ctx context.Context, path string) (int64, error)
+}
+
 type KV interface {
 	Putter
 	Getter
-
-	Size(ctx context.Context, path string) (int64, error)
+	Sizer
+	
 	DeleteWithPrefix(ctx context.Context, prefix string) error
 }
 

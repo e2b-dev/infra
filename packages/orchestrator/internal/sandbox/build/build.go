@@ -17,7 +17,7 @@ type File struct {
 	header      *header.Header
 	store       *DiffStore
 	fileType    DiffType
-	persistence storage.StorageProvider
+	persistence storage.API
 	metrics     blockmetrics.Metrics
 }
 
@@ -25,7 +25,7 @@ func NewFile(
 	header *header.Header,
 	store *DiffStore,
 	fileType DiffType,
-	persistence storage.StorageProvider,
+	persistence storage.API,
 	metrics blockmetrics.Metrics,
 ) *File {
 	return &File{

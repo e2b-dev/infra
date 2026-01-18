@@ -26,7 +26,7 @@ const (
 
 type Diff interface {
 	io.Closer
-	storage.AnyReader
+	storage.ReaderAt
 	block.Slicer
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)

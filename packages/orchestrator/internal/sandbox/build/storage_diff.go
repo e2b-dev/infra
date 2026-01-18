@@ -23,8 +23,8 @@ type StorageDiff struct {
 	blockSize int64
 	metrics   blockmetrics.Metrics
 
-	persistence     *storage.API
 	persistencePath string
+	persistence     storage.API
 	frameTable      *storage.FrameTable
 }
 
@@ -44,7 +44,7 @@ func newStorageDiff(
 	diffType DiffType,
 	blockSize int64,
 	metrics blockmetrics.Metrics,
-	persistence storage.Provider,
+	persistence storage.API,
 	frameTable *storage.FrameTable,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
@@ -56,14 +56,14 @@ func newStorageDiff(
 	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 
 	return &StorageDiff{
-		persistencePath:   storagePath,
-		cachePath:         cachePath,
-		chunker:           utils.NewSetOnce[*block.Chunker](),
-		blockSize:         blockSize,
-		metrics:           metrics,
-		persistence:       persistence,
-		frameTable:        frameTable,
-		cacheKey:          GetDiffStoreKey(buildId, diffType),
+		persistencePath: storagePath,
+		cachePath:       cachePath,
+		chunker:         utils.NewSetOnce[*block.Chunker](),
+		blockSize:       blockSize,
+		metrics:         metrics,
+		persistence:     persistence,
+		frameTable:      frameTable,
+		cacheKey:        GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
 
@@ -83,12 +83,9 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	obj, err := b.persistence.OpenFramedReader(ctx, b.persistencePath)
-	if err != nil {
-		return err
-	}
-
-	size, err := obj.Size(ctx)
+	// TODO LEV why do we need to get the size? We already have the header, which has the size; 
+	// before we were fetching the header in parallel, now maybe skip this?
+	size, err := b.persistence.Size(ctx, b.persistencePath)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get object size: %w", err)
 		b.chunker.SetError(errMsg)
@@ -96,7 +93,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		return errMsg
 	}
 
-	chunker, err := block.NewChunker(size, b.blockSize, obj, b.cachePath, b.metrics, b.frameTable)
+	chunker, err := block.NewChunker(size, b.blockSize, b.persistence, b.persistencePath, b.cachePath, b.metrics, b.frameTable)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
 		b.chunker.SetError(errMsg)

@@ -46,7 +46,7 @@ type Cache struct {
 	config        cfg.BuilderConfig
 	flags         *featureflags.Client
 	cache         *ttlcache.Cache[string, Template]
-	persistence   storage.StorageProvider
+	persistence   storage.API
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
 	rootCachePath string

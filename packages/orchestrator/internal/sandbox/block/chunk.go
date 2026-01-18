@@ -18,7 +18,7 @@ import (
 )
 
 type Chunker struct {
-	persistence *storage.API
+	persistence storage.FrameGetter
 	objectPath  string
 	cache       *Cache
 	metrics     metrics.Metrics
@@ -32,7 +32,7 @@ type Chunker struct {
 
 func NewChunker(
 	size, blockSize int64,
-	persistence *storage.API,
+	persistence storage.FrameGetter,
 	objectPath string,
 	cachePath string,
 	metrics metrics.Metrics,
@@ -126,98 +126,51 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 	return b, nil
 }
 
-// fetchToCache ensures that the data at the given offset and length is available in the cache.
+// fetchToCache ensures that the data at the given offset and length is
+// available in the cache. If the original data was frame-compressed, it fetches
+// and decompresses entire frames, so it may populate more into the cache than
+// just the requested range.
 func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 	var eg errgroup.Group
 
-	if c.frameTable != nil && c.frameTable.CompressionType != 0 {
-		return c.fetchFramedToCache(ctx, off, length)
-	}
+	var framesToFetch *storage.FrameTable
 
-	chunks := header.BlocksOffsets(length, storage.MemoryChunkSize)
+	if c.frameTable == nil || c.frameTable.CompressionType == storage.CompressionNone {
+		// If no compression, pretend each chunk is a frame.
+		startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
+		startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
+		nChunks := header.BlockIdx(length, storage.MemoryChunkSize)
 
-	startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
-	startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
-
-	for _, chunkOff := range chunks {
-		// Ensure the closure captures the correct block offset.
-		fetchOff := startingChunkOffset + chunkOff
-
-		eg.Go(func() (err error) {
-			defer func() {
-				if r := recover(); r != nil {
-					logger.L().Error(ctx, "recovered from panic in the fetch handler", zap.Any("error", r))
-					err = fmt.Errorf("recovered from panic in the fetch handler: %v", r)
-				}
-			}()
-
-			err = c.fetchers.Wait(fetchOff, func() error {
-				select {
-				case <-ctx.Done():
-					return fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+storage.MemoryChunkSize, ctx.Err())
-				default:
-				}
-
-				// The size of the buffer is adjusted if the last chunk is not a multiple of the block size.
-				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
-				if err != nil {
-					return err
-				}
-
-				defer releaseCacheCloseLock()
-
-				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
-
-				readBytes, err := c.base.ReadFrame(ctx, b, fetchOff)
-				if err != nil {
-					fetchSW.Failure(ctx, int64(readBytes),
-						attribute.String(failureReason, failureTypeRemoteRead),
-					)
-
-					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
-				}
-
-				if readBytes != len(b) {
-					fetchSW.Failure(ctx, int64(readBytes),
-						attribute.String(failureReason, failureTypeRemoteRead),
-					)
-
-					return fmt.Errorf("failed to read chunk from base %d: expected %d bytes, got %d bytes", fetchOff, len(b), readBytes)
-				}
-
-				c.cache.setIsCached(fetchOff, int64(readBytes))
-
-				fetchSW.Success(ctx, int64(readBytes))
-
-				return nil
+		framesToFetch = &storage.FrameTable{
+			CompressionType: storage.CompressionNone,
+			StartAt: storage.FrameOffset{
+				U: startingChunkOffset,
+				C: startingChunkOffset,
+			},
+		}
+		for range nChunks {
+			framesToFetch.Frames = append(framesToFetch.Frames, storage.FrameSize{
+				U: storage.MemoryChunkSize,
+				C: storage.MemoryChunkSize,
 			})
-
-			return err
-		})
+		}
+	} else {
+		var err error
+		framesToFetch, err = c.frameTable.Subset(storage.Range{Start: off, Length: int(length)})
+		if err != nil {
+			return fmt.Errorf("failed to get frame subset for range %#x-%#x: %w", off, off+length, err)
+		}
+		if framesToFetch == nil || len(framesToFetch.Frames) == 0 {
+			return fmt.Errorf("no frames to fetch for range %#x-%#x", off, off+length)
+		}
 	}
 
-	err := eg.Wait()
-	if err != nil {
-		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
-	}
-
-	return nil
-}
-
-// fetchFramedToCache ensures that the data at the given offset and length is
-// available in the cache, but fetches and cachesthe entire compressed frames,
-// more than was requested
-func (c *Chunker) fetchFramedToCache(ctx context.Context, off, length int64) error {
-	var eg errgroup.Group
-
-	subset := c.frameTable.Subset(off, length)
-	if subset == nil || len(subset.Frames) == 0 {
-		return fmt.Errorf("no frames to fetch for range %#x-%#x", off, off+length)
-	}
-
-	fetchOff := subset.StartAt.U
-	for _, frameSize := range subset.Frames {
+	currentOff := framesToFetch.StartAt.U
+	for _, f := range framesToFetch.Frames {
 		// Ensure the closure captures the correct block offset.
+		fetchOff := currentOff
+		currentOff += int64(f.U)
+
 		eg.Go(func() (err error) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -233,8 +186,10 @@ func (c *Chunker) fetchFramedToCache(ctx context.Context, off, length int64) err
 				default:
 				}
 
-				// The size of the buffer is adjusted if the last chunk is not a multiple of the block size.
-				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, int64(frameSize.U))
+				// Get the space in the mmapped cache to read the frame into.
+				// The size of the slice is adjusted if the last chunk is not a
+				// multiple of the block size.
+				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, int64(f.U))
 				if err != nil {
 					return err
 				}
@@ -242,15 +197,24 @@ func (c *Chunker) fetchFramedToCache(ctx context.Context, off, length int64) err
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
-				err = c.persistence.ReadFrame(ctx, c.objectPath, fetchOff, b)
+				_, r, err := c.persistence.GetFrame(ctx, c.objectPath, storage.Range{Start: fetchOff, Length: int(f.U)}, framesToFetch, true)
 				if err != nil {
 					fetchSW.Failure(ctx, int64(len(b)),
 						attribute.String(failureReason, failureTypeRemoteRead),
 					)
 
-					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
+					return fmt.Errorf("failed to read frame from base %d: %w", fetchOff, err)
 				}
 
+				_, err = io.ReadFull(r, b)
+				r.Close()
+				if err != nil {
+					fetchSW.Failure(ctx, int64(len(b)),
+						attribute.String(failureReason, failureTypeRemoteRead),
+					)
+
+					return fmt.Errorf("failed to read frame data from base %d: %w", fetchOff, err)
+				}
 				c.cache.setIsCached(fetchOff, int64(len(b)))
 
 				fetchSW.Success(ctx, int64(len(b)))

@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -36,15 +37,15 @@ type Index interface {
 
 type HashIndex struct {
 	cacheScope      string
-	indexStorage    storage.StorageProvider
-	templateStorage storage.StorageProvider
+	indexStorage    storage.API
+	templateStorage storage.API
 	version         string
 }
 
 func NewHashIndex(
 	cacheScope string,
-	indexStorage storage.StorageProvider,
-	templateStorage storage.StorageProvider,
+	indexStorage storage.API,
+	templateStorage storage.API,
 ) *HashIndex {
 	return &HashIndex{
 		cacheScope:      cacheScope,
@@ -62,12 +63,7 @@ func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMe
 	ctx, span := tracer.Start(ctx, "get layer_metadata")
 	defer span.End()
 
-	obj, err := h.indexStorage.OpenBlob(ctx, paths.HashToPath(h.cacheScope, hash), storage.LayerMetadataObjectType)
-	if err != nil {
-		return LayerMetadata{}, fmt.Errorf("error opening object for layer metadata: %w", err)
-	}
-
-	data, err := storage.GetBlob(ctx, obj)
+	data, err := h.indexStorage.GetBlob(ctx, paths.HashToPath(h.cacheScope, hash), nil)
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error reading layer metadata from object: %w", err)
 	}
@@ -89,17 +85,14 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 	ctx, span := tracer.Start(ctx, "save layer_metadata")
 	defer span.End()
 
-	obj, err := h.indexStorage.OpenBlob(ctx, paths.HashToPath(h.cacheScope, hash), storage.LayerMetadataObjectType)
-	if err != nil {
-		return fmt.Errorf("error creating object for saving UUID: %w", err)
-	}
-
 	marshaled, err := json.Marshal(template)
 	if err != nil {
 		return fmt.Errorf("error marshalling layer metadata: %w", err)
 	}
 
-	err = obj.Put(ctx, marshaled)
+	_, err = h.indexStorage.Store(ctx,
+		paths.HashToPath(h.cacheScope, hash),
+		bytes.NewReader(marshaled), int64(len(marshaled)), nil)
 	if err != nil {
 		return fmt.Errorf("error writing layer metadata to object: %w", err)
 	}

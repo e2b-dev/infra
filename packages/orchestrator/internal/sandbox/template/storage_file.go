@@ -15,7 +15,7 @@ type storageFile struct {
 
 func newStorageFile(
 	ctx context.Context,
-	persistence storage.StorageProvider,
+	persistence storage.API,
 	objectPath string,
 	path string,
 	objectType storage.ObjectType,
@@ -27,12 +27,13 @@ func newStorageFile(
 
 	defer f.Close()
 
-	object, err := persistence.OpenBlob(ctx, objectPath, objectType)
-	if err != nil {
-		return nil, err
+	r, err := persistence.Get(ctx, objectPath)
+	if err == nil {
+		defer r.Close()
+
+		_, err = f.ReadFrom(r)
 	}
 
-	_, err = object.WriteTo(ctx, f)
 	if err != nil {
 		cleanupErr := os.Remove(path)
 
