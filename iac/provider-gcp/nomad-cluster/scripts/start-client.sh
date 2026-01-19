@@ -345,13 +345,21 @@ FETCH_MAX_ATTEMPTS=$((FETCH_TIMEOUT_SECONDS / FETCH_INTERVAL_SECONDS))
 echo "[Fetching orchestrator version from Nomad servers (timeout: $${FETCH_TIMEOUT_SECONDS}s)]"
 ORCHESTRATOR_VERSION=""
 for i in $(seq 1 $FETCH_MAX_ATTEMPTS); do
+  ELAPSED=$((i * FETCH_INTERVAL_SECONDS))
   NOMAD_SERVER=$(dig +short nomad.service.consul | head -1)
-  if [ -n "$NOMAD_SERVER" ]; then
-    ORCHESTRATOR_VERSION=$(curl -s -H "X-Nomad-Token: ${NOMAD_TOKEN}" \
-      "http://$NOMAD_SERVER:4646/v1/var/nomad/jobs" 2>/dev/null | jq -r '.Items.latest_orchestrator_job_id // empty')
-    if [ -n "$ORCHESTRATOR_VERSION" ]; then
+  if [ -z "$NOMAD_SERVER" ]; then
+    echo "- Waiting for Consul DNS (nomad.service.consul)... ($${ELAPSED}s / $${FETCH_TIMEOUT_SECONDS}s)"
+  else
+    API_RESPONSE=$(curl -s --connect-timeout 5 --max-time 10 -H "X-Nomad-Token: ${NOMAD_TOKEN}" \
+      "http://$NOMAD_SERVER:4646/v1/var/nomad/jobs" 2>/dev/null)
+    if echo "$API_RESPONSE" | jq -e '.Items.latest_orchestrator_job_id' >/dev/null 2>&1; then
+      ORCHESTRATOR_VERSION=$(echo "$API_RESPONSE" | jq -r '.Items.latest_orchestrator_job_id')
       echo "- Fetched orchestrator version: $ORCHESTRATOR_VERSION"
       break
+    elif [ -n "$API_RESPONSE" ]; then
+      echo "- Invalid response from Nomad API, retrying... ($${ELAPSED}s / $${FETCH_TIMEOUT_SECONDS}s)"
+    else
+      echo "- No response from Nomad API at $${NOMAD_SERVER}, retrying... ($${ELAPSED}s / $${FETCH_TIMEOUT_SECONDS}s)"
     fi
   fi
   if [ $i -eq $FETCH_MAX_ATTEMPTS ]; then
@@ -359,8 +367,6 @@ for i in $(seq 1 $FETCH_MAX_ATTEMPTS); do
     echo "- The node cannot start without the orchestrator version. Exiting..."
     exit 1
   fi
-  ELAPSED=$((i * FETCH_INTERVAL_SECONDS))
-  echo "- Waiting for orchestrator version... ($${ELAPSED}s / $${FETCH_TIMEOUT_SECONDS}s)"
   sleep $FETCH_INTERVAL_SECONDS
 done
 
