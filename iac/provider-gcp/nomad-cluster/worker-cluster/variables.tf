@@ -227,5 +227,4 @@ variable "file_hash" {
 variable "set_orchestrator_version_metadata" {
   description = "Whether to set orchestrator_version node metadata from Nomad variable on startup"
   type        = bool
-  default     = false
 }

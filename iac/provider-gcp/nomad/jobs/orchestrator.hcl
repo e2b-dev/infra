@@ -18,7 +18,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
     }
 
     constraint {
-      attribute = "$${meta.orchestrator_version}"
+      attribute = "$${meta.orchestrator_job_version}"
       value     = "${latest_orchestrator_job_id}"
     }
 
