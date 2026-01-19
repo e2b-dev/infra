@@ -126,9 +126,10 @@ module "cluster" {
   labels = var.labels
   prefix = var.prefix
 
-  # Boot disk types
+  # Boot disks
   api_boot_disk_type        = var.api_boot_disk_type
   server_boot_disk_type     = var.server_boot_disk_type
+  server_boot_disk_size_gb  = var.server_boot_disk_size_gb
   clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
   loki_boot_disk_type       = var.loki_boot_disk_type
 }

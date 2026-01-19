@@ -223,3 +223,8 @@ variable "file_hash" {
   description = "Map of setup script file paths to their content hashes for versioning"
   type        = map(string)
 }
+
+variable "set_orchestrator_version_metadata" {
+  description = "Whether to set orchestrator_version node metadata from Nomad variable on startup"
+  type        = bool
+}
