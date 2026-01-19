@@ -2,7 +2,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
   type = "system"
   node_pool = "${node_pool}"
 
-  priority = 90
+  priority = 91
 
   group "client-orchestrator" {
     // For future as we can remove static and allow multiple instances on one machine if needed.
