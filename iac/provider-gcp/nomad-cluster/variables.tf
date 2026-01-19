@@ -349,6 +349,11 @@ variable "server_boot_disk_type" {
   type        = string
 }
 
+variable "server_boot_disk_size_gb" {
+  description = "The GCE boot disk size in GB for the control server machines."
+  type        = number
+}
+
 variable "clickhouse_boot_disk_type" {
   description = "The GCE boot disk type for the ClickHouse machines."
   type        = string

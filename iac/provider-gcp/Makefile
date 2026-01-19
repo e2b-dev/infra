@@ -59,6 +59,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, REMOTE_REPOSITORY_ENABLED) \
 	$(call tfvar, API_BOOT_DISK_TYPE) \
 	$(call tfvar, SERVER_BOOT_DISK_TYPE) \
+	$(call tfvar, SERVER_BOOT_DISK_SIZE_GB) \
 	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
 	$(call tfvar, LOKI_BOOT_DISK_TYPE)
 
