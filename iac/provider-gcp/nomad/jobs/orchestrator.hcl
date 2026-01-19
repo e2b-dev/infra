@@ -17,6 +17,11 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       }
     }
 
+    constraint {
+      attribute = "$${meta.orchestrator_version}"
+      value     = "${latest_orchestrator_job_id}"
+    }
+
     service {
       name = "orchestrator"
       port = "${port}"
@@ -43,35 +48,6 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         name     = "health"
         interval = "30s"
         timeout  = "1s"
-      }
-    }
-
-    task "check-placement" {
-      driver = "raw_exec"
-
-      lifecycle {
-        hook = "prestart"
-        sidecar = false
-      }
-
-      restart {
-        attempts = 0
-      }
-
-      template {
-        destination = "local/check-placement.sh"
-        data = <<EOT
-#!/bin/bash
-
-if [ "{{with nomadVar "nomad/jobs" }}{{ .latest_orchestrator_job_id }}{{ end }}" != "${latest_orchestrator_job_id}" ]; then
-  echo "This orchestrator is not the latest version, exiting"
-  exit 1
-fi
-EOT
-      }
-
-      config {
-        command = "local/check-placement.sh"
       }
     }
 

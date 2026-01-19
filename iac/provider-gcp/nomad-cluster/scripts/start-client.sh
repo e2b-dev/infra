@@ -335,7 +335,39 @@ done
 echo "- Flushing DNS caches"
 resolvectl flush-caches
 
+%{ if SET_ORCHESTRATOR_VERSION_METADATA == "true" }
+# Fetch orchestrator version from Nomad variable via HTTP API (before starting Nomad client)
+# This is required - the node cannot start without knowing the orchestrator version
+FETCH_TIMEOUT_SECONDS=600
+FETCH_INTERVAL_SECONDS=5
+FETCH_MAX_ATTEMPTS=$((FETCH_TIMEOUT_SECONDS / FETCH_INTERVAL_SECONDS))
+
+echo "[Fetching orchestrator version from Nomad servers (timeout: $${FETCH_TIMEOUT_SECONDS}s)]"
+ORCHESTRATOR_VERSION=""
+for i in $(seq 1 $FETCH_MAX_ATTEMPTS); do
+  NOMAD_SERVER=$(dig +short nomad.service.consul | head -1)
+  if [ -n "$NOMAD_SERVER" ]; then
+    ORCHESTRATOR_VERSION=$(curl -s -H "X-Nomad-Token: ${NOMAD_TOKEN}" \
+      "http://$NOMAD_SERVER:4646/v1/var/nomad/jobs" 2>/dev/null | jq -r '.Items.latest_orchestrator_job_id // empty')
+    if [ -n "$ORCHESTRATOR_VERSION" ]; then
+      echo "- Fetched orchestrator version: $ORCHESTRATOR_VERSION"
+      break
+    fi
+  fi
+  if [ $i -eq $FETCH_MAX_ATTEMPTS ]; then
+    echo "- ERROR: Could not fetch orchestrator version from Nomad servers after $${FETCH_TIMEOUT_SECONDS}s"
+    echo "- The node cannot start without the orchestrator version. Exiting..."
+    exit 1
+  fi
+  ELAPSED=$((i * FETCH_INTERVAL_SECONDS))
+  echo "- Waiting for orchestrator version... ($${ELAPSED}s / $${FETCH_TIMEOUT_SECONDS}s)"
+  sleep $FETCH_INTERVAL_SECONDS
+done
+
+/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --orchestrator-version "$ORCHESTRATOR_VERSION" &
+%{ else }
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
+%{ endif }
 
 # Add alias for ssh-ing to sbx
 echo '_sbx_ssh() {
