@@ -340,12 +340,12 @@ resolvectl flush-caches
 # This is required - the node cannot start without knowing the orchestrator version
 FETCH_TIMEOUT_SECONDS=600
 FETCH_INTERVAL_SECONDS=5
-FETCH_MAX_ATTEMPTS=$((FETCH_TIMEOUT_SECONDS / FETCH_INTERVAL_SECONDS))
+FETCH_MAX_ATTEMPTS=$((FETCH_TIMEOUT_SECONDS / FETCH_INTERVAL_SECONDS + 1))
 
 echo "[Fetching orchestrator version from Nomad servers (timeout: $${FETCH_TIMEOUT_SECONDS}s)]"
 ORCHESTRATOR_VERSION=""
 for i in $(seq 1 $FETCH_MAX_ATTEMPTS); do
-  ELAPSED=$((i * FETCH_INTERVAL_SECONDS))
+  ELAPSED=$(((i - 1) * FETCH_INTERVAL_SECONDS))
   NOMAD_SERVER=$(dig +short nomad.service.consul | head -1)
   if [ -z "$NOMAD_SERVER" ]; then
     echo "- Waiting for Consul DNS (nomad.service.consul)... ($${ELAPSED}s / $${FETCH_TIMEOUT_SECONDS}s)"
