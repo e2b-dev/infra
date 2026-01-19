@@ -36,23 +36,20 @@ func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
 	contents := []byte("hello world")
 	ensureParentDir(t, testPath)
 
-	// write via Put
-	err := p.Put(ctx, testPath, bytes.NewReader(contents))
+	// write via Upload
+	_, err := p.Upload(ctx, testPath, bytes.NewReader(contents), int64(len(contents)))
 	require.NoError(t, err)
 
 	// check Exists
-	exists, err := p.Exists(ctx, testPath)
+	exists, err := Exists(ctx, p, testPath)
 	require.NoError(t, err)
 	require.True(t, exists)
 
 	// read the entire file back via Get
-	reader, err := p.Get(ctx, testPath)
+	var buf bytes.Buffer
+	_, err = p.Download(ctx, testPath, &buf)
 	require.NoError(t, err)
-	defer reader.Close()
-
-	data, err := io.ReadAll(reader)
-	require.NoError(t, err)
-	require.Equal(t, contents, data)
+	require.Equal(t, contents, buf.Bytes())
 }
 
 func TestFSPut(t *testing.T) {
@@ -71,15 +68,15 @@ func TestFSPut(t *testing.T) {
 
 	dstPath := filepath.Join(base, "copy", "dst.txt")
 	ensureParentDir(t, dstPath)
-	require.NoError(t, p.Put(ctx, dstPath, src))
-
-	reader, err := p.Get(ctx, dstPath)
+	data, err := io.ReadAll(src)
 	require.NoError(t, err)
-	defer reader.Close()
-
-	data, err := io.ReadAll(reader)
+	_, err = p.Upload(ctx, dstPath, bytes.NewReader(data), int64(len(data)))
 	require.NoError(t, err)
-	require.Equal(t, payload, string(data))
+
+	var buf bytes.Buffer
+	_, err = p.Download(ctx, dstPath, &buf)
+	require.NoError(t, err)
+	require.Equal(t, payload, buf.String())
 }
 
 func TestDelete(t *testing.T) {
@@ -90,10 +87,10 @@ func TestDelete(t *testing.T) {
 	path := filepath.Join(base, "to", "delete.txt")
 	ensureParentDir(t, path)
 
-	err := p.Put(ctx, path, bytes.NewReader([]byte("bye")))
+	_, err := p.Upload(ctx, path, bytes.NewReader([]byte("bye")), int64(len("bye")))
 	require.NoError(t, err)
 
-	exists, err := p.Exists(ctx, path)
+	exists, err := Exists(ctx, p, path)
 	require.NoError(t, err)
 	assert.True(t, exists)
 
@@ -101,7 +98,7 @@ func TestDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	// subsequent Exists call should return false
-	exists, err = p.Exists(ctx, path)
+	exists, err = Exists(ctx, p, path)
 	require.NoError(t, err)
 	assert.False(t, exists)
 }
@@ -119,7 +116,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 	for _, pth := range paths {
 		fullPath := filepath.Join(base, pth)
 		ensureParentDir(t, fullPath)
-		err := p.Put(ctx, fullPath, bytes.NewReader([]byte("x")))
+		_, err := p.Upload(ctx, fullPath, bytes.NewReader([]byte("x")), 1)
 		require.NoError(t, err)
 	}
 
@@ -139,9 +136,6 @@ func TestWriteToNonExistentObject(t *testing.T) {
 
 	ctx := t.Context()
 	missingPath := filepath.Join(base, "missing", "file.txt")
-	reader, err := p.Get(ctx, missingPath)
-	if err == nil {
-		reader.Close()
-	}
+	_, err := p.Download(ctx, missingPath, io.Discard)
 	require.ErrorIs(t, err, ErrObjectNotExist)
 }

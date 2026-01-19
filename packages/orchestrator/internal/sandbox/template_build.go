@@ -58,24 +58,13 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 	return nil
 }
 
-<<<<<<< HEAD
-func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) (*storage.FrameTable, error) {
-	fmt.Printf("<>/<> UploadMemfile for build %s\n", t.files.BuildID)
-
-	object, err := t.persistence.OpenFramedWriter(ctx, t.files.StorageMemfilePath(), storage.DefaultCompressionOptions)
-=======
 func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
 	object, err := t.persistence.OpenSeekable(ctx, t.files.StorageMemfilePath(), storage.MemfileObjectType)
->>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b
 	if err != nil {
 		return nil, err
 	}
 
-<<<<<<< HEAD
-	ci, err := object.StoreFromFileSystem(ctx, memfilePath)
-=======
 	err = object.StoreFile(ctx, memfilePath)
->>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b
 	if err != nil {
 		return nil, fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -84,13 +73,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
-<<<<<<< HEAD
-	fmt.Printf("<>/<> UploadRootfsHeader for build %s\n", t.files.BuildID)
-
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
-=======
 	object, err := t.persistence.OpenBlob(ctx, t.files.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
->>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b
 	if err != nil {
 		return err
 	}
@@ -108,22 +91,13 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 	return nil
 }
 
-<<<<<<< HEAD
-func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) (*storage.FrameTable, error) {
-	object, err := t.persistence.OpenFramedWriter(ctx, t.files.StorageRootfsPath(), storage.DefaultCompressionOptions)
-=======
 func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
 	object, err := t.persistence.OpenSeekable(ctx, t.files.StorageRootfsPath(), storage.RootFSObjectType)
->>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b
 	if err != nil {
 		return nil, err
 	}
 
-<<<<<<< HEAD
-	ci, err := object.StoreFromFileSystem(ctx, rootfsPath)
-=======
 	err = object.StoreFile(ctx, rootfsPath)
->>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b
 	if err != nil {
 		return nil, fmt.Errorf("error when uploading rootfs: %w", err)
 	}
@@ -138,11 +112,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 		return err
 	}
 
-<<<<<<< HEAD
-	if err = object.CopyFromFileSystem(ctx, path); err != nil {
-=======
 	if err = uploadFileAsBlob(ctx, object, path); err != nil {
->>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b
 		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
@@ -156,11 +126,7 @@ func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
 		return err
 	}
 
-<<<<<<< HEAD
-	if err = object.CopyFromFileSystem(ctx, path); err != nil {
-=======
 	if err := uploadFileAsBlob(ctx, object, path); err != nil {
->>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b
 		return fmt.Errorf("error when uploading metadata: %w", err)
 	}
 

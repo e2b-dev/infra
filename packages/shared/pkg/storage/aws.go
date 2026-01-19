@@ -30,7 +30,7 @@ type AWS struct {
 }
 
 var (
-	_ KV             = (*AWS)(nil)
+	_ Basic          = (*AWS)(nil)
 	_ PublicUploader = (*AWS)(nil)
 )
 
@@ -50,10 +50,13 @@ func NewAWS(ctx context.Context, bucketName string) (*Provider, error) {
 	}
 
 	return &Provider{
-		KV:             aws,
+		Basic:          aws,
 		PublicUploader: aws,
-		info:           fmt.Sprintf("[AWS Storage, bucket set to %s]", bucketName),
 	}, nil
+}
+
+func (p *AWS) String() string {
+	return fmt.Sprintf("[AWS Storage, bucket set to %s]", p.bucketName)
 }
 
 func (p *AWS) DeleteWithPrefix(ctx context.Context, prefix string) error {
@@ -118,7 +121,7 @@ func (p *AWS) PublicUploadURL(ctx context.Context, path string, ttl time.Duratio
 	return resp.URL, nil
 }
 
-func (p *AWS) Get(ctx context.Context, path string) (io.ReadCloser, error) {
+func (p *AWS) Download(ctx context.Context, path string, dst io.Writer) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
@@ -126,13 +129,14 @@ func (p *AWS) Get(ctx context.Context, path string) (io.ReadCloser, error) {
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return nil, ErrObjectNotExist
+			return 0, ErrObjectNotExist
 		}
 
-		return nil, err
+		return 0, err
 	}
+	defer resp.Body.Close()
 
-	return resp.Body, nil
+	return io.Copy(dst, resp.Body)
 }
 
 // func (s *AWS) StoreFile(ctx context.Context, path string) error {
@@ -165,7 +169,7 @@ func (p *AWS) Get(ctx context.Context, path string) (io.ReadCloser, error) {
 // 	return err
 // }
 
-func (p *AWS) Put(ctx context.Context, path string, value io.Reader) error {
+func (p *AWS) Upload(ctx context.Context, path string, in io.Reader, _ int64) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
@@ -174,14 +178,14 @@ func (p *AWS) Put(ctx context.Context, path string, value io.Reader) error {
 		&s3.PutObjectInput{
 			Bucket: &p.bucketName,
 			Key:    &path,
-			Body:   value,
+			Body:   in,
 		},
 	)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	return 0, nil
 }
 
 func (p *AWS) RangeGet(ctx context.Context, path string, off int64, length int64) (io.ReadCloser, error) {

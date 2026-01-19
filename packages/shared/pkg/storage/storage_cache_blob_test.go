@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -13,13 +14,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
-
-	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
 )
 
 var noopTracer = noop.TracerProvider{}.Tracer("")
 
-func TestCachedObjectProvider_Put(t *testing.T) {
+func TestCachedStorage_UploadDownload(t *testing.T) {
 	t.Parallel()
 
 	t.Run("can be cached successfully", func(t *testing.T) {
@@ -32,27 +31,36 @@ func TestCachedObjectProvider_Put(t *testing.T) {
 		err := os.MkdirAll(cacheDir, os.ModePerm)
 		require.NoError(t, err)
 
-		inner := storagemocks.NewMockBlob(t)
+		inner := NewMockAPI(t)
 		inner.EXPECT().
-			Put(mock.Anything, mock.Anything).
-			Return(nil)
-
-		featureFlags := storagemocks.NewMockFeatureFlagsClient(t)
+			Upload(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			RunAndReturn(func(_ context.Context, objectPath string, src io.Reader, size int64) (int64, error) {
+				return size, nil
+			})
+		featureFlags := NewMockFeatureFlagsClient(t)
 		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
 
-		c := cachedBlob{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
+		c := &Cache{
+			rootPath:  cacheDir,
+			inner:     inner,
+			chunkSize: 1024,
+			flags:     featureFlags,
+			tracer:    noopTracer,
+		}
 
 		// write temp file
-		err = c.Put(t.Context(), data)
+		n, wg, err := c.upload(t.Context(), "test-item", data)
 		require.NoError(t, err)
+		require.NotNil(t, wg)
+		require.Equal(t, int64(len(data)), n)
 
 		// file is written asynchronously, wait for it to finish
-		c.wg.Wait()
+		wg.Wait()
 
 		// prevent the provider from falling back to cache
 		c.inner = nil
 
-		gotData, err := GetBlob(t.Context(), &c)
+		gotData, err := GetBlob(t.Context(), c, "test-item", nil)
 		require.NoError(t, err)
 		assert.Equal(t, data, gotData)
 	})
@@ -68,48 +76,58 @@ func TestCachedObjectProvider_Put(t *testing.T) {
 		const dataSize = 10 * megabyte
 		actualData := generateData(t, dataSize)
 
-		inner := storagemocks.NewMockBlob(t)
+		inner := NewMockAPI(t)
 		inner.EXPECT().
-			WriteTo(mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
+			Download(mock.Anything, mock.Anything, mock.Anything).
+			RunAndReturn(func(_ context.Context, objectPath string, dst io.Writer) (int64, error) {
 				n, err := dst.Write(actualData)
 
 				return int64(n), err
 			})
 
-		c := cachedBlob{path: cacheDir, inner: inner, chunkSize: 1024, tracer: noopTracer}
+		c := &Cache{
+			rootPath:  cacheDir,
+			inner:     inner,
+			chunkSize: 1024,
+			tracer:    noopTracer,
+		}
 
-		read, err := GetBlob(t.Context(), &c)
+		buf := bytes.NewBuffer(nil)
+		read, wg, err := c.download(t.Context(), "test-item", buf)
 		require.NoError(t, err)
-		assert.Equal(t, actualData, read)
+		assert.Equal(t, int64(len(actualData)), read)
+		assert.Equal(t, actualData, buf.Bytes())
 
-		c.wg.Wait()
+		wg.Wait()
 
 		c.inner = nil
 
-		read, err = GetBlob(t.Context(), &c)
+		buf = bytes.NewBuffer(nil)
+		read, wg, err = c.download(t.Context(), "test-item", buf)
 		require.NoError(t, err)
-		assert.Equal(t, actualData, read)
+		assert.Equal(t, int64(len(actualData)), read)
+		assert.Equal(t, actualData, buf.Bytes())
 	})
 }
 
-func TestCachedObjectProvider_WriteFileToCache(t *testing.T) {
+func TestCachedStorage_StoreFile(t *testing.T) {
 	t.Parallel()
 
-	c := cachedBlob{
-		path:   t.TempDir(),
-		tracer: noopTracer,
+	root := t.TempDir()
+	c := Cache{
+		rootPath: root,
+		tracer:   noopTracer,
 	}
 	errTarget := errors.New("find me")
-	reader := storagemocks.NewMockReader(t)
+	reader := NewMockReader(t)
 	reader.EXPECT().Read(mock.Anything).Return(4, nil).Once()
 	reader.EXPECT().Read(mock.Anything).Return(0, errTarget).Once()
 
-	count, err := c.writeFileToCache(t.Context(), reader)
+	count, err := c.writeFileToCache(t.Context(), "test-item", reader)
 	require.ErrorIs(t, err, errTarget)
 	assert.Equal(t, int64(0), count)
 
-	path := c.fullFilename()
+	path := fullFilename(filepath.Join(root, "test-item"))
 	_, err = os.Stat(path)
 	require.ErrorIs(t, err, os.ErrNotExist)
 }

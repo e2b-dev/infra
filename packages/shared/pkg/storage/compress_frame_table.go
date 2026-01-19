@@ -111,6 +111,25 @@ func (ft *FrameTable) FrameFor(r Range) (starts FrameOffset, size FrameSize, err
 	return subset.StartAt, subset.Frames[0], nil
 }
 
+func (ft *FrameTable) GetFetchRange(rangeU Range) (Range, error) {
+	fetchRange := rangeU
+	if ft != nil && ft.CompressionType != CompressionNone {
+		start, size, err := ft.FrameFor(rangeU)
+		if err != nil {
+			return Range{}, fmt.Errorf("getting frame for range %v: %w", rangeU, err)
+		}
+		fetchRange = Range{
+			Start:  start.C,
+			Length: int(size.C),
+		}
+	}
+	return fetchRange, nil
+}
+
+func (ft *FrameTable) IsCompressed() bool {
+	return ft != nil && ft.CompressionType != CompressionNone
+}
+
 func (o *FrameOffset) Add(f FrameSize) {
 	o.U += int64(f.U)
 	o.C += int64(f.C)

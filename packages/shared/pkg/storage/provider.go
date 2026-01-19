@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -59,37 +60,24 @@ const (
 	LayerMetadataObjectType
 )
 
-type Putter interface {
-	Put(ctx context.Context, path string, value io.Reader) error
-}
-
-type Getter interface {
-	// Returns a ReadCloser to the entire data
-	Get(ctx context.Context, path string) (io.ReadCloser, error)
-}
-
-type Sizer interface {
-	Size(ctx context.Context, path string) (int64, error)
-}
-
-type KV interface {
-	Putter
-	Getter
-	Sizer
-	
+type Basic interface {
+	Upload(ctx context.Context, objectPath string, in io.Reader, size int64) (int64, error)
+	Download(ctx context.Context, objectPath string, dst io.Writer) (int64, error)
+	Size(ctx context.Context, objectPath string) (int64, error)
 	DeleteWithPrefix(ctx context.Context, prefix string) error
+	fmt.Stringer
 }
 
 type RangeGetter interface {
-	RangeGet(ctx context.Context, path string, offset int64, length int) (io.ReadCloser, error)
+	RangeGet(ctx context.Context, objectPath string, offset int64, length int) (io.ReadCloser, error)
 }
 
 type PublicUploader interface {
-	PublicUploadURL(ctx context.Context, path string, ttl time.Duration) (string, error)
+	PublicUploadURL(ctx context.Context, objectPath string, ttl time.Duration) (string, error)
 }
 
 type MultipartUploaderFactory interface {
-	MakeMultipartUpload(ctx context.Context, path string, retryConfig RetryConfig) (MultipartUploader, func(), int, error)
+	MakeMultipartUpload(ctx context.Context, objectPath string, retryConfig RetryConfig) (MultipartUploader, func(), int, error)
 }
 
 type MultipartUploader interface {
@@ -99,20 +87,14 @@ type MultipartUploader interface {
 }
 
 type Provider struct {
-	KV
+	Basic
 	PublicUploader
 	MultipartUploaderFactory
 	RangeGetter
-
-	info string
 }
 
-func (p *Provider) String() string {
-	return p.info
-}
-
-func (p *Provider) Exists(ctx context.Context, path string) (bool, error) {
-	_, err := p.KV.Size(ctx, path)
+func Exists(ctx context.Context, p *Provider, path string) (bool, error) {
+	_, err := p.Basic.Size(ctx, path)
 
 	return err == nil, ignoreNotExists(err)
 }

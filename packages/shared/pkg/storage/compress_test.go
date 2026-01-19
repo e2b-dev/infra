@@ -155,14 +155,21 @@ func TestMultipartCompressUploadFile_Success(t *testing.T) {
 		}
 
 		for range 10 {
-			s := seeded.Intn(len(origData) - 1)
-			e := s + 1
+			r := Range{
+				Start:  int64(seeded.Intn(len(origData) - 1)),
+				Length: 1,
+			}
 
-			t.Logf("requesting frames for range %#x to %#x, %#x bytes\n", s, e, e-s)
-			r, rc, err := fake.GetFrame(t.Context(), "test-path", Range{Start: int64(s), Length: e - s}, frameTable, true)
+			t.Logf("requesting frames for range %v\n", r)
+
+			fetchRange, err := frameTable.GetFetchRange(r)
 			require.NoError(t, err)
-			require.LessOrEqual(t, int(r.Start), s)
-			rc.Close()
+
+			buf := make([]byte, r.Length, fetchRange.Length)
+			rr, err := fake.GetFrame(t.Context(), "test-path", r.Start, frameTable, true, buf)
+			require.NoError(t, err)
+			require.Equal(t, int(fetchRange.Start), int(rr.Start))
+			require.Equal(t, int(fetchRange.Length), int(rr.Length))
 		}
 	})
 }

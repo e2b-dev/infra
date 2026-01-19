@@ -1,6 +1,7 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -135,7 +136,16 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 	var framesToFetch *storage.FrameTable
 
-	if c.frameTable == nil || c.frameTable.CompressionType == storage.CompressionNone {
+	if c.frameTable.IsCompressed() {
+		var err error
+		framesToFetch, err = c.frameTable.Subset(storage.Range{Start: off, Length: int(length)})
+		if err != nil {
+			return fmt.Errorf("failed to get frame subset for range %#x-%#x: %w", off, off+length, err)
+		}
+		if framesToFetch == nil || len(framesToFetch.Frames) == 0 {
+			return fmt.Errorf("no frames to fetch for range %#x-%#x", off, off+length)
+		}
+	} else {
 		// If no compression, pretend each chunk is a frame.
 		startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
 		startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
@@ -153,15 +163,6 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				U: storage.MemoryChunkSize,
 				C: storage.MemoryChunkSize,
 			})
-		}
-	} else {
-		var err error
-		framesToFetch, err = c.frameTable.Subset(storage.Range{Start: off, Length: int(length)})
-		if err != nil {
-			return fmt.Errorf("failed to get frame subset for range %#x-%#x: %w", off, off+length, err)
-		}
-		if framesToFetch == nil || len(framesToFetch.Frames) == 0 {
-			return fmt.Errorf("no frames to fetch for range %#x-%#x", off, off+length)
 		}
 	}
 
@@ -197,7 +198,8 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
-				_, r, err := c.persistence.GetFrame(ctx, c.objectPath, storage.Range{Start: fetchOff, Length: int(f.U)}, framesToFetch, true)
+				buf := bytes.NewBuffer(b[:0])
+				r, err := c.persistence.GetFrame(ctx, c.objectPath, storage.Range{Start: fetchOff, Length: int(f.U)}, framesToFetch, true, buf)
 				if err != nil {
 					fetchSW.Failure(ctx, int64(len(b)),
 						attribute.String(failureReason, failureTypeRemoteRead),
@@ -206,16 +208,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 					return fmt.Errorf("failed to read frame from base %d: %w", fetchOff, err)
 				}
 
-				_, err = io.ReadFull(r, b)
-				r.Close()
-				if err != nil {
-					fetchSW.Failure(ctx, int64(len(b)),
-						attribute.String(failureReason, failureTypeRemoteRead),
-					)
-
-					return fmt.Errorf("failed to read frame data from base %d: %w", fetchOff, err)
-				}
-				c.cache.setIsCached(fetchOff, int64(len(b)))
+				c.cache.setIsCached(r.Start, int64(len(b)))
 
 				fetchSW.Success(ctx, int64(len(b)))
 

@@ -11,43 +11,24 @@ packages:
     interfaces:
       featureFlagsClient:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockfeatureflagsclient.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          inpackage: true
+          filename: mock_featureflagsclient.go
           structname: MockFeatureFlagsClient
-      Blob:
-        config:
-<<<<<<< HEAD
-          dir: packages/shared/pkg/storage
-          filename: mock_objectprovider.go
-          inpackage: true # refers to types in the same package
-      FramedWriter:
+      API:
         config:
           dir: packages/shared/pkg/storage
-          filename: mock_framedwriter.go
-          inpackage: true # refers to types in the same package
-      FramedReader:
-        config:
-          dir: packages/shared/pkg/storage
-          filename: mock_framedwriter.go
-          inpackage: true # refers to types in the same package
-=======
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockobjectprovider.go
-          pkgname: storagemocks
-      Seekable:
-        config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockseekableobjectprovider.go
-          pkgname: storagemocks
+          inpackage: true
+          filename: mock_api.go
 
   io:
     interfaces:
       Reader:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockioreader.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          filename: mock_io_reader.go
+          inpackage: true
+          pkgname: storage
 
   github.com/e2b-dev/infra/packages/shared/pkg/utils:
     interfaces:
@@ -56,4 +37,3 @@ packages:
           dir: packages/shared/pkg/utils
           filename: mocks_test.go
           pkgname: utils
->>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b

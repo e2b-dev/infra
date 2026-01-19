@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -75,38 +76,22 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 }
 
 func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string, objectType storage.ObjectType) (*header.Header, error) {
-	b, err := storage.NewCloudAPI(ctx, storage.GCPStorageProvider, bucketName, nil)
+	s, err := storage.NewGCPStorage(ctx, bucketName, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
 	}
 
-	obj, err := b.GetBlob(ctx, headerPath)
+	data, err := storage.GetBlob(ctx, s, headerPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
 
-	h, err := header.Deserialize(ctx, obj)
+	h, err := header.Deserialize(ctx, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}
 
 	return h, nil
-}
-
-type osFileBlob struct {
-	f *os.File
-}
-
-func (o *osFileBlob) WriteTo(_ context.Context, w io.Writer) (int64, error) {
-	return io.Copy(w, o.f)
-}
-
-func (o *osFileBlob) Exists(_ context.Context) (bool, error) {
-	return true, nil
-}
-
-func (o *osFileBlob) Put(_ context.Context, _ []byte) error {
-	return fmt.Errorf("not implemented")
 }
 
 func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.Header, error) {
@@ -116,7 +101,7 @@ func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.He
 	}
 	defer f.Close()
 
-	h, err := header.Deserialize(ctx, &osFileBlob{f: f})
+	h, err := header.Deserialize(ctx, f)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}

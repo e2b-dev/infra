@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 
 	"github.com/klauspost/compress/zstd"
 	"go.opentelemetry.io/otel/attribute"
@@ -41,14 +42,26 @@ type FrameOffset struct {
 	C int64
 }
 
+func (o FrameOffset) String() string {
+	return fmt.Sprintf("U:%#x/C:%#x", o.U, o.C)
+}
+
 type FrameSize struct {
 	U int32
 	C int32
 }
 
+func (s FrameSize) String() string {
+	return fmt.Sprintf("U:%#x/C:%#x", s.U, s.C)
+}
+
 type Range struct {
 	Start  int64
 	Length int
+}
+
+func (r Range) String() string {
+	return fmt.Sprintf("%#x/%#x", r.Start, r.Length)
 }
 
 type FrameTable struct {
@@ -64,6 +77,8 @@ type FramedUploadOptions struct {
 	ChunkSize              int // frames are made of whole chunks
 	TargetFrameSize        int // frames may be bigger than this due to chunk alignment and async compression.
 	TargetPartSize         int
+
+	OnFrameReady func(offset FrameOffset, size FrameSize, data []byte) error
 }
 
 var DefaultCompressionOptions = &FramedUploadOptions{
@@ -89,21 +104,18 @@ type AnyReader interface {
 }
 
 type FrameGetter interface {
-	GetFrame(ctx context.Context, path string, rangeU Range, frameTable *FrameTable, decompress bool) (Range, io.ReadCloser, error)
+	GetFrame(ctx context.Context, objectPath string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte) (Range, error)
 }
 
-type Storer interface {
-	Store(ctx context.Context, asPath string, in io.Reader, size int64, opts *FramedUploadOptions) (ft *FrameTable, err error)
+type FileStorer interface {
+	StoreFile(ctx context.Context, inFilePath, asObjectPath string, opts *FramedUploadOptions) (ft *FrameTable, err error)
 }
 
-// TODO LEV <>/<> do away with the API type and use functions(Provider?)
 type API interface {
-	// Provider-independent higher level APIs
 	FrameGetter
-	Storer
-	Getter
-	Sizer
-	GetBlob(ctx context.Context, path string, userBuffer []byte) ([]byte, error)
+	FileStorer
+	Basic
+	fmt.Stringer
 }
 
 type Storage struct {
@@ -115,7 +127,7 @@ var _ API = (*Storage)(nil)
 // UploadFileFramed compresses the given file and uploads it using multipart
 // upload. If the compression type is unset, the file is uploaded in its
 // entirety.
-func (s *Storage) Store(ctx context.Context, asPath string, in io.Reader, sizeU int64, opts *FramedUploadOptions) (ft *FrameTable, e error) {
+func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, e error) {
 	ctx, span := tracer.Start(ctx, "store file")
 	defer func() {
 		recordError(span, e)
@@ -131,16 +143,29 @@ func (s *Storage) Store(ctx context.Context, asPath string, in io.Reader, sizeU 
 		}
 	}
 
-	readerAt, canReadAt := in.(io.ReaderAt)
-	if compression == CompressionNone && (!canReadAt || s.Provider.MultipartUploaderFactory == nil || sizeU <= int64(partSize)) {
+	in, err := os.Open(inFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer utils.Cleanup(ctx, "failed to close file", in.Close)
+
+	stat, err := in.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat input file: %w", err)
+	}
+
+	sizeU := stat.Size()
+
+	if compression == CompressionNone && (s.Provider.MultipartUploaderFactory == nil || sizeU <= int64(partSize)) {
 		// If not using multipart or compressed upload, fall through to simple put.
-		return nil, s.Provider.Put(ctx, asPath, in)
+		_, err = s.Provider.Upload(ctx, objectPath, in, sizeU)
+		return nil, err
 	}
 
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrStore))
 
-	partUploader, cleanup, maxConcurrency, err := s.Provider.MakeMultipartUpload(ctx, asPath, DefaultRetryConfig())
+	partUploader, cleanup, maxConcurrency, err := s.Provider.MakeMultipartUpload(ctx, objectPath, DefaultRetryConfig())
 	defer cleanup()
 	if err != nil {
 		timer.Failure(ctx, 0)
@@ -148,16 +173,12 @@ func (s *Storage) Store(ctx context.Context, asPath string, in io.Reader, sizeU 
 		return nil, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
-	switch {
-	case compression != CompressionNone:
-		ft, err = newFrameEncoder(opts, partUploader, maxConcurrency).uploadFramed(ctx, asPath, in)
-
-	case canReadAt && s.Provider.MultipartUploaderFactory != nil && sizeU > int64(partSize):
-		err = uploadFileInParallel(ctx, asPath, readerAt, sizeU, partUploader, partSize, maxConcurrency)
-
-	default:
-		return nil, s.Provider.Put(ctx, asPath, in)
+	if compression != CompressionNone {
+		ft, err = newFrameEncoder(opts, partUploader, maxConcurrency).uploadFramed(ctx, objectPath, in)
+	} else {
+		err = uploadFileInParallel(ctx, objectPath, in, sizeU, partUploader, partSize, maxConcurrency)
 	}
+
 	if err != nil {
 		timer.Failure(ctx, 0)
 
@@ -172,75 +193,62 @@ func (s *Storage) Store(ctx context.Context, asPath string, in io.Reader, sizeU 
 // See convenience function GetFrameData() that takes an arbitrary offset/length
 // range and a frameTable; then returns the uncompressed []byte for the frame
 // that contains the region, or an error.
-func (s *Storage) GetFrame(ctx context.Context, path string, rangeU Range, frameTable *FrameTable, decompress bool) (Range, io.ReadCloser, error) {
-	fetchRange := rangeU
-	if frameTable != nil && frameTable.CompressionType != CompressionNone {
-		start, size, err := frameTable.FrameFor(rangeU)
-		if err != nil {
-			return Range{}, nil, fmt.Errorf("getting frame for range %#x/%#x: %w", rangeU.Start, rangeU.Length, err)
-		}
-		fetchRange = Range{
-			Start:  start.C,
-			Length: int(size.C),
-		}
+func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64, frameTable *FrameTable, decompress bool, buf []byte) (Range, error) {
+	rangeU := Range{Start: offset, Length: len(buf)}
+	fetchRange, err := frameTable.GetFetchRange(rangeU)
+	if err != nil {
+		return Range{}, fmt.Errorf("get frame for range %v: %w", rangeU, err)
 	}
 
 	// send out the range request
-	respBody, err := s.Provider.RangeGet(ctx, path, fetchRange.Start, fetchRange.Length)
+	respBody, err := s.Provider.RangeGet(ctx, objectPath, fetchRange.Start, fetchRange.Length)
 	if err != nil {
-		return Range{}, nil, fmt.Errorf("getting frame at %#x from %s in %s: %w", fetchRange.Start, path, s.Provider.String(), err)
+		return Range{}, fmt.Errorf("getting frame at %#x from %s in %s: %w", fetchRange.Start, objectPath, s.Provider.String(), err)
 	}
+	defer respBody.Close()
 
-	if !decompress || frameTable == nil || frameTable.CompressionType == CompressionNone {
-		return fetchRange, respBody, nil
-	}
+	var from io.Reader = respBody
+	if decompress && frameTable.IsCompressed() {
+		switch frameTable.CompressionType {
+		case CompressionZstd:
+			// TODO LEV get a recycled decoder from a pool?
+			dec, err := zstd.NewReader(respBody)
+			if err != nil {
+				return Range{}, fmt.Errorf("failed to create zstd decoder: %w", err)
+			}
+			defer dec.Close()
+			from = dec
 
-	switch frameTable.CompressionType {
-	case CompressionZstd:
-		// TODO LEV get a recycled decoder from a pool?
-		dec, err := zstd.NewReader(respBody)
-		if err != nil {
-			return Range{}, nil, fmt.Errorf("failed to create zstd decoder: %w", err)
+		default:
+			return Range{}, fmt.Errorf("unsupported compression type: %s", frameTable.CompressionType)
 		}
-		// zstdCloser provides an io.Closer compliant Close() that will returns
-		// the decoder to the pool.
-		return fetchRange, &zstdCloser{Decoder: dec}, nil
-
-	default:
-		return Range{}, nil, fmt.Errorf("unsupported compression type: %s", frameTable.CompressionType)
 	}
+
+	n, err := io.ReadFull(from, buf[:fetchRange.Length])
+
+	return Range{Start: fetchRange.Start, Length: int(n)}, err
 }
 
-type zstdCloser struct {
-	*zstd.Decoder
-}
-
-func (c *zstdCloser) Close() error {
-	// return to the pool, see ^^
-	c.Decoder.Close()
-	return nil
-}
-
-func (s *Storage) GetBlob(ctx context.Context, path string, userBuffer []byte) ([]byte, error) {
-	r, err := s.Provider.KV.Get(ctx, path)
+func GetBlob(ctx context.Context, storage API, path string, userBuffer []byte) ([]byte, error) {
+	var receiveBuf *bytes.Buffer
+	if userBuffer != nil {
+		receiveBuf = bytes.NewBuffer(userBuffer[:0])
+	} else {
+		receiveBuf = bytes.NewBuffer(nil)
+	}
+	n, err := storage.Download(ctx, path, receiveBuf)
 	if err != nil {
 		return nil, fmt.Errorf("getting blob from storage: %w", err)
 	}
-
-	receiveBuf := bytes.NewBuffer(userBuffer)
-	n, err := receiveBuf.ReadFrom(r)
-	if err != nil {
-		return nil, fmt.Errorf("reading blob from storage reader: %w", err)
-	}
-	if n > int64(len(userBuffer)) {
-		return nil, fmt.Errorf("user buffer too small: read %d bytes, buffer size %d", n, len(userBuffer))
+	if cap(userBuffer) > 0 && n > int64(cap(userBuffer)) {
+		return nil, fmt.Errorf("user buffer too small: read %d bytes, buffer size %d", n, cap(userBuffer))
 	}
 
 	return receiveBuf.Bytes(), nil
 }
 
 func (s *Storage) Exists(ctx context.Context, path string) (bool, error) {
-	_, err := s.Provider.KV.Size(ctx, path)
+	_, err := s.Provider.Basic.Size(ctx, path)
 
 	return err == nil, ignoreNotExists(err)
 }

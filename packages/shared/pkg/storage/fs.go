@@ -20,9 +20,12 @@ func NewFS(basePath string) *Provider {
 	}
 
 	return &Provider{
-		KV:      fs,
-		info:    fmt.Sprintf("[Local file storage, base path set to %s]", basePath),
+		Basic: fs,
 	}
+}
+
+func (s *FileSystem) String() string {
+	return fmt.Sprintf("[Local file storage, base path set to %s]", s.basePath)
 }
 
 func (s *FileSystem) DeleteWithPrefix(_ context.Context, prefix string) error {
@@ -35,20 +38,24 @@ func (s *FileSystem) getPath(path string) string {
 	return filepath.Join(s.basePath, path)
 }
 
-func (s *FileSystem) Get(_ context.Context, path string) (io.ReadCloser, error) {
-	return s.mustExist(path)
-}
-
-func (s *FileSystem) Put(_ context.Context, path string, value io.Reader) error {
-	handle, err := s.create(path)
+func (s *FileSystem) Download(_ context.Context, path string, dst io.Writer) (int64, error) {
+	handle, err := s.mustExist(path)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer handle.Close()
 
-	_, err = io.Copy(handle, value)
+	return io.Copy(dst, handle)
+}
 
-	return err
+func (s *FileSystem) Upload(_ context.Context, path string, in io.Reader, _ int64) (int64, error) {
+	handle, err := s.create(path)
+	if err != nil {
+		return 0, err
+	}
+	defer handle.Close()
+
+	return io.Copy(handle, in)
 }
 
 func (s *FileSystem) Size(_ context.Context, path string) (int64, error) {

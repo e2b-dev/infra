@@ -82,13 +82,15 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Pr
 		baseUploadURL: fmt.Sprintf("https://%s.storage.googleapis.com", bucketName),
 	}
 	return &Provider{
-		KV:                       gcp,
+		Basic:                    gcp,
 		MultipartUploaderFactory: gcp,
 		PublicUploader:           gcp,
 		RangeGetter:              gcp,
-
-		info: fmt.Sprintf("[GCP Storage, bucket set to %s]", bucketName),
 	}, nil
+}
+
+func (g *GCP) String() string {
+	return fmt.Sprintf("[GCP Storage, bucket set to %s]", g.bucket.BucketName())
 }
 
 func (g *GCP) DeleteWithPrefix(ctx context.Context, prefix string) error {
@@ -166,7 +168,7 @@ func (g *GCP) Size(ctx context.Context, path string) (int64, error) {
 	return attrs.Size, nil
 }
 
-func (g *GCP) Put(ctx context.Context, path string, value io.Reader) (e error) {
+func (g *GCP) Upload(ctx context.Context, path string, in io.Reader, size int64) (n int64, e error) {
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
@@ -177,32 +179,33 @@ func (g *GCP) Put(ctx context.Context, path string, value io.Reader) (e error) {
 		}
 	}()
 
-	c, err := io.Copy(w, value)
+	c, err := io.Copy(w, in)
 	if ignoreEOF(err) != nil {
 		timer.Failure(ctx, c)
 
-		return fmt.Errorf("failed to write to %q: %w", path, err)
+		return c, fmt.Errorf("failed to write to %q: %w", path, err)
 	}
 
 	timer.Success(ctx, c)
 
-	return nil
+	return c, nil
 }
 
-func (g *GCP) Get(ctx context.Context, path string) (io.ReadCloser, error) {
+func (g *GCP) Download(ctx context.Context, path string, dst io.Writer) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 	defer cancel()
 
 	r, err := g.handle(path).NewReader(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			return nil, fmt.Errorf("failed to create reader for %q: %w", path, ErrObjectNotExist)
+			return 0, fmt.Errorf("failed to create reader for %q: %w", path, ErrObjectNotExist)
 		}
 
-		return nil, fmt.Errorf("failed to create reader for %q: %w", path, err)
+		return 0, fmt.Errorf("failed to create reader for %q: %w", path, err)
 	}
+	defer r.Close()
 
-	return r, nil
+	return io.Copy(dst, r)
 }
 
 type gcpServiceToken struct {
