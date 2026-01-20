@@ -2,6 +2,8 @@ package clusters
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -144,6 +146,7 @@ func getBuildLogsWithSources(
 	start, end := logQueryWindow(cursor, direction)
 
 	var sources []logSourceFunc
+	var sourceErrors []error
 
 	// Handle temporary logs from builder instance
 	if nodeID != nil && logCheckSourceType(source, api.LogsSourceTemporary) {
@@ -166,11 +169,17 @@ func getBuildLogsWithSources(
 		sources = append(sources, persistentLogFetcher)
 	}
 
+	// No sources available
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("no log sources available for build %s", buildID)
+	}
+
 	// Iterate through sources and return the first successful fetch
 	for _, sourceFetch := range sources {
 		entries, err := sourceFetch()
 		if err != nil {
 			logger.L().Warn(ctx, "Error fetching build logs", logger.WithTemplateID(templateID), logger.WithBuildID(buildID), zap.Error(err))
+			sourceErrors = append(sourceErrors, err)
 
 			continue
 		}
@@ -178,5 +187,6 @@ func getBuildLogsWithSources(
 		return entries, nil
 	}
 
-	return nil, nil
+	// All sources failed - return joined errors
+	return nil, fmt.Errorf("all log sources failed for build %s: %w", buildID, errors.Join(sourceErrors...))
 }
