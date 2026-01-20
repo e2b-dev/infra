@@ -75,10 +75,12 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 
 	// Handle security requirements errors from the openapi3filter
 	if after, ok := strings.CutPrefix(message, securityErrPrefix); ok {
+		// Keep the original status code as it can be also timeout (read body timeout) error code.
+		// The securityErrPrefix is added for all errors going through the processCustomErrors function.
 		c.AbortWithStatusJSON(
-			http.StatusUnauthorized,
+			statusCode,
 			gin.H{
-				"code":    http.StatusUnauthorized,
+				"code":    statusCode,
 				"message": after,
 			},
 		)
