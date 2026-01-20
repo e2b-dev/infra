@@ -12,15 +12,14 @@ import (
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -92,8 +91,13 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 	// If the API key is valid, we will get a result back
 	result, validationError := a.validationFunction(ctx, ginCtx, headerKey)
 	if validationError != nil {
-		logger.L().Info(ctx, "validation error", zap.Error(validationError.Err))
-		telemetry.ReportError(ctx, a.errorMessage, validationError.Err)
+		telemetry.ReportError(ctx,
+			"validation error",
+			validationError.Err,
+			attribute.String("error.message", a.errorMessage),
+			attribute.Int("http.status_code", validationError.Code),
+			attribute.String("http.status_text", http.StatusText(validationError.Code)),
+		)
 
 		var forbiddenError *db.TeamForbiddenError
 		if errors.As(validationError.Err, &forbiddenError) {
@@ -104,6 +108,8 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 		if errors.As(validationError.Err, &blockedError) {
 			return fmt.Errorf("blocked: %w", validationError.Err)
 		}
+
+		ginCtx.Status(validationError.Code)
 
 		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
@@ -21,7 +22,13 @@ const (
 	blockedErrPrefix   = "team blocked: "
 )
 
-func ErrorHandler(c *gin.Context, message string, statusCode int) {
+func ErrorHandler(c *gin.Context, message string, fallbackStatusCode int) {
+	// Override the status code provided by the oapi-codegen/gin-middleware as that is always set to 400 or 404.
+	statusCode := c.Writer.Status()
+	if statusCode == 0 {
+		statusCode = fallbackStatusCode
+	}
+
 	var errMsg error
 
 	ctx := c.Request.Context()
@@ -43,7 +50,7 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 		}
 	}
 
-	telemetry.ReportError(ctx, message, errMsg)
+	telemetry.ReportError(ctx, message, errMsg, attribute.Int("http.status_code", statusCode))
 
 	c.Error(errMsg)
 
