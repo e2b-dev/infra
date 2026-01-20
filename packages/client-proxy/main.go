@@ -161,6 +161,11 @@ func run() int {
 		w.Write([]byte("unhealthy"))
 	})
 
+	healthServer := &http.Server{
+		Addr:    healthAddr,
+		Handler: healthHandler,
+	}
+
 	var closers []Closeable
 	closers = append(closers, featureFlagsClient, catalog)
 
@@ -195,7 +200,7 @@ func run() int {
 		healthLogger := l.With(zap.Uint16("port", config.HealthPort))
 		healthLogger.Info(ctx, "Health server starting")
 
-		err := http.ListenAndServe(healthAddr, healthHandler)
+		err := healthServer.ListenAndServe()
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
 			healthLogger.Info(ctx, "Health server shutdown successfully")
@@ -243,6 +248,18 @@ func run() int {
 		// Wait for the health check manager to notice that we are not healthy at all
 		shutdownLogger.Info(ctx, "Waiting for unhealthy state propagation", zap.Float64("wait_in_seconds", shutdownUnhealthyWait.Seconds()))
 		time.Sleep(shutdownUnhealthyWait)
+
+		// Gracefully shutdown the health server
+		healthShutdownCtx, healthShutdownCtxCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer healthShutdownCtxCancel()
+
+		err = healthServer.Shutdown(healthShutdownCtx)
+		if err != nil {
+			exitCode.Add(1)
+			shutdownLogger.Error(ctx, "Health server shutdown error", zap.Error(err))
+		} else {
+			shutdownLogger.Info(ctx, "Health server shutdown successfully")
+		}
 
 		closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 		defer cancelCloseCtx()
