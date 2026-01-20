@@ -142,7 +142,12 @@ func (a *API) setupNfs(ctx context.Context, address, path string) {
 	a.nfsLock.Lock()
 	defer a.nfsLock.Unlock()
 
-	data, err := exec.CommandContext(ctx, "mount", "-t", "nfs", "-o", "NFS_3", fmt.Sprintf("%s:/", address), path).Output()
+	data, err := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf(`
+set -e
+mkdir -p %q
+mount -v -t nfs -o mountproto=tcp,mountport=2049,proto=tcp,port=2049,nfsvers=3,noacl %q:/ %q
+`, path, address, path)).CombinedOutput()
+
 	a.logger.Info().
 		Str("output", string(data)).
 		Err(err).

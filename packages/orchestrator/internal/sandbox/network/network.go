@@ -220,9 +220,11 @@ func (s *Slot) CreateNetwork(ctx context.Context, config Config) error {
 
 	// Redirect traffic destined for hyperloop proxy
 	err = tables.Append(
-		"nat", "PREROUTING", "-i", s.VethName(),
-		"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
-		"-j", "REDIRECT", "--to-port", s.hyperloopPort,
+		"nat", "PREROUTING",
+
+		"--in-interface", s.VethName(), "--protocol", "tcp",
+		"--destination", s.HyperloopIPString(), "--dport", "80",
+		"--jump", "REDIRECT", "--to-port", fmt.Sprintf("%d", config.HyperloopProxyPort),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
@@ -232,7 +234,7 @@ func (s *Slot) CreateNetwork(ctx context.Context, config Config) error {
 	err = tables.Append("nat", "PREROUTING",
 		"--in-interface", s.VethName(), "--protocol", "tcp",
 		"--destination", config.NFSProxyIPAddress, "--dport", "2049",
-		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(config.NFSProxyPort)),
+		"--jump", "REDIRECT", "--to-port", fmt.Sprintf("%d", config.NFSProxyPort),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating NFS redirect rule to sandbox NFS proxy server: %w", err)

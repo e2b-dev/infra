@@ -122,7 +122,6 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 	attributesFail := append(attributes, attribute.Bool("success", false))
 	attributesSuccess := append(attributes, attribute.Bool("success", true))
 
-	hyperloopIP := s.Slot.HyperloopIPString()
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
 	response, count, err := doRequestWithInfiniteRetries(
@@ -134,7 +133,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 		s.Config.Envd.Vars,
 		s.Runtime.SandboxID,
 		s.Config.Envd.Version,
-		hyperloopIP,
+		s.config.NetworkConfig.HyperloopIPAddress,
 		s.config.NetworkConfig.NFSProxyIPAddress,
 		s.Config.Envd.DefaultUser,
 		s.Config.Envd.DefaultWorkdir,
