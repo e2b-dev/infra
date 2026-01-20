@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -202,6 +203,10 @@ func CreateAuthenticationFunc(
 
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		ginCtx := middleware.GetGinContext(ctx)
+
+		// Set the processing start time after body parsing to exclude slow clients from metrics duration.
+		metrics.SetProcessingStartTime(ginCtx)
+
 		ctx, span := tracer.Start(ginCtx.Request.Context(), "authenticate")
 		defer span.End()
 
