@@ -201,12 +201,6 @@ processors:
     timeout: 5s
     send_batch_size: 50000
 
-  attributes/host_metrics_node:
-    actions:
-      - key: node.id
-        value: $${NODE_ID}
-        action: insert
-
   # keep only metrics that are used
   filter/otlp:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/filterprocessor
@@ -444,7 +438,6 @@ service:
       receivers:
         - hostmetrics
       processors:
-        - attributes/host_metrics_node
         - resourcedetection
         - transform/set-name
         - metricstransform/single_cpu
