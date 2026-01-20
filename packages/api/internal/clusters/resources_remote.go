@@ -23,6 +23,41 @@ type ClusterResourceProviderImpl struct {
 	client    *edgeapi.ClientWithResponses
 }
 
+// edgeResponse is an interface for edge API responses that contain error fields
+type edgeResponse interface {
+	StatusCode() int
+}
+
+// handleEdgeErrorResponse extracts error information from edge API error responses
+func handleEdgeErrorResponse(res edgeResponse, json400, json401, json500 *edgeapi.Error, defaultMsg string) error {
+	statusCode := res.StatusCode()
+	statusText := http.StatusText(statusCode)
+
+	// Try to extract error message from response body
+	var errMsg string
+	switch statusCode {
+	case http.StatusBadRequest:
+		if json400 != nil && json400.Message != "" {
+			errMsg = json400.Message
+		}
+	case http.StatusUnauthorized:
+		if json401 != nil && json401.Message != "" {
+			errMsg = json401.Message
+		}
+	case http.StatusInternalServerError:
+		if json500 != nil && json500.Message != "" {
+			errMsg = json500.Message
+		}
+	}
+
+	// Build error message
+	if errMsg != "" {
+		return fmt.Errorf("%s: HTTP status '%d' (%s) - %s", defaultMsg, statusCode, statusText, errMsg)
+	}
+
+	return fmt.Errorf("%s: HTTP status '%d' (%s)", defaultMsg, statusCode, statusText)
+}
+
 func newRemoteClusterResourceProvider(instances *smap.Map[*Instance], client *edgeapi.ClientWithResponses) ClusterResource {
 	return &ClusterResourceProviderImpl{
 		instances: instances,
@@ -52,8 +87,11 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 	}
 
 	if res.StatusCode() != http.StatusOK {
+		err := handleEdgeErrorResponse(res, res.JSON400, res.JSON401, res.JSON500, "error when getting sandbox metrics from edge API")
+		telemetry.ReportError(ctx, "error when getting sandbox metrics from edge API", err)
+
 		return nil, &api.APIError{
-			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
+			Err:       err,
 			ClientMsg: "Error when getting sandbox metrics",
 			Code:      http.StatusInternalServerError,
 		}
@@ -101,8 +139,11 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 	}
 
 	if res.StatusCode() != http.StatusOK {
+		err := handleEdgeErrorResponse(res, res.JSON400, res.JSON401, res.JSON500, "error when getting sandboxes metrics from edge API")
+		telemetry.ReportError(ctx, "error when getting sandboxes metrics from edge API", err)
+
 		return nil, &api.APIError{
-			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
+			Err:       err,
 			ClientMsg: "Error when getting sandboxes metrics",
 			Code:      http.StatusInternalServerError,
 		}
@@ -150,8 +191,8 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 	}
 
 	if res.StatusCode() != http.StatusOK {
-		err = fmt.Errorf("unexpected response with HTTP status: %d", res.StatusCode())
-		telemetry.ReportError(ctx, "error when fetching sandbox logs", err)
+		err = handleEdgeErrorResponse(res, res.JSON400, res.JSON401, res.JSON500, "error when fetching sandbox logs from edge API")
+		telemetry.ReportError(ctx, "error when fetching sandbox logs from edge API", err)
 
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       err,
@@ -246,7 +287,7 @@ func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, 
 		}
 
 		if res.StatusCode() != 200 {
-			return nil, errors.New("failed to get build logs in template manager")
+			return nil, handleEdgeErrorResponse(res, res.JSON400, res.JSON401, res.JSON500, "failed to get build logs from edge API")
 		}
 
 		if res.JSON200 == nil {

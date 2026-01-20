@@ -60,11 +60,6 @@ func (a *APIStore) getSandboxesMetrics(
 
 	metrics, apiErr := cluster.GetResources().GetSandboxesMetrics(ctx, teamID.String(), sandboxIDs)
 	if apiErr != nil {
-		logger.L().Warn(ctx, "error fetching sandbox metrics from cluster resources provider",
-			logger.WithTeamID(teamID.String()),
-			zap.Error(apiErr.Err),
-		)
-
 		return nil, apiErr
 	}
 
