@@ -889,6 +889,7 @@ type TemplateBuildRequestV2 struct {
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
 	// TeamID Identifier of the team
+	// Deprecated:
 	TeamID *string `json:"teamID,omitempty"`
 }
 
@@ -908,6 +909,7 @@ type TemplateBuildRequestV3 struct {
 	Names *[]string `json:"names,omitempty"`
 
 	// TeamID Identifier of the team
+	// Deprecated:
 	TeamID *string `json:"teamID,omitempty"`
 }
 
@@ -1014,8 +1016,8 @@ type TemplateTag struct {
 	// BuildID Identifier of the build associated with this tag
 	BuildID openapi_types.UUID `json:"buildID"`
 
-	// Tags Tags of the template
-	Tags []string `json:"tags"`
+	// Names Assigned names of the template
+	Names []string `json:"names"`
 }
 
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.

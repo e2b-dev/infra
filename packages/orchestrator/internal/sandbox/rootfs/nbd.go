@@ -32,8 +32,8 @@ type NBDProvider struct {
 	devicePool         *nbd.DevicePool
 }
 
-func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool, featureFlags *featureflags.Client) (Provider, error) {
-	size, err := rootfs.Size()
+func NewNBDProvider(ctx context.Context, rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool, featureFlags *featureflags.Client) (Provider, error) {
+	size, err := rootfs.Size(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
 	}

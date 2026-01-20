@@ -548,6 +548,12 @@ variable "server_boot_disk_type" {
   default     = "pd-ssd"
 }
 
+variable "server_boot_disk_size_gb" {
+  description = "The GCE boot disk size (in GB) for the control server machines."
+  type        = number
+  default     = 20
+}
+
 variable "clickhouse_boot_disk_type" {
   description = "The GCE boot disk type for the ClickHouse machines."
   type        = string

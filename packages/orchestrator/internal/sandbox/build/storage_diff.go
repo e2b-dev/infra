@@ -81,7 +81,7 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	obj, err := b.persistence.OpenSeekableObject(ctx, b.storagePath, b.storageObjectType)
+	obj, err := b.persistence.OpenSeekable(ctx, b.storagePath, b.storageObjectType)
 	if err != nil {
 		return err
 	}
@@ -153,6 +153,10 @@ func (b *StorageDiff) FileSize() (int64, error) {
 	}
 
 	return c.FileSize()
+}
+
+func (b *StorageDiff) Size(_ context.Context) (int64, error) {
+	return b.FileSize()
 }
 
 func (b *StorageDiff) BlockSize() int64 {

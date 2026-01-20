@@ -18,7 +18,7 @@ import (
 )
 
 type Chunker struct {
-	base    storage.ReaderAtCtx
+	base    storage.SeekableReader
 	cache   *Cache
 	metrics metrics.Metrics
 
@@ -30,7 +30,7 @@ type Chunker struct {
 
 func NewChunker(
 	size, blockSize int64,
-	base storage.ReaderAtCtx,
+	base storage.SeekableReader,
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*Chunker, error) {

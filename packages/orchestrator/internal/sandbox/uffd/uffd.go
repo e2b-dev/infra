@@ -36,29 +36,24 @@ type Uffd struct {
 	exit       *utils.ErrorOnce
 	readyCh    chan struct{}
 	readyOnce  sync.Once
-	fdExit     *fdexit.FdExit
 	lis        *net.UnixListener
 	socketPath string
 	memfile    block.ReadonlyDevice
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
+	fdExit     utils.SetOnce[*fdexit.FdExit]
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
 
-func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
-	fdExit, err := fdexit.New()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create fd exit: %w", err)
-	}
-
+func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 	return &Uffd{
 		exit:       utils.NewErrorOnce(),
 		readyCh:    make(chan struct{}),
-		fdExit:     fdExit,
 		socketPath: socketPath,
 		memfile:    memfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
-	}, nil
+		fdExit:     *utils.NewSetOnce[*fdexit.FdExit](),
+	}
 }
 
 func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) error {
@@ -80,15 +75,26 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 
 	err = os.Chmod(u.socketPath, 0o777)
 	if err != nil {
-		return fmt.Errorf("failed setting socket permissions: %w", err)
+		closeErr := lis.Close()
+
+		return fmt.Errorf("failed setting socket permissions: %w", errors.Join(err, closeErr))
 	}
+
+	fdExit, err := fdexit.New()
+	if err != nil {
+		closeErr := lis.Close()
+
+		return fmt.Errorf("failed to create fd exit: %w", errors.Join(err, closeErr))
+	}
+
+	u.fdExit.SetValue(fdExit)
 
 	go func() {
 		ctx, span := tracer.Start(ctx, "serve uffd")
 		defer span.End()
 
 		// TODO: If the handle function fails, we should kill the sandbox
-		handleErr := u.handle(ctx, sandboxId)
+		handleErr := u.handle(ctx, sandboxId, fdExit)
 
 		// If handle failed before setting the handler value, set an error to unblock
 		// any waiters (e.g., prefetcher goroutines waiting on Prefault).
@@ -97,7 +103,7 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 		}
 
 		closeErr := u.lis.Close()
-		fdExitErr := u.fdExit.Close()
+		fdExitErr := fdExit.Close()
 
 		u.exit.SetError(errors.Join(handleErr, closeErr, fdExitErr))
 
@@ -108,7 +114,7 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 	return nil
 }
 
-func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
+func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdExit) error {
 	err := u.lis.SetDeadline(time.Now().Add(uffdMsgListenerTimeout))
 	if err != nil {
 		return fmt.Errorf("failed setting listener deadline: %w", err)
@@ -181,7 +187,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	err = uffd.Serve(
 		ctx,
-		u.fdExit,
+		fdExit,
 	)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
@@ -191,14 +197,12 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 }
 
 func (u *Uffd) Stop() error {
-	return u.fdExit.SignalExit()
-}
+	fdExit, err := u.fdExit.Result()
+	if err != nil {
+		return fmt.Errorf("fdExit not set or failed: %w", err)
+	}
 
-// Close closes the uffd resources. It is safe to call multiple times and can be
-// called whether or not Start() was called. This ensures proper cleanup of the
-// fdExit pipe file descriptors even if initialization fails before Start() runs.
-func (u *Uffd) Close() error {
-	return u.fdExit.Close()
+	return fdExit.SignalExit()
 }
 
 func (u *Uffd) Ready() chan struct{} {

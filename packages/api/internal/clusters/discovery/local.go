@@ -63,7 +63,7 @@ func (sd *LocalServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 
 	result := make([]Item, len(alloc))
 	for i, v := range alloc {
-		item := Item{
+		result[i] = Item{
 			UniqueIdentifier: v.AllocationID,
 			NodeID:           v.NodeID,
 
@@ -75,8 +75,6 @@ func (sd *LocalServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 			LocalIPAddress:       v.AllocationIP,
 			LocalInstanceApiPort: consts.OrchestratorAPIPort,
 		}
-
-		result[i] = item
 	}
 
 	return result, nil

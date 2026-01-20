@@ -907,6 +907,7 @@ components:
           items:
             type: string
         teamID:
+          deprecated: true
           type: string
           description: Identifier of the team
         cpuCount:
@@ -922,6 +923,7 @@ components:
           description: Alias of the template
           type: string
         teamID:
+          deprecated: true
           type: string
           description: Identifier of the team
         cpuCount:
@@ -1494,14 +1496,14 @@ components:
 
     TemplateTag:
       required:
-        - tags
+        - names
         - buildID
       properties:
-        tags:
+        names:
           type: array
           items:
             type: string
-          description: Tags of the template
+          description: Assigned names of the template
         buildID:
           type: string
           format: uuid
@@ -2107,6 +2109,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2136,6 +2139,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2165,6 +2169,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - in: path
@@ -2198,6 +2203,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - in: query
           required: false
@@ -2226,6 +2232,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2277,6 +2284,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2304,6 +2312,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -2320,6 +2329,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2346,6 +2356,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2364,6 +2375,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2389,6 +2401,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2435,6 +2448,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
