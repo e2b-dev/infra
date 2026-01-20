@@ -2,13 +2,82 @@ package jailed
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/willscott/go-nfs"
 )
+
+var ErrInvalidSandbox = errors.New("invalid sandbox")
+
+type mountFailedFS struct{}
+
+func (m mountFailedFS) Create(filename string) (billy.File, error) {
+	return nil, ErrInvalidSandbox
+}
+
+func (m mountFailedFS) Open(filename string) (billy.File, error) {
+	return nil, ErrInvalidSandbox
+}
+
+func (m mountFailedFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
+	return nil, ErrInvalidSandbox
+}
+
+func (m mountFailedFS) Stat(filename string) (os.FileInfo, error) {
+	return nil, ErrInvalidSandbox
+}
+
+func (m mountFailedFS) Rename(oldpath, newpath string) error {
+	return ErrInvalidSandbox
+}
+
+func (m mountFailedFS) Remove(filename string) error {
+	return ErrInvalidSandbox
+}
+
+func (m mountFailedFS) Join(elem ...string) string {
+	return strings.Join(elem, "/")
+}
+
+func (m mountFailedFS) TempFile(dir, prefix string) (billy.File, error) {
+	return nil, ErrInvalidSandbox
+}
+
+func (m mountFailedFS) ReadDir(path string) ([]os.FileInfo, error) {
+	return nil, ErrInvalidSandbox
+}
+
+func (m mountFailedFS) MkdirAll(filename string, perm os.FileMode) error {
+	return ErrInvalidSandbox
+}
+
+func (m mountFailedFS) Lstat(filename string) (os.FileInfo, error) {
+	return nil, ErrInvalidSandbox
+}
+
+func (m mountFailedFS) Symlink(target, link string) error {
+	return ErrInvalidSandbox
+}
+
+func (m mountFailedFS) Readlink(link string) (string, error) {
+	return "", ErrInvalidSandbox
+}
+
+func (m mountFailedFS) Chroot(path string) (billy.Filesystem, error) {
+	return nil, ErrInvalidSandbox
+}
+
+func (m mountFailedFS) Root() string {
+	return ""
+}
+
+var _ billy.Filesystem = (*mountFailedFS)(nil)
 
 type GetPrefix func(context.Context, net.Conn, nfs.MountRequest) (string, error)
 
@@ -28,7 +97,7 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 	if err != nil {
 		slog.Warn("failed to get prefix", "error", err)
 
-		return nfs.MountStatusErrIO, nil, nil
+		return nfs.MountStatusErrAcces, mountFailedFS{}, nil
 	}
 
 	dirPath := string(request.Dirpath)

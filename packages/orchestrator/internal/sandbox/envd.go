@@ -36,8 +36,7 @@ func doRequestWithInfiniteRetries(
 	envVars map[string]string,
 	sandboxID,
 	envdVersion,
-	hyperloopIP,
-	nfsProxyIP string,
+	orchestratorInSandboxIPAddress string,
 	defaultUser *string,
 	defaultWorkdir *string,
 ) (*http.Response, int64, error) {
@@ -47,7 +46,7 @@ func doRequestWithInfiniteRetries(
 
 		jsonBody := &PostInitJSONBody{
 			EnvVars:        &envVars,
-			HyperloopIP:    &hyperloopIP,
+			HyperloopIP:    &orchestratorInSandboxIPAddress,
 			AccessToken:    accessToken,
 			Timestamp:      &now,
 			DefaultUser:    defaultUser,
@@ -55,7 +54,7 @@ func doRequestWithInfiniteRetries(
 			NFS: &struct {
 				IP   string `json:"ip"`
 				Path string `json:"path"`
-			}{IP: nfsProxyIP, Path: "/mnt/shared"},
+			}{IP: orchestratorInSandboxIPAddress, Path: "/mnt/shared"},
 		}
 
 		body, err := json.Marshal(jsonBody)
@@ -133,8 +132,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 		s.Config.Envd.Vars,
 		s.Runtime.SandboxID,
 		s.Config.Envd.Version,
-		s.config.NetworkConfig.HyperloopIPAddress,
-		s.config.NetworkConfig.NFSProxyIPAddress,
+		s.config.NetworkConfig.OrchestratorInSandboxIPAddress,
 		s.Config.Envd.DefaultUser,
 		s.Config.Envd.DefaultWorkdir,
 	)

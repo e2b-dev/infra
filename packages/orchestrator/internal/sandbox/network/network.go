@@ -223,17 +223,27 @@ func (s *Slot) CreateNetwork(ctx context.Context, config Config) error {
 		"nat", "PREROUTING",
 
 		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.HyperloopIPString(), "--dport", "80",
+		"--destination", config.OrchestratorInSandboxIPAddress, "--dport", "80",
 		"--jump", "REDIRECT", "--to-port", fmt.Sprintf("%d", config.HyperloopProxyPort),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
 	}
 
+	// Redirect traffic destined for portmapper
+	err = tables.Append("nat", "PREROUTING",
+		"--in-interface", s.VethName(), "--protocol", "tcp",
+		"--destination", config.OrchestratorInSandboxIPAddress, "--dport", "111",
+		"--jump", "REDIRECT", "--to-port", fmt.Sprintf("%d", config.PortmapperPort),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating NFS redirect rule to sandbox portmapper server: %w", err)
+	}
+
 	// Redirect traffic destined for NFS proxy
 	err = tables.Append("nat", "PREROUTING",
 		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", config.NFSProxyIPAddress, "--dport", "2049",
+		"--destination", config.OrchestratorInSandboxIPAddress, "--dport", "2049",
 		"--jump", "REDIRECT", "--to-port", fmt.Sprintf("%d", config.NFSProxyPort),
 	)
 	if err != nil {
@@ -282,7 +292,7 @@ func (s *Slot) RemoveNetwork(config Config) error {
 		// Delete hyperloop proxy redirect rule
 		err = tables.Delete(
 			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
+			"-p", "tcp", "-d", config.OrchestratorInSandboxIPAddress, "--dport", "80",
 			"-j", "REDIRECT", "--to-port", s.hyperloopPort,
 		)
 		if err != nil {
@@ -292,11 +302,21 @@ func (s *Slot) RemoveNetwork(config Config) error {
 		// Delete NFS proxy redirect rule
 		err = tables.Append("nat", "PREROUTING",
 			"--in-interface", s.VethName(), "--protocol", "tcp",
-			"--destination", config.NFSProxyIPAddress, "--dport", "2049",
+			"--destination", config.OrchestratorInSandboxIPAddress, "--dport", "2049",
 			"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(config.NFSProxyPort)),
 		)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting sandbox NFS proxy redirect rule: %w", err))
+		}
+
+		// Delete portmapper redirect rule
+		err = tables.Append("nat", "PREROUTING",
+			"--in-interface", s.VethName(), "--protocol", "tcp",
+			"--destination", config.OrchestratorInSandboxIPAddress, "--dport", "111",
+			"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(config.PortmapperPort)),
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting sandbox portmapper redirect rule: %w", err))
 		}
 
 		// Delete egress proxy redirect rules

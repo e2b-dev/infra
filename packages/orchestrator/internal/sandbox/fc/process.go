@@ -446,7 +446,7 @@ func (p *Process) Resume(
 	meta := &MmdsMetadata{
 		SandboxID:            sbxMetadata.SandboxID,
 		TemplateID:           sbxMetadata.TemplateID,
-		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
+		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", p.config.NetworkConfig.OrchestratorInSandboxIPAddress),
 	}
 
 	err = p.client.setMmds(ctx, meta)

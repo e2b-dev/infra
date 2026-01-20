@@ -1,4 +1,4 @@
-package slogged
+package logged
 
 import (
 	"context"
@@ -10,71 +10,74 @@ import (
 )
 
 type loggedHandler struct {
+	ctx   context.Context
 	inner nfs.Handler
 }
 
 var _ nfs.Handler = (*loggedHandler)(nil)
 
-func NewHandler(handler nfs.Handler) nfs.Handler {
-	return loggedHandler{inner: handler}
+func NewHandler(ctx context.Context, handler nfs.Handler) nfs.Handler {
+	nfs.Log.SetLevel(nfs.TraceLevel)
+
+	return loggedHandler{ctx: ctx, inner: handler}
 }
 
 func (e loggedHandler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequest) (s nfs.MountStatus, fs billy.Filesystem, auth []nfs.AuthFlavor) {
-	slogStart("Handler.Mount")
+	logStart(ctx, "Handler.Mount")
 	defer func() {
 		var err error
 		if s != nfs.MountStatusOk {
 			err = fmt.Errorf("mount status = %d", s)
 		}
-		slogEndWithError("Handler.Mount", err)
+		logEndWithError(ctx, "Handler.Mount", err)
 	}()
 
 	s, fs, auth = e.inner.Mount(ctx, conn, request)
-	fs = newFS(fs)
+	fs = newFS(ctx, fs)
 
 	return
 }
 
 func (e loggedHandler) Change(filesystem billy.Filesystem) billy.Change {
-	slogStart("Handler.Change")
-	defer slogEnd("Handler.Change")
+	logStart(e.ctx, "Handler.Change")
+	defer logEnd(e.ctx, "Handler.Change")
 
 	change := e.inner.Change(filesystem)
 
-	return newChange(change)
+	return newChange(e.ctx, change)
 }
 
 func (e loggedHandler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) (err error) {
-	slogStart("Handler.FSStat")
-	defer func() { slogEndWithError("Handler.FSStat", err) }()
+	logStart(ctx, "Handler.FSStat")
+	defer func() { logEndWithError(ctx, "Handler.FSStat", err) }()
 
 	return e.inner.FSStat(ctx, filesystem, stat)
 }
 
 func (e loggedHandler) ToHandle(fs billy.Filesystem, path []string) (fh []byte) {
-	slogStart("Handler.ToHandle", path)
-	defer func() { slogEnd("Handler.ToHandle", fh) }()
+	logStart(e.ctx, "Handler.ToHandle", path)
+	defer func() { logEnd(e.ctx, "Handler.ToHandle", fh) }()
 
 	return e.inner.ToHandle(fs, path)
 }
 
 func (e loggedHandler) FromHandle(fh []byte) (fs billy.Filesystem, paths []string, err error) {
-	slogStart("Handler.FromHandle", fh)
-	defer func() { slogEndWithError("Handler.FromHandle", err, paths) }()
+	logStart(e.ctx, "Handler.FromHandle", fh)
+	defer func() { logEndWithError(e.ctx, "Handler.FromHandle", err, paths) }()
 
 	return e.inner.FromHandle(fh)
 }
 
 func (e loggedHandler) InvalidateHandle(filesystem billy.Filesystem, bytes []byte) (err error) {
-	slogStart("Handler.InvalidateHandle")
-	defer func() { slogEndWithError("Handler.InvalidateHandle", err) }()
+	logStart(e.ctx, "Handler.InvalidateHandle")
+	defer func() { logEndWithError(e.ctx, "Handler.InvalidateHandle", err) }()
 
 	return e.inner.InvalidateHandle(filesystem, bytes)
 }
 
 func (e loggedHandler) HandleLimit() int {
-	slogStart("Handler.HandleLimit")
-	defer slogEnd("Handler.HandleLimit")
+	logStart(e.ctx, "Handler.HandleLimit")
+	defer logEnd(e.ctx, "Handler.HandleLimit")
 
 	return e.inner.HandleLimit()
 }

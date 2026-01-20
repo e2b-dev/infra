@@ -176,10 +176,6 @@ func (s *Slot) HostIPString() string {
 	return s.HostIP.String()
 }
 
-func (s *Slot) HyperloopIPString() string {
-	return s.config.HyperloopIPAddress
-}
-
 func (s *Slot) HostMask() net.IPMask {
 	return s.hostNet.Mask
 }
@@ -235,7 +231,7 @@ func (s *Slot) InitializeFirewall() error {
 		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
 	}
 
-	fw, err := NewFirewall(s.TapName(), s.HyperloopIPString(), s.config.NFSProxyIPAddress)
+	fw, err := NewFirewall(s.TapName(), s.config.OrchestratorInSandboxIPAddress)
 	if err != nil {
 		return fmt.Errorf("error initializing firewall: %w", err)
 	}

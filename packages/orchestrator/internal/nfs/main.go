@@ -11,7 +11,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/gcs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/jailed"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/slogged"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/logged"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/recovery"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 )
 
@@ -36,7 +37,8 @@ func NewProxy(ctx context.Context, sandboxes *sandbox.Map, bucket *storage.Bucke
 	var handler nfs.Handler
 	handler = gcs.NewNFSHandler(bucket)
 	handler = helper.NewCachingHandler(handler, cacheLimit)
-	handler = slogged.NewHandler(handler)
+	handler = logged.NewHandler(ctx, handler)
+	handler = recovery.NewHandler(handler)
 	handler = jailed.NewNFSHandler(handler, getPrefixFromSandbox(sandboxes))
 
 	s := &nfs.Server{

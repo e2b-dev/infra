@@ -15,8 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/willscott/go-nfs-client/nfs"
 	"github.com/willscott/go-nfs-client/nfs/rpc"
+	"github.com/zeldovich/go-rpcgen/rfc1057"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/gcs"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 )
@@ -54,30 +56,65 @@ func TestRoundTrip(t *testing.T) {
 	bucket := gcsClient.Bucket(bucketName)
 
 	// setup nfs proxy server
-	cfg := net.ListenConfig{}
-	lis, err := cfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	nfsConfig := net.ListenConfig{}
+	nfsListener, err := nfsConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		err := lis.Close()
+		err := nfsListener.Close()
 		assert.NoError(t, err)
 	})
 
-	s := NewProxy(t.Context(), sandboxes, bucket)
+	nfsProxy := NewProxy(t.Context(), sandboxes, bucket)
 	go func() {
-		err := s.Serve(lis)
+		err := nfsProxy.Serve(nfsListener)
+		assert.NoError(t, err)
+	}()
+
+	// get nfs server's dynamic port
+	nfsAddr := nfsListener.Addr().String()
+	host, portText, err := net.SplitHostPort(nfsAddr)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+
+	// setup portmap server
+	portmapConfig := net.ListenConfig{}
+	pmListener, err := portmapConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err := pmListener.Close()
+		assert.NoError(t, err)
+	})
+
+	pm := portmap.NewPortMap(t.Context())
+	pm.RegisterPort(t.Context(), uint32(port))
+	go func() {
+		err := pm.Serve(t.Context(), pmListener)
 		assert.NoError(t, err)
 	}()
 
 	// connect via nfs client
 	auth := rpc.NewAuthUnix("", 100, 101)
 
-	nfsAddr := lis.Addr().String()
-	host, portText, err := net.SplitHostPort(nfsAddr)
+	// dial portmap server
+	portmapperTCPClient, err := rpc.DialTCP("tcp", pmListener.Addr().String(), false)
 	require.NoError(t, err)
-	port, err := strconv.Atoi(portText)
+	t.Cleanup(func() {
+		portmapperTCPClient.Close()
+	})
+	portmapperClient := &rpc.Portmapper{Client: portmapperTCPClient}
+	t.Cleanup(func() {
+		portmapperClient.Close()
+	})
+
+	retrievedPort, err := portmapperClient.Getport(rpc.Mapping{
+		Prog: nfs.Nfs3Prog,
+		Vers: nfs.Nfs3Vers,
+		Prot: rfc1057.IPPROTO_TCP,
+	})
 	require.NoError(t, err)
 
-	nfsClient, err := nfs.DialServiceAtPort(host, port)
+	nfsClient, err := nfs.DialServiceAtPort(host, retrievedPort)
 	require.NoError(t, err)
 
 	// request mount

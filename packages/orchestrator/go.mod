@@ -52,6 +52,7 @@ require (
 	github.com/vishvananda/netns v0.0.5
 	github.com/willscott/go-nfs v0.0.3
 	github.com/willscott/go-nfs-client v0.0.0-20240104095149-b44639837b00
+	github.com/zeldovich/go-rpcgen v0.1.5
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0
 	go.opentelemetry.io/otel v1.38.0
