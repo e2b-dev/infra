@@ -1,12 +1,9 @@
 package utils
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -22,7 +19,6 @@ const (
 	securityErrPrefix  = "error in openapi3filter.SecurityRequirementsError: security requirements failed: "
 	forbiddenErrPrefix = "team forbidden: "
 	blockedErrPrefix   = "team blocked: "
-	timeoutErrPrefix   = "request timeout: "
 )
 
 func ErrorHandler(c *gin.Context, message string, statusCode int) {
@@ -77,25 +73,14 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 		return
 	}
 
-	// Handle timeout errors (e.g., body read timeout wrapped as security error)
-	if after, ok := strings.CutPrefix(message, timeoutErrPrefix); ok {
-		c.AbortWithStatusJSON(
-			http.StatusRequestTimeout,
-			gin.H{
-				"code":    http.StatusRequestTimeout,
-				"message": after,
-			},
-		)
-
-		return
-	}
-
 	// Handle security requirements errors from the openapi3filter
 	if after, ok := strings.CutPrefix(message, securityErrPrefix); ok {
+		// Keep the original status code as it can be also timeout (read body timeout) error code.
+		// The securityErrPrefix is added for all errors going through the processCustomErrors function.
 		c.AbortWithStatusJSON(
-			http.StatusUnauthorized,
+			statusCode,
 			gin.H{
-				"code":    http.StatusUnauthorized,
+				"code":    statusCode,
 				"message": after,
 			},
 		)
@@ -153,38 +138,10 @@ func processCustomErrors(e *openapi3filter.SecurityRequirementsError) error {
 			return fmt.Errorf("%s%s", blockedErrPrefix, err.Error())
 		}
 
-		// Check if this is a timeout error (e.g., body read timeout) that got wrapped as a security error.
-		// Use error type checking instead of string matching for reliability.
-		if isTimeoutError(errW) {
-			return fmt.Errorf("%s%s", timeoutErrPrefix, err.Error())
-		}
-
 		err = errW
 
 		break
 	}
 
 	return fmt.Errorf("%s%s", securityErrPrefix, err.Error())
-}
-
-// isTimeoutError checks if the error is a timeout or deadline exceeded error.
-// This uses error type checking instead of string matching for reliability.
-func isTimeoutError(err error) bool {
-	// Check for context deadline exceeded
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-
-	// Check for os deadline exceeded (used by net package)
-	if errors.Is(err, os.ErrDeadlineExceeded) {
-		return true
-	}
-
-	// Check for net.Error with Timeout() == true
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
-		return true
-	}
-
-	return false
 }
