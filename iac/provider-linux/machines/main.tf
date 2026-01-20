@@ -174,7 +174,13 @@ resource "null_resource" "nodes_consul_nomad" {
         datacenter = var.datacenter,
         data_dir   = "/var/lib/nomad",
         bind_addr  = "0.0.0.0",
-        consul     = length(var.consul_acl_token) > 0 ? { address = "127.0.0.1:8500", token = var.consul_acl_token } : { address = "127.0.0.1:8500" }
+        consul     = length(var.consul_acl_token) > 0 ? { address = "127.0.0.1:8500", token = var.consul_acl_token } : { address = "127.0.0.1:8500" },
+        telemetry = {
+          publish_allocation_metrics = true
+          publish_node_metrics       = true
+          prometheus_metrics         = true
+          collection_interval        = "1s"
+        }
       },
       length(var.nomad_acl_token) > 0 ? { acl = { enabled = true } } : {},
       contains(local.server_ips, each.value.host) ? { server = { enabled = true, bootstrap_expect = local.bootstrap_expect } } : {},
