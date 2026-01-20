@@ -120,8 +120,9 @@ module "network" {
   client_proxy_port        = var.edge_proxy_port
   client_proxy_health_port = var.edge_api_port
 
-  api_instance_group    = google_compute_instance_group_manager.api_pool.instance_group
-  server_instance_group = google_compute_instance_group_manager.server_pool.instance_group
+  api_instance_group             = google_compute_instance_group_manager.api_pool.instance_group
+  server_instance_group          = google_compute_region_instance_group_manager.server_pool.instance_group
+  server_regional_instance_group = google_compute_region_instance_group_manager.server_pool.instance_group
 
   nomad_port = var.nomad_port
 
