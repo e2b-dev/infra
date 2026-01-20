@@ -30,26 +30,26 @@ This document describes the design for E2B's persistent filesystem feature, whic
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                           SDK / API                                  │
-│                                                                      │
+│                           SDK / API                                 │
+│                                                                     │
 │  Filesystem.create()    Sandbox.create()    filesystem.read/write   │
 └──────────┬─────────────────────┬────────────────────┬───────────────┘
            │                     │                    │
            ▼                     ▼                    ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                          E2B API                                     │
-│                                                                      │
+│                          E2B API                                    │
+│                                                                     │
 │   POST /filesystems     POST /sandboxes       GET/PUT /filesystems  │
 │                         (with volumeMounts)   /{id}/files/{path}    │
 └──────────┬─────────────────────┬────────────────────┬───────────────┘
            │                     │                    │
            ▼                     ▼                    ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   PostgreSQL    │    │   Orchestrator  │    │   NFS Proxy     │
-│   (metadata)    │    │   (VM mgmt)     │    │   Server        │
-└─────────────────┘    └────────┬────────┘    └────────┬────────┘
-                                │                      │
-                                ▼                      ▼
+┌─────────────────┐    ┌─────────────────────────────────┐
+│   PostgreSQL    │    │           Orchestrator          │
+│   (metadata)    │    │ (VM mgmt, NFS Proxy, Portmap)   │
+└─────────────────┘    └────────┬───────────────┬────────┘
+                                │               │
+                                ▼               ▼
                        ┌─────────────────┐    ┌─────────────────┐
                        │   Firecracker   │    │   GCS Backend   │
                        │   VM + NFS      │    │   (storage)     │
@@ -59,16 +59,18 @@ This document describes the design for E2B's persistent filesystem feature, whic
 
 ### Components
 
-#### 1. NFS Proxy Server
-- **Technology:** Go implementation using [willscott/go-nfs](https://github.com/willscott/go-nfs)
-- **Protocol:** NFS v3 (mature Go implementation, stateless design)
-- **Purpose:** Translates NFS operations to backend storage operations
-- **Current Status:** First implementation complete
+#### 1. NFS Proxy & Portmapper (Orchestrator)
+- **Technology:** Go implementation using [willscott/go-nfs](https://github.com/willscott/go-nfs) and custom Portmapper.
+- **Protocol:** NFS v3 (stateless design) and RPC Portmapper (v2).
+- **Purpose:** 
+    - **NFS Proxy:** Translates NFS operations from sandboxes to GCS backend storage operations.
+    - **Portmapper:** Registers the NFS service and allows clients to discover the NFS port (2049) via RPC port 111.
+- **Current Status:** Integrated into Orchestrator; implementation complete.
 
 #### 2. GCS Backend
 - **Purpose:** Persistent storage layer for file data
 - **Operations:** Maps NFS file operations to GCS object operations
-- **Current Status:** Bare minimum implementation complete
+- **Current Status:** Bare minimum implementation complete. Integration with Orchestrator is done via IPTables redirection. `nfs-common` is installed in the base image.
 
 #### 3. Database Schema (New)
 
@@ -229,12 +231,12 @@ filesystem.delete('/data/test.txt')
 
 When a sandbox is created with volume mounts:
 
-1. **Orchestrator** receives the sandbox creation request with volume mount config
-2. **Orchestrator** resolves filesystem IDs to NFS server addresses
-3. **Firecracker VM** starts with NFS client configured
-4. **Init script** mounts NFS shares to specified paths:
+1. **Orchestrator** receives the sandbox creation request with volume mount config.
+2. **Orchestrator** sets up the sandbox network. It includes **IPTables** rules to redirect traffic destined for the Orchestrator IP on ports 111 (Portmapper) and 2049 (NFS) to the Orchestrator's internal services.
+3. **Firecracker VM** starts. The base image must have `nfs-common` installed.
+4. **Init script** mounts NFS shares to specified paths. The VM uses the Orchestrator's internal IP as the NFS server address:
    ```bash
-   mount -t nfs -o vers=3,nolock <nfs-server>:/<filesystem-id> /mnt/data
+   mount -t nfs -o vers=3,nolock <orchestrator-ip>:/<filesystem-id> /mnt/data
    ```
 
 ### NFS Proxy → GCS Mapping
@@ -302,6 +304,7 @@ For V0, we allow concurrent access via NFS (no explicit locking):
 ### Logging
 - All filesystem operations logged with team_id, filesystem_id
 - Error conditions logged with full context
+- NFS Proxy logs includes detailed operation tracking and GCS interaction details
 
 ## Future Considerations (Post-V0)
 
