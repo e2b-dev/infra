@@ -7,10 +7,14 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -26,7 +30,10 @@ func newRemoteClusterResourceProvider(instances *smap.Map[*Instance], client *ed
 	}
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, error) {
+func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get-sandbox-metrics", trace.WithAttributes(attribute.String("provider", "remote")))
+	defer span.End()
+
 	req := &edgeapi.V1SandboxMetricsParams{
 		TeamID: teamID,
 		Start:  qStart,
@@ -35,15 +42,29 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 
 	res, err := r.client.V1SandboxMetricsWithResponse(ctx, sandboxID, req)
 	if err != nil {
-		return nil, err
+		telemetry.ReportCriticalError(ctx, "error when getting sandbox metrics from edge API", err)
+
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: "Error when getting sandbox metrics",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	if res.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode())
+		return nil, &api.APIError{
+			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
+			ClientMsg: "Error when getting sandbox metrics",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	if res.JSON200 == nil {
-		return nil, errors.New("request returned nil response")
+		return nil, &api.APIError{
+			Err:       errors.New("request returned nil response"),
+			ClientMsg: "Error when getting sandbox metrics",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	raw := *res.JSON200
@@ -64,18 +85,35 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, error) {
+func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get-sandboxes-metrics", trace.WithAttributes(attribute.String("provider", "remote")))
+	defer span.End()
+
 	res, err := r.client.V1SandboxesMetricsWithResponse(ctx, &edgeapi.V1SandboxesMetricsParams{TeamID: teamID, SandboxIds: sandboxIDs})
 	if err != nil {
-		return nil, err
+		telemetry.ReportCriticalError(ctx, "error when getting sandboxes metrics from edge API", err)
+
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: "Error when getting sandboxes metrics",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	if res.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode())
+		return nil, &api.APIError{
+			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
+			ClientMsg: "Error when getting sandboxes metrics",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	if res.JSON200 == nil {
-		return nil, errors.New("request returned nil response")
+		return nil, &api.APIError{
+			Err:       errors.New("request returned nil response"),
+			ClientMsg: "Error when getting sandboxes metrics",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	raw := *res.JSON200
@@ -96,18 +134,41 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, error) {
+func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get-sandbox-logs", trace.WithAttributes(attribute.String("provider", "remote")))
+	defer span.End()
+
 	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, Limit: limit})
 	if err != nil {
-		return api.SandboxLogs{}, err
+		telemetry.ReportError(ctx, "error when fetching sandbox logs", err)
+
+		return api.SandboxLogs{}, &api.APIError{
+			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),
+			ClientMsg: "Error when getting sandbox logs",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	if res.StatusCode() != http.StatusOK {
-		return api.SandboxLogs{}, fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode())
+		err = fmt.Errorf("unexpected response with HTTP status: %d", res.StatusCode())
+		telemetry.ReportError(ctx, "error when fetching sandbox logs", err)
+
+		return api.SandboxLogs{}, &api.APIError{
+			Err:       err,
+			ClientMsg: "Error when getting sandbox logs",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	if res.JSON200 == nil {
-		return api.SandboxLogs{}, errors.New("request returned nil response")
+		err = errors.New("sandbox logs request returned nil")
+		telemetry.ReportError(ctx, err.Error(), err)
+
+		return api.SandboxLogs{}, &api.APIError{
+			Err:       err,
+			ClientMsg: "Error when getting sandbox logs",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	raw := *res.JSON200
@@ -143,12 +204,26 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 	cursor *time.Time,
 	direction api.LogsDirection,
 	source *api.LogsSource,
-) ([]logs.LogEntry, error) {
+) ([]logs.LogEntry, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get-build-logs", trace.WithAttributes(attribute.String("provider", "remote")))
+	defer span.End()
+
 	// Use shared implementation with Edge API as the persistent log backend
 	start, end := logQueryWindow(cursor, direction)
 	persistentFetcher := r.getBuildLogsFromEdge(ctx, templateID, buildID, offset, limit, level, start, end, direction)
 
-	return getBuildLogsWithSources(ctx, r.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)
+	entries, err := getBuildLogsWithSources(ctx, r.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)
+	if err != nil {
+		telemetry.ReportError(ctx, "error when getting build logs", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+
+		return nil, &api.APIError{
+			Err:       fmt.Errorf("error when fetching build logs: %w", err),
+			ClientMsg: "Error when getting build logs",
+			Code:      http.StatusInternalServerError,
+		}
+	}
+
+	return entries, nil
 }
 
 func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) logSourceFunc {
