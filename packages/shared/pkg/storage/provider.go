@@ -61,11 +61,8 @@ const (
 )
 
 type Basic interface {
-	Upload(ctx context.Context, objectPath string, in io.Reader, size int64) (int64, error)
-	Download(ctx context.Context, objectPath string, dst io.Writer) (int64, error)
-	Size(ctx context.Context, objectPath string) (int64, error)
-	DeleteWithPrefix(ctx context.Context, prefix string) error
-	fmt.Stringer
+	Upload(ctx context.Context, objectPath string, in io.Reader) (int64, error)
+	StartDownload(ctx context.Context, objectPath string) (io.ReadCloser, error)
 }
 
 type RangeGetter interface {
@@ -80,6 +77,12 @@ type MultipartUploaderFactory interface {
 	MakeMultipartUpload(ctx context.Context, objectPath string, retryConfig RetryConfig) (MultipartUploader, func(), int, error)
 }
 
+type Admin interface {
+	Size(ctx context.Context, objectPath string) (int64, error)
+	DeleteWithPrefix(ctx context.Context, prefix string) error
+	fmt.Stringer
+}
+
 type MultipartUploader interface {
 	Start(ctx context.Context) error
 	UploadPart(ctx context.Context, partIndex int, data ...[]byte) error
@@ -91,12 +94,7 @@ type Provider struct {
 	PublicUploader
 	MultipartUploaderFactory
 	RangeGetter
-}
-
-func Exists(ctx context.Context, p *Provider, path string) (bool, error) {
-	_, err := p.Basic.Size(ctx, path)
-
-	return err == nil, ignoreNotExists(err)
+	Admin
 }
 
 func recordError(span trace.Span, err error) {

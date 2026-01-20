@@ -1,9 +1,9 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 
 	"golang.org/x/sync/errgroup"
@@ -14,13 +14,13 @@ import (
 
 type TemplateBuild struct {
 	files       storage.TemplateFiles
-	persistence storage.StorageProvider
+	persistence storage.API
 
 	memfileHeader *headers.Header
 	rootfsHeader  *headers.Header
 }
 
-func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence storage.StorageProvider, files storage.TemplateFiles) *TemplateBuild {
+func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence storage.API, files storage.TemplateFiles) *TemplateBuild {
 	return &TemplateBuild{
 		persistence: persistence,
 		files:       files,
@@ -31,7 +31,7 @@ func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Heade
 }
 
 func (t *TemplateBuild) Remove(ctx context.Context) error {
-	err := t.persistence.DeleteObjectsWithPrefix(ctx, t.files.StorageDir())
+	err := t.persistence.DeleteWithPrefix(ctx, t.files.StorageDir())
 	if err != nil {
 		return fmt.Errorf("error when removing template build '%s': %w", t.files.StorageDir(), err)
 	}
@@ -40,17 +40,12 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 }
 
 func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageMemfileHeaderPath(), storage.MemfileHeaderObjectType)
-	if err != nil {
-		return err
-	}
-
 	serialized, err := headers.Serialize(h.Metadata, h.Mapping)
 	if err != nil {
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	err = object.Put(ctx, serialized)
+	err = t.persistence.StoreBlob(ctx, t.files.StorageMemfileHeaderPath(), bytes.NewReader(serialized))
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -58,96 +53,55 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 	return nil
 }
 
-func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
-	object, err := t.persistence.OpenSeekable(ctx, t.files.StorageMemfilePath(), storage.MemfileObjectType)
-	if err != nil {
-		return nil, err
-	}
-
-	err = object.StoreFile(ctx, memfilePath)
-	if err != nil {
-		return nil, fmt.Errorf("error when uploading memfile: %w", err)
-	}
-
-	return ci, nil
+func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) (*storage.FrameTable, error) {
+	return t.persistence.StoreFile(ctx, memfilePath, t.files.StorageMemfilePath(), nil)
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
-	if err != nil {
-		return err
-	}
-
 	serialized, err := headers.Serialize(h.Metadata, h.Mapping)
 	if err != nil {
-		return fmt.Errorf("error when serializing memfile header: %w", err)
+		return fmt.Errorf("error when serializing rootFS header: %w", err)
 	}
 
-	err = object.Put(ctx, serialized)
+	err = t.persistence.StoreBlob(ctx, t.files.StorageRootfsHeaderPath(), bytes.NewReader(serialized))
 	if err != nil {
-		return fmt.Errorf("error when uploading memfile header: %w", err)
+		return err
 	}
 
 	return nil
 }
 
-func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
-	object, err := t.persistence.OpenSeekable(ctx, t.files.StorageRootfsPath(), storage.RootFSObjectType)
-	if err != nil {
-		return nil, err
-	}
-
-	err = object.StoreFile(ctx, rootfsPath)
-	if err != nil {
-		return nil, fmt.Errorf("error when uploading rootfs: %w", err)
-	}
-
-	return ci, nil
+func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) (*storage.FrameTable, error) {
+	return t.persistence.StoreFile(ctx, rootfsPath, t.files.StorageRootfsPath(), nil)
 }
 
 // Snap-file is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageSnapfilePath(), storage.SnapfileObjectType)
-	if err != nil {
-		return err
-	}
-
-	if err = uploadFileAsBlob(ctx, object, path); err != nil {
-		return fmt.Errorf("error when uploading snapfile: %w", err)
-	}
-
-	return nil
-}
-
-// Metadata is small enough so we don't use composite upload.
-func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageMetadataPath(), storage.MetadataObjectType)
-	if err != nil {
-		return err
-	}
-
-	if err := uploadFileAsBlob(ctx, object, path); err != nil {
-		return fmt.Errorf("error when uploading metadata: %w", err)
-	}
-
-	return nil
-}
-
-func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", path, err)
 	}
 	defer f.Close()
 
-	data, err := io.ReadAll(f)
+	err = t.persistence.StoreBlob(ctx, t.files.StorageSnapfilePath(), f)
 	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", path, err)
+		return err
 	}
 
-	err = b.Put(ctx, data)
+	return nil
+}
+
+// Metadata is small enough so we don't use composite upload.
+func (t *TemplateBuild) uploadMetadata(ctx context.Context, localFilePath string) error {
+	f, err := os.Open(localFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to write data to object: %w", err)
+		return fmt.Errorf("failed to open file %s: %w", localFilePath, err)
+	}
+	defer f.Close()
+
+	err = t.persistence.StoreBlob(ctx, t.files.StorageMetadataPath(), f)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -161,7 +115,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		frameTable, err := t.uploadRootfs(ctx, *rootfsPath)
+		_, err := t.uploadRootfs(ctx, *rootfsPath)
 		if err != nil {
 			return err
 		}
@@ -170,37 +124,37 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		if frameTable != nil {
-			fmt.Printf("<>/<> Uploading build %q rootFS, full size %#x, have a frame table starting at %#x, %d frames\n",
-				t.rootfsHeader.Metadata.BuildId.String(),
-				t.rootfsHeader.Metadata.Size,
-				frameTable.StartAt.U,
-				len(frameTable.Frames),
-			) // DEBUG --- IGNORE ---
-			for _, f := range frameTable.Frames {
-				fmt.Printf("<>/<> --- frame: %#x %#x\n", f.U, f.C) // DEBUG --- IGNORE ---
-			}
+		// if frameTable != nil {
+		// 	fmt.Printf("<>/<> Uploading build %q rootFS, full size %#x, have a frame table starting at %#x, %d frames\n",
+		// 		t.rootfsHeader.Metadata.BuildId.String(),
+		// 		t.rootfsHeader.Metadata.Size,
+		// 		frameTable.StartAt.U,
+		// 		len(frameTable.Frames),
+		// 	) // DEBUG --- IGNORE ---
+		// 	for _, f := range frameTable.Frames {
+		// 		fmt.Printf("<>/<> --- frame: %#x %#x\n", f.U, f.C) // DEBUG --- IGNORE ---
+		// 	}
 
-			// iterate over the mappings, and for each one from the current build add the frameTable
-			for _, mapping := range t.rootfsHeader.Mapping {
-				if mapping.BuildId == t.rootfsHeader.Metadata.BuildId {
-					mapping.FrameTable = frameTable.Subset(int64(mapping.Offset), int64(mapping.Length))
+		// 	// iterate over the mappings, and for each one from the current build add the frameTable
+		// 	for _, mapping := range t.rootfsHeader.Mapping {
+		// 		if mapping.BuildId == t.rootfsHeader.Metadata.BuildId {
+		// 			mapping.FrameTable = frameTable.Subset(int64(mapping.Offset), int64(mapping.Length))
 
-					if len(mapping.FrameTable.Frames) == 0 {
-						fmt.Printf("<>/<>   NO FRAMES for mapping offset %#x length %#x\n",
-							mapping.Offset,
-							mapping.Length,
-						) // DEBUG --- IGNORE ---
+		// 			if len(mapping.FrameTable.Frames) == 0 {
+		// 				fmt.Printf("<>/<>   NO FRAMES for mapping offset %#x length %#x\n",
+		// 					mapping.Offset,
+		// 					mapping.Length,
+		// 				) // DEBUG --- IGNORE ---
 
-						fmt.Printf("<>/<> full mapping table: type %s, offset: %+v\n", storage.CompressionType(mapping.FrameTable.CompressionType), mapping.FrameTable.StartAt) // DEBUG --- IGNORE ---
+		// 				fmt.Printf("<>/<> full mapping table: type %s, offset: %+v\n", storage.CompressionType(mapping.FrameTable.CompressionType), mapping.FrameTable.StartAt) // DEBUG --- IGNORE ---
 
-						for _, f := range mapping.FrameTable.Frames {
-							fmt.Printf("<>/<>     frame: %+v\n", f) // DEBUG --- IGNORE ---
-						}
-					}
-				}
-			}
-		}
+		// 				for _, f := range mapping.FrameTable.Frames {
+		// 					fmt.Printf("<>/<>     frame: %+v\n", f) // DEBUG --- IGNORE ---
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		// }
 
 		err = t.uploadRootfsHeader(ctx, t.rootfsHeader)
 		if err != nil {
@@ -215,7 +169,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		frameTable, err := t.uploadMemfile(ctx, *memfilePath)
+		_, err := t.uploadMemfile(ctx, *memfilePath)
 		if err != nil {
 			return err
 		}
@@ -224,20 +178,20 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		if frameTable != nil {
-			fmt.Printf("<>/<> Uploading build %q memfile, have a frame table starting at %#x, %d frames\n",
-				t.memfileHeader.Metadata.BuildId.String(),
-				frameTable.StartAt.U,
-				len(frameTable.Frames),
-			) // DEBUG --- IGNORE ---
+		// if frameTable != nil {
+		// 	fmt.Printf("<>/<> Uploading build %q memfile, have a frame table starting at %#x, %d frames\n",
+		// 		t.memfileHeader.Metadata.BuildId.String(),
+		// 		frameTable.StartAt.U,
+		// 		len(frameTable.Frames),
+		// 	) // DEBUG --- IGNORE ---
 
-			// iterate over the mappings, and for each one from the current build add the f info
-			for _, mapping := range t.memfileHeader.Mapping {
-				if mapping.BuildId == t.memfileHeader.Metadata.BuildId {
-					mapping.FrameTable = frameTable.Subset(int64(mapping.Offset), int64(mapping.Length))
-				}
-			}
-		}
+		// 	// iterate over the mappings, and for each one from the current build add the f info
+		// 	for _, mapping := range t.memfileHeader.Mapping {
+		// 		if mapping.BuildId == t.memfileHeader.Metadata.BuildId {
+		// 			mapping.FrameTable = frameTable.Subset(int64(mapping.Offset), int64(mapping.Length))
+		// 		}
+		// 	}
+		// }
 
 		err = t.uploadMemfileHeader(ctx, t.memfileHeader)
 		if err != nil {

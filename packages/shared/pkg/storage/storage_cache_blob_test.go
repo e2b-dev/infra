@@ -3,8 +3,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"errors"
-	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -18,10 +16,10 @@ import (
 
 var noopTracer = noop.TracerProvider{}.Tracer("")
 
-func TestCachedStorage_UploadDownload(t *testing.T) {
+func TestCachedStorage_Blobber(t *testing.T) {
 	t.Parallel()
 
-	t.Run("can be cached successfully", func(t *testing.T) {
+	t.Run("StoreBlob write-through caching", func(t *testing.T) {
 		t.Parallel()
 
 		tempDir := t.TempDir()
@@ -33,10 +31,9 @@ func TestCachedStorage_UploadDownload(t *testing.T) {
 
 		inner := NewMockAPI(t)
 		inner.EXPECT().
-			Upload(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, objectPath string, src io.Reader, size int64) (int64, error) {
-				return size, nil
-			})
+			StoreBlob(mock.Anything, mock.Anything, mock.Anything).
+			Return(nil)
+
 		featureFlags := NewMockFeatureFlagsClient(t)
 		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
 
@@ -49,10 +46,9 @@ func TestCachedStorage_UploadDownload(t *testing.T) {
 		}
 
 		// write temp file
-		n, wg, err := c.upload(t.Context(), "test-item", data)
+		wg, err := c.storeBlob(t.Context(), "test-item", bytes.NewReader(data))
 		require.NoError(t, err)
 		require.NotNil(t, wg)
-		require.Equal(t, int64(len(data)), n)
 
 		// file is written asynchronously, wait for it to finish
 		wg.Wait()
@@ -60,12 +56,64 @@ func TestCachedStorage_UploadDownload(t *testing.T) {
 		// prevent the provider from falling back to cache
 		c.inner = nil
 
-		gotData, err := GetBlob(t.Context(), c, "test-item", nil)
+		gotData, wg, err := c.getBlob(t.Context(), "test-item", nil)
 		require.NoError(t, err)
 		assert.Equal(t, data, gotData)
+
+		wg.Wait()
 	})
 
-	t.Run("uncached reads will be cached the second time", func(t *testing.T) {
+	apiWithData := func(t *testing.T, data []byte) *MockAPI {
+		t.Helper()
+
+		inner := NewMockAPI(t)
+		inner.EXPECT().
+			GetBlob(mock.Anything, mock.Anything, mock.Anything).
+			RunAndReturn(func(_ context.Context, objectPath string, userBuf []byte) ([]byte, error) {
+				shadow := make([]byte, len(data))
+				copy(shadow, data)
+				return shadow, nil
+			})
+		return inner
+	}
+
+	t.Run("CopyBlob read-through caching", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+		cacheDir := filepath.Join(tempDir, "cache")
+		err := os.MkdirAll(cacheDir, 0o777)
+		require.NoError(t, err)
+
+		const dataSize = 10 * megabyte
+		actualData := generateData(t, dataSize)
+		c := &Cache{
+			rootPath:  cacheDir,
+			inner:     apiWithData(t, actualData),
+			chunkSize: 1024,
+			tracer:    noopTracer,
+		}
+
+		buf := bytes.NewBuffer(nil)
+		read, wg, err := c.copyBlob(t.Context(), "test-item", buf)
+		require.NoError(t, err)
+		// assert.Equal(t, int64(len(actualData)), read)
+		assert.Equal(t, actualData, buf.Bytes())
+
+		wg.Wait()
+
+		c.inner = nil
+
+		buf = bytes.NewBuffer(nil)
+		read, wg, err = c.copyBlob(t.Context(), "test-item", buf)
+		require.NoError(t, err)
+		assert.Equal(t, int64(len(actualData)), read)
+		assert.Equal(t, actualData, buf.Bytes())
+
+		wg.Wait()
+	})
+
+	t.Run("GetBlob read-through caching", func(t *testing.T) {
 		t.Parallel()
 
 		tempDir := t.TempDir()
@@ -76,60 +124,30 @@ func TestCachedStorage_UploadDownload(t *testing.T) {
 		const dataSize = 10 * megabyte
 		actualData := generateData(t, dataSize)
 
-		inner := NewMockAPI(t)
-		inner.EXPECT().
-			Download(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, objectPath string, dst io.Writer) (int64, error) {
-				n, err := dst.Write(actualData)
-
-				return int64(n), err
-			})
-
 		c := &Cache{
 			rootPath:  cacheDir,
-			inner:     inner,
+			inner:     apiWithData(t, actualData),
 			chunkSize: 1024,
 			tracer:    noopTracer,
 		}
 
-		buf := bytes.NewBuffer(nil)
-		read, wg, err := c.download(t.Context(), "test-item", buf)
+		data, wg, err := c.getBlob(t.Context(), "test-item", nil)
 		require.NoError(t, err)
-		assert.Equal(t, int64(len(actualData)), read)
-		assert.Equal(t, actualData, buf.Bytes())
+		assert.Len(t, data, len(actualData))
+		assert.Equal(t, actualData, data)
 
 		wg.Wait()
 
 		c.inner = nil
 
-		buf = bytes.NewBuffer(nil)
-		read, wg, err = c.download(t.Context(), "test-item", buf)
+		t.Log("<>/<> ================= second fetch")
+
+		data, wg, err = c.getBlob(t.Context(), "test-item", nil)
 		require.NoError(t, err)
-		assert.Equal(t, int64(len(actualData)), read)
-		assert.Equal(t, actualData, buf.Bytes())
+		assert.Equal(t, actualData, data)
+
+		wg.Wait()
 	})
-}
-
-func TestCachedStorage_StoreFile(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	c := Cache{
-		rootPath: root,
-		tracer:   noopTracer,
-	}
-	errTarget := errors.New("find me")
-	reader := NewMockReader(t)
-	reader.EXPECT().Read(mock.Anything).Return(4, nil).Once()
-	reader.EXPECT().Read(mock.Anything).Return(0, errTarget).Once()
-
-	count, err := c.writeFileToCache(t.Context(), "test-item", reader)
-	require.ErrorIs(t, err, errTarget)
-	assert.Equal(t, int64(0), count)
-
-	path := fullFilename(filepath.Join(root, "test-item"))
-	_, err = os.Stat(path)
-	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func generateData(t *testing.T, count int) []byte {

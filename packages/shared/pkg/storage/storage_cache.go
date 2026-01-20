@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -74,4 +75,8 @@ func (c Cache) deleteCachedObjectsWithPrefix(ctx context.Context, prefix string)
 			zap.String("path", fullPrefix),
 			zap.Error(err))
 	}
+}
+
+func (c *Cache) PublicUploadURL(ctx context.Context, objectPath string, ttl time.Duration) (string, error) {
+	return c.inner.PublicUploadURL(ctx, objectPath, ttl)
 }

@@ -90,9 +90,7 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 		return fmt.Errorf("error marshalling layer metadata: %w", err)
 	}
 
-	_, err = h.indexStorage.Store(ctx,
-		paths.HashToPath(h.cacheScope, hash),
-		bytes.NewReader(marshaled), int64(len(marshaled)), nil)
+	err = h.indexStorage.StoreBlob(ctx, paths.HashToPath(h.cacheScope, hash), bytes.NewReader(marshaled))
 	if err != nil {
 		return fmt.Errorf("error writing layer metadata to object: %w", err)
 	}

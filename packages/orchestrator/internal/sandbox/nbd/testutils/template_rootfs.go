@@ -25,7 +25,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 		BuildID: buildID,
 	}
 
-	s, err := storage.GetTemplateStorageProvider(ctx, nil)
+	s, err := storage.GetTemplateStorage(ctx, nil)
 	if err != nil {
 		return nil, &cleaner, fmt.Errorf("failed to get storage provider: %w", err)
 	}

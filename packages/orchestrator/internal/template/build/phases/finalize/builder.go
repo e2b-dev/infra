@@ -38,7 +38,7 @@ type PostProcessingBuilder struct {
 	buildcontext.BuildContext
 
 	sandboxFactory  *sandbox.Factory
-	templateStorage storage.StorageProvider
+	templateStorage storage.API
 	proxy           *proxy.SandboxProxy
 
 	layerExecutor *layer.LayerExecutor
@@ -50,7 +50,7 @@ type PostProcessingBuilder struct {
 func New(
 	buildContext buildcontext.BuildContext,
 	sandboxFactory *sandbox.Factory,
-	templateStorage storage.StorageProvider,
+	templateStorage storage.API,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
 	featureFlags *featureflags.Client,

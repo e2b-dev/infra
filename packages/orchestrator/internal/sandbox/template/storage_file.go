@@ -24,16 +24,9 @@ func newStorageFile(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file: %w", err)
 	}
-
 	defer f.Close()
 
-	r, err := persistence.Get(ctx, objectPath)
-	if err == nil {
-		defer r.Close()
-
-		_, err = f.ReadFrom(r)
-	}
-
+	_, err = persistence.CopyBlob(ctx, objectPath, f)
 	if err != nil {
 		cleanupErr := os.Remove(path)
 

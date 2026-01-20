@@ -83,6 +83,7 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Pr
 	}
 	return &Provider{
 		Basic:                    gcp,
+		Admin:                    gcp,
 		MultipartUploaderFactory: gcp,
 		PublicUploader:           gcp,
 		RangeGetter:              gcp,
@@ -168,7 +169,7 @@ func (g *GCP) Size(ctx context.Context, path string) (int64, error) {
 	return attrs.Size, nil
 }
 
-func (g *GCP) Upload(ctx context.Context, path string, in io.Reader, size int64) (n int64, e error) {
+func (g *GCP) Upload(ctx context.Context, path string, in io.Reader) (n int64, e error) {
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
@@ -191,21 +192,20 @@ func (g *GCP) Upload(ctx context.Context, path string, in io.Reader, size int64)
 	return c, nil
 }
 
-func (g *GCP) Download(ctx context.Context, path string, dst io.Writer) (int64, error) {
+func (g *GCP) StartDownload(ctx context.Context, path string) (io.ReadCloser, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 	defer cancel()
 
 	r, err := g.handle(path).NewReader(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			return 0, fmt.Errorf("failed to create reader for %q: %w", path, ErrObjectNotExist)
+			return nil, fmt.Errorf("failed to create reader for %q: %w", path, ErrObjectNotExist)
 		}
 
-		return 0, fmt.Errorf("failed to create reader for %q: %w", path, err)
+		return nil, fmt.Errorf("failed to create reader for %q: %w", path, err)
 	}
-	defer r.Close()
 
-	return io.Copy(dst, r)
+	return r, nil
 }
 
 type gcpServiceToken struct {

@@ -23,17 +23,12 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 	}
 
 	path := paths.GetLayerFilesCachePath(cacheScope, in.GetHash())
-	obj, err := s.buildStorage.OpenBlob(ctx, path, storage.BuildLayerFileObjectType)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
-	}
-
-	signedUrl, err := s.buildStorage.UploadSignedURL(ctx, path, signedUrlExpiration)
+	signedUrl, err := s.buildStorage.PublicUploadURL(ctx, path, signedUrlExpiration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get signed url: %w", err)
 	}
 
-	exists, err := obj.Exists(ctx)
+	exists, err := storage.Exists(ctx, s.buildStorage, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if layer files exists: %w", err)
 	}

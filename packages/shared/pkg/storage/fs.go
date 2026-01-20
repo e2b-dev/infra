@@ -21,6 +21,7 @@ func NewFS(basePath string) *Provider {
 
 	return &Provider{
 		Basic: fs,
+		Admin: fs,
 	}
 }
 
@@ -38,8 +39,17 @@ func (s *FileSystem) getPath(path string) string {
 	return filepath.Join(s.basePath, path)
 }
 
-func (s *FileSystem) Download(_ context.Context, path string, dst io.Writer) (int64, error) {
+func (s *FileSystem) StartDownload(_ context.Context, path string) (io.ReadCloser, error) {
 	handle, err := s.mustExist(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return handle, nil
+}
+
+func (s *FileSystem) Download(_ context.Context, path string, dst io.Writer) (int64, error) {
+	handle, err := s.StartDownload(nil, path)
 	if err != nil {
 		return 0, err
 	}
@@ -48,7 +58,7 @@ func (s *FileSystem) Download(_ context.Context, path string, dst io.Writer) (in
 	return io.Copy(dst, handle)
 }
 
-func (s *FileSystem) Upload(_ context.Context, path string, in io.Reader, _ int64) (int64, error) {
+func (s *FileSystem) Upload(_ context.Context, path string, in io.Reader) (int64, error) {
 	handle, err := s.create(path)
 	if err != nil {
 		return 0, err

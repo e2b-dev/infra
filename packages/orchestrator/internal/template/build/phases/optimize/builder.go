@@ -1,6 +1,7 @@
 package optimize
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -41,7 +42,7 @@ type OptimizeBuilder struct {
 
 	layerExecutor   *layer.LayerExecutor
 	sandboxFactory  *sandbox.Factory
-	templateStorage storage.StorageProvider
+	templateStorage storage.API
 	templateCache   *sbxtemplate.Cache
 	proxy           *proxy.SandboxProxy
 	sandboxes       *sandbox.Map
@@ -52,7 +53,7 @@ type OptimizeBuilder struct {
 func New(
 	buildContext buildcontext.BuildContext,
 	sandboxFactory *sandbox.Factory,
-	templateStorage storage.StorageProvider,
+	templateStorage storage.API,
 	templateCache *sbxtemplate.Cache,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
@@ -289,22 +290,16 @@ func (pb *OptimizeBuilder) updateMetadata(ctx context.Context, t metadata.Templa
 	templateFiles := storage.TemplateFiles{BuildID: t.Template.BuildID}
 	metadataPath := templateFiles.StorageMetadataPath()
 
-	// Open the object for writing
-	object, err := pb.templateStorage.OpenBlob(ctx, metadataPath, storage.MetadataObjectType)
-	if err != nil {
-		return fmt.Errorf("failed to open metadata object: %w", err)
-	}
-
 	// Serialize metadata
 	metaBytes, err := json.Marshal(t)
 	if err != nil {
 		return fmt.Errorf("failed to serialize metadata: %w", err)
 	}
 
-	// Write to storage
-	err = object.Put(ctx, metaBytes)
+	// Open the object for writing
+	err = pb.templateStorage.StoreBlob(ctx, metadataPath, bytes.NewReader(metaBytes))
 	if err != nil {
-		return fmt.Errorf("failed to write metadata: %w", err)
+		return fmt.Errorf("failed to open metadata object: %w", err)
 	}
 
 	// Invalidate local cache to force refetch with updated metadata

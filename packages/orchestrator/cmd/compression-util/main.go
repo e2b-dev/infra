@@ -64,7 +64,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	storage, err := storage.GetTemplateStorageProvider(ctx, nil)
+	storage, err := storage.GetTemplateStorage(ctx, nil)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
@@ -98,7 +98,7 @@ func main() {
 	}
 }
 
-func compress(h *header.Header, storage storage.StorageProvider, headerStoragePath string, fileStoragePath string, fileType build.DiffType) {
+func compress(h *header.Header, storage storage.API, headerStoragePath string, fileStoragePath string, fileType build.DiffType) {
 	// first we need to fully download buildId
 
 	ctx := context.Background()

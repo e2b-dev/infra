@@ -98,11 +98,6 @@ type Reader interface {
 	Read(ctx context.Context, p []byte) (n int, err error)
 }
 
-type AnyReader interface {
-	ReaderAt
-	Reader
-}
-
 type FrameGetter interface {
 	GetFrame(ctx context.Context, objectPath string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte) (Range, error)
 }
@@ -111,11 +106,19 @@ type FileStorer interface {
 	StoreFile(ctx context.Context, inFilePath, asObjectPath string, opts *FramedUploadOptions) (ft *FrameTable, err error)
 }
 
+type Blobber interface {
+	GetBlob(ctx context.Context, objectPath string, userBuffer []byte) ([]byte, error)
+	CopyBlob(ctx context.Context, objectPath string, dst io.Writer) (n int64, err error)
+	StoreBlob(ctx context.Context, objectPath string, in io.Reader) error
+	// PutBlob(ctx context.Context, objectPath string, data []byte) error
+}
+
 type API interface {
 	FrameGetter
 	FileStorer
-	Basic
-	fmt.Stringer
+	Blobber
+	PublicUploader
+	Admin
 }
 
 type Storage struct {
@@ -158,7 +161,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 
 	if compression == CompressionNone && (s.Provider.MultipartUploaderFactory == nil || sizeU <= int64(partSize)) {
 		// If not using multipart or compressed upload, fall through to simple put.
-		_, err = s.Provider.Upload(ctx, objectPath, in, sizeU)
+		_, err = s.Provider.Upload(ctx, objectPath, in)
 		return nil, err
 	}
 
@@ -229,26 +232,72 @@ func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64,
 	return Range{Start: fetchRange.Start, Length: int(n)}, err
 }
 
-func GetBlob(ctx context.Context, storage API, path string, userBuffer []byte) ([]byte, error) {
-	var receiveBuf *bytes.Buffer
-	if userBuffer != nil {
-		receiveBuf = bytes.NewBuffer(userBuffer[:0])
-	} else {
-		receiveBuf = bytes.NewBuffer(nil)
-	}
-	n, err := storage.Download(ctx, path, receiveBuf)
+func (s *Storage) GetBlob(ctx context.Context, path string, userBuffer []byte) ([]byte, error) {
+	// TODO LEV metrics
+
+	r, err := s.StartDownload(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("getting blob from storage: %w", err)
 	}
-	if cap(userBuffer) > 0 && n > int64(cap(userBuffer)) {
-		return nil, fmt.Errorf("user buffer too small: read %d bytes, buffer size %d", n, cap(userBuffer))
-	}
+	defer r.Close()
 
-	return receiveBuf.Bytes(), nil
+	return readAll(r, userBuffer)
 }
 
-func (s *Storage) Exists(ctx context.Context, path string) (bool, error) {
-	_, err := s.Provider.Basic.Size(ctx, path)
+func readAll(r io.Reader, userBuffer []byte) ([]byte, error) {
+	if userBuffer != nil {
+		n, err := io.ReadFull(r, userBuffer)
+		if err != nil {
+			return nil, fmt.Errorf("reading blob into user buffer: %w", err)
+		}
+		return userBuffer[:n], nil
+	}
+
+	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
+	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
+	// file is larger than 2 MB, the buffer will grow, it just won't be as efficient WRT memory allocations.
+	const writeToInitialBufferSize = 2 * megabyte
+
+	receiveBuf := bytes.NewBuffer(make([]byte, 0, writeToInitialBufferSize))
+	_, err := io.Copy(receiveBuf, r)
+	return receiveBuf.Bytes(), err
+}
+
+func (s *Storage) CopyBlob(ctx context.Context, path string, dst io.Writer) (n int64, err error) {
+	// TODO LEV metrics
+
+	r, err := s.StartDownload(ctx, path)
+	if err != nil {
+		return 0, fmt.Errorf("getting blob from storage: %w", err)
+	}
+	defer r.Close()
+
+	return io.Copy(dst, r)
+}
+
+func (s *Storage) OpenBlob(ctx context.Context, path string) (io.ReadCloser, error) {
+	// TODO LEV metrics
+
+	r, err := s.StartDownload(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("getting blob from storage: %w", err)
+	}
+	return r, nil
+}
+
+func (s *Storage) StoreBlob(ctx context.Context, path string, in io.Reader) error {
+	// TODO LEV metrics
+
+	_, err := s.Upload(ctx, path, in)
+	if err != nil {
+		return fmt.Errorf("putting blob to storage: %w", err)
+	}
+
+	return nil
+}
+
+func Exists(ctx context.Context, s API, path string) (bool, error) {
+	_, err := s.Size(ctx, path)
 
 	return err == nil, ignoreNotExists(err)
 }

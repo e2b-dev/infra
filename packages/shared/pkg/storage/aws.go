@@ -52,6 +52,7 @@ func NewAWS(ctx context.Context, bucketName string) (*Provider, error) {
 	return &Provider{
 		Basic:          aws,
 		PublicUploader: aws,
+		Admin:          aws,
 	}, nil
 }
 
@@ -121,22 +122,18 @@ func (p *AWS) PublicUploadURL(ctx context.Context, path string, ttl time.Duratio
 	return resp.URL, nil
 }
 
-func (p *AWS) Download(ctx context.Context, path string, dst io.Writer) (int64, error) {
-	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
-	defer cancel()
-
+func (p *AWS) StartDownload(ctx context.Context, path string) (io.ReadCloser, error) {
 	resp, err := p.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &p.bucketName, Key: &path})
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrObjectNotExist
+			return nil, ErrObjectNotExist
 		}
 
-		return 0, err
+		return nil, err
 	}
-	defer resp.Body.Close()
 
-	return io.Copy(dst, resp.Body)
+	return resp.Body, nil
 }
 
 // func (s *AWS) StoreFile(ctx context.Context, path string) error {
@@ -169,7 +166,7 @@ func (p *AWS) Download(ctx context.Context, path string, dst io.Writer) (int64, 
 // 	return err
 // }
 
-func (p *AWS) Upload(ctx context.Context, path string, in io.Reader, _ int64) (int64, error) {
+func (p *AWS) Upload(ctx context.Context, path string, in io.Reader) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
@@ -188,14 +185,14 @@ func (p *AWS) Upload(ctx context.Context, path string, in io.Reader, _ int64) (i
 	return 0, nil
 }
 
-func (p *AWS) RangeGet(ctx context.Context, path string, off int64, length int64) (io.ReadCloser, error) {
+func (p *AWS) RangeGet(ctx context.Context, objectPath string, offset int64, length int) (io.ReadCloser, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
-	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+int64(length-1)))
+	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+int64(length-1)))
 	resp, err := p.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(p.bucketName),
-		Key:    aws.String(path),
+		Key:    aws.String(objectPath),
 		Range:  readRange,
 	})
 	if err != nil {

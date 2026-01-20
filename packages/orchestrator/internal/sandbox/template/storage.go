@@ -61,13 +61,13 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		headerObject, err := persistence.Get(ctx, headerObjectPath)
+		// TODO LEV inefficient double read
+		headerData, err := persistence.GetBlob(ctx, headerObjectPath, nil)
 		if err != nil {
 			return nil, err
 		}
-		defer headerObject.Close()
 
-		diffHeader, err := header.Deserialize(ctx, headerObject)
+		diffHeader, err := header.Deserialize(ctx, headerData)
 
 		// If we can't find the diff header in storage, we switch to templates without a headers
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {

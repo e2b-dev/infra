@@ -7,6 +7,7 @@ package storage
 import (
 	"context"
 	"io"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -36,6 +37,78 @@ type MockAPI_Expecter struct {
 
 func (_m *MockAPI) EXPECT() *MockAPI_Expecter {
 	return &MockAPI_Expecter{mock: &_m.Mock}
+}
+
+// CopyBlob provides a mock function for the type MockAPI
+func (_mock *MockAPI) CopyBlob(ctx context.Context, objectPath string, dst io.Writer) (int64, error) {
+	ret := _mock.Called(ctx, objectPath, dst)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CopyBlob")
+	}
+
+	var r0 int64
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, io.Writer) (int64, error)); ok {
+		return returnFunc(ctx, objectPath, dst)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, io.Writer) int64); ok {
+		r0 = returnFunc(ctx, objectPath, dst)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, io.Writer) error); ok {
+		r1 = returnFunc(ctx, objectPath, dst)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockAPI_CopyBlob_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CopyBlob'
+type MockAPI_CopyBlob_Call struct {
+	*mock.Call
+}
+
+// CopyBlob is a helper method to define mock.On call
+//   - ctx context.Context
+//   - objectPath string
+//   - dst io.Writer
+func (_e *MockAPI_Expecter) CopyBlob(ctx interface{}, objectPath interface{}, dst interface{}) *MockAPI_CopyBlob_Call {
+	return &MockAPI_CopyBlob_Call{Call: _e.mock.On("CopyBlob", ctx, objectPath, dst)}
+}
+
+func (_c *MockAPI_CopyBlob_Call) Run(run func(ctx context.Context, objectPath string, dst io.Writer)) *MockAPI_CopyBlob_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 io.Writer
+		if args[2] != nil {
+			arg2 = args[2].(io.Writer)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockAPI_CopyBlob_Call) Return(n int64, err error) *MockAPI_CopyBlob_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *MockAPI_CopyBlob_Call) RunAndReturn(run func(ctx context.Context, objectPath string, dst io.Writer) (int64, error)) *MockAPI_CopyBlob_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // DeleteWithPrefix provides a mock function for the type MockAPI
@@ -95,46 +168,48 @@ func (_c *MockAPI_DeleteWithPrefix_Call) RunAndReturn(run func(ctx context.Conte
 	return _c
 }
 
-// Download provides a mock function for the type MockAPI
-func (_mock *MockAPI) Download(ctx context.Context, objectPath string, dst io.Writer) (int64, error) {
-	ret := _mock.Called(ctx, objectPath, dst)
+// GetBlob provides a mock function for the type MockAPI
+func (_mock *MockAPI) GetBlob(ctx context.Context, objectPath string, userBuffer []byte) ([]byte, error) {
+	ret := _mock.Called(ctx, objectPath, userBuffer)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Download")
+		panic("no return value specified for GetBlob")
 	}
 
-	var r0 int64
+	var r0 []byte
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, io.Writer) (int64, error)); ok {
-		return returnFunc(ctx, objectPath, dst)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []byte) ([]byte, error)); ok {
+		return returnFunc(ctx, objectPath, userBuffer)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, io.Writer) int64); ok {
-		r0 = returnFunc(ctx, objectPath, dst)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []byte) []byte); ok {
+		r0 = returnFunc(ctx, objectPath, userBuffer)
 	} else {
-		r0 = ret.Get(0).(int64)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]byte)
+		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, io.Writer) error); ok {
-		r1 = returnFunc(ctx, objectPath, dst)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []byte) error); ok {
+		r1 = returnFunc(ctx, objectPath, userBuffer)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// MockAPI_Download_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Download'
-type MockAPI_Download_Call struct {
+// MockAPI_GetBlob_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBlob'
+type MockAPI_GetBlob_Call struct {
 	*mock.Call
 }
 
-// Download is a helper method to define mock.On call
+// GetBlob is a helper method to define mock.On call
 //   - ctx context.Context
 //   - objectPath string
-//   - dst io.Writer
-func (_e *MockAPI_Expecter) Download(ctx interface{}, objectPath interface{}, dst interface{}) *MockAPI_Download_Call {
-	return &MockAPI_Download_Call{Call: _e.mock.On("Download", ctx, objectPath, dst)}
+//   - userBuffer []byte
+func (_e *MockAPI_Expecter) GetBlob(ctx interface{}, objectPath interface{}, userBuffer interface{}) *MockAPI_GetBlob_Call {
+	return &MockAPI_GetBlob_Call{Call: _e.mock.On("GetBlob", ctx, objectPath, userBuffer)}
 }
 
-func (_c *MockAPI_Download_Call) Run(run func(ctx context.Context, objectPath string, dst io.Writer)) *MockAPI_Download_Call {
+func (_c *MockAPI_GetBlob_Call) Run(run func(ctx context.Context, objectPath string, userBuffer []byte)) *MockAPI_GetBlob_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -144,9 +219,9 @@ func (_c *MockAPI_Download_Call) Run(run func(ctx context.Context, objectPath st
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 io.Writer
+		var arg2 []byte
 		if args[2] != nil {
-			arg2 = args[2].(io.Writer)
+			arg2 = args[2].([]byte)
 		}
 		run(
 			arg0,
@@ -157,12 +232,12 @@ func (_c *MockAPI_Download_Call) Run(run func(ctx context.Context, objectPath st
 	return _c
 }
 
-func (_c *MockAPI_Download_Call) Return(n int64, err error) *MockAPI_Download_Call {
-	_c.Call.Return(n, err)
+func (_c *MockAPI_GetBlob_Call) Return(bytes []byte, err error) *MockAPI_GetBlob_Call {
+	_c.Call.Return(bytes, err)
 	return _c
 }
 
-func (_c *MockAPI_Download_Call) RunAndReturn(run func(ctx context.Context, objectPath string, dst io.Writer) (int64, error)) *MockAPI_Download_Call {
+func (_c *MockAPI_GetBlob_Call) RunAndReturn(run func(ctx context.Context, objectPath string, userBuffer []byte) ([]byte, error)) *MockAPI_GetBlob_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -257,6 +332,78 @@ func (_c *MockAPI_GetFrame_Call) RunAndReturn(run func(ctx context.Context, obje
 	return _c
 }
 
+// PublicUploadURL provides a mock function for the type MockAPI
+func (_mock *MockAPI) PublicUploadURL(ctx context.Context, objectPath string, ttl time.Duration) (string, error) {
+	ret := _mock.Called(ctx, objectPath, ttl)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PublicUploadURL")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Duration) (string, error)); ok {
+		return returnFunc(ctx, objectPath, ttl)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Duration) string); ok {
+		r0 = returnFunc(ctx, objectPath, ttl)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Duration) error); ok {
+		r1 = returnFunc(ctx, objectPath, ttl)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockAPI_PublicUploadURL_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PublicUploadURL'
+type MockAPI_PublicUploadURL_Call struct {
+	*mock.Call
+}
+
+// PublicUploadURL is a helper method to define mock.On call
+//   - ctx context.Context
+//   - objectPath string
+//   - ttl time.Duration
+func (_e *MockAPI_Expecter) PublicUploadURL(ctx interface{}, objectPath interface{}, ttl interface{}) *MockAPI_PublicUploadURL_Call {
+	return &MockAPI_PublicUploadURL_Call{Call: _e.mock.On("PublicUploadURL", ctx, objectPath, ttl)}
+}
+
+func (_c *MockAPI_PublicUploadURL_Call) Run(run func(ctx context.Context, objectPath string, ttl time.Duration)) *MockAPI_PublicUploadURL_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Duration
+		if args[2] != nil {
+			arg2 = args[2].(time.Duration)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockAPI_PublicUploadURL_Call) Return(s string, err error) *MockAPI_PublicUploadURL_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *MockAPI_PublicUploadURL_Call) RunAndReturn(run func(ctx context.Context, objectPath string, ttl time.Duration) (string, error)) *MockAPI_PublicUploadURL_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Size provides a mock function for the type MockAPI
 func (_mock *MockAPI) Size(ctx context.Context, objectPath string) (int64, error) {
 	ret := _mock.Called(ctx, objectPath)
@@ -319,6 +466,69 @@ func (_c *MockAPI_Size_Call) Return(n int64, err error) *MockAPI_Size_Call {
 }
 
 func (_c *MockAPI_Size_Call) RunAndReturn(run func(ctx context.Context, objectPath string) (int64, error)) *MockAPI_Size_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// StoreBlob provides a mock function for the type MockAPI
+func (_mock *MockAPI) StoreBlob(ctx context.Context, objectPath string, in io.Reader) error {
+	ret := _mock.Called(ctx, objectPath, in)
+
+	if len(ret) == 0 {
+		panic("no return value specified for StoreBlob")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, io.Reader) error); ok {
+		r0 = returnFunc(ctx, objectPath, in)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockAPI_StoreBlob_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StoreBlob'
+type MockAPI_StoreBlob_Call struct {
+	*mock.Call
+}
+
+// StoreBlob is a helper method to define mock.On call
+//   - ctx context.Context
+//   - objectPath string
+//   - in io.Reader
+func (_e *MockAPI_Expecter) StoreBlob(ctx interface{}, objectPath interface{}, in interface{}) *MockAPI_StoreBlob_Call {
+	return &MockAPI_StoreBlob_Call{Call: _e.mock.On("StoreBlob", ctx, objectPath, in)}
+}
+
+func (_c *MockAPI_StoreBlob_Call) Run(run func(ctx context.Context, objectPath string, in io.Reader)) *MockAPI_StoreBlob_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 io.Reader
+		if args[2] != nil {
+			arg2 = args[2].(io.Reader)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockAPI_StoreBlob_Call) Return(err error) *MockAPI_StoreBlob_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockAPI_StoreBlob_Call) RunAndReturn(run func(ctx context.Context, objectPath string, in io.Reader) error) *MockAPI_StoreBlob_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -443,84 +653,6 @@ func (_c *MockAPI_String_Call) Return(s string) *MockAPI_String_Call {
 }
 
 func (_c *MockAPI_String_Call) RunAndReturn(run func() string) *MockAPI_String_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Upload provides a mock function for the type MockAPI
-func (_mock *MockAPI) Upload(ctx context.Context, objectPath string, in io.Reader, size int64) (int64, error) {
-	ret := _mock.Called(ctx, objectPath, in, size)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Upload")
-	}
-
-	var r0 int64
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, io.Reader, int64) (int64, error)); ok {
-		return returnFunc(ctx, objectPath, in, size)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, io.Reader, int64) int64); ok {
-		r0 = returnFunc(ctx, objectPath, in, size)
-	} else {
-		r0 = ret.Get(0).(int64)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, io.Reader, int64) error); ok {
-		r1 = returnFunc(ctx, objectPath, in, size)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockAPI_Upload_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Upload'
-type MockAPI_Upload_Call struct {
-	*mock.Call
-}
-
-// Upload is a helper method to define mock.On call
-//   - ctx context.Context
-//   - objectPath string
-//   - in io.Reader
-//   - size int64
-func (_e *MockAPI_Expecter) Upload(ctx interface{}, objectPath interface{}, in interface{}, size interface{}) *MockAPI_Upload_Call {
-	return &MockAPI_Upload_Call{Call: _e.mock.On("Upload", ctx, objectPath, in, size)}
-}
-
-func (_c *MockAPI_Upload_Call) Run(run func(ctx context.Context, objectPath string, in io.Reader, size int64)) *MockAPI_Upload_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		var arg2 io.Reader
-		if args[2] != nil {
-			arg2 = args[2].(io.Reader)
-		}
-		var arg3 int64
-		if args[3] != nil {
-			arg3 = args[3].(int64)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-			arg3,
-		)
-	})
-	return _c
-}
-
-func (_c *MockAPI_Upload_Call) Return(n int64, err error) *MockAPI_Upload_Call {
-	_c.Call.Return(n, err)
-	return _c
-}
-
-func (_c *MockAPI_Upload_Call) RunAndReturn(run func(ctx context.Context, objectPath string, in io.Reader, size int64) (int64, error)) *MockAPI_Upload_Call {
 	_c.Call.Return(run)
 	return _c
 }

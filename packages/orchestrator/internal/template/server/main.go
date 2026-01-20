@@ -40,8 +40,8 @@ type ServerStore struct {
 	buildCache        *cache.BuildCache
 	buildLogger       logger.Logger
 	artifactsregistry artifactsregistry.ArtifactsRegistry
-	templateStorage   storage.StorageProvider
-	buildStorage      storage.StorageProvider
+	templateStorage   storage.API
+	buildStorage      storage.API
 
 	wg   *sync.WaitGroup // wait group for running builds
 	info *service.ServiceInfo
@@ -60,7 +60,7 @@ func New(
 	proxy *proxy.SandboxProxy,
 	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
-	templatePersistence storage.StorageProvider,
+	templatePersistence storage.API,
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
 ) (s *ServerStore, e error) {
@@ -90,7 +90,7 @@ func New(
 	}
 	closers = append(closers, dockerhubRepository)
 
-	buildPersistence, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
+	buildPersistence, err := storage.GetBuildStorage(ctx, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}

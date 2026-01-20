@@ -52,8 +52,8 @@ type Builder struct {
 
 	config              cfg.BuilderConfig
 	sandboxFactory      *sandbox.Factory
-	templateStorage     storage.StorageProvider
-	buildStorage        storage.StorageProvider
+	templateStorage     storage.API
+	buildStorage        storage.API
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 	proxy               *proxy.SandboxProxy
@@ -68,8 +68,8 @@ func NewBuilder(
 	logger logger.Logger,
 	featureFlags *featureflags.Client,
 	sandboxFactory *sandbox.Factory,
-	templateStorage storage.StorageProvider,
-	buildStorage storage.StorageProvider,
+	templateStorage storage.API,
+	buildStorage storage.API,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
 	proxy *proxy.SandboxProxy,
@@ -192,7 +192,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		}
 
 		// Remove build files if build fails
-		removeErr := b.templateStorage.DeleteObjectsWithPrefix(ctx, template.BuildID)
+		removeErr := b.templateStorage.DeleteWithPrefix(ctx, template.BuildID)
 		if removeErr != nil {
 			e = errors.Join(e, fmt.Errorf("error removing build files: %w", removeErr))
 		}
@@ -398,15 +398,12 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 
 func getRootfsSize(
 	ctx context.Context,
-	s storage.StorageProvider,
+	s storage.API,
 	metadata storage.TemplateFiles,
 ) (uint64, error) {
-	obj, err := s.OpenBlob(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
-	if err != nil {
-		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
-	}
+	data, err := s.GetBlob(ctx, metadata.StorageRootfsHeaderPath(), nil)
 
-	h, err := header.Deserialize(ctx, obj)
+	h, err := header.Deserialize(ctx, data)
 	if err != nil {
 		return 0, fmt.Errorf("error deserializing rootfs header: %w", err)
 	}

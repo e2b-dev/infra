@@ -27,7 +27,7 @@ func ensureParentDir(t *testing.T, path string) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 }
 
-func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
+func TestOpenObject_Upload_Size_Download(t *testing.T) {
 	t.Parallel()
 	p, base := newTempProvider(t)
 	ctx := t.Context()
@@ -37,17 +37,21 @@ func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
 	ensureParentDir(t, testPath)
 
 	// write via Upload
-	_, err := p.Upload(ctx, testPath, bytes.NewReader(contents), int64(len(contents)))
+	_, err := p.Upload(ctx, testPath, bytes.NewReader(contents))
 	require.NoError(t, err)
 
-	// check Exists
-	exists, err := Exists(ctx, p, testPath)
+	// check Size
+	size, err := p.Size(ctx, testPath)
 	require.NoError(t, err)
-	require.True(t, exists)
+	require.Equal(t, int64(len(contents)), size)
 
 	// read the entire file back via Get
 	var buf bytes.Buffer
-	_, err = p.Download(ctx, testPath, &buf)
+	r, err := p.StartDownload(ctx, testPath)
+	require.NoError(t, err)
+	defer r.Close()
+
+	_, err = io.Copy(&buf, r)
 	require.NoError(t, err)
 	require.Equal(t, contents, buf.Bytes())
 }
@@ -70,11 +74,14 @@ func TestFSPut(t *testing.T) {
 	ensureParentDir(t, dstPath)
 	data, err := io.ReadAll(src)
 	require.NoError(t, err)
-	_, err = p.Upload(ctx, dstPath, bytes.NewReader(data), int64(len(data)))
+	_, err = p.Upload(ctx, dstPath, bytes.NewReader(data))
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	_, err = p.Download(ctx, dstPath, &buf)
+	r, err := p.StartDownload(ctx, dstPath)
+	require.NoError(t, err)
+	defer r.Close()
+	_, err = io.Copy(&buf, r)
 	require.NoError(t, err)
 	require.Equal(t, payload, buf.String())
 }
@@ -87,20 +94,20 @@ func TestDelete(t *testing.T) {
 	path := filepath.Join(base, "to", "delete.txt")
 	ensureParentDir(t, path)
 
-	_, err := p.Upload(ctx, path, bytes.NewReader([]byte("bye")), int64(len("bye")))
+	_, err := p.Upload(ctx, path, bytes.NewReader([]byte("bye")))
 	require.NoError(t, err)
 
-	exists, err := Exists(ctx, p, path)
+	size, err := p.Size(ctx, path)
 	require.NoError(t, err)
-	assert.True(t, exists)
+	assert.Equal(t, int64(len("bye")), size)
 
 	err = p.DeleteWithPrefix(ctx, filepath.Join("to", "delete.txt"))
 	require.NoError(t, err)
 
-	// subsequent Exists call should return false
-	exists, err = Exists(ctx, p, path)
-	require.NoError(t, err)
-	assert.False(t, exists)
+	// subsequent Size call should return 0 (object no longer exists)
+	size, err = p.Size(ctx, path)
+	require.Error(t, err)
+	assert.Equal(t, int64(0), size)
 }
 
 func TestDeleteObjectsWithPrefix(t *testing.T) {
@@ -116,7 +123,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 	for _, pth := range paths {
 		fullPath := filepath.Join(base, pth)
 		ensureParentDir(t, fullPath)
-		_, err := p.Upload(ctx, fullPath, bytes.NewReader([]byte("x")), 1)
+		_, err := p.Upload(ctx, fullPath, bytes.NewReader([]byte("x")))
 		require.NoError(t, err)
 	}
 
@@ -136,6 +143,6 @@ func TestWriteToNonExistentObject(t *testing.T) {
 
 	ctx := t.Context()
 	missingPath := filepath.Join(base, "missing", "file.txt")
-	_, err := p.Download(ctx, missingPath, io.Discard)
+	_, err := p.StartDownload(ctx, missingPath)
 	require.ErrorIs(t, err, ErrObjectNotExist)
 }

@@ -1,7 +1,6 @@
 package block
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -198,8 +197,8 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
-				buf := bytes.NewBuffer(b[:0])
-				r, err := c.persistence.GetFrame(ctx, c.objectPath, storage.Range{Start: fetchOff, Length: int(f.U)}, framesToFetch, true, buf)
+				r, err := c.persistence.GetFrame(ctx,
+					c.objectPath, fetchOff, framesToFetch, true, b)
 				if err != nil {
 					fetchSW.Failure(ctx, int64(len(b)),
 						attribute.String(failureReason, failureTypeRemoteRead),

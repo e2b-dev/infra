@@ -217,7 +217,7 @@ func doBuild(
 	go tcpFirewall.Start(ctx)
 	defer tcpFirewall.Close(parentCtx)
 
-	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx, nil)
+	persistenceTemplate, err := storage.GetTemplateStorage(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("template storage: %w", err)
 	}
@@ -317,7 +317,7 @@ func doBuild(
 	return nil
 }
 
-func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, result *build.Result) {
+func printArtifactSizes(ctx context.Context, persistence storage.API, buildID string, result *build.Result) {
 	files := storage.TemplateFiles{BuildID: buildID}
 	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
 
