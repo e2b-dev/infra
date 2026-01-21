@@ -19,7 +19,12 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	ctx := c.Request.Context()
 	ctx, span := tracer.Start(ctx, "sandbox-metrics")
 	defer span.End()
+
 	sandboxID = utils.ShortID(sandboxID)
+
+	telemetry.SetAttributesWithGin(c, ctx,
+		telemetry.WithSandboxID(sandboxID),
+	)
 
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
@@ -48,16 +53,14 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	clusterID := utils.WithClusterFallback(team.ClusterID)
 	cluster, found := a.clusters.GetClusterById(clusterID)
 	if !found {
-		logger.L().Error(ctx, "cluster not found for sandbox metrics", logger.WithClusterID(clusterID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "cluster not found for sandbox metrics")
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "cluster not found for sandbox metrics", nil)
 
 		return
 	}
 
 	metrics, apiErr := cluster.GetResources().GetSandboxMetrics(ctx, team.ID.String(), sandboxID, params.Start, params.End)
 	if apiErr != nil {
-		telemetry.ReportError(ctx, "error getting sandbox metrics from cluster provider", apiErr.Err)
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}

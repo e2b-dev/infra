@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -108,10 +107,6 @@ func (a *APIStore) startSandbox(
 	go func() {
 		a.templateSpawnCounter.IncreaseTemplateSpawnCount(baseTemplateID, time.Now())
 	}()
-
-	telemetry.SetAttributes(ctx,
-		attribute.String("instance.id", sandbox.SandboxID),
-	)
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandbox.SandboxID,

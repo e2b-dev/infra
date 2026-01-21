@@ -13,7 +13,6 @@ import (
 	clickhouseUtils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const defaultTimeRange = 7 * 24 * time.Hour // 7 days
@@ -26,8 +25,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	if teamID != team.ID.String() {
-		telemetry.ReportError(ctx, "team ids mismatch", fmt.Errorf("you (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID), telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID))
+		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID), nil)
 
 		return
 	}
@@ -56,8 +54,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 
 	start, end, err := clickhouseUtils.ValidateRange(start, end)
 	if err != nil {
-		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, err.Error(), err)
 
 		return
 	}
@@ -66,8 +63,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 
 	metrics, err := a.clickhouseStore.QueryTeamMetrics(ctx, teamID, start, end, step)
 	if err != nil {
-		telemetry.ReportError(ctx, "error fetching team metrics", err, telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error querying team metrics: %s", err))
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("error querying team metrics: %s", err), err)
 
 		return
 	}

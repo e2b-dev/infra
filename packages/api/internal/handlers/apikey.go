@@ -16,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
@@ -24,18 +23,14 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 	body, err := utils.ParseBody[api.UpdateTeamAPIKey](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
 
 		return
 	}
 
 	apiKeyIDParsed, err := uuid.Parse(apiKeyID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when parsing API key ID", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err), err)
 
 		return
 	}
@@ -54,9 +49,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 		return
 	} else if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating team API key name: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when updating team API key name", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when updating team API key name: %s", err), err)
 
 		return
 	}
@@ -109,9 +102,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 	apiKeyIDParsed, err := uuid.Parse(apiKeyID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when parsing API key ID", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err), err)
 
 		return
 	}
@@ -123,9 +114,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		TeamID: teamID,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when deleting API key", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err), err)
 
 		return
 	}
@@ -146,27 +135,21 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 
 	body, err := utils.ParseBody[api.NewTeamAPIKey](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
 
 		return
 	}
 
 	apiKey, err := team.CreateAPIKey(ctx, a.sqlcDB, teamID, userID, body.Name)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating team API key: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when creating team API key", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when creating team API key: %s", err), err)
 
 		return
 	}
 
 	user, err := a.sqlcDB.GetUser(ctx, userID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when getting user", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err), err)
 
 		return
 	}

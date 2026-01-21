@@ -28,16 +28,14 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 
 	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
-		telemetry.ReportCriticalError(ctx, "invalid request body", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
 
 		return
 	}
 
 	team, apiErr := a.GetTeam(ctx, c, body.TeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team and limits", apiErr.Err)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
@@ -49,8 +47,7 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 
 	template, apiErr := a.buildTemplate(ctx, userID, team, templateID, body)
 	if apiErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when requesting template build", apiErr.Err, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
@@ -79,16 +76,14 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 
 	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
-		telemetry.ReportCriticalError(ctx, "invalid request body", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
 
 		return
 	}
 
 	templateID, _, err := id.ParseTemplateIDOrAliasWithTag(rawTemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", rawTemplateID))
-		telemetry.ReportCriticalError(c.Request.Context(), "invalid template ID", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", rawTemplateID), err)
 
 		return
 	}
@@ -96,37 +91,34 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 
 	team, apiErr := a.GetTeam(ctx, c, body.TeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
 	templateDB, err := a.sqlcDB.GetTemplateByID(ctx, templateID)
+	telemetry.SetAttributes(ctx, telemetry.WithTemplateID(templateID))
+
 	switch {
 	case err == nil:
 		if templateDB.TeamID != team.ID {
-			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You do not have access to the template '%s'", templateID))
-			telemetry.ReportError(ctx, "template access forbidden", nil, telemetry.WithTemplateID(templateID), telemetry.WithTeamID(team.ID.String()))
+			a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You do not have access to the template '%s'", templateID), err)
 
 			return
 		}
 	case dberrors.IsNotFoundError(err):
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateID))
-		telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateID), err)
 
 		return
 	default:
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when getting template: %s", err), err)
 
 		return
 	}
 
 	template, apiErr := a.buildTemplate(ctx, userID, team, templateID, body)
 	if apiErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when requesting template build", apiErr.Err, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}

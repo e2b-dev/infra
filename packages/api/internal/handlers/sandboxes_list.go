@@ -11,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -79,8 +78,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	metadataFilter, err := utils.ParseMetadata(ctx, params.Metadata)
 	if err != nil {
-		logger.L().Error(ctx, "Error parsing metadata", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err))
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err), err)
 
 		return
 	}
@@ -126,16 +124,14 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		},
 	)
 	if err != nil {
-		telemetry.ReportError(ctx, "error parsing pagination cursor", err)
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid next token")
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Invalid next token", err)
 
 		return
 	}
 
 	metadataFilter, err := utils.ParseMetadata(ctx, params.Metadata)
 	if err != nil {
-		logger.L().Error(ctx, "Error parsing metadata", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Error parsing metadata")
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Error parsing metadata", err)
 
 		return
 	}
@@ -178,8 +174,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())
 		if err != nil {
-			logger.L().Error(ctx, "Error getting paused sandboxes", zap.Error(err))
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting paused sandboxes")
+			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error getting paused sandboxes", err)
 
 			return
 		}

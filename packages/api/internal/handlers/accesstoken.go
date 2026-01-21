@@ -13,7 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) PostAccessTokens(c *gin.Context) {
@@ -23,18 +22,14 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 
 	body, err := utils.ParseBody[api.NewAccessToken](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
 
 		return
 	}
 
 	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when generating access token: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when generating access token", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when generating access token: %s", err), err)
 
 		return
 	}
@@ -50,9 +45,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		Name:                  body.Name,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating access token: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when creating access token", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when creating access token: %s", err), err)
 
 		return
 	}
@@ -78,9 +71,7 @@ func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID
 
 	accessTokenIDParsed, err := uuid.Parse(accessTokenID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing access token ID: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when parsing access token ID", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing access token ID: %s", err), err)
 
 		return
 	}
@@ -94,9 +85,7 @@ func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID
 
 		return
 	} else if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting access token: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when deleting access token", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when deleting access token: %s", err), err)
 
 		return
 	}

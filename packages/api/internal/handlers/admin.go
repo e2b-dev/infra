@@ -10,7 +10,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetNodes(c *gin.Context) {
@@ -20,6 +19,8 @@ func (a *APIStore) GetNodes(c *gin.Context) {
 }
 
 func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.GetNodesNodeIDParams) {
+	ctx := c.Request.Context()
+
 	clusterID := utils.WithClusterFallback(params.ClusterID)
 	result, err := a.orchestrator.AdminNodeDetail(clusterID, nodeID)
 	if err != nil {
@@ -29,8 +30,7 @@ func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.
 			return
 		}
 
-		telemetry.ReportCriticalError(c.Request.Context(), "error when getting node details", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting node details")
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting node details", err)
 
 		return
 	}
@@ -43,9 +43,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 
 	body, err := utils.ParseBody[api.PostNodesNodeIDJSONRequestBody](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
 
 		return
 	}
@@ -60,9 +58,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 
 	err = node.SendStatusChange(ctx, body.Status)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when sending status change: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when sending status change", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when sending status change: %s", err), err)
 
 		return
 	}

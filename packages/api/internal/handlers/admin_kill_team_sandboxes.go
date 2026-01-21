@@ -57,7 +57,7 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 
 	err := wg.Wait()
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to kill sandboxes")
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Failed to kill sandboxes", err)
 
 		return
 	}

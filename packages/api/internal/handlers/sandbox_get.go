@@ -30,8 +30,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if team.ClusterID != nil {
 		cluster, ok := a.clusters.GetClusterById(*team.ClusterID)
 		if !ok {
-			telemetry.ReportCriticalError(ctx, fmt.Sprintf("cluster with ID '%s' not found", *team.ClusterID), nil)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", *team.ClusterID))
+			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", *team.ClusterID), nil)
 
 			return
 		}
@@ -44,8 +43,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if sbx.TeamID != team.ID {
-			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+			a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id), nil)
 
 			return
 		}
@@ -57,7 +55,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			state = api.Paused
 		// Sandbox is being stopped or already is stopped, user can't work with it anymore
 		case sandbox.StateKilling:
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+			a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id), nil)
 
 			return
 		}
@@ -92,15 +90,13 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	// If sandbox not found try to get the latest snapshot
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxId)
 	if err != nil {
-		telemetry.ReportError(ctx, "error getting last snapshot", err)
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist", id))
+		a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist", id), err)
 
 		return
 	}
 
 	if lastSnapshot.Snapshot.TeamID != team.ID {
-		telemetry.ReportCriticalError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", id))
+		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", id), nil)
 
 		return
 	}
@@ -128,8 +124,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if lastSnapshot.Snapshot.EnvSecure {
 		key, err := a.accessTokenGenerator.GenerateEnvdAccessToken(lastSnapshot.Snapshot.SandboxID)
 		if err != nil {
-			telemetry.ReportError(ctx, "error generating sandbox access token", err)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error generating sandbox access token: %s", err))
+			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("error generating sandbox access token: %s", err), err)
 
 			return
 		}

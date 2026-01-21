@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
@@ -81,8 +80,8 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 	teamID := team.ID
 
-	telemetry.SetAttributes(ctx,
-		attribute.String("instance.id", sandboxID),
+	telemetry.SetAttributesWithGin(c, ctx,
+		telemetry.WithSandboxID(sandboxID),
 		telemetry.WithTeamID(teamID.String()),
 	)
 
@@ -93,7 +92,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	sbx, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 	if err == nil {
 		if sbx.TeamID != teamID {
-			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+			a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID), err)
 
 			return
 		}
@@ -105,12 +104,11 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		case errors.Is(err, orchestrator.ErrSandboxNotFound):
 			logger.L().Debug(ctx, "Sandbox not found", logger.WithSandboxID(sandboxID))
 		case errors.Is(err, orchestrator.ErrSandboxOperationFailed):
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
+			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err), err)
 
 			return
 		default:
-			telemetry.ReportError(ctx, "error killing sandbox", err)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
+			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err), err)
 
 			return
 		}
@@ -124,8 +122,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	case errors.Is(deleteSnapshotErr, db.ErrSnapshotNotFound):
 		// no snapshot found, nothing to do
 	case deleteSnapshotErr != nil:
-		telemetry.ReportError(ctx, "error deleting sandbox", deleteSnapshotErr)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", deleteSnapshotErr))
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", deleteSnapshotErr), deleteSnapshotErr)
 
 		return
 	default:
@@ -135,6 +132,6 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	if killedOrRemoved {
 		c.Status(http.StatusNoContent)
 	} else {
-		a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found")
+		a.sendAPIStoreError(c, ctx, http.StatusNotFound, "Sandbox not found", nil)
 	}
 }

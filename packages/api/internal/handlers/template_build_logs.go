@@ -22,8 +22,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templ
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
-		telemetry.ReportError(ctx, "error when parsing build id", err)
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid build id")
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Invalid build id", err)
 
 		return
 	}
@@ -32,13 +31,12 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templ
 	if err != nil {
 		var notFoundErr templatecache.TemplateBuildInfoNotFoundError
 		if errors.As(err, &notFoundErr) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Build '%s' not found", buildUUID))
+			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Build '%s' not found", buildUUID), err)
 
 			return
 		}
 
-		telemetry.ReportError(ctx, "error when getting template", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting template", err)
 
 		return
 	}
@@ -46,15 +44,19 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templ
 	infoTeamID := buildInfo.TeamID.String()
 	team, apiErr := a.GetTeam(ctx, c, &infoTeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
+	telemetry.SetAttributesWithGin(c, ctx,
+		telemetry.WithTeamID(team.ID.String()),
+		telemetry.WithBuildID(buildUUID.String()),
+		telemetry.WithTemplateID(templateID),
+	)
+
 	if team.ID != buildInfo.TeamID {
-		telemetry.ReportError(ctx, "user doesn't have access to env", fmt.Errorf("user doesn't have access to env '%s'", templateID), telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID), nil)
 
 		return
 	}
@@ -70,8 +72,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templ
 
 	cluster, ok := a.clusters.GetClusterById(utils.WithClusterFallback(team.ClusterID))
 	if !ok {
-		telemetry.ReportError(ctx, "error when getting cluster", fmt.Errorf("cluster with ID '%s' not found", team.ClusterID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting cluster")
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting cluster", nil)
 
 		return
 	}
@@ -93,7 +94,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templ
 
 	logs, apiErr := cluster.GetResources().GetBuildLogs(ctx, buildInfo.NodeID, templateID, buildID, 0, limit, apiToLogLevel(params.Level), cursor, direction, params.Source)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}

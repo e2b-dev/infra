@@ -15,7 +15,6 @@ import (
 	clickhouseUtils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, params api.GetTeamsTeamIDMetricsMaxParams) {
@@ -26,8 +25,7 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	if teamID != team.ID.String() {
-		telemetry.ReportError(ctx, "team ids mismatch", fmt.Errorf("you (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID), telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID))
+		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID), nil)
 
 		return
 	}
@@ -56,8 +54,7 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 
 	start, end, err := clickhouseUtils.ValidateRange(start, end)
 	if err != nil {
-		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, err.Error(), err)
 
 		return
 	}
@@ -70,14 +67,12 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 	case api.SandboxStartRate:
 		maxMetric, err = a.clickhouseStore.QueryMaxStartRateTeamMetrics(ctx, teamID, start, end, metrics.ExportPeriod)
 	default:
-		telemetry.ReportError(ctx, "invalid metric", fmt.Errorf("invalid metric: %s", params.Metric), telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("invalid metric: %s", params.Metric))
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("invalid metric: %s", params.Metric), nil)
 
 		return
 	}
 	if err != nil {
-		telemetry.ReportError(ctx, "error querying max team metrics", err, telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error querying max team metrics")
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error querying max team metrics", err)
 
 		return
 	}

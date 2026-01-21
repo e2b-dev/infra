@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
@@ -16,8 +15,7 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 
 	team, apiErr := a.GetTeam(ctx, c, nil)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
@@ -25,13 +23,12 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 	result, err := a.sqlcDB.GetTemplateAliasByAlias(ctx, alias)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			a.sendAPIStoreError(c, http.StatusNotFound, "Template alias not found")
+			a.sendAPIStoreError(c, ctx, http.StatusNotFound, "Template alias not found", err)
 
 			return
 		}
 
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template alias")
-		telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting template alias", err)
 
 		return
 	}
@@ -39,7 +36,7 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 	// Team is not alias owner so we are returning forbidden
 	// We don't want to return not found here as this endpoint is used for alias existence even for non owners
 	if result.TeamID != team.ID {
-		a.sendAPIStoreError(c, http.StatusForbidden, "You don't have access to this template alias")
+		a.sendAPIStoreError(c, ctx, http.StatusForbidden, "You don't have access to this template alias", err)
 
 		return
 	}

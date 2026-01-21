@@ -7,7 +7,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetTeams(c *gin.Context) {
@@ -17,8 +16,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 
 	results, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting teams", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when starting transaction")
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when starting transaction", err)
 
 		return
 	}
@@ -28,8 +26,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 		// We create a new API key for the CLI and backwards compatibility with API Keys hashing
 		apiKey, err := team.CreateAPIKey(ctx, a.sqlcDB, row.Team.ID, userID, "CLI login/configure")
 		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error when creating team API key", err)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating team API key")
+			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when creating team API key", err)
 
 			return
 		}

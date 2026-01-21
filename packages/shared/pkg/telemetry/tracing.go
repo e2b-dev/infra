@@ -5,24 +5,70 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var OTELTracingPrint = os.Getenv("OTEL_TRACING_PRINT") != "false"
 
-const DebugID = "debug_id"
+const (
+	DebugID              = "debug_id"
+	SandboxIDContextKey  = "sandbox.id"
+	TeamIDIDContextKey   = "tema.id"
+	BuildIDContextKey    = "build.id"
+	TemplateIDContextKey = "template.id"
+)
 
-func getDebugID(ctx context.Context) *string {
+func GetDebugID(ctx context.Context) *string {
 	if ctx.Value(DebugID) == nil {
 		return nil
 	}
 
 	value := ctx.Value(DebugID).(string)
+
+	return &value
+}
+
+// GetSandboxID retrieves the sandbox ID from context if present.
+func GetSandboxID(ctx context.Context) *string {
+	if ctx.Value(SandboxIDContextKey) == nil {
+		return nil
+	}
+
+	value := ctx.Value(SandboxIDContextKey).(string)
+
+	return &value
+}
+
+func getTeamID(ctx context.Context) *string {
+	if ctx.Value(TeamIDIDContextKey) == nil {
+		return nil
+	}
+
+	value := ctx.Value(TeamIDIDContextKey).(string)
+
+	return &value
+}
+
+func getBuildID(ctx context.Context) *string {
+	if ctx.Value(BuildIDContextKey) == nil {
+		return nil
+	}
+
+	value := ctx.Value(BuildIDContextKey).(string)
+
+	return &value
+}
+
+func getTemplateID(ctx context.Context) *string {
+	if ctx.Value(TemplateIDContextKey) == nil {
+		return nil
+	}
+
+	value := ctx.Value(TemplateIDContextKey).(string)
 
 	return &value
 }
@@ -35,7 +81,11 @@ func debugFormat(debugID *string, msg string) string {
 	return fmt.Sprintf("[%s] %s", *debugID, msg)
 }
 
-func SetAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
+func SetAttributes(ctx context.Context, attrs ...attribute.KeyValue) context.Context {
+	return SetAttributesWithGin(nil, ctx, attrs...)
+}
+
+func SetAttributesWithGin(c *gin.Context, ctx context.Context, attrs ...attribute.KeyValue) context.Context {
 	span := trace.SpanFromContext(ctx)
 
 	if OTELTracingPrint {
@@ -47,11 +97,37 @@ func SetAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 			msg = fmt.Sprintf("Attrs set: %#v\n", attrs)
 		}
 
-		debugID := getDebugID(ctx)
+		debugID := GetDebugID(ctx)
 		fmt.Print(debugFormat(debugID, msg))
 	}
 
+	setCtxValueFn := func(ctx context.Context, key, value string) context.Context {
+		ctx = context.WithValue(ctx, key, value)
+
+		if c != nil {
+			c.Set(key, value)
+		}
+
+		return ctx
+	}
+
+	// Catch special attributes to set in context so they are available in child spans
+	for _, attr := range attrs {
+		switch attr.Key {
+		case SandboxIDContextKey:
+			ctx = setCtxValueFn(ctx, SandboxIDContextKey, attr.Value.AsString())
+		case TeamIDIDContextKey:
+			ctx = setCtxValueFn(ctx, TeamIDIDContextKey, attr.Value.AsString())
+		case BuildIDContextKey:
+			ctx = setCtxValueFn(ctx, BuildIDContextKey, attr.Value.AsString())
+		case TemplateIDContextKey:
+			ctx = setCtxValueFn(ctx, TemplateIDContextKey, attr.Value.AsString())
+		}
+	}
+
 	span.SetAttributes(attrs...)
+
+	return ctx
 }
 
 func ReportEvent(ctx context.Context, name string, attrs ...attribute.KeyValue) {
@@ -66,7 +142,7 @@ func ReportEvent(ctx context.Context, name string, attrs ...attribute.KeyValue) 
 			msg = fmt.Sprintf("-> %s - %#v\n", name, attrs)
 		}
 
-		debugID := getDebugID(ctx)
+		debugID := GetDebugID(ctx)
 		fmt.Print(debugFormat(debugID, msg))
 	}
 
@@ -78,16 +154,13 @@ func ReportEvent(ctx context.Context, name string, attrs ...attribute.KeyValue) 
 func ReportCriticalError(ctx context.Context, message string, err error, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 
-	debugID := getDebugID(ctx)
-	logger.L().With(attributesToZapFields(attrs...)...).Error(ctx, message, zap.Stringp("debug_id", debugID), zap.Error(err))
+	attrs = append(attrs, attribute.String("error.message", message))
+	attrs = append(attrs, AttributesFromContext(ctx)...)
 
-	errorAttrs := append(attrs, attribute.String("error.message", message))
-
+	span.SetAttributes(attrs...)
 	span.RecordError(fmt.Errorf("%s: %w", message, err),
 		trace.WithStackTrace(true),
-		trace.WithAttributes(
-			errorAttrs...,
-		),
+		trace.WithAttributes(attrs...),
 	)
 
 	span.SetStatus(codes.Error, message)
@@ -96,18 +169,38 @@ func ReportCriticalError(ctx context.Context, message string, err error, attrs .
 func ReportError(ctx context.Context, message string, err error, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 
-	debugID := getDebugID(ctx)
-	logger.L().With(attributesToZapFields(attrs...)...).Warn(ctx, message, zap.Stringp("debug_id", debugID), zap.Error(err))
+	attrs = append(attrs, AttributesFromContext(ctx)...)
 
+	span.SetAttributes(attrs...)
 	span.RecordError(fmt.Errorf("%s: %w", message, err),
 		trace.WithStackTrace(true),
-		trace.WithAttributes(
-			attrs...,
-		),
+		trace.WithAttributes(attrs...),
 	)
 }
 
-func attributesToZapFields(attrs ...attribute.KeyValue) []zap.Field {
+func AttributesFromContext(ctx context.Context) []attribute.KeyValue {
+	var attrs []attribute.KeyValue
+
+	if sandboxID := GetSandboxID(ctx); sandboxID != nil {
+		attrs = append(attrs, WithSandboxID(*sandboxID))
+	}
+
+	if teamID := getTeamID(ctx); teamID != nil {
+		attrs = append(attrs, WithTeamID(*teamID))
+	}
+
+	if buildID := getBuildID(ctx); buildID != nil {
+		attrs = append(attrs, WithBuildID(*buildID))
+	}
+
+	if templateID := getTemplateID(ctx); templateID != nil {
+		attrs = append(attrs, WithTemplateID(*templateID))
+	}
+
+	return attrs
+}
+
+func AttributesToZapFields(attrs ...attribute.KeyValue) []zap.Field {
 	fields := make([]zap.Field, 0, len(attrs))
 	for _, attr := range attrs {
 		key := string(attr.Key)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -161,8 +162,12 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 }
 
 func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, store *sandbox.Store) error {
-	ctx, childSpan := tracer.Start(ctx, "sync-cluster-node")
-	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID), telemetry.WithClusterID(node.ClusterID))
+	ctx, childSpan := tracer.Start(ctx, "sync-cluster-node",
+		trace.WithAttributes(
+			telemetry.WithNodeID(node.ID),
+			telemetry.WithClusterID(node.ClusterID),
+		),
+	)
 	defer childSpan.End()
 
 	cluster, clusterFound := o.clusters.GetClusterById(node.ClusterID)
@@ -185,8 +190,11 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 }
 
 func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, store *sandbox.Store) error {
-	ctx, childSpan := tracer.Start(ctx, "sync-node")
-	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
+	ctx, childSpan := tracer.Start(ctx, "sync-node",
+		trace.WithAttributes(
+			telemetry.WithNodeID(node.ID),
+		),
+	)
 	defer childSpan.End()
 
 	found := false

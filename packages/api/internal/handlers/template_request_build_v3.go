@@ -27,8 +27,7 @@ func (a *APIStore) PostV3Templates(c *gin.Context) {
 
 	body, err := apiutils.ParseBody[api.TemplateBuildRequestV3](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
-		telemetry.ReportCriticalError(ctx, "invalid request body", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
 
 		return
 	}
@@ -45,8 +44,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	// Prepare info for rebuilding env
 	team, apiErr := a.GetTeam(ctx, c, body.TeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team, limits", apiErr.Err)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return nil
 	}
@@ -55,8 +53,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 
 	// Only alias or names can be used, not both
 	if len(names) > 0 && body.Alias != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Alias is deprecated, use names instead")
-		telemetry.ReportError(ctx, "alias is deprecated, use names instead", nil)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Alias is deprecated, use names instead", nil)
 
 		return nil
 	}
@@ -66,8 +63,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	}
 
 	if len(names) == 0 {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "At least one name is required")
-		telemetry.ReportError(ctx, "at least one name is required", nil)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "At least one name is required", nil)
 
 		return nil
 	}
@@ -77,16 +73,14 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	for _, name := range names {
 		al, t, err := id.ParseTemplateIDOrAliasWithTag(name)
 		if err != nil {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", err))
-			telemetry.ReportCriticalError(ctx, "invalid alias", err)
+			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", err), err)
 
 			return nil
 		}
 
 		// The template alias must be the same for all aliases with tags
 		if alias != al && alias != "" {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template alias must be same for all names: got '%s' and '%s'", alias, al))
-			telemetry.ReportCriticalError(ctx, "template alias must be same for all names", nil)
+			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Template alias must be same for all names: got '%s' and '%s'", alias, al), nil)
 
 			return nil
 		}
@@ -95,8 +89,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		if t != nil {
 			err = id.ValidateCreateTag(*t)
 			if err != nil {
-				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
-				telemetry.ReportCriticalError(ctx, "invalid tag", err)
+				a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err), err)
 
 				return nil
 			}
@@ -111,11 +104,16 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	templateID := id.Generate()
 	public := false
 	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(findTemplateCtx, alias)
+
+	telemetry.SetAttributesWithGin(c, ctx,
+		telemetry.WithTeamID(team.ID.String()),
+		attribute.String("alias", alias),
+	)
+
 	switch {
 	case err == nil:
 		if templateAlias.TeamID != team.ID {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", alias))
-			telemetry.ReportError(findTemplateCtx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", alias))
+			a.sendAPIStoreError(c, findTemplateCtx, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", alias), nil)
 
 			return nil
 		}
@@ -125,8 +123,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	case dberrors.IsNotFoundError(err):
 		// Alias is available and not used
 	default:
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
-		telemetry.ReportCriticalError(findTemplateCtx, "error when getting template alias", err)
+		a.sendAPIStoreError(c, findTemplateCtx, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err), err)
 
 		return nil
 	}
@@ -150,8 +147,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 
 	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, buildReq)
 	if apiError != nil {
-		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
+		a.sendAPIStoreError(c, ctx, apiError.Code, apiError.ClientMsg, apiError.Err)
 
 		return nil
 	}

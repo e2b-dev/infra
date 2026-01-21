@@ -41,17 +41,14 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 
 	body, err := apiutils.ParseBody[api.TemplateBuildStartV2](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
-		telemetry.ReportCriticalError(ctx, "invalid request body", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
 
 		return
 	}
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid build ID: %s", buildID))
-
-		telemetry.ReportCriticalError(ctx, "invalid build ID", err)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid build ID: %s", buildID), err)
 
 		return
 	}
@@ -64,8 +61,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		BuildID:    buildUUID,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err), err)
 
 		return
 	}
@@ -73,21 +69,18 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	dbTeamID := templateBuildDB.Env.TeamID.String()
 	team, apiErr := a.GetTeam(ctx, c, &dbTeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
 	if team.ID != templateBuildDB.Env.TeamID {
-		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
-
-		telemetry.ReportCriticalError(ctx, "user does not have access to the template", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusForbidden, "User does not have access to the template", nil)
 
 		return
 	}
 
-	telemetry.SetAttributes(ctx,
+	telemetry.SetAttributesWithGin(c, ctx,
 		telemetry.WithTeamID(team.ID.String()),
 		telemetry.WithTemplateID(templateID),
 	)
@@ -97,7 +90,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 
 	// Check and cancel concurrent builds
 	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error during template build request", err)
 
 		return
 	}
@@ -107,8 +100,8 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 
 	// only waiting builds can be triggered
 	if build.Status != string(types.BuildStatusWaiting) {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
-		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
+		err = fmt.Errorf("build is not in waiting state: %s", build.Status)
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "build is not in waiting state", err)
 
 		return
 	}
@@ -119,24 +112,21 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		Steps:        body.Steps,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when processing steps: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when processing steps", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when processing steps: %s", err), err)
 
 		return
 	}
 
 	version, err := userAgentToTemplateVersion(ctx, logger.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID)), c.Request.UserAgent())
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err), err)
 
 		return
 	}
 
 	builderNode, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
-		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusServiceUnavailable, "Error when getting available build client", err)
 
 		return
 	}
@@ -155,8 +145,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		BuildUuid:       buildUUID,
 	})
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when updating build", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err))
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err), err)
 
 		return
 	}
@@ -192,8 +181,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	)
 
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "build failed", err, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", err))
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", err), err)
 
 		return
 	}

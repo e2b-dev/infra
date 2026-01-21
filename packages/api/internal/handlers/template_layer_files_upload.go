@@ -18,8 +18,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	// Check if the user has access to the template
 	templateDB, err := a.sqlcDB.GetTemplateByID(ctx, templateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err), err)
 
 		return
 	}
@@ -27,32 +26,30 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	dbTeamID := templateDB.TeamID.String()
 	team, apiErr := a.GetTeam(ctx, c, &dbTeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
 	// Check if the user has access to the template
 	if team.ID != templateDB.TeamID {
-		telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
+		a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err), err)
 
 		return
 	}
 
 	node, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithClusterFallback(templateDB.ClusterID))
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
+		a.sendAPIStoreError(c, ctx, http.StatusServiceUnavailable, "Error when getting available build client", err)
 
 		return
 	}
 
 	resp, err := a.templateManager.InitLayerFileUpload(ctx, utils.WithClusterFallback(templateDB.ClusterID), node.NodeID, team.ID, templateID, hash)
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when requesting layer files upload", err, telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when requesting layer files upload")
+		telemetry.SetAttributes(ctx, telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
+
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when requesting layer files upload", err)
 
 		return
 	}

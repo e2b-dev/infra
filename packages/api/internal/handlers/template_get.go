@@ -28,31 +28,27 @@ func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 
 	team, apiErr := a.GetTeam(ctx, c, nil)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
-	telemetry.SetAttributes(ctx,
+	telemetry.SetAttributesWithGin(c, ctx,
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
 	template, err := a.sqlcDB.GetTemplateByIDWithAliases(ctx, templateID)
 	switch {
 	case dberrors.IsNotFoundError(err):
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template %s not found", templateID))
-		telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Template %s not found", templateID), err)
 
 		return
 	case err != nil:
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
-		telemetry.ReportCriticalError(ctx, "error when getting template", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting template", err)
 
 		return
 	case template.TeamID != team.ID:
-		telemetry.ReportError(ctx, "user doesn't have access to the template", nil, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID))
+		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID), err)
 
 		return
 	}
@@ -70,8 +66,7 @@ func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 		},
 	)
 	if err != nil {
-		telemetry.ReportError(ctx, "error parsing pagination cursor", err)
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid next token")
+		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Invalid next token", err)
 
 		return
 	}
@@ -83,8 +78,7 @@ func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 		BuildLimit: pagination.QueryLimit(),
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting builds")
-		telemetry.ReportCriticalError(ctx, "error when getting builds", err)
+		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting builds", err)
 
 		return
 	}

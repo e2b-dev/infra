@@ -229,14 +229,20 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 // This function wraps sending of an error in the Error format, and
 // handling the failure to marshal that.
-func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
+func (a *APIStore) sendAPIStoreError(g *gin.Context, ctx context.Context, code int, message string, err error) {
+	if code >= 500 {
+		telemetry.ReportCriticalError(ctx, message, err)
+	} else {
+		telemetry.ReportError(ctx, message, err)
+	}
+
 	apiErr := api.Error{
 		Code:    int32(code),
 		Message: message,
 	}
 
-	c.Error(errors.New(message))
-	c.JSON(code, apiErr)
+	g.Error(errors.New(message))
+	g.JSON(code, apiErr)
 }
 
 func (a *APIStore) GetHealth(c *gin.Context) {
