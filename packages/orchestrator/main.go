@@ -188,6 +188,18 @@ func run(config cfg.Config) (success bool) {
 		}
 	}()
 
+	// Start Go runtime metrics collection (goroutines, heap, GC, etc.)
+	stopRuntime, err := tel.StartRuntimeInstrumentation()
+	if err != nil {
+		log.Printf("warning: failed to start runtime instrumentation: %v", err)
+	} else {
+		defer func() {
+			if err := stopRuntime(ctx); err != nil {
+				log.Printf("error while stopping runtime instrumentation: %v", err)
+			}
+		}()
+	}
+
 	globalLogger := utils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,

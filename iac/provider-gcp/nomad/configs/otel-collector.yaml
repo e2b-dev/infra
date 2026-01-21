@@ -153,6 +153,18 @@ receivers:
           system.processes.count:
             enabled: true
           system.processes.created:
+            enabled: false
+
+      # PSI (Pressure Stall Information) - tracks kernel stalls
+      # Shows % of time tasks are stalled waiting for resources
+      # Requires Linux 4.20+ with CONFIG_PSI=y
+      pressure:
+        metrics:
+          system.pressure.cpu:
+            enabled: true
+          system.pressure.memory:
+            enabled: true
+          system.pressure.io:
             enabled: true
 
       # entirely disabled, so we omit the module
@@ -161,37 +173,40 @@ receivers:
       #    system.uptime:
       #      enabled: false
 
-      # process:
-      #   mute_process_all_errors: true
-      #   metrics:
-      #     process.cpu.time:
-      #       enabled: false
-      #     process.disk.io:
-      #       enabled: false
-      #     process.memory.usage:
-      #       enabled: false
-      #     process.memory.virtual:
-      #       enabled: false
-      #     process.context_switches:
-      #       enabled: true
-      #     process.cpu.utilization:
-      #       enabled: false
-      #     process.disk.operations:
-      #       enabled: false
-      #     process.handles:
-      #       enabled: false
-      #     process.memory.utilization:
-      #       enabled: false
-      #     process.open_file_descriptors:
-      #       enabled: false
-      #     process.paging.faults:
-      #       enabled: false
-      #     process.signals_pending:
-      #       enabled: false
-      #     process.threads:
-      #       enabled: false
-      #     process.uptime:
-      #       enabled: false
+      # FD count for orchestrator only
+      process:
+        mute_process_all_errors: true
+        include:
+          match_type: regexp
+          names:
+            - "^orchestrator$"
+        metrics:
+          process.cpu.time:
+            enabled: false
+          process.disk.io:
+            enabled: false
+          process.memory.usage:
+            enabled: false
+          process.memory.virtual:
+            enabled: false
+          process.context_switches:
+            enabled: true
+          process.cpu.utilization:
+            enabled: false
+          process.disk.operations:
+            enabled: false
+          process.handles:
+            enabled: false
+          process.memory.utilization:
+            enabled: false
+          process.open_file_descriptors:
+            enabled: true
+          process.paging.faults:
+            enabled: false
+          process.signals_pending:
+            enabled: false
+          process.threads:
+            enabled: false
 
 processors:
   batch:
@@ -206,6 +221,22 @@ processors:
       - key: node.id
         value: $${NODE_ID}
         action: insert
+
+  # Drop high-cardinality process attributes (e.g., PID changes on restart)
+  resource/drop_process_attrs:
+    attributes:
+      - key: process.pid
+        action: delete
+      - key: process.parent_pid
+        action: delete
+      - key: process.command
+        action: delete
+      - key: process.command_line
+        action: delete
+      - key: process.executable.path
+        action: delete
+      - key: process.owner
+        action: delete
 
   # keep only metrics that are used
   filter/otlp:
@@ -223,6 +254,11 @@ processors:
           - "Click*"
           - "otelcol.*"
           - "pgxpool.*"
+          # Go runtime metrics - only essentials
+          - "runtime\\.go\\.goroutines"
+          - "runtime\\.go\\.gc\\.pause_total"
+          - "runtime\\.go\\.mem\\.heap_inuse"
+          - "runtime\\.go\\.mem\\.heap_alloc"
 
   filter/only_client_allocs:
     metrics:
@@ -415,6 +451,7 @@ service:
         - hostmetrics
       processors:
         - attributes/host_metrics_node
+        - resource/drop_process_attrs
         - metricstransform/single_cpu
         - resourcedetection
         - transform/set-name
