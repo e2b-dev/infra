@@ -47,6 +47,7 @@ type RegisterBuildResponse struct {
 	TemplateID string
 	BuildID    string
 	Aliases    []string
+	Tags       []string
 }
 
 func RegisterBuild(
@@ -363,5 +364,6 @@ func RegisterBuild(
 		TemplateID: data.TemplateID,
 		BuildID:    buildID.String(),
 		Aliases:    aliases,
+		Tags:       tags,
 	}, nil
 }

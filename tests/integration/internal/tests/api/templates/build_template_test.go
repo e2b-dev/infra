@@ -39,7 +39,7 @@ func buildTemplate(
 
 	// Request build
 	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
-		Names:    utils.ToPtr([]string{templateName}),
+		Name:     utils.ToPtr(templateName),
 		CpuCount: utils.ToPtr[int32](2),
 		MemoryMB: utils.ToPtr[int32](1024),
 	}, setup.WithAPIKey(), setup.WithTestsUserAgent())

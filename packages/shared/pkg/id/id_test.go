@@ -118,3 +118,92 @@ func TestParseTemplateIDWithTag(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+func TestValidateAndDeduplicateTags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   []string
+		want    []string
+		wantErr bool
+	}{
+		{
+			name:    "valid tags normalized to lowercase",
+			input:   []string{"V1", "Prod"},
+			want:    []string{"v1", "prod"},
+			wantErr: false,
+		},
+		{
+			name:    "duplicates removed",
+			input:   []string{"v1", "v1", "v2"},
+			want:    []string{"v1", "v2"},
+			wantErr: false,
+		},
+		{
+			name:    "case-insensitive deduplication",
+			input:   []string{"V1", "v1", "V1"},
+			want:    []string{"v1"},
+			wantErr: false,
+		},
+		{
+			name:    "whitespace trimmed",
+			input:   []string{"  v1  ", "  v2  "},
+			want:    []string{"v1", "v2"},
+			wantErr: false,
+		},
+		{
+			name:    "empty input returns empty slice",
+			input:   []string{},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name:    "invalid tag with special characters",
+			input:   []string{"v1", "invalid!tag"},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "UUID tag rejected",
+			input:   []string{"550e8400-e29b-41d4-a716-446655440000"},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := ValidateAndDeduplicateTags(tt.input)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateAndDeduplicateTags() error = %v, wantErr %v", err, tt.wantErr)
+
+				return
+			}
+
+			if tt.wantErr {
+				return
+			}
+
+			if len(got) != len(tt.want) {
+				t.Errorf("ValidateAndDeduplicateTags() got %v, want %v", got, tt.want)
+
+				return
+			}
+
+			// Check all expected tags are present (order may vary due to map iteration)
+			gotSet := make(map[string]bool)
+			for _, tag := range got {
+				gotSet[tag] = true
+			}
+			for _, tag := range tt.want {
+				if !gotSet[tag] {
+					t.Errorf("ValidateAndDeduplicateTags() missing tag %v, got %v", tag, got)
+				}
+			}
+		})
+	}
+}

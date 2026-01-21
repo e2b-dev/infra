@@ -22,7 +22,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	}
 
 	t := requestTemplateBuild(ctx, c, a, api.TemplateBuildRequestV3{
-		Names:    &[]string{body.Alias},
+		Name:     &body.Alias,
 		CpuCount: body.CpuCount,
 		MemoryMB: body.MemoryMB,
 		TeamID:   body.TeamID,

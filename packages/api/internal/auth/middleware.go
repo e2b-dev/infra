@@ -12,14 +12,13 @@ import (
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -80,8 +79,13 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 	// Now, we need to get the API key from the request
 	headerKey, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		err = fmt.Errorf("%s: %w", a.errorMessage, err)
-		trace.SpanFromContext(ctx).RecordError(err, trace.WithStackTrace(true))
+		telemetry.ReportError(ctx,
+			"authorization header is missing",
+			err,
+			attribute.String("error.message", a.errorMessage),
+		)
+
+		ginCtx.Status(http.StatusUnauthorized)
 
 		return err
 	}
@@ -91,8 +95,15 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 	// If the API key is valid, we will get a result back
 	result, validationError := a.validationFunction(ctx, ginCtx, headerKey)
 	if validationError != nil {
-		logger.L().Info(ctx, "validation error", zap.Error(validationError.Err))
-		telemetry.ReportError(ctx, a.errorMessage, validationError.Err)
+		telemetry.ReportError(ctx,
+			"validation error",
+			validationError.Err,
+			attribute.String("error.message", a.errorMessage),
+			attribute.Int("http.status_code", validationError.Code),
+			attribute.String("http.status_text", http.StatusText(validationError.Code)),
+		)
+
+		ginCtx.Status(validationError.Code)
 
 		var forbiddenError *db.TeamForbiddenError
 		if errors.As(validationError.Err, &forbiddenError) {
@@ -202,6 +213,10 @@ func CreateAuthenticationFunc(
 
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		ginCtx := middleware.GetGinContext(ctx)
+
+		// Set the processing start time after body parsing to exclude slow clients from metrics duration.
+		metrics.SetProcessingStartTime(ginCtx)
+
 		ctx, span := tracer.Start(ginCtx.Request.Context(), "authenticate")
 		defer span.End()
 

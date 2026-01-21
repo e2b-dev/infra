@@ -3,9 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"maps"
 	"net/http"
-	"slices"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -27,7 +25,8 @@ func (a *APIStore) PostV3Templates(c *gin.Context) {
 
 	body, err := apiutils.ParseBody[api.TemplateBuildRequestV3](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
+		telemetry.ReportCriticalError(ctx, "invalid request body", err)
 
 		return
 	}
@@ -44,58 +43,49 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	// Prepare info for rebuilding env
 	team, apiErr := a.GetTeam(ctx, c, body.TeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team, limits", apiErr.Err)
 
 		return nil
 	}
 
-	names := utils.DerefOrDefault(body.Names, nil)
-
-	// Only alias or names can be used, not both
-	if len(names) > 0 && body.Alias != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Alias is deprecated, use names instead", nil)
-
-		return nil
-	}
-
-	if body.Alias != nil {
-		names = []string{*body.Alias}
-	}
-
-	if len(names) == 0 {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "At least one name is required", nil)
+	// Determine the input based on which field is provided
+	var input string
+	switch {
+	case body.Name != nil:
+		input = *body.Name
+	case body.Alias != nil:
+		// Deprecated: handle alias field for backward compatibility
+		input = *body.Alias
+	default:
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Name is required")
+		telemetry.ReportError(ctx, "name is required", nil)
 
 		return nil
 	}
 
-	var alias string
-	tags := make(map[string]bool)
-	for _, name := range names {
-		al, t, err := id.ParseTemplateIDOrAliasWithTag(name)
-		if err != nil {
-			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", err), err)
+	// Parse template ID/alias and optional tag from input (e.g., "template:v1" -> alias="template", tag="v1")
+	alias, t, err := id.ParseTemplateIDOrAliasWithTag(input)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", err))
+		telemetry.ReportError(ctx, "invalid name", err)
 
-			return nil
-		}
+		return nil
+	}
 
-		// The template alias must be the same for all aliases with tags
-		if alias != al && alias != "" {
-			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Template alias must be same for all names: got '%s' and '%s'", alias, al), nil)
+	// Collect tags: tag from input (if present) + additional tags from body.Tags
+	allTags := utils.DerefOrDefault(body.Tags, nil)
+	if t != nil {
+		allTags = append([]string{*t}, allTags...)
+	}
 
-			return nil
-		}
+	// Validate and deduplicate all tags
+	tags, err := id.ValidateAndDeduplicateTags(allTags)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
+		telemetry.ReportError(ctx, "invalid tag", err)
 
-		alias = al
-		if t != nil {
-			err = id.ValidateCreateTag(*t)
-			if err != nil {
-				a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err), err)
-
-				return nil
-			}
-
-			tags[*t] = true
-		}
+		return nil
 	}
 
 	// Create the build, find the template ID by alias or generate a new one
@@ -104,16 +94,11 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	templateID := id.Generate()
 	public := false
 	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(findTemplateCtx, alias)
-
-	ctx = telemetry.SetAttributes(ctx,
-		telemetry.WithTeamID(team.ID.String()),
-		attribute.String("alias", alias),
-	)
-
 	switch {
 	case err == nil:
 		if templateAlias.TeamID != team.ID {
-			a.sendAPIStoreError(c, findTemplateCtx, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", alias), nil)
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", alias))
+			telemetry.ReportError(findTemplateCtx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", alias))
 
 			return nil
 		}
@@ -123,7 +108,8 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	case dberrors.IsNotFoundError(err):
 		// Alias is available and not used
 	default:
-		a.sendAPIStoreError(c, findTemplateCtx, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err), err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
+		telemetry.ReportCriticalError(findTemplateCtx, "error when getting template alias", err)
 
 		return nil
 	}
@@ -137,7 +123,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		UserID:             nil,
 		Team:               team,
 		Alias:              &alias,
-		Tags:               slices.Collect(maps.Keys(tags)),
+		Tags:               tags,
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV2LatestVersion,
@@ -147,7 +133,8 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 
 	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, buildReq)
 	if apiError != nil {
-		a.sendAPIStoreError(c, ctx, apiError.Code, apiError.ClientMsg, apiError.Err)
+		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
 
 		return nil
 	}
@@ -160,7 +147,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", alias).
-		Set("tags", slices.Collect(maps.Keys(tags))),
+		Set("tags", tags),
 	)
 	span.End()
 
@@ -168,6 +155,8 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
 		Aliases:    template.Aliases,
+		Names:      template.Aliases,
+		Tags:       template.Tags,
 		Public:     public,
 	}
 }

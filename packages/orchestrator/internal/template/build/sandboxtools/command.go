@@ -235,7 +235,7 @@ func SyncChangesToDisk(
 		ctx,
 		proxy,
 		sandboxID,
-		"sync",
+		"/usr/bin/busybox sync",
 		metadata.Context{
 			User: "root",
 		},
