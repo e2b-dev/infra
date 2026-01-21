@@ -156,7 +156,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 		// If no compression, pretend each chunk is a frame.
 		startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
 		startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
-		nChunks := header.BlockIdx(length, storage.MemoryChunkSize)
+		nChunks := header.BlockIdx(length+storage.MemoryChunkSize-1, storage.MemoryChunkSize)
 		fmt.Printf("<>/<> Chunker.fetchToCache %s: no compression, startingChunk=%d nChunks=%d\n", c.objectPath, startingChunk, nChunks)
 
 		framesToFetch = &storage.FrameTable{

@@ -258,8 +258,10 @@ func (c *Cache) isCached(off, length int64) bool {
 }
 
 func (c *Cache) setIsCached(r storage.Range) {
+	fmt.Printf("<>/<> Cache.setIsCached: %s: %s\n", c.filePath, r)
 	for _, blockOff := range header.BlocksOffsets(int64(r.Length), c.blockSize) {
 		c.cached.Store(r.Start+blockOff, struct{}{})
+		fmt.Printf("<>/<> Cache.setIsCached: %s: adding block at offset %#x\n", c.filePath, r.Start+blockOff)
 	}
 }
 
