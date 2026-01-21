@@ -36,7 +36,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	body, err := utils.ParseBody[api.PostSandboxesSandboxIDResumeJSONRequestBody](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
 
 		return
 	}
@@ -46,7 +46,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		timeout = time.Duration(*body.Timeout) * time.Second
 
 		if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
-			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours), nil)
+			a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours), nil)
 
 			return
 		}
@@ -54,14 +54,14 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	sandboxID = utils.ShortID(sandboxID)
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		telemetry.WithSandboxID(sandboxID),
 	)
 
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 	if err == nil {
 		if sandboxData.TeamID != teamInfo.Team.ID {
-			a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID), nil)
+			a.sendAPIStoreError(ctx, c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID), nil)
 
 			return
 		}
@@ -71,16 +71,16 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
 			err = a.orchestrator.WaitForStateChange(ctx, sandboxID)
 			if err != nil {
-				a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error waiting for sandbox to pause", err)
+				a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error waiting for sandbox to pause", err)
 
 				return
 			}
 		case sandbox.StateKilling:
-			a.sendAPIStoreError(c, ctx, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found", nil)
+			a.sendAPIStoreError(ctx, c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found", nil)
 
 			return
 		case sandbox.StateRunning:
-			a.sendAPIStoreError(c, ctx, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID), nil)
+			a.sendAPIStoreError(ctx, c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID), nil)
 
 			logger.L().Debug(ctx, "Sandbox is already running",
 				logger.WithSandboxID(sandboxID),
@@ -92,7 +92,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 			return
 		default:
 			logger.L().Error(ctx, "Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(sandboxData.State)))
-			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Sandbox is in an unknown state", nil)
+			a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Sandbox is in an unknown state", nil)
 
 			return
 		}
@@ -101,19 +101,19 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			a.sendAPIStoreError(c, ctx, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found", nil)
+			a.sendAPIStoreError(ctx, c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found", nil)
 
 			return
 		}
 
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting snapshot", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when getting snapshot", err)
 
 		return
 	}
 
 	if lastSnapshot.Snapshot.TeamID != teamInfo.Team.ID {
 		err = fmt.Errorf("snapshot for sandbox '%s' belongs to team '%s', expected team '%s'", sandboxID, lastSnapshot.Snapshot.TeamID.String(), teamInfo.Team.ID.String())
-		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID), err)
+		a.sendAPIStoreError(ctx, c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID), err)
 
 		return
 	}
@@ -142,7 +142,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			a.sendAPIStoreError(c, ctx, tokenErr.Code, tokenErr.ClientMsg, tokenErr.Err)
+			a.sendAPIStoreError(ctx, c, tokenErr.Code, tokenErr.ClientMsg, tokenErr.Err)
 
 			return
 		}
@@ -175,7 +175,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		nil, // mcp
 	)
 	if createErr != nil {
-		a.sendAPIStoreError(c, ctx, createErr.Code, createErr.ClientMsg, createErr.Err)
+		a.sendAPIStoreError(ctx, c, createErr.Code, createErr.ClientMsg, createErr.Err)
 
 		return
 	}

@@ -78,7 +78,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	metadataFilter, err := utils.ParseMetadata(ctx, params.Metadata)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err), err)
 
 		return
 	}
@@ -124,14 +124,14 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		},
 	)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Invalid next token", err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, "Invalid next token", err)
 
 		return
 	}
 
 	metadataFilter, err := utils.ParseMetadata(ctx, params.Metadata)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Error parsing metadata", err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, "Error parsing metadata", err)
 
 		return
 	}
@@ -174,7 +174,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())
 		if err != nil {
-			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error getting paused sandboxes", err)
+			a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error getting paused sandboxes", err)
 
 			return
 		}

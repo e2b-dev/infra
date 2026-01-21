@@ -23,14 +23,14 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 	body, err := utils.ParseBody[api.UpdateTeamAPIKey](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
 
 		return
 	}
 
 	apiKeyIDParsed, err := uuid.Parse(apiKeyID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err), err)
 
 		return
 	}
@@ -49,7 +49,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 		return
 	} else if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when updating team API key name: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error when updating team API key name: %s", err), err)
 
 		return
 	}
@@ -102,7 +102,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 	apiKeyIDParsed, err := uuid.Parse(apiKeyID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err), err)
 
 		return
 	}
@@ -114,7 +114,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		TeamID: teamID,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err), err)
 
 		return
 	}
@@ -135,21 +135,21 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 
 	body, err := utils.ParseBody[api.NewTeamAPIKey](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
 
 		return
 	}
 
 	apiKey, err := team.CreateAPIKey(ctx, a.sqlcDB, teamID, userID, body.Name)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when creating team API key: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error when creating team API key: %s", err), err)
 
 		return
 	}
 
 	user, err := a.sqlcDB.GetUser(ctx, userID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err), err)
 
 		return
 	}

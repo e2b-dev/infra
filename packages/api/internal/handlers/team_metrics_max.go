@@ -25,7 +25,7 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	if teamID != team.ID.String() {
-		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID), nil)
+		a.sendAPIStoreError(ctx, c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID), nil)
 
 		return
 	}
@@ -54,7 +54,7 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 
 	start, end, err := clickhouseUtils.ValidateRange(start, end)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, err.Error(), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, err.Error(), err)
 
 		return
 	}
@@ -67,12 +67,12 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 	case api.SandboxStartRate:
 		maxMetric, err = a.clickhouseStore.QueryMaxStartRateTeamMetrics(ctx, teamID, start, end, metrics.ExportPeriod)
 	default:
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("invalid metric: %s", params.Metric), nil)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("invalid metric: %s", params.Metric), nil)
 
 		return
 	}
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error querying max team metrics", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error querying max team metrics", err)
 
 		return
 	}

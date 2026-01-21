@@ -27,7 +27,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Invalid build id", err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, "Invalid build id", err)
 
 		return
 	}
@@ -36,12 +36,12 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if err != nil {
 		var notFoundErr templatecache.TemplateBuildInfoNotFoundError
 		if errors.As(err, &notFoundErr) {
-			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Build '%s' not found", buildUUID), err)
+			a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Build '%s' not found", buildUUID), err)
 
 			return
 		}
 
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting template", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when getting template", err)
 
 		return
 	}
@@ -49,18 +49,18 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	infoTeamID := buildInfo.TeamID.String()
 	team, apiErr := a.GetTeam(ctx, c, &infoTeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
 	if team.ID != buildInfo.TeamID {
-		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID), nil)
+		a.sendAPIStoreError(ctx, c, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID), nil)
 
 		return
 	}
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 		telemetry.WithBuildID(buildUUID.String()),
 		telemetry.WithTemplateID(templateID),
@@ -102,14 +102,14 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	cv := sharedUtils.DerefOrDefault(buildInfo.Version, templates.TemplateV1Version)
 	legacyLogs, err := sharedUtils.IsSmallerVersion(cv, templates.TemplateV2BetaVersion)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when processing build logs", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when processing build logs", err)
 
 		return
 	}
 
 	cluster, ok := a.clusters.GetClusterById(utils.WithClusterFallback(team.ClusterID))
 	if !ok {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting cluster", nil)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when getting cluster", nil)
 
 		return
 	}
@@ -121,7 +121,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	logs, apiErr := cluster.GetResources().GetBuildLogs(ctx, buildInfo.NodeID, templateID, buildID, offset, limit, apiToLogLevel(params.Level), nil, api.LogsDirectionForward, nil)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}

@@ -24,7 +24,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 
 	cleanedAliasOrTemplateID, _, err := id.ParseTemplateIDOrAliasWithTag(aliasOrTemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID), err)
 
 		return
 	}
@@ -33,12 +33,12 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	template, err := a.sqlcDB.GetTemplateByIdOrAlias(ctx, cleanedAliasOrTemplateID)
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
-			a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", aliasOrTemplateID), err)
+			a.sendAPIStoreError(ctx, c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", aliasOrTemplateID), err)
 
 			return
 		}
 
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting template", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when getting template", err)
 
 		return
 	}
@@ -47,19 +47,19 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 
 	team, apiErr := a.GetTeam(ctx, c, sharedUtils.ToPtr(template.TeamID.String()))
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		telemetry.WithTemplateID(templateID),
 	)
 
 	if team.ID != template.TeamID {
-		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", aliasOrTemplateID), nil)
+		a.sendAPIStoreError(ctx, c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", aliasOrTemplateID), nil)
 
 		return
 	}
@@ -67,13 +67,13 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	// check if base template has snapshots
 	hasSnapshots, err := a.sqlcDB.ExistsTemplateSnapshots(ctx, templateID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when checking if template has snapshots", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when checking if template has snapshots", err)
 
 		return
 	}
 
 	if hasSnapshots {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are paused sandboxes using it", templateID), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are paused sandboxes using it", templateID), err)
 
 		return
 	}
@@ -81,7 +81,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	// Get exclusive builds for cleanup (builds only assigned to this template).
 	builds, err := a.sqlcDB.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting template builds", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when getting template builds", err)
 
 		return
 	}
@@ -91,7 +91,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		TeamID:     team.ID,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when deleting template", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when deleting template", err)
 
 		return
 	}

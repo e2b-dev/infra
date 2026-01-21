@@ -72,14 +72,14 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID api.TemplateID, buildID api.BuildID) {
 	ctx := c.Request.Context()
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		telemetry.WithTemplateID(templateID),
 		telemetry.WithBuildID(buildID),
 	)
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid build ID: %s", buildID), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid build ID: %s", buildID), err)
 
 		return
 	}
@@ -88,7 +88,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	teams, err := dbapi.GetTeamsByUser(ctx, a.sqlcDB, userID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err), err)
 
 		return
 	}
@@ -101,7 +101,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		BuildID:    buildUUID,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err), err)
 
 		return
 	}
@@ -117,12 +117,12 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	}
 
 	if team == nil {
-		a.sendAPIStoreError(c, ctx, http.StatusForbidden, "User does not have access to the template", errors.New("user does not have access to the template"))
+		a.sendAPIStoreError(ctx, c, http.StatusForbidden, "User does not have access to the template", errors.New("user does not have access to the template"))
 
 		return
 	}
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		attribute.String("user.id", userID.String()),
 		telemetry.WithTeamID(team.ID.String()),
 	)
@@ -132,7 +132,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	// Check and cancel concurrent builds
 	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error during template build request", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error during template build request", err)
 
 		return
 	}
@@ -142,14 +142,14 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	// only waiting builds can be triggered
 	if build.Status != string(dbtypes.BuildStatusWaiting) {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status))
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status))
 
 		return
 	}
 
 	builderNode, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusServiceUnavailable, "Error when getting available build client", err)
+		a.sendAPIStoreError(ctx, c, http.StatusServiceUnavailable, "Error when getting available build client", err)
 
 		return
 	}
@@ -168,7 +168,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		BuildUuid:       buildUUID,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err), err)
 
 		return
 	}
@@ -207,7 +207,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	)
 
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", err), err)
 
 		return
 	}

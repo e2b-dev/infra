@@ -16,7 +16,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 
 	results, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when starting transaction", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when starting transaction", err)
 
 		return
 	}
@@ -26,7 +26,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 		// We create a new API key for the CLI and backwards compatibility with API Keys hashing
 		apiKey, err := team.CreateAPIKey(ctx, a.sqlcDB, row.Team.ID, userID, "CLI login/configure")
 		if err != nil {
-			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when creating team API key", err)
+			a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when creating team API key", err)
 
 			return
 		}

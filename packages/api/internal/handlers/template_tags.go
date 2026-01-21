@@ -25,7 +25,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 
 	body, err := utils.ParseBody[api.AssignTemplateTagsRequest](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
 
 		return
 	}
@@ -33,21 +33,21 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	// Parse the target template (name:tag format)
 	targetAlias, targetTag, err := id.ParseTemplateIDOrAliasWithTag(body.Target)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid target template format: %s", body.Target), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid target template format: %s", body.Target), err)
 
 		return
 	}
 
 	// Validate tags
 	if len(body.Tags) == 0 {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "At least one tag is required", nil)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, "At least one tag is required", nil)
 
 		return
 	}
 
 	client, tx, err := a.sqlcDB.WithTx(ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error beginning transaction", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error beginning transaction", err)
 
 		return
 	}
@@ -61,12 +61,12 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	})
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
-			a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", body.Target), err)
+			a.sendAPIStoreError(ctx, c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", body.Target), err)
 
 			return
 		}
 
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error getting template", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error getting template", err)
 
 		return
 	}
@@ -77,26 +77,26 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	// Get and verify team access
 	team, apiErr := a.GetTeam(ctx, c, sharedUtils.ToPtr(template.TeamID.String()))
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		telemetry.WithTemplateID(template.ID),
 	)
 
 	if template.TeamID != team.ID {
-		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", targetAlias), nil)
+		a.sendAPIStoreError(ctx, c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", targetAlias), nil)
 
 		return
 	}
 
 	tags, err := id.ValidateAndDeduplicateTags(body.Tags)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err), err)
 
 		return
 	}
@@ -109,7 +109,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 			Tag:        tag,
 		})
 		if err != nil {
-			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error creating tag assignment", err)
+			a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error creating tag assignment", err)
 
 			return
 		}
@@ -117,7 +117,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error committing transaction", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error committing transaction", err)
 
 		return
 	}
@@ -154,7 +154,7 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 
 	body, err := utils.ParseBody[api.DeleteTemplateTagsRequest](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
 
 		return
 	}
@@ -162,7 +162,7 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	// Parse and validate the template name
 	templateName, tagFromName, err := id.ParseTemplateIDOrAliasWithTag(body.Name)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid template name format: %s", body.Name), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid template name format: %s", body.Name), err)
 		telemetry.ReportError(ctx, "invalid template name format", err)
 
 		return
@@ -170,7 +170,7 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 
 	// Reject if name contains a tag - tags should be specified in the tags field
 	if tagFromName != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Template name should not contain a tag, use the 'tags' field instead", nil)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, "Template name should not contain a tag, use the 'tags' field instead", nil)
 
 		return
 	}
@@ -178,21 +178,21 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	// Validate and normalize tags
 	tags, err := id.ValidateAndDeduplicateTags(body.Tags)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err), err)
 
 		return
 	}
 
 	// Validate tags
 	if len(tags) == 0 {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "At least one tag is required", nil)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, "At least one tag is required", nil)
 
 		return
 	}
 
 	// Validate that no tag is the default tag
 	if slices.Contains(tags, id.DefaultTag) {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Cannot delete the '%s' tag", id.DefaultTag), nil)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Cannot delete the '%s' tag", id.DefaultTag), nil)
 
 		return
 	}
@@ -201,12 +201,12 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	template, err := a.sqlcDB.GetTemplateByIdOrAlias(ctx, templateName)
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
-			a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateName), err)
+			a.sendAPIStoreError(ctx, c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateName), err)
 
 			return
 		}
 
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error getting template", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error getting template", err)
 
 		return
 	}
@@ -214,18 +214,18 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	// Get and verify team access
 	team, apiErr := a.GetTeam(ctx, c, sharedUtils.ToPtr(template.TeamID.String()))
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
 	if template.TeamID != team.ID {
-		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateName), nil)
+		a.sendAPIStoreError(ctx, c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateName), nil)
 
 		return
 	}
 
-	telemetry.SetAttributes(ctx,
+	telemetry.WithAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		telemetry.WithTemplateID(template.ID),
@@ -237,7 +237,7 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 		Tags:       tags,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error deleting tag assignments", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error deleting tag assignments", err)
 
 		return
 	}

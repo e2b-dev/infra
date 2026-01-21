@@ -16,7 +16,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 
 	body, err := apiutils.ParseBody[api.TemplateBuildRequestV2](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
 
 		return
 	}

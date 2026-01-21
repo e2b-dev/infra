@@ -229,7 +229,7 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 // This function wraps sending of an error in the Error format, and
 // handling the failure to marshal that.
-func (a *APIStore) sendAPIStoreError(g *gin.Context, ctx context.Context, code int, message string, err error) {
+func (a *APIStore) sendAPIStoreError(ctx context.Context, g *gin.Context, code int, message string, err error) {
 	if code >= 500 {
 		telemetry.ReportCriticalError(ctx, message, err)
 	} else {

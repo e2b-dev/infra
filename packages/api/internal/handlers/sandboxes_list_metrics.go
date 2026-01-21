@@ -35,7 +35,7 @@ func (a *APIStore) getSandboxesMetrics(
 		sandboxIDs[i] = utils.ShortID(id)
 	}
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		attribute.Int("sandboxes.count", len(sandboxIDs)),
 	)
 
@@ -71,13 +71,13 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
 	if len(params.SandboxIds) > maxSandboxMetricsCount {
 		logger.L().Error(ctx, "Too many sandboxes requested", zap.Int("requested_count", len(params.SandboxIds)), zap.Int("max_count", maxSandboxMetricsCount), logger.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Too many sandboxes requested, maximum is %d", maxSandboxMetricsCount), nil)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Too many sandboxes requested, maximum is %d", maxSandboxMetricsCount), nil)
 
 		return
 	}
@@ -96,7 +96,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, utils.WithClusterFallback(team.ClusterID), params.SandboxIds)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}

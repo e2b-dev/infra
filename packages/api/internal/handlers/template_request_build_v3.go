@@ -24,7 +24,7 @@ func (a *APIStore) PostV3Templates(c *gin.Context) {
 
 	body, err := apiutils.ParseBody[api.TemplateBuildRequestV3](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
 
 		return
 	}
@@ -41,7 +41,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	// Prepare info for rebuilding env
 	team, apiErr := a.GetTeam(ctx, c, body.TeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return nil
 	}
@@ -55,7 +55,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		// Deprecated: handle alias field for backward compatibility
 		input = *body.Alias
 	default:
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Name is required", nil)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, "Name is required", nil)
 
 		return nil
 	}
@@ -63,7 +63,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	// Parse template ID/alias and optional tag from input (e.g., "template:v1" -> alias="template", tag="v1")
 	alias, t, err := id.ParseTemplateIDOrAliasWithTag(input)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", err), err)
 
 		return nil
 	}
@@ -77,7 +77,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	// Validate and deduplicate all tags
 	tags, err := id.ValidateAndDeduplicateTags(allTags)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err), err)
 
 		return nil
 	}
@@ -91,7 +91,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	switch {
 	case err == nil:
 		if templateAlias.TeamID != team.ID {
-			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", alias), nil)
+			a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", alias), nil)
 
 			return nil
 		}
@@ -101,7 +101,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	case dberrors.IsNotFoundError(err):
 		// Alias is available and not used
 	default:
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err), err)
 
 		return nil
 	}
@@ -125,7 +125,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 
 	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, buildReq)
 	if apiError != nil {
-		a.sendAPIStoreError(c, ctx, apiError.Code, apiError.ClientMsg, apiError.Err)
+		a.sendAPIStoreError(ctx, c, apiError.Code, apiError.ClientMsg, apiError.Err)
 
 		return nil
 	}

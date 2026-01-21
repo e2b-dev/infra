@@ -15,7 +15,7 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 
 	team, apiErr := a.GetTeam(ctx, c, nil)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
@@ -23,12 +23,12 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 	result, err := a.sqlcDB.GetTemplateAliasByAlias(ctx, alias)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			a.sendAPIStoreError(c, ctx, http.StatusNotFound, "Template alias not found", err)
+			a.sendAPIStoreError(ctx, c, http.StatusNotFound, "Template alias not found", err)
 
 			return
 		}
 
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting template alias", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when getting template alias", err)
 
 		return
 	}
@@ -36,7 +36,7 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 	// Team is not alias owner so we are returning forbidden
 	// We don't want to return not found here as this endpoint is used for alias existence even for non owners
 	if result.TeamID != team.ID {
-		a.sendAPIStoreError(c, ctx, http.StatusForbidden, "You don't have access to this template alias", err)
+		a.sendAPIStoreError(ctx, c, http.StatusForbidden, "You don't have access to this template alias", err)
 
 		return
 	}

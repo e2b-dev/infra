@@ -53,7 +53,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	body, err := utils.ParseBody[api.PostSandboxesJSONRequestBody](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
 
 		return
 	}
@@ -63,7 +63,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	// Parse template ID and optional tag in the format "templateID:tag"
 	cleanedAliasOrEnvID, tag, err := id.ParseTemplateIDOrAliasWithTag(body.TemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", err), err)
 
 		return
 	}
@@ -74,7 +74,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, tag, teamInfo.Team.ID, clusterID, true)
 	if checkErr != nil {
-		a.sendAPIStoreError(c, ctx, checkErr.Code, checkErr.ClientMsg, checkErr.Err)
+		a.sendAPIStoreError(ctx, c, checkErr.Code, checkErr.ClientMsg, checkErr.Err)
 
 		return
 	}
@@ -95,7 +95,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}).Debug(ctx, "Started creating sandbox")
 
 	alias := firstAlias(env.Aliases)
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		telemetry.WithTemplateID(env.TemplateID),
 		telemetry.WithSandboxID(sandboxID),
 		attribute.String("env.alias", alias),
@@ -124,7 +124,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		timeout = time.Duration(*body.Timeout) * time.Second
 
 		if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
-			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours), nil)
+			a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours), nil)
 
 			return
 		}
@@ -139,7 +139,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if body.Secure != nil && *body.Secure == true {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			a.sendAPIStoreError(c, ctx, tokenErr.Code, tokenErr.ClientMsg, tokenErr.Err)
+			a.sendAPIStoreError(ctx, c, tokenErr.Code, tokenErr.ClientMsg, tokenErr.Err)
 
 			return
 		}
@@ -152,7 +152,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	var network *types.SandboxNetworkConfig
 	if n := body.Network; n != nil {
 		if err := validateNetworkConfig(n); err != nil {
-			a.sendAPIStoreError(c, ctx, err.Code, err.ClientMsg, err.Err)
+			a.sendAPIStoreError(ctx, c, err.Code, err.ClientMsg, err.Err)
 
 			return
 		}
@@ -171,7 +171,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		// Make sure envd seucre access is enforced when public access is disabled,
 		// this is requirement forcing users using newer features to secure sandboxes properly.
 		if !sharedUtils.DerefOrDefault(network.Ingress.AllowPublicAccess, types.AllowPublicAccessDefault) && envdAccessToken == nil {
-			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "You cannot create a sandbox without public access unless you enable secure envd access via 'secure' flag.", nil)
+			a.sendAPIStoreError(ctx, c, http.StatusBadRequest, "You cannot create a sandbox without public access unless you enable secure envd access via 'secure' flag.", nil)
 
 			return
 		}
@@ -197,7 +197,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		mcp,
 	)
 	if createErr != nil {
-		a.sendAPIStoreError(c, ctx, createErr.Code, createErr.ClientMsg, createErr.Err)
+		a.sendAPIStoreError(ctx, c, createErr.Code, createErr.ClientMsg, createErr.Err)
 
 		return
 	}

@@ -30,7 +30,7 @@ func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.
 			return
 		}
 
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting node details", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when getting node details", err)
 
 		return
 	}
@@ -43,7 +43,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 
 	body, err := utils.ParseBody[api.PostNodesNodeIDJSONRequestBody](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
 
 		return
 	}
@@ -58,7 +58,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 
 	err = node.SendStatusChange(ctx, body.Status)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error when sending status change: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error when sending status change: %s", err), err)
 
 		return
 	}

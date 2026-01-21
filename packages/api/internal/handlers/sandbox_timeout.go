@@ -26,7 +26,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	body, err := utils.ParseBody[api.PostSandboxesSandboxIDTimeoutJSONBody](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err), err)
 
 		return
 	}
@@ -39,20 +39,20 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusNotFound, "Sandbox not found", nil)
+		a.sendAPIStoreError(ctx, c, http.StatusNotFound, "Sandbox not found", nil)
 
 		return
 	}
 
 	if sandboxData.TeamID != team.ID {
-		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID), nil)
+		a.sendAPIStoreError(ctx, c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID), nil)
 
 		return
 	}
 
 	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, true)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}

@@ -15,26 +15,26 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 
 	team, apiErr := a.GetTeam(ctx, c, params.TeamID)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
 	if params.TeamID != nil {
 		if team.ID.String() != *params.TeamID {
-			a.sendAPIStoreError(c, ctx, http.StatusBadRequest, "Team ID param mismatch with the API key", nil)
+			a.sendAPIStoreError(ctx, c, http.StatusBadRequest, "Team ID param mismatch with the API key", nil)
 
 			return
 		}
 	}
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
 	envs, err := a.sqlcDB.GetTeamTemplates(ctx, team.ID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error when getting templates", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when getting templates", err)
 
 		return
 	}

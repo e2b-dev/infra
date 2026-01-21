@@ -23,14 +23,14 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 	body, err := utils.ParseBody[api.TemplateUpdateRequest](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err), err)
 
 		return
 	}
 
 	cleanedAliasOrTemplateID, _, err := id.ParseTemplateIDOrAliasWithTag(aliasOrTemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, ctx, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID), err)
+		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID), err)
 
 		return
 	}
@@ -38,31 +38,31 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	template, err := a.sqlcDB.GetTemplateByIdOrAlias(ctx, cleanedAliasOrTemplateID)
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
-			a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", aliasOrTemplateID), err)
+			a.sendAPIStoreError(ctx, c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", aliasOrTemplateID), err)
 
 			return
 		}
 
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error getting template", err)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error getting template", err)
 
 		return
 	}
 
 	team, apiErr := a.GetTeam(ctx, c, sharedUtils.ToPtr(template.TeamID.String()))
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		telemetry.WithTemplateID(template.ID),
 	)
 
 	if template.TeamID != team.ID {
-		a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", aliasOrTemplateID), err)
+		a.sendAPIStoreError(ctx, c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", aliasOrTemplateID), err)
 
 		return
 	}
@@ -76,12 +76,12 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		})
 		if err != nil {
 			if dberrors.IsNotFoundError(err) {
-				a.sendAPIStoreError(c, ctx, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID), err)
+				a.sendAPIStoreError(ctx, c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID), err)
 
 				return
 			}
 
-			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, "Error updating template", err)
+			a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error updating template", err)
 
 			return
 		}

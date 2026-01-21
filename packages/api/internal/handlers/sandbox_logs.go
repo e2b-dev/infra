@@ -18,7 +18,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 	sandboxID = utils.ShortID(sandboxID)
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 		telemetry.WithSandboxID(sandboxID),
 	)
@@ -26,14 +26,14 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 	clusterID := utils.WithClusterFallback(team.ClusterID)
 	cluster, ok := a.clusters.GetClusterById(clusterID)
 	if !ok {
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error getting cluster '%s'", clusterID), nil)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error getting cluster '%s'", clusterID), nil)
 
 		return
 	}
 
 	logs, apiErr := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, params.Start, params.Limit)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
+		a.sendAPIStoreError(ctx, c, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}

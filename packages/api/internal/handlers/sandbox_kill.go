@@ -80,7 +80,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 	teamID := team.ID
 
-	ctx = telemetry.SetAttributes(ctx,
+	ctx = telemetry.WithAttributes(ctx,
 		telemetry.WithSandboxID(sandboxID),
 		telemetry.WithTeamID(teamID.String()),
 	)
@@ -92,7 +92,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	sbx, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 	if err == nil {
 		if sbx.TeamID != teamID {
-			a.sendAPIStoreError(c, ctx, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID), err)
+			a.sendAPIStoreError(ctx, c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID), err)
 
 			return
 		}
@@ -104,11 +104,11 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		case errors.Is(err, orchestrator.ErrSandboxNotFound):
 			logger.L().Debug(ctx, "Sandbox not found", logger.WithSandboxID(sandboxID))
 		case errors.Is(err, orchestrator.ErrSandboxOperationFailed):
-			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err), err)
+			a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err), err)
 
 			return
 		default:
-			a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err), err)
+			a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err), err)
 
 			return
 		}
@@ -122,7 +122,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	case errors.Is(deleteSnapshotErr, db.ErrSnapshotNotFound):
 		// no snapshot found, nothing to do
 	case deleteSnapshotErr != nil:
-		a.sendAPIStoreError(c, ctx, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", deleteSnapshotErr), deleteSnapshotErr)
+		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", deleteSnapshotErr), deleteSnapshotErr)
 
 		return
 	default:
@@ -132,6 +132,6 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	if killedOrRemoved {
 		c.Status(http.StatusNoContent)
 	} else {
-		a.sendAPIStoreError(c, ctx, http.StatusNotFound, "Sandbox not found", nil)
+		a.sendAPIStoreError(ctx, c, http.StatusNotFound, "Sandbox not found", nil)
 	}
 }
