@@ -61,9 +61,6 @@ const (
 	BuildPhaseDurationHistogramName HistogramType = "template.build.phase.duration"
 	BuildStepDurationHistogramName  HistogramType = "template.build.step.duration"
 
-	// Sandbox timing histograms
-	WaitForEnvdDurationHistogramName HistogramType = "orchestrator.sandbox.envd.init.duration"
-
 	// TCP Firewall histograms
 	TCPFirewallConnectionDurationHistogramName HistogramType = "orchestrator.tcpfirewall.connection.duration"
 )
@@ -255,11 +252,10 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 }
 
 var histogramDesc = map[HistogramType]string{
-	BuildDurationHistogramName:       "Time taken to build a template",
-	BuildPhaseDurationHistogramName:  "Time taken to build each phase of a template",
-	BuildStepDurationHistogramName:   "Time taken to build each step of a template",
-	BuildRootfsSizeHistogramName:     "Size of the built template rootfs in bytes",
-	WaitForEnvdDurationHistogramName: "Time taken for Envd to initialize successfully",
+	BuildDurationHistogramName:      "Time taken to build a template",
+	BuildPhaseDurationHistogramName: "Time taken to build each phase of a template",
+	BuildStepDurationHistogramName:  "Time taken to build each step of a template",
+	BuildRootfsSizeHistogramName:    "Size of the built template rootfs in bytes",
 
 	TCPFirewallConnectionDurationHistogramName: "Duration of TCP firewall proxied connections",
 }
@@ -269,7 +265,6 @@ var histogramUnits = map[HistogramType]string{
 	BuildPhaseDurationHistogramName:            "ms",
 	BuildStepDurationHistogramName:             "ms",
 	BuildRootfsSizeHistogramName:               "{By}",
-	WaitForEnvdDurationHistogramName:           "ms",
 	TCPFirewallConnectionDurationHistogramName: "ms",
 }
 
