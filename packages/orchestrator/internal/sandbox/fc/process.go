@@ -97,7 +97,7 @@ func NewProcess(
 		return nil, err
 	}
 
-	telemetry.WithAttributes(ctx,
+	_ = telemetry.WithAttributes(ctx,
 		attribute.String("sandbox.cmd", startScript.Value),
 	)
 
@@ -456,7 +456,7 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
 	}
 
-	telemetry.WithAttributes(
+	_ = telemetry.WithAttributes(
 		ctx,
 		attribute.String("sandbox.cmd.dir", p.cmd.Dir),
 		attribute.String("sandbox.cmd.path", p.cmd.Path),

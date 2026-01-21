@@ -42,7 +42,7 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 		provisionVersion = strconv.FormatInt(int64(val), 10)
 	}
 
-	telemetry.WithAttributes(ctx,
+	_ = telemetry.WithAttributes(ctx,
 		attribute.String("index_version", bb.index.Version()),
 		attribute.String("provision_version", provisionVersion),
 		attribute.String("base_source", baseSource),
