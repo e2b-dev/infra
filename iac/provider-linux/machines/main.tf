@@ -341,8 +341,38 @@ resource "null_resource" "nodes_fc_artifacts" {
   depends_on = [null_resource.nodes_base]
 }
 
+resource "null_resource" "uninstall_safety_check" {
+  count = (var.enable_nodes_uninstall && length(var.uninstall_confirm_phrase) > 0) ? 1 : 0
 
+  triggers = {
+    phrase = var.uninstall_confirm_phrase
+  }
 
+  provisioner "local-exec" {
+    command     = <<EOT
+      PHRASE="${var.uninstall_confirm_phrase}"
+      CURRENT=$(date +%Y%m%d%H%M)
+      
+      if [ "$PHRASE" = "$CURRENT" ]; then exit 0; fi
+
+      # Try BSD date (macOS)
+      if date -v-1M >/dev/null 2>&1; then
+        PREV=$(date -v-1M +%Y%m%d%H%M)
+        NEXT=$(date -v+1M +%Y%m%d%H%M)
+      else
+        # Try GNU date (Linux)
+        PREV=$(date -d '1 minute ago' +%Y%m%d%H%M)
+        NEXT=$(date -d '1 minute' +%Y%m%d%H%M)
+      fi
+
+      if [ "$PHRASE" = "$PREV" ] || [ "$PHRASE" = "$NEXT" ]; then exit 0; fi
+
+      echo "Error: Uninstall phrase '$PHRASE' does not match current time ($CURRENT) +/- 1 minute."
+      exit 1
+    EOT
+    interpreter = ["/bin/bash", "-c"]
+  }
+}
 
 resource "null_resource" "nodes_uninstall" {
   for_each = (var.enable_nodes_uninstall && length(var.uninstall_confirm_phrase) > 0) ? local.all_nodes : {}
@@ -367,11 +397,10 @@ resource "null_resource" "nodes_uninstall" {
     inline = [
       "set -e",
       "if [ \"$(id -u)\" -eq 0 ]; then SUDO=\"\"; else SUDO=\"sudo\"; fi",
-      "STAMP=$(date +%Y%m%d%H%M)",
-      "PHRASE=\"${var.uninstall_confirm_phrase}\"",
-      "[ \"$PHRASE\" = \"$STAMP\" ] || { echo \"uninstall_confirm_phrase mismatch; expected current minute: $STAMP\"; exit 1; }",
       "$SUDO chmod +x /tmp/uninstall_provider_linux.sh",
       "FORCE_UNINSTALL=1 bash /tmp/uninstall_provider_linux.sh"
     ]
   }
+
+  depends_on = [null_resource.uninstall_safety_check]
 }
