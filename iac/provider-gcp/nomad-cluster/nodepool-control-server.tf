@@ -83,7 +83,8 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
 
 
   target_pools                     = []
-  target_size                      = var.server_cluster_size
+  // TODO: 2026-01-21: To be changed back to var.server_cluster_size after migration period (at least 1 weeks) - 2026-01-28
+  target_size                      = var.server_cluster_size > 1 ? var.server_cluster_size - 1 : var.server_cluster_size
   distribution_policy_target_shape = "EVEN"
 
   version {
