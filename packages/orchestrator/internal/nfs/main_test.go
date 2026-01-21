@@ -28,6 +28,7 @@ func TestRoundTrip(t *testing.T) {
 
 	// setup data
 	sandboxID := uuid.NewString()
+	teamID := uuid.NewString()
 	bucketName := "e2b-staging-joe-fc-build-cache"
 	slog.SetLogLoggerLevel(slog.LevelDebug)
 
@@ -39,6 +40,7 @@ func TestRoundTrip(t *testing.T) {
 		Metadata: &sandbox.Metadata{
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: sandboxID,
+				TeamID:    teamID,
 			},
 		},
 		Resources: &sandbox.Resources{
@@ -136,7 +138,7 @@ func TestRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	// verify file contents through gcs
-	objectName := sandboxID + "/sandbox-id.txt"
+	objectName := teamID + "/sandbox-id.txt"
 	object := bucket.Object(objectName)
 
 	// verify metadata
@@ -164,9 +166,17 @@ func TestRoundTrip(t *testing.T) {
 	// verify the file can be read
 	fp, err = target.Open("sandbox-id.txt")
 	require.NoError(t, err)
-	buff := make([]byte, 1024) // way more bytes than we need
+	buff := make([]byte, 64) // way more bytes than we need
 	n, err = fp.Read(buff)
 	require.NoError(t, err)
 	assert.Equal(t, len(sandboxID), n)
 	assert.Equal(t, sandboxID, string(buff[:n]))
+
+	// verify that fileid has not changed from list to read
+	items2, err := target.ReadDirPlus("/")
+	require.NoError(t, err)
+	require.Len(t, items2, 1)
+	item2 := items2[0]
+	assert.Equal(t, "sandbox-id.txt", item.Name())
+	assert.Equal(t, item.FileId, item2.FileId)
 }

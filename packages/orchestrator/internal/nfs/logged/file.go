@@ -22,57 +22,57 @@ func (l loggedFile) Name() string {
 }
 
 func (l loggedFile) Write(p []byte) (n int, err error) {
-	logStart(l.ctx, "File.Write", len(p))
-	defer func() { logEndWithError(l.ctx, "File.Write", err, n) }()
+	finish := logStart("File.Write", len(p))
+	defer func() { finish(l.ctx, err, n) }()
 
 	return l.inner.Write(p)
 }
 
 func (l loggedFile) Read(p []byte) (n int, err error) {
-	logStart(l.ctx, "File.Read", len(p))
-	defer func() { logEndWithError(l.ctx, "File.Read", err, n) }()
+	finish := logStart("File.Read", len(p))
+	defer func() { finish(l.ctx, err, n) }()
 
 	return l.inner.Read(p)
 }
 
 func (l loggedFile) ReadAt(p []byte, off int64) (n int, err error) {
-	logStart(l.ctx, "File.ReadAt", len(p), off)
-	defer func() { logEndWithError(l.ctx, "File.ReadAt", err, n) }()
+	finish := logStart("File.ReadAt", len(p), off)
+	defer func() { finish(l.ctx, err, n) }()
 
 	return l.inner.ReadAt(p, off)
 }
 
 func (l loggedFile) Seek(offset int64, whence int) (n int64, err error) {
-	logStart(l.ctx, "File.Seek", offset, whence)
-	defer func() { logEndWithError(l.ctx, "File.Seek", err, n) }()
+	finish := logStart("File.Seek", offset, whence)
+	defer func() { finish(l.ctx, err, n) }()
 
 	return l.inner.Seek(offset, whence)
 }
 
 func (l loggedFile) Close() (err error) {
-	logStart(l.ctx, "File.Close")
-	defer func() { logEndWithError(l.ctx, "File.Close", err) }()
+	finish := logStart("File.Close")
+	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Close()
 }
 
 func (l loggedFile) Lock() (err error) {
-	logStart(l.ctx, "File.Lock")
-	defer func() { logEndWithError(l.ctx, "File.Lock", err) }()
+	finish := logStart("File.Lock")
+	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Lock()
 }
 
 func (l loggedFile) Unlock() (err error) {
-	logStart(l.ctx, "File.Unlock")
-	defer func() { logEndWithError(l.ctx, "File.Unlock", err) }()
+	finish := logStart("File.Unlock")
+	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Unlock()
 }
 
 func (l loggedFile) Truncate(size int64) (err error) {
-	logStart(l.ctx, "File.Truncate", size)
-	defer func() { logEndWithError(l.ctx, "File.Truncate", err) }()
+	finish := logStart("File.Truncate", size)
+	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Truncate(size)
 }

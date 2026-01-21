@@ -29,8 +29,9 @@ func TestBucketAttrsInverse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			metadata := toObjectMetadata(tc.perm)
-			gotPerm := fromBucketAttrs(metadata)
+			permKey, permVal := fromPermToObjectMetadata(tc.perm)
+			metadata := map[string]string{permKey: permVal}
+			gotPerm := fromMetadataToPerm(metadata)
 
 			if gotPerm != tc.perm {
 				t.Errorf("expected perm %o, got %o", tc.perm, gotPerm)
@@ -43,7 +44,7 @@ func TestFromBucketAttrs_Empty(t *testing.T) {
 	t.Parallel()
 
 	attrs := make(map[string]string)
-	gotPerm := fromBucketAttrs(attrs)
+	gotPerm := fromMetadataToPerm(attrs)
 
 	if gotPerm != 0 {
 		t.Errorf("expected perm 0, got %o", gotPerm)

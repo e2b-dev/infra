@@ -23,13 +23,13 @@ func NewHandler(ctx context.Context, handler nfs.Handler) nfs.Handler {
 }
 
 func (e loggedHandler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequest) (s nfs.MountStatus, fs billy.Filesystem, auth []nfs.AuthFlavor) {
-	logStart(ctx, "Handler.Mount")
+	finish := logStart("Handler.Mount")
 	defer func() {
 		var err error
 		if s != nfs.MountStatusOk {
 			err = fmt.Errorf("mount status = %d", s)
 		}
-		logEndWithError(ctx, "Handler.Mount", err)
+		finish(ctx, err)
 	}()
 
 	s, fs, auth = e.inner.Mount(ctx, conn, request)
@@ -39,8 +39,8 @@ func (e loggedHandler) Mount(ctx context.Context, conn net.Conn, request nfs.Mou
 }
 
 func (e loggedHandler) Change(filesystem billy.Filesystem) billy.Change {
-	logStart(e.ctx, "Handler.Change")
-	defer logEnd(e.ctx, "Handler.Change")
+	finish := logStart("Handler.Change")
+	defer finish(e.ctx, nil)
 
 	change := e.inner.Change(filesystem)
 
@@ -48,36 +48,36 @@ func (e loggedHandler) Change(filesystem billy.Filesystem) billy.Change {
 }
 
 func (e loggedHandler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) (err error) {
-	logStart(ctx, "Handler.FSStat")
-	defer func() { logEndWithError(ctx, "Handler.FSStat", err) }()
+	finish := logStart("Handler.FSStat")
+	defer func() { finish(ctx, err) }()
 
 	return e.inner.FSStat(ctx, filesystem, stat)
 }
 
 func (e loggedHandler) ToHandle(fs billy.Filesystem, path []string) (fh []byte) {
-	logStart(e.ctx, "Handler.ToHandle", path)
-	defer func() { logEnd(e.ctx, "Handler.ToHandle", fh) }()
+	finish := logStart("Handler.ToHandle", path)
+	defer func() { finish(e.ctx, nil, fh) }()
 
 	return e.inner.ToHandle(fs, path)
 }
 
 func (e loggedHandler) FromHandle(fh []byte) (fs billy.Filesystem, paths []string, err error) {
-	logStart(e.ctx, "Handler.FromHandle", fh)
-	defer func() { logEndWithError(e.ctx, "Handler.FromHandle", err, paths) }()
+	finish := logStart("Handler.FromHandle", fh)
+	defer func() { finish(e.ctx, err, paths) }()
 
 	return e.inner.FromHandle(fh)
 }
 
 func (e loggedHandler) InvalidateHandle(filesystem billy.Filesystem, bytes []byte) (err error) {
-	logStart(e.ctx, "Handler.InvalidateHandle")
-	defer func() { logEndWithError(e.ctx, "Handler.InvalidateHandle", err) }()
+	finish := logStart("Handler.InvalidateHandle")
+	defer func() { finish(e.ctx, err) }()
 
 	return e.inner.InvalidateHandle(filesystem, bytes)
 }
 
 func (e loggedHandler) HandleLimit() int {
-	logStart(e.ctx, "Handler.HandleLimit")
-	defer logEnd(e.ctx, "Handler.HandleLimit")
+	finish := logStart("Handler.HandleLimit")
+	defer finish(e.ctx, nil)
 
 	return e.inner.HandleLimit()
 }

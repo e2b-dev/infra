@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/willscott/go-nfs/file"
 )
 
 func translateError(err error) error {
@@ -52,7 +53,21 @@ func (f fileInfo) IsDir() bool {
 }
 
 func (f fileInfo) Sys() any {
-	return nil
+	return toFileInfo(f.attrs)
+}
+
+func toFileInfo(attrs *storage.ObjectAttrs) any {
+	uid := fromMetadataToUID(attrs.Metadata)
+	gid := fromMetadataToGID(attrs.Metadata)
+
+	return &file.FileInfo{
+		Nlink:  0,
+		UID:    uid,
+		GID:    gid,
+		Major:  0,
+		Minor:  0,
+		Fileid: uint64(attrs.Generation),
+	}
 }
 
 var _ os.FileInfo = (*fileInfo)(nil)

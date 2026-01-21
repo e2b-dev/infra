@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/logged"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/recovery"
 	"github.com/willscott/go-nfs"
-	helper "github.com/willscott/go-nfs/helpers"
+	"github.com/willscott/go-nfs/helpers"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/gcs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/jailed"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/logged"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/recovery"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 )
 
@@ -35,8 +35,8 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map) jailed.GetPrefix {
 
 func NewProxy(ctx context.Context, sandboxes *sandbox.Map, bucket *storage.BucketHandle) *Proxy {
 	var handler nfs.Handler
-	handler = gcs.NewNFSHandler(bucket)
-	handler = helper.NewCachingHandler(handler, cacheLimit)
+	handler = gcs.NewNFSHandler(ctx, bucket)
+	handler = helpers.NewCachingHandler(handler, cacheLimit)
 	handler = jailed.NewNFSHandler(handler, getPrefixFromSandbox(sandboxes))
 	handler = logged.NewHandler(ctx, handler)
 	handler = recovery.NewHandler(handler)

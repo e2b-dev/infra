@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"cloud.google.com/go/storage"
+	"github.com/go-git/go-billy/v5"
 )
 
 type gcsFile struct {
@@ -15,6 +16,8 @@ type gcsFile struct {
 	writer   *storage.Writer
 	metadata map[string]string
 }
+
+var _ billy.File = (*gcsFile)(nil)
 
 func newGcsFile(p BucketFS, name string, metadata map[string]string) *gcsFile {
 	return &gcsFile{p, name, 0, nil, metadata}

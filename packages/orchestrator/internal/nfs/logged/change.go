@@ -20,29 +20,29 @@ func newChange(ctx context.Context, change billy.Change) loggedChange {
 }
 
 func (s loggedChange) Chmod(name string, mode os.FileMode) (err error) {
-	logStart(s.ctx, "Chmod")
-	defer func() { logEndWithError(s.ctx, "Chmod", err) }()
+	finish := logStart("Chmod", name, mode)
+	defer func() { finish(s.ctx, err) }()
 
 	return s.inner.Chmod(name, mode)
 }
 
 func (s loggedChange) Lchown(name string, uid, gid int) (err error) {
-	logStart(s.ctx, "Lchown")
-	defer func() { logEndWithError(s.ctx, "Lchown", err) }()
+	finish := logStart("Lchown", name, uid, gid)
+	defer func() { finish(s.ctx, err) }()
 
 	return s.inner.Lchown(name, uid, gid)
 }
 
 func (s loggedChange) Chown(name string, uid, gid int) (err error) {
-	logStart(s.ctx, "Chown")
-	defer func() { logEndWithError(s.ctx, "Chown", err) }()
+	finish := logStart("Chown", name, uid, gid)
+	defer func() { finish(s.ctx, err) }()
 
 	return s.inner.Chown(name, uid, gid)
 }
 
 func (s loggedChange) Chtimes(name string, atime time.Time, mtime time.Time) (err error) {
-	logStart(s.ctx, "Chtimes")
-	defer func() { logEndWithError(s.ctx, "Chtimes", err) }()
+	finish := logStart("Chtimes", name, atime, mtime)
+	defer func() { finish(s.ctx, err) }()
 
 	return s.inner.Chtimes(name, atime, mtime)
 }

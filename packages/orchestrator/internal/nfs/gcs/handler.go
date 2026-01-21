@@ -10,13 +10,15 @@ import (
 )
 
 type NFSHandler struct {
+	ctx    context.Context
 	bucket *storage.BucketHandle
 }
 
 var _ nfs.Handler = (*NFSHandler)(nil)
 
-func NewNFSHandler(bucket *storage.BucketHandle) *NFSHandler {
+func NewNFSHandler(ctx context.Context, bucket *storage.BucketHandle) *NFSHandler {
 	return &NFSHandler{
+		ctx:    ctx,
 		bucket: bucket,
 	}
 }
@@ -28,7 +30,7 @@ func (h NFSHandler) Mount(ctx context.Context, _ net.Conn, _ nfs.MountRequest) (
 }
 
 func (h NFSHandler) Change(filesystem billy.Filesystem) billy.Change {
-	return newChange(h.bucket, filesystem)
+	return newChange(h.ctx, h.bucket, filesystem)
 }
 
 func (h NFSHandler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) error {

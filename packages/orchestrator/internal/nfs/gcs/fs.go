@@ -15,6 +15,8 @@ import (
 
 const (
 	MetadataPermsAttr = "e2b-perms"
+	MetadataUIDAttr   = "e2b-uid"
+	MetadataGIDAttr   = "e2b-gid"
 )
 
 type BucketFS struct {
@@ -83,7 +85,14 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 	}
 
 	// set the attributes
-	if attrs, err = obj.Update(context.Background(), storage.ObjectAttrsToUpdate{Metadata: toObjectMetadata(perm)}); err != nil {
+	permKey, permVal := fromPermToObjectMetadata(perm)
+
+	updates := storage.ObjectAttrsToUpdate{
+		Metadata: map[string]string{
+			permKey: permVal,
+		},
+	}
+	if attrs, err = obj.Update(context.Background(), updates); err != nil {
 		return nil, translateError(err)
 	}
 
@@ -94,16 +103,7 @@ func fromPermToObjectMetadata(perm os.FileMode) (string, string) {
 	return MetadataPermsAttr, fmt.Sprintf("%03o", perm)
 }
 
-func toObjectMetadata(perm os.FileMode) map[string]string {
-	metadata := make(map[string]string, 2)
-
-	permKey, permValue := fromPermToObjectMetadata(perm)
-	metadata[permKey] = permValue
-
-	return metadata
-}
-
-func fromBucketAttrs(metadata map[string]string) os.FileMode {
+func fromMetadataToPerm(metadata map[string]string) os.FileMode {
 	var perm os.FileMode
 
 	if metadata != nil {
@@ -116,6 +116,46 @@ func fromBucketAttrs(metadata map[string]string) os.FileMode {
 	}
 
 	return perm
+}
+
+func fromUIDtoMetadata(uid int) (string, string) {
+	return fromIDtoMetadata(uid, MetadataUIDAttr)
+}
+
+func fromGIDtoMetadata(gid int) (string, string) {
+	return fromIDtoMetadata(gid, MetadataGIDAttr)
+}
+
+func fromIDtoMetadata(uid int, attr string) (string, string) {
+	return attr, strconv.FormatUint(uint64(uid), 10)
+}
+
+const (
+	defaultUID = 1000
+	defaultGID = 1000
+)
+
+func fromMetadataToUID(metadata map[string]string) uint32 {
+	return fromMetadataID(metadata, MetadataUIDAttr, defaultUID)
+}
+
+func fromMetadataToGID(metadata map[string]string) uint32 {
+	return fromMetadataID(metadata, MetadataGIDAttr, defaultGID)
+}
+
+// fromMetadataID returns the value of the given key in the metadata map, or the default value if the key is not present.
+// For security, it's important that we not return 0 as a default, as that means "root"
+func fromMetadataID(metadata map[string]string, key string, defaultID uint32) uint32 {
+	if metadata != nil {
+		if val, ok := metadata[key]; ok {
+			u, err := strconv.ParseUint(val, 10, 32)
+			if err == nil {
+				return uint32(u)
+			}
+		}
+	}
+
+	return defaultID
 }
 
 func (p BucketFS) Stat(filename string) (os.FileInfo, error) {
@@ -196,7 +236,7 @@ func (p BucketFS) MkdirAll(filename string, perm os.FileMode) error {
 
 func (p BucketFS) Lstat(filename string) (os.FileInfo, error) {
 	if filename == "" || filename == "/" {
-		return rootListing{}, nil
+		return rootDir{}, nil
 	}
 
 	if file, done, err := p.tryGetFile(filename); done {

@@ -13,7 +13,7 @@ import (
 )
 
 func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
-	//opts := []logging.Option{
+	// opts := []logging.Option{
 	//	logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
 	//	logging.WithLevels(logging.DefaultServerCodeToLevel),
 	//	logging.WithFieldsFromContext(logging.ExtractFields),
@@ -41,12 +41,12 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 		))),
 		grpc.ChainUnaryInterceptor(
 			recovery.UnaryServerInterceptor(),
-			//selector.UnaryServerInterceptor(
+			// selector.UnaryServerInterceptor(
 			//	logging.UnaryServerInterceptor(logger.GRPCLogger(logger.L()), opts...),
 			//	ignoredLoggingRoutes,
 			//),
 		),
-		//grpc.ChainStreamInterceptor(
+		// grpc.ChainStreamInterceptor(
 		//	selector.StreamServerInterceptor(
 		//		logging.StreamServerInterceptor(logger.GRPCLogger(logger.L()), opts...),
 		//		ignoredLoggingRoutes,

@@ -23,8 +23,8 @@ func (l loggedFS) Unwrap() billy.Filesystem {
 }
 
 func (l loggedFS) Create(filename string) (f billy.File, err error) {
-	logStart(l.ctx, "FS.Create", filename)
-	defer func() { logEndWithError(l.ctx, "FS.Create", err) }()
+	finish := logStart("FS.Create", filename)
+	defer func() { finish(l.ctx, err, f) }()
 
 	f, err = l.inner.Create(filename)
 	f = wrapFile(l.ctx, f)
@@ -33,8 +33,8 @@ func (l loggedFS) Create(filename string) (f billy.File, err error) {
 }
 
 func (l loggedFS) Open(filename string) (f billy.File, err error) {
-	logStart(l.ctx, "FS.Open", filename)
-	defer func() { logEndWithError(l.ctx, "FS.Open", err) }()
+	finish := logStart("FS.Open", filename)
+	defer func() { finish(l.ctx, err, f) }()
 
 	f, err = l.inner.Open(filename)
 	f = wrapFile(l.ctx, f)
@@ -43,8 +43,8 @@ func (l loggedFS) Open(filename string) (f billy.File, err error) {
 }
 
 func (l loggedFS) OpenFile(filename string, flag int, perm os.FileMode) (f billy.File, err error) {
-	logStart(l.ctx, "FS.OpenFile", filename, flag, perm)
-	defer func() { logEndWithError(l.ctx, "FS.OpenFile", err) }()
+	finish := logStart("FS.OpenFile", filename, flag, perm)
+	defer func() { finish(l.ctx, err, f) }()
 
 	f, err = l.inner.OpenFile(filename, flag, perm)
 	f = wrapFile(l.ctx, f)
@@ -53,36 +53,36 @@ func (l loggedFS) OpenFile(filename string, flag int, perm os.FileMode) (f billy
 }
 
 func (l loggedFS) Stat(filename string) (fi os.FileInfo, err error) {
-	logStart(l.ctx, "FS.Stat", filename)
-	defer func() { logEndWithError(l.ctx, "FS.Stat", err) }()
+	finish := logStart("FS.Stat", filename)
+	defer func() { finish(l.ctx, err, fi) }()
 
 	return l.inner.Stat(filename)
 }
 
 func (l loggedFS) Rename(oldpath, newpath string) (err error) {
-	logStart(l.ctx, "FS.Rename")
-	defer func() { logEndWithError(l.ctx, "FS.Rename", err) }()
+	finish := logStart("FS.Rename", oldpath, newpath)
+	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Rename(oldpath, newpath)
 }
 
 func (l loggedFS) Remove(filename string) (err error) {
-	logStart(l.ctx, "FS.Remove")
-	defer func() { logEndWithError(l.ctx, "FS.Remove", err) }()
+	finish := logStart("FS.Remove", filename)
+	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Remove(filename)
 }
 
 func (l loggedFS) Join(elem ...string) (path string) {
-	logStart(l.ctx, "FS.Join", elem)
-	defer func() { logEnd(l.ctx, "FS.Join", path) }()
+	finish := logStart("FS.Join", elem)
+	defer func() { finish(l.ctx, nil, path) }()
 
 	return l.inner.Join(elem...)
 }
 
 func (l loggedFS) TempFile(dir, prefix string) (f billy.File, err error) {
-	logStart(l.ctx, "FS.TempFile")
-	defer func() { logEndWithError(l.ctx, "FS.TempFile", err) }()
+	finish := logStart("FS.TempFile", dir, prefix)
+	defer func() { finish(l.ctx, err, f) }()
 
 	f, err = l.inner.TempFile(dir, prefix)
 	f = wrapFile(l.ctx, f)
@@ -91,43 +91,43 @@ func (l loggedFS) TempFile(dir, prefix string) (f billy.File, err error) {
 }
 
 func (l loggedFS) ReadDir(path string) (fi []os.FileInfo, err error) {
-	logStart(l.ctx, "FS.ReadDir", path)
-	defer func() { logEndWithError(l.ctx, "FS.ReadDir", err) }()
+	finish := logStart("FS.ReadDir", path)
+	defer func() { finish(l.ctx, err, fi) }()
 
 	return l.inner.ReadDir(path)
 }
 
 func (l loggedFS) MkdirAll(filename string, perm os.FileMode) (err error) {
-	logStart(l.ctx, "FS.MkdirAll")
-	defer func() { logEndWithError(l.ctx, "FS.MkdirAll", err) }()
+	finish := logStart("FS.MkdirAll", filename, perm)
+	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.MkdirAll(filename, perm)
 }
 
 func (l loggedFS) Lstat(filename string) (fi os.FileInfo, err error) {
-	logStart(l.ctx, "FS.Lstat", filename)
-	defer func() { logEndWithError(l.ctx, "FS.Lstat", err) }()
+	finish := logStart("FS.Lstat", filename)
+	defer func() { finish(l.ctx, err, fi) }()
 
 	return l.inner.Lstat(filename)
 }
 
 func (l loggedFS) Symlink(target, link string) (err error) {
-	logStart(l.ctx, "FS.Symlink")
-	defer func() { logEndWithError(l.ctx, "FS.Symlink", err) }()
+	finish := logStart("FS.Symlink", target, link)
+	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Symlink(target, link)
 }
 
 func (l loggedFS) Readlink(link string) (target string, err error) {
-	logStart(l.ctx, "FS.Readlink")
-	defer func() { logEndWithError(l.ctx, "FS.Readlink", err) }()
+	finish := logStart("FS.Readlink", link)
+	defer func() { finish(l.ctx, err, target) }()
 
 	return l.inner.Readlink(link)
 }
 
 func (l loggedFS) Chroot(path string) (fs billy.Filesystem, err error) {
-	logStart(l.ctx, "FS.Chroot")
-	defer func() { logEndWithError(l.ctx, "FS.Chroot", err) }()
+	finish := logStart("FS.Chroot", path)
+	defer func() { finish(l.ctx, err, fs) }()
 
 	inner, err := l.inner.Chroot(path)
 	if err != nil {

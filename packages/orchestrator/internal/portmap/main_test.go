@@ -8,6 +8,8 @@ import (
 )
 
 func TestPortmapRetrieval(t *testing.T) {
+	t.Parallel()
+
 	h := newHandlers()
 	h.PMAPPROC_SET(portmap.Mapping{
 		Prog: 100003,

@@ -53,7 +53,7 @@ func (d dirInfo) Size() int64 {
 }
 
 func (d dirInfo) Mode() fs.FileMode {
-	return fromBucketAttrs(d.attrs.Metadata)
+	return fromMetadataToPerm(d.attrs.Metadata)
 }
 
 func (d dirInfo) ModTime() time.Time {
@@ -65,5 +65,5 @@ func (d dirInfo) IsDir() bool {
 }
 
 func (d dirInfo) Sys() any {
-	return nil
+	return toFileInfo(d.attrs)
 }

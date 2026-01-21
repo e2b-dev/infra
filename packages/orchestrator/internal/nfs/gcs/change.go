@@ -2,6 +2,7 @@ package gcs
 
 import (
 	"context"
+	"errors"
 	"os"
 	"time"
 
@@ -10,33 +11,50 @@ import (
 )
 
 type change struct {
+	ctx    context.Context
 	bucket *storage.BucketHandle
 	fs     billy.Filesystem
 }
 
 var _ billy.Change = (*change)(nil)
 
-func newChange(bucket *storage.BucketHandle, fs billy.Filesystem) *change {
-	return &change{bucket, fs}
+func newChange(ctx context.Context, bucket *storage.BucketHandle, fs billy.Filesystem) *change {
+	return &change{ctx, bucket, fs}
 }
 
 func (c change) Chmod(name string, mode os.FileMode) error {
-	_, err := c.bucket.Object(name).Update(context.Background(), storage.ObjectAttrsToUpdate{Metadata: toObjectMetadata(mode)})
+	permKey, permValue := fromPermToObjectMetadata(mode)
+
+	updates := storage.ObjectAttrsToUpdate{Metadata: map[string]string{
+		permKey: permValue,
+	}}
+
+	_, err := c.bucket.Object(name).Update(context.Background(), updates)
 
 	return err
 }
 
+var ErrNotImplemented = errors.New("not implemented")
+
 func (c change) Lchown(name string, uid, gid int) error {
-	// TODO implement me
-	panic("implement me")
+	return ErrNotImplemented
 }
 
 func (c change) Chown(name string, uid, gid int) error {
-	// TODO implement me
-	panic("implement me")
+	metadata := make(map[string]string, 2)
+
+	uidKey, uidVal := fromUIDtoMetadata(uid)
+	metadata[uidKey] = uidVal
+
+	gidKey, gidVal := fromGIDtoMetadata(gid)
+	metadata[gidKey] = gidVal
+
+	updates := storage.ObjectAttrsToUpdate{Metadata: metadata}
+	_, err := c.bucket.Object(name).Update(c.ctx, updates)
+
+	return err
 }
 
 func (c change) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	// TODO implement me
-	panic("implement me")
+	return ErrNotImplemented
 }
