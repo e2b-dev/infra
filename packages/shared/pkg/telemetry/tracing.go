@@ -43,11 +43,14 @@ func SetAttributesWithGin(c *gin.Context, ctx context.Context, attrs ...attribut
 		fmt.Print(debugFormat(debugID, msg))
 	}
 
-	setCtxValueFn := func(ctx context.Context, key, value string) context.Context {
+	setCtxValueFn := func(ctx context.Context, key any, value any) context.Context {
 		ctx = context.WithValue(ctx, key, value)
 
 		if c != nil {
-			c.Set(key, value)
+			// Gin context needs string keys
+			if keyStr, ok := key.(string); ok {
+				c.Set(keyStr, value)
+			}
 		}
 
 		return ctx
@@ -55,14 +58,14 @@ func SetAttributesWithGin(c *gin.Context, ctx context.Context, attrs ...attribut
 
 	// Catch special attributes to set in context so they are available in child spans
 	for _, attr := range attrs {
-		switch attr.Key {
-		case logger.SandboxIDContextKey:
+		switch string(attr.Key) {
+		case string(logger.SandboxIDContextKey):
 			ctx = setCtxValueFn(ctx, logger.SandboxIDContextKey, attr.Value.AsString())
-		case logger.TeamIDIDContextKey:
+		case string(logger.TeamIDIDContextKey):
 			ctx = setCtxValueFn(ctx, logger.TeamIDIDContextKey, attr.Value.AsString())
-		case logger.BuildIDContextKey:
+		case string(logger.BuildIDContextKey):
 			ctx = setCtxValueFn(ctx, logger.BuildIDContextKey, attr.Value.AsString())
-		case logger.TemplateIDContextKey:
+		case string(logger.TemplateIDContextKey):
 			ctx = setCtxValueFn(ctx, logger.TemplateIDContextKey, attr.Value.AsString())
 		}
 	}
