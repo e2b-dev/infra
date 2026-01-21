@@ -22,13 +22,7 @@ const (
 	blockedErrPrefix   = "team blocked: "
 )
 
-func ErrorHandler(c *gin.Context, message string, fallbackStatusCode int) {
-	// Override the status code provided by the oapi-codegen/gin-middleware as that is always set to 400 or 404.
-	statusCode := c.Writer.Status()
-	if statusCode == 0 {
-		statusCode = fallbackStatusCode
-	}
-
+func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	var errMsg error
 
 	ctx := c.Request.Context()

@@ -135,7 +135,11 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		limits.RequestSizeLimiter(maxUploadLimit),
 		middleware.OapiRequestValidatorWithOptions(swagger,
 			&middleware.Options{
-				ErrorHandler:      utils.ErrorHandler,
+				ErrorHandler: func(c *gin.Context, message string, fallbackStatusCode int) {
+					// Override the status code provided by the oapi-codegen/gin-middleware as that is always set to 400 or 404.
+					statusCode := max(c.Writer.Status(), fallbackStatusCode)
+					utils.ErrorHandler(c, message, statusCode)
+				},
 				MultiErrorHandler: utils.MultiErrorHandler,
 				Options: openapi3filter.Options{
 					AuthenticationFunc: AuthenticationFunc,

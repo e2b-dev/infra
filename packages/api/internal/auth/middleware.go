@@ -13,7 +13,6 @@ import (
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -80,8 +79,13 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 	// Now, we need to get the API key from the request
 	headerKey, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		err = fmt.Errorf("%s: %w", a.errorMessage, err)
-		trace.SpanFromContext(ctx).RecordError(err, trace.WithStackTrace(true))
+		telemetry.ReportError(ctx,
+			"authorization header is missing",
+			err,
+			attribute.String("error.message", a.errorMessage),
+		)
+
+		ginCtx.Status(http.StatusUnauthorized)
 
 		return err
 	}
@@ -99,6 +103,8 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 			attribute.String("http.status_text", http.StatusText(validationError.Code)),
 		)
 
+		ginCtx.Status(validationError.Code)
+
 		var forbiddenError *db.TeamForbiddenError
 		if errors.As(validationError.Err, &forbiddenError) {
 			return fmt.Errorf("forbidden: %w", validationError.Err)
@@ -108,8 +114,6 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 		if errors.As(validationError.Err, &blockedError) {
 			return fmt.Errorf("blocked: %w", validationError.Err)
 		}
-
-		ginCtx.Status(validationError.Code)
 
 		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)
 	}
