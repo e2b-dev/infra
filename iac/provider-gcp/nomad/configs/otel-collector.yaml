@@ -215,7 +215,17 @@ processors:
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
-          - "otelcol.*"
+          - "otelcol_exporter_queue_capacity"
+          - "otelcol_exporter_queue_size"
+          - "otelcol_exporter_send_failed_log_records_total"
+          - "otelcol_exporter_send_failed_metric_points_total"
+          - "otelcol_exporter_send_failed_spans_total"
+          - "otelcol_exporter_sent_log_records_total"
+          - "otelcol_exporter_sent_metric_points_total"
+          - "otelcol_exporter_sent_spans_total"
+          - "otelcol_receiver_refused_log_records_total"
+          - "otelcol_receiver_refused_metric_points_total"
+          - "otelcol_receiver_refused_spans_total"
           - "pgxpool.*"
 
   filter/only_client_allocs:
