@@ -131,6 +131,8 @@ var _ API = (*Storage)(nil)
 // upload. If the compression type is unset, the file is uploaded in its
 // entirety.
 func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, e error) {
+	fmt.Printf("<>/<> STORE FILE !!!!!!!!!!!! %s to %s with opts %+v\n", inFilePath, objectPath, opts)
+
 	ctx, span := tracer.Start(ctx, "store file")
 	defer func() {
 		recordError(span, e)

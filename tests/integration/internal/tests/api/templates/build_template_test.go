@@ -18,7 +18,7 @@ import (
 const (
 	EnableDebugLogs = false
 
-	ForceBaseBuild = false
+	ForceBaseBuild = true
 	BuildTimeout   = 5 * time.Minute
 )
 
