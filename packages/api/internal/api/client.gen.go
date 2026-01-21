@@ -207,9 +207,6 @@ type ClientInterface interface {
 
 	PostTemplatesTags(ctx context.Context, body PostTemplatesTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteTemplatesTagsName request
-	DeleteTemplatesTagsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// DeleteTemplatesTemplateID request
 	DeleteTemplatesTemplateID(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -763,18 +760,6 @@ func (c *Client) PostTemplatesTagsWithBody(ctx context.Context, contentType stri
 
 func (c *Client) PostTemplatesTags(ctx context.Context, body PostTemplatesTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostTemplatesTagsRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) DeleteTemplatesTagsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteTemplatesTagsNameRequest(c.Server, name)
 	if err != nil {
 		return nil, err
 	}
@@ -2356,40 +2341,6 @@ func NewPostTemplatesTagsRequestWithBody(server string, contentType string, body
 	return req, nil
 }
 
-// NewDeleteTemplatesTagsNameRequest generates requests for DeleteTemplatesTagsName
-func NewDeleteTemplatesTagsNameRequest(server string, name string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "name", runtime.ParamLocationPath, name)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/templates/tags/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewDeleteTemplatesTemplateIDRequest generates requests for DeleteTemplatesTemplateID
 func NewDeleteTemplatesTemplateIDRequest(server string, templateID TemplateID) (*http.Request, error) {
 	var err error
@@ -3285,9 +3236,6 @@ type ClientWithResponsesInterface interface {
 
 	PostTemplatesTagsWithResponse(ctx context.Context, body PostTemplatesTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostTemplatesTagsResponse, error)
 
-	// DeleteTemplatesTagsNameWithResponse request
-	DeleteTemplatesTagsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteTemplatesTagsNameResponse, error)
-
 	// DeleteTemplatesTemplateIDWithResponse request
 	DeleteTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*DeleteTemplatesTemplateIDResponse, error)
 
@@ -4101,31 +4049,6 @@ func (r PostTemplatesTagsResponse) StatusCode() int {
 	return 0
 }
 
-type DeleteTemplatesTagsNameResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON400      *N400
-	JSON401      *N401
-	JSON404      *N404
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteTemplatesTagsNameResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteTemplatesTagsNameResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
 type DeleteTemplatesTemplateIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4791,15 +4714,6 @@ func (c *ClientWithResponses) PostTemplatesTagsWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParsePostTemplatesTagsResponse(rsp)
-}
-
-// DeleteTemplatesTagsNameWithResponse request returning *DeleteTemplatesTagsNameResponse
-func (c *ClientWithResponses) DeleteTemplatesTagsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteTemplatesTagsNameResponse, error) {
-	rsp, err := c.DeleteTemplatesTagsName(ctx, name, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteTemplatesTagsNameResponse(rsp)
 }
 
 // DeleteTemplatesTemplateIDWithResponse request returning *DeleteTemplatesTemplateIDResponse
@@ -6311,53 +6225,6 @@ func ParsePostTemplatesTagsResponse(rsp *http.Response) (*PostTemplatesTagsRespo
 		}
 		response.JSON201 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest N400
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest N404
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDeleteTemplatesTagsNameResponse parses an HTTP response from a DeleteTemplatesTagsNameWithResponse call
-func ParseDeleteTemplatesTagsNameResponse(rsp *http.Response) (*DeleteTemplatesTagsNameResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteTemplatesTagsNameResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest N400
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

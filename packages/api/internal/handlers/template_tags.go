@@ -169,6 +169,23 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 		return
 	}
 
+	// Parse and validate the template name
+	templateName, tagFromName, err := id.ParseTemplateIDOrAliasWithTag(body.Name)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template name format: %s", body.Name))
+		telemetry.ReportError(ctx, "invalid template name format", err)
+
+		return
+	}
+
+	// Reject if name contains a tag - tags should be specified in the tags field
+	if tagFromName != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Template name should not contain a tag, use the 'tags' field instead")
+		telemetry.ReportError(ctx, "template name contains tag", nil)
+
+		return
+	}
+
 	// Validate and normalize tags
 	tags, err := id.ValidateAndDeduplicateTags(body.Tags)
 	if err != nil {
@@ -177,32 +194,6 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 
 		return
 	}
-
-	a.deleteTemplateTags(c, body.Name, tags)
-}
-
-// DeleteTemplatesTagsName deletes a tag from a template
-// The {name} path parameter is the template:tag to delete (e.g., "web-server:production")
-func (a *APIStore) DeleteTemplatesTagsName(c *gin.Context, name string) {
-	ctx := c.Request.Context()
-
-	// Parse the name (alias:tag format)
-	alias, tagPtr, err := id.ParseTemplateIDOrAliasWithTag(name)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name format: %s", name))
-		telemetry.ReportError(ctx, "invalid name format", err)
-
-		return
-	}
-
-	tag := sharedUtils.DerefOrDefault(tagPtr, id.DefaultTag)
-
-	a.deleteTemplateTags(c, alias, []string{tag})
-}
-
-// deleteTemplateTags is a shared helper for deleting tags from a template
-func (a *APIStore) deleteTemplateTags(c *gin.Context, templateName string, tags []string) {
-	ctx := c.Request.Context()
 
 	// Validate tags
 	if len(tags) == 0 {

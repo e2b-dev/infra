@@ -83,31 +83,6 @@ func TestTemplateTagAssignFromSourceTag(t *testing.T) {
 	assert.Equal(t, template.BuildID, tagResp.JSON201.BuildID.String())
 }
 
-func TestTemplateTagDelete(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
-	defer cancel()
-
-	c := setup.GetAPIClient()
-
-	// Build a template to work with
-	template := testutils.BuildSimpleTemplate(t, "test-tag-delete", setup.WithAPIKey())
-
-	// Assign a tag
-	_, err := c.PostTemplatesTagsWithResponse(ctx, api.AssignTemplateTagsRequest{
-		Target: template.TemplateID + ":" + id.DefaultTag,
-		Tags:   []string{"to-delete"},
-	}, setup.WithAPIKey())
-	require.NoError(t, err)
-
-	// Delete the tag - DELETE /templates/tags/{name}
-	deleteResp, err := c.DeleteTemplatesTagsNameWithResponse(ctx, template.TemplateID+":to-delete", setup.WithAPIKey())
-	require.NoError(t, err)
-
-	assert.Equal(t, http.StatusNoContent, deleteResp.StatusCode())
-}
-
 func TestTemplateTagDeleteLatestNotAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -120,7 +95,10 @@ func TestTemplateTagDeleteLatestNotAllowed(t *testing.T) {
 	template := testutils.BuildSimpleTemplate(t, "test-tag-delete-latest", setup.WithAPIKey())
 
 	// Try to delete the 'default' tag - should fail
-	deleteResp, err := c.DeleteTemplatesTagsNameWithResponse(ctx, template.TemplateID+":"+id.DefaultTag, setup.WithAPIKey())
+	deleteResp, err := c.DeleteTemplatesTagsWithResponse(ctx, api.DeleteTemplateTagsRequest{
+		Name: template.TemplateID,
+		Tags: []string{id.DefaultTag},
+	}, setup.WithAPIKey())
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusBadRequest, deleteResp.StatusCode())

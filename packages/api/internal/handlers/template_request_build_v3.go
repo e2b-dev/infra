@@ -49,14 +49,11 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	// Determine the input and additional tags based on which field is provided
+	// Determine the input based on which field is provided
 	var input string
-	var additionalTags []string
-
 	switch {
 	case body.Name != nil:
 		input = *body.Name
-		additionalTags = utils.DerefOrDefault(body.Tags, nil)
 	case body.Alias != nil:
 		// Deprecated: handle alias field for backward compatibility
 		input = *body.Alias
@@ -77,7 +74,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	}
 
 	// Collect tags: tag from input (if present) + additional tags from body.Tags
-	allTags := additionalTags
+	allTags := utils.DerefOrDefault(body.Tags, nil)
 	if t != nil {
 		allTags = append([]string{*t}, allTags...)
 	}
