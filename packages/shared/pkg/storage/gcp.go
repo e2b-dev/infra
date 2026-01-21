@@ -41,20 +41,20 @@ const (
 	gcsOperationAttrWriteTo = "WriteTo"
 )
 
-var (
-	googleReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
-		"orchestrator.storage.gcs.read",
-		"Duration of GCS reads",
-		"Total GCS bytes read",
-		"Total GCS reads",
-	))
-	googleWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
-		"orchestrator.storage.gcs.write",
-		"Duration of GCS writes",
-		"Total bytes written to GCS",
-		"Total writes to GCS",
-	))
-)
+// googleReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
+//
+//	"orchestrator.storage.gcs.read",
+//	"Duration of GCS reads",
+//	"Total GCS bytes read",
+//	"Total GCS reads",
+//
+// ))
+var googleWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
+	"orchestrator.storage.gcs.write",
+	"Duration of GCS writes",
+	"Total bytes written to GCS",
+	"Total writes to GCS",
+))
 
 type GCP struct {
 	client  *storage.Client
@@ -81,6 +81,7 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Pr
 
 		baseUploadURL: fmt.Sprintf("https://%s.storage.googleapis.com", bucketName),
 	}
+
 	return &Provider{
 		Basic:                    gcp,
 		Admin:                    gcp,

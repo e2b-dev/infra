@@ -68,9 +68,9 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (mappedToB
 	lengthInBuild := int64(mapping.Length) - shift
 
 	b := &BuildMap{
-		Offset:         mapping.BuildStorageOffset + uint64(shift),
-		Length:         uint64(lengthInBuild), // TODO can we use int64 more consistently, or do we need the full uint64 range, which we kind of don't get anyway?
-		BuildId:        mapping.BuildId,
+		Offset:     mapping.BuildStorageOffset + uint64(shift),
+		Length:     uint64(lengthInBuild), // TODO can we use int64 more consistently, or do we need the full uint64 range, which we kind of don't get anyway?
+		BuildId:    mapping.BuildId,
 		FrameTable: mapping.FrameTable,
 	}
 

@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -73,7 +74,7 @@ func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader, maxUploadCo
 	}
 }
 
-func (e *encoder) uploadFramed(ctx context.Context, asPath string, in io.Reader) (*FrameTable, error) {
+func (e *encoder) uploadFramed(ctx context.Context, in io.Reader) (*FrameTable, error) {
 	// Set up the uploader
 	uploadEG, uploadCtx := errgroup.WithContext(ctx)
 	if e.maxUploadConcurrency > 0 {
@@ -103,18 +104,19 @@ func (e *encoder) uploadFramed(ctx context.Context, asPath string, in io.Reader)
 			// See if we need to flush and to start a new frame
 			e.mu.Lock()
 			var flush *frame
-			if !haveData {
-				// No more data; flush current frame
-				flush = e.frame
-			} else {
+			if haveData {
 				if e.frame == nil || e.frame.flushing {
 					// Start a new frame and flush the current one
 					flush = e.frame
 					if e.frame, err = e.startFrame(); err != nil {
 						e.mu.Unlock()
+
 						return nil, fmt.Errorf("failed to start frame: %w", err)
 					}
 				}
+			} else {
+				// No more data; flush current frame
+				flush = e.frame
 			}
 			frame := e.frame
 			e.mu.Unlock()
@@ -130,6 +132,7 @@ func (e *encoder) uploadFramed(ctx context.Context, asPath string, in io.Reader)
 				if err = e.writeChunk(frame, chunk); err != nil {
 					return nil, fmt.Errorf("failed to encode to frame: %w", err)
 				}
+
 				continue
 			}
 
@@ -165,7 +168,7 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 	e.partLen += int64(len(data))
 	e.readyFrames = append(e.readyFrames, data)
 
-	if e.partLen >= int64(e.targetPartSize) || last {
+	if e.partLen >= e.targetPartSize || last {
 		e.partIndex++
 
 		i := e.partIndex
@@ -178,6 +181,7 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 			if err != nil {
 				return fmt.Errorf("failed to upload part %d: %w", e.partIndex, err)
 			}
+
 			return nil
 		})
 	}
@@ -193,10 +197,10 @@ func readFile(ctx context.Context, in io.Reader, chunkSize int, chunkCh chan<- [
 		if err == nil {
 			err = ctx.Err()
 		}
-		switch err {
-		case nil:
+		switch {
+		case err == nil:
 			chunkCh <- chunk
-		case io.EOF:
+		case errors.Is(err, io.EOF):
 			if len(chunk) > 0 {
 				chunkCh <- chunk
 			}
@@ -217,6 +221,7 @@ func readChunk(file io.Reader, chunkSize int) ([]byte, error) {
 		c, err = file.Read(chunk[n:])
 		n += c
 	}
+
 	return chunk[:n], err
 }
 
@@ -265,6 +270,7 @@ func (frame *frame) Write(p []byte) (n int, err error) {
 	e.mu.Lock()
 	if frame.lenC < e.opts.TargetFrameSize || frame.flushing {
 		e.mu.Unlock()
+
 		return n, err
 	}
 	frame.flushing = true

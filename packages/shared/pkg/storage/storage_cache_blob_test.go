@@ -69,11 +69,13 @@ func TestCachedStorage_Blobber(t *testing.T) {
 		inner := NewMockAPI(t)
 		inner.EXPECT().
 			GetBlob(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, objectPath string, userBuf []byte) ([]byte, error) {
+			RunAndReturn(func(_ context.Context, _ string, _ []byte) ([]byte, error) {
 				shadow := make([]byte, len(data))
 				copy(shadow, data)
+
 				return shadow, nil
 			})
+
 		return inner
 	}
 
@@ -97,7 +99,7 @@ func TestCachedStorage_Blobber(t *testing.T) {
 		buf := bytes.NewBuffer(nil)
 		read, wg, err := c.copyBlob(t.Context(), "test-item", buf)
 		require.NoError(t, err)
-		// assert.Equal(t, int64(len(actualData)), read)
+		assert.Equal(t, int64(len(actualData)), read)
 		assert.Equal(t, actualData, buf.Bytes())
 
 		wg.Wait()

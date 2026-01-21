@@ -77,6 +77,6 @@ func (c Cache) deleteCachedObjectsWithPrefix(ctx context.Context, prefix string)
 	}
 }
 
-func (c *Cache) PublicUploadURL(ctx context.Context, objectPath string, ttl time.Duration) (string, error) {
+func (c Cache) PublicUploadURL(ctx context.Context, objectPath string, ttl time.Duration) (string, error) {
 	return c.inner.PublicUploadURL(ctx, objectPath, ttl)
 }

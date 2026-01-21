@@ -40,6 +40,7 @@ func TestCache_SizeCaches(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		_, err := c.readLocalSize(t.Context(), "obj")
+
 		return err == nil
 	}, time.Second, 10*time.Millisecond)
 
@@ -85,6 +86,7 @@ func TestCache_StoreFile_WritesCache(t *testing.T) {
 		if _, err := os.Stat(c.sizeFilename(objectPath)); err != nil {
 			return false
 		}
+
 		return true
 	}, time.Second, 10*time.Millisecond)
 }

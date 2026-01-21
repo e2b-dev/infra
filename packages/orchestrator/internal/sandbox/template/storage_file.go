@@ -18,7 +18,6 @@ func newStorageFile(
 	persistence storage.API,
 	objectPath string,
 	path string,
-	objectType storage.ObjectType,
 ) (*storageFile, error) {
 	f, err := os.Create(path)
 	if err != nil {

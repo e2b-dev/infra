@@ -48,8 +48,8 @@ func (s *FileSystem) StartDownload(_ context.Context, path string) (io.ReadClose
 	return handle, nil
 }
 
-func (s *FileSystem) Download(_ context.Context, path string, dst io.Writer) (int64, error) {
-	handle, err := s.StartDownload(nil, path)
+func (s *FileSystem) Download(ctx context.Context, path string, dst io.Writer) (int64, error) {
+	handle, err := s.StartDownload(ctx, path)
 	if err != nil {
 		return 0, err
 	}

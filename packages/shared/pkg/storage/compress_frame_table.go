@@ -12,6 +12,7 @@ func (ft *FrameTable) Range(start, length int64, fn func(offset FrameOffset, fra
 			// frame is before the requested range
 			currentOffset.U += int64(frame.U)
 			currentOffset.C += int64(frame.C)
+
 			continue
 		}
 		if currentOffset.U >= requestEnd {
@@ -72,6 +73,7 @@ func (ft *FrameTable) Subset(r Range) (*FrameTable, error) {
 		if frameEnd <= r.Start {
 			// frame is before the requested range
 			currentOffset.Add(frame)
+
 			continue
 		}
 		if currentOffset.U >= requestedEnd {
@@ -100,12 +102,15 @@ func (ft *FrameTable) FrameFor(r Range) (starts FrameOffset, size FrameSize, err
 		return FrameOffset{}, FrameSize{}, fmt.Errorf("frame table is nil")
 	}
 	subset, err := ft.Subset(r)
+	if err != nil {
+		return FrameOffset{}, FrameSize{}, err
+	}
 
 	if subset == nil || len(subset.Frames) == 0 {
-		return FrameOffset{}, FrameSize{}, fmt.Errorf("no frames found for range %#x/%#x", r.Start, r.Length)
+		return FrameOffset{}, FrameSize{}, fmt.Errorf("no frames found for range %s", r)
 	}
 	if len(subset.Frames) > 1 {
-		return FrameOffset{}, FrameSize{}, fmt.Errorf("range %#x/%#x spans multiple frames", r.Start, r.Length)
+		return FrameOffset{}, FrameSize{}, fmt.Errorf("range %s spans multiple frames", r)
 	}
 
 	return subset.StartAt, subset.Frames[0], nil
@@ -123,6 +128,7 @@ func (ft *FrameTable) GetFetchRange(rangeU Range) (Range, error) {
 			Length: int(size.C),
 		}
 	}
+
 	return fetchRange, nil
 }
 

@@ -31,7 +31,7 @@ type Diff interface {
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
 	FileSize() (int64, error)
-	Init(context.Context) error
+	Init(ctx context.Context) error
 }
 
 type NoDiff struct{}

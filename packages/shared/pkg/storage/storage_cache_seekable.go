@@ -51,7 +51,7 @@ type featureFlagsClient interface {
 	IntFlag(ctx context.Context, flag featureflags.IntFlag, ldctx ...ldcontext.Context) int
 }
 
-func (c *Cache) GetFrame(ctx context.Context, path string, offU int64, frameTable *FrameTable, decompress bool, buf []byte) (rng Range, err error) {
+func (c Cache) GetFrame(ctx context.Context, path string, offU int64, frameTable *FrameTable, decompress bool, buf []byte) (rng Range, err error) {
 	if err := c.validateGetFrameParams(offU, len(buf), frameTable); err != nil {
 		return Range{}, err
 	}
@@ -61,6 +61,7 @@ func (c *Cache) GetFrame(ctx context.Context, path string, offU int64, frameTabl
 		if err != nil {
 			return Range{}, err
 		}
+
 		return compressedRange, nil
 	}
 
@@ -69,7 +70,12 @@ func (c *Cache) GetFrame(ctx context.Context, path string, offU int64, frameTabl
 	return Range{Start: offU, Length: n}, err
 }
 
-func (c *Cache) getCompressedFrame(ctx context.Context, objectPath string, offU int64, frameTable *FrameTable, decompress bool, buf []byte) (compressedRange Range, wg *sync.WaitGroup, err error) {
+func (c Cache) getCompressedFrame(ctx context.Context, objectPath string, offU int64, frameTable *FrameTable, decompress bool, buf []byte) (compressedRange Range, wg *sync.WaitGroup, err error) {
+	wg = &sync.WaitGroup{}
+	if !decompress {
+		return Range{}, wg, fmt.Errorf("raw compressed reads are not supported from the cache")
+	}
+
 	ctx, span := c.tracer.Start(ctx, "read compressed frame at offset", trace.WithAttributes(
 		attribute.Int64("offset", offU),
 		attribute.Int("length", len(buf)),
@@ -82,7 +88,7 @@ func (c *Cache) getCompressedFrame(ctx context.Context, objectPath string, offU 
 	requestedRangeU := Range{Start: offU, Length: len(buf)}
 	frameStarts, frameSize, err := frameTable.FrameFor(requestedRangeU)
 	if err != nil {
-		return Range{}, nil, fmt.Errorf("failed to get frame for range: %w", err)
+		return Range{}, wg, fmt.Errorf("failed to get frame for range: %w", err)
 	}
 
 	// try to read from cache first
@@ -95,7 +101,7 @@ func (c *Cache) getCompressedFrame(ctx context.Context, objectPath string, offU 
 		recordCacheRead(ctx, true, int64(count), cacheTypeSeekable, cacheOpReadAt)
 		readTimer.Success(ctx, int64(count))
 
-		return Range{Start: frameStarts.U, Length: count}, nil, err // return `err` in case it's io.EOF
+		return Range{Start: frameStarts.U, Length: count}, wg, err // return `err` in case it's io.EOF
 	}
 	readTimer.Failure(ctx, int64(count))
 
@@ -112,10 +118,9 @@ func (c *Cache) getCompressedFrame(ctx context.Context, objectPath string, offU 
 	compressedData := make([]byte, frameSize.C)
 	compressedRange, err = c.inner.GetFrame(ctx, objectPath, offU, frameTable, false, compressedData)
 	if err != nil {
-		return Range{}, nil, fmt.Errorf("failed to perform uncached read: %w", err)
+		return Range{}, wg, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
-	wg = &sync.WaitGroup{}
 	goCtx(ctx, wg, func(ctx context.Context) {
 		ctx, span := c.tracer.Start(ctx, "write chunk at offset back to cache")
 		defer span.End()
@@ -133,7 +138,7 @@ func (c *Cache) getCompressedFrame(ctx context.Context, objectPath string, offU 
 	return Range{Start: compressedRange.Start, Length: n}, wg, err
 }
 
-func (c *Cache) getUncompressedChunk(ctx context.Context, path string, offset int64, buf []byte) (n int, wg *sync.WaitGroup, err error) {
+func (c Cache) getUncompressedChunk(ctx context.Context, path string, offset int64, buf []byte) (n int, wg *sync.WaitGroup, err error) {
 	ctx, span := c.tracer.Start(ctx, "read object at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int("buff_len", len(buf)),
@@ -194,7 +199,7 @@ func (c *Cache) getUncompressedChunk(ctx context.Context, path string, offset in
 	return frameRange.Length, wg, err
 }
 
-func (c *Cache) Size(ctx context.Context, objectPath string) (n int64, e error) {
+func (c Cache) Size(ctx context.Context, objectPath string) (n int64, e error) {
 	ctx, span := c.tracer.Start(ctx, "get size of object")
 	defer func() {
 		recordError(span, e)
@@ -231,7 +236,7 @@ func (c *Cache) Size(ctx context.Context, objectPath string) (n int64, e error) 
 	return size, nil
 }
 
-func (c *Cache) storeCompressed(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, wg *sync.WaitGroup, err error) {
+func (c Cache) storeCompressed(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, wg *sync.WaitGroup, err error) {
 	o := *opts
 
 	wg = &sync.WaitGroup{}
@@ -243,21 +248,24 @@ func (c *Cache) storeCompressed(ctx context.Context, inFilePath, objectPath stri
 				trace.WithAttributes(attribute.Int64("offset", offset.U)))
 			defer span.End()
 
-			if err := c.writeFrameToCache(ctx, objectPath, offset, size, chunkPath, data); err != nil {
+			if err := c.writeFrameToCache(ctx, offset, chunkPath, data); err != nil {
 				recordError(span, err)
 				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to write frame to cache: %w", err))
 			}
 		})
+
 		return nil
 	}
 
 	ft, err = c.inner.StoreFile(ctx, inFilePath, objectPath, &o)
+
 	return ft, wg, err
 }
 
-func (c *Cache) StoreFile(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, err error) {
+func (c Cache) StoreFile(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, err error) {
 	if opts != nil && opts.CompressionType != CompressionNone {
 		ft, _, err := c.storeCompressed(ctx, objectPath, inFilePath, opts)
+
 		return ft, err
 	}
 
@@ -305,24 +313,27 @@ func goCtx(ctx context.Context, wg *sync.WaitGroup, fn func(context.Context)) {
 	})
 }
 
-func (c *Cache) makeChunkFilename(objectPath string, offset int64) string {
+func (c Cache) makeChunkFilename(objectPath string, offset int64) string {
 	base := c.cachePath(objectPath)
+
 	return fmt.Sprintf("%s/%012d-%d.bin", base, offset/c.chunkSize, c.chunkSize)
 }
 
-func (c *Cache) makeFrameFilename(objectPath string, o FrameOffset, size FrameSize) string {
+func (c Cache) makeFrameFilename(objectPath string, o FrameOffset, size FrameSize) string {
 	base := c.cachePath(objectPath)
+
 	return fmt.Sprintf("%s/%016dC-%dC.frm", base, o.C, size.C)
 }
 
-func (c *Cache) makeTempChunkFilename(objectPath string, offset int64) string {
+func (c Cache) makeTempChunkFilename(objectPath string, offset int64) string {
 	tempFilename := uuid.NewString()
 
 	base := c.cachePath(objectPath)
+
 	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", base, offset/c.chunkSize, c.chunkSize, tempFilename)
 }
 
-func (c *Cache) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (n int, e error) {
+func (c Cache) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (n int, e error) {
 	ctx, span := c.tracer.Start(ctx, "read chunk at offset from cache")
 	defer func() {
 		recordError(span, e)
@@ -344,7 +355,7 @@ func (c *Cache) readAtFromCache(ctx context.Context, chunkPath string, buff []by
 	return count, err // return `err` in case it's io.EOF
 }
 
-func decompressStream(ctx context.Context, compressionType CompressionType, from io.Reader, buff []byte) (n int, e error) {
+func decompressStream(_ context.Context, compressionType CompressionType, from io.Reader, buff []byte) (n int, e error) {
 	switch compressionType {
 	case CompressionZstd:
 		dec, err := zstd.NewReader(from)
@@ -365,7 +376,7 @@ func decompressStream(ctx context.Context, compressionType CompressionType, from
 	}
 }
 
-func decompressBytes(ctx context.Context, compressionType CompressionType, from []byte, buff []byte) (n int, e error) {
+func decompressBytes(_ context.Context, compressionType CompressionType, from []byte, buff []byte) (n int, e error) {
 	switch compressionType {
 	case CompressionZstd:
 		dec, err := zstd.NewReader(nil)
@@ -386,7 +397,7 @@ func decompressBytes(ctx context.Context, compressionType CompressionType, from 
 	}
 }
 
-func (c *Cache) decompressFromCache(ctx context.Context, chunkPath string, compressionType CompressionType, buff []byte) (n int, e error) {
+func (c Cache) decompressFromCache(ctx context.Context, chunkPath string, compressionType CompressionType, buff []byte) (n int, e error) {
 	ctx, span := c.tracer.Start(ctx, "read and decompress frame at offset from cache")
 	defer func() {
 		recordError(span, e)
@@ -403,11 +414,11 @@ func (c *Cache) decompressFromCache(ctx context.Context, chunkPath string, compr
 	return decompressStream(ctx, compressionType, fp, buff)
 }
 
-func (c *Cache) sizeFilename(path string) string {
+func (c Cache) sizeFilename(path string) string {
 	return filepath.Join(c.cachePath(path), "size.txt")
 }
 
-func (c *Cache) readLocalSize(ctx context.Context, path string) (int64, error) {
+func (c Cache) readLocalSize(_ context.Context, path string) (int64, error) {
 	filename := c.sizeFilename(path)
 	content, err := os.ReadFile(filename)
 	if err != nil {
@@ -422,11 +433,11 @@ func (c *Cache) readLocalSize(ctx context.Context, path string) (int64, error) {
 	return size, nil
 }
 
-func (c *Cache) validateGetFrameParams(off int64, length int, frameTable *FrameTable) error {
+func (c Cache) validateGetFrameParams(off int64, length int, frameTable *FrameTable) error {
 	if length == 0 {
 		return ErrBufferTooSmall
 	}
-	if off%int64(c.chunkSize) != 0 {
+	if off%c.chunkSize != 0 {
 		return ErrOffsetUnaligned
 	}
 	if !frameTable.IsCompressed() {
@@ -441,27 +452,28 @@ func (c *Cache) validateGetFrameParams(off int64, length int, frameTable *FrameT
 	return nil
 }
 
-func (c *Cache) validateReadAtParams(buffSize, offset int64) error {
+func (c Cache) validateReadAtParams(buffSize, offset int64) error {
 	if buffSize == 0 {
 		return ErrBufferTooSmall
 	}
-	if buffSize > int64(c.chunkSize) {
+	if buffSize > c.chunkSize {
 		return ErrBufferTooLarge
 	}
-	if offset%int64(c.chunkSize) != 0 {
+	if offset%c.chunkSize != 0 {
 		return ErrOffsetUnaligned
 	}
-	if (offset%int64(c.chunkSize))+buffSize > int64(c.chunkSize) {
+	if (offset%c.chunkSize)+buffSize > c.chunkSize {
 		return ErrMultipleChunks
 	}
 
 	return nil
 }
 
-func (c *Cache) writeChunkToCache(ctx context.Context, path string, offset int64, chunkPath string, bytes []byte) error {
+func (c Cache) writeChunkToCache(ctx context.Context, path string, offset int64, chunkPath string, bytes []byte) error {
 	writeTimer := cacheSlabWriteTimerFactory.Begin()
 	if err := os.MkdirAll(filepath.Dir(chunkPath), cacheDirPermissions); err != nil {
 		writeTimer.Failure(ctx, 0)
+
 		return fmt.Errorf("failed to create cache directory %s: %w", filepath.Dir(chunkPath), err)
 	}
 
@@ -508,7 +520,7 @@ func (c *Cache) writeChunkToCache(ctx context.Context, path string, offset int64
 	return nil
 }
 
-func (c *Cache) writeLocalSize(ctx context.Context, objectPath string, size int64) error {
+func (c Cache) writeLocalSize(ctx context.Context, objectPath string, size int64) error {
 	finalFilename := c.sizeFilename(objectPath)
 	if err := os.MkdirAll(filepath.Dir(finalFilename), cacheDirPermissions); err != nil {
 		return fmt.Errorf("failed to create cache directory %s: %w", filepath.Dir(finalFilename), err)
@@ -546,7 +558,7 @@ func (c *Cache) writeLocalSize(ctx context.Context, objectPath string, size int6
 	return nil
 }
 
-func (c *Cache) createCacheBlocksFromFile(ctx context.Context, inFilePath, objectPath string) (count int64, err error) {
+func (c Cache) createCacheBlocksFromFile(ctx context.Context, inFilePath, objectPath string) (count int64, err error) {
 	ctx, span := c.tracer.Start(ctx, "create cache blocks from filesystem")
 	defer func() {
 		recordError(span, err)
@@ -574,7 +586,7 @@ func (c *Cache) createCacheBlocksFromFile(ctx context.Context, inFilePath, objec
 	}
 
 	ec := utils.NewErrorCollector(maxConcurrency)
-	for offset := int64(0); offset < totalSize; offset += int64(c.chunkSize) {
+	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
 		ec.Go(ctx, func() error {
 			if err := c.writeChunkFromFile(ctx, objectPath, offset, input); err != nil {
 				return fmt.Errorf("failed to write chunk file at offset %d: %w", offset, err)
@@ -589,7 +601,7 @@ func (c *Cache) createCacheBlocksFromFile(ctx context.Context, inFilePath, objec
 	return totalSize, err
 }
 
-func (c *Cache) writeFrameToCache(ctx context.Context, objectPath string, o FrameOffset, size FrameSize, chunkPath string, bytes []byte) (err error) {
+func (c Cache) writeFrameToCache(ctx context.Context, o FrameOffset, chunkPath string, bytes []byte) (err error) {
 	_, span := c.tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
 		attribute.Int64("offset", o.U),
 	))
@@ -600,28 +612,28 @@ func (c *Cache) writeFrameToCache(ctx context.Context, objectPath string, o Fram
 
 	writeTimer := cacheSlabWriteTimerFactory.Begin()
 
-	cachedFramePath := c.makeFrameFilename(objectPath, o, size)
-	span.SetAttributes(attribute.String("chunk_path", cachedFramePath))
-	if err := os.MkdirAll(filepath.Dir(cachedFramePath), cacheDirPermissions); err != nil {
+	span.SetAttributes(attribute.String("chunk_path", chunkPath))
+	if err := os.MkdirAll(filepath.Dir(chunkPath), cacheDirPermissions); err != nil {
 		writeTimer.Failure(ctx, 0)
 
-		return fmt.Errorf("failed to create cache directory %s: %w", filepath.Dir(cachedFramePath), err)
+		return fmt.Errorf("failed to create cache directory %s: %w", filepath.Dir(chunkPath), err)
 	}
 
-	if err := os.WriteFile(cachedFramePath, bytes, cacheFilePermissions); err != nil {
+	if err := os.WriteFile(chunkPath, bytes, cacheFilePermissions); err != nil {
 		writeTimer.Failure(ctx, 0)
 
 		return fmt.Errorf("failed to write frame to cache: %w", err)
 	}
 
 	writeTimer.Success(ctx, int64(len(bytes)))
+
 	return nil
 }
 
 // writeChunkFromFile writes a piece of a local file. It does not need to worry about race conditions, as it will only
 // be called in the build layer, which cannot be built on multiple machines at the same time, or multiple times on the
 // same machine..
-func (c *Cache) writeChunkFromFile(ctx context.Context, objectPath string, offset int64, input *os.File) (err error) {
+func (c Cache) writeChunkFromFile(ctx context.Context, objectPath string, offset int64, input *os.File) (err error) {
 	_, span := c.tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 	))

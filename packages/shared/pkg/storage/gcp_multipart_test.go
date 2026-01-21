@@ -193,9 +193,9 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			// Upload part
 			partNumStr := r.URL.Query().Get("partNumber")
-			require.NotEmpty(t, partNumStr)
+			assert.NotEmpty(t, partNumStr)
 			partNum, err := strconv.Atoi(partNumStr)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			atomic.AddInt32(&uploadPartCount, 1)
 			body, _ := io.ReadAll(r.Body)
@@ -216,7 +216,7 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	err = uploadFileInParallel(t.Context(), testObjectName, f, int64(len(testContent)), uploader, 5*1024, 2)
+	err = uploadFileInParallel(t.Context(), f, int64(len(testContent)), uploader, 5*1024, 2)
 	require.NoError(t, err)
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCount))
@@ -320,9 +320,9 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 
 			partNumStr := r.URL.Query().Get("partNumber")
-			require.NotEmpty(t, partNumStr)
+			assert.NotEmpty(t, partNumStr)
 			partNum, err := strconv.Atoi(partNumStr)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			atomic.AddInt32(&partCalls, 1)
 			body, _ := io.ReadAll(r.Body)
@@ -343,7 +343,7 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 	defer f.Close()
 
 	// Use high concurrency to stress test - 50 concurrent workers
-	err = uploadFileInParallel(t.Context(), testObjectName, f, int64(len(testContent)), uploader, partSize, 50)
+	err = uploadFileInParallel(t.Context(), f, int64(len(testContent)), uploader, partSize, 50)
 	require.NoError(t, err)
 
 	// Verify all calls were made
@@ -367,7 +367,7 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "chaos.txt")
-	partSize := 5 * 1024 * 1024 // 5MB parts
+	partSize := 5 * megabyte                                          // 5MB parts
 	testContent := strings.Repeat("chaos test data ", 5*1024*1024/17) // ~100MB file for multiple parts
 	err := os.WriteFile(testFile, []byte(testContent), 0o644)
 	require.NoError(t, err)
@@ -420,7 +420,7 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	err = uploadFileInParallel(t.Context(), testObjectName, f, int64(len(testContent)), uploader, partSize, 10)
+	err = uploadFileInParallel(t.Context(), f, int64(len(testContent)), uploader, partSize, 10)
 	require.NoError(t, err)
 
 	t.Logf("Chaos test: %d total attempts, %d successes",
@@ -459,7 +459,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			partNumStr := r.URL.Query().Get("partNumber")
-			require.NotEmpty(t, partNumStr)
+			assert.NotEmpty(t, partNumStr)
 
 			// Track attempts per part
 			v := int32(0)
@@ -495,7 +495,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	err = uploadFileInParallel(t.Context(), testObjectName, f, int64(len(testContent)), uploader, partSize, 5)
+	err = uploadFileInParallel(t.Context(), f, int64(len(testContent)), uploader, partSize, 5)
 	require.NoError(t, err)
 
 	// Verify that all parts eventually succeeded after retries
@@ -535,9 +535,9 @@ func TestMultipartUploader_EdgeCases_EmptyFile(t *testing.T) {
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			atomic.AddInt32(&partCalls, 1)
 			partNumStr := r.URL.Query().Get("partNumber")
-			require.NotEmpty(t, partNumStr)
+			assert.NotEmpty(t, partNumStr)
 			partNum, err := strconv.Atoi(partNumStr)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			body, _ := io.ReadAll(r.Body)
 			assert.Empty(t, body, "Empty file should result in empty part")
@@ -556,7 +556,7 @@ func TestMultipartUploader_EdgeCases_EmptyFile(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	err = uploadFileInParallel(t.Context(), testObjectName, f, 0, uploader, 5*1024, 5)
+	err = uploadFileInParallel(t.Context(), f, 0, uploader, 5*1024, 5)
 	require.NoError(t, err)
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCalls))
@@ -594,9 +594,9 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			atomic.AddInt32(&uploadPartCount, 1)
 			partNumStr := r.URL.Query().Get("partNumber")
-			require.NotEmpty(t, partNumStr)
+			assert.NotEmpty(t, partNumStr)
 			partNum, err := strconv.Atoi(partNumStr)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			body, _ := io.ReadAll(r.Body)
 			receivedData = string(body)
@@ -615,7 +615,7 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	err = uploadFileInParallel(t.Context(), testObjectName, f, int64(len(smallContent)), uploader, 5*1024, 10)
+	err = uploadFileInParallel(t.Context(), f, int64(len(smallContent)), uploader, 5*1024, 10)
 	require.NoError(t, err)
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCount))
@@ -700,9 +700,9 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 			time.Sleep(10 * time.Millisecond)
 
 			partNumStr := r.URL.Query().Get("partNumber")
-			require.NotEmpty(t, partNumStr)
+			assert.NotEmpty(t, partNumStr)
 			partNum, err := strconv.Atoi(partNumStr)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			w.Header().Set("ETag", fmt.Sprintf(`"etag%d"`, partNum))
 			w.WriteHeader(http.StatusOK)
@@ -718,7 +718,7 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 	defer f.Close()
 
 	// Try with extremely high concurrency limit (higher than parts)
-	err = uploadFileInParallel(t.Context(), testObjectName, f, int64(partSize*totalParts), uploader, partSize, 1000)
+	err = uploadFileInParallel(t.Context(), f, int64(partSize*totalParts), uploader, partSize, 1000)
 	require.NoError(t, err)
 
 	// Should have observed significant concurrency but not necessarily 1000
@@ -760,9 +760,9 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			partNumStr := r.URL.Query().Get("partNumber")
-			require.NotEmpty(t, partNumStr)
+			assert.NotEmpty(t, partNumStr)
 			partNum, err := strconv.Atoi(partNumStr)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			body, _ := io.ReadAll(r.Body)
 			partSizesMu.Lock()
@@ -783,7 +783,7 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	err = uploadFileInParallel(t.Context(), testObjectName, f, int64(len(testContent)), uploader, partSize, 5)
+	err = uploadFileInParallel(t.Context(), f, int64(len(testContent)), uploader, partSize, 5)
 	require.NoError(t, err)
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCalls))
@@ -806,7 +806,7 @@ func TestMultipartUploader_FileNotFound_Error(t *testing.T) {
 
 	if f != nil {
 		defer f.Close()
-		err = uploadFileInParallel(t.Context(), testObjectName, f, 0, uploader, 5*1024, 5)
+		err = uploadFileInParallel(t.Context(), f, 0, uploader, 5*1024, 5)
 		require.Error(t, err)
 	}
 }
@@ -815,7 +815,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "race.txt")
-	partSize := 5 * 1024 * 1024 // 5MB parts
+	partSize := 5 * megabyte                                              // 5MB parts
 	testContent := strings.Repeat("race condition test ", 5*1024*1024/21) // 100MB+ file
 	err := os.WriteFile(testFile, []byte(testContent), 0o644)
 	require.NoError(t, err)
@@ -875,7 +875,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	err = uploadFileInParallel(t.Context(), testObjectName, f, int64(len(testContent)), uploader, partSize, 20) // High concurrency
+	err = uploadFileInParallel(t.Context(), f, int64(len(testContent)), uploader, partSize, 20) // High concurrency
 	require.NoError(t, err)
 
 	t.Logf("Total HTTP requests made: %d", atomic.LoadInt32(&totalRequests))

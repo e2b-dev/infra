@@ -20,23 +20,24 @@ import (
 type Chunker struct {
 	persistence storage.FrameGetter
 	objectPath  string
-	cache       *Cache
-	metrics     metrics.Metrics
+	frameTable  *storage.FrameTable
+
+	cache   *Cache
+	metrics metrics.Metrics
 
 	size int64
 
 	// TODO: Optimize this so we don't need to keep the fetchers in memory.
-	fetchers   *utils.WaitMap
-	frameTable *storage.FrameTable
+	fetchers *utils.WaitMap
 }
 
 func NewChunker(
 	size, blockSize int64,
 	persistence storage.FrameGetter,
 	objectPath string,
+	frameTable *storage.FrameTable,
 	cachePath string,
 	metrics metrics.Metrics,
-	frameTable *storage.FrameTable,
 ) (*Chunker, error) {
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
@@ -47,10 +48,10 @@ func NewChunker(
 		size:        size,
 		persistence: persistence,
 		objectPath:  objectPath,
+		frameTable:  frameTable,
 		cache:       cache,
 		fetchers:    utils.NewWaitMap(),
 		metrics:     metrics,
-		frameTable:  frameTable,
 	}
 
 	return chunker, nil
@@ -134,15 +135,16 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 	var eg errgroup.Group
 
 	var framesToFetch *storage.FrameTable
+	fetchRange := storage.Range{Start: off, Length: int(length)}
 
 	if c.frameTable.IsCompressed() {
 		var err error
-		framesToFetch, err = c.frameTable.Subset(storage.Range{Start: off, Length: int(length)})
+		framesToFetch, err = c.frameTable.Subset(fetchRange)
 		if err != nil {
-			return fmt.Errorf("failed to get frame subset for range %#x-%#x: %w", off, off+length, err)
+			return fmt.Errorf("failed to get frame subset for range %s: %w", fetchRange, err)
 		}
 		if framesToFetch == nil || len(framesToFetch.Frames) == 0 {
-			return fmt.Errorf("no frames to fetch for range %#x-%#x", off, off+length)
+			return fmt.Errorf("no frames to fetch for range %s", fetchRange)
 		}
 	} else {
 		// If no compression, pretend each chunk is a frame.
@@ -197,7 +199,8 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
-				r, err := c.persistence.GetFrame(ctx,
+				// For uncpompressed data, GetFrame will read the exact data we need.
+				_, err = c.persistence.GetFrame(ctx,
 					c.objectPath, fetchOff, framesToFetch, true, b)
 				if err != nil {
 					fetchSW.Failure(ctx, int64(len(b)),
@@ -207,7 +210,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 					return fmt.Errorf("failed to read frame from base %d: %w", fetchOff, err)
 				}
 
-				c.cache.setIsCached(r.Start, int64(len(b)))
+				c.cache.setIsCached(fetchRange)
 
 				fetchSW.Success(ctx, int64(len(b)))
 
@@ -220,7 +223,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 	err := eg.Wait()
 	if err != nil {
-		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
+		return fmt.Errorf("failed to ensure data at %s: %w", fetchRange, err)
 	}
 
 	return nil

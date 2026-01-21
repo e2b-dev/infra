@@ -42,7 +42,7 @@ type FrameOffset struct {
 	C int64
 }
 
-func (o FrameOffset) String() string {
+func (o *FrameOffset) String() string {
 	return fmt.Sprintf("U:%#x/C:%#x", o.U, o.C)
 }
 
@@ -94,9 +94,9 @@ type ReaderAt interface {
 	Size(ctx context.Context) (int64, error)
 }
 
-type Reader interface {
-	Read(ctx context.Context, p []byte) (n int, err error)
-}
+// type Reader interface {
+// 	Read(ctx context.Context, p []byte) (n int, err error)
+// }
 
 type FrameGetter interface {
 	GetFrame(ctx context.Context, objectPath string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte) (Range, error)
@@ -162,6 +162,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	if compression == CompressionNone && (s.Provider.MultipartUploaderFactory == nil || sizeU <= int64(partSize)) {
 		// If not using multipart or compressed upload, fall through to simple put.
 		_, err = s.Provider.Upload(ctx, objectPath, in)
+
 		return nil, err
 	}
 
@@ -177,9 +178,9 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	}
 
 	if compression != CompressionNone {
-		ft, err = newFrameEncoder(opts, partUploader, maxConcurrency).uploadFramed(ctx, objectPath, in)
+		ft, err = newFrameEncoder(opts, partUploader, maxConcurrency).uploadFramed(ctx, in)
 	} else {
-		err = uploadFileInParallel(ctx, objectPath, in, sizeU, partUploader, partSize, maxConcurrency)
+		err = uploadFileInParallel(ctx, in, sizeU, partUploader, partSize, maxConcurrency)
 	}
 
 	if err != nil {
@@ -229,7 +230,7 @@ func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64,
 
 	n, err := io.ReadFull(from, buf[:fetchRange.Length])
 
-	return Range{Start: fetchRange.Start, Length: int(n)}, err
+	return Range{Start: fetchRange.Start, Length: n}, err
 }
 
 func (s *Storage) GetBlob(ctx context.Context, path string, userBuffer []byte) ([]byte, error) {
@@ -250,6 +251,7 @@ func readAll(r io.Reader, userBuffer []byte) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading blob into user buffer: %w", err)
 		}
+
 		return userBuffer[:n], nil
 	}
 
@@ -260,6 +262,7 @@ func readAll(r io.Reader, userBuffer []byte) ([]byte, error) {
 
 	receiveBuf := bytes.NewBuffer(make([]byte, 0, writeToInitialBufferSize))
 	_, err := io.Copy(receiveBuf, r)
+
 	return receiveBuf.Bytes(), err
 }
 
@@ -292,7 +295,7 @@ func Exists(ctx context.Context, s API, path string) (bool, error) {
 	return err == nil, ignoreNotExists(err)
 }
 
-func uploadFileInParallel(ctx context.Context, asPath string, in io.ReaderAt, size int64, uploader MultipartUploader, partSize, maxConcurrency int) error {
+func uploadFileInParallel(ctx context.Context, in io.ReaderAt, size int64, uploader MultipartUploader, partSize, maxConcurrency int) error {
 	// Calculate number of parts
 	numParts := int(math.Ceil(float64(size) / float64(partSize)))
 	if numParts == 0 {

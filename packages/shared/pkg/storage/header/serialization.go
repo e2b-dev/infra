@@ -120,7 +120,7 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func Deserialize(ctx context.Context, data []byte) (*Header, error) {
+func Deserialize(_ context.Context, data []byte) (*Header, error) {
 	var metadata Metadata
 	in := bytes.NewReader(data)
 	err := binary.Read(in, binary.LittleEndian, &metadata)

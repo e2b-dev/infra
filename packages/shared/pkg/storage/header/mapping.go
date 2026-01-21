@@ -14,6 +14,10 @@ import (
 // Length will be a multiple of BlockSize
 // The list of block mappings will be in order of increasing Start, covering the entire file
 type BuildMap struct {
+	// TODO LEV do these need to be uint64? can we do int64? We use int64 in
+	// many places elsewhere, and length is usually limited to int (in our case
+	// 64 bit ints anyway)
+
 	// Offset defines which block of the current layer this mapping starts at
 	Offset             uint64 // in the memory space
 	Length             uint64
