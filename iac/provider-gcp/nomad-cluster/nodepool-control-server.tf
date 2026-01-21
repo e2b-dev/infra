@@ -102,7 +102,7 @@ resource "google_compute_instance_template" "server" {
   disk {
     boot         = true
     source_image = data.google_compute_image.server_source_image.self_link
-    disk_size_gb = 20
+    disk_size_gb = var.server_boot_disk_size_gb
     disk_type    = var.server_boot_disk_type
   }
 

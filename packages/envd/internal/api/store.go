@@ -63,5 +63,7 @@ func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(metrics)
+	if err := json.NewEncoder(w).Encode(metrics); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode metrics")
+	}
 }

@@ -8,7 +8,7 @@
 4. `make local-infra` runs clickhouse, grafana, loki, memcached, mimir, otel, postgres, redis, tempo
 5. `cd packages/db && make migrate-local` initialize the database
 6. `cd packages/envd && make build-debug` create the envd that will be embedded in templates
-7. `cd packages/fc-versions && make build` build the firecracker versions
+7. `make download-public-firecrackers` download firecracker versions
 8. `cd packages/local-dev && go run seed-local-database.go` generate user, team, and token for local development 
 9. `cd packages/api && make run-local` run the api locally 
 10. `cd packages/orchestrator && make run-local` run the orchestrator and template-manager locally.

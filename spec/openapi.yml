@@ -1496,14 +1496,14 @@ components:
 
     TemplateTag:
       required:
-        - tags
+        - names
         - buildID
       properties:
-        tags:
+        names:
           type: array
           items:
             type: string
-          description: Tags of the template
+          description: Assigned names of the template
         buildID:
           type: string
           format: uuid

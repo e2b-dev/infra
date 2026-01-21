@@ -44,7 +44,7 @@ func TestTemplateTagAssign(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, tagResp.StatusCode())
 	require.NotNil(t, tagResp.JSON201)
-	assert.Equal(t, []string{"v1"}, tagResp.JSON201.Tags)
+	assert.Equal(t, []string{template.TemplateID + ":v1"}, tagResp.JSON201.Names)
 	assert.Equal(t, template.BuildID, tagResp.JSON201.BuildID.String())
 }
 
@@ -78,7 +78,7 @@ func TestTemplateTagAssignFromSourceTag(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, tagResp.StatusCode())
 	require.NotNil(t, tagResp.JSON201)
-	assert.Equal(t, []string{prodTag}, tagResp.JSON201.Tags)
+	assert.Equal(t, []string{template.TemplateID + ":" + prodTag}, tagResp.JSON201.Names)
 	// Both tags should point to the same build
 	assert.Equal(t, template.BuildID, tagResp.JSON201.BuildID.String())
 }

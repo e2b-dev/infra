@@ -29,6 +29,8 @@ start-docker:
 	docker run \
 	--name envd \
 	--platform linux/amd64 \
+	--privileged \
+	--cgroupns=host \
 	-p 49983:49983 \
 	-p 2345:2345 \
 	-p 9999:9999 \

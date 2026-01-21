@@ -142,20 +142,20 @@ variable "client_proxy_update_max_parallel" {
   default     = 1
 }
 
-variable "edge_api_port" {
+variable "client_proxy_health_port" {
   type = object({
     name = string
     port = number
     path = string
   })
   default = {
-    name = "edge-api"
+    name = "client-proxy"
     port = 3001
-    path = "/health/traffic"
+    path = "/health"
   }
 }
 
-variable "edge_proxy_port" {
+variable "client_proxy_port" {
   type = object({
     name = string
     port = number
@@ -546,6 +546,12 @@ variable "server_boot_disk_type" {
   description = "The GCE boot disk type for the control server machines."
   type        = string
   default     = "pd-ssd"
+}
+
+variable "server_boot_disk_size_gb" {
+  description = "The GCE boot disk size (in GB) for the control server machines."
+  type        = number
+  default     = 20
 }
 
 variable "clickhouse_boot_disk_type" {

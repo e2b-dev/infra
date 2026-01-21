@@ -42,16 +42,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 			return nil, &cleaner, fmt.Errorf("failed to parse build id: %w", err)
 		}
 
-<<<<<<< HEAD
-		obj, err := s.OpenFramedReader(ctx, files.StorageRootfsPath(), nil)
-=======
-		r, err := s.OpenSeekable(ctx, files.StorageRootfsPath(), storage.RootFSObjectType)
->>>>>>> 8720c9f2160eb7dc458308d3d97f53ac794e109b
-		if err != nil {
-			return nil, &cleaner, fmt.Errorf("failed to open object: %w", err)
-		}
-
-		size, err := obj.Size(ctx)
+		size, err := s.Size(ctx, files.StorageRootfsPath())
 		if err != nil {
 			return nil, &cleaner, fmt.Errorf("failed to get object size: %w", err)
 		}

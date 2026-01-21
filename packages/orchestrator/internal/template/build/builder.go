@@ -402,6 +402,9 @@ func getRootfsSize(
 	metadata storage.TemplateFiles,
 ) (uint64, error) {
 	data, err := s.GetBlob(ctx, metadata.StorageRootfsHeaderPath(), nil)
+	if err != nil {
+		return 0, fmt.Errorf("error reading rootfs header from storage: %w", err)
+	}
 
 	h, err := header.Deserialize(ctx, data)
 	if err != nil {

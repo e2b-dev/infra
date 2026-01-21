@@ -1016,8 +1016,8 @@ type TemplateTag struct {
 	// BuildID Identifier of the build associated with this tag
 	BuildID openapi_types.UUID `json:"buildID"`
 
-	// Tags Tags of the template
-	Tags []string `json:"tags"`
+	// Names Assigned names of the template
+	Names []string `json:"names"`
 }
 
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.
