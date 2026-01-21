@@ -153,7 +153,7 @@ receivers:
           system.processes.count:
             enabled: true
           system.processes.created:
-            enabled: false
+            enabled: true
 
       # PSI (Pressure Stall Information) - tracks kernel stalls
       # Shows % of time tasks are stalled waiting for resources
