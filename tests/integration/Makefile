@@ -45,7 +45,7 @@ test/%:
 	export TESTS_SUPABASE_JWT_SECRET=$(TESTS_SUPABASE_JWT_SECRET); \
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
 	export TESTS_SANDBOX_USER_ID=$(TESTS_SANDBOX_USER_ID); \
-	go test -v ./internal/tests/api/templates -count=1 -run "TestTemplateBuildWithDifferentSourceImages"
+	go test -v ./internal/tests/api/sandboxes -count=1 -run 'TestSandboxPause$$/regular'
 # 	go test -v ./internal/main_test.go -count=1
 # 	 && \
 # 	TEST_PATH="./internal/tests/$(subst test/,,$@)"; \
