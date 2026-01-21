@@ -225,7 +225,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	persistenceTemplate, err := storage.GetTemplateStorage(b.Context(), nil)
 	require.NoError(b, err)
 
-	persistenceBuild, err := storage.GetBuildCacheStorageProvider(b.Context(), nil)
+	persistenceBuild, err := storage.GetBuildCacheStorage(b.Context(), nil)
 	require.NoError(b, err)
 
 	var proxyPort uint16 = 5007

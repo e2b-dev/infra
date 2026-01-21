@@ -38,17 +38,12 @@ func main() {
 
 	ctx := context.Background()
 
-	storage, err := storage.GetTemplateStorage(ctx, nil)
+	s, err := storage.GetTemplateStorage(ctx, nil)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	obj, err := storage.OpenSeekable(ctx, storagePath, objectType)
-	if err != nil {
-		log.Fatalf("failed to open object: %s", err)
-	}
-
-	size, err := obj.Size(ctx)
+	size, err := s.Size(ctx, storagePath)
 	if err != nil {
 		log.Fatalf("failed to get object size: %s", err)
 	}
@@ -71,7 +66,7 @@ func main() {
 
 	fmt.Printf("\nMETADATA\n")
 	fmt.Printf("========\n")
-	fmt.Printf("Storage            %s/%s\n", storage.GetDetails(), storagePath)
+	fmt.Printf("Storage            %s/%s\n", s.String(), storagePath)
 	fmt.Printf("Build ID           %s\n", *buildId)
 	fmt.Printf("Size               %d B (%d MiB)\n", size, size/1024/1024)
 	fmt.Printf("Block size         %d B\n", blockSize)
@@ -85,9 +80,9 @@ func main() {
 	nonEmptyCount := 0
 
 	for i := *start * blockSize; i < *end*blockSize; i += blockSize {
-		_, err := obj.ReadAt(ctx, b, i)
+		_, err := s.GetFrame(ctx, storagePath, i, nil, false, b)
 		if err != nil {
-			log.Fatalf("failed to read block: %s", err)
+			log.Fatalf("failed to get frame: %s", err)
 		}
 
 		nonZeroCount := blockSize - int64(bytes.Count(b, []byte("\x00")))

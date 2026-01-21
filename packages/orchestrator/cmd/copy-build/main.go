@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -81,14 +80,12 @@ func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath stri
 		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
 	}
 
-	// TODO LEV Fix performance - this reads the entire object into memory
-
 	data, err := s.GetBlob(ctx, headerPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
 
-	h, err := header.Deserialize(ctx, bytes.NewReader(data))
+	h, err := header.Deserialize(ctx, data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}
@@ -97,13 +94,12 @@ func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath stri
 }
 
 func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.Header, error) {
-	f, err := os.Open(path.Join(from, headerPath))
+	data, err := os.ReadFile(path.Join(from, headerPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer f.Close()
 
-	h, err := header.Deserialize(ctx, f)
+	h, err := header.Deserialize(ctx, data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}

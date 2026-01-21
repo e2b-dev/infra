@@ -275,16 +275,6 @@ func (s *Storage) CopyBlob(ctx context.Context, path string, dst io.Writer) (n i
 	return io.Copy(dst, r)
 }
 
-func (s *Storage) OpenBlob(ctx context.Context, path string) (io.ReadCloser, error) {
-	// TODO LEV metrics
-
-	r, err := s.StartDownload(ctx, path)
-	if err != nil {
-		return nil, fmt.Errorf("getting blob from storage: %w", err)
-	}
-	return r, nil
-}
-
 func (s *Storage) StoreBlob(ctx context.Context, path string, in io.Reader) error {
 	// TODO LEV metrics
 
@@ -366,7 +356,7 @@ func GetTemplateStorage(ctx context.Context, limiter *limit.Limiter) (*Storage, 
 	return getStorage(ctx, limiter, "LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates", "TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
 }
 
-func GetBuildStorage(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
+func GetBuildCacheStorage(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
 	return getStorage(ctx, limiter, "LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache", "BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
 }
 

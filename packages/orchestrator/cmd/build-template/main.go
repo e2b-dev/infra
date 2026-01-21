@@ -221,7 +221,7 @@ func doBuild(
 	if err != nil {
 		return fmt.Errorf("template storage: %w", err)
 	}
-	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx, nil)
+	persistenceBuild, err := storage.GetBuildCacheStorage(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("build storage: %w", err)
 	}
@@ -329,10 +329,8 @@ func printArtifactSizes(ctx context.Context, persistence storage.API, buildID st
 		printLocalFileSizes(basePath, buildID)
 	} else {
 		// For remote storage, get sizes from storage provider
-		if memfile, err := persistence.OpenSeekable(ctx, files.StorageMemfilePath(), storage.MemfileObjectType); err == nil {
-			if size, err := memfile.Size(ctx); err == nil {
-				fmt.Printf("   Memfile: %d MB\n", size>>20)
-			}
+		if size, err := persistence.Size(ctx, files.StorageMemfilePath()); err == nil {
+			fmt.Printf("   Memfile: %d MB\n", size>>20)
 		}
 	}
 }
