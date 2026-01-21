@@ -197,13 +197,15 @@ type ClientInterface interface {
 	// GetTemplatesAliasesAlias request
 	GetTemplatesAliasesAlias(ctx context.Context, alias string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteTemplatesTagsWithBody request with any body
+	DeleteTemplatesTagsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	DeleteTemplatesTags(ctx context.Context, body DeleteTemplatesTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PostTemplatesTagsWithBody request with any body
 	PostTemplatesTagsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PostTemplatesTags(ctx context.Context, body PostTemplatesTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DeleteTemplatesTagsName request
-	DeleteTemplatesTagsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteTemplatesTemplateID request
 	DeleteTemplatesTemplateID(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -720,6 +722,30 @@ func (c *Client) GetTemplatesAliasesAlias(ctx context.Context, alias string, req
 	return c.Client.Do(req)
 }
 
+func (c *Client) DeleteTemplatesTagsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteTemplatesTagsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteTemplatesTags(ctx context.Context, body DeleteTemplatesTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteTemplatesTagsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) PostTemplatesTagsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostTemplatesTagsRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -734,18 +760,6 @@ func (c *Client) PostTemplatesTagsWithBody(ctx context.Context, contentType stri
 
 func (c *Client) PostTemplatesTags(ctx context.Context, body PostTemplatesTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostTemplatesTagsRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) DeleteTemplatesTagsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteTemplatesTagsNameRequest(c.Server, name)
 	if err != nil {
 		return nil, err
 	}
@@ -2247,6 +2261,46 @@ func NewGetTemplatesAliasesAliasRequest(server string, alias string) (*http.Requ
 	return req, nil
 }
 
+// NewDeleteTemplatesTagsRequest calls the generic DeleteTemplatesTags builder with application/json body
+func NewDeleteTemplatesTagsRequest(server string, body DeleteTemplatesTagsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeleteTemplatesTagsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewDeleteTemplatesTagsRequestWithBody generates requests for DeleteTemplatesTags with any type of body
+func NewDeleteTemplatesTagsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/tags")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewPostTemplatesTagsRequest calls the generic PostTemplatesTags builder with application/json body
 func NewPostTemplatesTagsRequest(server string, body PostTemplatesTagsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -2283,40 +2337,6 @@ func NewPostTemplatesTagsRequestWithBody(server string, contentType string, body
 	}
 
 	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewDeleteTemplatesTagsNameRequest generates requests for DeleteTemplatesTagsName
-func NewDeleteTemplatesTagsNameRequest(server string, name string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "name", runtime.ParamLocationPath, name)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/templates/tags/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
 
 	return req, nil
 }
@@ -3206,13 +3226,15 @@ type ClientWithResponsesInterface interface {
 	// GetTemplatesAliasesAliasWithResponse request
 	GetTemplatesAliasesAliasWithResponse(ctx context.Context, alias string, reqEditors ...RequestEditorFn) (*GetTemplatesAliasesAliasResponse, error)
 
+	// DeleteTemplatesTagsWithBodyWithResponse request with any body
+	DeleteTemplatesTagsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteTemplatesTagsResponse, error)
+
+	DeleteTemplatesTagsWithResponse(ctx context.Context, body DeleteTemplatesTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteTemplatesTagsResponse, error)
+
 	// PostTemplatesTagsWithBodyWithResponse request with any body
 	PostTemplatesTagsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostTemplatesTagsResponse, error)
 
 	PostTemplatesTagsWithResponse(ctx context.Context, body PostTemplatesTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostTemplatesTagsResponse, error)
-
-	// DeleteTemplatesTagsNameWithResponse request
-	DeleteTemplatesTagsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteTemplatesTagsNameResponse, error)
 
 	// DeleteTemplatesTemplateIDWithResponse request
 	DeleteTemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*DeleteTemplatesTemplateIDResponse, error)
@@ -3976,10 +3998,35 @@ func (r GetTemplatesAliasesAliasResponse) StatusCode() int {
 	return 0
 }
 
+type DeleteTemplatesTagsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *N400
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteTemplatesTagsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteTemplatesTagsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type PostTemplatesTagsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *TemplateTag
+	JSON201      *AssignedTemplateTags
 	JSON400      *N400
 	JSON401      *N401
 	JSON404      *N404
@@ -3996,31 +4043,6 @@ func (r PostTemplatesTagsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PostTemplatesTagsResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type DeleteTemplatesTagsNameResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON400      *N400
-	JSON401      *N401
-	JSON404      *N404
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteTemplatesTagsNameResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteTemplatesTagsNameResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4660,6 +4682,23 @@ func (c *ClientWithResponses) GetTemplatesAliasesAliasWithResponse(ctx context.C
 	return ParseGetTemplatesAliasesAliasResponse(rsp)
 }
 
+// DeleteTemplatesTagsWithBodyWithResponse request with arbitrary body returning *DeleteTemplatesTagsResponse
+func (c *ClientWithResponses) DeleteTemplatesTagsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteTemplatesTagsResponse, error) {
+	rsp, err := c.DeleteTemplatesTagsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteTemplatesTagsResponse(rsp)
+}
+
+func (c *ClientWithResponses) DeleteTemplatesTagsWithResponse(ctx context.Context, body DeleteTemplatesTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteTemplatesTagsResponse, error) {
+	rsp, err := c.DeleteTemplatesTags(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteTemplatesTagsResponse(rsp)
+}
+
 // PostTemplatesTagsWithBodyWithResponse request with arbitrary body returning *PostTemplatesTagsResponse
 func (c *ClientWithResponses) PostTemplatesTagsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostTemplatesTagsResponse, error) {
 	rsp, err := c.PostTemplatesTagsWithBody(ctx, contentType, body, reqEditors...)
@@ -4675,15 +4714,6 @@ func (c *ClientWithResponses) PostTemplatesTagsWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParsePostTemplatesTagsResponse(rsp)
-}
-
-// DeleteTemplatesTagsNameWithResponse request returning *DeleteTemplatesTagsNameResponse
-func (c *ClientWithResponses) DeleteTemplatesTagsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteTemplatesTagsNameResponse, error) {
-	rsp, err := c.DeleteTemplatesTagsName(ctx, name, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteTemplatesTagsNameResponse(rsp)
 }
 
 // DeleteTemplatesTemplateIDWithResponse request returning *DeleteTemplatesTemplateIDResponse
@@ -6127,27 +6157,20 @@ func ParseGetTemplatesAliasesAliasResponse(rsp *http.Response) (*GetTemplatesAli
 	return response, nil
 }
 
-// ParsePostTemplatesTagsResponse parses an HTTP response from a PostTemplatesTagsWithResponse call
-func ParsePostTemplatesTagsResponse(rsp *http.Response) (*PostTemplatesTagsResponse, error) {
+// ParseDeleteTemplatesTagsResponse parses an HTTP response from a DeleteTemplatesTagsWithResponse call
+func ParseDeleteTemplatesTagsResponse(rsp *http.Response) (*DeleteTemplatesTagsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &PostTemplatesTagsResponse{
+	response := &DeleteTemplatesTagsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest TemplateTag
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest N400
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -6181,20 +6204,27 @@ func ParsePostTemplatesTagsResponse(rsp *http.Response) (*PostTemplatesTagsRespo
 	return response, nil
 }
 
-// ParseDeleteTemplatesTagsNameResponse parses an HTTP response from a DeleteTemplatesTagsNameWithResponse call
-func ParseDeleteTemplatesTagsNameResponse(rsp *http.Response) (*DeleteTemplatesTagsNameResponse, error) {
+// ParsePostTemplatesTagsResponse parses an HTTP response from a PostTemplatesTagsWithResponse call
+func ParsePostTemplatesTagsResponse(rsp *http.Response) (*PostTemplatesTagsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &DeleteTemplatesTagsNameResponse{
+	response := &PostTemplatesTagsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AssignedTemplateTags
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest N400
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
