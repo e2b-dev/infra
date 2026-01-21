@@ -60,7 +60,7 @@ func SetAttributesWithGin(c *gin.Context, ctx context.Context, attrs ...attribut
 	for _, attr := range attrs {
 		switch string(attr.Key) {
 		case string(logger.SandboxIDContextKey):
-			ctx = setCtxValueFn(ctx, logger.SandboxIDContextKey, attr.Value.AsString())
+			ctx = setCtxValueFn(ctx, logger.SandboxIDContextKey, attr.Value.AsString()) //nolint:fatcontext // intentionally updating context in loop
 		case string(logger.TeamIDIDContextKey):
 			ctx = setCtxValueFn(ctx, logger.TeamIDIDContextKey, attr.Value.AsString())
 		case string(logger.BuildIDContextKey):
