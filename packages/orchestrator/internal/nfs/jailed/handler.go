@@ -111,7 +111,7 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 		return nfs.MountStatusErrIO, nil, nil
 	}
 
-	return status, wrapFS(fs, prefix), auth
+	return status, tryWrapFS(fs, prefix), auth
 }
 
 func (h Handler) Change(filesystem billy.Filesystem) billy.Change {

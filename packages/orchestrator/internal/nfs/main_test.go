@@ -162,6 +162,7 @@ func TestRoundTrip(t *testing.T) {
 	item := items[0]
 	assert.Equal(t, "sandbox-id.txt", item.Name())
 	assert.Equal(t, perms, int(item.Mode()))
+	assert.True(t, item.Handle.IsSet)
 
 	// verify the file can be read
 	fp, err = target.Open("sandbox-id.txt")
@@ -179,4 +180,24 @@ func TestRoundTrip(t *testing.T) {
 	item2 := items2[0]
 	assert.Equal(t, "sandbox-id.txt", item.Name())
 	assert.Equal(t, item.FileId, item2.FileId)
+	assert.Equal(t, item.Handle, item2.Handle)
+
+	// 2x access, lookup, getattr
+	mode, err := target.Access("/sandbox-id.txt", perms)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(perms), mode)
+
+	// verify that file can be read with getattr
+	stat1, fh1, err := target.Lookup("/sandbox-id.txt")
+	require.NoError(t, err)
+	require.NotNil(t, stat1)
+	require.NotNil(t, fh1)
+	assert.Equal(t, item.Handle.FH, fh1)
+
+	// verify that file handle does not change
+	stat1, fh2, err := target.Lookup("/sandbox-id.txt")
+	require.NoError(t, err)
+	require.NotNil(t, stat1)
+	require.Equal(t, fh1, fh2)
+	assert.Equal(t, item.Handle.FH, fh2)
 }

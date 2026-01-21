@@ -14,7 +14,7 @@ type jailedFile struct {
 
 var _ os.FileInfo = (*jailedFile)(nil)
 
-func hidePrefix(item os.FileInfo, prefix string) os.FileInfo {
+func wrapOSFile(item os.FileInfo, prefix string) os.FileInfo {
 	return &jailedFile{inner: item, prefix: prefix}
 }
 

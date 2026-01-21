@@ -14,7 +14,11 @@ type jailedFS struct {
 
 var _ billy.Filesystem = (*jailedFS)(nil)
 
-func wrapFS(fs billy.Filesystem, prefix string) billy.Filesystem {
+func tryWrapFS(fs billy.Filesystem, prefix string) billy.Filesystem {
+	if fs == nil {
+		return nil
+	}
+
 	return jailedFS{
 		prefix: prefix,
 		inner:  fs,
@@ -26,29 +30,31 @@ func (j jailedFS) Unwrap() billy.Filesystem {
 }
 
 func (j jailedFS) Create(filename string) (billy.File, error) {
-	return j.inner.Create(filename)
+	f, err := j.inner.Create(filename)
+	return tryWrapBillyFile(f, j.prefix), err
 }
 
 func (j jailedFS) Open(filename string) (billy.File, error) {
-	return j.inner.Open(filename)
+	f, err := j.inner.Open(filename)
+	return tryWrapBillyFile(f, j.prefix), err
 }
 
 func (j jailedFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
-	return j.inner.OpenFile(filename, flag, perm)
+	file, err := j.inner.OpenFile(filename, flag, perm)
+	return tryWrapBillyFile(file, j.prefix), err
 }
 
 func (j jailedFS) Stat(filename string) (os.FileInfo, error) {
-	return j.inner.Stat(filename)
+	file, err := j.inner.Stat(filename)
+	return wrapOSFile(file, j.prefix), err
 }
 
 func (j jailedFS) Rename(oldpath, newpath string) error {
-	// TODO implement me
-	panic("implement me")
+	return j.inner.Rename(oldpath, newpath)
 }
 
 func (j jailedFS) Remove(filename string) error {
-	// TODO implement me
-	panic("implement me")
+	return j.inner.Remove(filename)
 }
 
 func (j jailedFS) Join(elem ...string) string {
@@ -60,8 +66,8 @@ func (j jailedFS) Join(elem ...string) string {
 }
 
 func (j jailedFS) TempFile(dir, prefix string) (billy.File, error) {
-	// TODO implement me
-	panic("implement me")
+	f, err := j.inner.TempFile(dir, prefix)
+	return tryWrapBillyFile(f, j.prefix), err
 }
 
 func (j jailedFS) ReadDir(path string) ([]os.FileInfo, error) {
@@ -72,39 +78,36 @@ func (j jailedFS) ReadDir(path string) ([]os.FileInfo, error) {
 
 	prefix := j.prefix + "/"
 	for index, item := range items {
-		items[index] = hidePrefix(item, prefix)
+		items[index] = wrapOSFile(item, prefix)
 	}
 
 	return items, nil
 }
 
 func (j jailedFS) MkdirAll(filename string, perm os.FileMode) error {
-	// TODO implement me
-	panic("implement me")
+	return j.inner.MkdirAll(filename, perm)
 }
 
 func (j jailedFS) Lstat(filename string) (os.FileInfo, error) {
-	return j.inner.Lstat(filename)
+	f, err := j.inner.Lstat(filename)
+	return wrapOSFile(f, j.prefix), err
 }
 
 func (j jailedFS) Symlink(target, link string) error {
-	// TODO implement me
-	panic("implement me")
+	return j.inner.Symlink(target, link)
 }
 
 func (j jailedFS) Readlink(link string) (string, error) {
-	// TODO implement me
-	panic("implement me")
+	return j.inner.Readlink(link)
 }
 
 func (j jailedFS) Chroot(path string) (billy.Filesystem, error) {
-	// TODO implement me
-	panic("implement me")
+	fs, err := j.inner.Chroot(path)
+	return tryWrapFS(fs, j.prefix), err
 }
 
 func (j jailedFS) Root() string {
-	// TODO implement me
-	panic("implement me")
+	return j.inner.Root()
 }
 
 func (j jailedFS) needsPrefix(elem []string) bool {
