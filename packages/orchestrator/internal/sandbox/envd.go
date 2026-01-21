@@ -9,9 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -39,8 +37,7 @@ func doRequestWithInfiniteRetries(
 	hyperloopIP string,
 	defaultUser *string,
 	defaultWorkdir *string,
-) (*http.Response, int64, error) {
-	requestCount := int64(0)
+) (*http.Response, error) {
 	for {
 		now := time.Now()
 
@@ -55,16 +52,15 @@ func doRequestWithInfiniteRetries(
 
 		body, err := json.Marshal(jsonBody)
 		if err != nil {
-			return nil, requestCount, err
+			return nil, err
 		}
 
-		requestCount++
 		reqCtx, cancel := context.WithTimeout(ctx, envdInitRequestTimeout)
 		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(body))
 		if err != nil {
 			cancel()
 
-			return nil, requestCount, err
+			return nil, err
 		}
 
 		// make sure request to already authorized envd will not fail
@@ -77,14 +73,14 @@ func doRequestWithInfiniteRetries(
 		cancel()
 
 		if err == nil {
-			return response, requestCount, nil
+			return response, nil
 		}
 
 		logger.L().Debug(ctx, "failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
 
 		select {
 		case <-ctx.Done():
-			return nil, requestCount, fmt.Errorf("%w with cause: %w", ctx.Err(), context.Cause(ctx))
+			return nil, fmt.Errorf("%w with cause: %w", ctx.Err(), context.Cause(ctx))
 		case <-time.After(loopDelay):
 		}
 	}
@@ -109,14 +105,10 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 		span.End()
 	}()
 
-	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds())}
-	attributesFail := append(attributes, attribute.Bool("success", false))
-	attributesSuccess := append(attributes, attribute.Bool("success", true))
-
 	hyperloopIP := s.Slot.HyperloopIPString()
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
-	response, count, err := doRequestWithInfiniteRetries(
+	response, err := doRequestWithInfiniteRetries(
 		ctx,
 		http.MethodPost,
 		address,
@@ -130,18 +122,8 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 		s.Config.Envd.DefaultWorkdir,
 	)
 	if err != nil {
-		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
-
 		return fmt.Errorf("failed to init envd: %w", err)
 	}
-
-	if count > 1 {
-		// Track failed envd init calls
-		envdInitCalls.Add(ctx, count-1, metric.WithAttributes(attributesFail...))
-	}
-
-	// Track successful envd init
-	envdInitCalls.Add(ctx, 1, metric.WithAttributes(attributesSuccess...))
 
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)

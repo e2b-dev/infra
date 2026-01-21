@@ -24,8 +24,6 @@ const (
 	SandboxCreateMeterName          CounterType = "api.env.instance.started"
 
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
-
-	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
 )
 
 const (
@@ -104,7 +102,6 @@ var counterDesc = map[CounterType]string{
 	BuildResultCounterName:          "Number of template build results",
 	BuildCacheResultCounterName:     "Number of build cache results",
 	TeamSandboxCreated:              "Counter of started sandboxes for the team in the interval",
-	EnvdInitCalls:                   "Number of envd initialization calls",
 
 	TCPFirewallConnectionsTotal: "Total number of TCP firewall connections processed",
 	TCPFirewallErrorsTotal:      "Total number of TCP firewall errors",
@@ -117,7 +114,6 @@ var counterUnits = map[CounterType]string{
 	BuildResultCounterName:          "{build}",
 	BuildCacheResultCounterName:     "{layer}",
 	TeamSandboxCreated:              "{sandbox}",
-	EnvdInitCalls:                   "1",
 
 	TCPFirewallConnectionsTotal: "{connection}",
 	TCPFirewallErrorsTotal:      "{error}",
