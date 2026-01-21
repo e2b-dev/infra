@@ -82,7 +82,7 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
   base_instance_name = local.server_pool_name
 
 
-  target_pools                     = []
+  target_pools = []
   // TODO: 2026-01-21: To be changed back to var.server_cluster_size after migration period (at least 1 weeks) - 2026-01-28
   target_size                      = var.server_cluster_size > 1 ? var.server_cluster_size - 1 : var.server_cluster_size
   distribution_policy_target_shape = "EVEN"
@@ -99,9 +99,12 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
   # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
   # a rolling update.
   update_policy {
-    type                  = "PROACTIVE"
-    minimal_action        = "REPLACE"
-    max_unavailable_fixed = 0
+    type           = "PROACTIVE"
+    minimal_action = "REPLACE"
+
+    // We want to keep the instance distribution even
+    instance_redistribution_type = "PROACTIVE"
+    max_unavailable_fixed        = 0
     // The number has to be a multiple of the number of zones in the region
     max_surge_fixed = length(data.google_compute_zones.region_zones.names)
   }
