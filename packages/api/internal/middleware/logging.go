@@ -9,8 +9,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	e2blogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // Based on https://github.com/gin-contrib/zap
@@ -33,7 +32,7 @@ type Config struct {
 	Skipper Skipper
 }
 
-func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
+func LoggingMiddleware(logger e2blogger.Logger, conf Config) gin.HandlerFunc {
 	skipPaths := make(map[string]bool, len(conf.SkipPaths))
 	for _, path := range conf.SkipPaths {
 		skipPaths[path] = true
@@ -85,9 +84,7 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 			}
 
 			// Take context values from Gin context, transform to Zap fields and append to log fields
-			tracingAttrs := telemetry.AttributesFromContext(c)
-			zpaAttrs := telemetry.AttributesToZapFields(tracingAttrs...)
-			fields = append(fields, zpaAttrs...)
+			fields = append(fields, e2blogger.FieldsFromContext(c)...)
 
 			if conf.TimeFormat != "" {
 				fields = append(fields, zap.String("time", end.Format(conf.TimeFormat)))

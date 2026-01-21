@@ -9,69 +9,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var OTELTracingPrint = os.Getenv("OTEL_TRACING_PRINT") != "false"
-
-const (
-	DebugID              = "debug_id"
-	SandboxIDContextKey  = "sandbox.id"
-	TeamIDIDContextKey   = "tema.id"
-	BuildIDContextKey    = "build.id"
-	TemplateIDContextKey = "template.id"
-)
-
-func GetDebugID(ctx context.Context) *string {
-	if ctx.Value(DebugID) == nil {
-		return nil
-	}
-
-	value := ctx.Value(DebugID).(string)
-
-	return &value
-}
-
-// GetSandboxID retrieves the sandbox ID from context if present.
-func GetSandboxID(ctx context.Context) *string {
-	if ctx.Value(SandboxIDContextKey) == nil {
-		return nil
-	}
-
-	value := ctx.Value(SandboxIDContextKey).(string)
-
-	return &value
-}
-
-func getTeamID(ctx context.Context) *string {
-	if ctx.Value(TeamIDIDContextKey) == nil {
-		return nil
-	}
-
-	value := ctx.Value(TeamIDIDContextKey).(string)
-
-	return &value
-}
-
-func getBuildID(ctx context.Context) *string {
-	if ctx.Value(BuildIDContextKey) == nil {
-		return nil
-	}
-
-	value := ctx.Value(BuildIDContextKey).(string)
-
-	return &value
-}
-
-func getTemplateID(ctx context.Context) *string {
-	if ctx.Value(TemplateIDContextKey) == nil {
-		return nil
-	}
-
-	value := ctx.Value(TemplateIDContextKey).(string)
-
-	return &value
-}
 
 func debugFormat(debugID *string, msg string) string {
 	if debugID == nil {
@@ -97,7 +39,7 @@ func SetAttributesWithGin(c *gin.Context, ctx context.Context, attrs ...attribut
 			msg = fmt.Sprintf("Attrs set: %#v\n", attrs)
 		}
 
-		debugID := GetDebugID(ctx)
+		debugID := logger.GetDebugID(ctx)
 		fmt.Print(debugFormat(debugID, msg))
 	}
 
@@ -114,14 +56,14 @@ func SetAttributesWithGin(c *gin.Context, ctx context.Context, attrs ...attribut
 	// Catch special attributes to set in context so they are available in child spans
 	for _, attr := range attrs {
 		switch attr.Key {
-		case SandboxIDContextKey:
-			ctx = setCtxValueFn(ctx, SandboxIDContextKey, attr.Value.AsString())
-		case TeamIDIDContextKey:
-			ctx = setCtxValueFn(ctx, TeamIDIDContextKey, attr.Value.AsString())
-		case BuildIDContextKey:
-			ctx = setCtxValueFn(ctx, BuildIDContextKey, attr.Value.AsString())
-		case TemplateIDContextKey:
-			ctx = setCtxValueFn(ctx, TemplateIDContextKey, attr.Value.AsString())
+		case logger.SandboxIDContextKey:
+			ctx = setCtxValueFn(ctx, logger.SandboxIDContextKey, attr.Value.AsString())
+		case logger.TeamIDIDContextKey:
+			ctx = setCtxValueFn(ctx, logger.TeamIDIDContextKey, attr.Value.AsString())
+		case logger.BuildIDContextKey:
+			ctx = setCtxValueFn(ctx, logger.BuildIDContextKey, attr.Value.AsString())
+		case logger.TemplateIDContextKey:
+			ctx = setCtxValueFn(ctx, logger.TemplateIDContextKey, attr.Value.AsString())
 		}
 	}
 
@@ -142,7 +84,7 @@ func ReportEvent(ctx context.Context, name string, attrs ...attribute.KeyValue) 
 			msg = fmt.Sprintf("-> %s - %#v\n", name, attrs)
 		}
 
-		debugID := GetDebugID(ctx)
+		debugID := logger.GetDebugID(ctx)
 		fmt.Print(debugFormat(debugID, msg))
 	}
 
@@ -176,55 +118,4 @@ func ReportError(ctx context.Context, message string, err error, attrs ...attrib
 		trace.WithStackTrace(true),
 		trace.WithAttributes(attrs...),
 	)
-}
-
-func AttributesFromContext(ctx context.Context) []attribute.KeyValue {
-	var attrs []attribute.KeyValue
-
-	if sandboxID := GetSandboxID(ctx); sandboxID != nil {
-		attrs = append(attrs, WithSandboxID(*sandboxID))
-	}
-
-	if teamID := getTeamID(ctx); teamID != nil {
-		attrs = append(attrs, WithTeamID(*teamID))
-	}
-
-	if buildID := getBuildID(ctx); buildID != nil {
-		attrs = append(attrs, WithBuildID(*buildID))
-	}
-
-	if templateID := getTemplateID(ctx); templateID != nil {
-		attrs = append(attrs, WithTemplateID(*templateID))
-	}
-
-	return attrs
-}
-
-func AttributesToZapFields(attrs ...attribute.KeyValue) []zap.Field {
-	fields := make([]zap.Field, 0, len(attrs))
-	for _, attr := range attrs {
-		key := string(attr.Key)
-		switch attr.Value.Type() {
-		case attribute.STRING:
-			fields = append(fields, zap.String(key, attr.Value.AsString()))
-		case attribute.INT64:
-			fields = append(fields, zap.Int64(key, attr.Value.AsInt64()))
-		case attribute.FLOAT64:
-			fields = append(fields, zap.Float64(key, attr.Value.AsFloat64()))
-		case attribute.BOOL:
-			fields = append(fields, zap.Bool(key, attr.Value.AsBool()))
-		case attribute.BOOLSLICE:
-			fields = append(fields, zap.Bools(key, attr.Value.AsBoolSlice()))
-		case attribute.INT64SLICE:
-			fields = append(fields, zap.Int64s(key, attr.Value.AsInt64Slice()))
-		case attribute.FLOAT64SLICE:
-			fields = append(fields, zap.Float64s(key, attr.Value.AsFloat64Slice()))
-		case attribute.STRINGSLICE:
-			fields = append(fields, zap.Strings(key, attr.Value.AsStringSlice()))
-		default:
-			fields = append(fields, zap.Any(key, attr.Value.AsInterface()))
-		}
-	}
-
-	return fields
 }
