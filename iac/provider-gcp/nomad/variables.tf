@@ -389,3 +389,7 @@ variable "filestore_cache_cleanup_files_per_loop" {
 variable "dockerhub_remote_repository_url" {
   type = string
 }
+
+variable "persistent_volumes_bucket" {
+  type = string
+}

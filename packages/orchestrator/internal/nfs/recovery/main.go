@@ -71,6 +71,6 @@ func (h Handler) tryRecovery(name string) {
 
 func tryRecovery(name string) {
 	if r := recover(); r != nil {
-		slog.Error(fmt.Sprintf("panic in %q portmap handler", name), "panic", r)
+		slog.Error(fmt.Sprintf("panic in %q nfs handler", name), "panic", r)
 	}
 }

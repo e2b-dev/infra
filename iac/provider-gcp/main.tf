@@ -218,6 +218,7 @@ module "nomad" {
   orchestrator_proxy_port     = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name = module.init.fc_env_pipeline_bucket_name
   envd_timeout                = var.envd_timeout
+  persistent_volumes_bucket   = module.cluster.persistent_volumes_bucket
 
   # Template manager
   builder_node_pool                   = var.build_node_pool

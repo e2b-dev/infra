@@ -8,6 +8,9 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	// set required env vars, unset to test them
+	t.Setenv("SANDBOX_PERSISTENCE_BUCKET_NAME", "bucket")
+
 	t.Run("embedded structs get defaults", func(t *testing.T) { //nolint:paralleltest // siblings set env, which may cause issues
 		config, err := Parse()
 		require.NoError(t, err)
@@ -61,5 +64,12 @@ func TestParse(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "/a/b/c/build", config.DefaultCacheDir)
 		assert.Equal(t, "/a/b/c/sandbox", config.StorageConfig.SandboxCacheDir)
+	})
+
+	t.Run("missing embedded env vars cause parse error", func(t *testing.T) {
+		t.Setenv("SANDBOX_PERSISTENCE_BUCKET_NAME", "")
+
+		_, err := Parse()
+		assert.Error(t, err)
 	})
 }

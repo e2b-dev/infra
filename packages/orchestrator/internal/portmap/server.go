@@ -8,7 +8,7 @@ import (
 	"net"
 
 	"github.com/willscott/go-nfs-client/nfs"
-	portmap "github.com/zeldovich/go-rpcgen/rfc1057"
+	"github.com/zeldovich/go-rpcgen/rfc1057"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -20,48 +20,48 @@ type key struct {
 	Prot uint32
 }
 
-type PortMap struct {
+type Server struct {
 	h *handlers
-	s *portmap.Server
+	s *rfc1057.Server
 }
 
-func NewPortMap(ctx context.Context) *PortMap {
-	s := portmap.MakeServer()
+func NewPortMap(ctx context.Context) *Server {
+	s := rfc1057.MakeServer()
 	h := newHandlers()
 
-	var handler portmap.PMAP_PROG_PMAP_VERS_handler
+	var handler rfc1057.PMAP_PROG_PMAP_VERS_handler
 	handler = h
 	handler = newRecovery(ctx, handler)
 	handler = newLoggedHandler(ctx, handler)
 
-	regs := portmap.PMAP_PROG_PMAP_VERS_regs(handler)
+	regs := rfc1057.PMAP_PROG_PMAP_VERS_regs(handler)
 	s.RegisterMany(regs)
 
-	return &PortMap{
+	return &Server{
 		h: h,
 		s: s,
 	}
 }
 
-func (pm *PortMap) RegisterPort(ctx context.Context, port uint32) {
+func (pm *Server) RegisterPort(ctx context.Context, port uint32) {
 	logger.L().Info(ctx, "registering port", zap.Uint32("port", port))
 
-	pm.h.PMAPPROC_SET(portmap.Mapping{
+	pm.h.PMAPPROC_SET(rfc1057.Mapping{
 		Prog: nfs.Nfs3Prog,
 		Vers: nfs.Nfs3Vers,
-		Prot: portmap.IPPROTO_TCP,
+		Prot: rfc1057.IPPROTO_TCP,
 		Port: port,
 	})
 
-	pm.h.PMAPPROC_SET(portmap.Mapping{
+	pm.h.PMAPPROC_SET(rfc1057.Mapping{
 		Prog: 100005, // mountd
 		Vers: nfs.Nfs3Vers,
-		Prot: portmap.IPPROTO_TCP,
+		Prot: rfc1057.IPPROTO_TCP,
 		Port: port,
 	})
 }
 
-func (pm *PortMap) Serve(ctx context.Context, listener net.Listener) error {
+func (pm *Server) Serve(ctx context.Context, listener net.Listener) error {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -76,7 +76,7 @@ func (pm *PortMap) Serve(ctx context.Context, listener net.Listener) error {
 	}
 }
 
-func (pm *PortMap) run(ctx context.Context, conn net.Conn) {
+func (pm *Server) run(ctx context.Context, conn net.Conn) {
 	logger.L().Info(ctx, "[portmap] accepting connection",
 		zap.String("local", conn.LocalAddr().String()),
 		zap.String("remote", conn.RemoteAddr().String()),
