@@ -215,7 +215,11 @@ processors:
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
-          - "otelcol.*"
+          - "otelcol.exporter.queue.capacity"
+          - "otelcol.exporter.queue.size"
+          - "otelcol.exporter.send.*"
+          - "otelcol.exporter.sent.*"
+          - "otelcol.receiver.refused.*"
           - "pgxpool.*"
 
   filter/only_client_allocs:
