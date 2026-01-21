@@ -51,7 +51,7 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 
 	start, end, err := clickhouseutils.GetSandboxStartEndTime(ctx, l.querySandboxMetricsProvider, teamID, sandboxID, qStart, qEnd)
 	if err != nil {
-		telemetry.ReportError(ctx, "error when getting metrics time range", err)
+		telemetry.ReportCriticalError(ctx, "error when getting metrics time range", err)
 
 		return nil, &api.APIError{
 			Err:       fmt.Errorf("error when getting metrics time range: %w", err),
@@ -62,6 +62,8 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 
 	start, end, err = clickhouseutils.ValidateRange(start, end)
 	if err != nil {
+		telemetry.ReportError(ctx, "error when validating range of metrics", err)
+
 		return nil, &api.APIError{
 			Err:       fmt.Errorf("error when validating range of metrics: %w", err),
 			ClientMsg: "Error when validating metrics time range",
@@ -74,7 +76,7 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 
 	rawMetrics, err := l.querySandboxMetricsProvider.QuerySandboxMetrics(ctx, sandboxID, teamID, start, end, step)
 	if err != nil {
-		telemetry.ReportError(ctx, "error when querying sandbox metrics from ClickHouse", err)
+		telemetry.ReportCriticalError(ctx, "error when querying sandbox metrics from ClickHouse", err)
 
 		return nil, &api.APIError{
 			Err:       fmt.Errorf("error when querying sandbox metrics from ClickHouse: %w", err),
@@ -106,7 +108,7 @@ func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, 
 
 	rawMetrics, err := l.querySandboxMetricsProvider.QueryLatestMetrics(ctx, sandboxIDs, teamID)
 	if err != nil {
-		telemetry.ReportError(ctx, "error when getting sandboxes metrics from ClickHouse", err)
+		telemetry.ReportCriticalError(ctx, "error when getting sandboxes metrics from ClickHouse", err)
 
 		return nil, &api.APIError{
 			Err:       fmt.Errorf("error when getting sandboxes metrics from ClickHouse: %w", err),
@@ -206,7 +208,7 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 
 	entries, err := getBuildLogsWithSources(ctx, l.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)
 	if err != nil {
-		telemetry.ReportError(ctx, "error when getting build logs", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+		telemetry.ReportCriticalError(ctx, "error when getting build logs", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
 
 		return nil, &api.APIError{
 			Err:       fmt.Errorf("error when fetching build logs: %w", err),

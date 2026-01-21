@@ -88,7 +88,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 
 	if res.StatusCode() != http.StatusOK {
 		err := handleEdgeErrorResponse(res, res.JSON400, res.JSON401, res.JSON500, "error when getting sandbox metrics from edge API")
-		telemetry.ReportError(ctx, "error when getting sandbox metrics from edge API", err)
+		telemetry.ReportCriticalError(ctx, "error when getting sandbox metrics from edge API", err)
 
 		return nil, &api.APIError{
 			Err:       err,
@@ -140,7 +140,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 
 	if res.StatusCode() != http.StatusOK {
 		err := handleEdgeErrorResponse(res, res.JSON400, res.JSON401, res.JSON500, "error when getting sandboxes metrics from edge API")
-		telemetry.ReportError(ctx, "error when getting sandboxes metrics from edge API", err)
+		telemetry.ReportCriticalError(ctx, "error when getting sandboxes metrics from edge API", err)
 
 		return nil, &api.APIError{
 			Err:       err,
@@ -181,7 +181,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 
 	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, Limit: limit})
 	if err != nil {
-		telemetry.ReportError(ctx, "error when fetching sandbox logs", err)
+		telemetry.ReportCriticalError(ctx, "error when fetching sandbox logs", err)
 
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),
@@ -192,7 +192,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 
 	if res.StatusCode() != http.StatusOK {
 		err = handleEdgeErrorResponse(res, res.JSON400, res.JSON401, res.JSON500, "error when fetching sandbox logs from edge API")
-		telemetry.ReportError(ctx, "error when fetching sandbox logs from edge API", err)
+		telemetry.ReportCriticalError(ctx, "error when fetching sandbox logs from edge API", err)
 
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       err,
@@ -203,7 +203,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 
 	if res.JSON200 == nil {
 		err = errors.New("sandbox logs request returned nil")
-		telemetry.ReportError(ctx, err.Error(), err)
+		telemetry.ReportCriticalError(ctx, err.Error(), err)
 
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       err,
@@ -255,7 +255,7 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 
 	entries, err := getBuildLogsWithSources(ctx, r.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)
 	if err != nil {
-		telemetry.ReportError(ctx, "error when getting build logs", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+		telemetry.ReportCriticalError(ctx, "error when getting build logs", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
 
 		return nil, &api.APIError{
 			Err:       fmt.Errorf("error when fetching build logs: %w", err),
