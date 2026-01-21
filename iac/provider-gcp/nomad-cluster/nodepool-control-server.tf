@@ -25,7 +25,7 @@ resource "google_compute_health_check" "server_nomad_check" {
   }
 }
 
-// TODO - 2026-01-20: To be removed after migration period (at least 3 weeks) - 2026-02-10
+// TODO - 2026-01-21: To be removed after migration period (at least 2 weeks) - 2026-02-04
 resource "google_compute_instance_group_manager" "server_pool" {
   name               = "${local.server_pool_name}-ig"
   base_instance_name = local.server_pool_name
@@ -77,10 +77,14 @@ data "google_compute_zones" "region_zones" {
 }
 
 resource "google_compute_region_instance_group_manager" "server_pool" {
-  name   = "${local.server_pool_name}-rig"
-  region = var.gcp_region
+  region             = var.gcp_region
+  name               = "${local.server_pool_name}-rig"
+  base_instance_name = local.server_pool_name
 
-  target_size = var.server_cluster_size
+
+  target_pools                     = []
+  target_size                      = var.server_cluster_size
+  distribution_policy_target_shape = "EVEN"
 
   version {
     instance_template = google_compute_instance_template.server.id
@@ -90,13 +94,6 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
     name = "nomad"
     port = var.nomad_port
   }
-
-  auto_healing_policies {
-    health_check      = google_compute_health_check.server_nomad_check.id
-    initial_delay_sec = 120
-  }
-
-  distribution_policy_target_shape = "EVEN"
 
   # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
   # a rolling update.
@@ -108,9 +105,14 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
     max_surge_fixed = length(data.google_compute_zones.region_zones.names)
   }
 
+  auto_healing_policies {
+    health_check      = google_compute_health_check.server_nomad_check.id
+    initial_delay_sec = 120
+  }
 
-  base_instance_name = var.server_cluster_name
-  target_pools       = []
+  lifecycle {
+    create_before_destroy = false
+  }
 
   depends_on = [
     google_compute_instance_template.server,

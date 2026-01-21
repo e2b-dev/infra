@@ -78,7 +78,7 @@ locals {
         request_path = "/v1/status/peers"
         port         = var.nomad_port
       }
-      // TODO - 2026-01-20: To be removed after migration period (at least 2 weeks) - 2026-02-03
+      // TODO - 2026-01-21: To be removed after migration period (at least 1 weeks) - 2026-01-28
       groups = [{ group = var.server_instance_group }, { group = var.server_regional_instance_group }]
     }
   }
