@@ -22,7 +22,7 @@ func debugFormat(debugID *string, msg string) string {
 	return fmt.Sprintf("[%s] %s", *debugID, msg)
 }
 
-func SetAttributes(ctx context.Context, attrs ...attribute.KeyValue) context.Context {
+func WithAttributes(ctx context.Context, attrs ...attribute.KeyValue) context.Context {
 	span := trace.SpanFromContext(ctx)
 
 	if OTELTracingPrint {
