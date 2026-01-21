@@ -172,7 +172,7 @@ func (a *APIStore) buildTemplate(
 
 		alias = &a
 		if t != nil {
-			err = id.ValidateCreateTag(*t)
+			tags, err = id.ValidateAndDeduplicateTags([]string{*t})
 			if err != nil {
 				return nil, &api.APIError{
 					Code:      http.StatusBadRequest,
@@ -180,8 +180,6 @@ func (a *APIStore) buildTemplate(
 					Err:       err,
 				}
 			}
-
-			tags = []string{*t}
 		}
 	}
 

@@ -3,7 +3,9 @@ package id
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/dchest/uniuri"
@@ -46,39 +48,37 @@ func cleanTag(tag string) (string, error) {
 	return cleanedTag, nil
 }
 
-func ValidateCreateTag(tag string) error {
+// validateTag validates a single tag and returns the normalized (lowercased, trimmed) version.
+func validateTag(tag string) (string, error) {
 	cleanedTag, err := cleanTag(tag)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Prevent tags from being a UUID
 	_, err = uuid.Parse(cleanedTag)
 	if err == nil {
-		return errors.New("tag cannot be a UUID")
+		return "", errors.New("tag cannot be a UUID")
 	}
 
-	return nil
+	return cleanedTag, nil
 }
 
-// ValidateAndDeduplicateTags validates each tag and returns a deduplicated slice.
+// ValidateAndDeduplicateTags validates each tag and returns a deduplicated slice of normalized (lowercased, trimmed) tags.
 // Returns an error if any tag is invalid.
 func ValidateAndDeduplicateTags(tags []string) ([]string, error) {
-	seen := make(map[string]bool)
-	result := make([]string, 0, len(tags))
+	seen := make(map[string]struct{})
 
 	for _, tag := range tags {
-		if err := ValidateCreateTag(tag); err != nil {
+		cleanedTag, err := validateTag(tag)
+		if err != nil {
 			return nil, fmt.Errorf("invalid tag '%s': %w", tag, err)
 		}
 
-		if !seen[tag] {
-			seen[tag] = true
-			result = append(result, tag)
-		}
+		seen[cleanedTag] = struct{}{}
 	}
 
-	return result, nil
+	return slices.Collect(maps.Keys(seen)), nil
 }
 
 // ParseTemplateIDOrAliasWithTag parses a template ID or alias with an optional tag in the format "templateID:tag"

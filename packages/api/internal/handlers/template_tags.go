@@ -169,7 +169,16 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 		return
 	}
 
-	a.deleteTemplateTags(c, body.Name, body.Tags)
+	// Validate and normalize tags
+	tags, err := id.ValidateAndDeduplicateTags(body.Tags)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
+		telemetry.ReportError(ctx, "invalid tag", err)
+
+		return
+	}
+
+	a.deleteTemplateTags(c, body.Name, tags)
 }
 
 // DeleteTemplatesTagsName deletes a tag from a template
