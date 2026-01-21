@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // Based on https://github.com/gin-contrib/zap
@@ -82,6 +83,12 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 				zap.String("user-agent", c.Request.UserAgent()),
 				zap.Duration("latency", latency),
 			}
+
+			// Take context values from Gin context, transform to Zap fields and append to log fields
+			tracingAttrs := telemetry.AttributesFromContext(c)
+			zpaAttrs := telemetry.AttributesToZapFields(tracingAttrs...)
+			fields = append(fields, zpaAttrs...)
+
 			if conf.TimeFormat != "" {
 				fields = append(fields, zap.String("time", end.Format(conf.TimeFormat)))
 			}
