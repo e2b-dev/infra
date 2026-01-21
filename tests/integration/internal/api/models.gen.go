@@ -1005,13 +1005,20 @@ type TemplateLegacy struct {
 // TemplateRequestResponseV3 defines model for TemplateRequestResponseV3.
 type TemplateRequestResponseV3 struct {
 	// Aliases Aliases of the template
+	// Deprecated:
 	Aliases []string `json:"aliases"`
 
 	// BuildID Identifier of the last successful build for given template
 	BuildID string `json:"buildID"`
 
+	// Names Names of the template
+	Names []string `json:"names"`
+
 	// Public Whether the template is public or only accessible by the team
 	Public bool `json:"public"`
+
+	// Tags Tags assigned to the template build
+	Tags []string `json:"tags"`
 
 	// TemplateID Identifier of the template
 	TemplateID string `json:"templateID"`

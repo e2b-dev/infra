@@ -158,6 +158,8 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
 		Aliases:    template.Aliases,
+		Names:      template.Aliases,
+		Tags:       template.Tags,
 		Public:     public,
 	}
 }

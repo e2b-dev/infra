@@ -675,6 +675,8 @@ components:
         - buildID
         - public
         - aliases
+        - names
+        - tags
       properties:
         templateID:
           type: string
@@ -685,9 +687,20 @@ components:
         public:
           type: boolean
           description: Whether the template is public or only accessible by the team
+        names:
+          type: array
+          description: Names of the template
+          items:
+            type: string
+        tags:
+          type: array
+          description: Tags assigned to the template build
+          items:
+            type: string
         aliases:
           type: array
           description: Aliases of the template
+          deprecated: true
           items:
             type: string
 
