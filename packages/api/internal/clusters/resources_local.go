@@ -154,7 +154,7 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 
 	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit)
 	if err != nil {
-		telemetry.ReportError(ctx, "error when fetching sandbox logs", err)
+		telemetry.ReportCriticalError(ctx, "error when fetching sandbox logs", err)
 
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),

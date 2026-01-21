@@ -82,7 +82,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		return
 	}
 
-	telemetry.SetAttributes(ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		telemetry.WithTemplateID(template.ID),
