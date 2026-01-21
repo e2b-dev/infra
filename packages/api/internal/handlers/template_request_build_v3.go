@@ -3,9 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"maps"
 	"net/http"
-	"slices"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -51,58 +49,46 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	names := utils.DerefOrDefault(body.Names, nil)
+	// Determine the input and additional tags based on which field is provided
+	var input string
+	var additionalTags []string
 
-	// Only alias or names can be used, not both
-	if len(names) > 0 && body.Alias != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Alias is deprecated, use names instead")
-		telemetry.ReportError(ctx, "alias is deprecated, use names instead", nil)
-
-		return nil
-	}
-
-	if body.Alias != nil {
-		names = []string{*body.Alias}
-	}
-
-	if len(names) == 0 {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "At least one name is required")
-		telemetry.ReportError(ctx, "at least one name is required", nil)
+	switch {
+	case body.Name != nil:
+		input = *body.Name
+		additionalTags = utils.DerefOrDefault(body.Tags, nil)
+	case body.Alias != nil:
+		// Deprecated: handle alias field for backward compatibility
+		input = *body.Alias
+	default:
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Name is required")
+		telemetry.ReportError(ctx, "name is required", nil)
 
 		return nil
 	}
 
-	var alias string
-	tags := make(map[string]bool)
-	for _, name := range names {
-		al, t, err := id.ParseTemplateIDOrAliasWithTag(name)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", err))
-			telemetry.ReportCriticalError(ctx, "invalid alias", err)
+	// Parse template ID/alias and optional tag from input (e.g., "template:v1" -> alias="template", tag="v1")
+	alias, t, err := id.ParseTemplateIDOrAliasWithTag(input)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", err))
+		telemetry.ReportError(ctx, "invalid name", err)
 
-			return nil
-		}
+		return nil
+	}
 
-		// The template alias must be the same for all aliases with tags
-		if alias != al && alias != "" {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template alias must be same for all names: got '%s' and '%s'", alias, al))
-			telemetry.ReportCriticalError(ctx, "template alias must be same for all names", nil)
+	// Collect tags: tag from input (if present) + additional tags from body.Tags
+	allTags := additionalTags
+	if t != nil {
+		allTags = append([]string{*t}, allTags...)
+	}
 
-			return nil
-		}
+	// Validate and deduplicate all tags
+	tags, err := id.ValidateAndDeduplicateTags(allTags)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
+		telemetry.ReportError(ctx, "invalid tag", err)
 
-		alias = al
-		if t != nil {
-			err = id.ValidateCreateTag(*t)
-			if err != nil {
-				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
-				telemetry.ReportCriticalError(ctx, "invalid tag", err)
-
-				return nil
-			}
-
-			tags[*t] = true
-		}
+		return nil
 	}
 
 	// Create the build, find the template ID by alias or generate a new one
@@ -140,7 +126,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		UserID:             nil,
 		Team:               team,
 		Alias:              &alias,
-		Tags:               slices.Collect(maps.Keys(tags)),
+		Tags:               tags,
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV2LatestVersion,
@@ -164,7 +150,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", alias).
-		Set("tags", slices.Collect(maps.Keys(tags))),
+		Set("tags", tags),
 	)
 	span.End()
 

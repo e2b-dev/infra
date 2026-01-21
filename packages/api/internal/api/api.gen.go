@@ -102,6 +102,9 @@ type ServerInterface interface {
 	// (GET /templates/aliases/{alias})
 	GetTemplatesAliasesAlias(c *gin.Context, alias string)
 
+	// (DELETE /templates/tags)
+	DeleteTemplatesTags(c *gin.Context)
+
 	// (POST /templates/tags)
 	PostTemplatesTags(c *gin.Context)
 
@@ -1013,6 +1016,25 @@ func (siw *ServerInterfaceWrapper) GetTemplatesAliasesAlias(c *gin.Context) {
 	siw.Handler.GetTemplatesAliasesAlias(c, alias)
 }
 
+// DeleteTemplatesTags operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTemplatesTags(c *gin.Context) {
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteTemplatesTags(c)
+}
+
 // PostTemplatesTags operation middleware
 func (siw *ServerInterfaceWrapper) PostTemplatesTags(c *gin.Context) {
 
@@ -1626,6 +1648,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/templates", wrapper.GetTemplates)
 	router.POST(options.BaseURL+"/templates", wrapper.PostTemplates)
 	router.GET(options.BaseURL+"/templates/aliases/:alias", wrapper.GetTemplatesAliasesAlias)
+	router.DELETE(options.BaseURL+"/templates/tags", wrapper.DeleteTemplatesTags)
 	router.POST(options.BaseURL+"/templates/tags", wrapper.PostTemplatesTags)
 	router.DELETE(options.BaseURL+"/templates/tags/:name", wrapper.DeleteTemplatesTagsName)
 	router.DELETE(options.BaseURL+"/templates/:templateID", wrapper.DeleteTemplatesTemplateID)

@@ -61,6 +61,26 @@ func ValidateCreateTag(tag string) error {
 	return nil
 }
 
+// ValidateAndDeduplicateTags validates each tag and returns a deduplicated slice.
+// Returns an error if any tag is invalid.
+func ValidateAndDeduplicateTags(tags []string) ([]string, error) {
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(tags))
+
+	for _, tag := range tags {
+		if err := ValidateCreateTag(tag); err != nil {
+			return nil, fmt.Errorf("invalid tag '%s': %w", tag, err)
+		}
+
+		if !seen[tag] {
+			seen[tag] = true
+			result = append(result, tag)
+		}
+	}
+
+	return result, nil
+}
+
 // ParseTemplateIDOrAliasWithTag parses a template ID or alias with an optional tag in the format "templateID:tag"
 // Returns the template ID/alias and the tag (or nil if no tag was specified)
 func ParseTemplateIDOrAliasWithTag(input string) (templateIDOrAlias string, tag *string, err error) {
