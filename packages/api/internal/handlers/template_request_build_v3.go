@@ -105,7 +105,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	public := false
 	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(findTemplateCtx, alias)
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 		attribute.String("alias", alias),
 	)

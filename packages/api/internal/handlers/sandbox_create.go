@@ -95,7 +95,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}).Debug(ctx, "Started creating sandbox")
 
 	alias := firstAlias(env.Aliases)
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		telemetry.WithTemplateID(env.TemplateID),
 		telemetry.WithSandboxID(sandboxID),
 		attribute.String("env.alias", alias),

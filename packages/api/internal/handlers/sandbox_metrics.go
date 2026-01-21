@@ -22,7 +22,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	sandboxID = utils.ShortID(sandboxID)
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		telemetry.WithSandboxID(sandboxID),
 	)
 

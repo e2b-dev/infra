@@ -97,7 +97,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 	}
 
 	templateDB, err := a.sqlcDB.GetTemplateByID(ctx, templateID)
-	telemetry.SetAttributes(ctx, telemetry.WithTemplateID(templateID))
+	ctx = telemetry.SetAttributes(ctx, telemetry.WithTemplateID(templateID))
 
 	switch {
 	case err == nil:

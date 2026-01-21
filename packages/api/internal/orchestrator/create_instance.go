@@ -273,7 +273,7 @@ func (o *Orchestrator) CreateSandbox(
 	// The build should be cached on the node now
 	node.InsertBuild(build.ID.String())
 
-	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
+	ctx = telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
 	// This is to compensate for the time it takes to start the instance

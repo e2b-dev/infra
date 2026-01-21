@@ -72,7 +72,7 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID api.TemplateID, buildID api.BuildID) {
 	ctx := c.Request.Context()
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		telemetry.WithTemplateID(templateID),
 		telemetry.WithBuildID(buildID),
 	)
@@ -122,7 +122,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		attribute.String("user.id", userID.String()),
 		telemetry.WithTeamID(team.ID.String()),
 	)

@@ -7,17 +7,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// contextKey is an unexported type for context keys defined in this package.
-// This prevents collisions with context keys defined in other packages.
-type contextKey string
-
 const (
-	DebugID = contextKey("debug_id")
+	DebugID = "debug_id"
 
-	SandboxIDContextKey  = contextKey("sandbox.id")
-	TeamIDIDContextKey   = contextKey("tema.id")
-	BuildIDContextKey    = contextKey("build.id")
-	TemplateIDContextKey = contextKey("template.id")
+	SandboxIDContextKey  = "sandbox.id"
+	TeamIDIDContextKey   = "team.id"
+	BuildIDContextKey    = "build.id"
+	TemplateIDContextKey = "template.id"
 )
 
 func GetDebugID(ctx context.Context) *string {

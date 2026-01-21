@@ -84,7 +84,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		return
 	}
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		telemetry.WithTemplateID(template.ID),
@@ -217,7 +217,7 @@ func (a *APIStore) DeleteTemplatesTagsName(c *gin.Context, name string) {
 		return
 	}
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		telemetry.WithTemplateID(template.ID),

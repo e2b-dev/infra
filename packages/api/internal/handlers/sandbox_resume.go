@@ -54,7 +54,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	sandboxID = utils.ShortID(sandboxID)
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		telemetry.WithSandboxID(sandboxID),
 	)
 

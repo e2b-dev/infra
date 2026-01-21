@@ -23,7 +23,6 @@ import (
 const maxSandboxMetricsCount = 100
 
 func (a *APIStore) getSandboxesMetrics(
-	c *gin.Context,
 	ctx context.Context,
 	teamID uuid.UUID,
 	clusterID uuid.UUID,
@@ -36,7 +35,7 @@ func (a *APIStore) getSandboxesMetrics(
 		sandboxIDs[i] = utils.ShortID(id)
 	}
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		attribute.Int("sandboxes.count", len(sandboxIDs)),
 	)
 
@@ -72,7 +71,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
@@ -95,7 +94,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 			Build(),
 	)
 
-	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(c, ctx, team.ID, utils.WithClusterFallback(team.ClusterID), params.SandboxIds)
+	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, utils.WithClusterFallback(team.ClusterID), params.SandboxIds)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err)
 

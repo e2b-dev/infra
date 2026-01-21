@@ -49,7 +49,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templ
 		return
 	}
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 		telemetry.WithBuildID(buildUUID.String()),
 		telemetry.WithTemplateID(templateID),

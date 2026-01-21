@@ -97,7 +97,7 @@ func RegisterBuild(
 		tags = []string{id.DefaultTag}
 	}
 
-	telemetry.SetAttributes(ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", data.Team.ID.String()),
 		attribute.String("env.team.name", data.Team.Name),
 		telemetry.WithTemplateID(data.TemplateID),
@@ -108,25 +108,25 @@ func RegisterBuild(
 	)
 
 	if data.Alias != nil {
-		telemetry.SetAttributes(ctx, attribute.String("env.alias", *data.Alias))
+		ctx = telemetry.SetAttributes(ctx, attribute.String("env.alias", *data.Alias))
 	}
 	if len(tags) > 0 {
-		telemetry.SetAttributes(ctx, attribute.StringSlice("env.tags", tags))
+		ctx = telemetry.SetAttributes(ctx, attribute.StringSlice("env.tags", tags))
 	}
 	if data.StartCmd != nil {
-		telemetry.SetAttributes(ctx, attribute.String("env.start_cmd", *data.StartCmd))
+		ctx = telemetry.SetAttributes(ctx, attribute.String("env.start_cmd", *data.StartCmd))
 	}
 
 	if data.ReadyCmd != nil {
-		telemetry.SetAttributes(ctx, attribute.String("env.ready_cmd", *data.ReadyCmd))
+		ctx = telemetry.SetAttributes(ctx, attribute.String("env.ready_cmd", *data.ReadyCmd))
 	}
 
 	if data.CpuCount != nil {
-		telemetry.SetAttributes(ctx, attribute.Int("env.cpu", int(*data.CpuCount)))
+		ctx = telemetry.SetAttributes(ctx, attribute.Int("env.cpu", int(*data.CpuCount)))
 	}
 
 	if data.MemoryMB != nil {
-		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*data.MemoryMB)))
+		ctx = telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*data.MemoryMB)))
 	}
 
 	cpuCount, ramMB, apiError := team.LimitResources(data.Team.Limits, data.CpuCount, data.MemoryMB)
@@ -350,10 +350,11 @@ func RegisterBuild(
 	}
 	telemetry.ReportEvent(ctx, "committed transaction")
 
-	telemetry.SetAttributes(ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		attribute.Int64("build.cpu_count", cpuCount),
 		attribute.Int64("build.ram_mb", ramMB),
 	)
+
 	telemetry.ReportEvent(ctx, "started updating environment")
 
 	logger.L().Info(ctx, "template build requested", logger.WithTemplateID(data.TemplateID), logger.WithBuildID(buildID.String()))

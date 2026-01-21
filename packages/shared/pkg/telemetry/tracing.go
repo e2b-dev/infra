@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -24,10 +23,6 @@ func debugFormat(debugID *string, msg string) string {
 }
 
 func SetAttributes(ctx context.Context, attrs ...attribute.KeyValue) context.Context {
-	return SetAttributesWithGin(nil, ctx, attrs...)
-}
-
-func SetAttributesWithGin(c *gin.Context, ctx context.Context, attrs ...attribute.KeyValue) context.Context {
 	span := trace.SpanFromContext(ctx)
 
 	if OTELTracingPrint {
@@ -43,30 +38,17 @@ func SetAttributesWithGin(c *gin.Context, ctx context.Context, attrs ...attribut
 		fmt.Print(debugFormat(debugID, msg))
 	}
 
-	setCtxValueFn := func(ctx context.Context, key any, value any) context.Context {
-		ctx = context.WithValue(ctx, key, value)
-
-		if c != nil {
-			// Gin context needs string keys
-			if keyStr, ok := key.(string); ok {
-				c.Set(keyStr, value)
-			}
-		}
-
-		return ctx
-	}
-
 	// Catch special attributes to set in context so they are available in child spans
 	for _, attr := range attrs {
 		switch string(attr.Key) {
-		case string(logger.SandboxIDContextKey):
-			ctx = setCtxValueFn(ctx, logger.SandboxIDContextKey, attr.Value.AsString()) //nolint:fatcontext // intentionally updating context in loop
-		case string(logger.TeamIDIDContextKey):
-			ctx = setCtxValueFn(ctx, logger.TeamIDIDContextKey, attr.Value.AsString())
-		case string(logger.BuildIDContextKey):
-			ctx = setCtxValueFn(ctx, logger.BuildIDContextKey, attr.Value.AsString())
-		case string(logger.TemplateIDContextKey):
-			ctx = setCtxValueFn(ctx, logger.TemplateIDContextKey, attr.Value.AsString())
+		case logger.SandboxIDContextKey:
+			ctx = context.WithValue(ctx, logger.SandboxIDContextKey, attr.Value.AsString()) //nolint:fatcontext,staticcheck // intentionally updating context in loop
+		case logger.TeamIDIDContextKey:
+			ctx = context.WithValue(ctx, logger.TeamIDIDContextKey, attr.Value.AsString()) //nolint:staticcheck
+		case logger.BuildIDContextKey:
+			ctx = context.WithValue(ctx, logger.BuildIDContextKey, attr.Value.AsString()) //nolint:staticcheck
+		case logger.TemplateIDContextKey:
+			ctx = context.WithValue(ctx, logger.TemplateIDContextKey, attr.Value.AsString()) //nolint:staticcheck
 		}
 	}
 

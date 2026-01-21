@@ -83,9 +83,6 @@ func LoggingMiddleware(logger e2blogger.Logger, conf Config) gin.HandlerFunc {
 				zap.Duration("latency", latency),
 			}
 
-			// Take context values from Gin context, transform to Zap fields and append to log fields
-			fields = append(fields, e2blogger.FieldsFromContext(c)...)
-
 			if conf.TimeFormat != "" {
 				fields = append(fields, zap.String("time", end.Format(conf.TimeFormat)))
 			}

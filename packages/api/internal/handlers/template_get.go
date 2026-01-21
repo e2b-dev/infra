@@ -33,7 +33,7 @@ func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 		return
 	}
 
-	telemetry.SetAttributesWithGin(c, ctx,
+	ctx = telemetry.SetAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
