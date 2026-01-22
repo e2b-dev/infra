@@ -9,7 +9,7 @@ import (
 )
 
 type loggedChange struct {
-	ctx   context.Context
+	ctx   context.Context //nolint:containedctx // can't change the API, still need it
 	inner billy.Change
 }
 
@@ -20,28 +20,28 @@ func newChange(ctx context.Context, change billy.Change) loggedChange {
 }
 
 func (s loggedChange) Chmod(name string, mode os.FileMode) (err error) {
-	finish := logStart(s.ctx, "Chmod", name, mode)
+	finish := logStart(s.ctx, "Change.Chmod", name, mode)
 	defer func() { finish(s.ctx, err) }()
 
 	return s.inner.Chmod(name, mode)
 }
 
 func (s loggedChange) Lchown(name string, uid, gid int) (err error) {
-	finish := logStart(s.ctx, "Lchown", name, uid, gid)
+	finish := logStart(s.ctx, "Change.Lchown", name, uid, gid)
 	defer func() { finish(s.ctx, err) }()
 
 	return s.inner.Lchown(name, uid, gid)
 }
 
 func (s loggedChange) Chown(name string, uid, gid int) (err error) {
-	finish := logStart(s.ctx, "Chown", name, uid, gid)
+	finish := logStart(s.ctx, "Change.Chown", name, uid, gid)
 	defer func() { finish(s.ctx, err) }()
 
 	return s.inner.Chown(name, uid, gid)
 }
 
 func (s loggedChange) Chtimes(name string, atime time.Time, mtime time.Time) (err error) {
-	finish := logStart(s.ctx, "Chtimes", name, atime, mtime)
+	finish := logStart(s.ctx, "Change.Chtimes", name, atime, mtime)
 	defer func() { finish(s.ctx, err) }()
 
 	return s.inner.Chtimes(name, atime, mtime)

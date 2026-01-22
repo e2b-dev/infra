@@ -10,7 +10,7 @@ import (
 )
 
 type handlers struct {
-	ctx  context.Context
+	ctx  context.Context //nolint:containedctx // can't change the API, still need it
 	maps map[key]portmap.Uint32
 }
 
@@ -32,7 +32,7 @@ func (h *handlers) PMAPPROC_SET(mapping portmap.Mapping) portmap.Xbool {
 	return true
 }
 
-func (h *handlers) PMAPPROC_UNSET(mapping portmap.Mapping) portmap.Xbool {
+func (h *handlers) PMAPPROC_UNSET(_ portmap.Mapping) portmap.Xbool {
 	return false
 }
 

@@ -360,7 +360,6 @@ func (p *Process) Resume(
 	uffdSocketPath string,
 	snapfile template.File,
 	uffdReady chan struct{},
-	slot *network.Slot,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()

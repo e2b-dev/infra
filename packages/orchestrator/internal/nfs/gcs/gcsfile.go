@@ -94,6 +94,6 @@ func (f *gcsFile) Close() error {
 
 func (f *gcsFile) Lock() error   { return nil }
 func (f *gcsFile) Unlock() error { return nil }
-func (f *gcsFile) Truncate(size int64) error {
-	return errors.New("truncate not supported")
+func (f *gcsFile) Truncate(_ int64) error {
+	return ErrUnsupported
 }

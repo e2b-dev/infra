@@ -31,7 +31,7 @@ func (c jailedChange) Lchown(name string, uid, gid int) error {
 }
 
 func (c jailedChange) Chown(name string, uid, gid int) error {
-	return c.Chown(name, uid, gid)
+	return c.inner.Chown(name, uid, gid)
 }
 
 func (c jailedChange) Chtimes(name string, atime time.Time, mtime time.Time) error {

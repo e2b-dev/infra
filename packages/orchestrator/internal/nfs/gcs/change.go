@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -12,7 +13,7 @@ import (
 )
 
 type change struct {
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx // can't change the API, still need it
 	bucket *storage.BucketHandle
 	fs     billy.Filesystem
 }
@@ -34,15 +35,20 @@ func (c change) Chmod(name string, mode os.FileMode) error {
 		permKey: permValue,
 	}}
 
-	_, err := c.bucket.Object(name).Update(context.Background(), updates)
+	_, err := c.bucket.Object(name).Update(c.ctx, updates)
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		// maybe it's a directory?
+		name := filepath.Join(name, dirMagicFilename)
+		_, err = c.bucket.Object(name).Update(c.ctx, updates)
+	}
 
 	return err
 }
 
-var ErrNotImplemented = errors.New("not implemented")
+var ErrUnsupported = errors.New("unsupported")
 
-func (c change) Lchown(name string, uid, gid int) error {
-	return ErrNotImplemented
+func (c change) Lchown(_ string, _, _ int) error {
+	return ErrUnsupported
 }
 
 func (c change) Chown(name string, uid, gid int) error {
@@ -60,6 +66,6 @@ func (c change) Chown(name string, uid, gid int) error {
 	return err
 }
 
-func (c change) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	return ErrNotImplemented
+func (c change) Chtimes(_ string, _ time.Time, _ time.Time) error {
+	return ErrUnsupported
 }

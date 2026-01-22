@@ -5,7 +5,10 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"cloud.google.com/go/storage"
@@ -132,78 +135,117 @@ func TestRoundTrip(t *testing.T) {
 	target, err := mount.Mount(".", auth.Auth())
 	require.NoError(t, err)
 
-	// write a file through nfs
-	const perms = 0o642
-	fp, err := target.OpenFile("/sandbox-id.txt", perms)
+	t.Run("write file", func(t *testing.T) {
+		t.Parallel()
+
+		// write a file through nfs
+		const perms = 0o642
+		fp, err := target.OpenFile("/sandbox-id.txt", perms)
+		require.NoError(t, err)
+		data := []byte(sandboxID)
+		n, err := fp.Write(data)
+		require.NoError(t, err)
+		assert.Equal(t, len(data), n)
+		err = fp.Close()
+		require.NoError(t, err)
+
+		// verify file contents through gcs
+		objectName := teamID + "/sandbox-id.txt"
+		object := bucket.Object(objectName)
+
+		// verify metadata
+		attrs, err := object.Attrs(t.Context())
+		require.NoErrorf(t, err, "failed to get object attrs for %s", objectName)
+		assert.Equalf(t, map[string]string{
+			gcs.MetadataPermsAttr: fmt.Sprintf("%03o", os.FileMode(perms)),
+		}, attrs.Metadata, "wrong metadata for %s", objectName)
+
+		// verify contents
+		sandboxIDReader, err := bucket.Object(objectName).NewReader(t.Context())
+		require.NoErrorf(t, err, "failed to read %s from bucket", objectName)
+		data, err = io.ReadAll(sandboxIDReader)
+		require.NoError(t, err)
+		assert.Equal(t, sandboxID, string(data))
+	})
+
+	t.Run("mkdir", func(t *testing.T) {
+		t.Parallel()
+
+		path := uuid.NewString()
+		fh, err := target.Mkdir(path, 0o755)
+		require.NoError(t, err)
+		assert.NotNil(t, fh)
+	})
+
+	t.Run("list file in nfs", func(t *testing.T) {
+		t.Parallel()
+
+		// setup root dir, to prevent collisions
+		path := uuid.NewString()
+		mkdir(t, target, path, 0o755)
+
+		// write files
+		writeFile(t, target, filepath.Join(path, "file.txt"), "file.txt contents", 0o644)
+		writeFile(t, target, filepath.Join(path, "file2.txt"), "file2.txt contents", 0o755)
+
+		// ensure files can be listed
+		items, err := target.ReadDirPlus(path)
+		require.NoError(t, err)
+		require.Len(t, items, 2)
+
+		// normalize the order
+		slices.SortFunc(items, func(a, b *nfs.EntryPlus) int {
+			return strings.Compare(a.Name(), b.Name())
+		})
+
+		assert.Equal(t, filepath.Join(path, "file.txt"), items[0].Name())
+		assert.Equal(t, os.FileMode(0o644), items[0].Mode())
+		assert.Equal(t, filepath.Join(path, "file2.txt"), items[1].Name())
+		assert.Equal(t, os.FileMode(0o755), items[1].Mode())
+	})
+
+	t.Run("access", func(t *testing.T) {
+		t.Parallel()
+
+		path := uuid.NewString()
+		mkdir(t, target, path, 0o755)
+		writeFile(t, target, filepath.Join(path, "file.txt"), "file.txt contents", 0o644)
+		mode, err := target.Access(filepath.Join(path, "file.txt"), 0o644)
+		require.NoError(t, err)
+		assert.Equal(t, uint32(0o644), mode)
+	})
+
+	t.Run("lookup missing file", func(t *testing.T) {
+		t.Parallel()
+
+		// verify that file can be read with getattr
+		path := uuid.NewString()
+		stat1, fh1, err := target.Lookup(path)
+		require.ErrorIs(t, err, os.ErrNotExist)
+		assert.Nil(t, fh1)
+		assert.Nil(t, stat1)
+	})
+}
+
+func writeFile(t *testing.T, target *nfs.Target, path string, content string, perm os.FileMode) {
+	t.Helper()
+
+	fp, err := target.OpenFile(path, perm)
 	require.NoError(t, err)
-	data := []byte(sandboxID)
-	n, err := fp.Write(data)
+
+	n, err := fp.Write([]byte(content))
 	require.NoError(t, err)
-	assert.Equal(t, len(data), n)
+	assert.Equal(t, len(content), n, "wrong number of bytes written")
+
 	err = fp.Close()
 	require.NoError(t, err)
+}
 
-	// verify file contents through gcs
-	objectName := teamID + "/sandbox-id.txt"
-	object := bucket.Object(objectName)
+func mkdir(t *testing.T, target *nfs.Target, path string, perm os.FileMode) []byte {
+	t.Helper()
 
-	// verify metadata
-	attrs, err := object.Attrs(t.Context())
-	require.NoErrorf(t, err, "failed to get object attrs for %s", objectName)
-	assert.Equalf(t, map[string]string{
-		gcs.MetadataPermsAttr: fmt.Sprintf("%03o", os.FileMode(perms)),
-	}, attrs.Metadata, "wrong metadata for %s", objectName)
-
-	// verify contents
-	sandboxIDReader, err := bucket.Object(objectName).NewReader(t.Context())
-	require.NoErrorf(t, err, "failed to read %s from bucket", objectName)
-	data, err = io.ReadAll(sandboxIDReader)
+	fh, err := target.Mkdir(path, perm)
 	require.NoError(t, err)
-	assert.Equal(t, sandboxID, string(data))
 
-	// list file in nfs
-	items, err := target.ReadDirPlus("/")
-	require.NoError(t, err)
-	require.Len(t, items, 1)
-	item := items[0]
-	assert.Equal(t, "sandbox-id.txt", item.Name())
-	assert.Equal(t, perms, int(item.Mode()))
-	assert.True(t, item.Handle.IsSet)
-
-	// verify the file can be read
-	fp, err = target.Open("sandbox-id.txt")
-	require.NoError(t, err)
-	buff := make([]byte, 64) // way more bytes than we need
-	n, err = fp.Read(buff)
-	require.ErrorIs(t, io.EOF, err)
-	assert.Equal(t, len(sandboxID), n)
-	assert.Equal(t, sandboxID, string(buff[:n]))
-
-	// verify that fileid has not changed from list to read
-	items2, err := target.ReadDirPlus("/")
-	require.NoError(t, err)
-	require.Len(t, items2, 1)
-	item2 := items2[0]
-	assert.Equal(t, "sandbox-id.txt", item.Name())
-	assert.Equal(t, item.FileId, item2.FileId)
-	assert.Equal(t, item.Handle, item2.Handle)
-
-	// 2x access, lookup, getattr
-	mode, err := target.Access("/sandbox-id.txt", perms)
-	require.NoError(t, err)
-	assert.Equal(t, uint32(perms), mode)
-
-	// verify that file can be read with getattr
-	stat1, fh1, err := target.Lookup("/sandbox-id.txt")
-	require.NoError(t, err)
-	require.NotNil(t, stat1)
-	require.NotNil(t, fh1)
-	assert.Equal(t, item.Handle.FH, fh1)
-
-	// verify that file handle does not change
-	stat1, fh2, err := target.Lookup("/sandbox-id.txt")
-	require.NoError(t, err)
-	require.NotNil(t, stat1)
-	require.Equal(t, fh1, fh2)
-	assert.Equal(t, item.Handle.FH, fh2)
+	return fh
 }

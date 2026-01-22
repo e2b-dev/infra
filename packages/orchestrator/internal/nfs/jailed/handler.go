@@ -22,27 +22,27 @@ func (m mountFailedFS) String() string {
 	return "mountFailedFS{}"
 }
 
-func (m mountFailedFS) Create(filename string) (billy.File, error) {
+func (m mountFailedFS) Create(_ string) (billy.File, error) {
 	return nil, ErrInvalidSandbox
 }
 
-func (m mountFailedFS) Open(filename string) (billy.File, error) {
+func (m mountFailedFS) Open(_ string) (billy.File, error) {
 	return nil, ErrInvalidSandbox
 }
 
-func (m mountFailedFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
+func (m mountFailedFS) OpenFile(_ string, _ int, _ os.FileMode) (billy.File, error) {
 	return nil, ErrInvalidSandbox
 }
 
-func (m mountFailedFS) Stat(filename string) (os.FileInfo, error) {
+func (m mountFailedFS) Stat(_ string) (os.FileInfo, error) {
 	return nil, ErrInvalidSandbox
 }
 
-func (m mountFailedFS) Rename(oldpath, newpath string) error {
+func (m mountFailedFS) Rename(_, _ string) error {
 	return ErrInvalidSandbox
 }
 
-func (m mountFailedFS) Remove(filename string) error {
+func (m mountFailedFS) Remove(_ string) error {
 	return ErrInvalidSandbox
 }
 
@@ -50,31 +50,31 @@ func (m mountFailedFS) Join(elem ...string) string {
 	return strings.Join(elem, "/")
 }
 
-func (m mountFailedFS) TempFile(dir, prefix string) (billy.File, error) {
+func (m mountFailedFS) TempFile(_, _ string) (billy.File, error) {
 	return nil, ErrInvalidSandbox
 }
 
-func (m mountFailedFS) ReadDir(path string) ([]os.FileInfo, error) {
+func (m mountFailedFS) ReadDir(_ string) ([]os.FileInfo, error) {
 	return nil, ErrInvalidSandbox
 }
 
-func (m mountFailedFS) MkdirAll(filename string, perm os.FileMode) error {
+func (m mountFailedFS) MkdirAll(_ string, _ os.FileMode) error {
 	return ErrInvalidSandbox
 }
 
-func (m mountFailedFS) Lstat(filename string) (os.FileInfo, error) {
+func (m mountFailedFS) Lstat(_ string) (os.FileInfo, error) {
 	return nil, ErrInvalidSandbox
 }
 
-func (m mountFailedFS) Symlink(target, link string) error {
+func (m mountFailedFS) Symlink(_, _ string) error {
 	return ErrInvalidSandbox
 }
 
-func (m mountFailedFS) Readlink(link string) (string, error) {
+func (m mountFailedFS) Readlink(_ string) (string, error) {
 	return "", ErrInvalidSandbox
 }
 
-func (m mountFailedFS) Chroot(path string) (billy.Filesystem, error) {
+func (m mountFailedFS) Chroot(_ string) (billy.Filesystem, error) {
 	return nil, ErrInvalidSandbox
 }
 

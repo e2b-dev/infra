@@ -9,7 +9,7 @@ import (
 
 type filesystem struct {
 	inner billy.Filesystem
-	ctx   context.Context
+	ctx   context.Context //nolint:containedctx // can't change the API, still need it
 }
 
 var _ billy.Filesystem = (*filesystem)(nil)

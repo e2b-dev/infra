@@ -10,7 +10,7 @@ import (
 )
 
 type loggable struct {
-	ctx   context.Context
+	ctx   context.Context //nolint:containedctx // can't change the API, still need it
 	inner rfc1057.PMAP_PROG_PMAP_VERS_handler
 }
 

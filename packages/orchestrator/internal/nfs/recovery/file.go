@@ -8,7 +8,7 @@ import (
 
 type file struct {
 	inner billy.File
-	ctx   context.Context
+	ctx   context.Context //nolint:containedctx // can't change the API, still need it
 }
 
 var _ billy.File = (*file)(nil)

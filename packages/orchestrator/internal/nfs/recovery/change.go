@@ -10,7 +10,7 @@ import (
 
 type change struct {
 	inner billy.Change
-	ctx   context.Context
+	ctx   context.Context //nolint:containedctx // can't change the API, still need it
 }
 
 var _ billy.Change = (*change)(nil)

@@ -14,7 +14,7 @@ import (
 
 type Handler struct {
 	inner nfs.Handler
-	ctx   context.Context
+	ctx   context.Context //nolint:containedctx // can't change the API, still need it
 }
 
 var _ nfs.Handler = (*Handler)(nil)
@@ -73,7 +73,7 @@ func (h Handler) tryRecovery(ctx context.Context, name string) {
 }
 
 func tryRecovery(ctx context.Context, name string) {
-	if r := recover(); r != nil {
+	if r := recover(); r != nil { //nolint:revive
 		logger.L().Error(ctx, fmt.Sprintf("panic in %q nfs handler", name),
 			zap.Any("panic", r),
 			zap.Stack("stack"),

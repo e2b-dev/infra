@@ -8,7 +8,7 @@ import (
 )
 
 type loggedFS struct {
-	ctx   context.Context
+	ctx   context.Context //nolint:containedctx // can't change the API, still need it
 	inner billy.Filesystem
 }
 

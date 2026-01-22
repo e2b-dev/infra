@@ -33,15 +33,15 @@ func NewPrefixedGCSBucket(bucket *storage.BucketHandle) *BucketFS {
 	return &BucketFS{bucket: bucket}
 }
 
-func (p BucketFS) Symlink(target, link string) error {
+func (p BucketFS) Symlink(_, _ string) error {
 	return errors.New("symlink not supported")
 }
 
-func (p BucketFS) Readlink(link string) (string, error) {
+func (p BucketFS) Readlink(_ string) (string, error) {
 	return "", errors.New("readlink not supported")
 }
 
-func (p BucketFS) Chroot(path string) (billy.Filesystem, error) {
+func (p BucketFS) Chroot(_ string) (billy.Filesystem, error) {
 	return &BucketFS{
 		bucket: p.bucket,
 	}, nil
@@ -185,8 +185,8 @@ func (p BucketFS) Join(elem ...string) string {
 	return filepath.Join(elem...)
 }
 
-func (p BucketFS) TempFile(dir, prefix string) (billy.File, error) {
-	return nil, errors.New("TempFile not implemented")
+func (p BucketFS) TempFile(_, _ string) (billy.File, error) {
+	return nil, ErrUnsupported
 }
 
 func (p BucketFS) ReadDir(path string) ([]os.FileInfo, error) {
@@ -215,7 +215,7 @@ func (p BucketFS) ReadDir(path string) ([]os.FileInfo, error) {
 
 const dirMagicFilename = ".__.dir.__."
 
-func (p BucketFS) MkdirAll(filename string, perm os.FileMode) error {
+func (p BucketFS) MkdirAll(filename string, _ os.FileMode) error {
 	if filename == "" || filename == "/" {
 		return nil
 	}

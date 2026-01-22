@@ -11,7 +11,7 @@ import (
 )
 
 type recovery struct {
-	ctx   context.Context
+	ctx   context.Context //nolint:containedctx // can't change the API, still need it
 	inner rfc1057.PMAP_PROG_PMAP_VERS_handler
 }
 
@@ -58,7 +58,7 @@ func (h *recovery) PMAPPROC_CALLIT(args rfc1057.Call_args) rfc1057.Call_result {
 }
 
 func (h *recovery) tryRecovery(name string) {
-	if r := recover(); r != nil {
+	if r := recover(); r != nil { //nolint:revive
 		logger.L().Error(h.ctx, fmt.Sprintf("panic in %q portmap handler", name), zap.Any("panic", r))
 	}
 }
