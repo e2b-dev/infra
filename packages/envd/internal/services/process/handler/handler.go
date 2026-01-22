@@ -359,9 +359,9 @@ func (p *Handler) CloseStdin() error {
 	}
 
 	err := p.stdin.Close()
-	if !errors.Is(err, syscall.EINTR) {
-		p.stdin = nil
-	}
+	// We still set the stdin to nil even on error as there are no errors,
+	// for which it is really safe to retry close across all distributions.
+	p.stdin = nil
 
 	return err
 }
