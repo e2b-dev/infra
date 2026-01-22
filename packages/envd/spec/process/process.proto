@@ -5,14 +5,17 @@ package process;
 import "mcp/mcp.proto";
 
 service Process {
-    rpc List(ListRequest) returns (ListResponse) {
-        option (mcp.mcp) = {
-            enabled: true;
-        };
-    }
+    rpc List(ListRequest) returns (ListResponse);
 
     rpc Connect(ConnectRequest) returns (stream ConnectResponse);
-    rpc Start(StartRequest) returns (stream StartResponse);
+    
+    // Start a new process and stream its output until it exits
+    rpc Start(StartRequest) returns (stream StartResponse) {
+        option (mcp.mcp) = {
+            enabled: true;
+            description: "Start a process and stream stdout/stderr until it exits";
+        };
+    }
 
     rpc Update(UpdateRequest) returns (UpdateResponse);
 
@@ -52,12 +55,34 @@ message ListResponse {
 }
 
 message StartRequest {    
-    ProcessConfig process = 1;
-    optional PTY pty = 2;
-    optional string tag = 3;
+    // Process configuration (cmd, args, envs, cwd)
+    ProcessConfig process = 1 [
+        (mcp.mcp_field) = { description: "Process configuration (cmd, args, envs, cwd)"; }
+    ];
+
+    // PTY configuration (hidden from MCP)
+    optional PTY pty = 2 [
+        (mcp.mcp_field) = { hidden: true; }
+    ];
+
+    // Optional tag to identify the process
+    optional string tag = 3 [
+        (mcp.mcp_field) = { description: "Optional tag to identify the process"; }
+    ];
+
     // This is optional for backwards compatibility.
     // We default to true. New SDK versions will set this to false by default.
-    optional bool stdin = 4;
+    optional bool stdin = 4 [
+        (mcp.mcp_field) = { 
+            hidden: true; 
+            default_value: "false"; 
+        }
+    ];
+
+    // If true, start the process in background and return immediately with PID (no streaming).
+    optional bool background = 5 [
+        (mcp.mcp_field) = { description: "Run in background, return immediately with PID"; }
+    ];
 }
 
 message UpdateRequest {

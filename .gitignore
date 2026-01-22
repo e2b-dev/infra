@@ -14,3 +14,4 @@ tests/periodic-test/build-template/e2b.toml
 go.work.sum
 .infisical.json
 .vscode/mise-tools
+.local-build

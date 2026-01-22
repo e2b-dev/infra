@@ -4,11 +4,24 @@ package mcp;
 
 import "google/protobuf/descriptor.proto";
 
+// Method-level MCP options
 extend google.protobuf.MethodOptions {
   MCPOptions mcp = 50001;
 }
 
 message MCPOptions {
   bool enabled = 1;
+  string description = 2;  // Tool description (overrides proto comments)
+}
+
+// Field-level MCP options
+extend google.protobuf.FieldOptions {
+  MCPFieldOptions mcp_field = 50002;
+}
+
+message MCPFieldOptions {
+  string description = 1;    // Description for this argument
+  string default_value = 2;  // Default value as JSON (e.g. "true", "\"hello\"", "123")
+  bool hidden = 3;           // If true, use default but don't expose in MCP tool schema
 }
 

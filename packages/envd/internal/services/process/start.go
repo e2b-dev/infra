@@ -94,6 +94,37 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		return err
 	}
 
+	pid, err := proc.Start()
+	if err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	s.processes.Store(pid, proc)
+
+	go func() {
+		defer s.processes.Delete(pid)
+
+		proc.Wait()
+	}()
+
+	// Background mode: just send start event and return immediately
+	if req.Msg.GetBackground() {
+		streamErr := stream.Send(&rpc.StartResponse{
+			Event: &rpc.ProcessEvent{
+				Event: &rpc.ProcessEvent_Start{
+					Start: &rpc.ProcessEvent_StartEvent{
+						Pid: pid,
+					},
+				},
+			},
+		})
+		if streamErr != nil {
+			return connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending start event: %w", streamErr))
+		}
+		return nil
+	}
+
+	// Foreground mode: stream all events
 	exitChan := make(chan struct{})
 
 	startMultiplexer := handler.NewMultiplexedChannel[rpc.ProcessEvent_Start](0)
@@ -203,24 +234,11 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		}
 	}()
 
-	pid, err := proc.Start()
-	if err != nil {
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	}
-
-	s.processes.Store(pid, proc)
-
 	start <- rpc.ProcessEvent_Start{
 		Start: &rpc.ProcessEvent_StartEvent{
 			Pid: pid,
 		},
 	}
-
-	go func() {
-		defer s.processes.Delete(pid)
-
-		proc.Wait()
-	}()
 
 	select {
 	case <-ctx.Done():

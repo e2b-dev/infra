@@ -53,6 +53,7 @@ const (
 type ProcessClient interface {
 	List(context.Context, *connect.Request[process.ListRequest]) (*connect.Response[process.ListResponse], error)
 	Connect(context.Context, *connect.Request[process.ConnectRequest]) (*connect.ServerStreamForClient[process.ConnectResponse], error)
+	// Start a new process and stream its output until it exits
 	Start(context.Context, *connect.Request[process.StartRequest]) (*connect.ServerStreamForClient[process.StartResponse], error)
 	Update(context.Context, *connect.Request[process.UpdateRequest]) (*connect.Response[process.UpdateResponse], error)
 	// Client input stream ensures ordering of messages
@@ -167,6 +168,7 @@ func (c *processClient) SendSignal(ctx context.Context, req *connect.Request[pro
 type ProcessHandler interface {
 	List(context.Context, *connect.Request[process.ListRequest]) (*connect.Response[process.ListResponse], error)
 	Connect(context.Context, *connect.Request[process.ConnectRequest], *connect.ServerStream[process.ConnectResponse]) error
+	// Start a new process and stream its output until it exits
 	Start(context.Context, *connect.Request[process.StartRequest], *connect.ServerStream[process.StartResponse]) error
 	Update(context.Context, *connect.Request[process.UpdateRequest]) (*connect.Response[process.UpdateResponse], error)
 	// Client input stream ensures ordering of messages

@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	internalMcp "github.com/e2b-dev/infra/packages/envd/internal/mcp"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
@@ -169,7 +170,10 @@ func main() {
 	processService := processRpc.Handle(m, &processLogger, defaults)
 
 	mcpLogger := l.With().Str("logger", "mcp").Logger()
-	mcpRpc.Handle(m, &mcpLogger, defaults)
+	mcpService := mcpRpc.Handle(m, &mcpLogger, defaults)
+
+	// Register MCP tools (auto-discovered from proto annotations)
+	internalMcp.Setup(mcpService.GetMCPServer(), int(port))
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
