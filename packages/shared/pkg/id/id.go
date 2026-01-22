@@ -14,7 +14,11 @@ import (
 
 var caseInsensitiveAlphabet = []byte("abcdefghijklmnopqrstuvwxyz1234567890")
 
-const DefaultTag = "default"
+const (
+	DefaultTag = "default"
+
+	TagSeparator = ":"
+)
 
 func Generate() string {
 	return uniuri.NewLenChars(uniuri.UUIDLen, caseInsensitiveAlphabet)
@@ -87,7 +91,7 @@ func ParseTemplateIDOrAliasWithTag(input string) (templateIDOrAlias string, tag 
 	input = strings.TrimSpace(input)
 
 	// Split by colon to separate template ID and tag
-	parts := strings.SplitN(input, ":", 2)
+	parts := strings.SplitN(input, TagSeparator, 2)
 
 	templateIDOrAlias = strings.ToLower(strings.TrimSpace(parts[0]))
 	templateIDOrAlias, err = cleanTemplateIDOrAlias(templateIDOrAlias)
@@ -111,4 +115,12 @@ func ParseTemplateIDOrAliasWithTag(input string) (templateIDOrAlias string, tag 
 	}
 
 	return templateIDOrAlias, tag, nil
+}
+
+func NameWithTag(name string, tag *string) string {
+	if tag == nil {
+		return name + TagSeparator + DefaultTag
+	}
+
+	return name + TagSeparator + *tag
 }
