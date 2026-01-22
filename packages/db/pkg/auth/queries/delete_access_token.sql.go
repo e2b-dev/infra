@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: delete_access_token.sql
 
-package queries
+package authqueries
 
 import (
 	"context"

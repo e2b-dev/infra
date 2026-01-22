@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: get_user_id_from_access_token.sql
 
-package queries
+package authqueries
 
 import (
 	"context"

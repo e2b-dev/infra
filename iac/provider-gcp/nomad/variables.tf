@@ -140,6 +140,10 @@ variable "postgres_connection_string_secret_name" {
   type = string
 }
 
+variable "postgres_read_replica_connection_string_secret_name" {
+  type = string
+}
+
 variable "supabase_jwt_secrets_secret_name" {
   type = string
 }

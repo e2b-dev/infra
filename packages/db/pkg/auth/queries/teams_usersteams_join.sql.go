@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: teams_usersteams_join.sql
 
-package queries
+package authqueries
 
 import (
 	"context"

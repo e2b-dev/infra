@@ -11,7 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -39,7 +39,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		return
 	}
 
-	accessTokenDB, err := a.sqlcDB.CreateAccessToken(ctx, queries.CreateAccessTokenParams{
+	accessTokenDB, err := a.authDB.Write.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,
@@ -85,7 +85,7 @@ func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID
 		return
 	}
 
-	_, err = a.sqlcDB.DeleteAccessToken(ctx, queries.DeleteAccessTokenParams{
+	_, err = a.authDB.Write.DeleteAccessToken(ctx, authqueries.DeleteAccessTokenParams{
 		ID:     accessTokenIDParsed,
 		UserID: userID,
 	})
