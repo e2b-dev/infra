@@ -115,7 +115,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		_, err := t.uploadRootfs(ctx, *rootfsPath)
+		frameTable, err := t.uploadRootfs(ctx, *rootfsPath)
 		if err != nil {
 			return err
 		}
@@ -124,37 +124,37 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		// if frameTable != nil {
-		// 	fmt.Printf("<>/<> Uploading build %q rootFS, full size %#x, have a frame table starting at %#x, %d frames\n",
-		// 		t.rootfsHeader.Metadata.BuildId.String(),
-		// 		t.rootfsHeader.Metadata.Size,
-		// 		frameTable.StartAt.U,
-		// 		len(frameTable.Frames),
-		// 	) // DEBUG --- IGNORE ---
-		// 	for _, f := range frameTable.Frames {
-		// 		fmt.Printf("<>/<> --- frame: %#x %#x\n", f.U, f.C) // DEBUG --- IGNORE ---
-		// 	}
+		if frameTable != nil {
+			fmt.Printf("<>/<> Uploading build %q rootFS, full size %#x, have a frame table starting at %#x, %d frames\n",
+				t.rootfsHeader.Metadata.BuildId.String(),
+				t.rootfsHeader.Metadata.Size,
+				frameTable.StartAt.U,
+				len(frameTable.Frames),
+			) // DEBUG --- IGNORE ---
+			for _, f := range frameTable.Frames {
+				fmt.Printf("<>/<> --- frame: %#x %#x\n", f.U, f.C) // DEBUG --- IGNORE ---
+			}
 
-		// 	// iterate over the mappings, and for each one from the current build add the frameTable
-		// 	for _, mapping := range t.rootfsHeader.Mapping {
-		// 		if mapping.BuildId == t.rootfsHeader.Metadata.BuildId {
-		// 			mapping.FrameTable = frameTable.Subset(int64(mapping.Offset), int64(mapping.Length))
+			// iterate over the mappings, and for each one from the current build add the frameTable
+			for _, mapping := range t.rootfsHeader.Mapping {
+				if mapping.BuildId == t.rootfsHeader.Metadata.BuildId {
+					mapping.FrameTable = frameTable.Subset(int64(mapping.Offset), int64(mapping.Length))
 
-		// 			if len(mapping.FrameTable.Frames) == 0 {
-		// 				fmt.Printf("<>/<>   NO FRAMES for mapping offset %#x length %#x\n",
-		// 					mapping.Offset,
-		// 					mapping.Length,
-		// 				) // DEBUG --- IGNORE ---
+					if len(mapping.FrameTable.Frames) == 0 {
+						fmt.Printf("<>/<>   NO FRAMES for mapping offset %#x length %#x\n",
+							mapping.Offset,
+							mapping.Length,
+						) // DEBUG --- IGNORE ---
 
-		// 				fmt.Printf("<>/<> full mapping table: type %s, offset: %+v\n", storage.CompressionType(mapping.FrameTable.CompressionType), mapping.FrameTable.StartAt) // DEBUG --- IGNORE ---
+						fmt.Printf("<>/<> full mapping table: type %s, offset: %+v\n", storage.CompressionType(mapping.FrameTable.CompressionType), mapping.FrameTable.StartAt) // DEBUG --- IGNORE ---
 
-		// 				for _, f := range mapping.FrameTable.Frames {
-		// 					fmt.Printf("<>/<>     frame: %+v\n", f) // DEBUG --- IGNORE ---
-		// 				}
-		// 			}
-		// 		}
-		// 	}
-		// }
+						for _, f := range mapping.FrameTable.Frames {
+							fmt.Printf("<>/<>     frame: %+v\n", f) // DEBUG --- IGNORE ---
+						}
+					}
+				}
+			}
+		}
 
 		err = t.uploadRootfsHeader(ctx, t.rootfsHeader)
 		if err != nil {

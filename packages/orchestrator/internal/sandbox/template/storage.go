@@ -54,15 +54,12 @@ func NewStorage(
 	persistence storage.API,
 	metrics blockmetrics.Metrics,
 ) (*Storage, error) {
-	fmt.Printf("<>/<> NewStorage: in header is nil: %v\n", h == nil)
 	if h == nil {
 		headerObjectPath := buildId + "/" + string(fileType) + storage.HeaderSuffix
 		_, ok := storageHeaderObjectType(fileType)
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
-
-		fmt.Printf("<>/<> NewStorage: in header is nil, fetching header for %s\n", headerObjectPath)
 
 		// TODO LEV inefficient double read
 		headerData, err := persistence.GetBlob(ctx, headerObjectPath, nil)

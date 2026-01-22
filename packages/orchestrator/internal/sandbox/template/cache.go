@@ -259,15 +259,11 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, storageTemplate *stora
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
 
-	// found := false
-	// fmt.Printf("<>/<> =================== %v ===========================\n", found)
 	if !found {
 		missesMetric.Add(ctx, 1)
 		// We don't want to cancel the request if the request was canceled, because it can be used by other templates
 		// It's a little bit problematic, because shutdown won't cancel the fetch
 		go storageTemplate.Fetch(context.WithoutCancel(ctx), c.buildStore)
-
-		fmt.Printf("<>/<> template build ID %s: started fetching\n", storageTemplate.Files().BuildID)
 	} else {
 		hitsMetric.Add(ctx, 1)
 	}
