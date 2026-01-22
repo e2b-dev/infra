@@ -54,6 +54,53 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
 	}, nil
 }
 
+func (t *Header) String() string {
+	if t == nil {
+		return "[nil Header]"
+	}
+	return fmt.Sprintf("[Header: version=%d, size=%d, blockSize=%d, generation=%d, buildId=%s, mappings=%d]",
+		t.Metadata.Version,
+		t.Metadata.Size,
+		t.Metadata.BlockSize,
+		t.Metadata.Generation,
+		t.Metadata.BuildId.String(),
+		len(t.Mapping),
+	)
+}
+
+func (t *Header) Mappings(all bool) string {
+	if t == nil {
+		return "[nil Header, no mappings]"
+	}
+	n := 0
+	for _, m := range t.Mapping {
+		if all || m.BuildId == t.Metadata.BuildId {
+			n++
+		}
+	}
+	result := fmt.Sprintf("All mappings: %d\n", n)
+	if !all {
+		result = fmt.Sprintf("Mappings for build %s: %d\n", t.Metadata.BuildId.String(), n)
+	}
+	for _, m := range t.Mapping {
+		if !all && m.BuildId != t.Metadata.BuildId {
+			continue
+		}
+		frames := 0
+		if m.FrameTable != nil {
+			frames = len(m.FrameTable.Frames)
+		}
+		result += fmt.Sprintf("  - Offset: %#x, Length: %#x, BuildId: %s, BuildStorageOffset: %#x, numFrames: %d\n",
+			m.Offset,
+			m.Length,
+			m.BuildId.String(),
+			m.BuildStorageOffset,
+			frames,
+		)
+	}
+	return result
+}
+
 // IsNormalizeFixApplied is a helper method to soft fail for older versions of the header where fix for normalization was not applied.
 // This should be removed in the future.
 func (t *Header) IsNormalizeFixApplied() bool {

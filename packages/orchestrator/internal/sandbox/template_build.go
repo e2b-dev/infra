@@ -54,7 +54,8 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 }
 
 func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) (*storage.FrameTable, error) {
-	return t.persistence.StoreFile(ctx, memfilePath, t.files.StorageMemfilePath(), nil)
+	return t.persistence.StoreFile(ctx, memfilePath, t.files.StorageMemfilePath(), storage.DefaultCompressionOptions)
+	// return t.persistence.StoreFile(ctx, memfilePath, t.files.StorageMemfilePath(), nil)
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
@@ -72,7 +73,8 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 }
 
 func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) (*storage.FrameTable, error) {
-	return t.persistence.StoreFile(ctx, rootfsPath, t.files.StorageRootfsPath(), nil)
+	return t.persistence.StoreFile(ctx, rootfsPath, t.files.StorageRootfsPath(), storage.DefaultCompressionOptions)
+	// return t.persistence.StoreFile(ctx, rootfsPath, t.files.StorageRootfsPath(), nil)
 }
 
 // Snap-file is small enough so we don't use composite upload.
@@ -111,17 +113,17 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		if rootfsPath == nil {
+		// TODO LEV when is rootfsHeader ever nil and rootfsPath is not? And
+		// what do we do if the asset is already uploaded compressed?
+		if rootfsPath == nil || t.rootfsHeader == nil {
 			return nil
 		}
+		fmt.Printf("<>/<> header before uploadRootfs: %s\n%s", t.rootfsHeader, t.rootfsHeader.Mappings(false))
 
 		frameTable, err := t.uploadRootfs(ctx, *rootfsPath)
+		fmt.Printf("<>/<> uploadRootfs returned: err:%v, header: %s\n%s", err, t.rootfsHeader, t.rootfsHeader.Mappings(false))
 		if err != nil {
 			return err
-		}
-
-		if t.rootfsHeader == nil {
-			return nil
 		}
 
 		if frameTable != nil {
@@ -138,7 +140,16 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			// iterate over the mappings, and for each one from the current build add the frameTable
 			for _, mapping := range t.rootfsHeader.Mapping {
 				if mapping.BuildId == t.rootfsHeader.Metadata.BuildId {
-					mapping.FrameTable = frameTable.Subset(int64(mapping.Offset), int64(mapping.Length))
+					mappedRange := storage.Range{
+						Start:  int64(mapping.Offset),
+						Length: int(mapping.Length),
+					}
+					mapping.FrameTable, err = frameTable.Subset(mappedRange)
+					if err != nil {
+						return fmt.Errorf("failed to get frame table subset for mapping %s: %w",
+							mappedRange, err)
+					}
+					fmt.Printf("<>/<>   the subset for %s is %+v\n", mappedRange, mapping.FrameTable) // DEBUG --- IGNORE ---
 
 					if len(mapping.FrameTable.Frames) == 0 {
 						fmt.Printf("<>/<>   NO FRAMES for mapping offset %#x length %#x\n",
@@ -152,6 +163,8 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 							fmt.Printf("<>/<>     frame: %+v\n", f) // DEBUG --- IGNORE ---
 						}
 					}
+				} else {
+					fmt.Printf("<>/<>   skipping mapping for different build %s\n", mapping.BuildId.String()) // DEBUG --- IGNORE ---
 				}
 			}
 		}
