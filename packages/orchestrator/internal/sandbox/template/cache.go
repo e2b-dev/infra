@@ -253,8 +253,6 @@ func cleanDir(path string) error {
 }
 
 func (c *Cache) getTemplateWithFetch(ctx context.Context, storageTemplate *storageTemplate) Template {
-	c.cache.Delete(storageTemplate.Files().CacheKey())
-
 	t, found := c.cache.GetOrSet(
 		storageTemplate.Files().CacheKey(),
 		storageTemplate,

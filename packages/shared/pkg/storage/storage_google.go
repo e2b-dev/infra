@@ -152,7 +152,9 @@ func (g *GCP) handle(path string) *storage.ObjectHandle {
 	)
 }
 
-func (g *GCP) Size(ctx context.Context, path string) (int64, error) {
+func (g *GCP) Size(ctx context.Context, path string) (n int64, err error) {
+	fmt.Printf("<>/<> GCP Size of %s\n", path)
+	defer fmt.Printf("<>/<> GCP Size of %s done, size=%d, err=%v\n", path, n, err)
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -171,10 +173,11 @@ func (g *GCP) Size(ctx context.Context, path string) (int64, error) {
 }
 
 func (g *GCP) Upload(ctx context.Context, path string, in io.Reader) (n int64, e error) {
+	fmt.Printf("<>/<> GCP Upload to %s started\n", path)
+	defer fmt.Printf("<>/<> GCP Upload to %s finished, wrote %d bytes, err=%v\n", path, n, e)
+
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
-
-	fmt.Printf("<>/<> GCP Upload to %s\n", path)
 
 	w := g.handle(path).NewWriter(ctx)
 	defer func() {
@@ -196,12 +199,27 @@ func (g *GCP) Upload(ctx context.Context, path string, in io.Reader) (n int64, e
 	return c, nil
 }
 
-func (g *GCP) StartDownload(ctx context.Context, path string) (io.ReadCloser, error) {
-	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
-	defer cancel()
+type withCancelCloser struct {
+	io.ReadCloser
+	cancelFunc context.CancelFunc
+}
 
-	r, err := g.handle(path).NewReader(ctx)
+func (c withCancelCloser) Close() error {
+	if c.cancelFunc != nil {
+		c.cancelFunc()
+	}
+	return c.ReadCloser.Close()
+}
+
+func (g *GCP) StartDownload(ctx context.Context, path string) (rc io.ReadCloser, err error) {
+	fmt.Printf("<>/<> GCP StartDownload of %s\n", path)
+	defer fmt.Printf("<>/<> GCP StartDownload of %s done, err=%v\n", path, err)
+
+	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
+
+	rc, err = g.handle(path).NewReader(ctx)
 	if err != nil {
+		cancel()
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			return nil, fmt.Errorf("failed to create reader for %q: %w", path, ErrObjectNotExist)
 		}
@@ -209,7 +227,7 @@ func (g *GCP) StartDownload(ctx context.Context, path string) (io.ReadCloser, er
 		return nil, fmt.Errorf("failed to create reader for %q: %w", path, err)
 	}
 
-	return r, nil
+	return withCancelCloser{ReadCloser: rc, cancelFunc: cancel}, nil
 }
 
 type gcpServiceToken struct {
@@ -232,5 +250,7 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 }
 
 func (g *GCP) RangeGet(ctx context.Context, path string, offset int64, length int) (io.ReadCloser, error) {
+	fmt.Printf("<>/<> GCP RangeGet of %s offset=%d length=%d\n", path, offset, length)
+	// TODO LEV timeout
 	return g.handle(path).NewRangeReader(ctx, offset, int64(length))
 }
