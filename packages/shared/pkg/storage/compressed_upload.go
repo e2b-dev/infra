@@ -62,10 +62,11 @@ type frame struct {
 
 var _ io.Writer = (*frame)(nil) // for compression output
 
-func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader, maxUploadConcurrency int) *encoder {
+func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader, targetPartSize int64, maxUploadConcurrency int) *encoder {
 	return &encoder{
 		opts:                 opts,
 		maxUploadConcurrency: maxUploadConcurrency,
+		targetPartSize:       targetPartSize,
 		readyFrames:          make([][]byte, 0, 8),
 		uploader:             u,
 		frameTable: &FrameTable{

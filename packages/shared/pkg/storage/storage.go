@@ -87,6 +87,7 @@ var DefaultCompressionOptions = &FramedUploadOptions{
 	TargetFrameSize:        defaultTargetFrameSizeC,
 	Level:                  int(defaultZstdCompressionLevel),
 	CompressionConcurrency: defaultCompressionConcurrency,
+	TargetPartSize:         defaultUploadPartSize,
 }
 
 type ReaderAt interface {
@@ -131,8 +132,6 @@ var _ API = (*Storage)(nil)
 // upload. If the compression type is unset, the file is uploaded in its
 // entirety.
 func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, e error) {
-	fmt.Printf("<>/<> STORE FILE !!!!!!!!!!!! %s to %s with opts %+v\n", inFilePath, objectPath, opts)
-
 	ctx, span := tracer.Start(ctx, "store file")
 	defer func() {
 		recordError(span, e)
@@ -147,6 +146,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 			partSize = opts.TargetPartSize
 		}
 	}
+	fmt.Printf("<>/<> STORE FILE !!!!!!!!!!!! %s to %s with part size %#x\n", inFilePath, objectPath, partSize)
 
 	in, err := os.Open(inFilePath)
 	if err != nil {
@@ -171,6 +171,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrStore))
 
+	fmt.Printf("<>/<> StoreFile: Provider: %v\n", s.Provider)
 	partUploader, cleanup, maxConcurrency, err := s.Provider.MakeMultipartUpload(ctx, objectPath, DefaultRetryConfig())
 	defer cleanup()
 	if err != nil {
@@ -180,7 +181,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	}
 
 	if compression != CompressionNone {
-		ft, err = newFrameEncoder(opts, partUploader, maxConcurrency).uploadFramed(ctx, in)
+		ft, err = newFrameEncoder(opts, partUploader, int64(partSize), maxConcurrency).uploadFramed(ctx, in)
 	} else {
 		err = uploadFileInParallel(ctx, in, sizeU, partUploader, partSize, maxConcurrency)
 	}

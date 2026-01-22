@@ -1,11 +1,15 @@
 package storage
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"sync"
 )
 
 type FileSystem struct {
@@ -20,8 +24,10 @@ func NewFS(basePath string) *Provider {
 	}
 
 	return &Provider{
-		Basic: fs,
-		Admin: fs,
+		Basic:                    fs,
+		Admin:                    fs,
+		MultipartUploaderFactory: fs,
+		RangeGetter:              fs,
 	}
 }
 
@@ -68,6 +74,26 @@ func (s *FileSystem) Upload(_ context.Context, path string, in io.Reader) (int64
 	return io.Copy(handle, in)
 }
 
+func (s *FileSystem) RangeGet(_ context.Context, path string, offset int64, length int) (io.ReadCloser, error) {
+	handle, err := s.mustExist(path)
+	if err != nil {
+		return nil, err
+	}
+	defer handle.Close()
+
+	if length == 0 {
+		return io.NopCloser(bytes.NewReader(nil)), nil
+	}
+
+	buf := make([]byte, length)
+	n, err := handle.ReadAt(buf, offset)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+
+	return io.NopCloser(bytes.NewReader(buf[:n])), nil
+}
+
 func (s *FileSystem) Size(_ context.Context, path string) (int64, error) {
 	handle, err := s.mustExist(path)
 	if err != nil {
@@ -84,7 +110,8 @@ func (s *FileSystem) Size(_ context.Context, path string) (int64, error) {
 }
 
 func (s *FileSystem) mustExist(path string) (*os.File, error) {
-	info, err := os.Stat(path)
+	fullPath := s.getPath(path)
+	info, err := os.Stat(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, ErrObjectNotExist
@@ -94,12 +121,115 @@ func (s *FileSystem) mustExist(path string) (*os.File, error) {
 	}
 
 	if info.IsDir() {
-		return nil, fmt.Errorf("path %s is a directory", path)
+		return nil, fmt.Errorf("path %s is a directory", fullPath)
 	}
 
-	return os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	return os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 func (s *FileSystem) create(path string) (*os.File, error) {
-	return os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	fullPath := s.getPath(path)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		return nil, err
+	}
+
+	return os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0o644)
+}
+
+func (s *FileSystem) MakeMultipartUpload(_ context.Context, objectPath string, _ RetryConfig) (MultipartUploader, func(), int, error) {
+	return &fsMultipartUploader{
+		fs:         s,
+		objectPath: objectPath,
+		parts:      map[int][]byte{},
+	}, func() {}, 1, nil
+}
+
+type fsMultipartUploader struct {
+	fs         *FileSystem
+	objectPath string
+	parts      map[int][]byte
+	started    bool
+	mu         sync.Mutex
+}
+
+func (u *fsMultipartUploader) Start(_ context.Context) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.started {
+		return nil
+	}
+	u.started = true
+	return nil
+}
+
+func (u *fsMultipartUploader) UploadPart(_ context.Context, partNumber int, dataList ...[]byte) error {
+	if partNumber <= 0 {
+		return fmt.Errorf("invalid part number %d", partNumber)
+	}
+
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if !u.started {
+		return fmt.Errorf("multipart upload not started")
+	}
+
+	total := 0
+	for _, data := range dataList {
+		total += len(data)
+	}
+	buffer := make([]byte, 0, total)
+	for _, data := range dataList {
+		buffer = append(buffer, data...)
+	}
+
+	if u.parts == nil {
+		u.parts = map[int][]byte{}
+	}
+	u.parts[partNumber] = buffer
+
+	return nil
+}
+
+func (u *fsMultipartUploader) Complete(_ context.Context) error {
+	u.mu.Lock()
+	if !u.started {
+		u.mu.Unlock()
+		return fmt.Errorf("multipart upload not started")
+	}
+
+	if len(u.parts) == 0 {
+		u.mu.Unlock()
+		return fmt.Errorf("no parts uploaded")
+	}
+
+	partNumbers := make([]int, 0, len(u.parts))
+	for partNumber := range u.parts {
+		partNumbers = append(partNumbers, partNumber)
+	}
+	sort.Ints(partNumbers)
+
+	maxPart := partNumbers[len(partNumbers)-1]
+	for i := 1; i <= maxPart; i++ {
+		if _, ok := u.parts[i]; !ok {
+			u.mu.Unlock()
+			return fmt.Errorf("missing part %d", i)
+		}
+	}
+
+	dataParts := make([][]byte, 0, len(partNumbers))
+	for _, partNumber := range partNumbers {
+		dataParts = append(dataParts, u.parts[partNumber])
+	}
+	u.parts = nil
+	u.mu.Unlock()
+
+	handle, err := u.fs.create(u.objectPath)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+
+	reader := bytes.NewReader(bytes.Join(dataParts, nil))
+	_, err = io.Copy(handle, reader)
+	return err
 }
