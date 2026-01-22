@@ -15,6 +15,8 @@ import (
 func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID api.TemplateID, hash string) {
 	ctx := c.Request.Context()
 
+	telemetry.SetAttributes(ctx, telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
+
 	// Check if the user has access to the template
 	templateDB, err := a.sqlcDB.GetTemplateByID(ctx, templateID)
 	if err != nil {
@@ -47,8 +49,6 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 
 	resp, err := a.templateManager.InitLayerFileUpload(ctx, utils.WithClusterFallback(templateDB.ClusterID), node.NodeID, team.ID, templateID, hash)
 	if err != nil {
-		telemetry.SetAttributes(ctx, telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
-
 		a.sendAPIStoreError(ctx, c, http.StatusInternalServerError, "Error when requesting layer files upload", err)
 
 		return
