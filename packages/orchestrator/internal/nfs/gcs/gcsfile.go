@@ -5,18 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	"cloud.google.com/go/storage"
 	"github.com/go-git/go-billy/v5"
 )
 
 type gcsFile struct {
-	p      BucketFS
-	obj    *storage.ObjectHandle
-	name   string
-	offset int64
-	writer *storage.Writer
-	attrs  *storage.ObjectAttrs
+	p        BucketFS
+	obj      *storage.ObjectHandle
+	name     string
+	offset   int64
+	offsetMu sync.Mutex
+	writer   *storage.Writer
+	attrs    *storage.ObjectAttrs
 }
 
 func (f *gcsFile) String() string {
@@ -26,7 +28,7 @@ func (f *gcsFile) String() string {
 var _ billy.File = (*gcsFile)(nil)
 
 func newGcsFile(p BucketFS, name string, attrs *storage.ObjectAttrs) *gcsFile {
-	return &gcsFile{p, p.bucket.Object(name), name, 0, nil, attrs}
+	return &gcsFile{p: p, obj: p.bucket.Object(name), name: name, attrs: attrs}
 }
 
 func (f *gcsFile) Name() string { return f.name }
@@ -47,7 +49,7 @@ func (f *gcsFile) Read(p []byte) (n int, err error) {
 	}
 	defer func() { err = errors.Join(err, rc.Close()) }()
 	n, err = rc.Read(p)
-	f.offset += int64(n)
+	f.incOffset(int64(n))
 
 	return n, err
 }
@@ -70,15 +72,15 @@ func (f *gcsFile) ReadAt(p []byte, off int64) (n int, err error) {
 func (f *gcsFile) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case io.SeekStart:
-		f.offset = offset
+		f.setOffset(offset)
 	case io.SeekCurrent:
-		f.offset += offset
+		f.incOffset(offset)
 	case io.SeekEnd:
 		attr, err := f.p.bucket.Object(f.name).Attrs(context.Background())
 		if err != nil {
 			return 0, err
 		}
-		f.offset = attr.Size + offset
+		f.setOffset(attr.Size + offset)
 	}
 
 	return f.offset, nil
@@ -96,4 +98,18 @@ func (f *gcsFile) Lock() error   { return nil }
 func (f *gcsFile) Unlock() error { return nil }
 func (f *gcsFile) Truncate(_ int64) error {
 	return ErrUnsupported
+}
+
+func (f *gcsFile) setOffset(off int64) {
+	f.offsetMu.Lock()
+	defer f.offsetMu.Unlock()
+
+	f.offset = off
+}
+
+func (f *gcsFile) incOffset(n int64) {
+	f.offsetMu.Lock()
+	defer f.offsetMu.Unlock()
+
+	f.offset += n
 }

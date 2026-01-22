@@ -60,6 +60,10 @@ func (p BucketFS) Open(filename string) (billy.File, error) {
 }
 
 func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
+	if flag&os.O_TRUNC != 0 {
+		return nil, ErrUnsupported
+	}
+
 	obj := p.bucket.Object(filename)
 
 	// get the file's attrs
