@@ -22,56 +22,56 @@ func (l loggedFile) Name() string {
 }
 
 func (l loggedFile) Write(p []byte) (n int, err error) {
-	finish := logStart("File.Write", len(p))
+	finish := logStart(l.ctx, "File.Write", len(p))
 	defer func() { finish(l.ctx, err, n) }()
 
 	return l.inner.Write(p)
 }
 
 func (l loggedFile) Read(p []byte) (n int, err error) {
-	finish := logStart("File.Read", len(p))
+	finish := logStart(l.ctx, "File.Read", len(p))
 	defer func() { finish(l.ctx, err, n) }()
 
 	return l.inner.Read(p)
 }
 
 func (l loggedFile) ReadAt(p []byte, off int64) (n int, err error) {
-	finish := logStart("File.ReadAt", len(p), off)
+	finish := logStart(l.ctx, "File.ReadAt", len(p), off)
 	defer func() { finish(l.ctx, err, n) }()
 
 	return l.inner.ReadAt(p, off)
 }
 
 func (l loggedFile) Seek(offset int64, whence int) (n int64, err error) {
-	finish := logStart("File.Seek", offset, whence)
+	finish := logStart(l.ctx, "File.Seek", offset, whence)
 	defer func() { finish(l.ctx, err, n) }()
 
 	return l.inner.Seek(offset, whence)
 }
 
 func (l loggedFile) Close() (err error) {
-	finish := logStart("File.Close")
+	finish := logStart(l.ctx, "File.Close")
 	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Close()
 }
 
 func (l loggedFile) Lock() (err error) {
-	finish := logStart("File.Lock")
+	finish := logStart(l.ctx, "File.Lock")
 	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Lock()
 }
 
 func (l loggedFile) Unlock() (err error) {
-	finish := logStart("File.Unlock")
+	finish := logStart(l.ctx, "File.Unlock")
 	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Unlock()
 }
 
 func (l loggedFile) Truncate(size int64) (err error) {
-	finish := logStart("File.Truncate", size)
+	finish := logStart(l.ctx, "File.Truncate", size)
 	defer func() { finish(l.ctx, err) }()
 
 	return l.inner.Truncate(size)

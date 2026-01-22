@@ -23,7 +23,7 @@ func NewHandler(ctx context.Context, handler nfs.Handler) nfs.Handler {
 }
 
 func (e loggedHandler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequest) (s nfs.MountStatus, fs billy.Filesystem, auth []nfs.AuthFlavor) {
-	finish := logStart("Handler.Mount")
+	finish := logStart(ctx, "Handler.Mount")
 	defer func() {
 		var err error
 		if s != nfs.MountStatusOk {
@@ -39,7 +39,7 @@ func (e loggedHandler) Mount(ctx context.Context, conn net.Conn, request nfs.Mou
 }
 
 func (e loggedHandler) Change(filesystem billy.Filesystem) billy.Change {
-	finish := logStart("Handler.Change")
+	finish := logStart(e.ctx, "Handler.Change")
 	defer finish(e.ctx, nil)
 
 	change := e.inner.Change(filesystem)
@@ -48,35 +48,35 @@ func (e loggedHandler) Change(filesystem billy.Filesystem) billy.Change {
 }
 
 func (e loggedHandler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) (err error) {
-	finish := logStart("Handler.FSStat")
+	finish := logStart(ctx, "Handler.FSStat")
 	defer func() { finish(ctx, err) }()
 
 	return e.inner.FSStat(ctx, filesystem, stat)
 }
 
 func (e loggedHandler) ToHandle(fs billy.Filesystem, path []string) (fh []byte) {
-	finish := logStart("Handler.ToHandle", path)
+	finish := logStart(e.ctx, "Handler.ToHandle", path)
 	defer func() { finish(e.ctx, nil, fh) }()
 
 	return e.inner.ToHandle(fs, path)
 }
 
 func (e loggedHandler) FromHandle(fh []byte) (fs billy.Filesystem, paths []string, err error) {
-	finish := logStart("Handler.FromHandle", fh)
+	finish := logStart(e.ctx, "Handler.FromHandle", fh)
 	defer func() { finish(e.ctx, err, paths) }()
 
 	return e.inner.FromHandle(fh)
 }
 
 func (e loggedHandler) InvalidateHandle(filesystem billy.Filesystem, bytes []byte) (err error) {
-	finish := logStart("Handler.InvalidateHandle")
+	finish := logStart(e.ctx, "Handler.InvalidateHandle")
 	defer func() { finish(e.ctx, err) }()
 
 	return e.inner.InvalidateHandle(filesystem, bytes)
 }
 
 func (e loggedHandler) HandleLimit() int {
-	finish := logStart("Handler.HandleLimit")
+	finish := logStart(e.ctx, "Handler.HandleLimit")
 	defer finish(e.ctx, nil)
 
 	return e.inner.HandleLimit()

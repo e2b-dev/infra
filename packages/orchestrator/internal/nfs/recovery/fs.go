@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"context"
 	"os"
 
 	"github.com/go-git/go-billy/v5"
@@ -8,112 +9,113 @@ import (
 
 type filesystem struct {
 	inner billy.Filesystem
+	ctx   context.Context
 }
 
 var _ billy.Filesystem = (*filesystem)(nil)
 
-func wrapFS(fs billy.Filesystem) billy.Filesystem {
+func wrapFS(ctx context.Context, fs billy.Filesystem) billy.Filesystem {
 	if fs == nil {
 		return nil
 	}
 
-	return &filesystem{inner: fs}
+	return &filesystem{inner: fs, ctx: ctx}
 }
 
 func (fs *filesystem) Create(filename string) (billy.File, error) {
-	defer tryRecovery("Create")
+	defer tryRecovery(fs.ctx, "Create")
 	file, err := fs.inner.Create(filename)
 
-	return wrapFile(file), err
+	return wrapFile(fs.ctx, file), err
 }
 
 func (fs *filesystem) Open(filename string) (billy.File, error) {
-	defer tryRecovery("Open")
+	defer tryRecovery(fs.ctx, "Open")
 	file, err := fs.inner.Open(filename)
 
-	return wrapFile(file), err
+	return wrapFile(fs.ctx, file), err
 }
 
 func (fs *filesystem) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
-	defer tryRecovery("OpenFile")
+	defer tryRecovery(fs.ctx, "OpenFile")
 	file, err := fs.inner.OpenFile(filename, flag, perm)
 
-	return wrapFile(file), err
+	return wrapFile(fs.ctx, file), err
 }
 
 func (fs *filesystem) Stat(filename string) (os.FileInfo, error) {
-	defer tryRecovery("Stat")
+	defer tryRecovery(fs.ctx, "Stat")
 
 	return fs.inner.Stat(filename)
 }
 
 func (fs *filesystem) Rename(oldpath, newpath string) error {
-	defer tryRecovery("Rename")
+	defer tryRecovery(fs.ctx, "Rename")
 
 	return fs.inner.Rename(oldpath, newpath)
 }
 
 func (fs *filesystem) Remove(filename string) error {
-	defer tryRecovery("Remove")
+	defer tryRecovery(fs.ctx, "Remove")
 
 	return fs.inner.Remove(filename)
 }
 
 func (fs *filesystem) Join(elem ...string) string {
-	defer tryRecovery("Join")
+	defer tryRecovery(fs.ctx, "Join")
 
 	return fs.inner.Join(elem...)
 }
 
 func (fs *filesystem) TempFile(dir, prefix string) (billy.File, error) {
-	defer tryRecovery("TempFile")
+	defer tryRecovery(fs.ctx, "TempFile")
 	file, err := fs.inner.TempFile(dir, prefix)
 
-	return wrapFile(file), err
+	return wrapFile(fs.ctx, file), err
 }
 
 func (fs *filesystem) ReadDir(path string) ([]os.FileInfo, error) {
-	defer tryRecovery("ReadDir")
+	defer tryRecovery(fs.ctx, "ReadDir")
 
 	return fs.inner.ReadDir(path)
 }
 
 func (fs *filesystem) MkdirAll(filename string, perm os.FileMode) error {
-	defer tryRecovery("MkdirAll")
+	defer tryRecovery(fs.ctx, "MkdirAll")
 
 	return fs.inner.MkdirAll(filename, perm)
 }
 
 func (fs *filesystem) Lstat(filename string) (os.FileInfo, error) {
-	defer tryRecovery("Lstat")
+	defer tryRecovery(fs.ctx, "Lstat")
 
 	return fs.inner.Lstat(filename)
 }
 
 func (fs *filesystem) Symlink(target, link string) error {
-	defer tryRecovery("Symlink")
+	defer tryRecovery(fs.ctx, "Symlink")
 
 	return fs.inner.Symlink(target, link)
 }
 
 func (fs *filesystem) Readlink(link string) (string, error) {
-	defer tryRecovery("Readlink")
+	defer tryRecovery(fs.ctx, "Readlink")
 
 	return fs.inner.Readlink(link)
 }
 
 func (fs *filesystem) Chroot(path string) (billy.Filesystem, error) {
-	defer tryRecovery("Chroot")
+	defer tryRecovery(fs.ctx, "Chroot")
 	inner, err := fs.inner.Chroot(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return wrapFS(inner), nil
+	return wrapFS(fs.ctx, inner), nil
 }
 
 func (fs *filesystem) Root() string {
-	defer tryRecovery("Root")
+	defer tryRecovery(fs.ctx, "Root")
 
 	return fs.inner.Root()
 }

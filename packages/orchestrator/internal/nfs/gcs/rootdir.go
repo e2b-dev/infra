@@ -8,6 +8,10 @@ import (
 
 type rootDir struct{}
 
+func (r rootDir) String() string {
+	return "rootDir{}"
+}
+
 func (r rootDir) Name() string {
 	return ""
 }

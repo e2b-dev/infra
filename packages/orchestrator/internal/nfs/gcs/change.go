@@ -3,6 +3,7 @@ package gcs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -14,6 +15,10 @@ type change struct {
 	ctx    context.Context
 	bucket *storage.BucketHandle
 	fs     billy.Filesystem
+}
+
+func (c change) String() string {
+	return fmt.Sprintf("change{bucket=%s}", c.bucket.BucketName())
 }
 
 var _ billy.Change = (*change)(nil)

@@ -3,7 +3,6 @@ package nfs
 import (
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"os"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 	"github.com/willscott/go-nfs-client/nfs"
 	"github.com/willscott/go-nfs-client/nfs/rpc"
 	"github.com/zeldovich/go-rpcgen/rfc1057"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/gcs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
@@ -26,11 +26,17 @@ import (
 func TestRoundTrip(t *testing.T) {
 	t.Parallel()
 
+	// setup logging
+	logCfg := zap.NewDevelopmentConfig()
+	logCfg.DisableStacktrace = true
+	log, err := logCfg.Build(zap.AddStacktrace(zap.ErrorLevel))
+	require.NoError(t, err)
+	zap.ReplaceGlobals(log)
+
 	// setup data
 	sandboxID := uuid.NewString()
 	teamID := uuid.NewString()
 	bucketName := "e2b-staging-joe-fc-build-cache"
-	slog.SetLogLoggerLevel(slog.LevelDebug)
 
 	slot := &network.Slot{Key: "abc", HostIP: net.IPv4(127, 0, 0, 1)}
 	require.Equal(t, "127.0.0.1", slot.HostIP.String(), "required for the test to work")
@@ -169,7 +175,7 @@ func TestRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	buff := make([]byte, 64) // way more bytes than we need
 	n, err = fp.Read(buff)
-	require.NoError(t, err)
+	require.ErrorIs(t, io.EOF, err)
 	assert.Equal(t, len(sandboxID), n)
 	assert.Equal(t, sandboxID, string(buff[:n]))
 

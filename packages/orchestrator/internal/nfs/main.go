@@ -39,7 +39,7 @@ func NewProxy(ctx context.Context, sandboxes *sandbox.Map, bucket *storage.Bucke
 	handler = helpers.NewCachingHandler(handler, cacheLimit)
 	handler = jailed.NewNFSHandler(handler, getPrefixFromSandbox(sandboxes))
 	handler = logged.NewHandler(ctx, handler)
-	handler = recovery.NewHandler(handler)
+	handler = recovery.NewHandler(ctx, handler)
 
 	s := &nfs.Server{
 		Handler: handler,

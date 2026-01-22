@@ -3,6 +3,7 @@ package gcs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"cloud.google.com/go/storage"
@@ -10,17 +11,22 @@ import (
 )
 
 type gcsFile struct {
-	p        BucketFS
-	name     string
-	offset   int64
-	writer   *storage.Writer
-	metadata map[string]string
+	p      BucketFS
+	obj    *storage.ObjectHandle
+	name   string
+	offset int64
+	writer *storage.Writer
+	attrs  *storage.ObjectAttrs
+}
+
+func (f *gcsFile) String() string {
+	return fmt.Sprintf("gcsFile{name=%s, offset=%d}", f.name, f.offset)
 }
 
 var _ billy.File = (*gcsFile)(nil)
 
-func newGcsFile(p BucketFS, name string, metadata map[string]string) *gcsFile {
-	return &gcsFile{p, name, 0, nil, metadata}
+func newGcsFile(p BucketFS, name string, attrs *storage.ObjectAttrs) *gcsFile {
+	return &gcsFile{p, p.bucket.Object(name), name, 0, nil, attrs}
 }
 
 func (f *gcsFile) Name() string { return f.name }
@@ -28,14 +34,14 @@ func (f *gcsFile) Name() string { return f.name }
 func (f *gcsFile) Write(p []byte) (n int, err error) {
 	if f.writer == nil {
 		f.writer = f.p.bucket.Object(f.name).NewWriter(context.Background())
-		f.writer.Metadata = f.metadata
+		f.writer.Metadata = f.attrs.Metadata
 	}
 
 	return f.writer.Write(p)
 }
 
 func (f *gcsFile) Read(p []byte) (n int, err error) {
-	rc, err := f.p.bucket.Object(f.name).NewRangeReader(context.Background(), f.offset, int64(len(p)))
+	rc, err := f.obj.NewRangeReader(context.Background(), f.offset, int64(len(p)))
 	if err != nil {
 		return 0, err
 	}
@@ -53,7 +59,12 @@ func (f *gcsFile) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 	defer func() { err = errors.Join(err, rc.Close()) }()
 
-	return rc.Read(p)
+	n, err = rc.Read(p)
+	if err == nil && off+int64(n) == f.attrs.Size {
+		err = io.EOF
+	}
+
+	return n, err
 }
 
 func (f *gcsFile) Seek(offset int64, whence int) (int64, error) {

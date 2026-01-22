@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"context"
 	"os"
 	"time"
 
@@ -9,38 +10,39 @@ import (
 
 type change struct {
 	inner billy.Change
+	ctx   context.Context
 }
 
 var _ billy.Change = (*change)(nil)
 
-func wrapChange(c billy.Change) billy.Change {
+func wrapChange(ctx context.Context, c billy.Change) billy.Change {
 	if c == nil {
 		return nil
 	}
 
-	return &change{inner: c}
+	return &change{inner: c, ctx: ctx}
 }
 
 func (c *change) Chmod(name string, mode os.FileMode) error {
-	defer tryRecovery("Chmod")
+	defer tryRecovery(c.ctx, "Chmod")
 
 	return c.inner.Chmod(name, mode)
 }
 
 func (c *change) Lchown(name string, uid, gid int) error {
-	defer tryRecovery("Lchown")
+	defer tryRecovery(c.ctx, "Lchown")
 
 	return c.inner.Lchown(name, uid, gid)
 }
 
 func (c *change) Chown(name string, uid, gid int) error {
-	defer tryRecovery("Chown")
+	defer tryRecovery(c.ctx, "Chown")
 
 	return c.inner.Chown(name, uid, gid)
 }
 
 func (c *change) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	defer tryRecovery("Chtimes")
+	defer tryRecovery(c.ctx, "Chtimes")
 
 	return c.inner.Chtimes(name, atime, mtime)
 }

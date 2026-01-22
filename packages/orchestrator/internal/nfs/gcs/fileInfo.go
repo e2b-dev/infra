@@ -2,6 +2,7 @@ package gcs
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"strconv"
@@ -25,6 +26,10 @@ type fileInfo struct {
 
 func (f fileInfo) Name() string {
 	return f.attrs.Name
+}
+
+func (f fileInfo) String() string {
+	return fmt.Sprintf("fileInfo{name=%s, size=%d}", f.Name(), f.Size())
 }
 
 func (f fileInfo) Size() int64 {
@@ -61,7 +66,7 @@ func toFileInfo(attrs *storage.ObjectAttrs) any {
 	gid := fromMetadataToGID(attrs.Metadata)
 
 	return &file.FileInfo{
-		Nlink:  0,
+		Nlink:  1,
 		UID:    uid,
 		GID:    gid,
 		Major:  0,

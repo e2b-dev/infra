@@ -19,7 +19,7 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 	//	logging.WithFieldsFromContext(logging.ExtractFields),
 	//}
 	//
-	//ignoredLoggingRoutes := logger.WithoutRoutes(
+	// ignoredLoggingRoutes := logger.WithoutRoutes(
 	//	logger.HealthCheckRoute,
 	//	"/TemplateService/TemplateBuildStatus",
 	//	"/TemplateService/HealthStatus",
@@ -44,14 +44,14 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 			// selector.UnaryServerInterceptor(
 			//	logging.UnaryServerInterceptor(logger.GRPCLogger(logger.L()), opts...),
 			//	ignoredLoggingRoutes,
-			//),
+			// ),
 		),
 		// grpc.ChainStreamInterceptor(
 		//	selector.StreamServerInterceptor(
 		//		logging.StreamServerInterceptor(logger.GRPCLogger(logger.L()), opts...),
 		//		ignoredLoggingRoutes,
 		//	),
-		//),
+		// ),
 	)
 
 	return srv

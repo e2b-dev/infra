@@ -1,6 +1,7 @@
 package jailed
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -9,6 +10,10 @@ import (
 
 type jailedChange struct {
 	inner billy.Change
+}
+
+func (c jailedChange) String() string {
+	return fmt.Sprintf("jailedChange{inner=%v}", c.inner)
 }
 
 var _ billy.Change = (*jailedChange)(nil)

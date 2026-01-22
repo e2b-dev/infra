@@ -1,6 +1,7 @@
 package gcs
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"time"
@@ -10,6 +11,10 @@ import (
 
 type impliedDirInfo struct {
 	path string
+}
+
+func (i impliedDirInfo) String() string {
+	return fmt.Sprintf("impliedDirInfo{path=%s}", i.path)
 }
 
 var _ os.FileInfo = (*impliedDirInfo)(nil)
@@ -40,6 +45,10 @@ func (i impliedDirInfo) Sys() any {
 
 type dirInfo struct {
 	attrs *storage.ObjectAttrs
+}
+
+func (d dirInfo) String() string {
+	return fmt.Sprintf("dirInfo{name=%s}", d.Name())
 }
 
 var _ os.FileInfo = (*dirInfo)(nil)

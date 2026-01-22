@@ -23,6 +23,10 @@ type BucketFS struct {
 	bucket *storage.BucketHandle
 }
 
+func (p BucketFS) String() string {
+	return fmt.Sprintf("BucketFS{bucket=%s}", p.bucket.BucketName())
+}
+
 var _ billy.Filesystem = (*BucketFS)(nil)
 
 func NewPrefixedGCSBucket(bucket *storage.BucketHandle) *BucketFS {
@@ -69,7 +73,7 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 			return nil, os.ErrExist
 		}
 
-		return newGcsFile(p, filename, attrs.Metadata), nil
+		return newGcsFile(p, filename, attrs), nil
 	}
 
 	// the file does not exist
@@ -96,7 +100,7 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 		return nil, translateError(err)
 	}
 
-	return newGcsFile(p, filename, attrs.Metadata), nil
+	return newGcsFile(p, filename, attrs), nil
 }
 
 func fromPermToObjectMetadata(perm os.FileMode) (string, string) {

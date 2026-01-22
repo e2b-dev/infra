@@ -3,6 +3,7 @@ package jailed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -16,6 +17,10 @@ import (
 var ErrInvalidSandbox = errors.New("invalid sandbox")
 
 type mountFailedFS struct{}
+
+func (m mountFailedFS) String() string {
+	return "mountFailedFS{}"
+}
 
 func (m mountFailedFS) Create(filename string) (billy.File, error) {
 	return nil, ErrInvalidSandbox
@@ -84,6 +89,10 @@ type GetPrefix func(context.Context, net.Conn, nfs.MountRequest) (string, error)
 type Handler struct {
 	getPrefix GetPrefix
 	inner     nfs.Handler
+}
+
+func (h Handler) String() string {
+	return fmt.Sprintf("Handler{inner=%v}", h.inner)
 }
 
 var _ nfs.Handler = (*Handler)(nil)

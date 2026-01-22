@@ -1,6 +1,7 @@
 package jailed
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -10,6 +11,10 @@ import (
 type jailedFS struct {
 	prefix string
 	inner  billy.Filesystem
+}
+
+func (j jailedFS) String() string {
+	return fmt.Sprintf("jailedFS{prefix=%s, inner=%v}", j.prefix, j.inner)
 }
 
 var _ billy.Filesystem = (*jailedFS)(nil)
@@ -31,21 +36,25 @@ func (j jailedFS) Unwrap() billy.Filesystem {
 
 func (j jailedFS) Create(filename string) (billy.File, error) {
 	f, err := j.inner.Create(filename)
+
 	return tryWrapBillyFile(f, j.prefix), err
 }
 
 func (j jailedFS) Open(filename string) (billy.File, error) {
 	f, err := j.inner.Open(filename)
+
 	return tryWrapBillyFile(f, j.prefix), err
 }
 
 func (j jailedFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
 	file, err := j.inner.OpenFile(filename, flag, perm)
+
 	return tryWrapBillyFile(file, j.prefix), err
 }
 
 func (j jailedFS) Stat(filename string) (os.FileInfo, error) {
 	file, err := j.inner.Stat(filename)
+
 	return wrapOSFile(file, j.prefix), err
 }
 
@@ -67,6 +76,7 @@ func (j jailedFS) Join(elem ...string) string {
 
 func (j jailedFS) TempFile(dir, prefix string) (billy.File, error) {
 	f, err := j.inner.TempFile(dir, prefix)
+
 	return tryWrapBillyFile(f, j.prefix), err
 }
 
@@ -90,6 +100,7 @@ func (j jailedFS) MkdirAll(filename string, perm os.FileMode) error {
 
 func (j jailedFS) Lstat(filename string) (os.FileInfo, error) {
 	f, err := j.inner.Lstat(filename)
+
 	return wrapOSFile(f, j.prefix), err
 }
 
@@ -103,6 +114,7 @@ func (j jailedFS) Readlink(link string) (string, error) {
 
 func (j jailedFS) Chroot(path string) (billy.Filesystem, error) {
 	fs, err := j.inner.Chroot(path)
+
 	return tryWrapFS(fs, j.prefix), err
 }
 

@@ -1,6 +1,7 @@
 package jailed
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"strings"
@@ -10,6 +11,10 @@ import (
 type jailedFile struct {
 	inner  os.FileInfo
 	prefix string
+}
+
+func (j jailedFile) String() string {
+	return fmt.Sprintf("jailedFile{name=%s, prefix=%s, size=%d}", j.Name(), j.prefix, j.Size())
 }
 
 var _ os.FileInfo = (*jailedFile)(nil)

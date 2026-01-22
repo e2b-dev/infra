@@ -1,10 +1,18 @@
 package jailed
 
-import "github.com/go-git/go-billy/v5"
+import (
+	"fmt"
+
+	"github.com/go-git/go-billy/v5"
+)
 
 type jailedBillyFile struct {
 	inner  billy.File
 	prefix string
+}
+
+func (j jailedBillyFile) String() string {
+	return fmt.Sprintf("jailedBillyFile{name=%s, prefix=%s, inner=%v}", j.Name(), j.prefix, j.inner)
 }
 
 var _ billy.File = (*jailedBillyFile)(nil)

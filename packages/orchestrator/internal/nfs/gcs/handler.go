@@ -2,6 +2,7 @@ package gcs
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	"cloud.google.com/go/storage"
@@ -12,6 +13,10 @@ import (
 type NFSHandler struct {
 	ctx    context.Context
 	bucket *storage.BucketHandle
+}
+
+func (h NFSHandler) String() string {
+	return fmt.Sprintf("NFSHandler{bucket=%s}", h.bucket.BucketName())
 }
 
 var _ nfs.Handler = (*NFSHandler)(nil)
