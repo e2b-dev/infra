@@ -160,19 +160,14 @@ variable "client_proxy_update_max_parallel" {
   type = number
 }
 
-variable "edge_api_port" {
+variable "client_proxy_port" {
   type = object({
     name = string
     port = number
-    path = string
   })
 }
 
-variable "edge_api_secret" {
-  type = string
-}
-
-variable "edge_proxy_port" {
+variable "client_proxy_health_port" {
   type = object({
     name = string
     port = number
