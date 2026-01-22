@@ -35,6 +35,36 @@ func (mapping *BuildMap) Copy() *BuildMap {
 	}
 }
 
+
+// AddFrames associates compression frame information with this mapping.
+//
+// When a file is uploaded with compression, the compressor produces a FrameTable
+// that describes how the compressed data is organized into frames. This method
+// computes which compressed frames cover this mapping's data within the build's
+// storage file based on BuildStorageOffset and Length.
+//
+// Returns nil if frameTable is nil. Returns an error if the mapping's range
+// cannot be found in the frame table.
+func (m *BuildMap) AddFrames(frameTable *storage.FrameTable) error {
+	if frameTable == nil {
+		return nil
+	}
+
+	mappedRange := storage.Range{
+		Start:  int64(m.BuildStorageOffset),
+		Length: int(m.Length),
+	}
+
+	subset, err := frameTable.Subset(mappedRange)
+	if err != nil {
+		return fmt.Errorf("mapping at virtual offset %#x (storage offset %#x, length %#x): %w",
+			m.Offset, m.BuildStorageOffset, m.Length, err)
+	}
+
+	m.FrameTable = subset
+	return nil
+}
+
 func CreateMapping(
 	buildId *uuid.UUID,
 	dirty *bitset.BitSet,

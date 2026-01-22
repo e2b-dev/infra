@@ -6,6 +6,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 var (
@@ -703,4 +705,209 @@ func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
 
 	err := ValidateMappings(m, 6*blockSize, blockSize)
 	require.NoError(t, err)
+}
+
+// =============================================================================
+// Header.AddFrames Tests
+// =============================================================================
+
+func TestHeader_AddFrames_SingleBuild(t *testing.T) {
+	t.Parallel()
+	buildId := uuid.New()
+
+	frameTable := &storage.FrameTable{
+		CompressionType: storage.CompressionZstd,
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
+		Frames: []storage.FrameSize{
+			{U: 0x600000, C: 0x200000},
+			{U: 0x400000, C: 0x180000},
+		},
+	}
+
+	mappings := []*BuildMap{
+		{Offset: 0x0, Length: 0x100000, BuildId: buildId, BuildStorageOffset: 0x0},
+		{Offset: 0x100000, Length: 0x200000, BuildId: buildId, BuildStorageOffset: 0x100000},
+		{Offset: 0x300000, Length: 0x300000, BuildId: buildId, BuildStorageOffset: 0x500000},
+	}
+
+	h, err := NewHeader(&Metadata{BuildId: buildId, Size: 0x600000, BlockSize: 0x1000}, mappings)
+	require.NoError(t, err)
+
+	require.NoError(t, h.AddFrames(frameTable))
+
+	require.NotNil(t, h.Mapping[0].FrameTable)
+	assert.Equal(t, 1, len(h.Mapping[0].FrameTable.Frames))
+	assert.Equal(t, int64(0), h.Mapping[0].FrameTable.StartAt.U)
+
+	require.NotNil(t, h.Mapping[1].FrameTable)
+	assert.Equal(t, 1, len(h.Mapping[1].FrameTable.Frames))
+
+	require.NotNil(t, h.Mapping[2].FrameTable)
+	assert.Equal(t, 2, len(h.Mapping[2].FrameTable.Frames), "mapping spanning frame boundary should include both frames")
+}
+
+func TestHeader_AddFrames_TemplateInheritance(t *testing.T) {
+	t.Parallel()
+	parentId := uuid.New()
+	childId := uuid.New()
+
+	childFrameTable := &storage.FrameTable{
+		CompressionType: storage.CompressionZstd,
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
+		Frames: []storage.FrameSize{
+			{U: 0x400000, C: 0x150000},
+			{U: 0x400000, C: 0x160000},
+		},
+	}
+
+	mappings := []*BuildMap{
+		{Offset: 0x0, Length: 0x1000000, BuildId: parentId, BuildStorageOffset: 0x0},
+		{Offset: 0x1000000, Length: 0x100000, BuildId: childId, BuildStorageOffset: 0x0},
+		{Offset: 0x1100000, Length: 0x200000, BuildId: childId, BuildStorageOffset: 0x100000},
+		{Offset: 0x1300000, Length: 0x500000, BuildId: parentId, BuildStorageOffset: 0x1000000},
+		{Offset: 0x1800000, Length: 0x1000, BuildId: childId, BuildStorageOffset: 0x300000},
+	}
+
+	h, err := NewHeader(&Metadata{BuildId: childId, Size: 0x1801000, BlockSize: 0x1000}, mappings)
+	require.NoError(t, err)
+
+	require.NoError(t, h.AddFrames(childFrameTable))
+
+	assert.Nil(t, h.Mapping[0].FrameTable, "parent mapping should not be modified")
+	assert.Nil(t, h.Mapping[3].FrameTable, "parent mapping should not be modified")
+	require.NotNil(t, h.Mapping[1].FrameTable, "child mapping should have frame table")
+	require.NotNil(t, h.Mapping[2].FrameTable, "child mapping should have frame table")
+	require.NotNil(t, h.Mapping[4].FrameTable, "child mapping should have frame table")
+	assert.Equal(t, 1, len(h.Mapping[4].FrameTable.Frames))
+}
+
+func TestBuildMap_AddFrames_OffsetVsBuildStorageOffset(t *testing.T) {
+	t.Parallel()
+	buildId := uuid.New()
+
+	frameTable := &storage.FrameTable{
+		CompressionType: storage.CompressionZstd,
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
+		Frames: []storage.FrameSize{
+			{U: 0x100000, C: 0x50000},
+		},
+	}
+
+	mappings := []*BuildMap{
+		{Offset: 0xc1a000, Length: 0x1000, BuildId: buildId, BuildStorageOffset: 0x33000},
+		{Offset: 0x80000000, Length: 0x8000, BuildId: buildId, BuildStorageOffset: 0x50000},
+	}
+
+	for _, m := range mappings {
+		require.NoError(t, m.AddFrames(frameTable))
+	}
+
+	require.NotNil(t, mappings[0].FrameTable)
+	require.NotNil(t, mappings[1].FrameTable)
+}
+
+func TestBuildMap_AddFrames_MappingBeyondFrameTable(t *testing.T) {
+	t.Parallel()
+	buildId := uuid.New()
+
+	frameTable := &storage.FrameTable{
+		CompressionType: storage.CompressionZstd,
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
+		Frames: []storage.FrameSize{
+			{U: 0x100000, C: 0x50000},
+		},
+	}
+
+	m := &BuildMap{
+		Offset:             0x1000000,
+		Length:             0x1000,
+		BuildId:            buildId,
+		BuildStorageOffset: 0x200000,
+	}
+
+	err := m.AddFrames(frameTable)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "storage offset 0x200000")
+}
+
+func TestBuildMap_AddFrames_NilFrameTable(t *testing.T) {
+	t.Parallel()
+	buildId := uuid.New()
+
+	m := &BuildMap{Offset: 0, Length: 0x1000, BuildId: buildId, BuildStorageOffset: 0}
+	err := m.AddFrames(nil)
+	assert.NoError(t, err)
+	assert.Nil(t, m.FrameTable)
+}
+
+func TestBuildMap_AddFrames_FrameBoundaries(t *testing.T) {
+	t.Parallel()
+	buildId := uuid.New()
+
+	frameTable := &storage.FrameTable{
+		CompressionType: storage.CompressionZstd,
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
+		Frames: []storage.FrameSize{
+			{U: 0x400000, C: 0x100000},
+			{U: 0x400000, C: 0x100000},
+			{U: 0x400000, C: 0x100000},
+		},
+	}
+
+	mappings := []*BuildMap{
+		{Offset: 0x1000000, Length: 0x1000, BuildId: buildId, BuildStorageOffset: 0x0},
+		{Offset: 0x2000000, Length: 0x1000, BuildId: buildId, BuildStorageOffset: 0x400000},
+		{Offset: 0x3000000, Length: 0x100000, BuildId: buildId, BuildStorageOffset: 0x380000},
+		{Offset: 0x4000000, Length: 0x800000, BuildId: buildId, BuildStorageOffset: 0x200000},
+		{Offset: 0x5000000, Length: 0x1000, BuildId: buildId, BuildStorageOffset: 0xbff000},
+	}
+
+	for _, m := range mappings {
+		require.NoError(t, m.AddFrames(frameTable))
+	}
+
+	assert.Equal(t, 1, len(mappings[0].FrameTable.Frames), "mapping at frame start")
+	assert.Equal(t, 1, len(mappings[1].FrameTable.Frames), "mapping at frame boundary")
+	assert.Equal(t, 2, len(mappings[2].FrameTable.Frames), "mapping spanning 2 frames")
+	assert.Equal(t, 3, len(mappings[3].FrameTable.Frames), "mapping spanning 3 frames")
+	assert.Equal(t, 1, len(mappings[4].FrameTable.Frames), "mapping at end of last frame")
+}
+
+func TestHeader_AddFrames_SparseModifications(t *testing.T) {
+	t.Parallel()
+	parentId := uuid.New()
+	childId := uuid.New()
+
+	frameTable := &storage.FrameTable{
+		CompressionType: storage.CompressionZstd,
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
+		Frames: []storage.FrameSize{
+			{U: 0x400000, C: 0x180000},
+			{U: 0x400000, C: 0x1a0000},
+		},
+	}
+
+	mappings := []*BuildMap{
+		{Offset: 0x0, Length: 0x400000, BuildId: parentId, BuildStorageOffset: 0x0},
+		{Offset: 0x400000, Length: 0x1000, BuildId: childId, BuildStorageOffset: 0x0},
+		{Offset: 0x401000, Length: 0x1000, BuildId: childId, BuildStorageOffset: 0x1000},
+		{Offset: 0x402000, Length: 0x1000, BuildId: childId, BuildStorageOffset: 0x2000},
+		{Offset: 0x403000, Length: 0x10000, BuildId: childId, BuildStorageOffset: 0x3000},
+		{Offset: 0x413000, Length: 0x3a0000, BuildId: childId, BuildStorageOffset: 0x3e0000},
+		{Offset: 0x7b3000, Length: 0x1000000, BuildId: parentId, BuildStorageOffset: 0x400000},
+	}
+
+	h, err := NewHeader(&Metadata{BuildId: childId, Size: 0x17b3000, BlockSize: 0x1000}, mappings)
+	require.NoError(t, err)
+
+	require.NoError(t, h.AddFrames(frameTable))
+
+	assert.Nil(t, h.Mapping[0].FrameTable)
+	assert.Nil(t, h.Mapping[6].FrameTable)
+
+	for i := 1; i <= 5; i++ {
+		require.NotNil(t, h.Mapping[i].FrameTable, "child mapping %d should have frame table", i)
+	}
+
+	assert.Equal(t, 2, len(h.Mapping[5].FrameTable.Frames), "large chunk should span multiple frames")
 }

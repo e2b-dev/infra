@@ -113,60 +113,17 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		// TODO LEV when is rootfsHeader ever nil and rootfsPath is not? And
-		// what do we do if the asset is already uploaded compressed?
 		if rootfsPath == nil || t.rootfsHeader == nil {
 			return nil
 		}
-		fmt.Printf("<>/<> header before uploadRootfs: %s\n%s", t.rootfsHeader, t.rootfsHeader.Mappings(false))
 
 		frameTable, err := t.uploadRootfs(ctx, *rootfsPath)
-		fmt.Printf("<>/<> uploadRootfs returned: err:%v, header: %s\n%s", err, t.rootfsHeader, t.rootfsHeader.Mappings(false))
 		if err != nil {
 			return err
 		}
 
-		if frameTable != nil {
-			fmt.Printf("<>/<> Uploading build %q rootFS, full size %#x, have a frame table starting at %#x, %d frames\n",
-				t.rootfsHeader.Metadata.BuildId.String(),
-				t.rootfsHeader.Metadata.Size,
-				frameTable.StartAt.U,
-				len(frameTable.Frames),
-			) // DEBUG --- IGNORE ---
-			for _, f := range frameTable.Frames {
-				fmt.Printf("<>/<> --- frame: %#x %#x\n", f.U, f.C) // DEBUG --- IGNORE ---
-			}
-
-			// iterate over the mappings, and for each one from the current build add the frameTable
-			for _, mapping := range t.rootfsHeader.Mapping {
-				if mapping.BuildId == t.rootfsHeader.Metadata.BuildId {
-					mappedRange := storage.Range{
-						Start:  int64(mapping.Offset),
-						Length: int(mapping.Length),
-					}
-					mapping.FrameTable, err = frameTable.Subset(mappedRange)
-					if err != nil {
-						return fmt.Errorf("failed to get frame table subset for mapping %s: %w",
-							mappedRange, err)
-					}
-					fmt.Printf("<>/<>   the subset for %s is %+v\n", mappedRange, mapping.FrameTable) // DEBUG --- IGNORE ---
-
-					if len(mapping.FrameTable.Frames) == 0 {
-						fmt.Printf("<>/<>   NO FRAMES for mapping offset %#x length %#x\n",
-							mapping.Offset,
-							mapping.Length,
-						) // DEBUG --- IGNORE ---
-
-						fmt.Printf("<>/<> full mapping table: type %s, offset: %+v\n", storage.CompressionType(mapping.FrameTable.CompressionType), mapping.FrameTable.StartAt) // DEBUG --- IGNORE ---
-
-						for _, f := range mapping.FrameTable.Frames {
-							fmt.Printf("<>/<>     frame: %+v\n", f) // DEBUG --- IGNORE ---
-						}
-					}
-				} else {
-					fmt.Printf("<>/<>   skipping mapping for different build %s\n", mapping.BuildId.String()) // DEBUG --- IGNORE ---
-				}
-			}
+		if err := t.rootfsHeader.AddFrames(frameTable); err != nil {
+			return fmt.Errorf("failed to assign rootfs frame tables: %w", err)
 		}
 
 		err = t.uploadRootfsHeader(ctx, t.rootfsHeader)
@@ -184,7 +141,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		_, err := t.uploadMemfile(ctx, *memfilePath)
+		frameTable, err := t.uploadMemfile(ctx, *memfilePath)
 		if err != nil {
 			return err
 		}
@@ -193,20 +150,9 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		// if frameTable != nil {
-		// 	fmt.Printf("<>/<> Uploading build %q memfile, have a frame table starting at %#x, %d frames\n",
-		// 		t.memfileHeader.Metadata.BuildId.String(),
-		// 		frameTable.StartAt.U,
-		// 		len(frameTable.Frames),
-		// 	) // DEBUG --- IGNORE ---
-
-		// 	// iterate over the mappings, and for each one from the current build add the f info
-		// 	for _, mapping := range t.memfileHeader.Mapping {
-		// 		if mapping.BuildId == t.memfileHeader.Metadata.BuildId {
-		// 			mapping.FrameTable = frameTable.Subset(int64(mapping.Offset), int64(mapping.Length))
-		// 		}
-		// 	}
-		// }
+		if err := t.memfileHeader.AddFrames(frameTable); err != nil {
+			return fmt.Errorf("failed to assign memfile frame tables: %w", err)
+		}
 
 		err = t.uploadMemfileHeader(ctx, t.memfileHeader)
 		if err != nil {

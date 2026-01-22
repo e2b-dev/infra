@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const NormalizeFixVersion = 3
@@ -193,4 +194,21 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 	}
 
 	return mapping, shift, nil
+}
+
+// AddFrames associates compression frame information with this header's mappings.
+//
+// Only mappings matching this header's BuildId will be updated. Returns nil if frameTable is nil.
+func (h *Header) AddFrames(frameTable *storage.FrameTable) error {
+	if frameTable == nil {
+		return nil
+	}
+	for _, mapping := range h.Mapping {
+		if mapping.BuildId == h.Metadata.BuildId {
+			if err := mapping.AddFrames(frameTable); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

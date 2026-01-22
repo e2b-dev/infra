@@ -26,7 +26,7 @@ func (c CompressionType) String() string {
 }
 
 type encoder struct {
-	// ctx  context.Context
+	objectPath           string // TODO LEV remove, for debugging
 	opts                 *FramedUploadOptions
 	maxUploadConcurrency int
 
@@ -62,8 +62,9 @@ type frame struct {
 
 var _ io.Writer = (*frame)(nil) // for compression output
 
-func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader, targetPartSize int64, maxUploadConcurrency int) *encoder {
+func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader, targetPartSize int64, maxUploadConcurrency int, objectPath string) *encoder {
 	return &encoder{
+		objectPath:           objectPath,
 		opts:                 opts,
 		maxUploadConcurrency: maxUploadConcurrency,
 		targetPartSize:       targetPartSize,
@@ -164,7 +165,7 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 		C: int32(f.lenC),
 	}
 	e.frameTable.Frames = append(e.frameTable.Frames, ft)
-	fmt.Printf("<>/<> Frame flushed: uncompressed %#x compressed %#x\n", ft.U, ft.C) // DEBUG --- IGNORE ---
+	fmt.Printf("<>/<> Frame flushed: uncompressed %#x compressed %#x for %s\n", ft.U, ft.C, e.objectPath) // DEBUG --- IGNORE ---
 
 	data := f.compressedBuffer.Bytes()
 	e.partLen += int64(len(data))
@@ -173,8 +174,12 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 	if e.partLen >= e.targetPartSize || last {
 		e.partIndex++
 
+		lastPart := ""
+		if last {
+			lastPart = "(last) "
+		}
 		i := e.partIndex
-		fmt.Printf("<>/<> New PART %d, size %#x (%d frames)\n", i, e.partLen, len(e.readyFrames)) // DEBUG --- IGNORE ---
+		fmt.Printf("<>/<> New %sPART %d, size %#x (%d frames) for %s\n", lastPart, i, e.partLen, len(e.readyFrames), e.objectPath) // DEBUG --- IGNORE ---
 		frameData := append([][]byte{}, e.readyFrames...)
 		e.partLen = 0
 		e.readyFrames = e.readyFrames[:0]
@@ -182,7 +187,7 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 		eg.Go(func() error {
 			err := e.uploader.UploadPart(uploadCtx, i, frameData...)
 			if err != nil {
-				return fmt.Errorf("failed to upload part %d: %w", e.partIndex, err)
+				return fmt.Errorf("failed to upload part %d: %w", i, err)
 			}
 
 			return nil
