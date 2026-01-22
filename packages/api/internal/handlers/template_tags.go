@@ -163,7 +163,6 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	templateName, tagFromName, err := id.ParseTemplateIDOrAliasWithTag(body.Name)
 	if err != nil {
 		a.sendAPIStoreError(ctx, c, http.StatusBadRequest, fmt.Sprintf("Invalid template name format: %s", body.Name), err)
-		telemetry.ReportError(ctx, "invalid template name format", err)
 
 		return
 	}
