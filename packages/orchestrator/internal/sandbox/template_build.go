@@ -161,6 +161,8 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return err
 		}
 
+		fmt.Printf("<>/<> Finished uploading rootfs for build %s\n", t.rootfsHeader.Metadata.BuildId.String())
+
 		return nil
 	})
 
@@ -198,6 +200,8 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return err
 		}
 
+		fmt.Printf("<>/<> Finished uploading memfile for build %s\n", t.memfileHeader.Metadata.BuildId.String())
+
 		return nil
 	})
 
@@ -216,7 +220,9 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 	done := make(chan error)
 
 	go func() {
-		done <- eg.Wait()
+		err := eg.Wait()
+		fmt.Printf("<>/<> Upload of template build %s done, err=%v\n", t.files.StorageDir(), err)
+		done <- err
 	}()
 
 	return done

@@ -79,7 +79,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 	var wg errgroup.Group
 
-	// fmt.Printf("<>/<> Starting to fetch template files for build %s\n", t.files.BuildID)
+	fmt.Printf("<>/<> Starting to fetch template files for build %s\n", t.files.BuildID)
 
 	wg.Go(func() error {
 		if t.localSnapfile != nil {
@@ -172,8 +172,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	})
 
 	wg.Go(func() error {
-		// fmt.Printf("<>/<> Fetching memfile for build %s\n", t.files.BuildID)
-
+		fmt.Printf("<>/<> Fetching memfile for build %s\n", t.files.BuildID)
 		memfileStorage, memfileErr := NewStorage(
 			ctx,
 			buildStore,
@@ -202,6 +201,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	})
 
 	wg.Go(func() error {
+		fmt.Printf("<>/<> Fetching rootfs for build %s\n", t.files.BuildID)
 		rootfsStorage, rootfsErr := NewStorage(
 			ctx,
 			buildStore,
@@ -212,7 +212,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.metrics,
 		)
 		if rootfsErr != nil {
-			errMsg := fmt.Errorf("failed to create rootfs storage: %w", rootfsErr)
+			errMsg := fmt.Errorf("failed to create rootfs storage for build %s: %w", t.files.BuildID, rootfsErr)
 
 			if err := t.rootfs.SetError(errMsg); err != nil {
 				return fmt.Errorf("failed to set rootfs error: %w", errors.Join(errMsg, err))

@@ -164,6 +164,13 @@ MAPPINGS:
 				}
 				numFrames := v4.CompressionTypeNumFrames & 0xFFFFFF
 
+				var startAt storage.FrameOffset
+				err = binary.Read(in, binary.LittleEndian, &startAt)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read compression frames starting offset: %w", err)
+				}
+				m.FrameTable.StartAt = startAt
+
 				for range numFrames {
 					var frame storage.FrameSize
 					err = binary.Read(in, binary.LittleEndian, &frame)

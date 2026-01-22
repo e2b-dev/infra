@@ -269,6 +269,11 @@ func (c Cache) StoreFile(ctx context.Context, inFilePath, objectPath string, opt
 		return ft, err
 	}
 
+	fmt.Printf("<>/<> Cache.StoreFile: writing seekable file %s\n", objectPath)
+	defer func () {
+		fmt.Printf("<>/<> Cache.StoreFile: finished writing seekable file %s, err=%v\n", objectPath, err)
+	}()
+
 	ctx, span := c.tracer.Start(ctx, "write object from file system",
 		trace.WithAttributes(attribute.String("path", objectPath)),
 	)

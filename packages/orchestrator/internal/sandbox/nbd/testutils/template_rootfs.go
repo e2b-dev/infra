@@ -36,6 +36,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 	}
 
 	h, err := header.Deserialize(ctx, headerData)
+	fmt.Printf("<>/<> ==1==: read header for %s: %+v, err=%v\n", files.StorageRootfsHeaderPath(), h, err)
 	if err != nil {
 		id, err := uuid.Parse(buildID)
 		if err != nil {

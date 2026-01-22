@@ -104,12 +104,14 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 	defer s.startingSandboxes.Release(1)
 
+	fmt.Printf("<>/<> !!! CREATE: before getTemplate\n")
 	template, err := s.templateCache.GetTemplate(
 		ctx,
 		req.GetSandbox().GetBuildId(),
 		req.GetSandbox().GetSnapshot(),
 		false,
 	)
+	fmt.Printf("<>/<> !!! CREATE: after getTemplate: %v\n", err)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
@@ -427,6 +429,8 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, fmt.Errorf("no metadata found in template: %w", err)
 	}
 
+	fmt.Printf("<>/<> !!!!!!!!!!!!!!!!!!!!!!!!! Pausing...\n")
+
 	meta = meta.SameVersionTemplate(metadata.TemplateMetadata{
 		BuildID:            in.GetBuildId(),
 		KernelVersion:      sbx.Config.FirecrackerConfig.KernelVersion,
@@ -457,6 +461,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.Errorf(codes.Internal, "error adding snapshot to template cache: %s", err)
 	}
 
+	fmt.Printf("<>/<> !!!!!!!!!!!!!!!!!!!!!!!!! Added snapshot!\n")
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	go func(ctx context.Context) {

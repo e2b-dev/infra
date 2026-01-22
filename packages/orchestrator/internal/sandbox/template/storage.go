@@ -54,12 +54,15 @@ func NewStorage(
 	persistence storage.API,
 	metrics blockmetrics.Metrics,
 ) (*Storage, error) {
+	fmt.Printf("<>/<> NewStorage: in header is nil: %v\n", h == nil)
 	if h == nil {
 		headerObjectPath := buildId + "/" + string(fileType) + storage.HeaderSuffix
 		_, ok := storageHeaderObjectType(fileType)
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
+
+		fmt.Printf("<>/<> NewStorage: in header is nil, fetching header for %s\n", headerObjectPath)
 
 		// TODO LEV inefficient double read
 		headerData, err := persistence.GetBlob(ctx, headerObjectPath, nil)
@@ -68,6 +71,7 @@ func NewStorage(
 		}
 
 		diffHeader, err := header.Deserialize(ctx, headerData)
+		fmt.Printf("<>/<> NewStorage: read header for %s:  err=%v\n", headerObjectPath, err)
 
 		// If we can't find the diff header in storage, we switch to templates without a headers
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {

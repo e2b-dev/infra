@@ -174,6 +174,8 @@ func (g *GCP) Upload(ctx context.Context, path string, in io.Reader) (n int64, e
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
+	fmt.Printf("<>/<> GCP Upload to %s\n", path)
+
 	w := g.handle(path).NewWriter(ctx)
 	defer func() {
 		if err := w.Close(); err != nil {
@@ -182,6 +184,7 @@ func (g *GCP) Upload(ctx context.Context, path string, in io.Reader) (n int64, e
 	}()
 
 	c, err := io.Copy(w, in)
+	fmt.Printf("<>/<> GCP Upload to %s done, wrote %d bytes, err=%v\n", path, c, err)
 	if ignoreEOF(err) != nil {
 		timer.Failure(ctx, c)
 
