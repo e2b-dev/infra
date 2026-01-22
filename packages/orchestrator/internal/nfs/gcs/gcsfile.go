@@ -9,6 +9,9 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/go-git/go-billy/v5"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type gcsFile struct {
@@ -109,7 +112,11 @@ func (f *gcsFile) Close() error {
 func (f *gcsFile) Lock() error   { return nil }
 func (f *gcsFile) Unlock() error { return nil }
 func (f *gcsFile) Truncate(_ int64) error {
-	return fmt.Errorf("gcsFile.Truncate: %w", ErrUnsupported)
+	ctx := context.Background()
+
+	logger.L().Warn(ctx, "explicit truncate not supported for gcs files", zap.String("file", f.name))
+
+	return nil
 }
 
 func (f *gcsFile) setOffset(off int64) {

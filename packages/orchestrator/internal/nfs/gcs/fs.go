@@ -71,15 +71,15 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 	// GCS *always* truncates when writing
 
 	if flag&os.O_CREATE != 0 && flag&os.O_TRUNC == 0 {
-		return nil, fmt.Errorf("O_CREATE without O_TRUNC: %w", ErrUnsupported)
+		logger.L().Warn(ctx, "O_CREATE without O_TRUNC; truncating file without user consent!", zap.String("filename", filename))
 	}
 
 	if flag&os.O_WRONLY != 0 && flag&os.O_TRUNC == 0 {
-		return nil, fmt.Errorf("O_WRONLY without O_TRUNC: %w", ErrUnsupported)
+		logger.L().Warn(ctx, "O_WRONLY without O_TRUNC; truncating file without user consent!", zap.String("filename", filename))
 	}
 
 	if flag&os.O_RDWR != 0 && flag&os.O_TRUNC == 0 {
-		return nil, fmt.Errorf("O_RDWR without O_TRUNC: %w", ErrUnsupported)
+		logger.L().Warn(ctx, "O_RDWR without O_TRUNC; truncating file without user consent!", zap.String("filename", filename))
 	}
 
 	obj := p.bucket.Object(filename)

@@ -6,83 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/willscott/go-nfs"
 )
 
 var ErrInvalidSandbox = errors.New("invalid sandbox")
-
-type mountFailedFS struct{}
-
-func (m mountFailedFS) String() string {
-	return "mountFailedFS{}"
-}
-
-func (m mountFailedFS) Create(_ string) (billy.File, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Open(_ string) (billy.File, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) OpenFile(_ string, _ int, _ os.FileMode) (billy.File, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Stat(_ string) (os.FileInfo, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Rename(_, _ string) error {
-	return ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Remove(_ string) error {
-	return ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Join(elem ...string) string {
-	return strings.Join(elem, "/")
-}
-
-func (m mountFailedFS) TempFile(_, _ string) (billy.File, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) ReadDir(_ string) ([]os.FileInfo, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) MkdirAll(_ string, _ os.FileMode) error {
-	return ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Lstat(_ string) (os.FileInfo, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Symlink(_, _ string) error {
-	return ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Readlink(_ string) (string, error) {
-	return "", ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Chroot(_ string) (billy.Filesystem, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Root() string {
-	return ""
-}
-
-var _ billy.Filesystem = (*mountFailedFS)(nil)
 
 type GetPrefix func(context.Context, net.Conn, nfs.MountRequest) (string, error)
 
@@ -124,7 +54,7 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 }
 
 func (h Handler) Change(filesystem billy.Filesystem) billy.Change {
-	return h.inner.Change(filesystem)
+	return wrapChange(h.inner.Change(filesystem))
 }
 
 func (h Handler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) error {
