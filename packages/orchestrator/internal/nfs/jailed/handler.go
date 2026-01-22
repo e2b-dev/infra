@@ -58,9 +58,7 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 }
 
 func (h Handler) Change(filesystem billy.Filesystem) billy.Change {
-	change := h.inner.Change(filesystem)
-
-	return wrapChange(change)
+	return h.inner.Change(filesystem)
 }
 
 func (h Handler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) error {
@@ -68,11 +66,6 @@ func (h Handler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *
 }
 
 func (h Handler) ToHandle(fs billy.Filesystem, path []string) []byte {
-	jfs, ok := h.findJailedFS(fs)
-	if ok && jfs.needsPrefix(path) {
-		path = append([]string{jfs.prefix}, path...)
-	}
-
 	return h.inner.ToHandle(fs, path)
 }
 
@@ -86,24 +79,4 @@ func (h Handler) InvalidateHandle(filesystem billy.Filesystem, bytes []byte) err
 
 func (h Handler) HandleLimit() int {
 	return h.inner.HandleLimit()
-}
-
-type unwrappable interface {
-	Unwrap() billy.Filesystem
-}
-
-func (h Handler) findJailedFS(fs billy.Filesystem) (jailedFS, bool) {
-	for {
-		if jfs, ok := fs.(jailedFS); ok {
-			return jfs, true
-		}
-
-		if wfs, ok := fs.(unwrappable); ok {
-			fs = wfs.Unwrap()
-
-			continue
-		}
-
-		return jailedFS{}, false
-	}
 }

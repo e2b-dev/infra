@@ -18,10 +18,6 @@ func newFS(ctx context.Context, fs billy.Filesystem) loggedFS {
 	return loggedFS{ctx: ctx, inner: fs}
 }
 
-func (l loggedFS) Unwrap() billy.Filesystem {
-	return l.inner
-}
-
 func (l loggedFS) Create(filename string) (f billy.File, err error) {
 	finish := logStart(l.ctx, "FS.Create", filename)
 	defer func() { finish(l.ctx, err, f) }()
