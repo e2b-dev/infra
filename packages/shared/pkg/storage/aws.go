@@ -187,7 +187,6 @@ func (p *AWS) Upload(ctx context.Context, path string, in io.Reader) (int64, err
 
 func (p *AWS) RangeGet(ctx context.Context, objectPath string, offset int64, length int) (io.ReadCloser, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
-	defer cancel()
 
 	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+int64(length-1)))
 	resp, err := p.client.GetObject(ctx, &s3.GetObjectInput{
@@ -196,6 +195,7 @@ func (p *AWS) RangeGet(ctx context.Context, objectPath string, offset int64, len
 		Range:  readRange,
 	})
 	if err != nil {
+		cancel()
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
 			return nil, ErrObjectNotExist
@@ -204,7 +204,7 @@ func (p *AWS) RangeGet(ctx context.Context, objectPath string, offset int64, len
 		return nil, err
 	}
 
-	return resp.Body, nil
+	return withCancelCloser{ReadCloser: resp.Body, cancelFunc: cancel}, nil
 }
 
 func (p *AWS) Size(ctx context.Context, path string) (int64, error) {

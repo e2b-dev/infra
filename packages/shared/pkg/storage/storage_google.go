@@ -251,6 +251,17 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 
 func (g *GCP) RangeGet(ctx context.Context, path string, offset int64, length int) (io.ReadCloser, error) {
 	fmt.Printf("<>/<> GCP RangeGet of %s offset=%d length=%d\n", path, offset, length)
-	// TODO LEV timeout
-	return g.handle(path).NewRangeReader(ctx, offset, int64(length))
+	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
+
+	rc, err := g.handle(path).NewRangeReader(ctx, offset, int64(length))
+	if err != nil {
+		cancel()
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, fmt.Errorf("failed to create range reader for %q: %w", path, ErrObjectNotExist)
+		}
+
+		return nil, fmt.Errorf("failed to create range reader for %q: %w", path, err)
+	}
+
+	return withCancelCloser{ReadCloser: rc, cancelFunc: cancel}, nil
 }
