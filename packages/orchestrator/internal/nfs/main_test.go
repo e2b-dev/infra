@@ -40,6 +40,7 @@ func TestRoundTrip(t *testing.T) {
 	sandboxID := uuid.NewString()
 	teamID := uuid.NewString()
 	bucketName := "e2b-staging-joe-fc-build-cache"
+	volumeName := "shared-volume-1"
 
 	slot := &network.Slot{Key: "abc", HostIP: net.IPv4(127, 0, 0, 1)}
 	require.Equal(t, "127.0.0.1", slot.HostIP.String(), "required for the test to work")
@@ -136,7 +137,7 @@ func TestRoundTrip(t *testing.T) {
 	mount := &nfs.Mount{
 		Client: nfsClient,
 	}
-	target, err := mount.Mount(".", auth.Auth())
+	target, err := mount.Mount(volumeName, auth.Auth())
 	require.NoError(t, err)
 
 	t.Run("write file", func(t *testing.T) {

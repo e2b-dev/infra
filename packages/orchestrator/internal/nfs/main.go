@@ -35,7 +35,7 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map) jailed.GetPrefix {
 
 func NewProxy(ctx context.Context, sandboxes *sandbox.Map, bucket *storage.BucketHandle) *Proxy {
 	var handler nfs.Handler
-	handler = gcs.NewNFSHandler(ctx, bucket)
+	handler = gcs.NewNFSHandler(bucket)
 	handler = helpers.NewCachingHandler(handler, cacheLimit)
 	handler = jailed.NewNFSHandler(handler, getPrefixFromSandbox(sandboxes))
 	handler = logged.NewHandler(ctx, handler)

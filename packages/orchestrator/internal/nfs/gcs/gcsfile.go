@@ -12,7 +12,6 @@ import (
 )
 
 type gcsFile struct {
-	ctx      context.Context //nolint:containedctx // can't change the API, still need it
 	p        BucketFS
 	obj      *storage.ObjectHandle
 	name     string
@@ -28,8 +27,8 @@ func (f *gcsFile) String() string {
 
 var _ billy.File = (*gcsFile)(nil)
 
-func newGcsFile(ctx context.Context, p BucketFS, name string, attrs *storage.ObjectAttrs) *gcsFile {
-	return &gcsFile{ctx: ctx, p: p, obj: p.bucket.Object(name), name: name, attrs: attrs}
+func newGcsFile(p BucketFS, name string, attrs *storage.ObjectAttrs) *gcsFile {
+	return &gcsFile{p: p, obj: p.bucket.Object(name), name: name, attrs: attrs}
 }
 
 func (f *gcsFile) Name() string { return f.name }
@@ -48,27 +47,39 @@ func (f *gcsFile) Write(p []byte) (n int, err error) {
 }
 
 func (f *gcsFile) Read(p []byte) (n int, err error) {
-	rc, err := f.obj.NewRangeReader(f.ctx, f.offset, int64(len(p)))
+	ctx := context.Background()
+
+	rc, err := f.obj.NewRangeReader(ctx, f.offset, int64(len(p)))
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to create range reader: %w", err)
 	}
 	defer func() { err = errors.Join(err, rc.Close()) }()
 	n, err = rc.Read(p)
 	f.incOffset(int64(n))
 
+	if err != nil {
+		err = fmt.Errorf("failed to read from gcs file: %w", err)
+	}
+
 	return n, err
 }
 
 func (f *gcsFile) ReadAt(p []byte, off int64) (n int, err error) {
-	rc, err := f.obj.NewRangeReader(f.ctx, off, int64(len(p)))
+	ctx := context.Background()
+
+	rc, err := f.obj.NewRangeReader(ctx, off, int64(len(p)))
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to create range reader at offset: %w", err)
 	}
 	defer func() { err = errors.Join(err, rc.Close()) }()
 
 	n, err = rc.Read(p)
 	if err == nil && off+int64(n) == f.attrs.Size {
-		err = io.EOF
+		return n, io.EOF
+	}
+
+	if err != nil {
+		err = fmt.Errorf("failed to read from gcs file at offset: %w", err)
 	}
 
 	return n, err

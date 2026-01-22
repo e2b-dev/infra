@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/go-git/go-billy/v5"
@@ -20,10 +21,11 @@ const (
 	MetadataPermsAttr = "e2b-perms"
 	MetadataUIDAttr   = "e2b-uid"
 	MetadataGIDAttr   = "e2b-gid"
+	MetadataATimeAttr = "e2b-atime"
+	MetadataMTimeAttr = "e2b-mtime"
 )
 
 type BucketFS struct {
-	ctx    context.Context //nolint:containedctx // can't change the API, still need it
 	bucket *storage.BucketHandle
 }
 
@@ -33,16 +35,16 @@ func (p BucketFS) String() string {
 
 var _ billy.Filesystem = (*BucketFS)(nil)
 
-func NewPrefixedGCSBucket(ctx context.Context, bucket *storage.BucketHandle) *BucketFS {
-	return &BucketFS{bucket: bucket, ctx: ctx}
+func NewPrefixedGCSBucket(bucket *storage.BucketHandle) *BucketFS {
+	return &BucketFS{bucket: bucket}
 }
 
 func (p BucketFS) Symlink(_, _ string) error {
-	return errors.New("symlink not supported")
+	return fmt.Errorf("BucketFS.Symlink: %w", ErrUnsupported)
 }
 
 func (p BucketFS) Readlink(_ string) (string, error) {
-	return "", errors.New("readlink not supported")
+	return "", fmt.Errorf("BucketFS.Readlink: %w", ErrUnsupported)
 }
 
 func (p BucketFS) Chroot(_ string) (billy.Filesystem, error) {
@@ -62,6 +64,8 @@ func (p BucketFS) Open(filename string) (billy.File, error) {
 }
 
 func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
+	ctx := context.Background()
+
 	// GCS does not allow you to seek+write
 	// GCS does not allow you to append
 	// GCS *always* truncates when writing
@@ -81,7 +85,7 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 	obj := p.bucket.Object(filename)
 
 	// get the file's attrs
-	attrs, err := obj.Attrs(p.ctx)
+	attrs, err := obj.Attrs(ctx)
 
 	// the file exists
 	if err == nil {
@@ -91,7 +95,7 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 			return nil, os.ErrExist
 		}
 
-		return newGcsFile(p.ctx, p, filename, attrs), nil
+		return newGcsFile(p, filename, attrs), nil
 	}
 
 	// the file does not exist
@@ -101,7 +105,7 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 	}
 
 	// create it
-	w := obj.NewWriter(p.ctx)
+	w := obj.NewWriter(ctx)
 	if err := w.Close(); err != nil {
 		return nil, translateError(err)
 	}
@@ -114,11 +118,11 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 			permKey: permVal,
 		},
 	}
-	if attrs, err = obj.Update(p.ctx, updates); err != nil {
+	if attrs, err = obj.Update(ctx, updates); err != nil {
 		return nil, translateError(err)
 	}
 
-	return newGcsFile(p.ctx, p, filename, attrs), nil
+	return newGcsFile(p, filename, attrs), nil
 }
 
 func fromPermToObjectMetadata(perm os.FileMode) (string, string) {
@@ -141,15 +145,27 @@ func fromMetadataToPerm(metadata map[string]string) os.FileMode {
 }
 
 func fromUIDtoMetadata(uid int) (string, string) {
-	return fromIDtoMetadata(uid, MetadataUIDAttr)
+	return MetadataUIDAttr, fromIDtoMetadata(uid)
 }
 
 func fromGIDtoMetadata(gid int) (string, string) {
-	return fromIDtoMetadata(gid, MetadataGIDAttr)
+	return MetadataGIDAttr, fromIDtoMetadata(gid)
 }
 
-func fromIDtoMetadata(uid int, attr string) (string, string) {
-	return attr, strconv.FormatUint(uint64(uid), 10)
+func fromATimeToMetadata(atime time.Time) (string, string) {
+	return MetadataATimeAttr, fromTimeToMetadata(atime)
+}
+
+func fromMTimeToMetadata(mtime time.Time) (string, string) {
+	return MetadataMTimeAttr, fromTimeToMetadata(mtime)
+}
+
+func fromTimeToMetadata(mtime time.Time) string {
+	return mtime.Format(time.RFC3339Nano)
+}
+
+func fromIDtoMetadata(uid int) string {
+	return strconv.FormatUint(uint64(uid), 10)
 }
 
 const (
@@ -185,18 +201,22 @@ func (p BucketFS) Stat(filename string) (os.FileInfo, error) {
 }
 
 func (p BucketFS) Rename(oldPath, newPath string) error {
+	ctx := context.Background()
+
 	src := p.bucket.Object(oldPath)
 	dst := p.bucket.Object(newPath)
 
-	if _, err := dst.CopierFrom(src).Run(p.ctx); err != nil {
-		return err
+	if _, err := dst.CopierFrom(src).Run(ctx); err != nil {
+		return fmt.Errorf("failed to rename gcs object: %w", err)
 	}
 
-	return src.Delete(p.ctx)
+	return src.Delete(ctx)
 }
 
 func (p BucketFS) Remove(filename string) error {
-	return p.bucket.Object(filename).Delete(p.ctx)
+	ctx := context.Background()
+
+	return p.bucket.Object(filename).Delete(ctx)
 }
 
 func (p BucketFS) Join(elem ...string) string {
@@ -208,7 +228,9 @@ func (p BucketFS) TempFile(_, _ string) (billy.File, error) {
 }
 
 func (p BucketFS) ReadDir(path string) ([]os.FileInfo, error) {
-	objects := p.bucket.Objects(p.ctx, &storage.Query{Prefix: path + "/"})
+	ctx := context.Background()
+
+	objects := p.bucket.Objects(ctx, &storage.Query{Prefix: path + "/"})
 
 	var results []os.FileInfo
 	for {
@@ -233,24 +255,29 @@ func (p BucketFS) ReadDir(path string) ([]os.FileInfo, error) {
 
 const dirMagicFilename = ".__.dir.__."
 
+var dirMagicContent = []byte("do not delete")
+
 func (p BucketFS) MkdirAll(filename string, _ os.FileMode) error {
+	ctx := context.Background()
+
 	if filename == "" || filename == "/" {
 		return nil
 	}
 
 	dirName := filepath.Join(filename, dirMagicFilename)
-	w := p.bucket.Object(dirName).NewWriter(p.ctx)
+
+	w := p.bucket.Object(dirName).NewWriter(ctx)
 	defer func() {
 		if err := w.Close(); err != nil {
-			logger.L().Warn(p.ctx, "failed to close dir marker", zap.Error(err))
+			logger.L().Warn(ctx, "failed to close dir marker", zap.Error(err))
 		}
 	}()
 
-	n, err := w.Write([]byte{})
+	n, err := w.Write(dirMagicContent)
 	if err != nil {
 		return translateError(err)
 	}
-	if n != 0 {
+	if n != len(dirMagicContent) {
 		return fmt.Errorf("expected to write 0 bytes, got %d", n)
 	}
 
@@ -274,24 +301,28 @@ func (p BucketFS) Lstat(filename string) (os.FileInfo, error) {
 		return dir, err
 	}
 
-	return nil, os.ErrNotExist
+	return nil, fmt.Errorf("failed to lstat object %q: %w", filename, os.ErrNotExist)
 }
 
 func (p BucketFS) tryGetFile(filename string) (os.FileInfo, bool, error) {
-	attrs, err := p.bucket.Object(filename).Attrs(p.ctx)
+	ctx := context.Background()
+
+	attrs, err := p.bucket.Object(filename).Attrs(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			return nil, false, nil
 		}
 
-		return nil, true, translateError(err)
+		return nil, true, fmt.Errorf("failed to read attrs for object %q: %w", filename, err)
 	}
 
 	return fileInfo{attrs}, true, nil
 }
 
 func (p BucketFS) tryGetDirList(filename string) (os.FileInfo, bool, error) {
-	results := p.bucket.Objects(p.ctx, &storage.Query{Prefix: filename + "/"})
+	ctx := context.Background()
+
+	results := p.bucket.Objects(ctx, &storage.Query{Prefix: filename + "/"})
 
 	_, err := results.Next()
 	if err != nil {
@@ -300,7 +331,7 @@ func (p BucketFS) tryGetDirList(filename string) (os.FileInfo, bool, error) {
 			return nil, false, nil
 		}
 
-		return nil, true, translateError(err)
+		return nil, true, fmt.Errorf("failed to list objects in %q: %w", filename, err)
 	}
 
 	// a nested file was found, which means the requested path is a directory
@@ -308,15 +339,17 @@ func (p BucketFS) tryGetDirList(filename string) (os.FileInfo, bool, error) {
 }
 
 func (p BucketFS) tryGetMagicDir(filename string) (os.FileInfo, bool, error) {
+	ctx := context.Background()
+
 	dirName := filepath.Join(filename, dirMagicFilename)
 
-	attrs, err := p.bucket.Object(dirName).Attrs(p.ctx)
+	attrs, err := p.bucket.Object(dirName).Attrs(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			return nil, false, nil
 		}
 
-		return nil, true, translateError(err)
+		return nil, true, fmt.Errorf("failed to stat magic dir %q: %w", dirName, err)
 	}
 
 	return dirInfo{attrs}, true, nil

@@ -87,7 +87,6 @@ func TestBucketFS_OpenFile(t *testing.T) {
 
 	gcsFS := BucketFS{
 		bucket: client.Bucket(bucketName),
-		ctx:    t.Context(),
 	}
 
 	t.Run("O_TRUNC functions like local files", func(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 
 	"cloud.google.com/go/storage"
 	"github.com/go-git/go-billy/v5"
@@ -11,7 +12,6 @@ import (
 )
 
 type NFSHandler struct {
-	ctx    context.Context //nolint:containedctx // can't change the API, still need it
 	bucket *storage.BucketHandle
 }
 
@@ -21,21 +21,27 @@ func (h NFSHandler) String() string {
 
 var _ nfs.Handler = (*NFSHandler)(nil)
 
-func NewNFSHandler(ctx context.Context, bucket *storage.BucketHandle) *NFSHandler {
+func NewNFSHandler(bucket *storage.BucketHandle) *NFSHandler {
 	return &NFSHandler{
-		ctx:    ctx,
 		bucket: bucket,
 	}
 }
 
-func (h NFSHandler) Mount(ctx context.Context, _ net.Conn, _ nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
-	fs := NewPrefixedGCSBucket(ctx, h.bucket)
+func (h NFSHandler) Mount(_ context.Context, _ net.Conn, req nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
+	fs := NewPrefixedGCSBucket(h.bucket)
+
+	subDir := strings.TrimPrefix(string(req.Dirpath), "/")
+	if subDir != "" {
+		if err := fs.MkdirAll(subDir, 0o777); err != nil { //nolint:contextcheck // cannot change interface
+			return nfs.MountStatusErrIO, nil, nil
+		}
+	}
 
 	return nfs.MountStatusOk, fs, nil
 }
 
 func (h NFSHandler) Change(filesystem billy.Filesystem) billy.Change {
-	return newChange(h.ctx, h.bucket, filesystem)
+	return newChange(h.bucket, filesystem)
 }
 
 func (h NFSHandler) FSStat(_ context.Context, _ billy.Filesystem, _ *nfs.FSStat) error {

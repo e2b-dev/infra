@@ -23,7 +23,9 @@ func NewHandler(ctx context.Context, handler nfs.Handler) nfs.Handler {
 }
 
 func (e loggedHandler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequest) (s nfs.MountStatus, fs billy.Filesystem, auth []nfs.AuthFlavor) {
-	finish := logStart(ctx, "Handler.Mount")
+	finish := logStart(ctx, "Handler.Mount",
+		fmt.Sprintf("net.Conn{LocalAddr=%q, RemoteAddr=%q}", conn.LocalAddr(), conn.RemoteAddr()),
+		fmt.Sprintf("nfs.MountRequest{Dirpath=%q}", string(request.Dirpath)))
 	defer func() {
 		var err error
 		if s != nfs.MountStatusOk {

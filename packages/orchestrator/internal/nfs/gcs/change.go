@@ -13,7 +13,6 @@ import (
 )
 
 type change struct {
-	ctx    context.Context //nolint:containedctx // can't change the API, still need it
 	bucket *storage.BucketHandle
 	fs     billy.Filesystem
 }
@@ -24,8 +23,8 @@ func (c change) String() string {
 
 var _ billy.Change = (*change)(nil)
 
-func newChange(ctx context.Context, bucket *storage.BucketHandle, fs billy.Filesystem) *change {
-	return &change{ctx, bucket, fs}
+func newChange(bucket *storage.BucketHandle, fs billy.Filesystem) *change {
+	return &change{bucket, fs}
 }
 
 func (c change) Chmod(name string, mode os.FileMode) error {
@@ -35,14 +34,18 @@ func (c change) Chmod(name string, mode os.FileMode) error {
 		permKey: permValue,
 	}}
 
-	_, err := c.bucket.Object(name).Update(c.ctx, updates)
+	_, err := c.bucket.Object(name).Update(context.Background(), updates)
 	if errors.Is(err, storage.ErrObjectNotExist) {
 		// maybe it's a directory?
 		name := filepath.Join(name, dirMagicFilename)
-		_, err = c.bucket.Object(name).Update(c.ctx, updates)
+		_, err = c.bucket.Object(name).Update(context.Background(), updates)
 	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to chmod gcs object %q: %w", name, err)
+	}
+
+	return nil
 }
 
 var ErrUnsupported = errors.New("unsupported")
@@ -52,20 +55,41 @@ func (c change) Lchown(_ string, _, _ int) error {
 }
 
 func (c change) Chown(name string, uid, gid int) error {
-	metadata := make(map[string]string, 2)
+	ctx := context.Background()
 
 	uidKey, uidVal := fromUIDtoMetadata(uid)
-	metadata[uidKey] = uidVal
-
 	gidKey, gidVal := fromGIDtoMetadata(gid)
-	metadata[gidKey] = gidVal
 
-	updates := storage.ObjectAttrsToUpdate{Metadata: metadata}
-	_, err := c.bucket.Object(name).Update(c.ctx, updates)
+	updates := storage.ObjectAttrsToUpdate{
+		Metadata: map[string]string{
+			uidKey: uidVal,
+			gidKey: gidVal,
+		},
+	}
 
-	return err
+	if _, err := c.bucket.Object(name).Update(ctx, updates); err != nil {
+		return fmt.Errorf("failed to chown gcs object %q: %w", name, err)
+	}
+
+	return nil
 }
 
-func (c change) Chtimes(_ string, _ time.Time, _ time.Time) error {
-	return fmt.Errorf("change.Chtimes: %w", ErrUnsupported)
+func (c change) Chtimes(name string, atime time.Time, mtime time.Time) error {
+	ctx := context.Background()
+
+	atimeKey, atimeVal := fromATimeToMetadata(atime)
+	mtimeKey, mtimeVal := fromMTimeToMetadata(mtime)
+
+	updates := storage.ObjectAttrsToUpdate{
+		Metadata: map[string]string{
+			atimeKey: atimeVal,
+			mtimeKey: mtimeVal,
+		},
+	}
+
+	if _, err := c.bucket.Object(name).Update(ctx, updates); err != nil {
+		return fmt.Errorf("failed to chtimes gcs object %q: %w", name, err)
+	}
+
+	return nil
 }
