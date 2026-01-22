@@ -38,12 +38,12 @@ func (n *Node) Status() api.NodeStatus {
 	}
 }
 
-func (n *Node) setStatus(status api.NodeStatus) {
+func (n *Node) setStatus(ctx context.Context, status api.NodeStatus) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 
 	if n.status != status {
-		zap.L().Info("NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)))
+		logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)))
 		n.status = status
 	}
 }
@@ -51,7 +51,7 @@ func (n *Node) setStatus(status api.NodeStatus) {
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	nodeStatus, ok := ApiNodeToOrchestratorStateMapper[s]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.String("status", string(s)), logger.WithNodeID(n.ID))
+		logger.L().Error(ctx, "Unknown service info status", zap.String("status", string(s)), logger.WithNodeID(n.ID))
 
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
@@ -59,7 +59,7 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	client, ctx := n.GetClient(ctx)
 	_, err := client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
-		zap.L().Error("Failed to send status change", zap.Error(err))
+		logger.L().Error(ctx, "Failed to send status change", zap.Error(err))
 
 		return err
 	}

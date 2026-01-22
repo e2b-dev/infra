@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
@@ -59,44 +62,31 @@ const (
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
-	OpenObject(ctx context.Context, path string, objectType ObjectType) (ObjectProvider, error)
-	OpenSeekableObject(ctx context.Context, path string, seekableObjectType SeekableObjectType) (SeekableObjectProvider, error)
+	OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error)
+	OpenSeekable(ctx context.Context, path string, seekableObjectType SeekableObjectType) (Seekable, error)
 	GetDetails() string
 }
 
-type WriterCtx interface {
-	Write(ctx context.Context, p []byte) (n int, err error)
-}
-
-type WriterToCtx interface {
-	WriteTo(ctx context.Context, w io.Writer) (n int64, err error)
-}
-
-type ReaderAtCtx interface {
-	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
-}
-
-type ObjectProvider interface {
-	// write
-	WriterCtx
-	WriteFromFileSystem(ctx context.Context, path string) error
-
-	// read
-	WriterToCtx
-
-	// utility
+type Blob interface {
+	WriteTo(ctx context.Context, dst io.Writer) (int64, error)
+	Put(ctx context.Context, data []byte) error
 	Exists(ctx context.Context) (bool, error)
 }
 
-type SeekableObjectProvider interface {
-	// write
-	WriteFromFileSystem(ctx context.Context, path string) error
-
-	// read
-	ReaderAtCtx
-
-	// utility
+type SeekableReader interface {
+	// Random slice access, off and buffer length must be aligned to block size
+	ReadAt(ctx context.Context, buffer []byte, off int64) (int, error)
 	Size(ctx context.Context) (int64, error)
+}
+
+type SeekableWriter interface {
+	// Store entire file
+	StoreFile(ctx context.Context, path string) error
+}
+
+type Seekable interface {
+	SeekableReader
+	SeekableWriter
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
@@ -105,7 +95,7 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
 
-		return NewFileSystemStorageProvider(basePath)
+		return newFileSystemStorage(basePath)
 	}
 
 	bucketName := utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
@@ -113,9 +103,9 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 	// cloud bucket-based storage
 	switch provider {
 	case AWSStorageProvider:
-		return NewAWSBucketStorageProvider(ctx, bucketName)
+		return newAWSStorage(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPBucketStorageProvider(ctx, bucketName, limiter)
+		return NewGCP(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
@@ -127,7 +117,7 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
 
-		return NewFileSystemStorageProvider(basePath)
+		return newFileSystemStorage(basePath)
 	}
 
 	bucketName := utils.RequiredEnv("BUILD_CACHE_BUCKET_NAME", "Bucket for storing template files")
@@ -135,10 +125,30 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	// cloud bucket-based storage
 	switch provider {
 	case AWSStorageProvider:
-		return NewAWSBucketStorageProvider(ctx, bucketName)
+		return newAWSStorage(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPBucketStorageProvider(ctx, bucketName, limiter)
+		return NewGCP(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
+}
+
+func recordError(span trace.Span, err error) {
+	if ignoreEOF(err) == nil {
+		return
+	}
+
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+}
+
+// GetBlob is a convenience wrapper that wraps b.WriteTo interface to return a
+// byte slice.
+func GetBlob(ctx context.Context, b Blob) ([]byte, error) {
+	var buf bytes.Buffer
+	if _, err := b.WriteTo(ctx, &buf); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }

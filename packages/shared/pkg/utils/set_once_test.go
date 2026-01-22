@@ -12,6 +12,7 @@ import (
 )
 
 func TestSetOnce(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 
 	setOnce.SetValue(1)
@@ -34,6 +35,7 @@ func TestSetOnce(t *testing.T) {
 }
 
 func TestSetOnceSetError(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 	expectedErr := fmt.Errorf("error")
 
@@ -53,16 +55,14 @@ func TestSetOnceSetError(t *testing.T) {
 }
 
 func TestSetOnceWait(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		time.Sleep(200 * time.Millisecond)
 		setOnce.SetValue(1)
-	}()
+	})
 
 	value, err := setOnce.Wait()
 	require.NoError(t, err)
@@ -72,19 +72,17 @@ func TestSetOnceWait(t *testing.T) {
 }
 
 func TestSetOnceWaitWithContext(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		time.Sleep(200 * time.Millisecond)
 		setOnce.SetValue(1)
-	}()
+	})
 
 	value, err := setOnce.WaitWithContext(ctx)
 	require.NoError(t, err)
@@ -94,6 +92,7 @@ func TestSetOnceWaitWithContext(t *testing.T) {
 }
 
 func TestSetOnceWaitWithContextCanceled(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -101,13 +100,10 @@ func TestSetOnceWaitWithContextCanceled(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		time.Sleep(10 * time.Millisecond)
 		cancel()
-	}()
+	})
 
 	_, err := setOnce.WaitWithContext(ctx)
 	require.Error(t, err)
@@ -116,6 +112,7 @@ func TestSetOnceWaitWithContextCanceled(t *testing.T) {
 }
 
 func TestSetOnceSetResultConcurrent(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 
 	wg1 := sync.WaitGroup{}
@@ -152,6 +149,7 @@ func TestSetOnceSetResultConcurrent(t *testing.T) {
 }
 
 func TestSetOnceSetResultConcurrentWithContext(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -191,6 +189,7 @@ func TestSetOnceSetResultConcurrentWithContext(t *testing.T) {
 }
 
 func TestSetOnceConcurrentReads(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 	const numReaders = 100
 
@@ -215,6 +214,7 @@ func TestSetOnceConcurrentReads(t *testing.T) {
 }
 
 func TestSetOnceConcurrentReadsWithContext(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 	const numReaders = 100
 
@@ -241,6 +241,7 @@ func TestSetOnceConcurrentReadsWithContext(t *testing.T) {
 }
 
 func TestSetOnceConcurrentReadersBeforeWrite(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 	const numReaders = 50
 
@@ -277,6 +278,7 @@ func TestSetOnceConcurrentReadersBeforeWrite(t *testing.T) {
 }
 
 func TestSetOnceConcurrentReadWriteRace(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 	const numOperations = 100
 
@@ -309,6 +311,7 @@ func TestSetOnceConcurrentReadWriteRace(t *testing.T) {
 }
 
 func TestNotSetResult(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 
 	value, err := setOnce.Result()
@@ -317,16 +320,14 @@ func TestNotSetResult(t *testing.T) {
 }
 
 func TestResultAfterDone(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 
 	wg := sync.WaitGroup{}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		setOnce.SetValue(1)
-	}()
+	})
 
 	<-setOnce.Done
 
@@ -338,17 +339,15 @@ func TestResultAfterDone(t *testing.T) {
 }
 
 func TestMultipleDone(t *testing.T) {
+	t.Parallel()
 	setOnce := NewSetOnce[int]()
 
 	wg := sync.WaitGroup{}
 
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			<-setOnce.Done
-		}()
+		})
 	}
 
 	setOnce.SetValue(1)

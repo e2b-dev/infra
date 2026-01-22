@@ -2,9 +2,12 @@ package build
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -23,7 +26,7 @@ const (
 
 type Diff interface {
 	io.Closer
-	storage.ReaderAtCtx
+	storage.SeekableReader
 	block.Slicer
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
@@ -55,10 +58,26 @@ func (n *NoDiff) FileSize() (int64, error) {
 	return 0, NoDiffError{}
 }
 
+func (n *NoDiff) Size(_ context.Context) (int64, error) {
+	return 0, NoDiffError{}
+}
+
 func (n *NoDiff) CacheKey() DiffStoreKey {
 	return ""
 }
 
 func (n *NoDiff) Init(context.Context) error {
 	return NoDiffError{}
+}
+
+func (n *NoDiff) BlockSize() int64 {
+	return 0
+}
+
+func GenerateDiffCachePath(basePath string, buildId string, diffType DiffType) string {
+	cachePathSuffix := id.Generate()
+
+	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
+
+	return filepath.Join(basePath, cacheFile)
 }

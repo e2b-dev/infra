@@ -8,6 +8,7 @@ package userfaultfd
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -17,25 +18,69 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+// MemorySlicer exposes byte slice via the Slicer interface.
+// This is used for testing purposes.
+type MemorySlicer struct {
+	content  []byte
+	pagesize int64
+}
+
+var _ block.Slicer = (*MemorySlicer)(nil)
+
+func NewMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
+	return &MemorySlicer{
+		content:  content,
+		pagesize: pagesize,
+	}
+}
+
+func (s *MemorySlicer) Slice(_ context.Context, offset, size int64) ([]byte, error) {
+	return s.content[offset : offset+size], nil
+}
+
+func (s *MemorySlicer) Size() (int64, error) {
+	return int64(len(s.content)), nil
+}
+
+func (s *MemorySlicer) Content() []byte {
+	return s.content
+}
+
+func (s *MemorySlicer) BlockSize() int64 {
+	return s.pagesize
+}
+
+func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {
+	size := pagesize * numberOfPages
+
+	n := int(size)
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		panic(err)
+	}
+
+	return NewMemorySlicer(buf, int64(pagesize))
+}
 
 // Main process, FC in our case
 func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error) {
 	t.Helper()
 
-	data := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
+	data := RandomPages(tt.pagesize, tt.numberOfPages)
 
 	size, err := data.Size()
 	require.NoError(t, err)
@@ -51,10 +96,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		uffdFd.close()
 	})
 
-	err = uffdFd.configureApi(tt.pagesize)
+	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
-	err = uffdFd.register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
+	err = register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
 	require.NoError(t, err)
 
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
@@ -180,6 +225,8 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 
 // Secondary process, orchestrator in our case
 func TestHelperServingProcess(t *testing.T) {
+	t.Parallel()
+
 	if os.Getenv("GO_TEST_HELPER_PROCESS") != "1" {
 		t.Skip("this is a helper process, skipping direct execution")
 	}
@@ -222,7 +269,7 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit parsing page size: %w", err)
 	}
 
-	data := testutils.NewMemorySlicer(content, pageSize)
+	data := NewMemorySlicer(content, pageSize)
 
 	m := memory.NewMapping([]memory.Region{
 		{
@@ -236,12 +283,12 @@ func crossProcessServe() error {
 	exitUffd := make(chan struct{}, 1)
 	defer close(exitUffd)
 
-	logger, err := zap.NewDevelopment()
+	l, err := logger.NewDevelopmentLogger()
 	if err != nil {
 		return fmt.Errorf("exit creating logger: %w", err)
 	}
 
-	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, logger)
+	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, l)
 	if err != nil {
 		return fmt.Errorf("exit creating uffd: %w", err)
 	}
@@ -260,18 +307,7 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				offsets, err := getAccessedOffsets(&uffd.missingRequests)
-				if err != nil {
-					msg := fmt.Errorf("error getting accessed offsets from cross process: %w", err)
-
-					fmt.Fprint(os.Stderr, msg.Error())
-
-					cancel(msg)
-
-					return
-				}
-
-				for _, offset := range offsets {
+				for offset := range uffd.Dirty().Offsets() {
 					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
 					if writeErr != nil {
 						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
@@ -346,16 +382,4 @@ func crossProcessServe() error {
 	case <-exitSignal:
 		return nil
 	}
-}
-
-func getAccessedOffsets(missingRequests *sync.Map) ([]uint, error) {
-	var offsets []uint
-
-	missingRequests.Range(func(key, _ any) bool {
-		offsets = append(offsets, uint(key.(int64)))
-
-		return true
-	})
-
-	return offsets, nil
 }

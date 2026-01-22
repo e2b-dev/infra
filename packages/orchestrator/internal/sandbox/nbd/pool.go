@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -137,7 +138,7 @@ func (d *DevicePool) Populate(ctx context.Context) {
 		device, err := d.getFreeDeviceSlot()
 		if err != nil {
 			if failedCount%100 == 0 {
-				zap.L().Error("[nbd pool]: failed to create network",
+				logger.L().Error(ctx, "[nbd pool]: failed to create network",
 					zap.Error(err),
 					zap.Int("failed_count", failedCount),
 				)
@@ -334,7 +335,7 @@ func (d *DevicePool) ReleaseDevice(ctx context.Context, idx DeviceSlot, opts ...
 		}
 
 		if attempt%100 == 0 {
-			zap.L().Error("error releasing device", zap.Int("attempt", attempt), zap.Error(err))
+			logger.L().Error(ctx, "error releasing device", zap.Int("attempt", attempt), zap.Error(err))
 		}
 
 		time.Sleep(500 * time.Millisecond)
@@ -346,7 +347,7 @@ func GetDevicePath(slot DeviceSlot) DevicePath {
 }
 
 func (d *DevicePool) Close(ctx context.Context) error {
-	zap.L().Info("Closing device pool", zap.Uint("used_slots", d.usedSlots.Count()))
+	logger.L().Info(ctx, "Closing device pool", zap.Uint("used_slots", d.usedSlots.Count()))
 
 	d.doneOnce.Do(func() {
 		close(d.done)

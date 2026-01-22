@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
 type LocalDiffFile struct {
@@ -22,10 +20,7 @@ func NewLocalDiffFile(
 	buildId string,
 	diffType DiffType,
 ) (*LocalDiffFile, error) {
-	cachePathSuffix := id.Generate()
-
-	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
-	cachePath := filepath.Join(basePath, cacheFile)
+	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 
 	f, err := os.OpenFile(cachePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
@@ -39,17 +34,31 @@ func NewLocalDiffFile(
 	}, nil
 }
 
+func (f *LocalDiffFile) Close() error {
+	err := f.File.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close file: %w", err)
+	}
+
+	err = os.Remove(f.cachePath)
+	if err != nil {
+		return fmt.Errorf("failed to remove file: %w", err)
+	}
+
+	return nil
+}
+
 func (f *LocalDiffFile) CloseToDiff(
 	blockSize int64,
 ) (Diff, error) {
-	defer f.Close()
+	defer f.File.Close()
 
-	err := f.Sync()
+	err := f.File.Sync()
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync file: %w", err)
 	}
 
-	size, err := f.Stat()
+	size, err := f.File.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file size: %w", err)
 	}
@@ -67,37 +76,38 @@ func (f *LocalDiffFile) CloseToDiff(
 }
 
 type localDiff struct {
-	size      int64
-	blockSize int64
-	cacheKey  DiffStoreKey
-	cachePath string
-	cache     *block.Cache
+	cacheKey DiffStoreKey
+	cache    *block.Cache
 }
 
 var _ Diff = (*localDiff)(nil)
 
+func NewLocalDiffFromCache(
+	cacheKey DiffStoreKey,
+	cache *block.Cache,
+) (Diff, error) {
+	return &localDiff{
+		cache:    cache,
+		cacheKey: cacheKey,
+	}, nil
+}
+
 func newLocalDiff(
 	cacheKey DiffStoreKey,
 	cachePath string,
-	size int64,
+	size,
 	blockSize int64,
-) (*localDiff, error) {
+) (Diff, error) {
 	cache, err := block.NewCache(size, blockSize, cachePath, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache: %w", err)
 	}
 
-	return &localDiff{
-		size:      size,
-		blockSize: blockSize,
-		cacheKey:  cacheKey,
-		cachePath: cachePath,
-		cache:     cache,
-	}, nil
+	return NewLocalDiffFromCache(cacheKey, cache)
 }
 
 func (b *localDiff) CachePath() (string, error) {
-	return b.cachePath, nil
+	return b.cache.Path(), nil
 }
 
 func (b *localDiff) Close() error {
@@ -112,6 +122,10 @@ func (b *localDiff) Slice(_ context.Context, off, length int64) ([]byte, error) 
 	return b.cache.Slice(off, length)
 }
 
+func (b *localDiff) Size(_ context.Context) (int64, error) {
+	return b.cache.Size()
+}
+
 func (b *localDiff) FileSize() (int64, error) {
 	return b.cache.FileSize()
 }
@@ -122,4 +136,8 @@ func (b *localDiff) CacheKey() DiffStoreKey {
 
 func (b *localDiff) Init(context.Context) error {
 	return nil
+}
+
+func (b *localDiff) BlockSize() int64 {
+	return b.cache.BlockSize()
 }

@@ -23,6 +23,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -40,6 +42,9 @@ type PostProcessingBuilder struct {
 	proxy           *proxy.SandboxProxy
 
 	layerExecutor *layer.LayerExecutor
+	featureFlags  *featureflags.Client
+
+	logger logger.Logger
 }
 
 func New(
@@ -48,6 +53,8 @@ func New(
 	templateStorage storage.StorageProvider,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
+	featureFlags *featureflags.Client,
+	logger logger.Logger,
 ) *PostProcessingBuilder {
 	return &PostProcessingBuilder{
 		BuildContext: buildContext,
@@ -57,6 +64,9 @@ func New(
 		proxy:           proxy,
 
 		layerExecutor: layerExecutor,
+		featureFlags:  featureFlags,
+
+		logger: logger,
 	}
 }
 
@@ -97,7 +107,11 @@ func (ppb *PostProcessingBuilder) Layer(
 	}
 
 	// The final template is the one from the configuration
-	result.Template = ppb.Template
+	result.Template = metadata.TemplateMetadata{
+		BuildID:            ppb.Template.BuildID,
+		KernelVersion:      ppb.Config.KernelVersion,
+		FirecrackerVersion: ppb.Config.FirecrackerVersion,
+	}
 
 	return phases.LayerResult{
 		Metadata: result,
@@ -109,7 +123,7 @@ func (ppb *PostProcessingBuilder) Layer(
 // Build runs post-processing actions in the sandbox
 func (ppb *PostProcessingBuilder) Build(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	_ string,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
@@ -144,22 +158,33 @@ func (ppb *PostProcessingBuilder) Build(
 			DefaultUser:    defaultUser,
 			DefaultWorkdir: defaultWorkdir,
 		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      ppb.Config.KernelVersion,
+			FirecrackerVersion: ppb.Config.FirecrackerVersion,
+		},
 	}
+
+	// Select the IO Engine to use for the rootfs drive
+	ioEngine := ppb.featureFlags.StringFlag(
+		ctx,
+		featureflags.BuildIoEngine,
+	)
+
+	span.SetAttributes(attribute.String("io_engine", ioEngine))
+	ppb.logger.Debug(ctx, "using io engine", zap.String("io_engine", ioEngine))
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
 	sandboxCreator := layer.NewCreateSandbox(
 		sbxConfig,
 		ppb.sandboxFactory,
 		finalizeTimeout,
-		fc.FirecrackerVersions{
-			KernelVersion:      currentLayer.Metadata.Template.KernelVersion,
-			FirecrackerVersion: currentLayer.Metadata.Template.FirecrackerVersion,
-		},
+		layer.WithIoEngine(ioEngine),
 	)
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(userLogger))
 
-	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
+	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template.BuildID)
 
 	finalLayer, err := ppb.layerExecutor.BuildLayer(
 		ctx,
@@ -184,7 +209,7 @@ func (ppb *PostProcessingBuilder) Build(
 	}, nil
 }
 
-func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer.FunctionActionFn {
+func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) layer.FunctionActionFn {
 	return func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (cm metadata.Template, e error) {
 		ctx, span := tracer.Start(ctx, "run postprocessing")
 		defer span.End()
@@ -218,7 +243,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("configuration script failed: %w", err))
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb.Metadata(), fmt.Errorf("configuration script failed: %w", err))
 		}
 
 		if meta.Start == nil {
@@ -232,7 +257,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 		var startCmdRun errgroup.Group
 		startCmdConfirm := make(chan struct{})
 		if meta.Start.StartCmd != "" {
-			userLogger.Info(fmt.Sprintf("Running start command: %s", meta.Start.StartCmd))
+			userLogger.Info(ctx, fmt.Sprintf("Running start command: %s", meta.Start.StartCmd))
 			startCmdRun.Go(func() error {
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,
@@ -277,13 +302,13 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 			meta.Start.Context,
 		)
 		if err != nil {
-			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("ready command failed: %w", err))
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb.Metadata(), fmt.Errorf("ready command failed: %w", err))
 		}
 
 		// Wait for the start command to start executing.
 		select {
 		case <-ctx.Done():
-			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("waiting for start command failed: %w", commandsCtx.Err()))
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb.Metadata(), fmt.Errorf("waiting for start command failed: %w", commandsCtx.Err()))
 		case <-startCmdConfirm:
 		}
 		// Cancel the start command context (it's running in the background anyway).
@@ -291,7 +316,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 		commandsCancel()
 		err = startCmdRun.Wait()
 		if err != nil {
-			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("start command failed: %w", err))
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb.Metadata(), fmt.Errorf("start command failed: %w", err))
 		}
 
 		return meta, nil

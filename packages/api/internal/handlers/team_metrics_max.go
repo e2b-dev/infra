@@ -6,15 +6,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
+	clickhouseUtils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -32,13 +32,10 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 		return
 	}
 
-	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
-	if err != nil {
-		zap.L().Warn("error getting metrics read feature flag, soft failing", zap.Error(err))
-	}
+	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlag)
 
 	if !metricsReadFlag {
-		zap.L().Debug("sandbox metrics read feature flag is disabled")
+		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
 		// If we are not reading from ClickHouse, we can return an empty map
 		// This is here just to have the possibility to turn off ClickHouse metrics reading
 
@@ -57,7 +54,7 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 		end = time.Unix(*params.End, 0)
 	}
 
-	start, end, err = utils.ValidateDates(start, end)
+	start, end, err := clickhouseUtils.ValidateRange(start, end)
 	if err != nil {
 		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())

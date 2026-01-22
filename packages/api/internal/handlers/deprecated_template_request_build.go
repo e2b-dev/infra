@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/dberrors"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -55,8 +56,8 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 	}
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "submitted environment build request", properties.
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsUserEvent(ctx, userID.String(), team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", body.Alias),
@@ -84,7 +85,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 		return
 	}
 
-	templateID, err := id.CleanTemplateID(rawTemplateID)
+	templateID, _, err := id.ParseTemplateIDOrAliasWithTag(rawTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", rawTemplateID))
 		telemetry.ReportCriticalError(c.Request.Context(), "invalid template ID", err)
@@ -131,8 +132,8 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 	}
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "submitted environment build request", properties.
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsUserEvent(ctx, userID.String(), team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", body.Alias),
@@ -153,30 +154,52 @@ func (a *APIStore) buildTemplate(
 	templateID api.TemplateID,
 	body api.TemplateBuildRequest,
 ) (*template.RegisterBuildResponse, *api.APIError) {
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithClusterFallback(team.ClusterID))
-	if err != nil {
-		return nil, &api.APIError{
-			Code:      http.StatusBadRequest,
-			ClientMsg: "Error when getting available build client",
-			Err:       fmt.Errorf("error when getting available build client: %w", err),
+	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
+
+	var alias *string
+	var tags []string
+
+	if body.Alias != nil {
+		var err error
+		a, t, err := id.ParseTemplateIDOrAliasWithTag(*body.Alias)
+		if err != nil {
+			return nil, &api.APIError{
+				Code:      http.StatusBadRequest,
+				ClientMsg: fmt.Sprintf("Invalid alias: %s", err),
+				Err:       err,
+			}
+		}
+
+		alias = &a
+		if t != nil {
+			tags, err = id.ValidateAndDeduplicateTags([]string{*t})
+			if err != nil {
+				return nil, &api.APIError{
+					Code:      http.StatusBadRequest,
+					ClientMsg: fmt.Sprintf("Invalid tag: %s", err),
+					Err:       err,
+				}
+			}
 		}
 	}
 
 	// Create the build
 	data := template.RegisterBuildData{
-		ClusterID:     utils.WithClusterFallback(team.ClusterID),
-		BuilderNodeID: builderNodeID,
-		TemplateID:    templateID,
-		UserID:        &userID,
-		Team:          team,
-		Dockerfile:    body.Dockerfile,
-		Alias:         body.Alias,
-		StartCmd:      body.StartCmd,
-		ReadyCmd:      body.ReadyCmd,
-		CpuCount:      body.CpuCount,
-		MemoryMB:      body.MemoryMB,
-		Version:       templates.TemplateV1Version,
+		ClusterID:          utils.WithClusterFallback(team.ClusterID),
+		TemplateID:         templateID,
+		UserID:             &userID,
+		Team:               team,
+		Dockerfile:         body.Dockerfile,
+		Alias:              alias,
+		Tags:               tags,
+		StartCmd:           body.StartCmd,
+		ReadyCmd:           body.ReadyCmd,
+		CpuCount:           body.CpuCount,
+		MemoryMB:           body.MemoryMB,
+		Version:            templates.TemplateV1Version,
+		KernelVersion:      a.config.DefaultKernelVersion,
+		FirecrackerVersion: firecrackerVersion,
 	}
 
-	return template.RegisterBuild(ctx, a.templateBuildsCache, a.db, data)
+	return template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, data)
 }

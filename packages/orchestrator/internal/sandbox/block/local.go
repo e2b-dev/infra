@@ -28,6 +28,8 @@ func NewLocal(path string, blockSize int64, buildID uuid.UUID) (*Local, error) {
 
 	info, err := f.Stat()
 	if err != nil {
+		err = errors.Join(err, f.Close())
+
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
@@ -37,6 +39,8 @@ func NewLocal(path string, blockSize int64, buildID uuid.UUID) (*Local, error) {
 		uint64(info.Size()),
 	), nil)
 	if err != nil {
+		err = errors.Join(err, f.Close())
+
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
@@ -60,7 +64,7 @@ func (d *Local) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	return copy(p, slice), nil
 }
 
-func (d *Local) Size() (int64, error) {
+func (d *Local) Size(_ context.Context) (int64, error) {
 	return int64(d.header.Metadata.Size), nil
 }
 
@@ -69,10 +73,6 @@ func (d *Local) BlockSize() int64 {
 }
 
 func (d *Local) Close() (e error) {
-	defer func() {
-		e = errors.Join(e, os.Remove(d.path))
-	}()
-
 	err := d.f.Close()
 	if err != nil {
 		return fmt.Errorf("error closing file: %w", err)

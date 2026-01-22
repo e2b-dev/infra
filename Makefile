@@ -3,14 +3,11 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 -include ${ENV_FILE}
 
-# Login for Packer and Docker (uses gcloud user creds)
-# Login for Terraform (uses application default creds)
-.PHONY: login-gcloud
-login-gcloud:
-	gcloud --quiet auth login
-	gcloud config set project "$(GCP_PROJECT_ID)"
-	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
-	gcloud --quiet auth application-default login
+AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+
+.PHONY: provider-login
+provider-login:
+	$(MAKE) -C iac/provider-$(PROVIDER) provider-login
 
 .PHONY: init
 init:
@@ -72,6 +69,7 @@ build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
 build-and-upload:build-and-upload/clickhouse-migrator
+build-and-upload:build-and-upload/nomad-nodepool-apm
 build-and-upload/clean-nfs-cache:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/clean-nfs-cache
@@ -94,13 +92,30 @@ build-and-upload/%:
 
 .PHONY: copy-public-builds
 copy-public-builds:
+ifeq ($(PROVIDER),aws)
+	mkdir -p ./.kernels
+	mkdir -p ./.firecrackers
+	gsutil -m cp -r gs://e2b-prod-public-builds/kernels/* ./.kernels/
+	gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* ./.firecrackers/
+	aws s3 cp ./.kernels/ s3://${AWS_BUCKET_PREFIX}fc-kernels/ --recursive --profile ${AWS_PROFILE}
+	aws s3 cp ./.firecrackers/ s3://${AWS_BUCKET_PREFIX}fc-versions/ --recursive --profile ${AWS_PROFILE}
+	rm -rf ./.kernels
+	rm -rf ./.firecrackers
+else
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
+endif
 
 .PHONY: download-public-kernels
 download-public-kernels:
 	mkdir -p ./packages/fc-kernels
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* ./packages/fc-kernels/
+
+.PHONY: download-public-firecrackers
+download-public-firecrackers:
+	mkdir -p ./packages/fc-versions/builds/
+	gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* ./packages/fc-versions/builds/
+	find ./packages/fc-versions/builds/ -name firecracker -exec chmod +x {} \;
 
 .PHONY: generate
 generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate/shared generate-tests generate-mocks
@@ -120,12 +135,16 @@ generate-tests/%:
 migrate:
 	$(MAKE) -C packages/db migrate
 
-.PHONY: switch-env
-switch-env:
+.PHONY: set-env
+set-env:
 	@ touch .last_used_env
-	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ echo $(ENV) > .last_used_env
 	@ . ${ENV_FILE}
+
+.PHONY: switch-env
+switch-env:
+	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(MAKE) set-env ENV=$(ENV)
 	make -C iac/provider-gcp switch
 
 .PHONY: setup-ssh
@@ -151,14 +170,12 @@ connect-orchestrator:
 
 .PHONY: fmt
 fmt:
-	@./scripts/golangci-lint-install.sh "2.4.0"
 	golangci-lint fmt
 	terraform fmt -recursive
 
 .PHONY: lint
 lint:
-	@./scripts/golangci-lint-install.sh "2.4.0"
-	go work edit -json | jq -r '.Use[].DiskPath' | xargs -P 10 -I{} golangci-lint run {}/... --fix
+	go work edit -json | jq -r '.Use[].DiskPath' | xargs -P 4 -I{} golangci-lint run {}/... --fix
 
 .PHONY: generate-mocks
 generate-mocks:
@@ -171,3 +188,24 @@ tidy:
 .PHONY: local-infra
 local-infra:
 	docker compose --file ./packages/local-dev/docker-compose.yaml up --abort-on-container-failure
+
+
+# Migration: Detach old template-manager-system job from Terraform state
+# TODO: Remove after template-manager migration is complete
+.PHONY: migrate-template-manager-detach
+migrate-template-manager-detach:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-gcp migrate-template-manager-detach
+
+# TODO 2025-12-29: [ENG-3410] - Remove after migration period (14 days)
+define env_var_or_default
+$(if $(value $(strip $(1))),$($(strip $(1))),$(2))
+endef
+
+.PHONY: migrate-clusters-terraform
+migrate-clusters-terraform:
+	$(eval CLIENT_CLUSTER_SIZE := $(call env_var_or_default,CLIENT_CLUSTER_SIZE,1))
+
+	@echo "\nBUILD_CLUSTERS_CONFIG='{\"default\":{\"cluster_size\": $(call env_var_or_default,BUILD_CLUSTER_SIZE,1), \"machine\":{\"type\":\"$(BUILD_MACHINE_TYPE)\",\"min_cpu_platform\":\"$(call env_var_or_default,MIN_CPU_PLATFORM,"Intel Skylake")\"}, \"boot_disk\":{\"disk_type\":\"$(call env_var_or_default,BUILD_BOOT_DISK_TYPE,"pd-ssd")\",\"size_gb\":$(call env_var_or_default,BUILD_CLUSTER_ROOT_DISK_SIZE_GB,200)}, \"cache_disks\":{\"disk_type\":\"$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_TYPE,"local-ssd")\",\"size_gb\":$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_SIZE_GB,375),\"count\":$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_COUNT,3)}}}'" >> ${ENV_FILE}
+	@echo "CLIENT_CLUSTERS_CONFIG='{\"default\":{\"cluster_size\": $(CLIENT_CLUSTER_SIZE), \"autoscaler\": {\"size_max\": $(call env_var_or_default,CLIENT_CLUSTER_SIZE_MAX,$(CLIENT_CLUSTER_SIZE)), \"memory_target\": $(call env_var_or_default,CLIENT_CLUSTER_AUTOSCALING_MEMORY_TARGET,85), \"cpu_target\": $(call env_var_or_default,CLIENT_CLUSTER_AUTOSCALING_CPU_TARGET,0.6) }, \"machine\":{\"type\":\"$(CLIENT_MACHINE_TYPE)\",\"min_cpu_platform\":\"$(call env_var_or_default,MIN_CPU_PLATFORM,"Intel Skylake")\"}, \"boot_disk\":{\"disk_type\":\"$(call env_var_or_default,CLIENT_BOOT_DISK_TYPE,"pd-ssd")\",\"size_gb\":$(call env_var_or_default,CLIENT_CLUSTER_ROOT_DISK_SIZE_GB,300)}, \"cache_disks\":{\"disk_type\":\"$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_TYPE,"local-ssd")\",\"size_gb\":$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_SIZE_GB,375),\"count\":$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_COUNT,3)}}}'" >> ${ENV_FILE}
+	$(MAKE) -C iac/provider-gcp migrate-clusters-terraform

@@ -92,9 +92,23 @@ type EnvBuild struct {
 	EnvID              string
 	EnvdVersion        *string
 	ReadyCmd           *string
-	ClusterNodeID      string
+	ClusterNodeID      *string
 	Reason             types.BuildReason
 	Version            *string
+	CpuArchitecture    *string
+	CpuFamily          *string
+	CpuModel           *string
+	CpuModelName       *string
+	CpuFlags           []string
+}
+
+type EnvBuildAssignment struct {
+	ID        uuid.UUID
+	EnvID     string
+	BuildID   uuid.UUID
+	Tag       string
+	Source    string
+	CreatedAt pgtype.Timestamptz
 }
 
 type Snapshot struct {
@@ -162,6 +176,13 @@ type Tier struct {
 	MaxRamMb            int64
 	// The number of concurrent template builds the team can run
 	ConcurrentTemplateBuilds int64
+}
+
+type User struct {
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	ID        uuid.UUID
+	Email     string
 }
 
 type UsersTeam struct {

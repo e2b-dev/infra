@@ -78,6 +78,11 @@ type Slot struct {
 	hostCIDR string
 
 	hyperloopIP, hyperloopPort string
+
+	// TCP firewall ports for different traffic types
+	tcpFirewallHTTPPort  string // Port 80 traffic
+	tcpFirewallTLSPort   string // Port 443 traffic
+	tcpFirewallOtherPort string // All other traffic
 }
 
 func NewSlot(key string, idx int, config Config) (*Slot, error) {
@@ -135,6 +140,10 @@ func NewSlot(key string, idx int, config Config) (*Slot, error) {
 
 		hyperloopIP:   config.HyperloopIPAddress,
 		hyperloopPort: strconv.FormatUint(uint64(config.HyperloopProxyPort), 10),
+
+		tcpFirewallHTTPPort:  strconv.FormatUint(uint64(config.SandboxTCPFirewallHTTPPort), 10),
+		tcpFirewallTLSPort:   strconv.FormatUint(uint64(config.SandboxTCPFirewallTLSPort), 10),
+		tcpFirewallOtherPort: strconv.FormatUint(uint64(config.SandboxTCPFirewallOtherPort), 10),
 	}
 
 	return slot, nil
@@ -255,7 +264,8 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	))
 	defer span.End()
 
-	if e := network.GetEgress(); len(e.GetAllowedCidrs()) == 0 && len(e.GetDeniedCidrs()) == 0 {
+	egress := network.GetEgress()
+	if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
 		// Internet access is allowed by default.
 		return nil
 	}
@@ -270,14 +280,14 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 
 	err = n.Do(func(_ ns.NetNS) error {
 		for _, cidr := range network.GetEgress().GetAllowedCidrs() {
-			err = s.Firewall.AddAllowedCIDR(cidr)
+			err := s.Firewall.AddAllowedCIDR(cidr)
 			if err != nil {
 				return fmt.Errorf("error setting firewall rules: %w", err)
 			}
 		}
 
 		for _, cidr := range network.GetEgress().GetDeniedCidrs() {
-			err = s.Firewall.AddDeniedCIDR(cidr)
+			err := s.Firewall.AddDeniedCIDR(cidr)
 			if err != nil {
 				return fmt.Errorf("error setting firewall rules: %w", err)
 			}
@@ -309,7 +319,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		err := s.Firewall.ResetAllSets()
+		err := s.Firewall.Reset()
 		if err != nil {
 			return fmt.Errorf("error cleaning firewall rules: %w", err)
 		}

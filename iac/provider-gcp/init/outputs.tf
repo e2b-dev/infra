@@ -50,10 +50,6 @@ output "redis_tls_ca_base64_secret_version" {
   value = google_secret_manager_secret_version.redis_tls_ca_base64
 }
 
-output "redis_secure_cluster_url_secret_version" {
-  value = google_secret_manager_secret_version.redis_secure_cluster_url
-}
-
 output "loki_bucket_name" {
   value = google_storage_bucket.loki_storage_bucket.name
 }

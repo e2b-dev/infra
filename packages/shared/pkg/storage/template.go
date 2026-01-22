@@ -2,7 +2,6 @@ package storage
 
 import (
 	"fmt"
-	"os"
 )
 
 const (
@@ -16,18 +15,8 @@ const (
 	HeaderSuffix = ".header"
 )
 
-func HostEnvdPath() string {
-	if value := os.Getenv("HOST_ENVD_PATH"); value != "" {
-		return value
-	}
-
-	return "/fc-envd/envd"
-}
-
 type TemplateFiles struct {
-	BuildID            string `json:"build_id"`
-	KernelVersion      string `json:"kernel_version"`
-	FirecrackerVersion string `json:"firecracker_version"`
+	BuildID string `json:"build_id"`
 }
 
 // Key for the cache. Unique for template-build pair.

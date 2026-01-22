@@ -13,6 +13,7 @@ import (
 )
 
 func TestSandboxRefresh(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	testCases := []struct {
 		name   string
@@ -41,6 +42,7 @@ func TestSandboxRefresh(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(int32(tc.initialDuration)))
 
 			// Get initial sandbox details
@@ -71,9 +73,32 @@ func TestSandboxRefresh(t *testing.T) {
 }
 
 func TestSandboxRefresh_NotFound(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	timeoutResp, err := c.PostSandboxesSandboxIDRefreshesWithResponse(t.Context(), "nonexistent-sandbox-id", api.PostSandboxesSandboxIDRefreshesJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, timeoutResp.StatusCode())
+}
+
+func TestSandboxRefresh_CrossTeamAccess(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+	db := setup.GetTestDBClient(t)
+
+	// Create a sandbox with the default team's API key
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+
+	// Create a second team with a different API key
+	foreignUserID := utils.CreateUser(t, db)
+	foreignTeamID := utils.CreateTeamWithUser(t, db, "foreign-team-refresh", foreignUserID.String())
+	foreignAPIKey := utils.CreateAPIKey(t, t.Context(), c, foreignUserID.String(), foreignTeamID)
+
+	// Try to refresh the first team's sandbox using the second team's API key
+	duration := 120
+	refreshResp, err := c.PostSandboxesSandboxIDRefreshesWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDRefreshesJSONRequestBody{
+		Duration: &duration,
+	}, setup.WithAPIKey(foreignAPIKey))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, refreshResp.StatusCode(), "Should return 403 Forbidden when trying to refresh a sandbox owned by a different team")
 }

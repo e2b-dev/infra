@@ -6,22 +6,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // DeleteTemplatesTemplateID serves to delete a template (e.g. in CLI)
 func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	ctx := c.Request.Context()
 
-	cleanedAliasOrTemplateID, err := id.CleanTemplateID(aliasOrTemplateID)
+	cleanedAliasOrTemplateID, _, err := id.ParseTemplateIDOrAliasWithTag(aliasOrTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", aliasOrTemplateID))
 
@@ -30,25 +31,25 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	builds, err := a.sqlcDB.GetTemplateBuildsByIdOrAlias(ctx, cleanedAliasOrTemplateID)
+	// First check if the template exists.
+	template, err := a.sqlcDB.GetTemplateByIdOrAlias(ctx, cleanedAliasOrTemplateID)
 	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			telemetry.ReportError(ctx, "template not found", nil, telemetry.WithTemplateID(cleanedAliasOrTemplateID))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", aliasOrTemplateID))
+
+			return
+		}
+
 		telemetry.ReportError(ctx, "failed to get template", fmt.Errorf("failed to get template: %w", err), telemetry.WithTemplateID(aliasOrTemplateID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
 
 		return
 	}
 
-	if len(builds) == 0 {
-		telemetry.ReportError(ctx, "template not found", nil, telemetry.WithTemplateID(aliasOrTemplateID))
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
+	templateID := template.ID
 
-		return
-	}
-
-	templateID := builds[0].Env.ID
-	teamUUID := builds[0].Env.TeamID
-	teamID := teamUUID.String()
-	team, apiErr := a.GetTeam(ctx, c, &teamID)
+	team, apiErr := a.GetTeam(ctx, c, sharedUtils.ToPtr(template.TeamID.String()))
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
@@ -62,7 +63,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.WithTemplateID(templateID),
 	)
 
-	if team.ID != teamUUID {
+	if team.ID != template.TeamID {
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", aliasOrTemplateID))
 		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(templateID))
 
@@ -85,6 +86,15 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
+	// Get exclusive builds for cleanup (builds only assigned to this template).
+	builds, err := a.sqlcDB.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
+	if err != nil {
+		telemetry.ReportError(ctx, "failed to get exclusive builds", fmt.Errorf("failed to get exclusive builds: %w", err), telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template builds")
+
+		return
+	}
+
 	err = a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TemplateID: templateID,
 		TeamID:     team.ID,
@@ -96,23 +106,22 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	// get all build ids
 	buildIds := make([]template_manager.DeleteBuild, 0)
 	for _, build := range builds {
 		// Skip if there was no build
-		if build.BuildID == nil || build.ClusterNodeID == nil {
+		if build.ClusterNodeID == nil {
 			continue
 		}
 
 		buildIds = append(buildIds, template_manager.DeleteBuild{
-			BuildID:    *build.BuildID,
-			TemplateID: build.Env.ID,
+			BuildID:    build.BuildID,
+			TemplateID: templateID,
 			ClusterID:  utils.WithClusterFallback(team.ClusterID),
 			NodeID:     *build.ClusterNodeID,
 		})
 	}
 
-	// delete all builds
+	// Delete all builds.
 	err = a.templateManager.DeleteBuilds(ctx, buildIds)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when deleting template files from storage", err)
@@ -120,15 +129,15 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.ReportEvent(ctx, "deleted template from storage")
 	}
 
-	a.templateCache.Invalidate(templateID)
+	a.templateCache.InvalidateAllTags(templateID)
 
 	telemetry.ReportEvent(ctx, "deleted template from db")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "deleted environment", properties.Set("environment", templateID))
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "deleted environment", properties.Set("environment", templateID))
 
-	zap.L().Info("Deleted template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
+	logger.L().Info(ctx, "Deleted template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }

@@ -64,10 +64,8 @@ locals {
         request_path = var.docker_reverse_proxy_port.health_path
         port         = var.docker_reverse_proxy_port.port
       }
-      # TODO: (2025-10-01) - this should be only api instance group, but keeping this here for a migration period (at least until 2025-10-15)
       groups = [
         { group = var.api_instance_group },
-        { group = var.build_instance_group },
       ]
     }
     nomad = {
@@ -80,21 +78,8 @@ locals {
         request_path = "/v1/status/peers"
         port         = var.nomad_port
       }
-      groups = [{ group = var.server_instance_group }]
-    }
-    consul = {
-      protocol                        = "HTTP"
-      port                            = 80
-      port_name                       = "consul"
-      timeout_sec                     = 10
-      connection_draining_timeout_sec = 1
-      http_health_check = {
-        request_path = "/v1/status/peers"
-        port         = 8500
-      }
-      groups = [
-        { group = var.server_instance_group }
-      ]
+      // TODO - 2026-01-21: To be removed after migration period (at least 1 weeks) - 2026-01-28
+      groups = [{ group = var.server_instance_group }, { group = var.server_regional_instance_group }]
     }
   }
   health_checked_backends = { for backend_index, backend_value in local.backends : backend_index => backend_value }
@@ -265,11 +250,6 @@ resource "google_compute_url_map" "orch_map" {
   }
 
   host_rule {
-    hosts        = concat(["consul.${var.domain_name}"], [for d in var.additional_domains : "consul.${d}"])
-    path_matcher = "consul-paths"
-  }
-
-  host_rule {
     hosts        = concat(["*.${var.domain_name}"], [for d in var.additional_domains : "*.${d}"])
     path_matcher = "session-paths"
   }
@@ -312,11 +292,6 @@ resource "google_compute_url_map" "orch_map" {
         }
       }
     }
-  }
-
-  path_matcher {
-    name            = "consul-paths"
-    default_service = google_compute_backend_service.default["consul"].self_link
   }
 }
 
@@ -457,6 +432,7 @@ resource "google_compute_firewall" "default-hc" {
 
   dynamic "allow" {
     for_each = local.health_checked_backends
+
     content {
       protocol = "tcp"
       ports    = [allow.value["http_health_check"].port]
@@ -604,7 +580,7 @@ resource "google_compute_security_policy_rule" "api-throttling-ip" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 20000 : 20000
+      count        = 20000
       interval_sec = 30
     }
   }
@@ -662,25 +638,12 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 40000 : 40000
+      count        = 60000
       interval_sec = 60
     }
   }
 
   description = "Requests to sandboxes from IP address"
-}
-
-resource "google_compute_security_policy_rule" "disable-consul" {
-  security_policy = google_compute_security_policy.default["consul"].name
-  action          = "deny(403)"
-  priority        = "1"
-  description     = "Disable all requests to Consul"
-  match {
-    versioned_expr = "SRC_IPS_V1"
-    config {
-      src_ip_ranges = ["*"]
-    }
-  }
 }
 
 resource "google_compute_security_policy" "disable-bots-log-collector" {

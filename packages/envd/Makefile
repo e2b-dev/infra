@@ -3,13 +3,19 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 
 BUILD := $(shell git rev-parse --short HEAD)
 LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
+AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 
 .PHONY: init
 init:
 	brew install protobuf
 
 upload:
-	./upload.sh $(GCP_PROJECT_ID)
+	chmod +x bin/envd
+ifeq ($(PROVIDER),aws)
+	aws s3 cp ./bin/envd "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp bin/envd "gs://${GCP_PROJECT_ID}-fc-env-pipeline/envd"
+endif
 
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o bin/envd ${LDFLAGS}
@@ -23,6 +29,8 @@ start-docker:
 	docker run \
 	--name envd \
 	--platform linux/amd64 \
+	--privileged \
+	--cgroupns=host \
 	-p 49983:49983 \
 	-p 2345:2345 \
 	-p 9999:9999 \

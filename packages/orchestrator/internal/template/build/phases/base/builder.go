@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,13 +33,13 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
 	rootfsBuildFileName = "rootfs.filesystem.build"
-	rootfsProvisionLink = "rootfs.filesystem.build.provision"
 
 	baseLayerTimeout = 10 * time.Minute
 
@@ -50,7 +51,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type BaseBuilder struct {
 	buildcontext.BuildContext
 
-	logger *zap.Logger
+	logger logger.Logger
 	proxy  *proxy.SandboxProxy
 
 	sandboxFactory      *sandbox.Factory
@@ -58,6 +59,7 @@ type BaseBuilder struct {
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 	featureFlags        *featureflags.Client
+	sandboxes           *sandbox.Map
 
 	layerExecutor *layer.LayerExecutor
 	index         cache.Index
@@ -67,7 +69,7 @@ type BaseBuilder struct {
 func New(
 	buildContext buildcontext.BuildContext,
 	featureFlags *featureflags.Client,
-	logger *zap.Logger,
+	logger logger.Logger,
 	proxy *proxy.SandboxProxy,
 	templateStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
@@ -76,6 +78,7 @@ func New(
 	index cache.Index,
 	metrics *metrics.BuildMetrics,
 	sandboxFactory *sandbox.Factory,
+	sandboxes *sandbox.Map,
 ) *BaseBuilder {
 	return &BaseBuilder{
 		BuildContext: buildContext,
@@ -88,6 +91,7 @@ func New(
 		dockerhubRepository: dockerhubRepository,
 		sandboxFactory:      sandboxFactory,
 		featureFlags:        featureFlags,
+		sandboxes:           sandboxes,
 
 		layerExecutor: layerExecutor,
 		index:         index,
@@ -127,7 +131,7 @@ func (bb *BaseBuilder) Metadata() phases.PhaseMeta {
 
 func (bb *BaseBuilder) Build(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	_ string,
 	_ phases.LayerResult,
 	currentLayer phases.LayerResult,
@@ -144,7 +148,7 @@ func (bb *BaseBuilder) Build(
 		currentLayer.Hash,
 	)
 	if err != nil {
-		return phases.LayerResult{}, phases.NewPhaseBuildError(bb, err)
+		return phases.LayerResult{}, err
 	}
 
 	return phases.LayerResult{
@@ -156,11 +160,11 @@ func (bb *BaseBuilder) Build(
 
 func (bb *BaseBuilder) buildLayerFromOCI(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	baseMetadata metadata.Template,
 	hash string,
 ) (metadata.Template, error) {
-	templateBuildDir := filepath.Join(bb.BuilderConfig.TemplatesDir, bb.Template.BuildID)
+	templateBuildDir := filepath.Join(bb.BuilderConfig.TemplatesDir, baseMetadata.Template.BuildID)
 	err := os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error creating template build directory: %w", err)
@@ -168,37 +172,32 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	defer func() {
 		err := os.RemoveAll(templateBuildDir)
 		if err != nil {
-			bb.logger.Error("Error while removing template build directory", zap.Error(err))
+			bb.logger.Error(ctx, "Error while removing template build directory", zap.Error(err))
 		}
 	}()
 
 	// Created here to be able to pass it to CreateSandbox for populating COW cache
 	rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
 
-	rootfs, memfile, envsImg, err := constructLayerFilesFromOCI(ctx, userLogger, bb.BuildContext, baseMetadata.Template.BuildID, bb.artifactRegistry, bb.dockerhubRepository, rootfsPath)
+	rootfs, memfile, envsImg, err := constructLayerFilesFromOCI(ctx, userLogger, bb.BuildContext, bb.Metadata(), baseMetadata.Template.BuildID, bb.artifactRegistry, bb.dockerhubRepository, rootfsPath)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error building environment: %w", err)
 	}
 
-	// Env variables from the Docker image
-	baseMetadata.Context.EnvVars = oci.ParseEnvs(envsImg.Env)
-
-	cacheFiles, err := baseMetadata.Template.CacheFiles(bb.BuildContext.BuilderConfig)
+	cacheFiles, err := storage.TemplateFiles{BuildID: baseMetadata.Template.BuildID}.CacheFiles(bb.BuildContext.BuilderConfig.StorageConfig)
 	if err != nil {
+		err = errors.Join(err, rootfs.Close(), memfile.Close())
+
 		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}
 	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
 	defer localTemplate.Close(ctx)
 
+	// Env variables from the Docker image
+	baseMetadata.Context.EnvVars = oci.ParseEnvs(envsImg.Env)
+
 	// Provision sandbox with systemd and other vital parts
-	userLogger.Info("Provisioning sandbox template")
-	// Just a symlink to the rootfs build file, so when the COW cache deletes the underlying file (here symlink),
-	// it will not delete the rootfs file. We use the rootfs again later on to start the sandbox template.
-	rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
-	err = os.Symlink(rootfsPath, rootfsProvisionPath)
-	if err != nil {
-		return metadata.Template{}, fmt.Errorf("error creating provision rootfs: %w", err)
-	}
+	userLogger.Info(ctx, "Provisioning sandbox template")
 
 	baseSbxConfig := sandbox.Config{
 		Vcpu:      bb.Config.VCpuCount,
@@ -211,6 +210,11 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,
 		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      bb.Config.KernelVersion,
+			FirecrackerVersion: bb.Config.FirecrackerVersion,
+		},
 	}
 	err = bb.provisionSandbox(
 		ctx,
@@ -221,12 +225,8 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
-		fc.FirecrackerVersions{
-			KernelVersion:      bb.Template.KernelVersion,
-			FirecrackerVersion: bb.Template.FirecrackerVersion,
-		},
 		localTemplate,
-		rootfsProvisionPath,
+		rootfsPath,
 		provisionLogPrefix,
 	)
 	if err != nil {
@@ -236,14 +236,14 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Check the rootfs filesystem corruption
 	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
 	if err != nil {
-		zap.L().Error("provisioned filesystem ext4 integrity",
+		logger.L().Error(ctx, "provisioned filesystem ext4 integrity",
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
 
 		return metadata.Template{}, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
 	}
-	zap.L().Debug("provisioned filesystem ext4 integrity",
+	logger.L().Debug(ctx, "provisioned filesystem ext4 integrity",
 		zap.String("result", ext4Check),
 	)
 
@@ -253,17 +253,13 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	}
 
 	// Create sandbox for building template
-	userLogger.Debug("Creating base sandbox template layer")
+	userLogger.Debug(ctx, "Creating base sandbox template layer")
 
-	sandboxCreator := layer.NewCreateSandboxFromCache(
+	sandboxCreator := layer.NewCreateSandbox(
 		baseSbxConfig,
 		bb.sandboxFactory,
 		baseLayerTimeout,
-		fc.FirecrackerVersions{
-			KernelVersion:      bb.Template.KernelVersion,
-			FirecrackerVersion: bb.Template.FirecrackerVersion,
-		},
-		rootfsPath,
+		layer.WithRootfsCachePath(rootfsPath),
 	)
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
@@ -320,7 +316,11 @@ func (bb *BaseBuilder) Layer(
 		// If the template is built from another template, use its metadata
 		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.GetBuildID())
 		if err != nil {
-			return phases.LayerResult{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
+			if errors.Is(err, storage.ErrObjectNotExist) {
+				return phases.LayerResult{}, phases.NewPhaseBuildError(bb.Metadata(), fmt.Errorf("error getting base template, you may need to rebuild it first"))
+			}
+
+			return phases.LayerResult{}, fmt.Errorf("error getting base template: %w", err)
 		}
 
 		// From template is always cached, never needs to be built
@@ -343,10 +343,10 @@ func (bb *BaseBuilder) Layer(
 
 		meta := metadata.Template{
 			Version: metadata.CurrentVersion,
-			Template: storage.TemplateFiles{
+			Template: metadata.TemplateMetadata{
 				BuildID:            uuid.New().String(),
-				KernelVersion:      bb.Template.KernelVersion,
-				FirecrackerVersion: bb.Template.FirecrackerVersion,
+				KernelVersion:      bb.Config.KernelVersion,
+				FirecrackerVersion: bb.Config.FirecrackerVersion,
 			},
 			Context:      cmdMeta,
 			FromImage:    &bb.Config.FromImage,
@@ -367,14 +367,14 @@ func (bb *BaseBuilder) Layer(
 
 		bm, err := bb.index.LayerMetaFromHash(ctx, hash)
 		if err != nil {
-			bb.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+			bb.logger.Info(ctx, "base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 
 			return notCachedResult, nil
 		}
 
 		meta, err = bb.index.Cached(ctx, bm.Template.BuildID)
 		if err != nil {
-			zap.L().Info("base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+			logger.L().Info(ctx, "base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 
 			return notCachedResult, nil
 		}

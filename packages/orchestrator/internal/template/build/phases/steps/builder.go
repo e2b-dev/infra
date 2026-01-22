@@ -25,7 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const layerTimeout = time.Hour
@@ -38,7 +38,7 @@ type StepBuilder struct {
 	stepNumber int
 	step       *templatemanager.TemplateStep
 
-	logger              *zap.Logger
+	logger              logger.Logger
 	defaultLoggingLevel zapcore.Level
 	proxy               *proxy.SandboxProxy
 
@@ -52,7 +52,7 @@ type StepBuilder struct {
 func New(
 	buildContext buildcontext.BuildContext,
 	sandboxFactory *sandbox.Factory,
-	logger *zap.Logger,
+	logger logger.Logger,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
 	commandExecutor *commands.CommandExecutor,
@@ -112,27 +112,27 @@ func (sb *StepBuilder) Layer(
 	if !forceBuild {
 		m, err := sb.index.LayerMetaFromHash(ctx, hash)
 		if err != nil {
-			sb.logger.Info("layer not found in cache, building new step layer", zap.Error(err), zap.String("hash", hash))
+			sb.logger.Info(ctx, "layer not found in cache, building new step layer", zap.Error(err), zap.String("hash", hash))
 		} else {
 			// Check if the layer is cached
 			meta, err := sb.index.Cached(ctx, m.Template.BuildID)
-			if err != nil {
-				zap.L().Info("layer not cached, building new layer", zap.Error(err), zap.String("hash", hash))
-			} else {
+			if err == nil {
 				return phases.LayerResult{
 					Metadata: meta,
 					Cached:   true,
 					Hash:     hash,
 				}, nil
 			}
+
+			logger.L().Info(ctx, "layer not cached, building new layer", zap.Error(err), zap.String("hash", hash))
 		}
 	}
 
 	finalMetadata := sourceLayer.Metadata
-	finalMetadata.Template = storage.TemplateFiles{
+	finalMetadata.Template = metadata.TemplateMetadata{
 		BuildID:            uuid.NewString(),
-		KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
-		FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
+		KernelVersion:      sb.Config.KernelVersion,
+		FirecrackerVersion: sb.Config.FirecrackerVersion,
 	}
 
 	return phases.LayerResult{
@@ -144,7 +144,7 @@ func (sb *StepBuilder) Layer(
 
 func (sb *StepBuilder) Build(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	prefix string,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
@@ -166,6 +166,11 @@ func (sb *StepBuilder) Build(
 		Envd: sandbox.EnvdMetadata{
 			Version: sb.EnvdVersion,
 		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      sb.Config.KernelVersion,
+			FirecrackerVersion: sb.Config.FirecrackerVersion,
+		},
 	}
 
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
@@ -175,10 +180,6 @@ func (sb *StepBuilder) Build(
 			sbxConfig,
 			sb.sandboxFactory,
 			layerTimeout,
-			fc.FirecrackerVersions{
-				KernelVersion:      sb.Template.KernelVersion,
-				FirecrackerVersion: sb.Template.FirecrackerVersion,
-			},
 		)
 	} else {
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig, sb.sandboxFactory, layerTimeout)
@@ -195,7 +196,7 @@ func (sb *StepBuilder) Build(
 			meta.Context,
 		)
 		if err != nil {
-			return metadata.Template{}, phases.NewPhaseBuildError(sb, err)
+			return metadata.Template{}, phases.NewPhaseBuildError(sb.Metadata(), err)
 		}
 
 		err = sandboxtools.SyncChangesToDisk(
@@ -212,7 +213,7 @@ func (sb *StepBuilder) Build(
 		return meta, nil
 	})
 
-	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
+	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template.BuildID)
 
 	meta, err := sb.layerExecutor.BuildLayer(
 		ctx,

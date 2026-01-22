@@ -13,8 +13,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
@@ -174,15 +174,20 @@ VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 	}
 
 	oldBuildTime := time.Now().Add(-time.Hour)
+	// Important: Insert builds in chronological order (oldest first, newest last)
+	// because the trigger on env_builds creates env_build_assignments with CURRENT_TIMESTAMP.
+	// The query uses ORDER BY eba.created_at DESC to get the latest build,
+	// so the last inserted build will be selected.
 	builds := []buildData{
-		{
-			id:        data.BuildID,
-			createdAt: nil,
-		},
-		// An older build, so we have multiple builds
+		// An older build, so we have multiple builds - inserted FIRST
 		{
 			id:        uuid.New(),
 			createdAt: &oldBuildTime,
+		},
+		// Primary build - inserted LAST so it has the latest trigger-created timestamp
+		{
+			id:        data.BuildID,
+			createdAt: nil,
 		},
 	}
 
@@ -194,7 +199,7 @@ INSERT INTO env_builds (
 	total_disk_size_mb, kernel_version, firecracker_version, envd_version,
 	cluster_node_id, version, created_at, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP)
-`, build.id, data.EnvID, "FROM e2bdev/base:latest", envbuild.StatusUploaded,
+`, build.id, data.EnvID, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
 				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_d990331", "0.2.4",
 				"integration-test-node", templates.TemplateV1Version, build.createdAt)
 		} else {
@@ -204,7 +209,7 @@ INSERT INTO env_builds (
 	total_disk_size_mb, kernel_version, firecracker_version, envd_version,
 	cluster_node_id, version, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
-`, build.id, data.EnvID, "FROM e2bdev/base:latest", envbuild.StatusUploaded,
+`, build.id, data.EnvID, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
 				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_d990331", "0.2.4",
 				"integration-test-node", templates.TemplateV1Version)
 		}

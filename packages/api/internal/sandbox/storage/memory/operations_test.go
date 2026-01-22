@@ -31,6 +31,8 @@ func createTestSandbox() *memorySandbox {
 
 // Test basic state transitions
 func TestStartRemoving_BasicTransitions(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		fromState   sandbox.State
@@ -48,6 +50,8 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			sbx := createTestSandbox()
 			sbx._data.State = tt.fromState
 			ctx := t.Context()
@@ -70,13 +74,14 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 				assert.False(t, alreadyDone)
 				assert.NotNil(t, finish)
 				assert.Equal(t, tt.expState, sbx.State()) // State changed immediately
-				finish(nil)                               // Complete the transition
+				finish(ctx, nil)                          // Complete the transition
 			}
 		})
 	}
 }
 
 func TestStartRemoving_PauseThenKill(t *testing.T) {
+	t.Parallel()
 	sbx := createTestSandbox()
 	ctx := t.Context()
 
@@ -97,7 +102,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		// The state should still be Paused
 		assert.Equal(t, sandbox.StatePausing, sbx.State())
-		finish(nil)
+		finish(ctx, nil)
 	}()
 
 	// Meanwhile, another request tries to kill the sandbox
@@ -115,12 +120,14 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	assert.Equal(t, sandbox.StateKilling, sbx.State())
 
 	// Complete the kill operation
-	finish2(nil)
+	finish2(ctx, nil)
 	assert.Equal(t, sandbox.StateKilling, sbx.State())
 }
 
 // Test concurrent requests to transition to the same state (idempotency)
 func TestStartRemoving_ConcurrentSameState(t *testing.T) {
+	t.Parallel()
+
 	sbx := createTestSandbox()
 	ctx := t.Context()
 
@@ -143,7 +150,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 				} else {
 					// We got to perform the transition
 					time.Sleep(10 * time.Millisecond)
-					finish(nil)
+					finish(ctx, nil)
 					results <- struct {
 						alreadyDone bool
 						worked      bool
@@ -180,6 +187,8 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 
 // Test transition fails and subsequent request handles it
 func TestStartRemoving_Error(t *testing.T) {
+	t.Parallel()
+
 	sbx := createTestSandbox()
 	ctx := t.Context()
 
@@ -192,7 +201,7 @@ func TestStartRemoving_Error(t *testing.T) {
 	// Start a concurrent request that will wait for the first transition
 	var alreadyDone2 bool
 	var err2 error
-	var finish2 func(error)
+	var finish2 func(context.Context, error)
 	completed := make(chan bool)
 
 	go func() {
@@ -206,7 +215,7 @@ func TestStartRemoving_Error(t *testing.T) {
 
 	// Complete first transition with error
 	failureErr := errors.New("network timeout")
-	finish1(failureErr)
+	finish1(ctx, failureErr)
 
 	// Wait for second request to complete
 	<-completed
@@ -234,6 +243,8 @@ func TestStartRemoving_Error(t *testing.T) {
 
 // Test context timeout during wait
 func TestStartRemoving_ContextTimeout(t *testing.T) {
+	t.Parallel()
+
 	sbx := createTestSandbox()
 
 	// Start a long-running transition
@@ -254,14 +265,15 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 	require.Error(t, err2)
 	assert.Contains(t, err2.Error(), context.DeadlineExceeded.Error())
 	assert.Greater(t, elapsed, 15*time.Millisecond)
-	assert.Less(t, elapsed, 30*time.Millisecond)
+	assert.Less(t, elapsed, 100*time.Millisecond)
 
 	// Clean up
-	finish1(nil)
+	finish1(ctx, nil)
 	assert.Equal(t, sandbox.StatePausing, sbx.State())
 }
 
 func TestWaitForStateChange_NoTransition(t *testing.T) {
+	t.Parallel()
 	sbx := createTestSandbox()
 	ctx := t.Context()
 
@@ -275,6 +287,7 @@ func TestWaitForStateChange_NoTransition(t *testing.T) {
 }
 
 func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
+	t.Parallel()
 	sbx := createTestSandbox()
 	ctx := t.Context()
 
@@ -297,7 +310,7 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Complete the transition
-	finish(nil)
+	finish(ctx, nil)
 
 	// Wait should complete
 	<-alreadyDone
@@ -305,6 +318,7 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 }
 
 func TestWaitForStateChange_WaitWithError(t *testing.T) {
+	t.Parallel()
 	sbx := createTestSandbox()
 	ctx := t.Context()
 
@@ -328,7 +342,7 @@ func TestWaitForStateChange_WaitWithError(t *testing.T) {
 
 	// Complete the transition with error
 	testErr := assert.AnError
-	finish(testErr)
+	finish(ctx, testErr)
 
 	// Wait should complete with error
 	<-alreadyDone
@@ -337,6 +351,7 @@ func TestWaitForStateChange_WaitWithError(t *testing.T) {
 }
 
 func TestWaitForStateChange_ContextCancellation(t *testing.T) {
+	t.Parallel()
 	sbx := createTestSandbox()
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -367,10 +382,11 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	assert.Equal(t, context.Canceled, waitErr)
 
 	// Clean up - complete the transition
-	finish(nil)
+	finish(ctx, nil)
 }
 
 func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
+	t.Parallel()
 	sbx := createTestSandbox()
 	ctx := t.Context()
 
@@ -397,7 +413,7 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Complete the transition
-	finish(nil)
+	finish(ctx, nil)
 
 	// Wait for all waiters to complete
 	wg.Wait()
@@ -410,6 +426,8 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 
 // Stress test with random operations
 func TestConcurrency_StressTest(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("Skipping stress test in short mode")
 	}
@@ -446,7 +464,7 @@ func TestConcurrency_StressTest(t *testing.T) {
 						alreadyDone, finish, err := startRemoving(t.Context(), sbx, stateAction)
 						if err == nil && (finish != nil || alreadyDone) {
 							if finish != nil {
-								finish(nil)
+								finish(t.Context(), nil)
 							}
 							atomic.AddUint64(&opsCompleted, 1)
 						} else if err != nil {

@@ -22,7 +22,7 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 		// When building from template, use the base template metadata
 		baseSource = fmt.Sprintf("template:%s", bb.Config.FromTemplate.GetBuildID())
 	} else {
-		// Note: When "latest" tag is used, the cached version might become ambiguous (not always latest)
+		// Note: When "default" tag is used, the cached version might become ambiguous (not always default)
 		// To update it now, you need to force the rebuild of the template, which will update this layer for all templates
 		// in the team. This is okay for now, as the cache is not shared between teams, but it might need to be changed
 		// when global caches are implemented.
@@ -32,13 +32,13 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 	}
 
 	provisionVersion := provisionScriptFile
-	if val, err := bb.featureFlags.IntFlag(
+	if val := bb.featureFlags.IntFlag(
 		ctx,
 		featureflags.BuildProvisionVersion,
 		featureflags.TemplateContext(bb.Config.TemplateID),
 		featureflags.TeamContext(bb.Config.TeamID),
-	// for dev environments (fallback value), use the provision script hash
-	); val != featureflags.BuildProvisionVersion.Fallback() && err == nil {
+		// for dev environments (fallback value), use the provision script hash
+	); val != featureflags.BuildProvisionVersion.Fallback() {
 		provisionVersion = strconv.FormatInt(int64(val), 10)
 	}
 

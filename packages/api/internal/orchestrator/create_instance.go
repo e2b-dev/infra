@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -21,8 +22,10 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -39,7 +42,18 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 
 	// Copy network configuration if provided
 	if network != nil && network.Egress != nil {
-		orchNetwork.Egress.AllowedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.AllowedAddresses)
+		// Split allowed addresses into CIDRs/IPs and domains for the orchestrator
+		allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(network.Egress.AllowedAddresses)
+
+		// If allowed domain is provided, add the default nameserver to the allowed addresses
+		// This is to ensure that the sandbox can resolve the domain name to the IP address
+		if len(allowedDomains) > 0 {
+			allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
+		}
+
+		orchNetwork.Egress.AllowedCidrs = sandbox_network.AddressStringsToCIDRs(allowedAddresses)
+		orchNetwork.Egress.AllowedDomains = allowedDomains
+
 		orchNetwork.Egress.DeniedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.DeniedAddresses)
 	}
 
@@ -55,6 +69,16 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	return orchNetwork
+}
+
+func getFirecrackerVersion(ctx context.Context, featureFlags *feature_flags.Client, version semver.Version, fallback string) string {
+	firecrackerVersions := featureFlags.JSONFlag(ctx, feature_flags.FirecrackerVersions).AsValueMap()
+	fcVersion, ok := firecrackerVersions.Get(fmt.Sprintf("v%d.%d", version.Major(), version.Minor())).AsOptionalString().Get()
+	if !ok {
+		return fallback
+	}
+
+	return fcVersion
 }
 
 func (o *Orchestrator) CreateSandbox(
@@ -88,8 +112,6 @@ func (o *Orchestrator) CreateSandbox(
 	if err != nil {
 		var limitErr *sandbox.LimitExceededError
 
-		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
-
 		switch {
 		case errors.As(err, &limitErr):
 			return sandbox.Sandbox{}, &api.APIError{
@@ -100,7 +122,7 @@ func (o *Orchestrator) CreateSandbox(
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
 			}
 		default:
-			zap.L().Error("failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
+			logger.L().Error(ctx, "failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
 
 			return sandbox.Sandbox{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
@@ -111,11 +133,11 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	if waitForStart != nil {
-		zap.L().Info("sandbox is already being started, waiting for it to be ready", logger.WithSandboxID(sandboxID))
+		logger.L().Info(ctx, "sandbox is already being started, waiting for it to be ready", logger.WithSandboxID(sandboxID))
 
 		sbx, err = waitForStart(ctx)
 		if err != nil {
-			zap.L().Warn("Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
+			logger.L().Warn(ctx, "Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 			var apiErr *api.APIError
 			if errors.As(err, &apiErr) {
@@ -143,9 +165,9 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}()
 
-	features, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
+	fcSemver, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to get features for firecracker version '%s': %w", build.FirecrackerVersion, err)
+		errMsg := fmt.Errorf("failed to get fcSemver for firecracker fcSemver '%s': %w", build.FirecrackerVersion, err)
 
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -154,7 +176,9 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
-	telemetry.ReportEvent(ctx, "Got FC version info")
+	hasHugePages := fcSemver.HasHugePages()
+	firecrackerVersion := getFirecrackerVersion(ctx, o.featureFlagsClient, fcSemver.Version(), build.FirecrackerVersion)
+	telemetry.ReportEvent(ctx, "Got FC info")
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
@@ -195,13 +219,13 @@ func (o *Orchestrator) CreateSandbox(
 			SandboxId:           sandboxID,
 			ExecutionId:         executionID,
 			KernelVersion:       build.KernelVersion,
-			FirecrackerVersion:  build.FirecrackerVersion,
+			FirecrackerVersion:  firecrackerVersion,
 			EnvdVersion:         *build.EnvdVersion,
 			Metadata:            metadata,
 			EnvVars:             envVars,
 			EnvdAccessToken:     envdAuthToken,
 			MaxSandboxLength:    team.Limits.MaxLengthHours,
-			HugePages:           features.HasHugePages(),
+			HugePages:           hasHugePages,
 			RamMb:               build.RamMb,
 			Vcpu:                build.Vcpu,
 			Snapshot:            isResume,
@@ -229,11 +253,8 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := utils.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	algorithm := o.getPlacementAlgorithm(ctx)
-	node, err = placement.PlaceSandbox(ctx, algorithm, clusterNodes, node, sbxRequest)
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, machineinfo.FromDB(build))
 	if err != nil {
-		telemetry.ReportError(ctx, "failed to place sandbox", err)
-
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to place sandbox",
@@ -276,7 +297,7 @@ func (o *Orchestrator) CreateSandbox(
 		*build.TotalDiskSizeMb,
 		build.RamMb,
 		build.KernelVersion,
-		build.FirecrackerVersion,
+		firecrackerVersion,
 		*build.EnvdVersion,
 		node.ID,
 		node.ClusterID,
@@ -299,7 +320,7 @@ func (o *Orchestrator) CreateSandbox(
 		go func() {
 			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.StateActionKill)
 			if killErr != nil {
-				zap.L().Error("Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
+				logger.L().Error(ctx, "Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
 			}
 		}()
 

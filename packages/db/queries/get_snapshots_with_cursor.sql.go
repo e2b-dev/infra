@@ -14,7 +14,7 @@ import (
 )
 
 const getSnapshotsWithCursor = `-- name: GetSnapshotsWithCursor :many
-SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, s.origin_node_id, s.allow_internet_access, s.auto_pause, s.team_id, s.config, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version
+SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, s.origin_node_id, s.allow_internet_access, s.auto_pause, s.team_id, s.config, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags
 FROM "public"."snapshots" s
 LEFT JOIN LATERAL (
     SELECT ARRAY_AGG(alias ORDER BY alias) AS aliases
@@ -22,12 +22,14 @@ LEFT JOIN LATERAL (
     WHERE env_id = s.base_env_id
 ) ea ON TRUE
 JOIN LATERAL (
-    SELECT eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version
-    FROM "public"."env_builds" eb
+    SELECT eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags
+    FROM "public"."env_build_assignments" eba
+    JOIN "public"."env_builds" eb ON eb.id = eba.build_id
     WHERE
-        eb.env_id = s.env_id
+        eba.env_id = s.env_id
+        AND eba.tag = 'default'
         AND eb.status = 'success'
-    ORDER BY eb.created_at DESC
+    ORDER BY eba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
 WHERE
@@ -109,6 +111,11 @@ func (q *Queries) GetSnapshotsWithCursor(ctx context.Context, arg GetSnapshotsWi
 			&i.EnvBuild.ClusterNodeID,
 			&i.EnvBuild.Reason,
 			&i.EnvBuild.Version,
+			&i.EnvBuild.CpuArchitecture,
+			&i.EnvBuild.CpuFamily,
+			&i.EnvBuild.CpuModel,
+			&i.EnvBuild.CpuModelName,
+			&i.EnvBuild.CpuFlags,
 		); err != nil {
 			return nil, err
 		}

@@ -15,9 +15,11 @@ import (
 )
 
 func TestSandboxConnect(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	t.Run("connect with paused sandbox", func(t *testing.T) {
+		t.Parallel()
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
 		sbxId := sbx.SandboxID
@@ -41,6 +43,7 @@ func TestSandboxConnect(t *testing.T) {
 	})
 
 	t.Run("connect to running sandbox", func(t *testing.T) {
+		t.Parallel()
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(100))
 		sbxId := sbx.SandboxID
@@ -73,6 +76,7 @@ func TestSandboxConnect(t *testing.T) {
 	})
 
 	t.Run("connect to running sandbox shorter timeout", func(t *testing.T) {
+		t.Parallel()
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c)
 		sbxId := sbx.SandboxID
@@ -105,6 +109,7 @@ func TestSandboxConnect(t *testing.T) {
 	})
 
 	t.Run("connect to not existing sandbox", func(t *testing.T) {
+		t.Parallel()
 		// Try to connect the sandbox
 		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "it-isnt-there", api.PostSandboxesSandboxIDConnectJSONRequestBody{
 			Timeout: 30,
@@ -114,6 +119,7 @@ func TestSandboxConnect(t *testing.T) {
 	})
 
 	t.Run("connect with too big timeout", func(t *testing.T) {
+		t.Parallel()
 		// Try to connect the sandbox
 		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "it-isnt-there", api.PostSandboxesSandboxIDConnectJSONRequestBody{
 			Timeout: 60 * 60 * 72, // 3 days
@@ -123,6 +129,7 @@ func TestSandboxConnect(t *testing.T) {
 	})
 
 	t.Run("concurrent connects - not returning early", func(t *testing.T) {
+		t.Parallel()
 		c := setup.GetAPIClient()
 
 		// Create a sandbox with auto-pause disabled
@@ -170,4 +177,49 @@ func TestSandboxConnect(t *testing.T) {
 		err = wg.Wait()
 		require.NoError(t, err)
 	})
+}
+
+func TestSandboxConnect_CrossTeamAccess_Paused(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+	db := setup.GetTestDBClient(t)
+
+	// Create a sandbox with the default team's API key
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+
+	// Create a second team with a different API key
+	foreignUserID := utils.CreateUser(t, db)
+	foreignTeamID := utils.CreateTeamWithUser(t, db, "foreign-team-connect", foreignUserID.String())
+	foreignAPIKey := utils.CreateAPIKey(t, t.Context(), c, foreignUserID.String(), foreignTeamID)
+
+	// Pause the sandbox
+	pauseSandbox(t, c, sbx.SandboxID)
+
+	// Try to connect to the first team's sandbox using the second team's API key
+	connectResp, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDConnectJSONRequestBody{
+		Timeout: 30,
+	}, setup.WithAPIKey(foreignAPIKey))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, connectResp.StatusCode(), "Should return 403 Forbidden when trying to connect to a sandbox owned by a different team")
+}
+
+func TestSandboxConnect_CrossTeamAccess_Running(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+	db := setup.GetTestDBClient(t)
+
+	// Create a sandbox with the default team's API key
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+
+	// Create a second team with a different API key
+	foreignUserID := utils.CreateUser(t, db)
+	foreignTeamID := utils.CreateTeamWithUser(t, db, "foreign-team-connect", foreignUserID.String())
+	foreignAPIKey := utils.CreateAPIKey(t, t.Context(), c, foreignUserID.String(), foreignTeamID)
+
+	// Try to connect to the first team's sandbox using the second team's API key
+	connectResp, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDConnectJSONRequestBody{
+		Timeout: 30,
+	}, setup.WithAPIKey(foreignAPIKey))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, connectResp.StatusCode(), "Should return 403 Forbidden when trying to connect to a sandbox owned by a different team")
 }

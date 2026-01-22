@@ -80,7 +80,7 @@ func NewStartScriptBuilder(builderConfig cfg.BuilderConfig) *StartScriptBuilder 
 
 // buildArgs prepares the arguments for the start script template
 func (sb *StartScriptBuilder) buildArgs(
-	versions FirecrackerVersions,
+	versions Config,
 	files *storage.SandboxFiles,
 	rootfsPaths RootfsPaths,
 	namespaceID string,
@@ -95,7 +95,7 @@ func (sb *StartScriptBuilder) buildArgs(
 		SandboxKernelFile: SandboxKernelFile,
 
 		// Rootfs
-		HostRootfsPath:             files.SandboxCacheRootfsLinkPath(sb.builderConfig),
+		HostRootfsPath:             files.SandboxCacheRootfsLinkPath(sb.builderConfig.StorageConfig),
 		DeprecatedSandboxRootfsDir: rootfsPaths.DeprecatedSandboxRootfsDir(),
 		SandboxRootfsFile:          SandboxRootfsFile,
 
@@ -128,7 +128,7 @@ func (sb *StartScriptBuilder) GenerateScript(args startScriptArgs, rootfsPaths R
 
 // Build creates a complete StartScriptResult with script, args, and computed paths
 func (sb *StartScriptBuilder) Build(
-	versions FirecrackerVersions,
+	versions Config,
 	files *storage.SandboxFiles,
 	rootfsPaths RootfsPaths,
 	namespaceID string,

@@ -2,6 +2,10 @@ package cfg
 
 import "github.com/caarlos0/env/v11"
 
+const (
+	DefaultKernelVersion = "vmlinux-6.1.158"
+)
+
 type Config struct {
 	AdminToken string `env:"ADMIN_TOKEN"`
 
@@ -10,8 +14,9 @@ type Config struct {
 
 	ClickhouseConnectionString string `env:"CLICKHOUSE_CONNECTION_STRING"`
 
-	LocalClusterEndpoint string `env:"LOCAL_CLUSTER_ENDPOINT"`
-	LocalClusterToken    string `env:"LOCAL_CLUSTER_TOKEN"`
+	LokiPassword string `env:"LOKI_PASSWORD"`
+	LokiURL      string `env:"LOKI_URL,required"`
+	LokiUser     string `env:"LOKI_USER"`
 
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
@@ -20,8 +25,9 @@ type Config struct {
 
 	PosthogAPIKey string `env:"POSTHOG_API_KEY"`
 
-	RedisURL        string `env:"REDIS_URL"`
-	RedisClusterURL string `env:"REDIS_CLUSTER_URL"`
+	RedisURL         string `env:"REDIS_URL"`
+	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
+	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
@@ -30,12 +36,16 @@ type Config struct {
 	// tokens signed with the old secret for some time.
 	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
 
-	TemplateManagerHost string `env:"TEMPLATE_MANAGER_HOST"`
+	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
 }
 
 func Parse() (Config, error) {
 	var config Config
 	err := env.Parse(&config)
+
+	if config.DefaultKernelVersion == "" {
+		config.DefaultKernelVersion = DefaultKernelVersion
+	}
 
 	return config, err
 }

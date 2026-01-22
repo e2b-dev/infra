@@ -2,48 +2,64 @@ package rootfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync/atomic"
 
-	"go.opentelemetry.io/otel"
+	"github.com/edsrzf/mmap-go"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs")
-
 type DirectProvider struct {
-	cache *block.Cache
-	path  string
+	header *header.Header
+
+	path      string
+	blockSize int64
 
 	// TODO: Remove when the snapshot flow is improved
 	finishedOperations chan struct{}
 	// TODO: Remove when the snapshot flow is improved
-	exporting atomic.Bool
+	closed atomic.Bool
+
+	mmap *mmap.MMap
 }
 
-func NewDirectProvider(rootfs block.ReadonlyDevice, path string) (Provider, error) {
-	size, err := rootfs.Size()
-	if err != nil {
-		return nil, fmt.Errorf("error getting device size: %w", err)
-	}
-
+func NewDirectProvider(ctx context.Context, rootfs block.ReadonlyDevice, path string) (Provider, error) {
 	blockSize := rootfs.BlockSize()
 
-	cache, err := block.NewCache(size, blockSize, path, true)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("error creating cache: %w", err)
+		return nil, fmt.Errorf("error opening file: %w", err)
+	}
+	defer f.Close()
+
+	size, err := rootfs.Size(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting size: %w", err)
+	}
+
+	mm, err := mmap.MapRegion(f, int(size), unix.PROT_READ|unix.PROT_WRITE, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("error mapping region: %w", err)
 	}
 
 	return &DirectProvider{
-		cache: cache,
-		path:  path,
+		header: rootfs.Header(),
+
+		path:      path,
+		blockSize: blockSize,
 
 		finishedOperations: make(chan struct{}, 1),
+
+		mmap: &mm,
 	}, nil
 }
 
@@ -59,13 +75,22 @@ func (o *DirectProvider) ExportDiff(
 	ctx, childSpan := tracer.Start(ctx, "direct-provider-export")
 	defer childSpan.End()
 
-	o.exporting.CompareAndSwap(false, true)
+	if !o.closed.CompareAndSwap(false, true) {
+		return nil, fmt.Errorf("direct provider close is already in progress")
+	}
+
+	defer func() {
+		err := o.mmap.Unmap()
+		if err != nil {
+			logger.L().Error(ctx, "error unmapping mmap", zap.Error(err))
+		}
+	}()
 
 	// the error is already logged in go routine in SandboxCreate handler
 	go func() {
 		err := stopSandbox(ctx)
 		if err != nil {
-			zap.L().Error("error stopping sandbox on cow export", zap.Error(err))
+			logger.L().Error(ctx, "error stopping sandbox on cow export", zap.Error(err))
 		}
 	}()
 
@@ -76,32 +101,73 @@ func (o *DirectProvider) ExportDiff(
 	}
 	telemetry.ReportEvent(ctx, "sandbox stopped")
 
-	o.cache.MarkAllAsDirty()
-	m, err := o.cache.ExportToDiff(out)
+	m, err := o.exportToDiff(ctx, out)
 	if err != nil {
-		return nil, fmt.Errorf("error exporting cache: %w", err)
+		return nil, fmt.Errorf("error building diff metadata: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "cache exported")
 
-	err = o.cache.Close()
-	if err != nil {
-		return nil, fmt.Errorf("error closing cache: %w", err)
-	}
-
 	return m, nil
 }
 
-func (o *DirectProvider) Close(_ context.Context) error {
+func (o *DirectProvider) Close(ctx context.Context) error {
 	o.finishedOperations <- struct{}{}
 
-	if !o.exporting.CompareAndSwap(false, true) {
+	if !o.closed.CompareAndSwap(false, true) {
 		return nil
 	}
 
-	return o.cache.Close()
+	return errors.Join(o.sync(ctx), o.mmap.Unmap())
 }
 
 func (o *DirectProvider) Path() (string, error) {
 	return o.path, nil
+}
+
+func (o *DirectProvider) exportToDiff(ctx context.Context, out io.Writer) (*header.DiffMetadata, error) {
+	err := o.sync(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error flushing path: %w", err)
+	}
+
+	builder := header.NewDiffMetadataBuilder(int64(o.header.Metadata.Size), o.blockSize)
+
+	f, err := os.Open(o.path)
+	if err != nil {
+		return nil, fmt.Errorf("error opening path: %w", err)
+	}
+	defer f.Close()
+
+	block := make([]byte, o.blockSize)
+	for i := int64(0); i < int64(o.header.Metadata.Size); i += o.blockSize {
+		n, err := f.ReadAt(block, i)
+		if err != nil {
+			return nil, fmt.Errorf("error reading from file: %w", err)
+		}
+
+		err = builder.Process(ctx, block[:n], out, i)
+		if err != nil {
+			return nil, fmt.Errorf("error processing block %d: %w", i, err)
+		}
+	}
+
+	return builder.Build(), nil
+}
+
+func (o *DirectProvider) sync(ctx context.Context) error {
+	err := o.mmap.Flush()
+	if err != nil {
+		return fmt.Errorf("error flushing mmap: %w", err)
+	}
+
+	return flush(ctx, o.path)
+}
+
+type FileCtx struct {
+	*os.File
+}
+
+func (f *FileCtx) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
+	return f.File.ReadAt(p, off)
 }

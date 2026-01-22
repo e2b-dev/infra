@@ -2,9 +2,26 @@ job "orchestrator-${latest_orchestrator_job_id}" {
   type = "system"
   node_pool = "${node_pool}"
 
-  priority = 90
+  priority = 91
 
   group "client-orchestrator" {
+    // For future as we can remove static and allow multiple instances on one machine if needed.
+    // Also network allocation is used by Nomad service discovery on API and edge API to find jobs and register them.
+    network {
+      port "orchestrator" {
+        static = "${port}"
+      }
+
+      port "orchestrator-proxy" {
+        static = "${proxy_port}"
+      }
+    }
+
+    constraint {
+      attribute = "$${meta.orchestrator_job_version}"
+      value     = "${latest_orchestrator_job_id}"
+    }
+
     service {
       name = "orchestrator"
       port = "${port}"
@@ -34,35 +51,6 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       }
     }
 
-    task "check-placement" {
-      driver = "raw_exec"
-
-      lifecycle {
-        hook = "prestart"
-        sidecar = false
-      }
-
-      restart {
-        attempts = 0
-      }
-
-      template {
-        destination = "local/check-placement.sh"
-        data = <<EOT
-#!/bin/bash
-
-if [ "{{with nomadVar "nomad/jobs" }}{{ .latest_orchestrator_job_id }}{{ end }}" != "${latest_orchestrator_job_id}" ]; then
-  echo "This orchestrator is not the latest version, exiting"
-  exit 1
-fi
-EOT
-      }
-
-      config {
-        command = "local/check-placement.sh"
-      }
-    }
-
     task "start" {
       driver = "raw_exec"
 
@@ -76,6 +64,7 @@ EOT
         OTEL_TRACING_PRINT           = "${otel_tracing_print}"
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
         ENVIRONMENT                  = "${environment}"
+        DOMAIN_NAME                  = "${domain_name}"
         ENVD_TIMEOUT                 = "${envd_timeout}"
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"

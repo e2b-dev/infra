@@ -25,6 +25,7 @@ resource "google_compute_health_check" "server_nomad_check" {
   }
 }
 
+// TODO - 2026-01-21: To be removed after migration period (at least 2 weeks) - 2026-02-04
 resource "google_compute_instance_group_manager" "server_pool" {
   name               = "${local.server_pool_name}-ig"
   base_instance_name = local.server_pool_name
@@ -71,6 +72,57 @@ resource "google_compute_instance_group_manager" "server_pool" {
   }
 }
 
+data "google_compute_zones" "region_zones" {
+  region = var.gcp_region
+}
+
+resource "google_compute_region_instance_group_manager" "server_pool" {
+  region             = var.gcp_region
+  name               = "${local.server_pool_name}-rig"
+  base_instance_name = local.server_pool_name
+
+
+  target_pools = []
+  // TODO: 2026-01-21: To be changed back to var.server_cluster_size after migration period (at least 1 weeks) - 2026-01-28
+  target_size                      = var.server_cluster_size > 1 ? var.server_cluster_size - 1 : var.server_cluster_size
+  distribution_policy_target_shape = "EVEN"
+
+  version {
+    instance_template = google_compute_instance_template.server.id
+  }
+
+  named_port {
+    name = "nomad"
+    port = var.nomad_port
+  }
+
+  # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
+  # a rolling update.
+  update_policy {
+    type           = "PROACTIVE"
+    minimal_action = "REPLACE"
+
+    // We want to keep the instance distribution even
+    instance_redistribution_type = "PROACTIVE"
+    max_unavailable_fixed        = 0
+    // The number has to be a multiple of the number of zones in the region
+    max_surge_fixed = length(data.google_compute_zones.region_zones.names)
+  }
+
+  auto_healing_policies {
+    health_check      = google_compute_health_check.server_nomad_check.id
+    initial_delay_sec = 120
+  }
+
+  lifecycle {
+    create_before_destroy = false
+  }
+
+  depends_on = [
+    google_compute_instance_template.server,
+  ]
+}
+
 data "google_compute_image" "server_source_image" {
   family = var.server_image_family
 }
@@ -102,8 +154,8 @@ resource "google_compute_instance_template" "server" {
   disk {
     boot         = true
     source_image = data.google_compute_image.server_source_image.self_link
-    disk_size_gb = 20
-    disk_type    = "pd-ssd"
+    disk_size_gb = var.server_boot_disk_size_gb
+    disk_type    = var.server_boot_disk_type
   }
 
   network_interface {

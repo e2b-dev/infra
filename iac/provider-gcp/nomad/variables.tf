@@ -116,12 +116,6 @@ variable "loki_node_pool" {
   type = string
 }
 
-
-variable "api_dns_port_number" {
-  type    = number
-  default = 5353
-}
-
 variable "custom_envs_repository_name" {
   type = string
 }
@@ -166,19 +160,14 @@ variable "client_proxy_update_max_parallel" {
   type = number
 }
 
-variable "edge_api_port" {
+variable "client_proxy_port" {
   type = object({
     name = string
     port = number
-    path = string
   })
 }
 
-variable "edge_api_secret" {
-  type = string
-}
-
-variable "edge_proxy_port" {
+variable "client_proxy_health_port" {
   type = object({
     name = string
     port = number
@@ -249,15 +238,11 @@ variable "loki_service_port" {
   })
 }
 
-variable "redis_url_secret_version" {
+variable "redis_cluster_url_secret_version" {
   type = any
 }
 
 variable "redis_tls_ca_base64_secret_version" {
-  type = any
-}
-
-variable "redis_secure_cluster_url_secret_version" {
   type = any
 }
 
@@ -287,10 +272,6 @@ variable "fc_env_pipeline_bucket_name" {
   type = string
 }
 
-variable "client_machine_type" {
-  type = string
-}
-
 variable "allow_sandbox_internet" {
   type = bool
 }
@@ -300,8 +281,14 @@ variable "template_manager_port" {
   type = number
 }
 
-variable "template_manager_machine_count" {
-  type = number
+variable "template_manages_clusters_size_gt_1" {
+  type = bool
+}
+
+variable "nomad_autoscaler_version" {
+  type        = string
+  description = "Version of the Nomad Autoscaler to deploy"
+  default     = "0.4.5"
 }
 
 # Redis

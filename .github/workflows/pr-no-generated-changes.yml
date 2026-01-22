@@ -15,8 +15,6 @@ jobs:
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
-        with:
-          job_key: generated-code-check
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -30,6 +28,12 @@ jobs:
 
       - name: Generate all code
         run: make --jobs=4 generate
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          install-only: true
+          version: "v${{ env.GOLANGCI_LINT }}"
 
       - name: Format code
         run: make fmt

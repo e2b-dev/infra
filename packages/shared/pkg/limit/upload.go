@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (l *Limiter) UpdateUploadLimitSemaphore(ctx context.Context) {
@@ -16,14 +17,11 @@ func (l *Limiter) UpdateUploadLimitSemaphore(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			uploadLimitFlag, flagErr := l.featureFlags.IntFlag(ctx, featureflags.GcloudConcurrentUploadLimit)
-			if flagErr != nil {
-				zap.L().Warn("soft failing during metrics write feature flag receive", zap.Error(flagErr))
-			}
+			uploadLimitFlag := l.featureFlags.IntFlag(ctx, featureflags.GcloudConcurrentUploadLimit)
 
 			// Update the semaphore with the new value
 			if err := l.gCloudUploadLimiter.SetLimit(int64(uploadLimitFlag)); err != nil {
-				zap.L().Error("failed to adjust upload semaphore", zap.Error(err))
+				logger.L().Error(ctx, "failed to adjust upload semaphore", zap.Error(err))
 			}
 		case <-l.done:
 			return

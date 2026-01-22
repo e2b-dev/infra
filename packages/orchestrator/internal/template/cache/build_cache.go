@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildlogger"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -18,8 +19,6 @@ import (
 const (
 	buildInfoExpiration = time.Minute * 10 // 10 minutes
 )
-
-const CanceledBuildReason = "build was cancelled"
 
 type BuildInfoResult struct {
 	Status   template_manager.TemplateBuildState
@@ -81,7 +80,7 @@ type BuildCache struct {
 	cache *ttlcache.Cache[string, *BuildInfo]
 }
 
-func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
+func NewBuildCache(ctx context.Context, meterProvider metric.MeterProvider) *BuildCache {
 	meter := meterProvider.Meter("orchestrator.cache.build")
 
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
@@ -105,7 +104,7 @@ func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("error creating counter", zap.Error(err), zap.String("counter_name", string(telemetry.BuildCounterMeterName)))
+		logger.L().Error(ctx, "error creating counter", zap.Error(err), zap.String("counter_name", string(telemetry.BuildCounterMeterName)))
 	}
 
 	go cache.Start()

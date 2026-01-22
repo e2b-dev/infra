@@ -16,6 +16,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -31,6 +32,7 @@ func newReservationStorage() *ReservationStorage {
 }
 
 func TestReservation(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	_, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -38,16 +40,17 @@ func TestReservation(t *testing.T) {
 }
 
 func TestReservation_Exceeded(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	_, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
 	require.NoError(t, err)
 	_, _, err = cache.Reserve(t.Context(), teamID.String(), "sandbox-2", 1)
-	require.Error(t, err)
-	assert.IsType(t, &sandbox.LimitExceededError{}, err)
+	require.ErrorAs(t, err, utils.ToPtr(&sandbox.LimitExceededError{}))
 }
 
 func TestReservation_SameSandbox(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	_, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -59,6 +62,7 @@ func TestReservation_SameSandbox(t *testing.T) {
 }
 
 func TestReservation_Release(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	_, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -71,6 +75,7 @@ func TestReservation_Release(t *testing.T) {
 }
 
 func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	_, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -82,6 +87,7 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 }
 
 func TestReservation_WaitForStart(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	finishStart, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 10)
@@ -114,6 +120,7 @@ func TestReservation_WaitForStart(t *testing.T) {
 }
 
 func TestReservation_WaitForStartError(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	finishStart, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 10)
@@ -137,6 +144,7 @@ func TestReservation_WaitForStartError(t *testing.T) {
 }
 
 func TestReservation_MultipleWaiters(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	finishStart, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 10)
@@ -176,6 +184,7 @@ func TestReservation_MultipleWaiters(t *testing.T) {
 }
 
 func TestReservation_Remove(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	finishStart, _, err := cache.Reserve(t.Context(), teamID.String(), sandboxID, 1)
@@ -204,6 +213,7 @@ func TestReservation_Remove(t *testing.T) {
 }
 
 func TestReservation_MultipleTeams(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 
 	team1 := uuid.New()
@@ -221,16 +231,15 @@ func TestReservation_MultipleTeams(t *testing.T) {
 
 	// team1 should be at limit
 	_, _, err = cache.Reserve(t.Context(), team1.String(), "sandbox-3", 1)
-	require.Error(t, err)
-	assert.IsType(t, &sandbox.LimitExceededError{}, err)
+	require.ErrorAs(t, err, utils.ToPtr(&sandbox.LimitExceededError{}))
 
 	// team2 should also be at limit
 	_, _, err = cache.Reserve(t.Context(), team2.String(), "sandbox-4", 1)
-	require.Error(t, err)
-	assert.IsType(t, &sandbox.LimitExceededError{}, err)
+	require.ErrorAs(t, err, utils.ToPtr(&sandbox.LimitExceededError{}))
 }
 
 func TestReservation_FailedStart(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	sbxID := "failed-sandbox"
@@ -251,6 +260,7 @@ func TestReservation_FailedStart(t *testing.T) {
 }
 
 func TestReservation_FailedStartWithWaiters(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	sbxID := "failed-with-waiters"
@@ -307,6 +317,7 @@ func TestReservation_FailedStartWithWaiters(t *testing.T) {
 }
 
 func TestReservation_ConcurrentReservations(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	concurrency := 100
@@ -317,9 +328,7 @@ func TestReservation_ConcurrentReservations(t *testing.T) {
 	var limitExceededCount atomic.Int32
 
 	for i := range concurrency {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sandboxID := fmt.Sprintf("sandbox-%d", i)
 			_, _, err := cache.Reserve(t.Context(), team.String(), sandboxID, limit)
 			if err == nil {
@@ -330,7 +339,7 @@ func TestReservation_ConcurrentReservations(t *testing.T) {
 					limitExceededCount.Add(1)
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -341,6 +350,7 @@ func TestReservation_ConcurrentReservations(t *testing.T) {
 }
 
 func TestReservation_ConcurrentSameSandbox(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	sbxID := "concurrent-sandbox"
@@ -377,6 +387,7 @@ func TestReservation_ConcurrentSameSandbox(t *testing.T) {
 }
 
 func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	sbxID := "wait-finish-sandbox"
@@ -442,6 +453,7 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 }
 
 func TestReservation_ConcurrentRemove(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	concurrency := 50
@@ -480,6 +492,7 @@ func TestReservation_ConcurrentRemove(t *testing.T) {
 }
 
 func TestReservation_RaceConditionStressTest(t *testing.T) {
+	t.Parallel()
 	cache := newReservationStorage()
 	team := uuid.New()
 	numOperations := 2000
@@ -491,9 +504,7 @@ func TestReservation_RaceConditionStressTest(t *testing.T) {
 
 	// Mix of reserve, remove, and finish operations
 	for i := range numOperations {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sbxID := fmt.Sprintf("sandbox-%d", i%numSandboxes)
 
 			switch i % 3 {
@@ -534,7 +545,7 @@ func TestReservation_RaceConditionStressTest(t *testing.T) {
 				_, _, _ = cache.Reserve(t.Context(), team.String(), sbxID, limit)
 				operationCount.Add(1)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

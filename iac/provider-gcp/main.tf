@@ -6,11 +6,6 @@ terraform {
   }
 
   required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "3.0.2"
-    }
-
     google = {
       source  = "hashicorp/google"
       version = "6.50.0"
@@ -30,21 +25,6 @@ terraform {
       source  = "hashicorp/random"
       version = "3.5.1"
     }
-
-    grafana = {
-      source  = "grafana/grafana"
-      version = "3.18.3"
-    }
-  }
-}
-
-data "google_client_config" "default" {}
-
-provider "docker" {
-  registry_auth {
-    address  = "${var.gcp_region}-docker.pkg.dev"
-    username = "oauth2accesstoken"
-    password = data.google_client_config.default.access_token
   }
 }
 
@@ -60,6 +40,9 @@ data "google_secret_manager_secret_version" "routing_domains" {
 
 locals {
   additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
+
+  // Check if all clusters has size greater than 1
+  template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : c.cluster_size > 1])
 }
 
 module "init" {
@@ -86,23 +69,17 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  client_cluster_size_max         = var.client_cluster_size_max
-  build_cluster_root_disk_size_gb = var.build_cluster_root_disk_size_gb
+  build_clusters_config  = var.build_clusters_config
+  client_clusters_config = var.client_clusters_config
 
   api_cluster_size        = var.api_cluster_size
-  build_cluster_size      = var.build_cluster_size
   clickhouse_cluster_size = var.clickhouse_cluster_size
-  client_cluster_size     = var.client_cluster_size
   server_cluster_size     = var.server_cluster_size
   loki_cluster_size       = var.loki_cluster_size
 
-  build_cluster_cache_disk_count  = var.build_cluster_cache_disk_count
-  client_cluster_cache_disk_count = var.client_cluster_cache_disk_count
 
   server_machine_type     = var.server_machine_type
-  client_machine_type     = var.client_machine_type
   api_machine_type        = var.api_machine_type
-  build_machine_type      = var.build_machine_type
   clickhouse_machine_type = var.clickhouse_machine_type
   loki_machine_type       = var.loki_machine_type
 
@@ -116,9 +93,10 @@ module "cluster" {
   api_nat_ips              = var.api_nat_ips
   api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
+  client_proxy_port        = var.client_proxy_port
+  client_proxy_health_port = var.client_proxy_health_port
+
   ingress_port                 = var.ingress_port
-  edge_api_port                = var.edge_api_port
-  edge_proxy_port              = var.edge_proxy_port
   api_port                     = var.api_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
   nomad_port                   = var.nomad_port
@@ -146,23 +124,24 @@ module "cluster" {
   filestore_cache_tier        = var.filestore_cache_tier
   filestore_cache_capacity_gb = var.filestore_cache_capacity_gb
 
-  build_base_hugepages_percentage        = var.build_base_hugepages_percentage
-  orchestrator_base_hugepages_percentage = var.orchestrator_base_hugepages_percentage
-
   labels = var.labels
   prefix = var.prefix
 
-  min_cpu_platform = var.min_cpu_platform
+  # Boot disks
+  api_boot_disk_type        = var.api_boot_disk_type
+  server_boot_disk_type     = var.server_boot_disk_type
+  server_boot_disk_size_gb  = var.server_boot_disk_size_gb
+  clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
+  loki_boot_disk_type       = var.loki_boot_disk_type
 }
 
 module "nomad" {
   source = "./nomad"
 
-  prefix              = var.prefix
-  gcp_project_id      = var.gcp_project_id
-  gcp_region          = var.gcp_region
-  gcp_zone            = var.gcp_zone
-  client_machine_type = var.client_machine_type
+  prefix         = var.prefix
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+  gcp_zone       = var.gcp_zone
 
   consul_acl_token_secret       = module.init.consul_acl_token_secret
   nomad_acl_token_secret        = module.init.nomad_acl_token_secret
@@ -200,8 +179,7 @@ module "nomad" {
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
   api_admin_token                           = random_password.api_admin_secret.result
-  redis_url_secret_version                  = google_secret_manager_secret_version.redis_url
-  redis_secure_cluster_url_secret_version   = module.init.redis_secure_cluster_url_secret_version
+  redis_cluster_url_secret_version          = google_secret_manager_secret_version.redis_cluster_url
   redis_tls_ca_base64_secret_version        = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed            = random_password.sandbox_access_token_hash_seed.result
 
@@ -211,9 +189,8 @@ module "nomad" {
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
   client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
-  edge_proxy_port = var.edge_proxy_port
-  edge_api_port   = var.edge_api_port
-  edge_api_secret = random_password.edge_api_secret.result
+  client_proxy_port        = var.client_proxy_port
+  client_proxy_health_port = var.client_proxy_health_port
 
   domain_name = var.domain_name
 
@@ -243,12 +220,12 @@ module "nomad" {
   envd_timeout                = var.envd_timeout
 
   # Template manager
-  builder_node_pool               = var.build_node_pool
-  template_manager_port           = var.template_manager_port
-  template_bucket_name            = module.init.fc_template_bucket_name
-  build_cache_bucket_name         = module.init.fc_build_cache_bucket_name
-  template_manager_machine_count  = var.build_cluster_size
-  dockerhub_remote_repository_url = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
+  builder_node_pool                   = var.build_node_pool
+  template_manager_port               = var.template_manager_port
+  template_bucket_name                = module.init.fc_template_bucket_name
+  build_cache_bucket_name             = module.init.fc_build_cache_bucket_name
+  template_manages_clusters_size_gt_1 = local.template_manages_clusters_size_gt_1
+  dockerhub_remote_repository_url     = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
 
   # Redis
   redis_managed = var.redis_managed
@@ -272,8 +249,8 @@ module "redis" {
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
-  redis_secure_cluster_url_secret_version = module.init.redis_secure_cluster_url_secret_version
-  redis_tls_ca_base64_secret_version      = module.init.redis_tls_ca_base64_secret_version
+  redis_cluster_url_secret_version   = google_secret_manager_secret_version.redis_cluster_url
+  redis_tls_ca_base64_secret_version = module.init.redis_tls_ca_base64_secret_version
 
   prefix = var.prefix
 }

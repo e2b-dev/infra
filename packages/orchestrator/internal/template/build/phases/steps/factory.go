@@ -1,7 +1,6 @@
 package steps
 
 import (
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -12,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const defaultLoggingLevel = zapcore.InfoLevel
@@ -19,7 +19,7 @@ const defaultLoggingLevel = zapcore.InfoLevel
 func CreateStepPhases(
 	bc buildcontext.BuildContext,
 	sandboxFactory *sandbox.Factory,
-	logger *zap.Logger,
+	logger logger.Logger,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
 	commandExecutor *commands.CommandExecutor,

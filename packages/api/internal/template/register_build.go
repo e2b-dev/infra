@@ -4,26 +4,22 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/dberrors"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
-	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	gutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -31,30 +27,33 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/template")
 
 type RegisterBuildData struct {
-	ClusterID     uuid.UUID
-	BuilderNodeID string
-	TemplateID    api.TemplateID
-	UserID        *uuid.UUID
-	Team          *types.Team
-	Dockerfile    string
-	Alias         *string
-	StartCmd      *string
-	ReadyCmd      *string
-	CpuCount      *int32
-	MemoryMB      *int32
-	Version       string
+	ClusterID          uuid.UUID
+	TemplateID         api.TemplateID
+	UserID             *uuid.UUID
+	Team               *types.Team
+	Dockerfile         string
+	Alias              *string
+	Tags               []string
+	StartCmd           *string
+	ReadyCmd           *string
+	CpuCount           *int32
+	MemoryMB           *int32
+	Version            string
+	KernelVersion      string
+	FirecrackerVersion string
 }
 
 type RegisterBuildResponse struct {
 	TemplateID string
 	BuildID    string
 	Aliases    []string
+	Tags       []string
 }
 
 func RegisterBuild(
 	ctx context.Context,
 	templateBuildsCache *templatecache.TemplatesBuildCache,
-	db *db.DB,
+	db *sqlcdb.Client,
 	data RegisterBuildData,
 ) (*RegisterBuildResponse, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "register build")
@@ -93,6 +92,12 @@ func RegisterBuild(
 		}
 	}
 
+	// Add default tag if no tags are present
+	tags := data.Tags
+	if len(tags) == 0 {
+		tags = []string{id.DefaultTag}
+	}
+
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", data.Team.ID.String()),
 		attribute.String("env.team.name", data.Team.Name),
@@ -105,6 +110,9 @@ func RegisterBuild(
 
 	if data.Alias != nil {
 		telemetry.SetAttributes(ctx, attribute.String("env.alias", *data.Alias))
+	}
+	if len(tags) > 0 {
+		telemetry.SetAttributes(ctx, attribute.StringSlice("env.tags", tags))
 	}
 	if data.StartCmd != nil {
 		telemetry.SetAttributes(ctx, attribute.String("env.start_cmd", *data.StartCmd))
@@ -129,22 +137,8 @@ func RegisterBuild(
 		return nil, apiError
 	}
 
-	var alias string
-	if data.Alias != nil {
-		alias, err = id.CleanTemplateID(*data.Alias)
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, "invalid alias", err)
-
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Invalid alias: %s", *data.Alias),
-				Code:      http.StatusBadRequest,
-			}
-		}
-	}
-
 	// Start a transaction to prevent partial updates
-	tx, err := db.Client.Tx(ctx)
+	client, tx, err := db.WithTx(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when starting transaction", err)
 
@@ -154,7 +148,7 @@ func RegisterBuild(
 			Code:      http.StatusInternalServerError,
 		}
 	}
-	defer tx.Rollback()
+	defer tx.Rollback(ctx)
 
 	var clusterID *uuid.UUID
 	if data.ClusterID != consts.LocalClusterID {
@@ -162,20 +156,12 @@ func RegisterBuild(
 	}
 
 	// Create the template / or update the build count
-	err = tx.
-		Env.
-		Create().
-		SetID(data.TemplateID).
-		SetTeamID(data.Team.ID).
-		SetNillableCreatedBy(data.UserID).
-		SetPublic(false).
-		SetNillableClusterID(clusterID).
-		OnConflictColumns(env.FieldID).
-		UpdateUpdatedAt().
-		Update(func(e *models.EnvUpsert) {
-			e.AddBuildCount(1)
-		}).
-		Exec(ctx)
+	err = client.CreateOrUpdateTemplate(ctx, queries.CreateOrUpdateTemplateParams{
+		TemplateID: data.TemplateID,
+		TeamID:     data.Team.ID,
+		CreatedBy:  data.UserID,
+		ClusterID:  clusterID,
+	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when updating env", err)
 
@@ -187,13 +173,16 @@ func RegisterBuild(
 	}
 	telemetry.ReportEvent(ctx, "created or update template")
 
-	// Mark the previous not started builds as failed
-	err = tx.EnvBuild.Update().Where(
-		envbuild.EnvID(data.TemplateID),
-		envbuild.StatusEQ(envbuild.StatusWaiting),
-	).SetStatus(envbuild.StatusFailed).SetFinishedAt(time.Now()).Exec(ctx)
+	// Mark the previous not started builds as failed for all tags
+	err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+		Reason: dbtypes.BuildReason{
+			Message: "The build was canceled because it was superseded by a newer one.",
+		},
+		TemplateID: data.TemplateID,
+		Tags:       tags,
+	})
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when updating env", err)
+		telemetry.ReportCriticalError(ctx, "error when invalidating unstarted builds", err, attribute.StringSlice("tags", tags))
 
 		return nil, &api.APIError{
 			Err:       err,
@@ -204,21 +193,19 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "marked previous builds as failed")
 
 	// Insert the new build
-	build, err := tx.EnvBuild.Create().
-		SetID(buildID).
-		SetEnvID(data.TemplateID).
-		SetStatus(envbuild.StatusWaiting).
-		SetRAMMB(ramMB).
-		SetVcpu(cpuCount).
-		SetKernelVersion(schema.DefaultKernelVersion).
-		SetFirecrackerVersion(schema.DefaultFirecrackerVersion).
-		SetFreeDiskSizeMB(data.Team.Limits.DiskMb).
-		SetNillableStartCmd(data.StartCmd).
-		SetNillableReadyCmd(data.ReadyCmd).
-		SetClusterNodeID(data.BuilderNodeID).
-		SetDockerfile(data.Dockerfile).
-		SetVersion(data.Version).
-		Save(ctx)
+	err = client.CreateTemplateBuild(ctx, queries.CreateTemplateBuildParams{
+		BuildID:            buildID,
+		TemplateID:         data.TemplateID,
+		RamMb:              ramMB,
+		Vcpu:               cpuCount,
+		KernelVersion:      data.KernelVersion,
+		FirecrackerVersion: data.FirecrackerVersion,
+		FreeDiskSizeMb:     data.Team.Limits.DiskMb,
+		StartCmd:           data.StartCmd,
+		ReadyCmd:           data.ReadyCmd,
+		Dockerfile:         gutils.ToPtr(data.Dockerfile),
+		Version:            gutils.ToPtr(data.Version),
+	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when inserting build", err)
 
@@ -231,12 +218,12 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "inserted new build")
 
 	// Check if the alias is available and claim it
-	if alias != "" {
-		envs, err := tx.
-			Env.
-			Query().
-			Where(env.ID(alias)).
-			All(ctx)
+	var aliases []string
+	if data.Alias != nil {
+		alias := *data.Alias
+		aliases = append(aliases, alias)
+
+		exists, err := client.CheckAliasConflictsWithTemplateID(ctx, alias)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
 
@@ -248,7 +235,7 @@ func RegisterBuild(
 		}
 		telemetry.ReportEvent(ctx, "checked alias availability")
 
-		if len(envs) > 0 {
+		if exists {
 			err := fmt.Errorf("alias '%s' is already used", alias)
 			telemetry.ReportCriticalError(ctx, "conflict of alias", err, attribute.String("alias", alias))
 
@@ -259,9 +246,9 @@ func RegisterBuild(
 			}
 		}
 
-		aliasDB, err := tx.EnvAlias.Query().Where(envalias.ID(alias)).Only(ctx)
+		aliasDB, err := client.CheckAliasExists(ctx, alias)
 		if err != nil {
-			if !models.IsNotFound(err) {
+			if !dberrors.IsNotFoundError(err) {
 				telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
 
 				return nil, &api.APIError{
@@ -271,7 +258,7 @@ func RegisterBuild(
 				}
 			}
 
-			count, err := tx.EnvAlias.Delete().Where(envalias.EnvID(data.TemplateID), envalias.IsRenamable(true)).Exec(ctx)
+			aliases, err := client.DeleteOtherTemplateAliases(ctx, data.TemplateID)
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when deleting template alias", err, attribute.String("alias", alias))
 
@@ -282,15 +269,16 @@ func RegisterBuild(
 				}
 			}
 
+			count := len(aliases)
 			if count > 0 {
 				telemetry.ReportEvent(ctx, "deleted old aliases", attribute.Int("env.alias.count", count))
 			}
 
-			err = tx.
-				EnvAlias.
-				Create().
-				SetEnvID(data.TemplateID).SetIsRenamable(true).SetID(alias).
-				Exec(ctx)
+			err = client.
+				CreateTemplateAlias(ctx, queries.CreateTemplateAliasParams{
+					Alias:      alias,
+					TemplateID: data.TemplateID,
+				})
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when inserting alias", err, attribute.String("alias", alias))
 
@@ -315,8 +303,43 @@ func RegisterBuild(
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
 	}
 
+	if len(data.Tags) != 0 {
+		// TODO: Remove this once the migration is deployed [ENG-3268](https://linear.app/e2b/issue/ENG-3268)
+		err = client.DeleteTriggerTemplateBuildAssignment(ctx, queries.DeleteTriggerTemplateBuildAssignmentParams{
+			TemplateID: data.TemplateID,
+			BuildID:    buildID,
+			Tag:        id.DefaultTag,
+		})
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error when deleting tag assignment", err, attribute.String("tag", id.DefaultTag))
+
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Error when deleting tag assignment: %s", err),
+				Code:      http.StatusInternalServerError,
+			}
+		}
+	}
+
+	for _, tag := range tags {
+		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+			TemplateID: data.TemplateID,
+			BuildID:    buildID,
+			Tag:        tag,
+		})
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error when adding tag to build", err, attribute.String("tag", tag))
+
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Error when adding tag '%s' to build: %s", tag, err),
+				Code:      http.StatusInternalServerError,
+			}
+		}
+	}
+
 	// Commit the transaction
-	err = tx.Commit()
+	err = tx.Commit(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when committing transaction", err)
 
@@ -329,22 +352,17 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "committed transaction")
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("env.alias", alias),
 		attribute.Int64("build.cpu_count", cpuCount),
 		attribute.Int64("build.ram_mb", ramMB),
 	)
 	telemetry.ReportEvent(ctx, "started updating environment")
 
-	var aliases []string
-	if alias != "" {
-		aliases = append(aliases, alias)
-	}
-
-	zap.L().Info("template build requested", logger.WithTemplateID(data.TemplateID), logger.WithBuildID(buildID.String()))
+	logger.L().Info(ctx, "template build requested", logger.WithTemplateID(data.TemplateID), logger.WithBuildID(buildID.String()))
 
 	return &RegisterBuildResponse{
-		TemplateID: build.EnvID,
-		BuildID:    build.ID.String(),
+		TemplateID: data.TemplateID,
+		BuildID:    buildID.String(),
 		Aliases:    aliases,
+		Tags:       tags,
 	}, nil
 }

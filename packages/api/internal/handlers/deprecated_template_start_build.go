@@ -17,7 +17,8 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	dbtypes "github.com/e2b-dev/infra/packages/db/types"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -25,7 +26,7 @@ import (
 
 // CheckAndCancelConcurrentBuilds checks for concurrent builds and cancels them if found
 func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID, teamClusterID uuid.UUID) error {
-	concurrentlyRunningBuilds, err := a.sqlcDB.GetConcurrentTemplateBuilds(ctx, queries.GetConcurrentTemplateBuildsParams{
+	concurrentBuilds, err := a.sqlcDB.GetConcurrentTemplateBuilds(ctx, queries.GetConcurrentTemplateBuildsParams{
 		TemplateID:     templateID,
 		CurrentBuildID: buildID,
 	})
@@ -36,18 +37,28 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 	}
 
 	// make sure there is no other build in progress for the same template
-	if len(concurrentlyRunningBuilds) > 0 {
-		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b queries.EnvBuild) templatemanager.DeleteBuild {
-			return templatemanager.DeleteBuild{
+	if len(concurrentBuilds) > 0 {
+		concurrentRunningBuilds := utils.Filter(concurrentBuilds, func(b queries.EnvBuild) bool {
+			return b.Status == string(dbtypes.BuildStatusBuilding)
+		})
+		buildIDs := make([]templatemanager.DeleteBuild, 0, len(concurrentRunningBuilds))
+		for _, b := range concurrentRunningBuilds {
+			clusterNodeID := b.ClusterNodeID
+			if clusterNodeID == nil {
+				continue
+			}
+
+			buildIDs = append(buildIDs, templatemanager.DeleteBuild{
 				TemplateID: templateID,
 				BuildID:    b.ID,
 				ClusterID:  teamClusterID,
-				NodeID:     b.ClusterNodeID,
-			}
-		})
+				NodeID:     *clusterNodeID,
+			})
+		}
 		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b templatemanager.DeleteBuild) string {
 			return fmt.Sprintf("%s/%s", b.TemplateID, b.BuildID)
 		})))
+
 		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
 		if deleteJobErr != nil {
 			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
@@ -123,6 +134,9 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		telemetry.WithTemplateID(templateID),
 	)
 
+	// setup launch darkly context
+	ctx = featureflags.AddToContext(ctx, featureflags.TemplateContext(templateID))
+
 	// Check and cancel concurrent builds
 	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
@@ -134,9 +148,37 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	build := templateBuildDB.EnvBuild
 
 	// only waiting builds can be triggered
-	if build.Status != envbuild.StatusWaiting.String() {
+	if build.Status != string(dbtypes.BuildStatusWaiting) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
 		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
+	builderNode, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
+		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
+	machineInfo := builderNode.GetMachineInfo()
+	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
+		StartCmd:        build.StartCmd,
+		ReadyCmd:        build.ReadyCmd,
+		Dockerfile:      build.Dockerfile,
+		ClusterNodeID:   utils.ToPtr(builderNode.NodeID),
+		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
+		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
+		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
+		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		CpuFlags:        machineInfo.CPUFlags,
+		BuildUuid:       buildUUID,
+	})
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when updating build", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err))
 
 		return
 	}
@@ -162,11 +204,11 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		&forceRebuild,
 		nil,
 		apiutils.WithClusterFallback(team.ClusterID),
-		build.ClusterNodeID,
+		builderNode.NodeID,
 		templates.TemplateV1Version,
 	)
 
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
+	a.posthog.CreateAnalyticsUserEvent(ctx, userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
 		Set("user_id", userID).
 		Set("environment", templateID).
 		Set("build_id", buildID).

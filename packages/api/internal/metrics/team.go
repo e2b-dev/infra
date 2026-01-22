@@ -105,16 +105,13 @@ func (so *TeamObserver) Start(store *sandbox.Store) (err error) {
 	return nil
 }
 
-func (so *TeamObserver) Add(ctx context.Context, teamID uuid.UUID, created bool) {
-	teamIDStr := teamID.String()
+func (so *TeamObserver) Add(ctx context.Context, teamID uuid.UUID) {
 	// Count started only if the sandbox was created
-	if created {
-		attributes := []attribute.KeyValue{
-			attribute.String("team_id", teamIDStr),
-		}
-
-		so.teamSandboxesCreated.Add(ctx, 1, metric.WithAttributes(attributes...))
+	attributes := []attribute.KeyValue{
+		attribute.String("team_id", teamID.String()),
 	}
+
+	so.teamSandboxesCreated.Add(ctx, 1, metric.WithAttributes(attributes...))
 }
 
 func (so *TeamObserver) Close(ctx context.Context) error {

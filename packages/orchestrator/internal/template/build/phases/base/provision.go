@@ -24,8 +24,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -65,10 +68,9 @@ func getProvisionScript(
 
 func (bb *BaseBuilder) provisionSandbox(
 	ctx context.Context,
-	userLogger *zap.Logger,
+	userLogger logger.Logger,
 	sandboxConfig sandbox.Config,
 	sandboxRuntime sandbox.RuntimeMetadata,
-	fcVersions fc.FirecrackerVersions,
 	localTemplate *sbxtemplate.LocalTemplate,
 	rootfsPath string,
 	logExternalPrefix string,
@@ -76,7 +78,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	ctx, childSpan := tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
-	zapWriter := &zapio.Writer{Log: userLogger, Level: zap.DebugLevel}
+	zapWriter := &zapio.Writer{Log: userLogger.Detach(ctx), Level: zap.DebugLevel}
 	prefixedLogsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer prefixedLogsWriter.Close()
 
@@ -94,8 +96,8 @@ func (bb *BaseBuilder) provisionSandbox(
 		scanner := bufio.NewScanner(exitCodeReader)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.HasPrefix(line, rootfs.ProvisioningExitPrefix) {
-				exitStatus := strings.TrimPrefix(line, rootfs.ProvisioningExitPrefix)
+			if after, ok := strings.CutPrefix(line, rootfs.ProvisioningExitPrefix); ok {
+				exitStatus := after
 				if exitStatus == "0" {
 					// Success exit code
 					return nil
@@ -118,11 +120,13 @@ func (bb *BaseBuilder) provisionSandbox(
 		ctx,
 		sandboxConfig,
 		sandboxRuntime,
-		fcVersions,
 		localTemplate,
 		provisionTimeout,
 		rootfsPath,
 		fc.ProcessOptions{
+			// Set the IO Engine explicitly to the default value
+			IoEngine: utils.ToPtr(layer.DefaultIoEngine),
+
 			InitScriptPath: rootfs.BusyBoxInitPath,
 			// Always show kernel logs during the provisioning phase,
 			// the sandbox is then started with systemd and without kernel logs.
@@ -141,11 +145,30 @@ func (bb *BaseBuilder) provisionSandbox(
 	}
 	defer sbx.Close(ctx)
 
+	// Add to proxy so we can call envd and route traffic from the sandbox
+	bb.sandboxes.Insert(sbx)
+	defer func() {
+		bb.sandboxes.Remove(sbx.Runtime.SandboxID)
+
+		closeErr := bb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		if closeErr != nil {
+			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
+			bb.logger.Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
+		} else {
+			bb.logger.Debug(
+				ctx,
+				"removed proxy from pool",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithExecutionID(sbx.Runtime.ExecutionID),
+			)
+		}
+	}()
+
 	if err := done.WaitWithContext(ctx); err != nil {
-		return fmt.Errorf("error waiting for provisioning sandbox: %w", err)
+		return phases.NewPhaseBuildError(bb.Metadata(), fmt.Errorf("error waiting for provisioning sandbox: %w", err))
 	}
 
-	userLogger.Info("Provisioning was successful, cleaning up")
+	userLogger.Info(ctx, "Provisioning was successful, cleaning up")
 
 	err = sbx.Shutdown(ctx)
 	if err != nil {
@@ -157,7 +180,7 @@ func (bb *BaseBuilder) provisionSandbox(
 		return fmt.Errorf("result file cleanup failed: %w", err)
 	}
 
-	userLogger.Info("Sandbox template provisioned")
+	userLogger.Info(ctx, "Sandbox template provisioned")
 
 	return nil
 }
@@ -175,13 +198,13 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 		return fmt.Errorf("error getting free space: %w", err)
 	}
 	sizeDiff := template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
-	zap.L().Debug("adding provision size diff to rootfs",
+	logger.L().Debug(ctx, "adding provision size diff to rootfs",
 		zap.Int64("size_add", sizeDiff),
 		zap.Int64("size_free", rootfsFreeSpace),
 		zap.Int64("size_target", template.DiskSizeMB<<constants.ToMBShift),
 	)
 	if sizeDiff <= 0 {
-		zap.L().Debug("no need to enlarge rootfs, skipping")
+		logger.L().Debug(ctx, "no need to enlarge rootfs, skipping")
 
 		return nil
 	}
@@ -190,7 +213,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 		// Debug filesystem stats on error
 		cmd := exec.CommandContext(ctx, "tune2fs", "-l", rootfsPath)
 		output, dErr := cmd.Output()
-		zap.L().Error(string(output), zap.Error(dErr))
+		logger.L().Error(ctx, string(output), zap.Error(dErr))
 
 		return fmt.Errorf("error enlarging rootfs: %w", err)
 	}
@@ -198,14 +221,14 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 	// Check the rootfs filesystem corruption
 	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, false)
 	if err != nil {
-		zap.L().Error("final enlarge filesystem ext4 integrity",
+		logger.L().Error(ctx, "final enlarge filesystem ext4 integrity",
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
 
 		// Occasionally there are Block bitmap differences. For this reason, we retry with fix.
 		ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
-		zap.L().Error("final enlarge filesystem ext4 integrity - retry with fix",
+		logger.L().Error(ctx, "final enlarge filesystem ext4 integrity - retry with fix",
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
@@ -213,7 +236,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 			return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
 		}
 	} else {
-		zap.L().Debug("final enlarge filesystem ext4 integrity",
+		logger.L().Debug(ctx, "final enlarge filesystem ext4 integrity",
 			zap.String("result", ext4Check),
 		)
 	}

@@ -17,8 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -155,6 +155,7 @@ func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Dest
 		SandboxProxyRetries,
 		20*time.Second, // Short idle timeout
 		getDestination,
+		false,
 	)
 
 	// Start the proxy server
@@ -166,6 +167,7 @@ func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Dest
 }
 
 func TestProxyRoutesToTargetServer(t *testing.T) {
+	t.Parallel()
 	var lisCfg net.ListenConfig
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -179,7 +181,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backend.id,
 		}, nil
 	}
@@ -282,6 +284,7 @@ func (l *instrumentedListener) Accept() (net.Conn, error) {
 }
 
 func TestProxyReusesConnections(t *testing.T) {
+	t.Parallel()
 	var lisCfg net.ListenConfig
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -295,7 +298,7 @@ func TestProxyReusesConnections(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backend.id,
 		}, nil
 	}
@@ -327,6 +330,7 @@ func TestProxyReusesConnections(t *testing.T) {
 }
 
 func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
+	t.Parallel()
 	var lisCfg net.ListenConfig
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -339,7 +343,7 @@ func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backend.id,
 		}, nil
 	}
@@ -369,6 +373,7 @@ func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
 }
 
 func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
+	t.Parallel()
 	var lisCfg net.ListenConfig
 
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -384,7 +389,7 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backend.id,
 		}, nil
 	}
@@ -443,6 +448,7 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 
 // This is a test that verify that the proxy reuse fails when the backend changes.
 func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
+	t.Parallel()
 	// Create first backend
 	var lisCfg net.ListenConfig
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -473,7 +479,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend1.url,
 			SandboxId:     "backend1",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backendKey,
 		}, nil
 	}
@@ -515,6 +521,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 }
 
 func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
+	t.Parallel()
 	// Create first backend
 	var lisCfg net.ListenConfig
 	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -545,7 +552,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend1.url,
 			SandboxId:     "backend1",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backendKey,
 		}, nil
 	}
@@ -597,6 +604,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 // TestProxyRetriesOnDelayedBackendStartup simulates the scenario where a backend
 // server starts up after the initial connection attempt (like envd port forwarding delay).
 func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
+	t.Parallel()
 	var lisCfg net.ListenConfig
 	tempListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -610,7 +618,7 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 		return &pool.Destination{
 			Url:           backendURL,
 			SandboxId:     "test-sandbox",
-			RequestLogger: zap.NewNop(),
+			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: "delayed-backend",
 		}, nil
 	}
@@ -688,6 +696,7 @@ type data struct {
 // The internal and masked server both return a constant string. The proxy, when masked,
 // should return the "internal" server and not "masked" server.
 func TestChangeResponseHeader(t *testing.T) {
+	t.Parallel()
 	proxyPort := uint16(30092)
 	internalPort := uint64(30090)
 	maskedPort := uint16(30091)
@@ -707,12 +716,12 @@ func TestChangeResponseHeader(t *testing.T) {
 			SandboxId:                          "12345",
 			SandboxPort:                        internalPort,
 			DefaultToPortError:                 false,
-			RequestLogger:                      zap.L(),
+			RequestLogger:                      logger.L(),
 			ConnectionKey:                      "connection-key",
 			IncludeSandboxIdInProxyErrorLogger: true,
 			MaskRequestHost:                    utils.ToPtr(maskedHost),
 		}, nil
-	})
+	}, false)
 
 	go func() {
 		err = proxy.ListenAndServe(t.Context())

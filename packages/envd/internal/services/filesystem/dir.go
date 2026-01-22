@@ -78,12 +78,12 @@ func (s Service) MakeDir(ctx context.Context, req *connect.Request[rpc.MakeDirRe
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("path already exists but it is not a directory: %s", dirPath))
 	}
 
-	uid, gid, userErr := permissions.GetUserIds(u)
+	uid, gid, userErr := permissions.GetUserIdInts(u)
 	if userErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, userErr)
 	}
 
-	userErr = permissions.EnsureDirs(dirPath, int(uid), int(gid))
+	userErr = permissions.EnsureDirs(dirPath, uid, gid)
 	if userErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, userErr)
 	}

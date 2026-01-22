@@ -52,13 +52,13 @@ resource "google_compute_instance_group_manager" "api_pool" {
   }
 
   named_port {
-    name = var.edge_api_port.name
-    port = var.edge_api_port.port
+    name = var.client_proxy_health_port.name
+    port = var.client_proxy_health_port.port
   }
 
   named_port {
-    name = var.edge_proxy_port.name
-    port = var.edge_proxy_port.port
+    name = var.client_proxy_port.name
+    port = var.client_proxy_port.port
   }
 
   named_port {
@@ -144,7 +144,7 @@ resource "google_compute_instance_template" "api" {
     boot         = true
     source_image = data.google_compute_image.api_source_image.id
     disk_size_gb = 200
-    disk_type    = "pd-ssd"
+    disk_type    = var.api_boot_disk_type
   }
 
   network_interface {

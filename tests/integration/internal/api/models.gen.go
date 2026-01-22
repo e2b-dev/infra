@@ -43,6 +43,18 @@ const (
 	LogLevelWarn  LogLevel = "warn"
 )
 
+// Defines values for LogsDirection.
+const (
+	LogsDirectionBackward LogsDirection = "backward"
+	LogsDirectionForward  LogsDirection = "forward"
+)
+
+// Defines values for LogsSource.
+const (
+	LogsSourcePersistent LogsSource = "persistent"
+	LogsSourceTemporary  LogsSource = "temporary"
+)
+
 // Defines values for NodeStatus.
 const (
 	NodeStatusConnecting NodeStatus = "connecting"
@@ -88,6 +100,33 @@ type AWSRegistry struct {
 
 // AWSRegistryType Type of registry authentication
 type AWSRegistryType string
+
+// AdminSandboxKillResult defines model for AdminSandboxKillResult.
+type AdminSandboxKillResult struct {
+	// FailedCount Number of sandboxes that failed to kill
+	FailedCount int `json:"failedCount"`
+
+	// KilledCount Number of sandboxes successfully killed
+	KilledCount int `json:"killedCount"`
+}
+
+// AssignTemplateTagsRequest defines model for AssignTemplateTagsRequest.
+type AssignTemplateTagsRequest struct {
+	// Tags Tags to assign to the template
+	Tags []string `json:"tags"`
+
+	// Target Target template in "name:tag" format
+	Target string `json:"target"`
+}
+
+// AssignedTemplateTags defines model for AssignedTemplateTags.
+type AssignedTemplateTags struct {
+	// BuildID Identifier of the build associated with these tags
+	BuildID openapi_types.UUID `json:"buildID"`
+
+	// Tags Assigned tags of the template
+	Tags []string `json:"tags"`
+}
 
 // BuildLogEntry defines model for BuildLogEntry.
 type BuildLogEntry struct {
@@ -159,6 +198,15 @@ type CreatedTeamAPIKey struct {
 
 	// Name Name of the API key
 	Name string `json:"name"`
+}
+
+// DeleteTemplateTagsRequest defines model for DeleteTemplateTagsRequest.
+type DeleteTemplateTagsRequest struct {
+	// Name Name of the template
+	Name string `json:"name"`
+
+	// Tags Tags to delete
+	Tags []string `json:"tags"`
 }
 
 // DiskMetrics defines model for DiskMetrics.
@@ -285,6 +333,27 @@ type ListedSandbox struct {
 // LogLevel State of the sandbox
 type LogLevel string
 
+// LogsDirection Direction of the logs that should be returned
+type LogsDirection string
+
+// LogsSource Source of the logs that should be returned
+type LogsSource string
+
+// MachineInfo defines model for MachineInfo.
+type MachineInfo struct {
+	// CpuArchitecture CPU architecture of the node
+	CpuArchitecture string `json:"cpuArchitecture"`
+
+	// CpuFamily CPU family of the node
+	CpuFamily string `json:"cpuFamily"`
+
+	// CpuModel CPU model of the node
+	CpuModel string `json:"cpuModel"`
+
+	// CpuModelName CPU model name of the node
+	CpuModelName string `json:"cpuModelName"`
+}
+
 // MaxTeamMetric Team metric with timestamp
 type MaxTeamMetric struct {
 	// Timestamp Timestamp of the metric entry
@@ -355,7 +424,8 @@ type Node struct {
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
 	// Id Identifier of the node
-	Id string `json:"id"`
+	Id          string      `json:"id"`
+	MachineInfo MachineInfo `json:"machineInfo"`
 
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
@@ -398,7 +468,8 @@ type NodeDetail struct {
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
 	// Id Identifier of the node
-	Id string `json:"id"`
+	Id          string      `json:"id"`
+	MachineInfo MachineInfo `json:"machineInfo"`
 
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
@@ -727,6 +798,15 @@ type Template struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// TemplateAliasResponse defines model for TemplateAliasResponse.
+type TemplateAliasResponse struct {
+	// Public Whether the template is public or only accessible by the team
+	Public bool `json:"public"`
+
+	// TemplateID Identifier of the template
+	TemplateID string `json:"templateID"`
+}
+
 // TemplateBuild defines model for TemplateBuild.
 type TemplateBuild struct {
 	// BuildID Identifier of the build
@@ -785,6 +865,12 @@ type TemplateBuildInfo struct {
 	TemplateID string `json:"templateID"`
 }
 
+// TemplateBuildLogsResponse defines model for TemplateBuildLogsResponse.
+type TemplateBuildLogsResponse struct {
+	// Logs Build logs structured
+	Logs []BuildLogEntry `json:"logs"`
+}
+
 // TemplateBuildRequest defines model for TemplateBuildRequest.
 type TemplateBuildRequest struct {
 	// Alias Alias of the template
@@ -821,13 +907,15 @@ type TemplateBuildRequestV2 struct {
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
 	// TeamID Identifier of the team
+	// Deprecated:
 	TeamID *string `json:"teamID,omitempty"`
 }
 
 // TemplateBuildRequestV3 defines model for TemplateBuildRequestV3.
 type TemplateBuildRequestV3 struct {
-	// Alias Alias of the template
-	Alias string `json:"alias"`
+	// Alias Alias of the template. Deprecated, use name instead.
+	// Deprecated:
+	Alias *string `json:"alias,omitempty"`
 
 	// CpuCount CPU cores for the sandbox
 	CpuCount *CPUCount `json:"cpuCount,omitempty"`
@@ -835,7 +923,14 @@ type TemplateBuildRequestV3 struct {
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
+	// Name Name of the template. Can include a tag with colon separator (e.g. "my-template" or "my-template:v1"). If tag is included, it will be treated as if the tag was provided in the tags array.
+	Name *string `json:"name,omitempty"`
+
+	// Tags Tags to assign to the template build
+	Tags *[]string `json:"tags,omitempty"`
+
 	// TeamID Identifier of the team
+	// Deprecated:
 	TeamID *string `json:"teamID,omitempty"`
 }
 
@@ -910,13 +1005,20 @@ type TemplateLegacy struct {
 // TemplateRequestResponseV3 defines model for TemplateRequestResponseV3.
 type TemplateRequestResponseV3 struct {
 	// Aliases Aliases of the template
+	// Deprecated:
 	Aliases []string `json:"aliases"`
 
 	// BuildID Identifier of the last successful build for given template
 	BuildID string `json:"buildID"`
 
+	// Names Names of the template
+	Names []string `json:"names"`
+
 	// Public Whether the template is public or only accessible by the team
 	Public bool `json:"public"`
+
+	// Tags Tags assigned to the template build
+	Tags []string `json:"tags"`
 
 	// TemplateID Identifier of the template
 	TemplateID string `json:"templateID"`
@@ -1101,11 +1203,28 @@ type GetTemplatesTemplateIDParams struct {
 	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetTemplatesTemplateIDBuildsBuildIDLogsParams defines parameters for GetTemplatesTemplateIDBuildsBuildIDLogs.
+type GetTemplatesTemplateIDBuildsBuildIDLogsParams struct {
+	// Cursor Starting timestamp of the logs that should be returned in milliseconds
+	Cursor *int64 `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Maximum number of logs that should be returned
+	Limit     *int32         `form:"limit,omitempty" json:"limit,omitempty"`
+	Direction *LogsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+	Level     *LogLevel      `form:"level,omitempty" json:"level,omitempty"`
+
+	// Source Source of the logs that should be returned from
+	Source *LogsSource `form:"source,omitempty" json:"source,omitempty"`
+}
+
 // GetTemplatesTemplateIDBuildsBuildIDStatusParams defines parameters for GetTemplatesTemplateIDBuildsBuildIDStatus.
 type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	// LogsOffset Index of the starting build log that should be returned with the template
-	LogsOffset *int32    `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
-	Level      *LogLevel `form:"level,omitempty" json:"level,omitempty"`
+	LogsOffset *int32 `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
+
+	// Limit Maximum number of logs that should be returned
+	Limit *int32    `form:"limit,omitempty" json:"limit,omitempty"`
+	Level *LogLevel `form:"level,omitempty" json:"level,omitempty"`
 }
 
 // GetV2SandboxesParams defines parameters for GetV2Sandboxes.
@@ -1152,6 +1271,12 @@ type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJ
 
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest
+
+// DeleteTemplatesTagsJSONRequestBody defines body for DeleteTemplatesTags for application/json ContentType.
+type DeleteTemplatesTagsJSONRequestBody = DeleteTemplateTagsRequest
+
+// PostTemplatesTagsJSONRequestBody defines body for PostTemplatesTags for application/json ContentType.
+type PostTemplatesTagsJSONRequestBody = AssignTemplateTagsRequest
 
 // PatchTemplatesTemplateIDJSONRequestBody defines body for PatchTemplatesTemplateID for application/json ContentType.
 type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest

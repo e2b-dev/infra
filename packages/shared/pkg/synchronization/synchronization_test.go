@@ -2,10 +2,11 @@ package synchronization
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"testing"
 
-	"go.uber.org/zap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type testStore struct {
@@ -32,13 +33,7 @@ func (s *testStore) SourceList(context.Context) ([]string, error) {
 }
 
 func (s *testStore) SourceExists(_ context.Context, source []string, p string) bool {
-	for _, v := range source {
-		if v == p {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(source, p)
 }
 
 func (s *testStore) PoolList(context.Context) []string {
@@ -85,8 +80,8 @@ func (s *testStore) PoolRemove(_ context.Context, item string) {
 	s.removes++
 }
 
-func newSynchronizer(store Store[string, string]) *Synchronize[string, string] {
-	zap.ReplaceGlobals(zap.NewNop())
+func newSynchronizer(ctx context.Context, store Store[string, string]) *Synchronize[string, string] {
+	logger.ReplaceGlobals(ctx, logger.NewNopLogger())
 
 	return &Synchronize[string, string]{
 		store:            store,
@@ -96,11 +91,12 @@ func newSynchronizer(store Store[string, string]) *Synchronize[string, string] {
 }
 
 func TestSynchronize_InsertAndRemove(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 
 	// Start with empty pool; source has a & b.
 	s := newTestStore([]string{"a", "b"}, nil)
-	syncer := newSynchronizer(s)
+	syncer := newSynchronizer(ctx, s)
 
 	if err := syncer.sync(ctx); err != nil {
 		t.Fatalf("unexpected error: %v", err)

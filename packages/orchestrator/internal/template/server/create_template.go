@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -24,7 +23,7 @@ import (
 )
 
 func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templatemanager.TemplateCreateRequest) (*emptypb.Empty, error) {
-	_, childSpan := tracer.Start(ctx, "template-create")
+	ctx, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
 	cfg := templateRequest.GetTemplate()
@@ -40,15 +39,13 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	)
 
 	if s.info.GetStatus() != orchestrator.ServiceInfoStatus_Healthy {
-		s.logger.Error("Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.GetTemplateID()))
+		s.logger.Error(ctx, "Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.GetTemplateID()))
 
 		return nil, fmt.Errorf("server is draining")
 	}
 
 	metadata := storage.TemplateFiles{
-		BuildID:            cfg.GetBuildID(),
-		KernelVersion:      cfg.GetKernelVersion(),
-		FirecrackerVersion: cfg.GetFirecrackerVersion(),
+		BuildID: cfg.GetBuildID(),
 	}
 
 	// default to scope by template ID
@@ -86,6 +83,8 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		RegistryAuthProvider: authProvider,
 		Force:                cfg.Force,
 		Steps:                cfg.GetSteps(),
+		KernelVersion:        cfg.GetKernelVersion(),
+		FirecrackerVersion:   cfg.GetFirecrackerVersion(),
 	}
 
 	logs := buildlogger.NewLogEntryLogger()
@@ -97,7 +96,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	// Add new core that will log all messages using logger (zap.Logger) to the logs buffer too
 	encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
 	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
-	core := zapcore.NewTee(bufferCore, s.buildLogger.Core().
+	core := zapcore.NewTee(bufferCore, s.buildLogger.Detach(ctx).Core().
 		With([]zap.Field{
 			{Type: zapcore.StringType, Key: "envID", String: cfg.GetTemplateID()},
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
@@ -121,7 +120,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		defer func() {
 			if r := recover(); r != nil {
 				telemetry.ReportCriticalError(ctx, "recovered from panic in template build handler", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
-				buildInfo.SetFail(builderrors.UnwrapUserError(errors.New("fatal error occurred, please contact us")))
+				buildInfo.SetFail(builderrors.UnwrapUserError(nil))
 			}
 		}()
 
@@ -143,9 +142,19 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		res, err := s.builder.Build(ctx, metadata, template, core)
 		_ = core.Sync()
 		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error while building template", err, telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
+			userError := builderrors.UnwrapUserError(err)
 
-			buildInfo.SetFail(builderrors.UnwrapUserError(err))
+			attrs := []attribute.KeyValue{
+				telemetry.WithTemplateID(cfg.GetTemplateID()),
+				telemetry.WithBuildID(cfg.GetBuildID()),
+			}
+			if userError.GetMessage() == builderrors.InternalErrorMessage {
+				telemetry.ReportCriticalError(ctx, "error while building template", err, attrs...)
+			} else {
+				telemetry.ReportError(ctx, "error while building template", err, attrs...)
+			}
+
+			buildInfo.SetFail(userError)
 		} else {
 			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
 				RootfsSizeKey:  int32(res.RootfsSizeMB),

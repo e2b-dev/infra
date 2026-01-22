@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -53,6 +54,15 @@ type Config struct {
 	HyperloopIPAddress       string `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
 	HyperloopProxyPort       uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
 	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
+
+	// TCP firewall ports - separate ports for different traffic types to avoid
+	// protocol detection blocking on server-first protocols like SSH.
+	// - HTTP port: for traffic destined to port 80 (HTTP Host header inspection)
+	// - TLS port: for traffic destined to port 443 (TLS SNI inspection)
+	// - Other port: for all other traffic (CIDR-only check, no protocol inspection)
+	SandboxTCPFirewallHTTPPort  uint16 `env:"SANDBOX_TCP_FIREWALL_HTTP_PORT"  envDefault:"5016"`
+	SandboxTCPFirewallTLSPort   uint16 `env:"SANDBOX_TCP_FIREWALL_TLS_PORT"   envDefault:"5017"`
+	SandboxTCPFirewallOtherPort uint16 `env:"SANDBOX_TCP_FIREWALL_OTHER_PORT" envDefault:"5018"`
 }
 
 func ParseConfig() (Config, error) {
@@ -94,7 +104,7 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 		return nil, fmt.Errorf("failed to acquire network slot: %w", err)
 	}
 
-	err = ips.CreateNetwork()
+	err = ips.CreateNetwork(ctx)
 	if err != nil {
 		releaseErr := p.slotStorage.Release(ips)
 		err = errors.Join(err, releaseErr)
@@ -117,7 +127,7 @@ func (p *Pool) Populate(ctx context.Context) {
 		default:
 			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {
-				zap.L().Error("[network slot pool]: failed to create network", zap.Error(err))
+				logger.L().Error(ctx, "[network slot pool]: failed to create network", zap.Error(err))
 
 				continue
 			}
@@ -160,7 +170,7 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 		// Return the slot to the pool if configuring internet fails
 		go func() {
 			if returnErr := p.Return(context.WithoutCancel(ctx), slot); returnErr != nil {
-				zap.L().Error("failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
+				logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
 			}
 		}()
 
@@ -226,7 +236,7 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 }
 
 func (p *Pool) Close(ctx context.Context) error {
-	zap.L().Info("Closing network pool")
+	logger.L().Info(ctx, "Closing network pool")
 
 	p.doneOnce.Do(func() {
 		close(p.done)

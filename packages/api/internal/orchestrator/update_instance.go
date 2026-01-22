@@ -24,20 +24,16 @@ func (o *Orchestrator) UpdateSandbox(
 	clusterID uuid.UUID,
 	nodeID string,
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "update-sandbox",
+	ctx, span := tracer.Start(ctx, "update-sandbox",
 		trace.WithAttributes(
 			attribute.String("instance.id", sandboxID),
 		),
 	)
-	defer childSpan.End()
+	defer span.End()
 
-	client, childCtx, err := o.GetClient(childCtx, clusterID, nodeID)
-	if err != nil {
-		return fmt.Errorf("failed to get client '%s': %w", nodeID, err)
-	}
-
-	_, err = client.Sandbox.Update(
-		childCtx, &orchestrator.SandboxUpdateRequest{
+	client, ctx := o.GetNode(clusterID, nodeID).GetClient(ctx)
+	_, err := client.Sandbox.Update(
+		ctx, &orchestrator.SandboxUpdateRequest{
 			SandboxId: sandboxID,
 			EndTime:   timestamppb.New(endTime),
 		},
@@ -53,7 +49,7 @@ func (o *Orchestrator) UpdateSandbox(
 		return fmt.Errorf("failed to update sandbox '%s': %w", sandboxID, err)
 	}
 
-	telemetry.ReportEvent(childCtx, "Updated sandbox")
+	telemetry.ReportEvent(ctx, "Updated sandbox")
 
 	return nil
 }

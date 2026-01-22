@@ -24,6 +24,7 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -34,10 +35,10 @@ type closeable interface {
 type ServerStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
 
-	logger            *zap.Logger
+	logger            logger.Logger
 	builder           *build.Builder
 	buildCache        *cache.BuildCache
-	buildLogger       *zap.Logger
+	buildLogger       logger.Logger
 	artifactsregistry artifactsregistry.ArtifactsRegistry
 	templateStorage   storage.StorageProvider
 	buildStorage      storage.StorageProvider
@@ -53,8 +54,8 @@ func New(
 	config cfg.Config,
 	featureFlags *featureflags.Client,
 	meterProvider metric.MeterProvider,
-	logger *zap.Logger,
-	buildLogger *zap.Logger,
+	logger logger.Logger,
+	buildLogger logger.Logger,
 	sandboxFactory *sandbox.Factory,
 	proxy *proxy.SandboxProxy,
 	sandboxes *sandbox.Map,
@@ -63,7 +64,7 @@ func New(
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
 ) (s *ServerStore, e error) {
-	logger.Info("Initializing template manager")
+	logger.Info(ctx, "Initializing template manager")
 
 	closers := make([]closeable, 0)
 	defer func() {
@@ -73,12 +74,12 @@ func New(
 
 		for _, closer := range closers {
 			if err := closer.Close(); err != nil {
-				logger.Error("error closing resource", zap.Error(err))
+				logger.Error(ctx, "error closing resource", zap.Error(err))
 			}
 		}
 	}()
 
-	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
+	artifactsRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
@@ -89,12 +90,12 @@ func New(
 	}
 	closers = append(closers, dockerhubRepository)
 
-	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
+	buildPersistence, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}
 
-	buildCache := cache.NewBuildCache(meterProvider)
+	buildCache := cache.NewBuildCache(ctx, meterProvider)
 	buildMetrics, err := metrics.NewBuildMetrics(meterProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build metrics: %w", err)
@@ -106,8 +107,8 @@ func New(
 		featureFlags,
 		sandboxFactory,
 		templatePersistence,
-		buildPersistance,
-		artifactsregistry,
+		buildPersistence,
+		artifactsRegistry,
 		dockerhubRepository,
 		proxy,
 		sandboxes,
@@ -120,9 +121,9 @@ func New(
 		builder:           builder,
 		buildCache:        buildCache,
 		buildLogger:       buildLogger,
-		artifactsregistry: artifactsregistry,
+		artifactsregistry: artifactsRegistry,
 		templateStorage:   templatePersistence,
-		buildStorage:      buildPersistance,
+		buildStorage:      buildPersistence,
 		info:              info,
 		wg:                &sync.WaitGroup{},
 		closers:           closers,
@@ -156,15 +157,15 @@ func (s *ServerStore) Wait(ctx context.Context) error {
 	case <-ctx.Done():
 		return errors.New("force exit, not waiting for builds to finish")
 	default:
-		s.logger.Info("Waiting for all build jobs to finish")
+		s.logger.Info(ctx, "Waiting for all build jobs to finish")
 		s.wg.Wait()
 
 		if !env.IsLocal() {
-			s.logger.Info("Waiting for consumers to check build status")
+			s.logger.Info(ctx, "Waiting for consumers to check build status")
 			time.Sleep(15 * time.Second)
 		}
 
-		s.logger.Info("Template build queue cleaned")
+		s.logger.Info(ctx, "Template build queue cleaned")
 
 		return nil
 	}

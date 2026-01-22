@@ -4,14 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -40,13 +42,6 @@ func (c *apiClient) loadSnapshot(
 	ctx, span := tracer.Start(ctx, "load-snapshot")
 	defer span.End()
 
-	err := socket.Wait(ctx, uffdSocketPath)
-	if err != nil {
-		return fmt.Errorf("error waiting for uffd socket: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "uffd socket ready")
-
 	backendType := models.MemoryBackendBackendTypeUffd
 	backend := &models.MemoryBackend{
 		BackendPath: &uffdSocketPath,
@@ -67,7 +62,7 @@ func (c *apiClient) loadSnapshot(
 		},
 	}
 
-	_, err = c.client.Operations.LoadSnapshot(&snapshotConfig)
+	_, err := c.client.Operations.LoadSnapshot(&snapshotConfig)
 	if err != nil {
 		return fmt.Errorf("error loading snapshot: %w", err)
 	}
@@ -126,20 +121,18 @@ func (c *apiClient) pauseVM(ctx context.Context) error {
 func (c *apiClient) createSnapshot(
 	ctx context.Context,
 	snapfilePath string,
-	memfilePath string,
 ) error {
 	snapshotConfig := operations.CreateSnapshotParams{
 		Context: ctx,
 		Body: &models.SnapshotCreateParams{
 			SnapshotType: models.SnapshotCreateParamsSnapshotTypeFull,
-			MemFilePath:  &memfilePath,
 			SnapshotPath: &snapfilePath,
 		},
 	}
 
 	_, err := c.client.Operations.CreateSnapshot(&snapshotConfig)
 	if err != nil {
-		return fmt.Errorf("error loading snapshot: %w", err)
+		return fmt.Errorf("error creating snapshot: %w", err)
 	}
 
 	return nil
@@ -176,9 +169,9 @@ func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernel
 	return err
 }
 
-func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error {
+func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEngine *string) error {
 	rootfs := "rootfs"
-	ioEngine := "Async"
+
 	isRootDevice := true
 	driversConfig := operations.PutGuestDriveByIDParams{
 		Context: ctx,
@@ -188,7 +181,7 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error
 			PathOnHost:   rootfsPath,
 			IsRootDevice: &isRootDevice,
 			IsReadOnly:   false,
-			IoEngine:     &ioEngine,
+			IoEngine:     ioEngine,
 		},
 	}
 
@@ -300,4 +293,34 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *apiClient) memoryMapping(ctx context.Context) (*memory.Mapping, error) {
+	params := operations.GetMemoryMappingsParams{
+		Context: ctx,
+	}
+
+	res, err := c.client.Operations.GetMemoryMappings(&params)
+	if err != nil {
+		return nil, fmt.Errorf("error getting memory mappings: %w", err)
+	}
+
+	return memory.NewMappingFromFc(res.Payload.Mappings)
+}
+
+func (c *apiClient) memoryInfo(ctx context.Context, blockSize int64) (*header.DiffMetadata, error) {
+	params := operations.GetMemoryParams{
+		Context: ctx,
+	}
+
+	res, err := c.client.Operations.GetMemory(&params)
+	if err != nil {
+		return nil, fmt.Errorf("error getting memory: %w", err)
+	}
+
+	return &header.DiffMetadata{
+		Dirty:     bitset.From(res.Payload.Resident),
+		Empty:     bitset.From(res.Payload.Empty),
+		BlockSize: blockSize,
+	}, nil
 }

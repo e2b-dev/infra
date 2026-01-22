@@ -1,17 +1,18 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -21,8 +22,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/types"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -31,16 +34,10 @@ const (
 	InstanceIDPrefix            = "i"
 	metricTemplateAlias         = metrics.MetricPrefix + "template.alias"
 	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
-)
 
-// mostUsedTemplates is a map of the most used template aliases.
-// It is used for monitoring and to reduce metric cardinality.
-var mostUsedTemplates = map[string]struct{}{
-	"base":                  {},
-	"code-interpreter-v1":   {},
-	"code-interpreter-beta": {},
-	"desktop":               {},
-}
+	// Network validation error messages
+	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+)
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -65,35 +62,32 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
-	cleanedAliasOrEnvID, err := id.CleanTemplateID(body.TemplateID)
+	// Parse template ID and optional tag in the format "templateID:tag"
+	cleanedAliasOrEnvID, tag, err := id.ParseTemplateIDOrAliasWithTag(body.TemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid environment ID: %s", err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", err))
 
-		telemetry.ReportCriticalError(ctx, "error when cleaning env ID", err)
+		telemetry.ReportCriticalError(ctx, "error when parsing template ID", err)
 
 		return
 	}
 
-	telemetry.ReportEvent(ctx, "Cleaned template ID")
-
-	_, templateSpan := tracer.Start(ctx, "get-template")
-	defer templateSpan.End()
+	telemetry.ReportEvent(ctx, "Parsed template ID and tag")
 
 	// Check if team has access to the environment
 	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
-	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, clusterID, true)
+	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, tag, teamInfo.Team.ID, clusterID, true)
 	if checkErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
 
 		return
 	}
-	templateSpan.End()
 
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
-	setTemplateNameMetric(c, env.Aliases)
+	setTemplateNameMetric(ctx, c, a.featureFlags, env.TemplateID, env.Aliases)
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -103,7 +97,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		SandboxID:  sandboxID,
 		TemplateID: env.TemplateID,
 		TeamID:     teamInfo.Team.ID.String(),
-	}).Debug("Started creating sandbox")
+	}).Debug(ctx, "Started creating sandbox")
 
 	alias := firstAlias(env.Aliases)
 	telemetry.SetAttributes(ctx,
@@ -209,7 +203,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		mcp,
 	)
 	if createErr != nil {
-		zap.L().Error("Failed to create sandbox", zap.Error(createErr.Err))
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
 
 		return
@@ -256,16 +249,26 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	return key, nil
 }
 
-func setTemplateNameMetric(c *gin.Context, aliases []string) {
+func setTemplateNameMetric(ctx context.Context, c *gin.Context, ff *featureflags.Client, templateID string, aliases []string) {
+	trackedTemplates := featureflags.GetTrackedTemplatesSet(ctx, ff)
+
+	// Check template ID first
+	if _, exists := trackedTemplates[templateID]; exists {
+		c.Set(metricTemplateAlias, templateID)
+
+		return
+	}
+
+	// Then check aliases
 	for _, alias := range aliases {
-		if _, exists := mostUsedTemplates[alias]; exists {
+		if _, exists := trackedTemplates[alias]; exists {
 			c.Set(metricTemplateAlias, alias)
 
 			return
 		}
 	}
 
-	// Fallback to 'other' if no match of mostUsedTemplates found
+	// Fallback to 'other' if no match of tracked templates found
 	c.Set(metricTemplateAlias, "other")
 }
 
@@ -319,6 +322,36 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("mask request host is not ASCII (%s)!=(%s)", host, hostname),
 				ClientMsg: fmt.Sprintf("mask request host '%s' is not ASCII. Please use ASCII characters only.", hostname),
+			}
+		}
+	}
+
+	denyOut := sharedUtils.DerefOrDefault(network.DenyOut, nil)
+	for _, cidr := range denyOut {
+		if !sandbox_network.IsIPOrCIDR(cidr) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid denied CIDR %s", cidr),
+				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", cidr),
+			}
+		}
+	}
+
+	// Validate that allow out rules have corresponding deny out rules
+	allowOut := sharedUtils.DerefOrDefault(network.AllowOut, nil)
+	if len(allowOut) > 0 {
+		_, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
+
+		// Check if DenyOut contains block-all CIDR
+		hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
+
+		// When specifying domains, require block-all CIDR in DenyOut
+		// Without this, domain filtering is meaningless (traffic is allowed by default)
+		if len(allowedDomains) > 0 && !hasBlockAll {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
+				ClientMsg: ErrMsgDomainsRequireBlockAll,
 			}
 		}
 	}

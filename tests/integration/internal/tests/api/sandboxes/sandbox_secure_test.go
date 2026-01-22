@@ -14,6 +14,7 @@ import (
 )
 
 func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -45,15 +46,14 @@ func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
 	assert.NotNil(t, resp.JSON201.EnvdAccessToken)
 
 	getResp, getErr := c.GetSandboxesSandboxIDWithResponse(ctx, resp.JSON201.SandboxID, setup.WithAPIKey())
-	if getErr != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, getErr, "Failed to get sandbox after creation")
 
 	require.Equal(t, http.StatusCreated, resp.StatusCode())
 	assert.Equal(t, *resp.JSON201.EnvdAccessToken, *getResp.JSON200.EnvdAccessToken)
 }
 
 func TestCreateSandboxWithDisabledPublicTrafficAndDisabledEnvdSecure(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

@@ -9,6 +9,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
@@ -43,17 +44,17 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 		}
 	}
 
-	telemetry.ReportError(ctx, message, errMsg)
+	telemetry.ReportError(ctx, message, errMsg, attribute.Int("http.status_code", statusCode))
 
 	c.Error(errMsg)
 
 	// Handle forbidden errors
-	if strings.HasPrefix(message, forbiddenErrPrefix) {
+	if after, ok := strings.CutPrefix(message, forbiddenErrPrefix); ok {
 		c.AbortWithStatusJSON(
 			http.StatusForbidden,
 			gin.H{
 				"code":    http.StatusForbidden,
-				"message": strings.TrimPrefix(message, forbiddenErrPrefix),
+				"message": after,
 			},
 		)
 
@@ -61,12 +62,12 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	}
 
 	// Handle blocked errors
-	if strings.HasPrefix(message, blockedErrPrefix) {
+	if after, ok := strings.CutPrefix(message, blockedErrPrefix); ok {
 		c.AbortWithStatusJSON(
 			http.StatusForbidden,
 			gin.H{
 				"code":    http.StatusForbidden,
-				"message": strings.TrimPrefix(message, blockedErrPrefix),
+				"message": after,
 			},
 		)
 
@@ -74,12 +75,14 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	}
 
 	// Handle security requirements errors from the openapi3filter
-	if strings.HasPrefix(message, securityErrPrefix) {
+	if after, ok := strings.CutPrefix(message, securityErrPrefix); ok {
+		// Keep the original status code as it can be also timeout (read body timeout) error code.
+		// The securityErrPrefix is added for all errors going through the processCustomErrors function.
 		c.AbortWithStatusJSON(
-			http.StatusUnauthorized,
+			statusCode,
 			gin.H{
-				"code":    http.StatusUnauthorized,
-				"message": strings.TrimPrefix(message, securityErrPrefix),
+				"code":    statusCode,
+				"message": after,
 			},
 		)
 

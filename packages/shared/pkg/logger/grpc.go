@@ -3,6 +3,7 @@ package logger
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
@@ -12,8 +13,8 @@ import (
 
 const HealthCheckRoute = "/grpc.health.v1.Health/Check"
 
-func GRPCLogger(l *zap.Logger) logging.Logger {
-	return logging.LoggerFunc(func(_ context.Context, lvl logging.Level, msg string, fields ...any) {
+func GRPCLogger(l Logger) logging.Logger {
+	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
 		ignoredFields := map[string]struct{}{
 			"grpc.request.content":  {},
 			"grpc.response.content": {},
@@ -75,13 +76,13 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 
 		switch lvl {
 		case logging.LevelDebug:
-			logger.Debug(message)
+			logger.Debug(ctx, message)
 		case logging.LevelInfo:
-			logger.Info(message)
+			logger.Info(ctx, message)
 		case logging.LevelWarn:
-			logger.Warn(message)
+			logger.Warn(ctx, message)
 		case logging.LevelError:
-			logger.Error(message)
+			logger.Error(ctx, message)
 		default:
 			panic(fmt.Sprintf("unknown level %v", lvl))
 		}
@@ -94,12 +95,6 @@ func WithoutHealthCheck() selector.Matcher {
 
 func WithoutRoutes(routes ...string) selector.Matcher {
 	return selector.MatchFunc(func(_ context.Context, c interceptors.CallMeta) bool {
-		for _, route := range routes {
-			if c.FullMethod() == route {
-				return false
-			}
-		}
-
-		return true
+		return !slices.Contains(routes, c.FullMethod())
 	})
 }

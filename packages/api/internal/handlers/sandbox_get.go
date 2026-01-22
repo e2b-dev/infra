@@ -5,14 +5,12 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -30,7 +28,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
-		cluster, ok := a.clustersPool.GetClusterById(*team.ClusterID)
+		cluster, ok := a.clusters.GetClusterById(*team.ClusterID)
 		if !ok {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("cluster with ID '%s' not found", *team.ClusterID), nil)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", *team.ClusterID))
@@ -92,10 +90,17 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// If sandbox not found try to get the latest snapshot
-	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxId, TeamID: team.ID})
+	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxId)
 	if err != nil {
 		telemetry.ReportError(ctx, "error getting last snapshot", err)
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist", id))
+
+		return
+	}
+
+	if lastSnapshot.Snapshot.TeamID != team.ID {
+		telemetry.ReportCriticalError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", id))
 
 		return
 	}
@@ -107,7 +112,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if lastSnapshot.EnvBuild.TotalDiskSizeMb != nil {
 		diskSize = int32(*lastSnapshot.EnvBuild.TotalDiskSizeMb)
 	} else {
-		zap.L().Error("disk size is not set for the sandbox", logger.WithSandboxID(id))
+		logger.L().Error(ctx, "disk size is not set for the sandbox", logger.WithSandboxID(id))
 	}
 
 	// This shouldn't happen - if yes, the data are in corrupted state,
@@ -116,7 +121,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if lastSnapshot.EnvBuild.EnvdVersion != nil {
 		envdVersion = *lastSnapshot.EnvBuild.EnvdVersion
 	} else {
-		zap.L().Error("envd version is not set for the sandbox", logger.WithSandboxID(id))
+		logger.L().Error(ctx, "envd version is not set for the sandbox", logger.WithSandboxID(id))
 	}
 
 	var sbxAccessToken *string = nil

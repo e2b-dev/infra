@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -28,9 +29,16 @@ func NewCleanup() *Cleanup {
 	return &Cleanup{}
 }
 
-func (c *Cleanup) Add(f func(ctx context.Context) error) {
+func (c *Cleanup) AddNoContext(ctx context.Context, f func() error) {
+	c.Add(ctx, func(_ context.Context) error { return f() })
+}
+
+func (c *Cleanup) Add(ctx context.Context, f func(ctx context.Context) error) {
 	if c.hasRun.Load() == true {
-		zap.L().Error("Add called after cleanup has run, ignoring function")
+		err := f(context.WithoutCancel(ctx))
+		if err != nil {
+			logger.L().Error(ctx, "failed to run function after cleanup has run", zap.Error(err))
+		}
 
 		return
 	}
@@ -41,9 +49,12 @@ func (c *Cleanup) Add(f func(ctx context.Context) error) {
 	c.cleanup = append(c.cleanup, f)
 }
 
-func (c *Cleanup) AddPriority(f func(ctx context.Context) error) {
+func (c *Cleanup) AddPriority(ctx context.Context, f func(ctx context.Context) error) {
 	if c.hasRun.Load() == true {
-		zap.L().Error("AddPriority called after cleanup has run, ignoring function")
+		err := f(context.WithoutCancel(ctx))
+		if err != nil {
+			logger.L().Error(ctx, "failed to run priority function after cleanup has run", zap.Error(err))
+		}
 
 		return
 	}
@@ -94,7 +105,7 @@ func cleanupFiles(config cfg.BuilderConfig, files *storage.SandboxFiles) func(co
 		for _, p := range []string{
 			files.SandboxFirecrackerSocketPath(),
 			files.SandboxUffdSocketPath(),
-			files.SandboxCacheRootfsLinkPath(config),
+			files.SandboxCacheRootfsLinkPath(config.StorageConfig),
 		} {
 			err := os.RemoveAll(p)
 			if err != nil {

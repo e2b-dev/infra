@@ -15,6 +15,7 @@ import (
 // before previous Wait has returned, which should panic with:
 // "sync: WaitGroup is reused before previous Wait has returned"
 func TestHTTPWriterWaitGroupReuse(t *testing.T) {
+	t.Parallel()
 	// Create a mock HTTP server that responds slowly to increase chance of race
 	requestCount := atomic.Int32{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -49,9 +50,7 @@ func TestHTTPWriterWaitGroupReuse(t *testing.T) {
 			// Spawn multiple goroutines that write concurrently
 			numWriters := 5
 			for i := range numWriters {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					// Write multiple log lines
 					for j := range 3 {
 						logLine := fmt.Sprintf(`{"level":"info","msg":"test log %d-%d"}`+"\n", i, j)
@@ -62,15 +61,13 @@ func TestHTTPWriterWaitGroupReuse(t *testing.T) {
 						// Yield to increase chance of interleaving
 						runtime.Gosched()
 					}
-				}()
+				})
 			}
 
 			// Spawn multiple goroutines that call Sync() concurrently
 			numSyncers := 2
 			for range numSyncers {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					runtime.Gosched() // Let some Write() calls happen first
 					err := writer.Sync()
 					if err != nil {
@@ -84,7 +81,7 @@ func TestHTTPWriterWaitGroupReuse(t *testing.T) {
 					if err != nil {
 						t.Errorf("Write after sync failed: %v", err)
 					}
-				}()
+				})
 			}
 
 			// Wait for all goroutines to complete
@@ -111,6 +108,7 @@ func TestHTTPWriterWaitGroupReuse(t *testing.T) {
 // TestHTTPWriterConcurrentWriteSync tests heavy concurrent usage
 // This is a more aggressive test that tries to trigger the race condition
 func TestHTTPWriterConcurrentWriteSync(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -130,9 +128,7 @@ func TestHTTPWriterConcurrentWriteSync(t *testing.T) {
 
 	// Writer goroutines
 	for range 5 {
-		testWg.Add(1)
-		go func() {
-			defer testWg.Done()
+		testWg.Go(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					panicDetected.Store(true)
@@ -152,14 +148,12 @@ func TestHTTPWriterConcurrentWriteSync(t *testing.T) {
 					runtime.Gosched()
 				}
 			}
-		}()
+		})
 	}
 
 	// Sync goroutines - these call Sync() repeatedly
 	for range 3 {
-		testWg.Add(1)
-		go func() {
-			defer testWg.Done()
+		testWg.Go(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					panicDetected.Store(true)
@@ -178,7 +172,7 @@ func TestHTTPWriterConcurrentWriteSync(t *testing.T) {
 					runtime.Gosched()
 				}
 			}
-		}()
+		})
 	}
 
 	// Let the test run for a short duration
@@ -199,6 +193,7 @@ func TestHTTPWriterConcurrentWriteSync(t *testing.T) {
 
 // TestHTTPWriterSequentialWrites tests basic sequential write and sync
 func TestHTTPWriterSequentialWrites(t *testing.T) {
+	t.Parallel()
 	var requestCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requestCount.Add(1)

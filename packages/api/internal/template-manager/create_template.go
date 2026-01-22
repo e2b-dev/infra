@@ -8,13 +8,15 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -65,13 +67,12 @@ func (tm *TemplateManager) CreateTemplate(
 			return
 		}
 
-		// Report build failur status on any error while creating the template
+		// Report build failure status on any error while creating the template
 		telemetry.ReportCriticalError(ctx, "build failed", e, telemetry.WithTemplateID(templateID))
 		err := tm.SetStatus(
 			ctx,
-			templateID,
 			buildID,
-			envbuild.StatusFailed,
+			types.BuildStatusFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: fmt.Sprintf("error when building env: %s", e),
 			},
@@ -86,7 +87,7 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
 	}
 
-	cli, err := tm.GetClusterBuildClient(clusterID, nodeID)
+	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to get builder: %w", err)
 	}
@@ -133,9 +134,8 @@ func (tm *TemplateManager) CreateTemplate(
 
 		err = tm.SetStatus(
 			ctx,
-			templateID,
 			buildID,
-			envbuild.StatusFailed,
+			types.BuildStatusFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: err.Error(),
 				Step:    ut.ToPtr("base"),
@@ -148,9 +148,8 @@ func (tm *TemplateManager) CreateTemplate(
 		return nil
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, cli.GRPC.Metadata)
-	_, err = cli.GRPC.Client.Template.TemplateCreate(
-		reqCtx, &templatemanagergrpc.TemplateCreateRequest{
+	_, err = client.Template.TemplateCreate(
+		ctx, &templatemanagergrpc.TemplateCreateRequest{
 			Template:   template,
 			CacheScope: ut.ToPtr(teamID.String()),
 			Version:    &version,
@@ -167,9 +166,8 @@ func (tm *TemplateManager) CreateTemplate(
 	// it's possible build status job will be triggered before build cache on template manager is created and build will fail
 	err = tm.SetStatus(
 		ctx,
-		templateID,
 		buildID,
-		envbuild.StatusBuilding,
+		types.BuildStatusBuilding,
 		nil,
 	)
 	if err != nil {
@@ -179,16 +177,16 @@ func (tm *TemplateManager) CreateTemplate(
 
 	// Do not wait for global build sync trigger it immediately
 	go func(ctx context.Context) {
-		buildContext, buildSpan := tracer.Start(ctx, "template-background-build-env")
-		defer buildSpan.End()
+		ctx, span := tracer.Start(ctx, "template-background-build-env")
+		defer span.End()
 
-		err := tm.BuildStatusSync(buildContext, buildID, templateID, clusterID, nodeID)
+		err := tm.BuildStatusSync(ctx, buildID, templateID, clusterID, &nodeID)
 		if err != nil {
-			zap.L().Error("error syncing build status", zap.Error(err))
+			logger.L().Error(ctx, "error syncing build status", zap.Error(err))
 		}
 
 		// Invalidate the cache
-		tm.templateCache.Invalidate(templateID)
+		tm.templateCache.InvalidateAllTags(templateID)
 	}(context.WithoutCancel(ctx))
 
 	return nil
@@ -289,8 +287,16 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 	case !hasImage && !hasTemplate:
 		return fmt.Errorf("must specify either fromImage or fromTemplate")
 	case hasTemplate:
+		alias, tag, err := id.ParseTemplateIDOrAliasWithTag(*fromTemplate)
+		if err != nil {
+			return fmt.Errorf("failed to parse template ID or alias with tag: %w", err)
+		}
+
 		// Look up the base template by alias to get its metadata
-		baseTemplate, err := tm.sqlcDB.GetTemplateWithBuild(ctx, *fromTemplate)
+		baseTemplate, err := tm.sqlcDB.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
+			AliasOrEnvID: alias,
+			Tag:          tag,
+		})
 		if err != nil {
 			return &FromTemplateError{
 				err:     err,

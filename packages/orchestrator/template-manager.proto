@@ -99,12 +99,21 @@ enum LogLevel {
     Error = 3;
 }
 
+enum LogsDirection {
+  Forward = 0;
+  Backward = 1;
+}
+
 message TemplateStatusRequest {
   string templateID = 1;
   string buildID = 2;
   optional int32 offset = 3;
   optional LogLevel level = 4;
   optional uint32 limit = 5;
+
+  optional google.protobuf.Timestamp start = 6;
+  optional google.protobuf.Timestamp end = 7;
+  optional LogsDirection direction = 8;
 }
 
 // Data required for deleting a template.

@@ -5,13 +5,13 @@ import (
 	"time"
 
 	"github.com/posthog/posthog-go"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -32,7 +32,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			zap.L().Info("Stopping node analytics reporting due to context cancellation")
+			logger.L().Info(ctx, "Stopping node analytics reporting due to context cancellation")
 
 			return
 		case <-ticker.C:
@@ -52,7 +52,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 // sendAnalyticsForLongRunningSandboxes sends long-running instances event to analytics
 func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyticscollector.Analytics, instances []sandbox.Sandbox) {
 	if len(instances) == 0 {
-		zap.L().Debug("No long-running instances to report to analytics")
+		logger.L().Debug(ctx, "No long-running instances to report to analytics")
 
 		return
 	}
@@ -75,7 +75,7 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 		},
 	)
 	if err != nil {
-		zap.L().Error("error sending running instances event to analytics", zap.Error(err))
+		logger.L().Error(ctx, "error sending running instances event to analytics", zap.Error(err))
 	}
 }
 
@@ -87,6 +87,7 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox sandbox.Sand
 	stopTime := time.Now()
 
 	o.posthogClient.CreateAnalyticsTeamEvent(
+		ctx,
 		sandbox.TeamID.String(),
 		"closed_instance", posthog.NewProperties().
 			Set("instance_id", sandbox.SandboxID).
@@ -107,49 +108,45 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox sandbox.Sand
 		DiskSizeMb:    sandbox.TotalDiskSizeMB,
 	})
 	if err != nil {
-		zap.L().Error("error sending Analytics event", zap.Error(err))
+		logger.L().Error(ctx, "error sending Analytics event", zap.Error(err))
 	}
 }
 
-func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox sandbox.Sandbox, created bool) {
+func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox sandbox.Sandbox) {
 	ctx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
-	if created {
-		// Run in separate goroutine to not block sandbox creation
-		_, err := o.analytics.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
-			InstanceId:    sandbox.SandboxID,
-			ExecutionId:   sandbox.ExecutionID,
-			EnvironmentId: sandbox.TemplateID,
-			BuildId:       sandbox.BuildID.String(),
-			TeamId:        sandbox.TeamID.String(),
-			CpuCount:      sandbox.VCpu,
-			RamMb:         sandbox.RamMB,
-			DiskSizeMb:    sandbox.TotalDiskSizeMB,
-			Timestamp:     timestamppb.Now(),
-		})
-		if err != nil {
-			zap.L().Error("Error sending Analytics event", zap.Error(err))
-		}
+	_, err := o.analytics.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
+		InstanceId:    sandbox.SandboxID,
+		ExecutionId:   sandbox.ExecutionID,
+		EnvironmentId: sandbox.TemplateID,
+		BuildId:       sandbox.BuildID.String(),
+		TeamId:        sandbox.TeamID.String(),
+		CpuCount:      sandbox.VCpu,
+		RamMb:         sandbox.RamMB,
+		DiskSizeMb:    sandbox.TotalDiskSizeMB,
+		Timestamp:     timestamppb.Now(),
+	})
+	if err != nil {
+		logger.L().Error(ctx, "Error sending Analytics event", zap.Error(err))
 	}
 }
 
-func (o *Orchestrator) countersInsert(ctx context.Context, sandbox sandbox.Sandbox, newlyCreated bool) {
-	attributes := []attribute.KeyValue{
-		telemetry.WithTeamID(sandbox.TeamID.String()),
-	}
+func (o *Orchestrator) handleNewlyCreatedSandbox(ctx context.Context, sandbox sandbox.Sandbox) {
+	// Send analytics event
+	o.analyticsInsert(ctx, sandbox)
 
-	if newlyCreated {
-		o.createdCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
-	}
+	// Update team metrics
+	o.teamMetricsObserver.Add(ctx, sandbox.TeamID)
 
-	o.sandboxCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
+	// Increment created counter
+	o.createdCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sandbox.TeamID.String())))
+}
+
+func (o *Orchestrator) sandboxCounterInsert(ctx context.Context, sandbox sandbox.Sandbox) {
+	o.sandboxCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sandbox.TeamID.String())))
 }
 
 func (o *Orchestrator) countersRemove(ctx context.Context, sandbox sandbox.Sandbox, _ sandbox.StateAction) {
-	attributes := []attribute.KeyValue{
-		telemetry.WithTeamID(sandbox.TeamID.String()),
-	}
-
-	o.sandboxCounter.Add(ctx, -1, metric.WithAttributes(attributes...))
+	o.sandboxCounter.Add(ctx, -1, metric.WithAttributes(telemetry.WithTeamID(sandbox.TeamID.String())))
 }

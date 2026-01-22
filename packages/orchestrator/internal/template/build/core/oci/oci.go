@@ -2,6 +2,7 @@ package oci
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -22,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -38,13 +41,39 @@ var DefaultPlatform = containerregistry.Platform{
 	Architecture: "amd64",
 }
 
+// wrapImagePullError converts technical Docker registry errors into user-friendly messages.
+func wrapImagePullError(err error, imageRef string) error {
+	if err == nil {
+		return nil
+	}
+
+	// Check for transport errors with specific error codes from the registry API
+	var transportErr *transport.Error
+	if errors.As(err, &transportErr) {
+		for _, e := range transportErr.Errors {
+			switch e.Code {
+			case transport.ManifestUnknownErrorCode:
+				return fmt.Errorf("image '%s' not found: the image or tag does not exist in the registry", imageRef)
+			case transport.NameUnknownErrorCode:
+				return fmt.Errorf("repository '%s' not found: verify the image name is correct", imageRef)
+			case transport.UnauthorizedErrorCode:
+				return fmt.Errorf("access denied to '%s': authentication required or insufficient permissions", imageRef)
+			case transport.DeniedErrorCode:
+				return fmt.Errorf("access denied to '%s': you don't have permission to pull this image", imageRef)
+			}
+		}
+	}
+
+	return fmt.Errorf("failed to pull image '%s': %w", imageRef, err)
+}
+
 func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRepository, tag string, authProvider auth.RegistryAuthProvider) (containerregistry.Image, error) {
 	ctx, span := tracer.Start(ctx, "pull-public-docker-image")
 	defer span.End()
 
 	ref, err := name.ParseReference(tag)
 	if err != nil {
-		return nil, fmt.Errorf("invalid image reference: %w", err)
+		return nil, fmt.Errorf("invalid image reference '%s': %w", tag, err)
 	}
 
 	platform := DefaultPlatform
@@ -54,7 +83,7 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 	if authProvider == nil && ref.Context().RegistryStr() == name.DefaultRegistry {
 		img, err := dockerhubRepository.GetImage(ctx, tag, platform)
 		if err != nil {
-			return nil, fmt.Errorf("error getting image: %w", err)
+			return nil, wrapImagePullError(err, tag)
 		}
 
 		telemetry.ReportEvent(ctx, "pulled public image through docker remote repository proxy")
@@ -83,7 +112,7 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 
 	img, err := remote.Image(ref, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("error pulling image: %w", err)
+		return nil, wrapImagePullError(err, tag)
 	}
 
 	telemetry.ReportEvent(ctx, "pulled public image")
@@ -136,7 +165,7 @@ func GetImageSize(img containerregistry.Image) (int64, error) {
 	return imageSize, nil
 }
 
-func ToExt4(ctx context.Context, logger *zap.Logger, img containerregistry.Image, rootfsPath string, maxSize int64, blockSize int64) (int64, error) {
+func ToExt4(ctx context.Context, logger logger.Logger, img containerregistry.Image, rootfsPath string, maxSize int64, blockSize int64) (int64, error) {
 	ctx, childSpan := tracer.Start(ctx, "oci-to-ext4")
 	defer childSpan.End()
 
@@ -171,7 +200,7 @@ func ToExt4(ctx context.Context, logger *zap.Logger, img containerregistry.Image
 	return size, nil
 }
 
-func ExtractToExt4(ctx context.Context, logger *zap.Logger, img containerregistry.Image, rootfsPath string) error {
+func ExtractToExt4(ctx context.Context, l logger.Logger, img containerregistry.Image, rootfsPath string) error {
 	ctx, childSpan := tracer.Start(ctx, "extract-to-ext4")
 	defer childSpan.End()
 
@@ -181,7 +210,7 @@ func ExtractToExt4(ctx context.Context, logger *zap.Logger, img containerregistr
 	}
 	defer func() {
 		if removeErr := os.RemoveAll(tmpMount); removeErr != nil {
-			zap.L().Error("error removing temporary mount point", zap.Error(removeErr))
+			logger.L().Error(ctx, "error removing temporary mount point", zap.Error(removeErr))
 		}
 	}()
 
@@ -191,16 +220,16 @@ func ExtractToExt4(ctx context.Context, logger *zap.Logger, img containerregistr
 	}
 	defer func() {
 		if unmountErr := filesystem.Unmount(context.WithoutCancel(ctx), tmpMount); unmountErr != nil {
-			zap.L().Error("error unmounting ext4 filesystem", zap.Error(unmountErr))
+			logger.L().Error(ctx, "error unmounting ext4 filesystem", zap.Error(unmountErr))
 		}
 	}()
 
-	zap.L().Debug("extracting image to ext4 filesystem",
+	logger.L().Debug(ctx, "extracting image to ext4 filesystem",
 		zap.String("rootfs_path", rootfsPath),
 		zap.String("tmp_mount", tmpMount),
 	)
 
-	err = unpackRootfs(ctx, logger, img, tmpMount)
+	err = unpackRootfs(ctx, l, img, tmpMount)
 	if err != nil {
 		return fmt.Errorf("error extracting tar to directory: %w", err)
 	}
@@ -228,7 +257,7 @@ func ParseEnvs(envs []string) map[string]string {
 	return envMap
 }
 
-func unpackRootfs(ctx context.Context, logger *zap.Logger, srcImage containerregistry.Image, destDir string) (err error) {
+func unpackRootfs(ctx context.Context, l logger.Logger, srcImage containerregistry.Image, destDir string) (err error) {
 	ctx, childSpan := tracer.Start(ctx, "unpack-rootfs")
 	defer childSpan.End()
 
@@ -241,7 +270,7 @@ func unpackRootfs(ctx context.Context, logger *zap.Logger, srcImage containerreg
 	}()
 
 	// Create export of layers in the temporary directory
-	layers, err := createExport(ctx, logger, srcImage, ociPath)
+	layers, err := createExport(ctx, l, srcImage, ociPath)
 	if err != nil {
 		return fmt.Errorf("while creating export of source image: %w", err)
 	}
@@ -261,7 +290,7 @@ func unpackRootfs(ctx context.Context, logger *zap.Logger, srcImage containerreg
 	}
 	defer func() {
 		if unmountErr := filesystem.Unmount(context.WithoutCancel(ctx), mountPath); unmountErr != nil {
-			zap.L().Error("error unmounting overlayfs mount point", zap.Error(unmountErr))
+			logger.L().Error(ctx, "error unmounting overlayfs mount point", zap.Error(unmountErr))
 		}
 	}()
 
@@ -270,7 +299,7 @@ func unpackRootfs(ctx context.Context, logger *zap.Logger, srcImage containerreg
 	if err != nil {
 		return fmt.Errorf("while listing files in overlayfs: %w", err)
 	}
-	logger.Info("Root filesystem structure: " + strings.Join(files, ", "))
+	l.Info(ctx, "Root filesystem structure: "+strings.Join(files, ", "))
 
 	// Copy files from the overlayfs mount point to the destination directory
 	err = copyFiles(ctx, mountPath, destDir)
@@ -323,7 +352,7 @@ func copyFiles(ctx context.Context, src, dest string) error {
 // and returns the paths of the extracted layers. The layers are extracted in reverse order
 // to maintain the correct order for overlayFS.
 // The layers are extracted in parallel to speed up the process.
-func createExport(ctx context.Context, logger *zap.Logger, srcImage containerregistry.Image, path string) ([]string, error) {
+func createExport(ctx context.Context, logger logger.Logger, srcImage containerregistry.Image, path string) ([]string, error) {
 	ctx, childSpan := tracer.Start(ctx, "create-oci-export")
 	defer childSpan.End()
 
@@ -348,7 +377,7 @@ func createExport(ctx context.Context, logger *zap.Logger, srcImage containerreg
 			attribute.String("layer.digest", digest.String()),
 			attribute.Int64("layer.size", size),
 		)
-		logger.Info(fmt.Sprintf("Uncompressing layer %s %s", digest, humanize.Bytes(uint64(size))))
+		logger.Info(ctx, fmt.Sprintf("Uncompressing layer %s %s", digest, humanize.Bytes(uint64(size))))
 
 		// Each layer has to be uniquely named, even if the digest is the same across different layers
 		layerPath := filepath.Join(path, fmt.Sprintf("layer-%d-%s", i, strings.ReplaceAll(digest.String(), ":", "-")))
@@ -381,7 +410,7 @@ func createExport(ctx context.Context, logger *zap.Logger, srcImage containerreg
 		return nil, fmt.Errorf("while extracting layers: %w", err)
 	}
 
-	logger.Info("Layers extracted")
+	logger.Info(ctx, "Layers extracted")
 
 	return layerPaths, nil
 }

@@ -23,7 +23,12 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		return
 	}
 
-	t := requestTemplateBuild(ctx, c, a, api.TemplateBuildRequestV3(body))
+	t := requestTemplateBuild(ctx, c, a, api.TemplateBuildRequestV3{
+		Name:     &body.Alias,
+		CpuCount: body.CpuCount,
+		MemoryMB: body.MemoryMB,
+		TeamID:   body.TeamID,
+	})
 	if t != nil {
 		c.JSON(http.StatusAccepted, &api.TemplateLegacy{
 			TemplateID: t.TemplateID,

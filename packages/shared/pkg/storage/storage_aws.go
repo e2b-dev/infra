@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,6 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -23,26 +26,26 @@ const (
 	awsReadTimeout      = 15 * time.Second
 )
 
-type AWSBucketStorageProvider struct {
+type awsStorage struct {
 	client        *s3.Client
 	presignClient *s3.PresignClient
 	bucketName    string
 }
 
-var _ StorageProvider = (*AWSBucketStorageProvider)(nil)
+var _ StorageProvider = (*awsStorage)(nil)
 
-type AWSBucketStorageObjectProvider struct {
+type awsObject struct {
 	client     *s3.Client
 	path       string
 	bucketName string
 }
 
 var (
-	_ SeekableObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
-	_ ObjectProvider         = (*AWSBucketStorageObjectProvider)(nil)
+	_ Seekable = (*awsObject)(nil)
+	_ Blob     = (*awsObject)(nil)
 )
 
-func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {
+func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -51,18 +54,18 @@ func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBu
 	client := s3.NewFromConfig(cfg)
 	presignClient := s3.NewPresignClient(client)
 
-	return &AWSBucketStorageProvider{
+	return &awsStorage{
 		client:        client,
 		presignClient: presignClient,
 		bucketName:    bucketName,
 	}, nil
 }
 
-func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+func (s *awsStorage) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 
-	list, err := a.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: &a.bucketName, Prefix: &prefix})
+	list, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: &s.bucketName, Prefix: &prefix})
 	if err != nil {
 		return err
 	}
@@ -74,14 +77,14 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 
 	// AWS S3 delete operation requires at least one object to delete.
 	if len(objects) == 0 {
-		zap.L().Warn("No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", a.bucketName))
+		logger.L().Warn(ctx, "No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", s.bucketName))
 
 		return nil
 	}
 
-	output, err := a.client.DeleteObjects(
+	output, err := s.client.DeleteObjects(
 		ctx, &s3.DeleteObjectsInput{
-			Bucket: aws.String(a.bucketName),
+			Bucket: aws.String(s.bucketName),
 			Delete: &types.Delete{Objects: objects},
 		},
 	)
@@ -90,12 +93,12 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 	}
 
 	if len(output.Errors) > 0 {
-		var errStr string
+		var errStr strings.Builder
 		for _, delErr := range output.Errors {
-			errStr += fmt.Sprintf("Key: %s, Code: %s, Message: %s; ", aws.ToString(delErr.Key), aws.ToString(delErr.Code), aws.ToString(delErr.Message))
+			errStr.WriteString(fmt.Sprintf("Key: %s, Code: %s, Message: %s; ", aws.ToString(delErr.Key), aws.ToString(delErr.Code), aws.ToString(delErr.Message)))
 		}
 
-		return errors.New("errors occurred during deletion: " + errStr)
+		return errors.New("errors occurred during deletion: " + errStr.String())
 	}
 
 	if len(output.Deleted) != len(objects) {
@@ -105,16 +108,16 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 	return nil
 }
 
-func (a *AWSBucketStorageProvider) GetDetails() string {
-	return fmt.Sprintf("[AWS Storage, bucket set to %s]", a.bucketName)
+func (s *awsStorage) GetDetails() string {
+	return fmt.Sprintf("[AWS Storage, bucket set to %s]", s.bucketName)
 }
 
-func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+func (s *awsStorage) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
 	input := &s3.PutObjectInput{
-		Bucket: aws.String(a.bucketName),
+		Bucket: aws.String(s.bucketName),
 		Key:    aws.String(path),
 	}
-	resp, err := a.presignClient.PresignPutObject(ctx, input, func(opts *s3.PresignOptions) {
+	resp, err := s.presignClient.PresignPutObject(ctx, input, func(opts *s3.PresignOptions) {
 		opts.Expires = ttl
 	})
 	if err != nil {
@@ -124,27 +127,27 @@ func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path str
 	return resp.URL, nil
 }
 
-func (a *AWSBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
-	return &AWSBucketStorageObjectProvider{
-		client:     a.client,
-		bucketName: a.bucketName,
+func (s *awsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
+	return &awsObject{
+		client:     s.client,
+		bucketName: s.bucketName,
 		path:       path,
 	}, nil
 }
 
-func (a *AWSBucketStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
-	return &AWSBucketStorageObjectProvider{
-		client:     a.client,
-		bucketName: a.bucketName,
+func (s *awsStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
+	return &awsObject{
+		client:     s.client,
+		bucketName: s.bucketName,
 		path:       path,
 	}, nil
 }
 
-func (a *AWSBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
-	resp, err := a.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &a.bucketName, Key: &a.path})
+	resp, err := o.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &o.bucketName, Key: &o.path})
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
@@ -159,18 +162,18 @@ func (a *AWSBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	return io.Copy(dst, resp.Body)
 }
 
-func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+func (o *awsObject) StoreFile(ctx context.Context, path string) error {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
-	file, err := os.Open(path)
+	f, err := os.Open(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open file %s: %w", path, err)
 	}
-	defer file.Close()
+	defer f.Close()
 
 	uploader := manager.NewUploader(
-		a.client,
+		o.client,
 		func(u *manager.Uploader) {
 			u.PartSize = 10 * 1024 * 1024 // 10 MB
 			u.Concurrency = 8             // eight parts in flight
@@ -180,46 +183,42 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	_, err = uploader.Upload(
 		ctx,
 		&s3.PutObjectInput{
-			Bucket: &a.bucketName,
-			Key:    &a.path,
-			Body:   file,
+			Bucket: &o.bucketName,
+			Key:    &o.path,
+			Body:   f,
 		},
 	)
 
 	return err
 }
 
-func (a *AWSBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {
+func (o *awsObject) Put(ctx context.Context, data []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
-	result, err := a.client.PutObject(
+	_, err := o.client.PutObject(
 		ctx,
 		&s3.PutObjectInput{
-			Bucket: &a.bucketName,
-			Key:    &a.path,
+			Bucket: &o.bucketName,
+			Key:    &o.path,
 			Body:   bytes.NewReader(data),
 		},
 	)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	if result.Size == nil {
-		return 0, nil
-	}
-
-	return int(*result.Size), nil
+	return nil
 }
 
-func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+func (o *awsObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
 	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+int64(len(buff))-1))
-	resp, err := a.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(a.bucketName),
-		Key:    aws.String(a.path),
+	resp, err := o.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(o.bucketName),
+		Key:    aws.String(o.path),
 		Range:  readRange,
 	})
 	if err != nil {
@@ -243,11 +242,11 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	return n, err
 }
 
-func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+func (o *awsObject) Size(ctx context.Context) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 
-	resp, err := a.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &a.bucketName, Key: &a.path})
+	resp, err := o.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &o.bucketName, Key: &o.path})
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
@@ -260,20 +259,20 @@ func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 	return *resp.ContentLength, nil
 }
 
-func (a *AWSBucketStorageObjectProvider) Exists(ctx context.Context) (bool, error) {
-	_, err := a.Size(ctx)
+func (o *awsObject) Exists(ctx context.Context) (bool, error) {
+	_, err := o.Size(ctx)
 
 	return err == nil, ignoreNotExists(err)
 }
 
-func (a *AWSBucketStorageObjectProvider) Delete(ctx context.Context) error {
+func (o *awsObject) Delete(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 
-	_, err := a.client.DeleteObject(
+	_, err := o.client.DeleteObject(
 		ctx, &s3.DeleteObjectInput{
-			Bucket: aws.String(a.bucketName),
-			Key:    aws.String(a.path),
+			Bucket: aws.String(o.bucketName),
+			Key:    aws.String(o.path),
 		},
 	)
 

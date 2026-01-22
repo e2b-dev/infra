@@ -1,6 +1,7 @@
 package feature_flags
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 )
 
 func TestFlattenContexts(t *testing.T) {
+	t.Parallel()
 	one := ldcontext.NewWithKind("one", "one")
 	two := ldcontext.NewWithKind("two", "two")
 	three := ldcontext.NewWithKind("three", "three")
@@ -32,6 +34,7 @@ func ldValueToText(value ldvalue.Value) string {
 }
 
 func TestMergeContextsSameKind(t *testing.T) {
+	t.Parallel()
 	kind := ldcontext.Kind("test")
 	testKey := "test"
 	emptyName := "[none]"
@@ -121,6 +124,7 @@ func TestMergeContextsSameKind(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			result := mergeSameKind(tc.firstContext, tc.secondContext)
 			assert.Equal(t, tc.expectedKey, result.Key(), "expected key to match")
 			assert.Equal(t, tc.expectedName, result.Name().String(), "expected name to match")
@@ -152,4 +156,89 @@ func newSet[T comparable](input ...T) set[T] {
 	}
 
 	return s
+}
+
+func TestSetContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty_contexts_returns_original_context", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.Background()
+		result := AddToContext(ctx)
+
+		assert.Equal(t, ctx, result)
+		_, ok := getContext(result)
+		assert.False(t, ok, "should not have embedded context")
+	})
+
+	t.Run("single_context", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.Background()
+		teamCtx := TeamContext("team-123")
+
+		result := AddToContext(ctx, teamCtx)
+
+		embedded, ok := getContext(result)
+		assert.True(t, ok)
+		assert.Equal(t, "team-123", embedded.Key())
+		assert.Equal(t, TeamKind, embedded.Kind())
+	})
+
+	t.Run("multiple_contexts", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.Background()
+		teamCtx := TeamContext("team-123")
+		userCtx := UserContext("user-456")
+
+		result := AddToContext(ctx, teamCtx, userCtx)
+
+		embedded, ok := getContext(result)
+		assert.True(t, ok)
+		assert.True(t, embedded.Multiple())
+
+		// Verify both contexts are present
+		keySet := sliceToSet(embedded.GetAllIndividualContexts(nil), func(c ldcontext.Context) ldcontext.Kind { return c.Kind() })
+		assert.Equal(t, newSet[ldcontext.Kind](TeamKind, UserKind), keySet)
+	})
+
+	t.Run("sequential_calls_merge_contexts", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.Background()
+
+		// First call adds team context
+		ctx = AddToContext(ctx, TeamContext("team-123"))
+
+		// Second call adds user context - should merge, not replace
+		ctx = AddToContext(ctx, UserContext("user-456"))
+
+		embedded, ok := getContext(ctx)
+		assert.True(t, ok)
+		assert.True(t, embedded.Multiple())
+
+		// Both contexts should be present
+		keySet := sliceToSet(embedded.GetAllIndividualContexts(nil), func(c ldcontext.Context) ldcontext.Kind { return c.Kind() })
+		assert.Equal(t, newSet[ldcontext.Kind](TeamKind, UserKind), keySet)
+	})
+
+	t.Run("same_kind_second_takes_precedence", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.Background()
+
+		// First call with team-123
+		ctx = AddToContext(ctx, TeamContextWithName("team-123", "First Team"))
+
+		// Second call with different team - should override
+		ctx = AddToContext(ctx, TeamContextWithName("team-456", "Second Team"))
+
+		embedded, ok := getContext(ctx)
+		assert.True(t, ok)
+		assert.False(t, embedded.Multiple(), "should have single context after same-kind merge")
+		assert.Equal(t, "team-456", embedded.Key())
+		assert.Equal(t, "Second Team", embedded.Name().String())
+	})
 }

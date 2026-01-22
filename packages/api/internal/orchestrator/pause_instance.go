@@ -16,8 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type PauseQueueExhaustedError struct{}
@@ -30,6 +30,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
+	machineInfo := node.MachineInfo()
 	snapshotConfig := queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:     id.Generate(),
@@ -53,8 +54,13 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 			Version: types.PausedSandboxConfigVersion,
 			Network: sbx.Network,
 		},
-		OriginNodeID: node.ID,
-		Status:       string(envbuild.StatusSnapshotting),
+		OriginNodeID:    node.ID,
+		Status:          string(types.BuildStatusSnapshotting),
+		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
+		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
+		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
+		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		CpuFlags:        machineInfo.CPUFlags,
 	}
 
 	result, err := o.sqlcDB.UpsertSnapshot(ctx, snapshotConfig)
@@ -64,7 +70,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return err
 	}
 
-	err = snapshotInstance(ctx, o, node, sbx, result.TemplateID, result.BuildID.String())
+	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
 	if errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
@@ -79,11 +85,10 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 
 	now := time.Now()
 	err = o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     string(envbuild.StatusSuccess),
+		Status:     string(types.BuildStatusSuccess),
 		FinishedAt: &now,
 		Reason:     types.BuildReason{},
 		BuildID:    result.BuildID,
-		TemplateID: result.TemplateID,
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
@@ -94,18 +99,13 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
+func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	client, childCtx, err := orch.GetClient(childCtx, sbx.ClusterID, sbx.NodeID)
-	if err != nil {
-		return fmt.Errorf("failed to get client '%s': %w", sbx.NodeID, err)
-	}
-
-	_, err = client.Sandbox.Pause(
-		node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID),
-		&orchestrator.SandboxPauseRequest{
+	client, childCtx := node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID)
+	_, err := client.Sandbox.Pause(
+		childCtx, &orchestrator.SandboxPauseRequest{
 			SandboxId:  sbx.SandboxID,
 			TemplateId: templateID,
 			BuildId:    buildID,

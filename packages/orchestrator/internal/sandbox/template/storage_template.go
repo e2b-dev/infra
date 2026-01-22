@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -16,12 +18,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type storageTemplate struct {
-	config cfg.BuilderConfig
-	files  storage.TemplateCacheFiles
+	files storage.TemplateCacheFiles
 
 	memfile  *utils.SetOnce[block.ReadonlyDevice]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
@@ -39,9 +41,7 @@ type storageTemplate struct {
 
 func newTemplateFromStorage(
 	config cfg.BuilderConfig,
-	buildId,
-	kernelVersion,
-	firecrackerVersion string,
+	buildId string,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
 	persistence storage.StorageProvider,
@@ -50,16 +50,13 @@ func newTemplateFromStorage(
 	localMetafile File,
 ) (*storageTemplate, error) {
 	files, err := storage.TemplateFiles{
-		BuildID:            buildId,
-		KernelVersion:      kernelVersion,
-		FirecrackerVersion: firecrackerVersion,
-	}.CacheFiles(config)
+		BuildID: buildId,
+	}.CacheFiles(config.StorageConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
 	}
 
 	return &storageTemplate{
-		config:        config,
 		files:         files,
 		localSnapfile: localSnapfile,
 		localMetafile: localMetafile,
@@ -75,6 +72,11 @@ func newTemplateFromStorage(
 }
 
 func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
+	ctx, span := tracer.Start(ctx, "fetch storage template", trace.WithAttributes(
+		telemetry.WithBuildID(t.files.BuildID),
+	))
+	defer span.End()
+
 	var wg errgroup.Group
 
 	wg.Go(func() error {
@@ -90,7 +92,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			ctx,
 			t.persistence,
 			t.files.StorageSnapfilePath(),
-			t.files.CacheSnapfilePath(t.config),
+			t.files.CacheSnapfilePath(),
 			storage.SnapfileObjectType,
 		)
 		if snapfileErr != nil {
@@ -123,7 +125,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			ctx,
 			t.persistence,
 			t.files.StorageMetadataPath(),
-			t.files.CacheMetadataPath(t.config),
+			t.files.CacheMetadataPath(),
 			storage.MetadataObjectType,
 		)
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
@@ -138,12 +140,12 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		if err != nil {
 			// If we can't find the metadata, we still want to return the metafile.
 			// This is used for templates that don't have metadata, like v1 templates.
-			zap.L().Info("failed to fetch metafile, falling back to v1 template metadata",
+			logger.L().Info(ctx, "failed to fetch metafile, falling back to v1 template metadata",
 				logger.WithBuildID(t.files.BuildID),
 				zap.Error(err),
 			)
 			oldTemplateMetadata := metadata.V1TemplateVersion()
-			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath(t.config))
+			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath())
 			if err != nil {
 				sourceErr := fmt.Errorf("failed to write v1 template metadata to a file: %w", err)
 				if err := t.metafile.SetError(sourceErr); err != nil {
@@ -154,7 +156,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			}
 
 			if err := t.metafile.SetValue(&storageFile{
-				path: t.files.CacheMetadataPath(t.config),
+				path: t.files.CacheMetadataPath(),
 			}); err != nil {
 				return fmt.Errorf("failed to set metafile v1: %w", err)
 			}
@@ -226,7 +228,10 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 	err := wg.Wait()
 	if err != nil {
-		zap.L().Error("failed to fetch template files",
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+
+		logger.L().Error(ctx, "failed to fetch template files",
 			logger.WithBuildID(t.files.BuildID),
 			zap.Error(err),
 		)

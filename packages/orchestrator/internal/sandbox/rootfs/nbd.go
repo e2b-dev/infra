@@ -6,21 +6,23 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"syscall"
 
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type NBDProvider struct {
-	overlay *block.Overlay
-	mnt     *nbd.DirectPathMount
+	overlay      *block.Overlay
+	mnt          *nbd.DirectPathMount
+	featureFlags *featureflags.Client
 
 	ready *utils.SetOnce[string]
 
@@ -30,8 +32,8 @@ type NBDProvider struct {
 	devicePool         *nbd.DevicePool
 }
 
-func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (Provider, error) {
-	size, err := rootfs.Size()
+func NewNBDProvider(ctx context.Context, rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool, featureFlags *featureflags.Client) (Provider, error) {
+	size, err := rootfs.Size(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
 	}
@@ -45,11 +47,12 @@ func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *n
 
 	overlay := block.NewOverlay(rootfs, cache)
 
-	mnt := nbd.NewDirectPathMount(overlay, devicePool)
+	mnt := nbd.NewDirectPathMount(overlay, devicePool, featureFlags)
 
 	return &NBDProvider{
 		mnt:                mnt,
 		overlay:            overlay,
+		featureFlags:       featureFlags,
 		ready:              utils.NewSetOnce[string](),
 		finishedOperations: make(chan struct{}, 1),
 		blockSize:          blockSize,
@@ -67,12 +70,12 @@ func (o *NBDProvider) Start(ctx context.Context) error {
 }
 
 func (o *NBDProvider) ExportDiff(
-	parentCtx context.Context,
+	ctx context.Context,
 	out io.Writer,
 	closeSandbox func(ctx context.Context) error,
 ) (*header.DiffMetadata, error) {
-	childCtx, childSpan := tracer.Start(parentCtx, "cow-export")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "cow-export")
+	defer span.End()
 
 	cache, err := o.overlay.EjectCache()
 	if err != nil {
@@ -81,25 +84,25 @@ func (o *NBDProvider) ExportDiff(
 
 	// the error is already logged in go routine in SandboxCreate handler
 	go func() {
-		err := closeSandbox(childCtx)
+		err := closeSandbox(ctx)
 		if err != nil {
-			zap.L().Error("error stopping sandbox on cow export", zap.Error(err))
+			logger.L().Error(ctx, "error stopping sandbox on cow export", zap.Error(err))
 		}
 	}()
 
 	select {
 	case <-o.finishedOperations:
-	case <-childCtx.Done():
+	case <-ctx.Done():
 		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
 	}
-	telemetry.ReportEvent(childCtx, "sandbox stopped")
+	telemetry.ReportEvent(ctx, "sandbox stopped")
 
-	m, err := cache.ExportToDiff(out)
+	m, err := cache.ExportToDiff(ctx, out)
 	if err != nil {
 		return nil, fmt.Errorf("error exporting cache: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "cache exported")
+	telemetry.ReportEvent(ctx, "cache exported")
 
 	err = cache.Close()
 	if err != nil {
@@ -110,17 +113,17 @@ func (o *NBDProvider) ExportDiff(
 }
 
 func (o *NBDProvider) Close(ctx context.Context) error {
-	childCtx, childSpan := tracer.Start(ctx, "cow-close")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "cow-close")
+	defer span.End()
 
 	var errs []error
 
-	err := o.flush(childCtx)
+	err := o.sync(ctx)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error flushing cow device: %w", err))
 	}
 
-	err = o.mnt.Close(childCtx)
+	err = o.mnt.Close(ctx)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error closing overlay mount: %w", err))
 	}
@@ -132,7 +135,7 @@ func (o *NBDProvider) Close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("error closing overlay cache: %w", err))
 	}
 
-	zap.L().Info("overlay device released")
+	logger.L().Info(ctx, "overlay device released")
 
 	return errors.Join(errs...)
 }
@@ -141,10 +144,9 @@ func (o *NBDProvider) Path() (string, error) {
 	return o.ready.Wait()
 }
 
-// flush flushes the data to the operating system's buffer.
-func (o *NBDProvider) flush(ctx context.Context) error {
-	telemetry.ReportEvent(ctx, "flushing cow device")
-	defer telemetry.ReportEvent(ctx, "flushing cow done")
+func (o *NBDProvider) sync(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "sync")
+	defer span.End()
 
 	nbdPath, err := o.Path()
 	if err != nil {
@@ -153,12 +155,12 @@ func (o *NBDProvider) flush(ctx context.Context) error {
 
 	file, err := os.Open(nbdPath)
 	if err != nil {
-		return fmt.Errorf("failed to open cow path: %w", err)
+		return fmt.Errorf("failed to open path: %w", err)
 	}
 	defer func() {
 		err := file.Close()
 		if err != nil {
-			zap.L().Error("failed to close nbd file", zap.Error(err))
+			logger.L().Error(ctx, "failed to close nbd file", zap.Error(err))
 		}
 	}()
 
@@ -166,15 +168,5 @@ func (o *NBDProvider) flush(ctx context.Context) error {
 		return fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
 	}
 
-	err = syscall.Fsync(int(file.Fd()))
-	if err != nil {
-		return fmt.Errorf("failed to fsync cow path: %w", err)
-	}
-
-	err = file.Sync()
-	if err != nil {
-		return fmt.Errorf("failed to sync cow path: %w", err)
-	}
-
-	return nil
+	return flush(ctx, nbdPath)
 }

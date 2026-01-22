@@ -12,9 +12,11 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/dberrors"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // PostV3Templates triggers a new template build
@@ -47,17 +49,56 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
+	// Determine the input based on which field is provided
+	var input string
+	switch {
+	case body.Name != nil:
+		input = *body.Name
+	case body.Alias != nil:
+		// Deprecated: handle alias field for backward compatibility
+		input = *body.Alias
+	default:
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Name is required")
+		telemetry.ReportError(ctx, "name is required", nil)
+
+		return nil
+	}
+
+	// Parse template ID/alias and optional tag from input (e.g., "template:v1" -> alias="template", tag="v1")
+	alias, t, err := id.ParseTemplateIDOrAliasWithTag(input)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", err))
+		telemetry.ReportError(ctx, "invalid name", err)
+
+		return nil
+	}
+
+	// Collect tags: tag from input (if present) + additional tags from body.Tags
+	allTags := utils.DerefOrDefault(body.Tags, nil)
+	if t != nil {
+		allTags = append([]string{*t}, allTags...)
+	}
+
+	// Validate and deduplicate all tags
+	tags, err := id.ValidateAndDeduplicateTags(allTags)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
+		telemetry.ReportError(ctx, "invalid tag", err)
+
+		return nil
+	}
+
 	// Create the build, find the template ID by alias or generate a new one
-	_, span := tracer.Start(ctx, "find-template-alias")
+	findTemplateCtx, span := tracer.Start(ctx, "find-template-alias")
 	defer span.End()
 	templateID := id.Generate()
 	public := false
-	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(ctx, body.Alias)
+	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(findTemplateCtx, alias)
 	switch {
 	case err == nil:
 		if templateAlias.TeamID != team.ID {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", body.Alias))
-			telemetry.ReportError(ctx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", body.Alias))
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", alias))
+			telemetry.ReportError(findTemplateCtx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", alias))
 
 			return nil
 		}
@@ -68,33 +109,29 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		// Alias is available and not used
 	default:
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
+		telemetry.ReportCriticalError(findTemplateCtx, "error when getting template alias", err)
 
 		return nil
 	}
 	span.End()
 
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
-		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
-
-		return nil
-	}
+	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 
 	buildReq := template.RegisterBuildData{
-		ClusterID:     apiutils.WithClusterFallback(team.ClusterID),
-		BuilderNodeID: builderNodeID,
-		TemplateID:    templateID,
-		UserID:        nil,
-		Team:          team,
-		Alias:         &body.Alias,
-		CpuCount:      body.CpuCount,
-		MemoryMB:      body.MemoryMB,
-		Version:       templates.TemplateV2LatestVersion,
+		ClusterID:          apiutils.WithClusterFallback(team.ClusterID),
+		TemplateID:         templateID,
+		UserID:             nil,
+		Team:               team,
+		Alias:              &alias,
+		Tags:               tags,
+		CpuCount:           body.CpuCount,
+		MemoryMB:           body.MemoryMB,
+		Version:            templates.TemplateV2LatestVersion,
+		KernelVersion:      a.config.DefaultKernelVersion,
+		FirecrackerVersion: firecrackerVersion,
 	}
 
-	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, buildReq)
+	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
@@ -102,14 +139,15 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	_, span = tracer.Start(c, "posthog-analytics")
+	posthogCtx, span := tracer.Start(ctx, "posthog-analytics")
 	defer span.End()
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "submitted environment build request", properties.
+	a.posthog.IdentifyAnalyticsTeam(posthogCtx, team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsTeamEvent(posthogCtx, team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
-		Set("alias", body.Alias),
+		Set("alias", alias).
+		Set("tags", tags),
 	)
 	span.End()
 
@@ -117,6 +155,8 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
 		Aliases:    template.Aliases,
+		Names:      template.Aliases,
+		Tags:       template.Tags,
 		Public:     public,
 	}
 }

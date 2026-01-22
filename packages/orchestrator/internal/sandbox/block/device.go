@@ -16,13 +16,13 @@ func (BytesNotAvailableError) Error() string {
 
 type Slicer interface {
 	Slice(ctx context.Context, off, length int64) ([]byte, error)
+	BlockSize() int64
 }
 
 type ReadonlyDevice interface {
-	storage.ReaderAtCtx
+	storage.SeekableReader
 	io.Closer
 	Slicer
-	Size() (int64, error)
 	BlockSize() int64
 	Header() *header.Header
 }

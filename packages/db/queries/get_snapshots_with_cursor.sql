@@ -8,11 +8,13 @@ LEFT JOIN LATERAL (
 ) ea ON TRUE
 JOIN LATERAL (
     SELECT eb.*
-    FROM "public"."env_builds" eb
+    FROM "public"."env_build_assignments" eba
+    JOIN "public"."env_builds" eb ON eb.id = eba.build_id
     WHERE
-        eb.env_id = s.env_id
+        eba.env_id = s.env_id
+        AND eba.tag = 'default'
         AND eb.status = 'success'
-    ORDER BY eb.created_at DESC
+    ORDER BY eba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
 WHERE

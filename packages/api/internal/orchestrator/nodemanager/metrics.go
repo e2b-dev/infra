@@ -2,7 +2,6 @@ package nodemanager
 
 import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
@@ -14,9 +13,6 @@ type DiskMetrics struct {
 	TotalBytes     uint64
 }
 type Metrics struct {
-	CpuUsage int64
-	RamUsage int64
-
 	// Host metrics
 	CpuAllocated         uint32
 	CpuPercent           uint32
@@ -68,9 +64,6 @@ func (n *Node) Metrics() Metrics {
 	defer n.metricsMu.RUnlock()
 
 	result := Metrics{
-		CpuUsage: n.metrics.CpuUsage,
-		RamUsage: n.metrics.RamUsage,
-
 		CpuAllocated:         n.metrics.CpuAllocated,
 		CpuPercent:           n.metrics.CpuPercent,
 		CpuCount:             n.metrics.CpuCount,
@@ -85,22 +78,6 @@ func (n *Node) Metrics() Metrics {
 	copy(result.HostDisks, n.metrics.HostDisks)
 
 	return result
-}
-
-func (n *Node) AddSandbox(sandbox sandbox.Sandbox) {
-	n.metricsMu.Lock()
-	defer n.metricsMu.Unlock()
-
-	n.metrics.CpuUsage += sandbox.VCpu
-	n.metrics.RamUsage += sandbox.RamMB
-}
-
-func (n *Node) RemoveSandbox(sandbox sandbox.Sandbox) {
-	n.metricsMu.Lock()
-	defer n.metricsMu.Unlock()
-
-	n.metrics.CpuUsage -= sandbox.VCpu
-	n.metrics.RamUsage -= sandbox.RamMB
 }
 
 func (n *Node) GetAPIMetric() api.NodeMetrics {

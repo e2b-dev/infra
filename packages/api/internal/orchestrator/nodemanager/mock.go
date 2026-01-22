@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -58,11 +58,11 @@ func (n *mockSandboxClientWithSleep) Create(_ context.Context, _ *orchestrator.S
 }
 
 // newMockGRPCClient creates a new mock gRPC client for testing
-func newMockGRPCClient() *grpclient.GRPCClient {
+func newMockGRPCClient() *clusters.GRPCClient {
 	// Create a dummy connection that will never be used
 	conn, _ := grpc.NewClient("localhost:0", grpc.WithTransportCredentials(insecure.NewCredentials()))
 
-	return &grpclient.GRPCClient{
+	return &clusters.GRPCClient{
 		Info:       &mockInfoClient{},
 		Sandbox:    &mockSandboxClient{},
 		Template:   &mockTemplateClient{},
@@ -80,25 +80,76 @@ func WithSandboxSleepingClient(baseSandboxCreateTime time.Duration) TestOptions 
 	}
 }
 
+func WithCPUInfo(cpuArch, cpuFamily, cpuModel string) TestOptions {
+	return func(node *TestNode) {
+		node.machineInfo.CPUArchitecture = cpuArch
+		node.machineInfo.CPUFamily = cpuFamily
+		node.machineInfo.CPUModel = cpuModel
+	}
+}
+
+// mockSandboxClientWithError implements orchestrator.SandboxServiceClient that returns an error
+type mockSandboxClientWithError struct {
+	orchestrator.SandboxServiceClient
+
+	err error
+}
+
+// Create is a mock implementation that returns a specific error
+func (n *mockSandboxClientWithError) Create(_ context.Context, _ *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+	return nil, n.err
+}
+
+func WithSandboxCreateError(err error) TestOptions {
+	return func(node *TestNode) {
+		node.client.Sandbox = &mockSandboxClientWithError{
+			err: err,
+		}
+	}
+}
+
+// MockSandboxClientCustom allows custom error logic per call
+type MockSandboxClientCustom struct {
+	orchestrator.SandboxServiceClient
+
+	CreateFunc func() error
+}
+
+// Create calls the custom function to determine the error
+func (n *MockSandboxClientCustom) Create(_ context.Context, _ *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+	if n.CreateFunc != nil {
+		if err := n.CreateFunc(); err != nil {
+			return nil, err
+		}
+	}
+
+	return &orchestrator.SandboxCreateResponse{}, nil
+}
+
+// SetSandboxClient allows setting a custom sandbox client on a test node
+func (n *TestNode) SetSandboxClient(client orchestrator.SandboxServiceClient) {
+	n.client.Sandbox = client
+}
+
 // NewTestNode creates a properly initialized Node for testing purposes
 // It uses a mock gRPC client and has simplified Status() method behavior
 func NewTestNode(id string, status api.NodeStatus, cpuAllocated int64, cpuCount uint32, options ...TestOptions) *TestNode {
 	node := &Node{
 		ID:            id,
 		ClusterID:     uuid.New(),
-		client:        newMockGRPCClient(),
 		IPAddress:     "127.0.0.1",
 		SandboxDomain: nil,
-		status:        status,
-		metrics: Metrics{
-			CpuUsage:     cpuAllocated,
-			CpuAllocated: uint32(cpuAllocated),
-			CpuCount:     cpuCount,
-		},
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
 			createSuccess:       atomic.Uint64{},
 			createFails:         atomic.Uint64{},
+		},
+
+		client: newMockGRPCClient(),
+		status: status,
+		metrics: Metrics{
+			CpuAllocated: uint32(cpuAllocated),
+			CpuCount:     cpuCount,
 		},
 	}
 

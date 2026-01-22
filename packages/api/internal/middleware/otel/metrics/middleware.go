@@ -13,6 +13,27 @@ import (
 
 const MetricPrefix = "metric."
 
+// processingStartTimeKey is the gin context key for storing when request processing
+// (after body parsing) began. This allows metrics to exclude body upload/parsing time.
+const processingStartTimeKey = "metrics.processingStartTime"
+
+// SetProcessingStartTime stores the current time as the processing start time in the gin context.
+func SetProcessingStartTime(c *gin.Context) {
+	c.Set(processingStartTimeKey, time.Now())
+}
+
+// getProcessingStartTime retrieves the processing start time from the gin context.
+// Returns the time and true if set, or zero time and false if not set.
+func getProcessingStartTime(c *gin.Context) (time.Time, bool) {
+	if val, exists := c.Get(processingStartTimeKey); exists {
+		if t, ok := val.(time.Time); ok {
+			return t, true
+		}
+	}
+
+	return time.Time{}, false
+}
+
 // Middleware returns middleware that will trace incoming requests.
 // The service parameter should describe the name of the (virtual)
 // server handling the request.
@@ -60,7 +81,13 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 			// Append attributes from ginCtx
 			resAttributes = append(resAttributes, attributesFromGinContext(ginCtx, MetricPrefix)...)
 
-			duration := time.Since(start)
+			// Use processing start time if set, otherwise fall back to the middleware start time.
+			effectiveStart := start
+			if processingStart, ok := getProcessingStartTime(ginCtx); ok {
+				effectiveStart = processingStart
+			}
+
+			duration := time.Since(effectiveStart)
 			recorder.ObserveHTTPRequestDuration(ctx, duration, resAttributes)
 		}()
 

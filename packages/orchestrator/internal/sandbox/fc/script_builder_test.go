@@ -12,12 +12,13 @@ import (
 )
 
 func TestStartScriptBuilder_Build(t *testing.T) {
+	t.Parallel()
 	config, err := cfg.ParseBuilder()
 	require.NoError(t, err)
 
 	tests := []struct {
 		name                  string
-		versions              FirecrackerVersions
+		versions              Config
 		files                 *storage.SandboxFiles
 		rootfsPaths           RootfsPaths
 		namespaceID           string
@@ -27,7 +28,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 	}{
 		{
 			name: "basic_build_with_version_2",
-			versions: FirecrackerVersions{
+			versions: Config{
 				KernelVersion:      "6.1.0",
 				FirecrackerVersion: "1.4.0",
 			},
@@ -52,7 +53,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 		},
 		{
 			name: "build_with_version_1_backward_compatibility",
-			versions: FirecrackerVersions{
+			versions: Config{
 				KernelVersion:      "5.10.0",
 				FirecrackerVersion: "1.3.0",
 			},
@@ -77,7 +78,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 		},
 		{
 			name: "different_kernel_and_firecracker_versions",
-			versions: FirecrackerVersions{
+			versions: Config{
 				KernelVersion:      "6.2.1",
 				FirecrackerVersion: "1.5.0-beta",
 			},
@@ -101,6 +102,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			builder := NewStartScriptBuilder(config)
 
 			// Call Build function directly with the four parameters
@@ -142,9 +144,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 // createTestSandboxFiles creates a SandboxFiles instance for testing
 func createTestSandboxFiles(sandboxID, staticID string) *storage.SandboxFiles {
 	templateFiles := storage.TemplateFiles{
-		BuildID:            "test-build",
-		KernelVersion:      "6.1.0",
-		FirecrackerVersion: "1.4.0",
+		BuildID: "test-build",
 	}
 
 	templateCacheFiles := storage.TemplateCacheFiles{
