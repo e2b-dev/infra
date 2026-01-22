@@ -8,6 +8,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -109,7 +110,7 @@ func TestStoreFile_Compressed(t *testing.T) {
 		ChunkSize:       chunkSize,
 		TargetFrameSize: frameSize,
 	}
-	e := newFrameEncoder(&opts, uploader, partSize, 4)
+	e := newFrameEncoder(&opts, uploader, partSize, 4, "test-path")
 
 	frameTable, err = e.uploadFramed(t.Context(), bytes.NewReader(origData))
 	require.NoError(t, err)
@@ -163,14 +164,24 @@ func TestStoreFile_Compressed(t *testing.T) {
 
 		t.Logf("requesting frames for range %v\n", r)
 
-		fetchRange, err := frameTable.GetFetchRange(r)
+		// Get frame info to know the uncompressed size
+		frameStart, frameSize, err := frameTable.FrameFor(r)
 		require.NoError(t, err)
 
-		buf := make([]byte, r.Length, fetchRange.Length)
-		rr, err := fake.GetFrame(t.Context(), "test-path", r.Start, frameTable, true, buf)
+		// Buffer must be large enough for UNCOMPRESSED frame data.
+		// GetFrame internally uses len(buf) to determine the range to read,
+		// so we pass a buffer exactly the size of the uncompressed frame.
+		// The offset is adjusted to the start of the frame for proper reading.
+		buf := make([]byte, frameSize.U)
+		rr, err := fake.GetFrame(t.Context(), "test-path", frameStart.U, frameTable, true, buf)
 		require.NoError(t, err)
-		require.Equal(t, int(fetchRange.Start), int(rr.Start))
-		require.Equal(t, fetchRange.Length, rr.Length)
+		require.Equal(t, int(frameStart.C), int(rr.Start))
+		require.Equal(t, int(frameSize.U), rr.Length, "should read full uncompressed frame")
+
+		// Verify the specific byte at the original offset is correct
+		offsetInFrame := int(r.Start - frameStart.U)
+		require.Equal(t, origData[r.Start], buf[offsetInFrame],
+			"byte at offset %d should match original data", r.Start)
 	}
 }
 
@@ -447,4 +458,308 @@ func TestCompressedInfo_Subset(t *testing.T) {
 		_, err := ft.Subset(Range{Start: 50, Length: 100})
 		require.Contains(t, err.Error(), "requested range starts before the beginning of the frame table")
 	})
+}
+
+// TestGetFrame_FullFrameDecompression tests reading an entire frame
+func TestGetFrame_FullFrameDecompression(t *testing.T) {
+	t.Parallel()
+
+	// Create compressible test data
+	uncompressedSize := 8192
+	origData := make([]byte, uncompressedSize)
+	for i := range origData {
+		origData[i] = byte(i % 256)
+	}
+
+	// Compress the data
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedBestCompression))
+	require.NoError(t, err)
+	compressedData := enc.EncodeAll(origData, nil)
+	enc.Close()
+
+	compressedSize := len(compressedData)
+
+	frameTable := &FrameTable{
+		CompressionType: CompressionZstd,
+		StartAt:         FrameOffset{U: 0, C: 0},
+		Frames: []FrameSize{
+			{U: int32(uncompressedSize), C: int32(compressedSize)},
+		},
+	}
+
+	fake := &Storage{
+		Provider: &Provider{
+			RangeGetter: &fakeRanger{data: compressedData},
+		},
+	}
+
+	// Request the full frame (uncompressed size)
+	buf := make([]byte, uncompressedSize)
+	rr, err := fake.GetFrame(t.Context(), "test-path", 0, frameTable, true, buf)
+
+	// This should work because we're requesting the full uncompressed size
+	require.NoError(t, err)
+	require.Equal(t, uncompressedSize, rr.Length)
+	require.Equal(t, origData, buf, "decompressed data should match original")
+}
+
+// TestStoreFile_Compressed_FS tests compression using the local filesystem provider
+func TestStoreFile_Compressed_FS(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	storage := &Storage{Provider: NewFS(tempDir)}
+
+	const dataSize = 100 * 1024 // 100KB
+
+	// Create test data with repetitive pattern (compresses well)
+	origData := make([]byte, dataSize)
+	for i := range origData {
+		origData[i] = byte(i % 64)
+	}
+
+	// Write test file
+	inputFile := tempDir + "/input.dat"
+	err := os.WriteFile(inputFile, origData, 0644)
+	require.NoError(t, err)
+
+	// Store with compression
+	frameTable, err := storage.StoreFile(t.Context(), inputFile, "output.compressed", DefaultCompressionOptions)
+	require.NoError(t, err)
+	require.NotNil(t, frameTable)
+
+	// Verify frame table
+	var totalU int64
+	for _, f := range frameTable.Frames {
+		totalU += int64(f.U)
+		require.Greater(t, f.U, int32(0), "frame should have uncompressed data")
+		require.Greater(t, f.C, int32(0), "frame should have compressed data")
+	}
+	require.Equal(t, int64(dataSize), totalU, "total uncompressed size should match")
+
+	// Read back the compressed file
+	compressedData, err := os.ReadFile(tempDir + "/output.compressed")
+	require.NoError(t, err)
+	require.Less(t, len(compressedData), dataSize, "compressed data should be smaller")
+
+	// Decompress and verify
+	dec, err := zstd.NewReader(nil)
+	require.NoError(t, err)
+	decompressed, err := dec.DecodeAll(compressedData, nil)
+	require.NoError(t, err)
+	dec.Close()
+
+	require.Equal(t, origData, decompressed, "decompressed data should match original")
+
+	t.Logf("Original: %d bytes, Compressed: %d bytes, Frames: %d",
+		dataSize, len(compressedData), len(frameTable.Frames))
+}
+
+// TestStoreFile_Compressed_FS_RoundTrip tests full round-trip: store compressed, then read back
+func TestStoreFile_Compressed_FS_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	storage := &Storage{Provider: NewFS(tempDir)}
+
+	const dataSize = 50 * 1024 // 50KB
+
+	// Create test data
+	origData := make([]byte, dataSize)
+	r := rand.New(rand.NewSource(42))
+	// Mix of random and repetitive data
+	for i := range origData {
+		if i%100 < 70 {
+			origData[i] = byte(i % 32) // repetitive
+		} else {
+			origData[i] = byte(r.Intn(256)) // random
+		}
+	}
+
+	// Write test file
+	inputFile := tempDir + "/input.dat"
+	err := os.WriteFile(inputFile, origData, 0644)
+	require.NoError(t, err)
+
+	// Store with compression
+	frameTable, err := storage.StoreFile(t.Context(), inputFile, "data.zst", DefaultCompressionOptions)
+	require.NoError(t, err)
+	require.NotNil(t, frameTable)
+
+	// Now test reading back specific ranges using GetFrame
+	testOffsets := []int64{0, 1000, 25000, 49000}
+	for _, offset := range testOffsets {
+		t.Run(fmt.Sprintf("offset_%d", offset), func(t *testing.T) {
+			// Get the frame containing this offset
+			rangeU := Range{Start: offset, Length: 100}
+
+			// Get frame info to know the uncompressed size
+			frameStart, frameSize, err := frameTable.FrameFor(rangeU)
+			require.NoError(t, err)
+
+			// Create buffer large enough for UNCOMPRESSED data
+			frameBuf := make([]byte, frameSize.U)
+			rr, err := storage.GetFrame(t.Context(), "data.zst", offset, frameTable, true, frameBuf)
+			require.NoError(t, err)
+			require.Equal(t, int(frameSize.U), rr.Length, "should read full uncompressed frame")
+
+			t.Logf("Offset %d: frameStart C:%d, frameSize U:%d/C:%d, returned %d bytes",
+				offset, frameStart.C, frameSize.U, frameSize.C, rr.Length)
+
+			// Verify the data matches original
+			// The frame starts at frameStart.U in uncompressed coordinates
+			expectedData := origData[frameStart.U : frameStart.U+int64(frameSize.U)]
+			require.Equal(t, expectedData, frameBuf, "decompressed frame should match original data")
+		})
+	}
+}
+
+// TestFrameTable_GetFetchRange_CompressedVsUncompressed verifies the relationship
+// between compressed and uncompressed coordinates
+func TestFrameTable_GetFetchRange_CompressedVsUncompressed(t *testing.T) {
+	t.Parallel()
+
+	// Create a frame table with known sizes
+	// Frame 0: U=1000, C=500 at offset U:0, C:0
+	// Frame 1: U=2000, C=800 at offset U:1000, C:500
+	// Frame 2: U=1500, C=600 at offset U:3000, C:1300
+	ft := &FrameTable{
+		CompressionType: CompressionZstd,
+		StartAt:         FrameOffset{U: 0, C: 0},
+		Frames: []FrameSize{
+			{U: 1000, C: 500},
+			{U: 2000, C: 800},
+			{U: 1500, C: 600},
+		},
+	}
+
+	testCases := []struct {
+		name           string
+		requestU       Range
+		expectedStartC int64
+		expectedLenC   int
+	}{
+		{
+			name:           "first frame",
+			requestU:       Range{Start: 0, Length: 100},
+			expectedStartC: 0,
+			expectedLenC:   500,
+		},
+		{
+			name:           "second frame",
+			requestU:       Range{Start: 1500, Length: 100},
+			expectedStartC: 500,
+			expectedLenC:   800,
+		},
+		{
+			name:           "third frame",
+			requestU:       Range{Start: 3500, Length: 100},
+			expectedStartC: 1300,
+			expectedLenC:   600,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fetchRange, err := ft.GetFetchRange(tc.requestU)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.expectedStartC, fetchRange.Start,
+				"compressed start offset should match")
+			require.Equal(t, tc.expectedLenC, fetchRange.Length,
+				"compressed length should match frame's compressed size")
+
+			// Note: fetchRange.Length is the COMPRESSED size, not uncompressed
+			// This is important for understanding the GetFrame buffer issue
+			t.Logf("Request U:%d/%d -> Fetch C:%d/%d",
+				tc.requestU.Start, tc.requestU.Length,
+				fetchRange.Start, fetchRange.Length)
+		})
+	}
+}
+
+// TestStoreFile_DataIntegrity_FS tests data integrity with various data patterns using FS
+func TestStoreFile_DataIntegrity_FS(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		data []byte
+	}{
+		{
+			name: "zeros",
+			data: make([]byte, 20*1024), // 20KB of zeros
+		},
+		{
+			name: "sequential",
+			data: func() []byte {
+				d := make([]byte, 20*1024)
+				for i := range d {
+					d[i] = byte(i % 256)
+				}
+				return d
+			}(),
+		},
+		{
+			name: "random_seeded",
+			data: func() []byte {
+				r := rand.New(rand.NewSource(42))
+				d := make([]byte, 20*1024)
+				r.Read(d)
+				return d
+			}(),
+		},
+		{
+			name: "repetitive_compressible",
+			data: func() []byte {
+				d := make([]byte, 20*1024)
+				pattern := []byte("ABCDEFGH")
+				for i := range d {
+					d[i] = pattern[i%len(pattern)]
+				}
+				return d
+			}(),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tempDir := t.TempDir()
+			storage := &Storage{Provider: NewFS(tempDir)}
+
+			// Write test file
+			inputFile := tempDir + "/input.dat"
+			err := os.WriteFile(inputFile, tc.data, 0644)
+			require.NoError(t, err)
+
+			// Store with compression
+			frameTable, err := storage.StoreFile(t.Context(), inputFile, "output.zst", DefaultCompressionOptions)
+			require.NoError(t, err)
+
+			// Read compressed file
+			compressedData, err := os.ReadFile(tempDir + "/output.zst")
+			require.NoError(t, err)
+
+			// Decompress and verify
+			dec, err := zstd.NewReader(nil)
+			require.NoError(t, err)
+			decompressed, err := dec.DecodeAll(compressedData, nil)
+			require.NoError(t, err)
+			dec.Close()
+
+			require.Equal(t, tc.data, decompressed, "decompressed data should match original")
+
+			// Verify frame table
+			var totalU int64
+			for _, f := range frameTable.Frames {
+				totalU += int64(f.U)
+			}
+			require.Equal(t, int64(len(tc.data)), totalU)
+
+			t.Logf("Data size: %d, Compressed: %d, Frames: %d",
+				len(tc.data), len(compressedData), len(frameTable.Frames))
+		})
+	}
 }

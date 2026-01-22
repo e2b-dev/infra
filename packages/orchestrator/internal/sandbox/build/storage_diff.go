@@ -83,14 +83,22 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	// TODO LEV why do we need to get the size? We already have the header, which has the size;
-	// before we were fetching the header in parallel, now maybe skip this?
-	size, err := b.persistence.Size(ctx, b.persistencePath)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to get object size: %w", err)
-		b.chunker.SetError(errMsg)
+	var size int64
+	var err error
 
-		return errMsg
+	if b.frameTable.IsCompressed() {
+		// For compressed data, we need the uncompressed size for the cache.
+		// The cache stores uncompressed data at uncompressed offsets.
+		size = b.frameTable.StartAt.U + b.frameTable.TotalUncompressedSize()
+	} else {
+		// For uncompressed data, the storage size is the data size.
+		size, err = b.persistence.Size(ctx, b.persistencePath)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to get object size: %w", err)
+			b.chunker.SetError(errMsg)
+
+			return errMsg
+		}
 	}
 
 	chunker, err := block.NewChunker(size, b.blockSize, b.persistence, b.persistencePath, b.frameTable, b.cachePath, b.metrics)

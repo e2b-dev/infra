@@ -205,7 +205,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
 				// For uncompressed data, GetFrame will read the exact data we need.
-				fetchedRange, err := c.persistence.GetFrame(ctx,
+				_, err = c.persistence.GetFrame(ctx,
 					c.objectPath, fetchOff, framesToFetch, true, b)
 				if err != nil {
 					fetchSW.Failure(ctx, int64(len(b)),
@@ -215,7 +215,9 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 					return fmt.Errorf("failed to read frame from base %d: %w", fetchOff, err)
 				}
 
-				c.cache.setIsCached(fetchedRange)
+				// Mark the uncompressed range as cached (not the compressed range
+				// returned by GetFrame).
+				c.cache.setIsCached(storage.Range{Start: fetchOff, Length: int(f.U)})
 
 				fetchSW.Success(ctx, int64(len(b)))
 

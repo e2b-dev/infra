@@ -181,7 +181,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	}
 
 	if compression != CompressionNone {
-		ft, err = newFrameEncoder(opts, partUploader, int64(partSize), maxConcurrency).uploadFramed(ctx, in)
+		ft, err = newFrameEncoder(opts, partUploader, int64(partSize), maxConcurrency, objectPath).uploadFramed(ctx, in)
 	} else {
 		err = uploadFileInParallel(ctx, in, sizeU, partUploader, partSize, maxConcurrency)
 	}
@@ -197,25 +197,41 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	return ft, err
 }
 
-// See convenience function GetFrameData() that takes an arbitrary offset/length
-// range and a frameTable; then returns the uncompressed []byte for the frame
-// that contains the region, or an error.
+// GetFrame reads a single frame from storage into buf. The caller MUST provide
+// a buffer sized for the full uncompressed frame (use frameTable.FrameFor to
+// get the frame size). Returns the compressed range that was fetched.
 func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64, frameTable *FrameTable, decompress bool, buf []byte) (Range, error) {
 	rangeU := Range{Start: offset, Length: len(buf)}
-	fetchRange, err := frameTable.GetFetchRange(rangeU)
+
+	// Get the frame info to know both compressed and uncompressed sizes
+	frameStart, frameSize, err := frameTable.FrameFor(rangeU)
 	if err != nil {
 		return Range{}, fmt.Errorf("get frame for range %v: %w", rangeU, err)
 	}
 
-	// send out the range request
-	respBody, err := s.Provider.RangeGet(ctx, objectPath, fetchRange.Start, fetchRange.Length)
+	// Validate buffer size - caller must provide a buffer for the full frame
+	expectedSize := int(frameSize.C)
+	if decompress && frameTable.IsCompressed() {
+		expectedSize = int(frameSize.U)
+	}
+	if len(buf) < expectedSize {
+		return Range{}, fmt.Errorf("buffer too small: got %d bytes, need %d bytes for frame", len(buf), expectedSize)
+	}
+
+	// Fetch the compressed data from storage
+	respBody, err := s.Provider.RangeGet(ctx, objectPath, frameStart.C, int(frameSize.C))
 	if err != nil {
-		return Range{}, fmt.Errorf("getting frame at %#x from %s in %s: %w", fetchRange.Start, objectPath, s.Provider.String(), err)
+		return Range{}, fmt.Errorf("getting frame at %#x from %s in %s: %w", frameStart.C, objectPath, s.Provider.String(), err)
 	}
 	defer respBody.Close()
 
 	var from io.Reader = respBody
+	readSize := int(frameSize.C) // Default to compressed size
+
 	if decompress && frameTable.IsCompressed() {
+		// When decompressing, we read the uncompressed size from the decoder
+		readSize = int(frameSize.U)
+
 		switch frameTable.CompressionType {
 		case CompressionZstd:
 			// TODO LEV get a recycled decoder from a pool?
@@ -231,9 +247,9 @@ func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64,
 		}
 	}
 
-	n, err := io.ReadFull(from, buf[:fetchRange.Length])
+	n, err := io.ReadFull(from, buf[:readSize])
 
-	return Range{Start: fetchRange.Start, Length: n}, err
+	return Range{Start: frameStart.C, Length: n}, err
 }
 
 func (s *Storage) GetBlob(ctx context.Context, path string, userBuffer []byte) ([]byte, error) {

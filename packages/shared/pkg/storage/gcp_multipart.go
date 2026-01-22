@@ -78,7 +78,11 @@ func (g *GCP) MakeMultipartUpload(ctx context.Context, objectName string, retryC
 }
 
 func (u *gcpMultipartUploader) Start(ctx context.Context) error {
-	fmt.Printf("<>/<> GCP Initiating multipart upload for %s in bucket %s\n", u.objectName, u.g.bucket.BucketName())
+	bucketName := ""
+	if u.g.bucket != nil {
+		bucketName = u.g.bucket.BucketName()
+	}
+	fmt.Printf("<>/<> GCP Initiating multipart upload for %s in bucket %s\n", u.objectName, bucketName)
 
 	url := fmt.Sprintf("%s/%s?uploads", u.g.baseUploadURL, u.objectName)
 
@@ -119,7 +123,11 @@ func (u *gcpMultipartUploader) UploadPart(ctx context.Context, partNumber int, d
 		l += len(data)
 	}
 	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
-	fmt.Printf("<>/<> GCP Uploading part %d for %s, %#x bytes to bucket %s\n", partNumber, u.objectName, l, u.g.bucket.BucketName())
+	bucketName := ""
+	if u.g.bucket != nil {
+		bucketName = u.g.bucket.BucketName()
+	}
+	fmt.Printf("<>/<> GCP Uploading part %d for %s, %#x bytes to bucket %s\n", partNumber, u.objectName, l, bucketName)
 
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		u.g.baseUploadURL, u.objectName, partNumber, u.uploadID)
@@ -157,7 +165,7 @@ func (u *gcpMultipartUploader) UploadPart(ctx context.Context, partNumber int, d
 	}
 	u.etags.Store(partNumber, etag)
 
-	fmt.Printf("<>/<> GCP Uploaded part %d for %s in bucket %s, ETag: %s\n", partNumber, u.objectName, u.g.bucket.BucketName(), etag)
+	fmt.Printf("<>/<> GCP Uploaded part %d for %s in bucket %s, ETag: %s\n", partNumber, u.objectName, bucketName, etag)
 
 	return nil
 }
@@ -196,7 +204,11 @@ func (u *gcpMultipartUploader) Complete(ctx context.Context) error {
 	url := fmt.Sprintf("%s/%s?uploadId=%s",
 		u.g.baseUploadURL, u.objectName, u.uploadID)
 
-	fmt.Printf("<>/<> GCP Completing multipart upload for %s in bucket %s\nurl:%s\nXML:\n%s\n", u.objectName, u.g.bucket.BucketName(), url, string(xmlData))
+	bucketName := ""
+	if u.g.bucket != nil {
+		bucketName = u.g.bucket.BucketName()
+	}
+	fmt.Printf("<>/<> GCP Completing multipart upload for %s in bucket %s\nurl:%s\nXML:\n%s\n", u.objectName, bucketName, url, string(xmlData))
 	req, err := retryablehttp.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(xmlData))
 	if err != nil {
 		return fmt.Errorf("failed to create complete request: %w", err)
@@ -218,6 +230,6 @@ func (u *gcpMultipartUploader) Complete(ctx context.Context) error {
 		return fmt.Errorf("failed to complete upload (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	fmt.Printf("<>/<> GCP Completing multipart upload for %s in bucket %s: SUCCESS!\n", u.objectName, u.g.bucket.BucketName())
+	fmt.Printf("<>/<> GCP Completing multipart upload for %s in bucket %s: SUCCESS!\n", u.objectName, bucketName)
 	return nil
 }
