@@ -11,19 +11,19 @@ import (
 	"github.com/google/uuid"
 )
 
-const deleteTemplateTag = `-- name: DeleteTemplateTag :exec
+const deleteTemplateTags = `-- name: DeleteTemplateTags :exec
 DELETE FROM "public"."env_build_assignments"
-WHERE env_id = $1 AND tag = $2::text
+WHERE env_id = $1 AND tag = ANY($2::text[])
 `
 
-type DeleteTemplateTagParams struct {
+type DeleteTemplateTagsParams struct {
 	TemplateID string
-	Tag        string
+	Tags       []string
 }
 
-// Deletes a tag assignment from a template (env)
-func (q *Queries) DeleteTemplateTag(ctx context.Context, arg DeleteTemplateTagParams) error {
-	_, err := q.db.Exec(ctx, deleteTemplateTag, arg.TemplateID, arg.Tag)
+// Deletes tag assignments from a template (env)
+func (q *Queries) DeleteTemplateTags(ctx context.Context, arg DeleteTemplateTagsParams) error {
+	_, err := q.db.Exec(ctx, deleteTemplateTags, arg.TemplateID, arg.Tags)
 	return err
 }
 
