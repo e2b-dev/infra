@@ -28,13 +28,11 @@ func (c Cache) getBlob(ctx context.Context, objectPath string, userBuffer []byte
 		span.End()
 	}()
 
-	fmt.Printf("<>/<> getBlob: trying to read from cache: %s\n", objectPath)
 	f, err := c.openFullFileInCache(ctx, objectPath)
 	if err == nil {
 		defer f.Close()
 
 		b, err := readAll(f, userBuffer)
-		fmt.Printf("<>/<> getBlob: READ cache file: got %d bytes err=%v\n", len(b), err)
 		if err == nil {
 			recordCacheRead(ctx, true, int64(len(b)), cacheTypeObject, cacheOpWriteTo)
 
@@ -83,14 +81,9 @@ func (c Cache) copyBlob(ctx context.Context, objectPath string, dst io.Writer) (
 
 func (c Cache) readBlobCacheMiss(ctx context.Context, objectPath string) (data []byte, wg *sync.WaitGroup, err error) {
 	wg = &sync.WaitGroup{}
-	fmt.Printf("<>/<> readBlobCacheMiss: %q\n", objectPath)
 	if data, err = c.inner.GetBlob(ctx, objectPath, nil); err != nil {
-		fmt.Printf("<>/<> readBlobCacheMiss: inner GetBlob returned error: %v\n", err)
-
 		return data, wg, err
 	}
-
-	fmt.Printf("<>/<> readBlobCacheMiss:inner returned %d bytes\n", len(data))
 
 	goCtxWithoutCancel(ctx, wg, func(ctx context.Context) {
 		ctx, span := c.tracer.Start(ctx, "write file back to cache")
@@ -172,8 +165,6 @@ func (c Cache) cachePath(objectPath string) string {
 func (c Cache) openFullFileInCache(_ context.Context, objectPath string) (f *os.File, e error) {
 	localFilePath := fullFilename(c.cachePath(objectPath))
 
-	fmt.Printf("<>/<> openFullFileInCache: opening %q\n", localFilePath)
-
 	fp, err := os.Open(localFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open cached file %s: %w", localFilePath, err)
@@ -208,17 +199,15 @@ func (c Cache) writeFileToCache(ctx context.Context, objectPath string, data []b
 	if err := os.MkdirAll(filepath.Dir(localFilePath), 0o755); err != nil {
 		return fmt.Errorf("failed to create cache directory %s: %w", filepath.Dir(localFilePath), err)
 	}
-	fmt.Printf("<>/<> writeFileToCache: writing to %q\n", localFilePath)
 
 	output, err := lock.OpenFile(ctx, localFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to acquire lock on file %s: %w", localFilePath, err)
 	}
 	defer utils.CleanupCtx(ctx, "failed to unlock file", output.Close)
-	fmt.Printf("<>/<> writeFileToCache: -- created!\n")
 
 	// WriteAt insures that all bytes are written
-	count, err := output.WriteAt(data, 0)
+	_, err = output.WriteAt(data, 0)
 	if ignoreEOF(err) != nil {
 		return fmt.Errorf("failed to write to cache file %s: %w", localFilePath, err)
 	}
@@ -226,8 +215,6 @@ func (c Cache) writeFileToCache(ctx context.Context, objectPath string, data []b
 	if err := output.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit cache file %s: %w", localFilePath, err)
 	}
-
-	fmt.Printf("<>/<> writeFileToCache: -- wrote %d bytes\n", count)
 
 	return nil
 }

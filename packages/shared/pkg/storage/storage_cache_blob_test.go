@@ -142,8 +142,6 @@ func TestCachedStorage_Blobber(t *testing.T) {
 
 		c.inner = nil
 
-		t.Log("<>/<> ================= second fetch")
-
 		data, wg, err = c.getBlob(t.Context(), "test-item", nil)
 		require.NoError(t, err)
 		assert.Equal(t, actualData, data)

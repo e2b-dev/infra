@@ -79,8 +79,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 	var wg errgroup.Group
 
-	fmt.Printf("<>/<> Fetch() template buildID: %s\n", t.files.BuildID)
-
 	wg.Go(func() error {
 		if t.localSnapfile != nil {
 			if err := t.snapfile.SetValue(t.localSnapfile); err != nil {

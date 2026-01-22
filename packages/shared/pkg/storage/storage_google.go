@@ -153,8 +153,6 @@ func (g *GCP) handle(path string) *storage.ObjectHandle {
 }
 
 func (g *GCP) Size(ctx context.Context, path string) (n int64, err error) {
-	fmt.Printf("<>/<> GCP Size of %s\n", path)
-	defer fmt.Printf("<>/<> GCP Size of %s done, size=%d, err=%v\n", path, n, err)
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -173,9 +171,6 @@ func (g *GCP) Size(ctx context.Context, path string) (n int64, err error) {
 }
 
 func (g *GCP) Upload(ctx context.Context, path string, in io.Reader) (n int64, e error) {
-	fmt.Printf("<>/<> GCP Upload to %s started\n", path)
-	defer fmt.Printf("<>/<> GCP Upload to %s finished, wrote %d bytes, err=%v\n", path, n, e)
-
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
@@ -187,7 +182,6 @@ func (g *GCP) Upload(ctx context.Context, path string, in io.Reader) (n int64, e
 	}()
 
 	c, err := io.Copy(w, in)
-	fmt.Printf("<>/<> GCP Upload to %s done, wrote %d bytes, err=%v\n", path, c, err)
 	if ignoreEOF(err) != nil {
 		timer.Failure(ctx, c)
 
@@ -212,9 +206,6 @@ func (c withCancelCloser) Close() error {
 }
 
 func (g *GCP) StartDownload(ctx context.Context, path string) (rc io.ReadCloser, err error) {
-	fmt.Printf("<>/<> GCP StartDownload of %s\n", path)
-	defer fmt.Printf("<>/<> GCP StartDownload of %s done, err=%v\n", path, err)
-
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 
 	rc, err = g.handle(path).NewReader(ctx)
@@ -250,7 +241,6 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 }
 
 func (g *GCP) RangeGet(ctx context.Context, path string, offset int64, length int) (io.ReadCloser, error) {
-	fmt.Printf("<>/<> GCP RangeGet of %s offset=%d length=%d\n", path, offset, length)
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 
 	rc, err := g.handle(path).NewRangeReader(ctx, offset, int64(length))

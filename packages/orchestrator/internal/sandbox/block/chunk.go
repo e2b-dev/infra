@@ -85,9 +85,6 @@ func (c *Chunker) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
 }
 
 func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
-	// rr := storage.Range{Start: off, Length: int(length)}
-	// fmt.Printf("<>/<> Chunker.Slice %s: %s\n", c.objectPath, rr)
-
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	b, err := c.cache.Slice(off, length)
@@ -97,8 +94,6 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 
 		return b, nil
 	}
-
-	// fmt.Printf("<>/<> Chunker.Slice %s: cache miss at %s: %v\n", c.objectPath, rr, err)
 
 	if !errors.As(err, &BytesNotAvailableError{}) {
 		timer.Failure(ctx, length,

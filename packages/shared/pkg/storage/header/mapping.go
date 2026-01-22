@@ -35,7 +35,6 @@ func (mapping *BuildMap) Copy() *BuildMap {
 	}
 }
 
-
 // AddFrames associates compression frame information with this mapping.
 //
 // When a file is uploaded with compression, the compressor produces a FrameTable

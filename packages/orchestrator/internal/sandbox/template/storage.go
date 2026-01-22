@@ -68,7 +68,6 @@ func NewStorage(
 		}
 
 		diffHeader, err := header.Deserialize(ctx, headerData)
-		fmt.Printf("<>/<> NewStorage: read header for %s:  err=%v\n", headerObjectPath, err)
 
 		// If we can't find the diff header in storage, we switch to templates without a headers
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {

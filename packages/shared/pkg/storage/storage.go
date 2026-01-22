@@ -146,7 +146,6 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 			partSize = opts.TargetPartSize
 		}
 	}
-	fmt.Printf("<>/<> STORE FILE !!!!!!!!!!!! %s to %s with part size %#x\n", inFilePath, objectPath, partSize)
 
 	in, err := os.Open(inFilePath)
 	if err != nil {
@@ -171,7 +170,6 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrStore))
 
-	fmt.Printf("<>/<> StoreFile: Provider: %v\n", s.Provider)
 	partUploader, cleanup, maxConcurrency, err := s.Provider.MakeMultipartUpload(ctx, objectPath, DefaultRetryConfig())
 	defer cleanup()
 	if err != nil {

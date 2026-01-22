@@ -165,7 +165,6 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 		C: int32(f.lenC),
 	}
 	e.frameTable.Frames = append(e.frameTable.Frames, ft)
-	fmt.Printf("<>/<> Frame flushed: uncompressed %#x compressed %#x for %s\n", ft.U, ft.C, e.objectPath) // DEBUG --- IGNORE ---
 
 	data := f.compressedBuffer.Bytes()
 	e.partLen += int64(len(data))
@@ -174,12 +173,7 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 	if e.partLen >= e.targetPartSize || last {
 		e.partIndex++
 
-		lastPart := ""
-		if last {
-			lastPart = "(last) "
-		}
 		i := e.partIndex
-		fmt.Printf("<>/<> New %sPART %d, size %#x (%d frames) for %s\n", lastPart, i, e.partLen, len(e.readyFrames), e.objectPath) // DEBUG --- IGNORE ---
 		frameData := append([][]byte{}, e.readyFrames...)
 		e.partLen = 0
 		e.readyFrames = e.readyFrames[:0]

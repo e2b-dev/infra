@@ -79,7 +79,7 @@ func inspectMapping(m *header.BuildMap) {
 			totalC += uint64(f.C)
 			totalU += uint64(f.U)
 
-			// TODO <>/<> if verify is set, fetch and decompress each frame here
+			// TODO: if verify is set, fetch and decompress each frame here
 		}
 
 		fmt.Printf(", compressed as %s: %x->%x bytes (%d%% reduction)",

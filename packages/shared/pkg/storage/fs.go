@@ -36,15 +36,9 @@ func (s *FileSystem) String() string {
 }
 
 func (s *FileSystem) DeleteWithPrefix(_ context.Context, prefix string) error {
-	var err error
-	defer func() {
-		fmt.Printf("<>/<> FS DeleteWithPrefix done prefix=%s err=%v\n", prefix, err)
-	}()
-
 	filePath := s.getPath(prefix)
 
-	err = os.RemoveAll(filePath)
-	return err
+	return os.RemoveAll(filePath)
 }
 
 func (s *FileSystem) getPath(path string) string {
@@ -52,11 +46,6 @@ func (s *FileSystem) getPath(path string) string {
 }
 
 func (s *FileSystem) StartDownload(_ context.Context, path string) (io.ReadCloser, error) {
-	var err error
-	defer func() {
-		fmt.Printf("<>/<> FS StartDownload done path=%s err=%v\n", path, err)
-	}()
-
 	handle, err := s.mustExist(path)
 	if err != nil {
 		return nil, err
@@ -66,45 +55,26 @@ func (s *FileSystem) StartDownload(_ context.Context, path string) (io.ReadClose
 }
 
 func (s *FileSystem) Download(ctx context.Context, path string, dst io.Writer) (int64, error) {
-	var err error
-	var n int64
-	defer func() {
-		fmt.Printf("<>/<> FS Download done path=%s bytes=%d err=%v\n", path, n, err)
-	}()
-
 	handle, err := s.StartDownload(ctx, path)
 	if err != nil {
 		return 0, err
 	}
 	defer handle.Close()
 
-	n, err = io.Copy(dst, handle)
-	return n, err
+	return io.Copy(dst, handle)
 }
 
 func (s *FileSystem) Upload(_ context.Context, path string, in io.Reader) (int64, error) {
-	var err error
-	var n int64
-	defer func() {
-		fmt.Printf("<>/<> FS Upload done path=%s bytes=%d err=%v\n", path, n, err)
-	}()
-
 	handle, err := s.create(path)
 	if err != nil {
 		return 0, err
 	}
 	defer handle.Close()
 
-	n, err = io.Copy(handle, in)
-	return n, err
+	return io.Copy(handle, in)
 }
 
 func (s *FileSystem) RangeGet(_ context.Context, path string, offset int64, length int) (io.ReadCloser, error) {
-	var err error
-	defer func() {
-		fmt.Printf("<>/<> FS RangeGet done path=%s offset=%d length=%d err=%v\n", path, offset, length, err)
-	}()
-
 	handle, err := s.mustExist(path)
 	if err != nil {
 		return nil, err
@@ -125,12 +95,6 @@ func (s *FileSystem) RangeGet(_ context.Context, path string, offset int64, leng
 }
 
 func (s *FileSystem) Size(_ context.Context, path string) (int64, error) {
-	var err error
-	var size int64
-	defer func() {
-		fmt.Printf("<>/<> FS Size done path=%s size=%d err=%v\n", path, size, err)
-	}()
-
 	handle, err := s.mustExist(path)
 	if err != nil {
 		return 0, err
@@ -142,8 +106,7 @@ func (s *FileSystem) Size(_ context.Context, path string) (int64, error) {
 		return 0, err
 	}
 
-	size = fileInfo.Size()
-	return size, nil
+	return fileInfo.Size(), nil
 }
 
 func (s *FileSystem) mustExist(path string) (*os.File, error) {
@@ -174,16 +137,11 @@ func (s *FileSystem) create(path string) (*os.File, error) {
 }
 
 func (s *FileSystem) MakeMultipartUpload(_ context.Context, objectPath string, _ RetryConfig) (MultipartUploader, func(), int, error) {
-	var err error
-	defer func() {
-		fmt.Printf("<>/<> FS MakeMultipartUpload done path=%s err=%v\n", objectPath, err)
-	}()
-
 	return &fsMultipartUploader{
 		fs:         s,
 		objectPath: objectPath,
 		parts:      map[int][]byte{},
-	}, func() {}, 1, err
+	}, func() {}, 1, nil
 }
 
 type fsMultipartUploader struct {
@@ -195,41 +153,30 @@ type fsMultipartUploader struct {
 }
 
 func (u *fsMultipartUploader) Start(_ context.Context) error {
-	var err error
-	defer func() {
-		fmt.Printf("<>/<> FS Multipart Start done path=%s err=%v\n", u.objectPath, err)
-	}()
-
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.started {
-		return err
+		return nil
 	}
 	u.started = true
-	return err
+	return nil
 }
 
 func (u *fsMultipartUploader) UploadPart(_ context.Context, partNumber int, dataList ...[]byte) error {
-	var err error
 	if partNumber <= 0 {
-		err = fmt.Errorf("invalid part number %d", partNumber)
-		return err
+		return fmt.Errorf("invalid part number %d", partNumber)
 	}
 
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if !u.started {
-		err = fmt.Errorf("multipart upload not started")
-		return err
+		return fmt.Errorf("multipart upload not started")
 	}
 
 	total := 0
 	for _, data := range dataList {
 		total += len(data)
 	}
-	defer func() {
-		fmt.Printf("<>/<> FS Multipart UploadPart done path=%s part=%d frames=%d total=%#x err=%v\n", u.objectPath, partNumber, len(dataList), total, err)
-	}()
 
 	buffer := make([]byte, 0, total)
 	for _, data := range dataList {
@@ -241,26 +188,19 @@ func (u *fsMultipartUploader) UploadPart(_ context.Context, partNumber int, data
 	}
 	u.parts[partNumber] = buffer
 
-	return err
+	return nil
 }
 
 func (u *fsMultipartUploader) Complete(_ context.Context) error {
-	var err error
-	defer func() {
-		fmt.Printf("<>/<> FS Multipart Complete done path=%s err=%v\n", u.objectPath, err)
-	}()
-
 	u.mu.Lock()
 	if !u.started {
 		u.mu.Unlock()
-		err = fmt.Errorf("multipart upload not started")
-		return err
+		return fmt.Errorf("multipart upload not started")
 	}
 
 	if len(u.parts) == 0 {
 		u.mu.Unlock()
-		err = fmt.Errorf("no parts uploaded")
-		return err
+		return fmt.Errorf("no parts uploaded")
 	}
 
 	partNumbers := make([]int, 0, len(u.parts))
@@ -273,8 +213,7 @@ func (u *fsMultipartUploader) Complete(_ context.Context) error {
 	for i := 1; i <= maxPart; i++ {
 		if _, ok := u.parts[i]; !ok {
 			u.mu.Unlock()
-			err = fmt.Errorf("missing part %d", i)
-			return err
+			return fmt.Errorf("missing part %d", i)
 		}
 	}
 
@@ -287,7 +226,6 @@ func (u *fsMultipartUploader) Complete(_ context.Context) error {
 
 	handle, err := u.fs.create(u.objectPath)
 	if err != nil {
-		err = err
 		return err
 	}
 	defer handle.Close()

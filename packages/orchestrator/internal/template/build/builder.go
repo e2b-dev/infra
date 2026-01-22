@@ -410,7 +410,6 @@ func getRootfsSize(
 	if err != nil {
 		return 0, fmt.Errorf("error deserializing rootfs header: %w", err)
 	}
-	fmt.Printf("<>/<> ==1==: read header for %s: %+v, err=%v\n", metadata.StorageRootfsHeaderPath(), h, err)
 
 	return h.Metadata.Size, nil
 }

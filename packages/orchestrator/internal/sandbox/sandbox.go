@@ -360,8 +360,6 @@ func (f *Factory) ResumeSandbox(
 	defer span.End()
 	defer handleSpanError(span, &e)
 
-	fmt.Printf("<>/<> RESUMING SANDBOX %s FROM TEMPLATE %s\n", runtime.SandboxID, runtime.TemplateID)
-
 	execCtx, execSpan := startExecutionSpan(ctx)
 
 	exit := utils.NewErrorOnce()
