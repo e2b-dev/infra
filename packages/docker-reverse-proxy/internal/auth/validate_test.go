@@ -118,8 +118,8 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID, teamID uui
 	require.NoError(tb, err)
 
 	err = db.AuthDb.TestsRawSQL(tb.Context(), `
-		INSERT INTO teams (id, name, email, tier)
-		VALUES ($1, 'test-team', 'test@e2b.dev', 'base_v1')
+		INSERT INTO teams (id, name, email, tier, slug)
+		VALUES ($1, 'test-team', 'test@e2b.dev', 'base_v1', 'test-team-slug')
 	`, teamID)
 	require.NoError(tb, err)
 

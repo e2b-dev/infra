@@ -62,21 +62,24 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
-	// Parse template ID and optional tag in the format "templateID:tag"
-	cleanedAliasOrEnvID, tag, err := id.ParseTemplateIDOrAliasWithTag(body.TemplateID)
+	identifier, tag, err := id.ParseName(body.TemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when parsing template ID", err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template reference: %s", err))
+		telemetry.ReportCriticalError(ctx, "invalid template reference", err)
 
 		return
 	}
 
-	telemetry.ReportEvent(ctx, "Parsed template ID and tag")
-
-	// Check if team has access to the environment
 	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
-	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, tag, teamInfo.Team.ID, clusterID, true)
+	aliasInfo, checkErr := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Team.Slug)
+	if checkErr != nil {
+		telemetry.ReportCriticalError(ctx, "error when resolving template alias", checkErr.Err)
+		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
+
+		return
+	}
+
+	env, build, checkErr := a.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamInfo.Team.ID, clusterID)
 	if checkErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)

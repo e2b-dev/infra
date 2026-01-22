@@ -85,13 +85,15 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 		return
 	}
 
-	templateID, _, err := id.ParseTemplateIDOrAliasWithTag(rawTemplateID)
+	identifier, _, err := id.ParseName(rawTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", rawTemplateID))
 		telemetry.ReportCriticalError(c.Request.Context(), "invalid template ID", err)
 
 		return
 	}
+	// For old templates, this should be always the templateID
+	templateID := identifier
 	span.SetAttributes(telemetry.WithTemplateID(templateID))
 
 	team, apiErr := a.GetTeam(ctx, c, body.TeamID)
@@ -160,8 +162,7 @@ func (a *APIStore) buildTemplate(
 	var tags []string
 
 	if body.Alias != nil {
-		var err error
-		a, t, err := id.ParseTemplateIDOrAliasWithTag(*body.Alias)
+		aliasIdentifier, aliasTag, err := id.ParseName(*body.Alias)
 		if err != nil {
 			return nil, &api.APIError{
 				Code:      http.StatusBadRequest,
@@ -170,9 +171,10 @@ func (a *APIStore) buildTemplate(
 			}
 		}
 
-		alias = &a
-		if t != nil {
-			tags, err = id.ValidateAndDeduplicateTags([]string{*t})
+		aliasValue := id.ExtractAlias(aliasIdentifier)
+		alias = &aliasValue
+		if aliasTag != nil {
+			tags, err = id.ValidateAndDeduplicateTags([]string{*aliasTag})
 			if err != nil {
 				return nil, &api.APIError{
 					Code:      http.StatusBadRequest,
