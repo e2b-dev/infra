@@ -119,7 +119,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		go a.SetupHyperloop(*data.HyperloopIP)
 	}
 
-	if data.Volumes == nil {
+	if data.Volumes != nil {
 		for _, volume := range *data.Volumes {
 			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
 

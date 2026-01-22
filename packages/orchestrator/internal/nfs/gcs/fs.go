@@ -42,9 +42,7 @@ func (p BucketFS) Readlink(_ string) (string, error) {
 }
 
 func (p BucketFS) Chroot(_ string) (billy.Filesystem, error) {
-	return &BucketFS{
-		bucket: p.bucket,
-	}, nil
+	return nil, ErrUnsupported
 }
 
 func (p BucketFS) Root() string {

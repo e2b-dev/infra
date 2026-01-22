@@ -6,81 +6,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/go-git/go-billy/v5"
+	"github.com/go-git/go-billy/v5/helper/chroot"
 	"github.com/willscott/go-nfs"
 )
 
 var ErrInvalidSandbox = errors.New("invalid sandbox")
-
-type mountFailedFS struct{}
-
-func (m mountFailedFS) String() string {
-	return "mountFailedFS{}"
-}
-
-func (m mountFailedFS) Create(_ string) (billy.File, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Open(_ string) (billy.File, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) OpenFile(_ string, _ int, _ os.FileMode) (billy.File, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Stat(_ string) (os.FileInfo, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Rename(_, _ string) error {
-	return ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Remove(_ string) error {
-	return ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Join(elem ...string) string {
-	return strings.Join(elem, "/")
-}
-
-func (m mountFailedFS) TempFile(_, _ string) (billy.File, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) ReadDir(_ string) ([]os.FileInfo, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) MkdirAll(_ string, _ os.FileMode) error {
-	return ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Lstat(_ string) (os.FileInfo, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Symlink(_, _ string) error {
-	return ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Readlink(_ string) (string, error) {
-	return "", ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Chroot(_ string) (billy.Filesystem, error) {
-	return nil, ErrInvalidSandbox
-}
-
-func (m mountFailedFS) Root() string {
-	return ""
-}
 
 var _ billy.Filesystem = (*mountFailedFS)(nil)
 
@@ -102,16 +35,15 @@ func NewNFSHandler(inner nfs.Handler, prefix GetPrefix) Handler {
 }
 
 func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
-	prefix, err := h.getPrefix(ctx, conn, request)
+	teamID, err := h.getPrefix(ctx, conn, request)
 	if err != nil {
 		slog.Warn("failed to get prefix", "error", err)
 
 		return nfs.MountStatusErrAcces, mountFailedFS{}, nil
 	}
 
-	dirPath := string(request.Dirpath)
-	dirPath = filepath.Join(prefix, dirPath)
-	request.Dirpath = []byte(dirPath)
+	volumeName := string(request.Dirpath)
+	dirPath := filepath.Join(teamID, volumeName)
 
 	status, fs, auth := h.inner.Mount(ctx, conn, request)
 	if err = fs.MkdirAll(dirPath, 0o755); err != nil {
@@ -120,7 +52,9 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 		return nfs.MountStatusErrIO, nil, nil
 	}
 
-	return status, tryWrapFS(fs, prefix), auth
+	fs = chroot.New(fs, dirPath)
+
+	return status, fs, auth
 }
 
 func (h Handler) Change(filesystem billy.Filesystem) billy.Change {
