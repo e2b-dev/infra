@@ -1,6 +1,6 @@
 //go:build darwin
 
-package ex
+package cleaner
 
 import (
 	"fmt"
