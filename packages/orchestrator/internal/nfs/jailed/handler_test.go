@@ -14,6 +14,8 @@ import (
 )
 
 func TestJailedFS(t *testing.T) {
+	t.Parallel()
+
 	fs := memfs.New()
 
 	// Create a "good" folder and a "bad" file outside of it
@@ -35,7 +37,7 @@ func TestJailedFS(t *testing.T) {
 	require.NoError(t, err)
 
 	// Setup jailed handler
-	getPrefix := func(ctx context.Context, conn net.Conn, req nfs.MountRequest) (string, error) {
+	getPrefix := func(_ context.Context, _ net.Conn, _ nfs.MountRequest) (string, error) {
 		return "good_folder", nil
 	}
 
@@ -48,6 +50,8 @@ func TestJailedFS(t *testing.T) {
 	require.Equal(t, nfs.MountStatusOk, status)
 
 	t.Run("access good file", func(t *testing.T) {
+		t.Parallel()
+
 		path := jfs.Join("good_file")
 		f, err := jfs.Open(path)
 		require.NoError(t, err)
@@ -63,6 +67,8 @@ func TestJailedFS(t *testing.T) {
 	})
 
 	t.Run("access bad file via traversal", func(t *testing.T) {
+		t.Parallel()
+
 		// This should fail if jailed
 		path := jfs.Join("../bad_file")
 		_, err := jfs.Open(path)
