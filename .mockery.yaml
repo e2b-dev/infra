@@ -56,3 +56,4 @@ packages:
         config:
           dir: packages/orchestrator/internal/nfs/mocks
           filename: billy.go
+          pkgname: mocks

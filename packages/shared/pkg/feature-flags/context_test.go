@@ -247,6 +247,8 @@ func TestAddToContext(t *testing.T) {
 	t.Parallel()
 
 	t.Run("skip empty, keep good", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := t.Context()
 
 		// good and bad context
