@@ -65,7 +65,7 @@ func makePathsAbsolute(c *BuilderConfig) error {
 }
 
 type SandboxPersistence struct {
-	BucketName string `env:"PERSISTENT_VOLUMES_BUCKET,required,notEmpty"`
+	BucketName string `env:"PERSISTENT_VOLUMES_BUCKET"`
 }
 
 type Config struct {

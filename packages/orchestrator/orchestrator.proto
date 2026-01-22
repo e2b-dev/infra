@@ -46,6 +46,13 @@ message SandboxConfig {
   optional bool allow_internet_access = 21;
 
   optional SandboxNetworkConfig network = 22;
+
+  repeated SandboxVolume volumes = 23;
+}
+
+message SandboxVolume {
+  string name = 1;
+  string path = 2;
 }
 
 message SandboxNetworkConfig {
@@ -56,7 +63,7 @@ message SandboxNetworkConfig {
 message SandboxNetworkEgressConfig {
   repeated string allowed_cidrs = 1;
   repeated string denied_cidrs = 2;
-  
+
   repeated string allowed_domains = 3;
 }
 

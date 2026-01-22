@@ -342,6 +342,16 @@ components:
           format: int64
           description: Total disk space in bytes
 
+    SandboxVolume:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the volume
+        path:
+          type: string
+          description: Path of the volume
+
     Sandbox:
       required:
         - templateID
@@ -518,6 +528,10 @@ components:
           $ref: "#/components/schemas/EnvVars"
         mcp:
           $ref: "#/components/schemas/Mcp"
+        volumes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SandboxVolume"
 
     ResumedSandbox:
       properties:

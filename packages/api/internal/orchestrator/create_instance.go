@@ -100,6 +100,7 @@ func (o *Orchestrator) CreateSandbox(
 	envdAuthToken *string,
 	allowInternetAccess *bool,
 	network *types.SandboxNetworkConfig,
+	volumes []api.SandboxVolume,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -233,6 +234,7 @@ func (o *Orchestrator) CreateSandbox(
 			AllowInternetAccess: allowInternetAccess,
 			Network:             sbxNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
+			Volumes:             convertVolumes(volumes),
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
@@ -332,4 +334,17 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	return sbx, nil
+}
+
+func convertVolumes(volumes []api.SandboxVolume) []*orchestrator.SandboxVolume {
+	results := make([]*orchestrator.SandboxVolume, 0, len(volumes))
+
+	for _, v := range volumes {
+		results = append(results, &orchestrator.SandboxVolume{
+			Name: *v.Name,
+			Path: *v.Path,
+		})
+	}
+
+	return results
 }

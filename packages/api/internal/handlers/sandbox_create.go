@@ -139,6 +139,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause = *body.AutoPause
 	}
 
+	var volumes []api.SandboxVolume
+	if body.Volumes != nil {
+		volumes = *body.Volumes
+	}
+
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
@@ -201,6 +206,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		allowInternetAccess,
 		network,
 		mcp,
+		volumes,
 	)
 	if createErr != nil {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)

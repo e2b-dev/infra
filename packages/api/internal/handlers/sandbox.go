@@ -23,25 +23,7 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/handlers")
 
-func (a *APIStore) startSandbox(
-	ctx context.Context,
-	sandboxID string,
-	timeout time.Duration,
-	envVars map[string]string,
-	metadata map[string]string,
-	alias string,
-	team *typesteam.Team,
-	build queries.EnvBuild,
-	requestHeader *http.Header,
-	isResume bool,
-	nodeID *string,
-	baseTemplateID string,
-	autoPause bool,
-	envdAccessToken *string,
-	allowInternetAccess *bool,
-	network *types.SandboxNetworkConfig,
-	mcp api.Mcp,
-) (*api.Sandbox, *api.APIError) {
+func (a *APIStore) startSandbox(ctx context.Context, sandboxID string, timeout time.Duration, envVars map[string]string, metadata map[string]string, alias string, team *typesteam.Team, build queries.EnvBuild, requestHeader *http.Header, isResume bool, nodeID *string, baseTemplateID string, autoPause bool, envdAccessToken *string, allowInternetAccess *bool, network *types.SandboxNetworkConfig, mcp api.Mcp, volumes []api.SandboxVolume) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
 
@@ -66,6 +48,7 @@ func (a *APIStore) startSandbox(
 		envdAccessToken,
 		allowInternetAccess,
 		network,
+		volumes,
 	)
 	if instanceErr != nil {
 		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)

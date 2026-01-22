@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/envd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -27,34 +28,24 @@ const (
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
 // The parent context should have a deadline or a timeout.
-func doRequestWithInfiniteRetries(
+func (s *Sandbox) doRequestWithInfiniteRetries(
 	ctx context.Context,
-	method,
-	address string,
-	accessToken *string,
-	envdInitRequestTimeout time.Duration,
-	envVars map[string]string,
-	sandboxID,
-	envdVersion,
-	orchestratorInSandboxIPAddress string,
-	defaultUser *string,
-	defaultWorkdir *string,
+	method, address string,
 ) (*http.Response, int64, error) {
 	requestCount := int64(0)
 	for {
 		now := time.Now()
 
-		jsonBody := &PostInitJSONBody{
-			EnvVars:        &envVars,
-			HyperloopIP:    &orchestratorInSandboxIPAddress,
-			AccessToken:    accessToken,
-			Timestamp:      &now,
-			DefaultUser:    defaultUser,
-			DefaultWorkdir: defaultWorkdir,
-			NFS: &struct {
-				IP   string `json:"ip"`
-				Path string `json:"path"`
-			}{IP: orchestratorInSandboxIPAddress, Path: "/mnt/shared"},
+		envVars := envd.EnvVars(s.Config.Envd.Vars)
+
+		jsonBody := &envd.PostInitJSONRequestBody{
+			EnvVars:        envVars,
+			HyperloopIP:    s.config.NetworkConfig.OrchestratorInSandboxIPAddress,
+			AccessToken:    safeDeref(s.Config.Envd.AccessToken),
+			Timestamp:      now,
+			DefaultUser:    safeDeref(s.Config.Envd.DefaultUser),
+			DefaultWorkdir: safeDeref(s.Config.Envd.DefaultWorkdir),
+			Volumes:        s.convert(s.Config.VolumeMounts),
 		}
 
 		body, err := json.Marshal(jsonBody)
@@ -63,7 +54,7 @@ func doRequestWithInfiniteRetries(
 		}
 
 		requestCount++
-		reqCtx, cancel := context.WithTimeout(ctx, envdInitRequestTimeout)
+		reqCtx, cancel := context.WithTimeout(ctx, s.internalConfig.EnvdInitRequestTimeout)
 		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(body))
 		if err != nil {
 			cancel()
@@ -73,8 +64,8 @@ func doRequestWithInfiniteRetries(
 
 		// make sure request to already authorized envd will not fail
 		// this can happen in sandbox resume and in some edge cases when previous request was success, but we continued
-		if accessToken != nil {
-			request.Header.Set("X-Access-Token", *accessToken)
+		if s.Config.Envd.AccessToken != nil {
+			request.Header.Set("X-Access-Token", *s.Config.Envd.AccessToken)
 		}
 
 		response, err := sandboxHttpClient.Do(request)
@@ -84,7 +75,11 @@ func doRequestWithInfiniteRetries(
 			return response, requestCount, nil
 		}
 
-		logger.L().Debug(ctx, "failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
+		logger.L().Debug(ctx, "failed to do request to envd, retrying",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			logger.WithEnvdVersion(s.Config.Envd.Version),
+			zap.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+			zap.Error(err))
 
 		select {
 		case <-ctx.Done():
@@ -94,17 +89,25 @@ func doRequestWithInfiniteRetries(
 	}
 }
 
-type PostInitJSONBody struct {
-	EnvVars        *map[string]string `json:"envVars"`
-	AccessToken    *string            `json:"accessToken,omitempty"`
-	HyperloopIP    *string            `json:"hyperloopIP,omitempty"`
-	Timestamp      *time.Time         `json:"timestamp,omitempty"`
-	DefaultUser    *string            `json:"defaultUser,omitempty"`
-	DefaultWorkdir *string            `json:"defaultWorkdir,omitempty"`
-	NFS            *struct {
-		IP   string `json:"ip"`
-		Path string `json:"path"`
-	} `json:"nfs"`
+func (s *Sandbox) convert(mounts []VolumeMountConfig) []envd.VolumeMount {
+	results := make([]envd.VolumeMount, 0, len(mounts))
+
+	for _, mount := range mounts {
+		results = append(results, envd.VolumeMount{
+			NfsTarget: fmt.Sprintf("%s:/%s", s.config.NetworkConfig.OrchestratorInSandboxIPAddress, mount.Name),
+			Path:      mount.Path,
+		})
+	}
+
+	return results
+}
+
+func safeDeref(token *string) string {
+	if token == nil {
+		return ""
+	}
+
+	return *token
 }
 
 func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
@@ -121,21 +124,12 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 	attributesFail := append(attributes, attribute.Bool("success", false))
 	attributesSuccess := append(attributes, attribute.Bool("success", true))
 
-	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
-
-	response, count, err := doRequestWithInfiniteRetries(
-		ctx,
-		http.MethodPost,
-		address,
-		s.Config.Envd.AccessToken,
-		s.internalConfig.EnvdInitRequestTimeout,
-		s.Config.Envd.Vars,
-		s.Runtime.SandboxID,
-		s.Config.Envd.Version,
-		s.config.NetworkConfig.OrchestratorInSandboxIPAddress,
-		s.Config.Envd.DefaultUser,
-		s.Config.Envd.DefaultWorkdir,
+	address := fmt.Sprintf("http://%s:%d/init",
+		s.Slot.HostIPString(),
+		consts.DefaultEnvdServerPort,
 	)
+
+	response, count, err := s.doRequestWithInfiniteRetries(ctx, http.MethodPost, address)
 	if err != nil {
 		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
 

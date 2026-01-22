@@ -119,10 +119,14 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		go a.SetupHyperloop(*data.HyperloopIP)
 	}
 
-	if data.Nfs != nil {
-		go func(ctx context.Context) {
-			a.setupNfs(ctx, data.Nfs.Ip, data.Nfs.Path)
-		}(context.WithoutCancel(ctx))
+	if data.Volumes == nil {
+		for _, volume := range *data.Volumes {
+			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
+
+			go func(ctx context.Context) {
+				a.setupNfs(ctx, volume.NfsTarget, volume.Path)
+			}(context.WithoutCancel(ctx))
+		}
 	}
 
 	if data.DefaultUser != nil && *data.DefaultUser != "" {
@@ -138,15 +142,15 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	return nil
 }
 
-func (a *API) setupNfs(ctx context.Context, address, path string) {
+func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
 	a.nfsLock.Lock()
 	defer a.nfsLock.Unlock()
 
 	data, err := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf(`
 set -e
 mkdir -p %q
-mount -v -t nfs -o mountproto=tcp,mountport=2049,proto=tcp,port=2049,nfsvers=3,noacl %q:/ %q
-`, path, address, path)).CombinedOutput()
+mount -v -t nfs -o mountproto=tcp,mountport=2049,proto=tcp,port=2049,nfsvers=3,noacl %q %q
+`, path, nfsTarget, path)).CombinedOutput()
 
 	a.logger.Info().
 		Str("output", string(data)).

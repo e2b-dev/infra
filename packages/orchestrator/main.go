@@ -463,24 +463,28 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"portmapper server", func(_ context.Context) error { return pmLis.Close() }})
 
 	// nfs proxy server
-	var nfsConfig net.ListenConfig
-	lis, err := nfsConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.NFSProxyPort))
-	if err != nil {
-		logger.L().Fatal(ctx, "failed to listen on nfs port", zap.Error(err))
+	if config.SandboxPersistence.BucketName != "" {
+		var nfsConfig net.ListenConfig
+		lis, err := nfsConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.NFSProxyPort))
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to listen on nfs port", zap.Error(err))
+		}
+
+		gcsClientForNFS, err := storage2.NewGRPCClient(ctx)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to create GCS client", zap.Error(err))
+		}
+
+		nfsServer := nfs.NewProxy(ctx, sandboxes, gcsClientForNFS.Bucket(config.SandboxPersistence.BucketName))
+		startService("nfs proxy", func() error {
+			return nfsServer.Serve(lis)
+		})
+		closers = append(closers, closer{
+			"nfs proxy server", func(_ context.Context) error {
+				return lis.Close()
+			},
+		})
 	}
-	gcsClientForNFS, err := storage2.NewGRPCClient(ctx)
-	if err != nil {
-		logger.L().Fatal(ctx, "failed to create GCS client", zap.Error(err))
-	}
-	nfsServer := nfs.NewProxy(ctx, sandboxes, gcsClientForNFS.Bucket(config.SandboxPersistence.BucketName))
-	startService("nfs proxy", func() error {
-		return nfsServer.Serve(lis)
-	})
-	closers = append(closers, closer{
-		"nfs proxy server", func(_ context.Context) error {
-			return lis.Close()
-		},
-	})
 
 	// hyperloop server
 	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes)

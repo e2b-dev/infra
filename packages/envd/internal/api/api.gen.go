@@ -156,17 +156,12 @@ type PostInitJSONBody struct {
 	// HyperloopIP IP address of the hyperloop server to connect to
 	HyperloopIP *string `json:"hyperloopIP,omitempty"`
 
-	// Nfs NFS configuration
-	Nfs *struct {
-		// Ip IP address of the NFS server to mount
-		Ip string `json:"ip"`
-
-		// Path Path on the NFS server to mount
-		Path string `json:"path"`
-	} `json:"nfs,omitempty"`
-
 	// Timestamp The current timestamp in RFC3339 format
 	Timestamp *time.Time `json:"timestamp,omitempty"`
+	Volumes   *[]struct {
+		NfsTarget string `json:"nfs_target"`
+		Path      string `json:"path"`
+	} `json:"volumes,omitempty"`
 }
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
