@@ -21,7 +21,7 @@ func TestGetExclusiveBuildsForTemplateDeletion_ExclusiveBuild(t *testing.T) {
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
 
 	// Execute query
-	results, err := db.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
+	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
 	require.NoError(t, err)
 
 	// Build should be returned since it's only assigned to this template
@@ -47,7 +47,7 @@ func TestGetExclusiveBuildsForTemplateDeletion_SharedBuild(t *testing.T) {
 	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, buildID, "default")
 
 	// Execute query for template1
-	results, err := db.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
+	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
 	require.NoError(t, err)
 
 	// Build should NOT be returned since it's shared with another template
@@ -74,7 +74,7 @@ func TestGetExclusiveBuildsForTemplateDeletion_MixedBuilds(t *testing.T) {
 	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, sharedBuildID, "default")
 
 	// Execute query for template1
-	results, err := db.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
+	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
 	require.NoError(t, err)
 
 	// Only the exclusive build should be returned
@@ -92,7 +92,7 @@ func TestGetExclusiveBuildsForTemplateDeletion_NoBuilds(t *testing.T) {
 	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Execute query
-	results, err := db.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
+	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
 	require.NoError(t, err)
 
 	// Should return empty results (no builds to delete)
@@ -115,7 +115,7 @@ func TestGetExclusiveBuildsForTemplateDeletion_MultipleTagsSameTemplate(t *testi
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "latest")
 
 	// Execute query
-	results, err := db.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
+	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
 	require.NoError(t, err)
 
 	// Should return the build only once (DISTINCT)
@@ -142,7 +142,7 @@ func TestGetExclusiveBuildsForTemplateDeletion_SharedBuildAcrossTeams(t *testing
 	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, buildID, "default")
 
 	// Execute query for template1
-	results, err := db.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
+	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
 	require.NoError(t, err)
 
 	// Build should NOT be returned since it's shared with another template (even in a different team)
@@ -170,7 +170,7 @@ func TestGetExclusiveBuildsForTemplateDeletion_MixedBuildsAcrossTeams(t *testing
 	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, sharedBuildID, "default")
 
 	// Execute query for template1
-	results, err := db.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
+	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
 	require.NoError(t, err)
 
 	// Only the exclusive build should be returned

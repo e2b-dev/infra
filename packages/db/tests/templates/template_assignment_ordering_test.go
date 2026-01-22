@@ -35,7 +35,7 @@ func TestGetTemplateWithBuildByTag_AssignmentOrderDifferentFromBuildOrder(t *tes
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, build1ID, "default")
 
 	// GetTemplateWithBuildByTag should return build1 (latest assignment)
-	result, err := db.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
+	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
 		AliasOrEnvID: templateID,
 		Tag:          nil, // defaults to 'default'
 	})
@@ -66,7 +66,7 @@ func TestGetTemplateWithBuildByTag_AssignmentOrderSameAsBuildOrder(t *testing.T)
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, build2ID, "default")
 
 	// GetTemplateWithBuildByTag should return build2 (latest assignment)
-	result, err := db.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
+	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
 		AliasOrEnvID: templateID,
 		Tag:          nil,
 	})
@@ -97,7 +97,7 @@ func TestGetTemplateWithBuildByTag_OnlyReturnsUploadedBuilds(t *testing.T) {
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, waitingBuildID, "default")
 
 	// GetTemplateWithBuildByTag should return the uploaded build, not waiting
-	result, err := db.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
+	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
 		AliasOrEnvID: templateID,
 		Tag:          nil,
 	})
@@ -128,7 +128,7 @@ func TestGetTemplateWithBuildByTag_SpecificTag(t *testing.T) {
 
 	// Query for 'v1' tag
 	v1Tag := "v1"
-	result, err := db.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
+	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
 		AliasOrEnvID: templateID,
 		Tag:          &v1Tag,
 	})
@@ -160,7 +160,7 @@ func TestGetTeamTemplates_AssignmentOrderDifferentFromBuildOrder(t *testing.T) {
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, build1ID, "default")
 
 	// GetTeamTemplates should return build1 (latest assignment)
-	results, err := db.GetTeamTemplates(ctx, teamID)
+	results, err := db.SqlcClient.GetTeamTemplates(ctx, teamID)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 

@@ -18,7 +18,6 @@ import (
 type Client struct {
 	Read      *authqueries.Queries
 	Write     *authqueries.Queries
-	ctx       context.Context
 	writeConn *pgxpool.Pool
 	readConn  *pgxpool.Pool
 }
@@ -54,7 +53,7 @@ func NewClient(ctx context.Context, databaseURL, replicaURL string, options ...p
 		readClient = authqueries.New(readPool)
 	}
 
-	return &Client{Read: readClient, Write: writeClient, ctx: ctx, writeConn: writePool, readConn: readPool}, nil
+	return &Client{Read: readClient, Write: writeClient, writeConn: writePool, readConn: readPool}, nil
 }
 
 func (db *Client) Close() error {
@@ -74,7 +73,7 @@ func (db *Client) WithTx(ctx context.Context) (*Client, pgx.Tx, error) {
 		return nil, nil, err
 	}
 
-	client := &Client{Write: db.Write.WithTx(tx), writeConn: db.writeConn, readConn: db.readConn, Read: db.Read, ctx: db.ctx}
+	client := &Client{Write: db.Write.WithTx(tx), writeConn: db.writeConn, readConn: db.readConn, Read: db.Read}
 
 	return client, tx, nil
 }

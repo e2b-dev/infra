@@ -11,7 +11,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
@@ -69,9 +70,15 @@ func main() {
 	}
 	defer db.Close()
 
+	authDb, err := authdb.NewClient(ctx, os.Getenv("POSTGRES_CONNECTION_STRING"), os.Getenv("POSTGRES_CONNECTION_STRING"))
+	if err != nil {
+		panic(err)
+	}
+	defer authDb.Close()
+
 	// Open .e2b/config.json
 	// Delete existing user and recreate (simpler for seeding)
-	err = db.TestsRawSQL(ctx, `
+	err = authDb.TestsRawSQL(ctx, `
 DELETE FROM auth.users WHERE email = $1
 `, email)
 	if err != nil {
@@ -80,7 +87,7 @@ DELETE FROM auth.users WHERE email = $1
 
 	// Create the user
 	userID := uuid.New()
-	err = db.TestsRawSQL(ctx, `
+	err = authDb.TestsRawSQL(ctx, `
 INSERT INTO auth.users (id, email)
 VALUES ($1, $2)
 `, userID, email)
@@ -89,7 +96,7 @@ VALUES ($1, $2)
 	}
 
 	// Delete team
-	err = db.TestsRawSQL(ctx, `
+	err = authDb.TestsRawSQL(ctx, `
 DELETE FROM teams WHERE email = $1
 `, email)
 	if err != nil {
@@ -97,7 +104,7 @@ DELETE FROM teams WHERE email = $1
 	}
 
 	// Create team
-	err = db.TestsRawSQL(ctx, `
+	err = authDb.TestsRawSQL(ctx, `
 INSERT INTO teams (id, email, name, tier, is_blocked)
 VALUES ($1, $2, $3, $4, $5)
 `, teamUUID, email, "E2B", "base_v1", false)
@@ -106,7 +113,7 @@ VALUES ($1, $2, $3, $4, $5)
 	}
 
 	// Create user team
-	err = db.TestsRawSQL(ctx, `
+	err = authDb.TestsRawSQL(ctx, `
 INSERT INTO users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, userID, teamUUID, true)
@@ -125,8 +132,8 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		panic(err)
 	}
-	_, err = db.CreateAccessToken(
-		ctx, queries.CreateAccessTokenParams{
+	_, err = authDb.Write.CreateAccessToken(
+		ctx, authqueries.CreateAccessTokenParams{
 			ID:                    uuid.New(),
 			UserID:                userID,
 			AccessTokenHash:       accessTokenHash,
@@ -151,7 +158,7 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		panic(err)
 	}
-	_, err = db.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
+	_, err = authDb.Write.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
 		TeamID:           teamUUID,
 		CreatedBy:        &userID,
 		ApiKeyHash:       apiKeyHash,

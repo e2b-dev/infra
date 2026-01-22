@@ -43,7 +43,7 @@ func TestGetLastSnapshot_ReturnsLatestAssignment(t *testing.T) {
 	require.NotEqual(t, build1ID, build2ID, "Each upsert should create a new build")
 
 	// Execute GetLastSnapshot - should return the latest build (build2)
-	snapshot, err := db.GetLastSnapshot(ctx, sandboxID)
+	snapshot, err := db.SqlcClient.GetLastSnapshot(ctx, sandboxID)
 	require.NoError(t, err)
 
 	assert.Equal(t, build2ID, snapshot.EnvBuild.ID,
@@ -74,7 +74,7 @@ func TestGetLastSnapshot_OnlyReturnsSuccessBuilds(t *testing.T) {
 	testutils.UpsertTestSnapshotWithStatus(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID, "snapshotting")
 
 	// GetLastSnapshot should return the success build, not the snapshotting one
-	snapshot, err := db.GetLastSnapshot(ctx, sandboxID)
+	snapshot, err := db.SqlcClient.GetLastSnapshot(ctx, sandboxID)
 	require.NoError(t, err)
 
 	assert.Equal(t, successBuildID, snapshot.EnvBuild.ID,
@@ -105,7 +105,7 @@ func TestGetSnapshotsWithCursor_ReturnsLatestAssignment(t *testing.T) {
 	latestBuildID := result2.BuildID
 
 	// Execute GetSnapshotsWithCursor
-	results, err := db.GetSnapshotsWithCursor(ctx, queries.GetSnapshotsWithCursorParams{
+	results, err := db.SqlcClient.GetSnapshotsWithCursor(ctx, queries.GetSnapshotsWithCursorParams{
 		TeamID:                teamID,
 		Metadata:              types.JSONBStringMap{},
 		CursorID:              "",
@@ -150,7 +150,7 @@ func TestGetLastSnapshot_BuildSharedWithOtherTemplate(t *testing.T) {
 
 	// GetLastSnapshot should still return build2 (latest for THIS template),
 	// not build1 even though build1 has a newer assignment to another template
-	snapshot, err := db.GetLastSnapshot(ctx, sandboxID)
+	snapshot, err := db.SqlcClient.GetLastSnapshot(ctx, sandboxID)
 	require.NoError(t, err)
 
 	assert.Equal(t, build2ID, snapshot.EnvBuild.ID,
@@ -184,7 +184,7 @@ func TestGetLastSnapshot_IgnoresNonDefaultTags(t *testing.T) {
 	testutils.CreateTestBuildAssignment(t, ctx, db, result1.TemplateID, otherBuildID, "v1")
 
 	// GetLastSnapshot should return the default-tagged build, not the v1-tagged one
-	snapshot, err := db.GetLastSnapshot(ctx, sandboxID)
+	snapshot, err := db.SqlcClient.GetLastSnapshot(ctx, sandboxID)
 	require.NoError(t, err)
 
 	assert.Equal(t, defaultBuildID, snapshot.EnvBuild.ID,
@@ -220,7 +220,7 @@ func TestGetLastSnapshot_AssignmentOrderDifferentFromBuildOrder(t *testing.T) {
 	testutils.CreateSnapshotRecord(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID)
 
 	// GetLastSnapshot should return build1 (latest assignment), not build2 (latest build)
-	snapshot, err := db.GetLastSnapshot(ctx, sandboxID)
+	snapshot, err := db.SqlcClient.GetLastSnapshot(ctx, sandboxID)
 	require.NoError(t, err)
 
 	assert.Equal(t, build1ID, snapshot.EnvBuild.ID,
