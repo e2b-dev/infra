@@ -1,4 +1,4 @@
-package ex
+package cleaner
 
 import (
 	"context"
@@ -489,7 +489,7 @@ func GetDiskInfo(ctx context.Context, path string) (DiskInfo, error) {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) == 0 {
+		if len(fields) < 3 {
 			continue
 		}
 

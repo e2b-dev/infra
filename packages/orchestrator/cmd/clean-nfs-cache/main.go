@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/cmd/clean-nfs-cache/ex"
+	"github.com/e2b-dev/infra/packages/orchestrator/cmd/clean-nfs-cache/cleaner"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -33,7 +33,7 @@ func main() {
 	ctx := context.Background()
 	var log logger.Logger
 	var err error
-	var opts ex.Options
+	var opts cleaner.Options
 
 	defer func() {
 		if err != nil {
@@ -68,7 +68,7 @@ func main() {
 		zap.Int("max_concurrent_delete", opts.MaxConcurrentDelete),
 	)
 
-	c := ex.NewCleaner(opts, log)
+	c := cleaner.NewCleaner(opts, log)
 	if err = c.Clean(ctx); err != nil {
 		return
 	}
@@ -102,8 +102,8 @@ func main() {
 		zap.Duration("std_deviation", sd.Round(time.Second)))
 }
 
-func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
-	var opts ex.Options
+func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
+	var opts cleaner.Options
 
 	flags := flag.NewFlagSet("clean-nfs-cache", flag.ExitOnError)
 	flags.Uint64Var(&opts.TargetFilesToDelete, "target-files-to-delete", 0, "target number of files to delete (overrides disk-usage-target-percent and target-bytes-to-delete)")
@@ -176,10 +176,10 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 	}))
 
 	if opts.TargetBytesToDelete == 0 && opts.TargetFilesToDelete == 0 && opts.TargetDiskUsagePercent > 0 {
-		var diskInfo ex.DiskInfo
+		var diskInfo cleaner.DiskInfo
 		var err error
 		timeit(ctx, fmt.Sprintf("getting disk info for %q", opts.Path), func() {
-			diskInfo, err = ex.GetDiskInfo(ctx, opts.Path)
+			diskInfo, err = cleaner.GetDiskInfo(ctx, opts.Path)
 		})
 		if err != nil {
 			return opts, nil, fmt.Errorf("could not get disk info: %w", err)
@@ -192,7 +192,6 @@ func preRun(ctx context.Context) (ex.Options, logger.Logger, error) {
 
 	return opts, l, nil
 }
-
 
 func newOtelCore(ctx context.Context, endpoint string) (zapcore.Core, error) {
 	nodeID := env.GetNodeID()
@@ -215,7 +214,6 @@ func newOtelCore(ctx context.Context, endpoint string) (zapcore.Core, error) {
 
 	return otelCore, nil
 }
-
 
 func standardDeviation(accessed []time.Duration) (mean, stddev time.Duration) {
 	if len(accessed) == 0 {
@@ -270,8 +268,6 @@ func loop[T any](items []T, betterThan func(one, two T) bool) T {
 
 	return items[best]
 }
-
-
 
 var ErrUsage = errors.New("usage: clean-nfs-cache <path> [<options>]")
 
