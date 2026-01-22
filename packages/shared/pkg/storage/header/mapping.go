@@ -198,10 +198,10 @@ func MergeMappings(
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
 				var err error
-				leftBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.Offset), Length: int(leftBase.Length)})
+				leftBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.BuildStorageOffset), Length: int(leftBase.Length)})
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "UNREACHABLE: requested range %#x %#x could not be fulfilled by the frameTable %+v %+v: %v\n",
-						leftBase.Offset, leftBase.Length, base, diff, err)
+						leftBase.BuildStorageOffset, leftBase.Length, base, diff, err)
 				}
 
 				mappings = append(mappings, leftBase)
@@ -222,10 +222,10 @@ func MergeMappings(
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
 				var err error
-				rightBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.Offset), Length: int(rightBase.Length)})
+				rightBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.BuildStorageOffset), Length: int(rightBase.Length)})
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "UNREACHABLE: requested range %#x %#x could not be fulfilled by the frameTable %+v %+v: %v\n",
-						rightBase.Offset, rightBase.Length, base, diff, err)
+						rightBase.BuildStorageOffset, rightBase.Length, base, diff, err)
 				}
 
 				baseMapping[baseIdx] = rightBase
@@ -255,10 +255,10 @@ func MergeMappings(
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
 				var err error
-				rightBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.Offset), Length: int(rightBase.Length)})
+				rightBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.BuildStorageOffset), Length: int(rightBase.Length)})
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "UNREACHABLE: requested range %#x %#x could not be fulfilled by the frameTable %+v %+v: %v\n",
-						rightBase.Offset, rightBase.Length, base, diff, err)
+						rightBase.BuildStorageOffset, rightBase.Length, base, diff, err)
 				}
 
 				baseMapping[baseIdx] = rightBase
@@ -282,10 +282,10 @@ func MergeMappings(
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
 				var err error
-				leftBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.Offset), Length: int(leftBase.Length)})
+				leftBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.BuildStorageOffset), Length: int(leftBase.Length)})
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "UNREACHABLE: requested range %#x %#x could not be fulfilled by the frameTable %+v %+v: %v\n",
-						leftBase.Offset, leftBase.Length, base, diff, err)
+						leftBase.BuildStorageOffset, leftBase.Length, base, diff, err)
 				}
 
 				mappings = append(mappings, leftBase)
