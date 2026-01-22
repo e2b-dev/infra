@@ -359,7 +359,7 @@ func (p *Handler) CloseStdin() error {
 	}
 
 	err := p.stdin.Close()
-	if err == nil {
+	if !errors.Is(err, syscall.EINTR) {
 		p.stdin = nil
 	}
 
