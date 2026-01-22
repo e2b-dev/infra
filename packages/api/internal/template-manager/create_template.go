@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -180,13 +181,19 @@ func (tm *TemplateManager) CreateTemplate(
 		ctx, span := tracer.Start(ctx, "template-background-build-env")
 		defer span.End()
 
+		l := logger.L().With(logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID))
+
 		err := tm.BuildStatusSync(ctx, buildID, templateID, clusterID, &nodeID)
 		if err != nil {
-			logger.L().Error(ctx, "error syncing build status", zap.Error(err))
+			l.Error(ctx, "error syncing build status", zap.Error(err))
 		}
 
+		telemetry.ReportEvent(ctx, "build status sync completed")
+
 		// Invalidate the cache
-		tm.templateCache.InvalidateAllTags(templateID)
+		invalidatedKeys := tm.templateCache.InvalidateAllTags(templateID)
+
+		telemetry.ReportEvent(ctx, "invalidated template cache", attribute.StringSlice("invalidated_keys", invalidatedKeys))
 	}(context.WithoutCancel(ctx))
 
 	return nil

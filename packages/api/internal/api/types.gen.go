@@ -110,13 +110,22 @@ type AdminSandboxKillResult struct {
 	KilledCount int `json:"killedCount"`
 }
 
-// AssignTemplateTagRequest defines model for AssignTemplateTagRequest.
-type AssignTemplateTagRequest struct {
-	// Names Names of the template
-	Names []string `json:"names"`
+// AssignTemplateTagsRequest defines model for AssignTemplateTagsRequest.
+type AssignTemplateTagsRequest struct {
+	// Tags Tags to assign to the template
+	Tags []string `json:"tags"`
 
-	// Target Target template name in "alias:tag" format
+	// Target Target template in "name:tag" format
 	Target string `json:"target"`
+}
+
+// AssignedTemplateTags defines model for AssignedTemplateTags.
+type AssignedTemplateTags struct {
+	// BuildID Identifier of the build associated with these tags
+	BuildID openapi_types.UUID `json:"buildID"`
+
+	// Tags Assigned tags of the template
+	Tags []string `json:"tags"`
 }
 
 // BuildLogEntry defines model for BuildLogEntry.
@@ -189,6 +198,15 @@ type CreatedTeamAPIKey struct {
 
 	// Name Name of the API key
 	Name string `json:"name"`
+}
+
+// DeleteTemplateTagsRequest defines model for DeleteTemplateTagsRequest.
+type DeleteTemplateTagsRequest struct {
+	// Name Name of the template
+	Name string `json:"name"`
+
+	// Tags Tags to delete
+	Tags []string `json:"tags"`
 }
 
 // DiskMetrics defines model for DiskMetrics.
@@ -895,7 +913,7 @@ type TemplateBuildRequestV2 struct {
 
 // TemplateBuildRequestV3 defines model for TemplateBuildRequestV3.
 type TemplateBuildRequestV3 struct {
-	// Alias Alias of the template. Deprecated, use names instead.
+	// Alias Alias of the template. Deprecated, use name instead.
 	// Deprecated:
 	Alias *string `json:"alias,omitempty"`
 
@@ -905,8 +923,11 @@ type TemplateBuildRequestV3 struct {
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
-	// Names Names of the template
-	Names *[]string `json:"names,omitempty"`
+	// Name Name of the template. Can include a tag with colon separator (e.g. "my-template" or "my-template:v1"). If tag is included, it will be treated as if the tag was provided in the tags array.
+	Name *string `json:"name,omitempty"`
+
+	// Tags Tags to assign to the template build
+	Tags *[]string `json:"tags,omitempty"`
 
 	// TeamID Identifier of the team
 	// Deprecated:
@@ -984,13 +1005,20 @@ type TemplateLegacy struct {
 // TemplateRequestResponseV3 defines model for TemplateRequestResponseV3.
 type TemplateRequestResponseV3 struct {
 	// Aliases Aliases of the template
+	// Deprecated:
 	Aliases []string `json:"aliases"`
 
 	// BuildID Identifier of the last successful build for given template
 	BuildID string `json:"buildID"`
 
+	// Names Names of the template
+	Names []string `json:"names"`
+
 	// Public Whether the template is public or only accessible by the team
 	Public bool `json:"public"`
+
+	// Tags Tags assigned to the template build
+	Tags []string `json:"tags"`
 
 	// TemplateID Identifier of the template
 	TemplateID string `json:"templateID"`
@@ -1009,15 +1037,6 @@ type TemplateStep struct {
 
 	// Type Type of the step
 	Type string `json:"type"`
-}
-
-// TemplateTag defines model for TemplateTag.
-type TemplateTag struct {
-	// BuildID Identifier of the build associated with this tag
-	BuildID openapi_types.UUID `json:"buildID"`
-
-	// Names Assigned names of the template
-	Names []string `json:"names"`
 }
 
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.
@@ -1253,8 +1272,11 @@ type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJ
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest
 
+// DeleteTemplatesTagsJSONRequestBody defines body for DeleteTemplatesTags for application/json ContentType.
+type DeleteTemplatesTagsJSONRequestBody = DeleteTemplateTagsRequest
+
 // PostTemplatesTagsJSONRequestBody defines body for PostTemplatesTags for application/json ContentType.
-type PostTemplatesTagsJSONRequestBody = AssignTemplateTagRequest
+type PostTemplatesTagsJSONRequestBody = AssignTemplateTagsRequest
 
 // PatchTemplatesTemplateIDJSONRequestBody defines body for PatchTemplatesTemplateID for application/json ContentType.
 type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
