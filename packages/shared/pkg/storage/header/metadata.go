@@ -80,7 +80,7 @@ func (d *DiffMetadata) ToDiffHeader(
 
 	metadata := originalHeader.Metadata.NextGeneration(buildID)
 
-	_ = telemetry.WithAttributes(ctx,
+	telemetry.SetAttributes(ctx,
 		attribute.Int64("snapshot.header.mappings.length", int64(len(m))),
 		attribute.Int64("snapshot.diff.size", int64(d.Dirty.Count()*uint(originalHeader.Metadata.BlockSize))),
 		attribute.Int64("snapshot.mapped_size", int64(metadata.Size)),

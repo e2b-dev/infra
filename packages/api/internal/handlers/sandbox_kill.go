@@ -80,7 +80,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 	teamID := team.ID
 
-	ctx = telemetry.WithAttributes(ctx,
+	telemetry.SetAttributes(ctx,
 		telemetry.WithSandboxID(sandboxID),
 		telemetry.WithTeamID(teamID.String()),
 	)

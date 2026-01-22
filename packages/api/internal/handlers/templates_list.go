@@ -28,7 +28,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		}
 	}
 
-	ctx = telemetry.WithAttributes(ctx,
+	telemetry.SetAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 	)
 

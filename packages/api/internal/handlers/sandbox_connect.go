@@ -51,7 +51,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	sandboxID = utils.ShortID(sandboxID)
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
 
-	ctx = telemetry.WithAttributes(ctx, telemetry.WithSandboxID(sandboxID))
+	telemetry.SetAttributes(ctx, telemetry.WithSandboxID(sandboxID))
 
 	if err == nil {
 		if sandboxData.TeamID != teamInfo.Team.ID {
@@ -139,7 +139,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			ctx = telemetry.WithAttributes(ctx,
+			telemetry.SetAttributes(ctx,
 				telemetry.WithSandboxID(sandboxID),
 				telemetry.WithBuildID(build.ID.String()),
 				telemetry.WithTemplateID(build.EnvID),
@@ -158,7 +158,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		network = snap.Config.Network
 	}
 
-	ctx = telemetry.WithAttributes(ctx,
+	telemetry.SetAttributes(ctx,
 		telemetry.WithSandboxID(snap.SandboxID),
 	)
 

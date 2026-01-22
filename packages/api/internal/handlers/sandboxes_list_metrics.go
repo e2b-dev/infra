@@ -35,7 +35,7 @@ func (a *APIStore) getSandboxesMetrics(
 		sandboxIDs[i] = utils.ShortID(id)
 	}
 
-	ctx = telemetry.WithAttributes(ctx,
+	telemetry.SetAttributes(ctx,
 		attribute.Int("sandboxes.count", len(sandboxIDs)),
 	)
 
@@ -71,7 +71,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
-	ctx = telemetry.WithAttributes(ctx,
+	telemetry.SetAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 	)
 

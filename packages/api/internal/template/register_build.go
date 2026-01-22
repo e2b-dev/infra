@@ -98,7 +98,7 @@ func RegisterBuild(
 		tags = []string{id.DefaultTag}
 	}
 
-	ctx = telemetry.WithAttributes(ctx,
+	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", data.Team.ID.String()),
 		attribute.String("env.team.name", data.Team.Name),
 		telemetry.WithTemplateID(data.TemplateID),
@@ -109,25 +109,25 @@ func RegisterBuild(
 	)
 
 	if data.Alias != nil {
-		ctx = telemetry.WithAttributes(ctx, attribute.String("env.alias", *data.Alias))
+		telemetry.SetAttributes(ctx, attribute.String("env.alias", *data.Alias))
 	}
 	if len(tags) > 0 {
-		ctx = telemetry.WithAttributes(ctx, attribute.StringSlice("env.tags", tags))
+		telemetry.SetAttributes(ctx, attribute.StringSlice("env.tags", tags))
 	}
 	if data.StartCmd != nil {
-		ctx = telemetry.WithAttributes(ctx, attribute.String("env.start_cmd", *data.StartCmd))
+		telemetry.SetAttributes(ctx, attribute.String("env.start_cmd", *data.StartCmd))
 	}
 
 	if data.ReadyCmd != nil {
-		ctx = telemetry.WithAttributes(ctx, attribute.String("env.ready_cmd", *data.ReadyCmd))
+		telemetry.SetAttributes(ctx, attribute.String("env.ready_cmd", *data.ReadyCmd))
 	}
 
 	if data.CpuCount != nil {
-		ctx = telemetry.WithAttributes(ctx, attribute.Int("env.cpu", int(*data.CpuCount)))
+		telemetry.SetAttributes(ctx, attribute.Int("env.cpu", int(*data.CpuCount)))
 	}
 
 	if data.MemoryMB != nil {
-		ctx = telemetry.WithAttributes(ctx, attribute.Int("env.memory_mb", int(*data.MemoryMB)))
+		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*data.MemoryMB)))
 	}
 
 	cpuCount, ramMB, apiError := team.LimitResources(data.Team.Limits, data.CpuCount, data.MemoryMB)
@@ -351,7 +351,7 @@ func RegisterBuild(
 	}
 	telemetry.ReportEvent(ctx, "committed transaction")
 
-	ctx = telemetry.WithAttributes(ctx,
+	telemetry.SetAttributes(ctx,
 		attribute.Int64("build.cpu_count", cpuCount),
 		attribute.Int64("build.ram_mb", ramMB),
 	)

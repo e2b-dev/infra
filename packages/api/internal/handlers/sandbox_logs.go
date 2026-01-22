@@ -18,7 +18,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 	sandboxID = utils.ShortID(sandboxID)
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 
-	ctx = telemetry.WithAttributes(ctx,
+	telemetry.SetAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 		telemetry.WithSandboxID(sandboxID),
 	)

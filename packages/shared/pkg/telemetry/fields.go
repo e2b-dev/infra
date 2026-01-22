@@ -1,7 +1,6 @@
 package telemetry
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -156,26 +155,4 @@ func (z *ZapFieldToOTELAttributeEncoder) AddReflected(key string, value any) err
 }
 
 func (z *ZapFieldToOTELAttributeEncoder) OpenNamespace(_ string) {
-}
-
-func AttributesFromContext(ctx context.Context) []attribute.KeyValue {
-	var attrs []attribute.KeyValue
-
-	if sandboxID := logger.GetSandboxID(ctx); sandboxID != nil {
-		attrs = append(attrs, WithSandboxID(*sandboxID))
-	}
-
-	if teamID := logger.GetTeamID(ctx); teamID != nil {
-		attrs = append(attrs, WithTeamID(*teamID))
-	}
-
-	if buildID := logger.GetBuildID(ctx); buildID != nil {
-		attrs = append(attrs, WithBuildID(*buildID))
-	}
-
-	if templateID := logger.GetTemplateID(ctx); templateID != nil {
-		attrs = append(attrs, WithTemplateID(*templateID))
-	}
-
-	return attrs
 }

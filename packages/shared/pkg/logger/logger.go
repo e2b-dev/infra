@@ -179,9 +179,6 @@ func (t *TracedLogger) generateFields(ctx context.Context, fields ...zap.Field) 
 			contextFields = append(contextFields, zap.String("span_id", spanContext.SpanID().String()))
 		}
 
-		// Extract important fields from context and add them as fields
-		fields = append(fields, FieldsFromContext(ctx)...)
-
 		return append(contextFields, fields...)
 	}
 
