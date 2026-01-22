@@ -48,7 +48,7 @@ func (c change) Chmod(name string, mode os.FileMode) error {
 var ErrUnsupported = errors.New("unsupported")
 
 func (c change) Lchown(_ string, _, _ int) error {
-	return ErrUnsupported
+	return fmt.Errorf("change.Lchown: %w", ErrUnsupported)
 }
 
 func (c change) Chown(name string, uid, gid int) error {
@@ -67,5 +67,5 @@ func (c change) Chown(name string, uid, gid int) error {
 }
 
 func (c change) Chtimes(_ string, _ time.Time, _ time.Time) error {
-	return ErrUnsupported
+	return fmt.Errorf("change.Chtimes: %w", ErrUnsupported)
 }

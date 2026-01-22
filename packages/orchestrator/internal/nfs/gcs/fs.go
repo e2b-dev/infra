@@ -10,7 +10,10 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/go-git/go-billy/v5"
+	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -20,6 +23,7 @@ const (
 )
 
 type BucketFS struct {
+	ctx    context.Context //nolint:containedctx // can't change the API, still need it
 	bucket *storage.BucketHandle
 }
 
@@ -29,8 +33,8 @@ func (p BucketFS) String() string {
 
 var _ billy.Filesystem = (*BucketFS)(nil)
 
-func NewPrefixedGCSBucket(bucket *storage.BucketHandle) *BucketFS {
-	return &BucketFS{bucket: bucket}
+func NewPrefixedGCSBucket(ctx context.Context, bucket *storage.BucketHandle) *BucketFS {
+	return &BucketFS{bucket: bucket, ctx: ctx}
 }
 
 func (p BucketFS) Symlink(_, _ string) error {
@@ -42,7 +46,7 @@ func (p BucketFS) Readlink(_ string) (string, error) {
 }
 
 func (p BucketFS) Chroot(_ string) (billy.Filesystem, error) {
-	return nil, ErrUnsupported
+	return nil, fmt.Errorf("BucketFS.Chroot: %w", ErrUnsupported)
 }
 
 func (p BucketFS) Root() string {
@@ -58,14 +62,26 @@ func (p BucketFS) Open(filename string) (billy.File, error) {
 }
 
 func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
-	if flag&os.O_TRUNC != 0 {
-		return nil, ErrUnsupported
+	// GCS does not allow you to seek+write
+	// GCS does not allow you to append
+	// GCS *always* truncates when writing
+
+	if flag&os.O_CREATE != 0 && flag&os.O_TRUNC == 0 {
+		return nil, fmt.Errorf("O_CREATE without O_TRUNC: %w", ErrUnsupported)
+	}
+
+	if flag&os.O_WRONLY != 0 && flag&os.O_TRUNC == 0 {
+		return nil, fmt.Errorf("O_WRONLY without O_TRUNC: %w", ErrUnsupported)
+	}
+
+	if flag&os.O_RDWR != 0 && flag&os.O_TRUNC == 0 {
+		return nil, fmt.Errorf("O_RDWR without O_TRUNC: %w", ErrUnsupported)
 	}
 
 	obj := p.bucket.Object(filename)
 
 	// get the file's attrs
-	attrs, err := obj.Attrs(context.Background())
+	attrs, err := obj.Attrs(p.ctx)
 
 	// the file exists
 	if err == nil {
@@ -75,7 +91,7 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 			return nil, os.ErrExist
 		}
 
-		return newGcsFile(p, filename, attrs), nil
+		return newGcsFile(p.ctx, p, filename, attrs), nil
 	}
 
 	// the file does not exist
@@ -85,7 +101,7 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 	}
 
 	// create it
-	w := obj.NewWriter(context.Background())
+	w := obj.NewWriter(p.ctx)
 	if err := w.Close(); err != nil {
 		return nil, translateError(err)
 	}
@@ -98,11 +114,11 @@ func (p BucketFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 			permKey: permVal,
 		},
 	}
-	if attrs, err = obj.Update(context.Background(), updates); err != nil {
+	if attrs, err = obj.Update(p.ctx, updates); err != nil {
 		return nil, translateError(err)
 	}
 
-	return newGcsFile(p, filename, attrs), nil
+	return newGcsFile(p.ctx, p, filename, attrs), nil
 }
 
 func fromPermToObjectMetadata(perm os.FileMode) (string, string) {
@@ -172,15 +188,15 @@ func (p BucketFS) Rename(oldPath, newPath string) error {
 	src := p.bucket.Object(oldPath)
 	dst := p.bucket.Object(newPath)
 
-	if _, err := dst.CopierFrom(src).Run(context.Background()); err != nil {
+	if _, err := dst.CopierFrom(src).Run(p.ctx); err != nil {
 		return err
 	}
 
-	return src.Delete(context.Background())
+	return src.Delete(p.ctx)
 }
 
 func (p BucketFS) Remove(filename string) error {
-	return p.bucket.Object(filename).Delete(context.Background())
+	return p.bucket.Object(filename).Delete(p.ctx)
 }
 
 func (p BucketFS) Join(elem ...string) string {
@@ -188,11 +204,11 @@ func (p BucketFS) Join(elem ...string) string {
 }
 
 func (p BucketFS) TempFile(_, _ string) (billy.File, error) {
-	return nil, ErrUnsupported
+	return nil, fmt.Errorf("BucketFS.TempFile: %w", ErrUnsupported)
 }
 
 func (p BucketFS) ReadDir(path string) ([]os.FileInfo, error) {
-	objects := p.bucket.Objects(context.Background(), &storage.Query{Prefix: path + "/"})
+	objects := p.bucket.Objects(p.ctx, &storage.Query{Prefix: path + "/"})
 
 	var results []os.FileInfo
 	for {
@@ -223,18 +239,19 @@ func (p BucketFS) MkdirAll(filename string, _ os.FileMode) error {
 	}
 
 	dirName := filepath.Join(filename, dirMagicFilename)
-	w := p.bucket.Object(dirName).NewWriter(context.Background())
+	w := p.bucket.Object(dirName).NewWriter(p.ctx)
+	defer func() {
+		if err := w.Close(); err != nil {
+			logger.L().Warn(p.ctx, "failed to close dir marker", zap.Error(err))
+		}
+	}()
+
 	n, err := w.Write([]byte{})
 	if err != nil {
 		return translateError(err)
 	}
 	if n != 0 {
 		return fmt.Errorf("expected to write 0 bytes, got %d", n)
-	}
-
-	err = w.Close()
-	if err != nil {
-		return translateError(err)
 	}
 
 	return nil
@@ -261,7 +278,7 @@ func (p BucketFS) Lstat(filename string) (os.FileInfo, error) {
 }
 
 func (p BucketFS) tryGetFile(filename string) (os.FileInfo, bool, error) {
-	attrs, err := p.bucket.Object(filename).Attrs(context.Background())
+	attrs, err := p.bucket.Object(filename).Attrs(p.ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			return nil, false, nil
@@ -274,7 +291,7 @@ func (p BucketFS) tryGetFile(filename string) (os.FileInfo, bool, error) {
 }
 
 func (p BucketFS) tryGetDirList(filename string) (os.FileInfo, bool, error) {
-	results := p.bucket.Objects(context.Background(), &storage.Query{Prefix: filename + "/"})
+	results := p.bucket.Objects(p.ctx, &storage.Query{Prefix: filename + "/"})
 
 	_, err := results.Next()
 	if err != nil {
@@ -293,7 +310,7 @@ func (p BucketFS) tryGetDirList(filename string) (os.FileInfo, bool, error) {
 func (p BucketFS) tryGetMagicDir(filename string) (os.FileInfo, bool, error) {
 	dirName := filepath.Join(filename, dirMagicFilename)
 
-	attrs, err := p.bucket.Object(dirName).Attrs(context.Background())
+	attrs, err := p.bucket.Object(dirName).Attrs(p.ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			return nil, false, nil

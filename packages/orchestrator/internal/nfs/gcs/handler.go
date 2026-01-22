@@ -28,8 +28,8 @@ func NewNFSHandler(ctx context.Context, bucket *storage.BucketHandle) *NFSHandle
 	}
 }
 
-func (h NFSHandler) Mount(_ context.Context, _ net.Conn, _ nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
-	fs := NewPrefixedGCSBucket(h.bucket)
+func (h NFSHandler) Mount(ctx context.Context, _ net.Conn, _ nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
+	fs := NewPrefixedGCSBucket(ctx, h.bucket)
 
 	return nfs.MountStatusOk, fs, nil
 }
