@@ -1,6 +1,6 @@
 //go:build linux
 
-package ex
+package cleaner
 
 import (
 	"fmt"
