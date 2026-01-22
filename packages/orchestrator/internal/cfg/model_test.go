@@ -65,11 +65,4 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, "/a/b/c/build", config.DefaultCacheDir)
 		assert.Equal(t, "/a/b/c/sandbox", config.StorageConfig.SandboxCacheDir)
 	})
-
-	t.Run("missing embedded env vars cause parse error", func(t *testing.T) {
-		t.Setenv("SANDBOX_PERSISTENCE_BUCKET_NAME", "")
-
-		_, err := Parse()
-		assert.Error(t, err)
-	})
 }

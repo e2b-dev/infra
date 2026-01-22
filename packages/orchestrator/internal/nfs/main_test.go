@@ -59,6 +59,10 @@ func TestRoundTrip(t *testing.T) {
 
 	// setup gcs client
 	gcsClient, err := storage.NewGRPCClient(t.Context(), storage.WithDisabledClientMetrics())
+	if err != nil && strings.Contains(err.Error(), "could not find default credentials") {
+		t.Skip("skipping test because no default credentials are available")
+	}
+
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := gcsClient.Close()
