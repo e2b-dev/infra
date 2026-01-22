@@ -1,0 +1,228 @@
+package templatecache
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/db/testutils"
+)
+
+// TestAliasCacheResolve_BareAliasInTeamNamespace tests that a bare alias
+// is found when it exists in the team's namespace
+func TestAliasCacheResolve_BareAliasInTeamNamespace(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "my-alias", &teamSlug)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	// Bare alias should resolve via team namespace fallback
+	info, err := cache.Resolve(ctx, "my-alias", teamSlug)
+	require.Nil(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, templateID, info.TemplateID)
+	assert.Equal(t, teamID, info.TeamID)
+}
+
+// TestAliasCacheResolve_BareAliasFallbackToNullNamespace tests that a bare alias
+// falls back to NULL namespace (promoted templates) when not found in team namespace
+func TestAliasCacheResolve_BareAliasFallbackToNullNamespace(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	// Create requesting team (has no aliases)
+	requestingTeamID := testutils.CreateTestTeam(t, db)
+	requestingTeamSlug := testutils.GetTeamSlug(t, ctx, db, requestingTeamID)
+
+	// Create promoted template owned by another team
+	promotedTeamID := testutils.CreateTestTeam(t, db)
+	promotedTemplateID := testutils.CreateTestTemplate(t, db, promotedTeamID)
+
+	// Create alias with NULL namespace (promoted)
+	testutils.CreateTestTemplateAliasWithName(t, db, promotedTemplateID, "base", nil)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	// Bare alias "base" should:
+	// 1. Try requesting team's namespace -> not found
+	// 2. Fall back to NULL namespace -> found
+	info, err := cache.Resolve(ctx, "base", requestingTeamSlug)
+	require.Nil(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, promotedTemplateID, info.TemplateID)
+	assert.Equal(t, promotedTeamID, info.TeamID)
+}
+
+// TestAliasCacheResolve_ExplicitNamespaceNoFallback tests that an explicit namespace
+// does NOT fall back to NULL namespace
+func TestAliasCacheResolve_ExplicitNamespaceNoFallback(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	// Create team
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	// Create alias only in NULL namespace
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "only-promoted", nil)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	// Explicit namespace lookup should NOT fall back to NULL
+	info, err := cache.Resolve(ctx, teamSlug+"/only-promoted", teamSlug)
+	require.NotNil(t, err)
+	require.Nil(t, info)
+	assert.Equal(t, http.StatusNotFound, err.Code)
+}
+
+// TestAliasCacheResolve_TeamOverridesPromoted tests that team's alias
+// takes precedence over promoted template with same name.
+// NOTE: This test is for Phase 2 when PK becomes (alias, namespace).
+// During Phase 1, PK is still (alias) only, so duplicate alias names are not allowed.
+func TestAliasCacheResolve_TeamOverridesPromoted(t *testing.T) {
+	t.Skip("Phase 2 test: requires PK change to (alias, namespace) to allow duplicate alias names")
+
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	// Create team and its template
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	teamTemplateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	// Create promoted template
+	promotedTeamID := testutils.CreateTestTeam(t, db)
+	promotedTemplateID := testutils.CreateTestTemplate(t, db, promotedTeamID)
+
+	// Both have alias "shared-name"
+	testutils.CreateTestTemplateAliasWithName(t, db, promotedTemplateID, "shared-name", nil)
+	testutils.CreateTestTemplateAliasWithName(t, db, teamTemplateID, "shared-name", &teamSlug)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	// Team's alias should take precedence
+	info, err := cache.Resolve(ctx, "shared-name", teamSlug)
+	require.Nil(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, teamTemplateID, info.TemplateID, "Team's alias should override promoted")
+}
+
+// TestAliasCacheResolve_DirectTemplateID tests that direct template IDs work
+func TestAliasCacheResolve_DirectTemplateID(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	// Direct template ID should resolve
+	info, err := cache.Resolve(ctx, templateID, teamSlug)
+	require.Nil(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, templateID, info.TemplateID)
+}
+
+// TestAliasCacheResolve_NotFound tests that non-existent aliases return 404
+func TestAliasCacheResolve_NotFound(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	info, err := cache.Resolve(ctx, "non-existent", teamSlug)
+	require.NotNil(t, err)
+	require.Nil(t, info)
+	assert.Equal(t, http.StatusNotFound, err.Code)
+}
+
+// TestAliasCacheLookupByID tests direct template ID lookup
+func TestAliasCacheLookupByID(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	info, err := cache.LookupByID(ctx, templateID)
+	require.Nil(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, templateID, info.TemplateID)
+	assert.Equal(t, teamID, info.TeamID)
+}
+
+// TestAliasCacheLookupByID_NotFound tests that non-existent template IDs return 404
+func TestAliasCacheLookupByID_NotFound(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	info, err := cache.LookupByID(ctx, "non-existent-id")
+	require.NotNil(t, err)
+	require.Nil(t, info)
+	assert.Equal(t, http.StatusNotFound, err.Code)
+}
+
+// TestAliasCacheLookupByID_UsesCache tests that LookupByID uses cached entries from Resolve
+func TestAliasCacheLookupByID_UsesCache(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "cached-alias", &teamSlug)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	// First, resolve by alias (this caches by both alias and template ID)
+	info1, err := cache.Resolve(ctx, "cached-alias", teamSlug)
+	require.Nil(t, err)
+	require.NotNil(t, info1)
+
+	// Lookup by ID should return the same cached pointer
+	info2, err := cache.LookupByID(ctx, templateID)
+	require.Nil(t, err)
+	require.NotNil(t, info2)
+	assert.Equal(t, templateID, info2.TemplateID)
+	assert.Equal(t, teamID, info2.TeamID)
+
+	// Same pointer proves cache was hit (not a fresh DB fetch)
+	assert.Same(t, info1, info2)
+}

@@ -220,8 +220,10 @@ func RegisterBuild(
 	// Check if the alias is available and claim it
 	var aliases []string
 	if data.Alias != nil {
-		alias := *data.Alias
-		aliases = append(aliases, alias)
+		// Extract just the alias portion (without namespace) for storage
+		// The identifier may be "namespace/alias" or just "alias"
+		alias := id.ExtractAlias(*data.Alias)
+		aliases = append(aliases, *data.Alias)
 
 		exists, err := client.CheckAliasConflictsWithTemplateID(ctx, alias)
 		if err != nil {
@@ -278,6 +280,7 @@ func RegisterBuild(
 				CreateTemplateAlias(ctx, queries.CreateTemplateAliasParams{
 					Alias:      alias,
 					TemplateID: data.TemplateID,
+					Namespace:  &data.Team.Slug,
 				})
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when inserting alias", err, attribute.String("alias", alias))

@@ -154,13 +154,14 @@ func upsertTeam(ctx context.Context, db *client.Client) (uuid.UUID, error) {
 	teamID := uuid.MustParse("0b8a3ded-4489-4722-afd1-1d82e64ec2d5")
 
 	err := db.TestsRawSQL(ctx, `
-INSERT INTO teams (id, email, name, tier, is_blocked)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO teams (id, email, name, tier, is_blocked, slug)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (id) DO UPDATE SET
 	email = EXCLUDED.email,
 	name = EXCLUDED.name,
-	tier = EXCLUDED.tier
-`, teamID, "team@e2b-dev.local", "local-dev team", "base_v1", false)
+	tier = EXCLUDED.tier,
+	slug = EXCLUDED.slug
+`, teamID, "team@e2b-dev.local", "local-dev team", "base_v1", false, "local-dev-team")
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("failed to upsert team: %w", err)
 	}

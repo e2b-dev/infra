@@ -25,14 +25,47 @@ func (q *Queries) CheckAliasConflictsWithTemplateID(ctx context.Context, alias s
 }
 
 const checkAliasExists = `-- name: CheckAliasExists :one
-SELECT alias, is_renamable, env_id
+SELECT alias, is_renamable, env_id, namespace
 FROM "public"."env_aliases"
 WHERE alias = $1
 `
 
+// Phase 1: Check global alias uniqueness (PK is still alias only).
+// TODO(phase2): Change to CheckAliasExistsInNamespace when PK becomes (alias, namespace)
 func (q *Queries) CheckAliasExists(ctx context.Context, alias string) (EnvAlias, error) {
 	row := q.db.QueryRow(ctx, checkAliasExists, alias)
 	var i EnvAlias
-	err := row.Scan(&i.Alias, &i.IsRenamable, &i.EnvID)
+	err := row.Scan(
+		&i.Alias,
+		&i.IsRenamable,
+		&i.EnvID,
+		&i.Namespace,
+	)
+	return i, err
+}
+
+const checkAliasExistsInNamespace = `-- name: CheckAliasExistsInNamespace :one
+SELECT alias, is_renamable, env_id, namespace
+FROM "public"."env_aliases"
+WHERE alias = $1
+  AND namespace IS NOT DISTINCT FROM $2::text
+`
+
+type CheckAliasExistsInNamespaceParams struct {
+	Alias     string
+	Namespace *string
+}
+
+// Check if alias exists within a specific namespace.
+// Used for namespace-aware lookups. Returns the alias if found.
+func (q *Queries) CheckAliasExistsInNamespace(ctx context.Context, arg CheckAliasExistsInNamespaceParams) (EnvAlias, error) {
+	row := q.db.QueryRow(ctx, checkAliasExistsInNamespace, arg.Alias, arg.Namespace)
+	var i EnvAlias
+	err := row.Scan(
+		&i.Alias,
+		&i.IsRenamable,
+		&i.EnvID,
+		&i.Namespace,
+	)
 	return i, err
 }

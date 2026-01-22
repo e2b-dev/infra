@@ -19,12 +19,14 @@ import (
 func CreateTestTeam(t *testing.T, db *client.Client) uuid.UUID {
 	t.Helper()
 	teamID := uuid.New()
+	// Generate a unique slug from the team ID (first 8 chars)
+	slug := "test-team-" + teamID.String()[:8]
 
 	// Insert a team directly into the database using raw SQL
 	// Using the default tier 'base_v1' that is created in migrations
 	err := db.TestsRawSQL(t.Context(),
-		"INSERT INTO public.teams (id, name, tier, email) VALUES ($1, $2, $3, $4)",
-		teamID, "Test Team "+teamID.String(), "base_v1", "test-"+teamID.String()+"@example.com",
+		"INSERT INTO public.teams (id, name, tier, email, slug) VALUES ($1, $2, $3, $4, $5)",
+		teamID, "Test Team "+teamID.String(), "base_v1", "test-"+teamID.String()+"@example.com", slug,
 	)
 	require.NoError(t, err, "Failed to create test team")
 
@@ -51,15 +53,60 @@ func CreateTestTemplateAlias(t *testing.T, db *client.Client, templateID string)
 	t.Helper()
 	alias := "alias-" + uuid.New().String()
 
-	// Insert a base env directly into the database
-	// After the env_builds migration, envs table only has: id, team_id, public, updated_at, build_count, spawn_count, last_spawned_at
+	// Insert alias without namespace (legacy behavior / promoted templates)
 	err := db.TestsRawSQL(t.Context(),
 		"INSERT INTO public.env_aliases (alias, env_id, is_renamable) VALUES ($1, $2, $3)",
 		alias, templateID, true,
 	)
-	require.NoError(t, err, "Failed to create test base env")
+	require.NoError(t, err, "Failed to create test alias")
 
 	return alias
+}
+
+// CreateTestTemplateAliasWithNamespace creates an alias with a specific namespace
+func CreateTestTemplateAliasWithNamespace(t *testing.T, db *client.Client, templateID string, namespace *string) string {
+	t.Helper()
+	alias := "alias-" + uuid.New().String()
+
+	err := db.TestsRawSQL(t.Context(),
+		"INSERT INTO public.env_aliases (alias, env_id, is_renamable, namespace) VALUES ($1, $2, $3, $4)",
+		alias, templateID, true, namespace,
+	)
+	require.NoError(t, err, "Failed to create test alias with namespace")
+
+	return alias
+}
+
+// CreateTestTemplateAliasWithName creates an alias with a specific name and optional namespace
+func CreateTestTemplateAliasWithName(t *testing.T, db *client.Client, templateID, aliasName string, namespace *string) {
+	t.Helper()
+
+	err := db.TestsRawSQL(t.Context(),
+		"INSERT INTO public.env_aliases (alias, env_id, is_renamable, namespace) VALUES ($1, $2, $3, $4)",
+		aliasName, templateID, true, namespace,
+	)
+	require.NoError(t, err, "Failed to create test alias with name")
+}
+
+// GetTeamSlug retrieves the slug for a team
+func GetTeamSlug(t *testing.T, ctx context.Context, db *client.Client, teamID uuid.UUID) string {
+	t.Helper()
+	var slug string
+
+	err := db.TestsRawSQLQuery(ctx,
+		"SELECT slug FROM public.teams WHERE id = $1",
+		func(rows pgx.Rows) error {
+			if rows.Next() {
+				return rows.Scan(&slug)
+			}
+
+			return nil
+		},
+		teamID,
+	)
+	require.NoError(t, err, "Failed to get team slug")
+
+	return slug
 }
 
 func CreateTestTemplateWithAlias(t *testing.T, db *client.Client, teamID uuid.UUID) (string, string) {

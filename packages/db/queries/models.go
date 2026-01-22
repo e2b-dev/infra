@@ -73,6 +73,7 @@ type EnvAlias struct {
 	Alias       string
 	IsRenamable bool
 	EnvID       string
+	Namespace   *string
 }
 
 type EnvBuild struct {
@@ -137,6 +138,7 @@ type Team struct {
 	IsBanned      bool
 	BlockedReason *string
 	ClusterID     *uuid.UUID
+	Slug          string
 }
 
 type TeamApiKey struct {
