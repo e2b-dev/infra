@@ -56,8 +56,8 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	metrics, err := cluster.GetResources().GetSandboxMetrics(ctx, team.ID.String(), sandboxID, params.Start, params.End)
 	if err != nil {
-		logger.L().Error(ctx, "error getting sandbox metrics from edge", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "error getting sandbox metrics from edge")
+		logger.L().Error(ctx, "error getting sandbox metrics", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "error getting sandbox metrics")
 
 		return
 	}
