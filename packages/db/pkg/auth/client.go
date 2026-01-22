@@ -36,6 +36,7 @@ func NewClient(ctx context.Context, databaseURL, replicaURL string, options ...p
 
 		return nil, err
 	}
+
 	writeClient := authqueries.New(writePool)
 
 	var readPool *pgxpool.Pool
@@ -44,10 +45,12 @@ func NewClient(ctx context.Context, databaseURL, replicaURL string, options ...p
 	if strings.TrimSpace(replicaURL) != "" {
 		readPool, err = pool.New(ctx, replicaURL, options...)
 		if err != nil {
+			writePool.Close()
 			logger.L().Error(ctx, "Unable to create read connection pool", zap.Error(err))
 
 			return nil, err
 		}
+
 		readClient = authqueries.New(readPool)
 	}
 

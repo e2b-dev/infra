@@ -60,7 +60,9 @@ func GetTeamAuth(ctx context.Context, db *authdb.Client, apiKey string) (*types.
 	}
 
 	go func() {
-		updateErr := db.Write.UpdateLastTimeUsed(context.WithoutCancel(ctx), apiKey)
+		// Run the update in a separate context to avoid an extra latency
+		ctx := context.WithoutCancel(ctx)
+		updateErr := db.Write.UpdateLastTimeUsed(ctx, apiKey)
 		if updateErr != nil {
 			logger.L().Error(ctx, "failed to update last time used", zap.Error(updateErr))
 		}
