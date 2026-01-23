@@ -59,6 +59,7 @@ func (t *Header) String() string {
 	if t == nil {
 		return "[nil Header]"
 	}
+
 	return fmt.Sprintf("[Header: version=%d, size=%d, blockSize=%d, generation=%d, buildId=%s, mappings=%d]",
 		t.Metadata.Version,
 		t.Metadata.Size,
@@ -99,6 +100,7 @@ func (t *Header) Mappings(all bool) string {
 			frames,
 		)
 	}
+
 	return result
 }
 
@@ -199,16 +201,17 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 // AddFrames associates compression frame information with this header's mappings.
 //
 // Only mappings matching this header's BuildId will be updated. Returns nil if frameTable is nil.
-func (h *Header) AddFrames(frameTable *storage.FrameTable) error {
+func (t *Header) AddFrames(frameTable *storage.FrameTable) error {
 	if frameTable == nil {
 		return nil
 	}
-	for _, mapping := range h.Mapping {
-		if mapping.BuildId == h.Metadata.BuildId {
+	for _, mapping := range t.Mapping {
+		if mapping.BuildId == t.Metadata.BuildId {
 			if err := mapping.AddFrames(frameTable); err != nil {
 				return err
 			}
 		}
 	}
+
 	return nil
 }

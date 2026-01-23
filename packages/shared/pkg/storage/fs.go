@@ -159,6 +159,7 @@ func (u *fsMultipartUploader) Start(_ context.Context) error {
 		return nil
 	}
 	u.started = true
+
 	return nil
 }
 
@@ -195,11 +196,13 @@ func (u *fsMultipartUploader) Complete(_ context.Context) error {
 	u.mu.Lock()
 	if !u.started {
 		u.mu.Unlock()
+
 		return fmt.Errorf("multipart upload not started")
 	}
 
 	if len(u.parts) == 0 {
 		u.mu.Unlock()
+
 		return fmt.Errorf("no parts uploaded")
 	}
 
@@ -213,6 +216,7 @@ func (u *fsMultipartUploader) Complete(_ context.Context) error {
 	for i := 1; i <= maxPart; i++ {
 		if _, ok := u.parts[i]; !ok {
 			u.mu.Unlock()
+
 			return fmt.Errorf("missing part %d", i)
 		}
 	}
@@ -232,5 +236,6 @@ func (u *fsMultipartUploader) Complete(_ context.Context) error {
 
 	reader := bytes.NewReader(bytes.Join(dataParts, nil))
 	_, err = io.Copy(handle, reader)
+
 	return err
 }

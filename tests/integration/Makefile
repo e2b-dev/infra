@@ -45,18 +45,16 @@ test/%:
 	export TESTS_SUPABASE_JWT_SECRET=$(TESTS_SUPABASE_JWT_SECRET); \
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
 	export TESTS_SANDBOX_USER_ID=$(TESTS_SANDBOX_USER_ID); \
-	go test -v ./internal/tests/api/sandboxes -count=1 -run 'TestSandboxPause$$/regular'
-# 	go test -v ./internal/main_test.go -count=1
-# 	 && \
-# 	TEST_PATH="./internal/tests/$(subst test/,,$@)"; \
-# 	case "$${TEST_PATH}" in \
-# 		*.go:*) \
-# 			BASE=$${TEST_PATH%%:*}; \
-# 			TEST_FN=$${TEST_PATH#*:}; \
-# 			go tool gotestsum --rerun-fails=1 --packages="$$BASE" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -run "$${TEST_FN}" ;; \
-# 		*.go) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 ;; \
-# 		*) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH/..." --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 ;; \
-# 	esac
+	go test -v ./internal/main_test.go -count=1 && \
+	TEST_PATH="./internal/tests/$(subst test/,,$@)"; \
+	case "$${TEST_PATH}" in \
+		*.go:*) \
+			BASE=$${TEST_PATH%%:*}; \
+			TEST_FN=$${TEST_PATH#*:}; \
+			go tool gotestsum --rerun-fails=1 --packages="$$BASE" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -run "$${TEST_FN}" ;; \
+		*.go) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 ;; \
+		*) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH/..." --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 ;; \
+	esac
 
 .PHONY: connect-orchestrator
 connect-orchestrator:

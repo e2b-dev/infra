@@ -195,6 +195,7 @@ func (g *GCP) Upload(ctx context.Context, path string, in io.Reader) (n int64, e
 
 type withCancelCloser struct {
 	io.ReadCloser
+
 	cancelFunc context.CancelFunc
 }
 
@@ -202,6 +203,7 @@ func (c withCancelCloser) Close() error {
 	if c.cancelFunc != nil {
 		c.cancelFunc()
 	}
+
 	return c.ReadCloser.Close()
 }
 

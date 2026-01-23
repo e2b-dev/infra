@@ -736,14 +736,14 @@ func TestHeader_AddFrames_SingleBuild(t *testing.T) {
 	require.NoError(t, h.AddFrames(frameTable))
 
 	require.NotNil(t, h.Mapping[0].FrameTable)
-	assert.Equal(t, 1, len(h.Mapping[0].FrameTable.Frames))
+	assert.Len(t, h.Mapping[0].FrameTable.Frames, 1)
 	assert.Equal(t, int64(0), h.Mapping[0].FrameTable.StartAt.U)
 
 	require.NotNil(t, h.Mapping[1].FrameTable)
-	assert.Equal(t, 1, len(h.Mapping[1].FrameTable.Frames))
+	assert.Len(t, h.Mapping[1].FrameTable.Frames, 1)
 
 	require.NotNil(t, h.Mapping[2].FrameTable)
-	assert.Equal(t, 2, len(h.Mapping[2].FrameTable.Frames), "mapping spanning frame boundary should include both frames")
+	assert.Len(t, h.Mapping[2].FrameTable.Frames, 2, "mapping spanning frame boundary should include both frames")
 }
 
 func TestHeader_AddFrames_TemplateInheritance(t *testing.T) {
@@ -778,7 +778,7 @@ func TestHeader_AddFrames_TemplateInheritance(t *testing.T) {
 	require.NotNil(t, h.Mapping[1].FrameTable, "child mapping should have frame table")
 	require.NotNil(t, h.Mapping[2].FrameTable, "child mapping should have frame table")
 	require.NotNil(t, h.Mapping[4].FrameTable, "child mapping should have frame table")
-	assert.Equal(t, 1, len(h.Mapping[4].FrameTable.Frames))
+	assert.Len(t, h.Mapping[4].FrameTable.Frames, 1)
 }
 
 func TestBuildMap_AddFrames_OffsetVsBuildStorageOffset(t *testing.T) {
@@ -836,7 +836,7 @@ func TestBuildMap_AddFrames_NilFrameTable(t *testing.T) {
 
 	m := &BuildMap{Offset: 0, Length: 0x1000, BuildId: buildId, BuildStorageOffset: 0}
 	err := m.AddFrames(nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Nil(t, m.FrameTable)
 }
 
@@ -866,11 +866,11 @@ func TestBuildMap_AddFrames_FrameBoundaries(t *testing.T) {
 		require.NoError(t, m.AddFrames(frameTable))
 	}
 
-	assert.Equal(t, 1, len(mappings[0].FrameTable.Frames), "mapping at frame start")
-	assert.Equal(t, 1, len(mappings[1].FrameTable.Frames), "mapping at frame boundary")
-	assert.Equal(t, 2, len(mappings[2].FrameTable.Frames), "mapping spanning 2 frames")
-	assert.Equal(t, 3, len(mappings[3].FrameTable.Frames), "mapping spanning 3 frames")
-	assert.Equal(t, 1, len(mappings[4].FrameTable.Frames), "mapping at end of last frame")
+	assert.Len(t, mappings[0].FrameTable.Frames, 1, "mapping at frame start")
+	assert.Len(t, mappings[1].FrameTable.Frames, 1, "mapping at frame boundary")
+	assert.Len(t, mappings[2].FrameTable.Frames, 2, "mapping spanning 2 frames")
+	assert.Len(t, mappings[3].FrameTable.Frames, 3, "mapping spanning 3 frames")
+	assert.Len(t, mappings[4].FrameTable.Frames, 1, "mapping at end of last frame")
 }
 
 func TestHeader_AddFrames_SparseModifications(t *testing.T) {
@@ -909,5 +909,5 @@ func TestHeader_AddFrames_SparseModifications(t *testing.T) {
 		require.NotNil(t, h.Mapping[i].FrameTable, "child mapping %d should have frame table", i)
 	}
 
-	assert.Equal(t, 2, len(h.Mapping[5].FrameTable.Frames), "large chunk should span multiple frames")
+	assert.Len(t, h.Mapping[5].FrameTable.Frames, 2, "large chunk should span multiple frames")
 }

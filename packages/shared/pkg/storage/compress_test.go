@@ -520,7 +520,7 @@ func TestStoreFile_Compressed_FS(t *testing.T) {
 
 	// Write test file
 	inputFile := tempDir + "/input.dat"
-	err := os.WriteFile(inputFile, origData, 0644)
+	err := os.WriteFile(inputFile, origData, 0o644)
 	require.NoError(t, err)
 
 	// Store with compression
@@ -532,8 +532,8 @@ func TestStoreFile_Compressed_FS(t *testing.T) {
 	var totalU int64
 	for _, f := range frameTable.Frames {
 		totalU += int64(f.U)
-		require.Greater(t, f.U, int32(0), "frame should have uncompressed data")
-		require.Greater(t, f.C, int32(0), "frame should have compressed data")
+		require.Positive(t, f.U, "frame should have uncompressed data")
+		require.Positive(t, f.C, "frame should have compressed data")
 	}
 	require.Equal(t, int64(dataSize), totalU, "total uncompressed size should match")
 
@@ -578,7 +578,7 @@ func TestStoreFile_Compressed_FS_RoundTrip(t *testing.T) {
 
 	// Write test file
 	inputFile := tempDir + "/input.dat"
-	err := os.WriteFile(inputFile, origData, 0644)
+	err := os.WriteFile(inputFile, origData, 0o644)
 	require.NoError(t, err)
 
 	// Store with compression
@@ -590,6 +590,7 @@ func TestStoreFile_Compressed_FS_RoundTrip(t *testing.T) {
 	testOffsets := []int64{0, 1000, 25000, 49000}
 	for _, offset := range testOffsets {
 		t.Run(fmt.Sprintf("offset_%d", offset), func(t *testing.T) {
+			t.Parallel()
 			// Get the frame containing this offset
 			rangeU := Range{Start: offset, Length: 100}
 
@@ -661,6 +662,7 @@ func TestFrameTable_GetFetchRange_CompressedVsUncompressed(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			fetchRange, err := ft.GetFetchRange(tc.requestU)
 			require.NoError(t, err)
 
@@ -697,6 +699,7 @@ func TestStoreFile_DataIntegrity_FS(t *testing.T) {
 				for i := range d {
 					d[i] = byte(i % 256)
 				}
+
 				return d
 			}(),
 		},
@@ -706,6 +709,7 @@ func TestStoreFile_DataIntegrity_FS(t *testing.T) {
 				r := rand.New(rand.NewSource(42))
 				d := make([]byte, 20*1024)
 				r.Read(d)
+
 				return d
 			}(),
 		},
@@ -717,6 +721,7 @@ func TestStoreFile_DataIntegrity_FS(t *testing.T) {
 				for i := range d {
 					d[i] = pattern[i%len(pattern)]
 				}
+
 				return d
 			}(),
 		},
@@ -731,7 +736,7 @@ func TestStoreFile_DataIntegrity_FS(t *testing.T) {
 
 			// Write test file
 			inputFile := tempDir + "/input.dat"
-			err := os.WriteFile(inputFile, tc.data, 0644)
+			err := os.WriteFile(inputFile, tc.data, 0o644)
 			require.NoError(t, err)
 
 			// Store with compression

@@ -44,23 +44,24 @@ func (mapping *BuildMap) Copy() *BuildMap {
 //
 // Returns nil if frameTable is nil. Returns an error if the mapping's range
 // cannot be found in the frame table.
-func (m *BuildMap) AddFrames(frameTable *storage.FrameTable) error {
+func (mapping *BuildMap) AddFrames(frameTable *storage.FrameTable) error {
 	if frameTable == nil {
 		return nil
 	}
 
 	mappedRange := storage.Range{
-		Start:  int64(m.BuildStorageOffset),
-		Length: int(m.Length),
+		Start:  int64(mapping.BuildStorageOffset),
+		Length: int(mapping.Length),
 	}
 
 	subset, err := frameTable.Subset(mappedRange)
 	if err != nil {
 		return fmt.Errorf("mapping at virtual offset %#x (storage offset %#x, length %#x): %w",
-			m.Offset, m.BuildStorageOffset, m.Length, err)
+			mapping.Offset, mapping.BuildStorageOffset, mapping.Length, err)
 	}
 
-	m.FrameTable = subset
+	mapping.FrameTable = subset
+
 	return nil
 }
 
