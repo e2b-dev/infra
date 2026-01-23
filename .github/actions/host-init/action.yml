@@ -8,6 +8,7 @@ runs:
       env:
         POSTGRES_CONNECTION_STRING: "postgresql://postgres:local@localhost:5432/mydatabase?sslmode=disable"
       run: |
+        echo "AUTH_DB_CONNECTION_STRING=${POSTGRES_CONNECTION_STRING}" >> $GITHUB_ENV
         echo "test" > .last_used_env
         printenv > .env.test
       shell: bash
