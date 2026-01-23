@@ -1,67 +1,96 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IFS=',' read -r -a PORTS <<< "$$${OPEN_PORTS:-}"
+IFS=',' read -r -a EXTRA_PORTS <<< "$${OPEN_PORTS:-}"
 
-apply_ufw() {
-  if ! command -v ufw >/dev/null 2>&1; then return 1; fi
-  yes | ufw enable || true
-  for p in "$$${PORTS[@]}"; do
-    [ -z "$p" ] && continue
-    ufw allow "$p" || true
-  done
-}
+# 定义核心服务端口
+# SSH: 22
+# Nomad: 4646 (HTTP), 4647 (RPC), 4648 (Serf TCP/UDP)
+# Consul: 8300 (RPC), 8301 (LAN TCP/UDP), 8302 (WAN TCP/UDP), 8500 (HTTP), 8600 (DNS TCP/UDP)
+# Custom: 6464 (User requested)
+CORE_PORTS=(
+  "22/tcp"
+  "8300/tcp" "8301/tcp" "8301/udp" "8302/tcp" "8302/udp" "8500/tcp" "8600/tcp" "8600/udp"
+  "4646/tcp" "4647/tcp" "4648/tcp" "4648/udp"
+  "6464/tcp"
+)
 
-apply_firewalld() {
-  if ! command -v firewall-cmd >/dev/null 2>&1; then return 1; fi
-  systemctl enable --now firewalld || true
-  for p in "$$${PORTS[@]}"; do
+# 合并所有需要开放的端口
+PORTS=("$${CORE_PORTS[@]}" "$${EXTRA_PORTS[@]}")
+
+# -----------------------------------------------------------------------------
+# 策略：优先检测正在运行的高级防火墙管理工具（Firewalld/UFW）。
+# 如果发现它们处于活动状态，则直接使用它们并退出，避免冲突。
+# 如果都没有，则回退到使用 iptables 直接管理。
+# -----------------------------------------------------------------------------
+
+# 1. 尝试 Firewalld (常见于 CentOS/RHEL/Fedora)
+if systemctl is-active --quiet firewalld; then
+  echo "Detected Firewalld is active. Using firewall-cmd to apply rules."
+  for p in "$${PORTS[@]}"; do
     [ -z "$p" ] && continue
     firewall-cmd --permanent --add-port="$p" || true
   done
   firewall-cmd --reload || true
-}
+  echo "Firewalld rules applied."
+  exit 0
+fi
 
-apply_iptables() {
-  local ok=0
-  for p in "$$${PORTS[@]}"; do
+# 2. 尝试 UFW (常见于 Ubuntu/Debian)
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+  echo "Detected UFW is active. Using ufw to apply rules."
+  for p in "$${PORTS[@]}"; do
     [ -z "$p" ] && continue
-    port="$$${p%%/*}"; proto="$$${p##*/}"
-    if command -v iptables >/dev/null 2>&1; then
-      iptables -I INPUT -p "$proto" --dport "$port" -j ACCEPT || true
-      iptables -I OUTPUT -p "$proto" --dport "$port" -j ACCEPT || true
-      ok=1
-    fi
-    if command -v ip6tables >/dev/null 2>&1; then
-      ip6tables -I INPUT -p "$proto" --dport "$port" -j ACCEPT || true
-      ip6tables -I OUTPUT -p "$proto" --dport "$port" -j ACCEPT || true
-      ok=1
-    fi
+    ufw allow "$p" || true
   done
-  [ "$ok" -eq 1 ]
+  echo "UFW rules applied."
+  exit 0
+fi
+
+# 3. 兜底方案：iptables (通用)
+# 如果系统没有运行上述管理工具，我们假设可以直接操作 iptables
+echo "No high-level firewall manager active. Falling back to iptables."
+
+if ! command -v iptables >/dev/null 2>&1; then
+  echo "Error: iptables not found."
+  exit 1
+fi
+
+# 辅助函数：如果规则不存在则插入
+add_rule() {
+  local args=("$@")
+  if ! iptables -C "$${args[@]}" 2>/dev/null; then
+    iptables -I "$${args[@]}" || echo "Failed to add rule: $${args[*]}"
+  fi
 }
 
-apply_nft() {
-  if ! command -v nft >/dev/null 2>&1; then return 1; fi
-  nft list ruleset >/dev/null 2>&1 || nft add table inet filter || true
-  nft list chain inet filter input >/dev/null 2>&1 || nft add chain inet filter input '{ type filter hook input priority 0; }' || true
-  nft list chain inet filter output >/dev/null 2>&1 || nft add chain inet filter output '{ type filter hook output priority 0; }' || true
-  for p in "$$${PORTS[@]}"; do
-    [ -z "$p" ] && continue
-    port="$$${p%%/*}"; proto="$$${p##*/}"
-    if [ "$proto" = "tcp" ]; then
-      nft add rule inet filter input tcp dport "$port" accept || true
-      nft add rule inet filter output tcp dport "$port" accept || true
-    elif [ "$proto" = "udp" ]; then
-      nft add rule inet filter input udp dport "$port" accept || true
-      nft add rule inet filter output udp dport "$port" accept || true
-    else
-      nft add rule inet filter input meta l4proto "$proto" ct state new accept || true
-      nft add rule inet filter output meta l4proto "$proto" ct state new accept || true
-    fi
-  done
-}
+# 1. 允许本地回环
+add_rule INPUT -i lo -j ACCEPT
 
-#apply_ufw || apply_iptables || apply_nft || echo "No firewall tool applied; ports may already be open"
+# 2. 允许已建立的连接
+add_rule INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 
-echo "Applied network policy for ports: $$${PORTS[*]}"
+# 3. 允许 ICMP (Ping)
+add_rule INPUT -p icmp -j ACCEPT
+
+# 4. 允许指定端口
+for p in "$${PORTS[@]}"; do
+  [ -z "$p" ] && continue
+  if [[ "$p" == *"/"* ]]; then
+    port="$${p%%/*}"
+    proto="$${p##*/}"
+  else
+    port="$p"
+    proto="tcp"
+  fi
+  add_rule INPUT -p "$proto" --dport "$port" -j ACCEPT
+done
+
+# 尝试保存规则
+if command -v netfilter-persistent >/dev/null 2>&1; then
+  netfilter-persistent save || true
+elif [ -d /etc/iptables ]; then
+  iptables-save > /etc/iptables/rules.v4 || true
+fi
+
+echo "Iptables rules applied successfully."
