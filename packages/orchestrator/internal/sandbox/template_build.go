@@ -13,17 +13,17 @@ import (
 )
 
 type TemplateBuild struct {
-	files       storage.TemplateFiles
-	persistence storage.API
+	files   storage.TemplateFiles
+	storage storage.API
 
 	memfileHeader *headers.Header
 	rootfsHeader  *headers.Header
 }
 
-func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence storage.API, files storage.TemplateFiles) *TemplateBuild {
+func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, s storage.API, files storage.TemplateFiles) *TemplateBuild {
 	return &TemplateBuild{
-		persistence: persistence,
-		files:       files,
+		storage: s,
+		files:   files,
 
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
@@ -31,7 +31,7 @@ func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Heade
 }
 
 func (t *TemplateBuild) Remove(ctx context.Context) error {
-	err := t.persistence.DeleteWithPrefix(ctx, t.files.StorageDir())
+	err := t.storage.DeleteWithPrefix(ctx, t.files.StorageDir())
 	if err != nil {
 		return fmt.Errorf("error when removing template build '%s': %w", t.files.StorageDir(), err)
 	}
@@ -45,7 +45,7 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	err = t.persistence.StoreBlob(ctx, t.files.StorageMemfileHeaderPath(), bytes.NewReader(serialized))
+	err = t.storage.StoreBlob(ctx, t.files.StorageMemfileHeaderPath(), bytes.NewReader(serialized))
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -54,8 +54,8 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 }
 
 func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) (*storage.FrameTable, error) {
-	return t.persistence.StoreFile(ctx, memfilePath, t.files.StorageMemfilePath(), storage.DefaultCompressionOptions)
-	// return t.persistence.StoreFile(ctx, memfilePath, t.files.StorageMemfilePath(), nil)
+	return t.storage.StoreFile(ctx, memfilePath, t.files.StorageMemfilePath(), storage.DefaultCompressionOptions)
+	// return t.storage.StoreFile(ctx, memfilePath, t.files.StorageMemfilePath(), nil)
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
@@ -64,7 +64,7 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 		return fmt.Errorf("error when serializing rootFS header: %w", err)
 	}
 
-	err = t.persistence.StoreBlob(ctx, t.files.StorageRootfsHeaderPath(), bytes.NewReader(serialized))
+	err = t.storage.StoreBlob(ctx, t.files.StorageRootfsHeaderPath(), bytes.NewReader(serialized))
 	if err != nil {
 		return err
 	}
@@ -73,8 +73,8 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 }
 
 func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) (*storage.FrameTable, error) {
-	return t.persistence.StoreFile(ctx, rootfsPath, t.files.StorageRootfsPath(), storage.DefaultCompressionOptions)
-	// return t.persistence.StoreFile(ctx, rootfsPath, t.files.StorageRootfsPath(), nil)
+	return t.storage.StoreFile(ctx, rootfsPath, t.files.StorageRootfsPath(), storage.DefaultCompressionOptions)
+	// return t.storage.StoreFile(ctx, rootfsPath, t.files.StorageRootfsPath(), nil)
 }
 
 // Snap-file is small enough so we don't use composite upload.
@@ -85,7 +85,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 	}
 	defer f.Close()
 
-	err = t.persistence.StoreBlob(ctx, t.files.StorageSnapfilePath(), f)
+	err = t.storage.StoreBlob(ctx, t.files.StorageSnapfilePath(), f)
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func (t *TemplateBuild) uploadMetadata(ctx context.Context, localFilePath string
 	}
 	defer f.Close()
 
-	err = t.persistence.StoreBlob(ctx, t.files.StorageMetadataPath(), f)
+	err = t.storage.StoreBlob(ctx, t.files.StorageMetadataPath(), f)
 	if err != nil {
 		return err
 	}

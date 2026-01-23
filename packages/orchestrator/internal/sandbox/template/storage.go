@@ -51,7 +51,7 @@ func NewStorage(
 	buildId string,
 	fileType build.DiffType,
 	h *header.Header,
-	persistence storage.API,
+	s storage.API,
 	metrics blockmetrics.Metrics,
 ) (*Storage, error) {
 	if h == nil {
@@ -62,7 +62,7 @@ func NewStorage(
 		}
 
 		// TODO LEV inefficient double read
-		headerData, err := persistence.GetBlob(ctx, headerObjectPath, nil)
+		headerData, err := s.GetBlob(ctx, headerObjectPath, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +87,7 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		size, err := persistence.Size(ctx, objectPath)
+		size, err := s.Size(ctx, objectPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object size: %w", err)
 		}
@@ -123,7 +123,7 @@ func NewStorage(
 		}
 	}
 
-	b := build.NewFile(h, store, fileType, persistence, metrics)
+	b := build.NewFile(h, store, fileType, s, metrics)
 
 	return &Storage{
 		source: b,

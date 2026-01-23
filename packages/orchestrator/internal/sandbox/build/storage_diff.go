@@ -23,9 +23,9 @@ type StorageDiff struct {
 	blockSize int64
 	metrics   blockmetrics.Metrics
 
-	persistencePath string
-	persistence     storage.API
-	frameTable      *storage.FrameTable
+	objectPath string
+	storage    storage.API
+	frameTable *storage.FrameTable
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -44,7 +44,7 @@ func newStorageDiff(
 	diffType DiffType,
 	blockSize int64,
 	metrics blockmetrics.Metrics,
-	persistence storage.API,
+	s storage.API,
 	frameTable *storage.FrameTable,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
@@ -56,14 +56,14 @@ func newStorageDiff(
 	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 
 	return &StorageDiff{
-		persistencePath: storagePath,
-		cachePath:       cachePath,
-		chunker:         utils.NewSetOnce[*block.Chunker](),
-		blockSize:       blockSize,
-		metrics:         metrics,
-		persistence:     persistence,
-		frameTable:      frameTable,
-		cacheKey:        GetDiffStoreKey(buildId, diffType),
+		objectPath: storagePath,
+		cachePath:  cachePath,
+		chunker:    utils.NewSetOnce[*block.Chunker](),
+		blockSize:  blockSize,
+		metrics:    metrics,
+		storage:    s,
+		frameTable: frameTable,
+		cacheKey:   GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
 
@@ -92,7 +92,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		size = b.frameTable.StartAt.U + b.frameTable.TotalUncompressedSize()
 	} else {
 		// For uncompressed data, the storage size is the data size.
-		size, err = b.persistence.Size(ctx, b.persistencePath)
+		size, err = b.storage.Size(ctx, b.objectPath)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to get object size: %w", err)
 			b.chunker.SetError(errMsg)
@@ -101,7 +101,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		}
 	}
 
-	chunker, err := block.NewChunker(size, b.blockSize, b.persistence, b.persistencePath, b.frameTable, b.cachePath, b.metrics)
+	chunker, err := block.NewChunker(size, b.blockSize, b.storage, b.objectPath, b.frameTable, b.cachePath, b.metrics)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
 		b.chunker.SetError(errMsg)

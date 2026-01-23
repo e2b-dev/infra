@@ -35,8 +35,8 @@ type storageTemplate struct {
 	localSnapfile File
 	localMetafile File
 
-	metrics     blockmetrics.Metrics
-	persistence storage.API
+	metrics blockmetrics.Metrics
+	storage storage.API
 }
 
 func newTemplateFromStorage(
@@ -44,7 +44,7 @@ func newTemplateFromStorage(
 	buildId string,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
-	persistence storage.API,
+	s storage.API,
 	metrics blockmetrics.Metrics,
 	localSnapfile File,
 	localMetafile File,
@@ -63,7 +63,7 @@ func newTemplateFromStorage(
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
 		metrics:       metrics,
-		persistence:   persistence,
+		storage:       s,
 		memfile:       utils.NewSetOnce[block.ReadonlyDevice](),
 		rootfs:        utils.NewSetOnce[block.ReadonlyDevice](),
 		snapfile:      utils.NewSetOnce[File](),
@@ -90,7 +90,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 		snapfile, snapfileErr := newStorageFile(
 			ctx,
-			t.persistence,
+			t.storage,
 			t.files.StorageSnapfilePath(),
 			t.files.CacheSnapfilePath(),
 		)
@@ -122,7 +122,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 		meta, err := newStorageFile(
 			ctx,
-			t.persistence,
+			t.storage,
 			t.files.StorageMetadataPath(),
 			t.files.CacheMetadataPath(),
 		)
@@ -176,7 +176,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.files.BuildID,
 			build.Memfile,
 			t.memfileHeader,
-			t.persistence,
+			t.storage,
 			t.metrics,
 		)
 
@@ -204,7 +204,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.files.BuildID,
 			build.Rootfs,
 			t.rootfsHeader,
-			t.persistence,
+			t.storage,
 			t.metrics,
 		)
 		if rootfsErr != nil {

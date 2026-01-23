@@ -168,7 +168,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	limiter, err := limit.New(b.Context(), featureFlags)
 	require.NoError(b, err)
 
-	persistence, err := storage.ForTemplates(b.Context(), limiter)
+	s, err := storage.ForTemplates(b.Context(), limiter)
 	require.NoError(b, err)
 
 	blockMetrics, err := blockmetrics.NewMetrics(&noop.MeterProvider{})
@@ -179,7 +179,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		b.Fatalf("error parsing config: %v", err)
 	}
 
-	templateCache, err := template.NewCache(c, featureFlags, persistence, blockMetrics)
+	templateCache, err := template.NewCache(c, featureFlags, s, blockMetrics)
 	require.NoError(b, err)
 	templateCache.Start(b.Context())
 	b.Cleanup(templateCache.Stop)

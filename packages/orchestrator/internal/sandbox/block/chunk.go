@@ -18,9 +18,9 @@ import (
 )
 
 type Chunker struct {
-	persistence storage.FrameGetter
-	objectPath  string
-	frameTable  *storage.FrameTable
+	storage    storage.FrameGetter
+	objectPath string
+	frameTable *storage.FrameTable
 
 	cache   *Cache
 	metrics metrics.Metrics
@@ -33,7 +33,7 @@ type Chunker struct {
 
 func NewChunker(
 	size, blockSize int64,
-	persistence storage.FrameGetter,
+	s storage.FrameGetter,
 	objectPath string,
 	frameTable *storage.FrameTable,
 	cachePath string,
@@ -45,13 +45,13 @@ func NewChunker(
 	}
 
 	chunker := &Chunker{
-		size:        size,
-		persistence: persistence,
-		objectPath:  objectPath,
-		frameTable:  frameTable,
-		cache:       cache,
-		fetchers:    utils.NewWaitMap(),
-		metrics:     metrics,
+		size:       size,
+		storage:    s,
+		objectPath: objectPath,
+		frameTable: frameTable,
+		cache:      cache,
+		fetchers:   utils.NewWaitMap(),
+		metrics:    metrics,
 	}
 
 	return chunker, nil
@@ -200,7 +200,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
 				// For uncompressed data, GetFrame will read the exact data we need.
-				_, err = c.persistence.GetFrame(ctx,
+				_, err = c.storage.GetFrame(ctx,
 					c.objectPath, fetchOff, framesToFetch, true, b)
 				if err != nil {
 					fetchSW.Failure(ctx, int64(len(b)),
