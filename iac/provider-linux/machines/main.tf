@@ -189,7 +189,14 @@ resource "null_resource" "nodes_consul_nomad" {
       },
       length(var.nomad_acl_token) > 0 ? { acl = { enabled = true } } : {},
       contains(local.server_ips, each.value.host) ? { server = { enabled = true, bootstrap_expect = local.bootstrap_expect } } : {},
-      contains(keys(local.client_map), each.value.host) ? { client = { enabled = true, node_pool = local.client_map[each.value.host].node_pool, servers = [for s in local.server_ips : "${s}:4647"], options = { "driver.raw_exec.enable" = "1" } } } : {}
+      contains(keys(local.client_map), each.value.host) ? {
+        client = {
+          enabled   = true,
+          node_pool = local.client_map[each.value.host].node_pool,
+          servers   = [for s in local.server_ips : "${s}:4647"],
+          options   = { "driver.raw_exec.enable" = "1" }
+        }
+      } : {}
     ))
     destination = "/tmp/nomad.json"
   }
