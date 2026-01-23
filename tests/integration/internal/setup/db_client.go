@@ -20,7 +20,7 @@ func GetTestDBClient(tb testing.TB) *Database {
 
 	databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
 
-	db, err := client.NewClientFromConnectionString(tb.Context(), databaseURL)
+	db, err := client.NewClient(tb.Context(), databaseURL)
 	require.NoError(tb, err)
 
 	authDb, err := authdb.NewClient(tb.Context(), databaseURL, databaseURL)

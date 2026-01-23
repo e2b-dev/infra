@@ -48,7 +48,7 @@ func SetupDatabase(t *testing.T) *Database {
 	runDatabaseMigrations(t, connStr)
 
 	// Create database client
-	sqlcClient, err := db.NewClientFromConnectionString(t.Context(), connStr)
+	sqlcClient, err := db.NewClient(t.Context(), connStr)
 	require.NoError(t, err, "Failed to create sqlc client")
 
 	authDb, err := authdb.NewClient(t.Context(), connStr, connStr)

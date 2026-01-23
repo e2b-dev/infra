@@ -48,7 +48,7 @@ func run(ctx context.Context) int {
 		return 1
 	}
 
-	db, err := client.NewClient(ctx)
+	db, err := client.NewClient(ctx, connectionString)
 	if err != nil {
 		log.Printf("Failed to connect to database: %v", err)
 

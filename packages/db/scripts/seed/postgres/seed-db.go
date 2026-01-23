@@ -64,13 +64,14 @@ func main() {
 	fmt.Printf("  Team API Key: %s\n", teamAPIKey.PrefixedRawValue)
 	fmt.Println()
 
-	db, err := client.NewClient(ctx)
+	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
+	db, err := client.NewClient(ctx, connectionString)
 	if err != nil {
 		panic(err)
 	}
 	defer db.Close()
 
-	authDb, err := authdb.NewClient(ctx, os.Getenv("POSTGRES_CONNECTION_STRING"), os.Getenv("POSTGRES_CONNECTION_STRING"))
+	authDb, err := authdb.NewClient(ctx, connectionString, connectionString)
 	if err != nil {
 		panic(err)
 	}

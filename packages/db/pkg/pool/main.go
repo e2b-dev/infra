@@ -36,6 +36,7 @@ func New(ctx context.Context, databaseURL string, options ...Option) (*pgxpool.P
 		return nil, fmt.Errorf("failed to record stats: %w", err)
 	}
 
+	// TODO [ENG-3437]: Uncomment
 	// Disable statement caching to avoid issues with prepared statements in transactions
 	// config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
 

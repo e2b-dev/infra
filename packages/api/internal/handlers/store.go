@@ -68,7 +68,7 @@ type APIStore struct {
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
 	logger.L().Info(ctx, "Initializing API store and services")
 
-	sqlcDB, err := sqlcdb.NewClient(ctx, pool.WithMaxConnections(40), pool.WithMinIdle(5))
+	sqlcDB, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(40), pool.WithMinIdle(5))
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing SQLC client", zap.Error(err))
 	}

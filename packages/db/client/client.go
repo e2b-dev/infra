@@ -10,7 +10,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	database "github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Client struct {
@@ -19,13 +18,7 @@ type Client struct {
 	conn *pgxpool.Pool
 }
 
-func NewClient(ctx context.Context, options ...pool.Option) (*Client, error) {
-	databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
-
-	return NewClientFromConnectionString(ctx, databaseURL, options...)
-}
-
-func NewClientFromConnectionString(ctx context.Context, databaseURL string, options ...pool.Option) (*Client, error) {
+func NewClient(ctx context.Context, databaseURL string, options ...pool.Option) (*Client, error) {
 	connPool, err := pool.New(ctx, databaseURL, options...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)

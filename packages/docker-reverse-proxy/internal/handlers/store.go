@@ -29,7 +29,7 @@ func NewStore(ctx context.Context) *APIStore {
 
 	databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
 
-	database, err := client.NewClientFromConnectionString(ctx, databaseURL, pool.WithMaxConnections(3))
+	database, err := client.NewClient(ctx, databaseURL, pool.WithMaxConnections(3))
 	if err != nil {
 		log.Fatal(err)
 	}
