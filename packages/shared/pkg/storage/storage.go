@@ -372,15 +372,26 @@ func uploadFileInParallel(ctx context.Context, in io.ReaderAt, size int64, uploa
 	return nil
 }
 
-func GetTemplateStorage(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
-	return getStorage(ctx, limiter, "LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates", "TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
+func ForGCPBucket(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Storage, error) {
+	provider, err := NewGCP(ctx, bucketName, limiter)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Storage{
+		Provider: provider,
+	}, nil
 }
 
-func GetBuildCacheStorage(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
-	return getStorage(ctx, limiter, "LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache", "BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
+func ForTemplates(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
+	return getStorageForEnvironment(ctx, limiter, "LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates", "TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
 }
 
-func getStorage(ctx context.Context, limiter *limit.Limiter, localBaseEnv, defaultLocalBase, bucketEnv, bucketUsage string) (*Storage, error) {
+func ForBuilds(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
+	return getStorageForEnvironment(ctx, limiter, "LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache", "BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
+}
+
+func getStorageForEnvironment(ctx context.Context, limiter *limit.Limiter, localBaseEnv, defaultLocalBase, bucketEnv, bucketUsage string) (*Storage, error) {
 	var provider *Provider
 	var err error
 
@@ -390,7 +401,7 @@ func getStorage(ctx context.Context, limiter *limit.Limiter, localBaseEnv, defau
 		provider = NewFS(basePath)
 	} else {
 		bucketName := utils.RequiredEnv(bucketEnv, bucketUsage)
-		provider, err = newCloudProvider(ctx, providerName, bucketName, limiter)
+		provider, err = newCloudProviderForEnvironment(ctx, providerName, bucketName, limiter)
 		if err != nil {
 			return nil, err
 		}
@@ -401,7 +412,7 @@ func getStorage(ctx context.Context, limiter *limit.Limiter, localBaseEnv, defau
 	}, nil
 }
 
-func newCloudProvider(ctx context.Context, providerName ProviderName, bucketName string, limiter *limit.Limiter) (*Provider, error) {
+func newCloudProviderForEnvironment(ctx context.Context, providerName ProviderName, bucketName string, limiter *limit.Limiter) (*Provider, error) {
 	var provider *Provider
 
 	switch providerName {
@@ -413,15 +424,4 @@ func newCloudProvider(ctx context.Context, providerName ProviderName, bucketName
 	default:
 		return nil, fmt.Errorf("unknown storage provider: %s", provider)
 	}
-}
-
-func NewGCPStorage(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Storage, error) {
-	provider, err := NewGCP(ctx, bucketName, limiter)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Storage{
-		Provider: provider,
-	}, nil
 }

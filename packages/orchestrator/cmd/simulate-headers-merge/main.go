@@ -45,12 +45,12 @@ func main() {
 
 	ctx := context.Background()
 
-	storageProvider, err := storage.GetTemplateStorage(ctx, nil)
+	s, err := storage.ForTemplates(ctx, nil)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	baseData, err := storageProvider.GetBlob(ctx, baseStoragePath, nil)
+	baseData, err := s.GetBlob(ctx, baseStoragePath, nil)
 	if err != nil {
 		log.Fatalf("failed to get base object: %s", err)
 	}
@@ -59,7 +59,7 @@ func main() {
 		log.Fatalf("failed to deserialize base header: %s", err)
 	}
 
-	diffData, err := storageProvider.GetBlob(ctx, diffStoragePath, nil)
+	diffData, err := s.GetBlob(ctx, diffStoragePath, nil)
 	if err != nil {
 		log.Fatalf("failed to get diff object: %s", err)
 	}
@@ -70,7 +70,7 @@ func main() {
 	}
 
 	fmt.Printf("\nBASE METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", storageProvider.String(), baseStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", s.String(), baseStoragePath)
 	fmt.Printf("========\n")
 
 	for _, mapping := range baseHeader.Mapping {
@@ -101,7 +101,7 @@ func main() {
 	}
 
 	fmt.Printf("\nDIFF METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", storageProvider.String(), diffStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", s.String(), diffStoragePath)
 	fmt.Printf("========\n")
 
 	onlyDiffMappings := make([]*header.BuildMap, 0)

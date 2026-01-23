@@ -168,7 +168,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	limiter, err := limit.New(b.Context(), featureFlags)
 	require.NoError(b, err)
 
-	persistence, err := storage.GetTemplateStorage(b.Context(), limiter)
+	persistence, err := storage.ForTemplates(b.Context(), limiter)
 	require.NoError(b, err)
 
 	blockMetrics, err := blockmetrics.NewMetrics(&noop.MeterProvider{})
@@ -222,10 +222,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(b.Context())
 	require.NoError(b, err)
 
-	persistenceTemplate, err := storage.GetTemplateStorage(b.Context(), nil)
+	st, err := storage.ForTemplates(b.Context(), nil)
 	require.NoError(b, err)
 
-	persistenceBuild, err := storage.GetBuildCacheStorage(b.Context(), nil)
+	sb, err := storage.ForBuilds(b.Context(), nil)
 	require.NoError(b, err)
 
 	var proxyPort uint16 = 5007
@@ -268,8 +268,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		l,
 		featureFlags,
 		sandboxFactory,
-		persistenceTemplate,
-		persistenceBuild,
+		st,
+		sb,
 		artifactRegistry,
 		dockerhubRepository,
 		sandboxProxy,

@@ -60,7 +60,7 @@ func New(
 	proxy *proxy.SandboxProxy,
 	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
-	templatePersistence storage.API,
+	templateStorage storage.API,
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
 ) (s *ServerStore, e error) {
@@ -90,7 +90,7 @@ func New(
 	}
 	closers = append(closers, dockerhubRepository)
 
-	buildPersistence, err := storage.GetBuildCacheStorage(ctx, limiter)
+	buildStorage, err := storage.ForBuilds(ctx, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}
@@ -107,7 +107,7 @@ func New(
 		featureFlags,
 		sandboxFactory,
 		templatePersistence,
-		buildPersistence,
+		buildStorage,
 		artifactsRegistry,
 		dockerhubRepository,
 		proxy,
@@ -123,7 +123,7 @@ func New(
 		buildLogger:       buildLogger,
 		artifactsregistry: artifactsRegistry,
 		templateStorage:   templatePersistence,
-		buildStorage:      buildPersistence,
+		buildStorage:      buildStorage,
 		info:              info,
 		wg:                &sync.WaitGroup{},
 		closers:           closers,

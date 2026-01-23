@@ -270,14 +270,14 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating storage provider...")
 	}
-	persistence, err := storage.GetTemplateStorage(ctx, nil)
+	s, err := storage.ForTemplates(ctx, nil)
 	if verbose {
 		fmt.Println("🔧 Storage provider created, err:", err)
 	}
 	if err != nil {
 		return fmt.Errorf("storage provider: %w", err)
 	}
-	if persistence == nil {
+	if s == nil {
 		return fmt.Errorf("storage provider is nil")
 	}
 
@@ -289,7 +289,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating template cache...")
 	}
-	cache, err := template.NewCache(config, flags, persistence, blockMetrics)
+	cache, err := template.NewCache(config, flags, s, blockMetrics)
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}

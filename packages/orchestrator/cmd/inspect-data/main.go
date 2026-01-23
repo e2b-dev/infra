@@ -38,7 +38,7 @@ func main() {
 
 	ctx := context.Background()
 
-	s, err := storage.GetTemplateStorage(ctx, nil)
+	s, err := storage.ForTemplates(ctx, nil)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}

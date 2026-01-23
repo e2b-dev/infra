@@ -217,11 +217,11 @@ func doBuild(
 	go tcpFirewall.Start(ctx)
 	defer tcpFirewall.Close(parentCtx)
 
-	persistenceTemplate, err := storage.GetTemplateStorage(ctx, nil)
+	st, err := storage.ForTemplates(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("template storage: %w", err)
 	}
-	persistenceBuild, err := storage.GetBuildCacheStorage(ctx, nil)
+	sb, err := storage.ForBuilds(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("build storage: %w", err)
 	}
@@ -260,7 +260,7 @@ func doBuild(
 		return fmt.Errorf("config: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics)
+	templateCache, err := sbxtemplate.NewCache(c, featureFlags, st, blockMetrics)
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}
@@ -272,7 +272,7 @@ func doBuild(
 
 	builder := build.NewBuilder(
 		builderConfig, l, featureFlags, sandboxFactory,
-		persistenceTemplate, persistenceBuild, artifactRegistry,
+		st, sb, artifactRegistry,
 		dockerhubRepo, sandboxProxy, sandboxes, templateCache, buildMetrics,
 	)
 
@@ -312,12 +312,12 @@ func doBuild(
 	fmt.Printf("\n✅ Build finished: %s\n", buildID)
 
 	// Print artifact sizes
-	printArtifactSizes(ctx, persistenceTemplate, buildID, result)
+	printArtifactSizes(ctx, st, buildID, result)
 
 	return nil
 }
 
-func printArtifactSizes(ctx context.Context, persistence storage.API, buildID string, result *build.Result) {
+func printArtifactSizes(ctx context.Context, s storage.API, buildID string, result *build.Result) {
 	files := storage.TemplateFiles{BuildID: buildID}
 	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
 
@@ -329,7 +329,7 @@ func printArtifactSizes(ctx context.Context, persistence storage.API, buildID st
 		printLocalFileSizes(basePath, buildID)
 	} else {
 		// For remote storage, get sizes from storage provider
-		if size, err := persistence.Size(ctx, files.StorageMemfilePath()); err == nil {
+		if size, err := s.Size(ctx, files.StorageMemfilePath()); err == nil {
 			fmt.Printf("   Memfile: %d MB\n", size>>20)
 		}
 	}
