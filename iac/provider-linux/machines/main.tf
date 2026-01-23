@@ -122,7 +122,12 @@ resource "null_resource" "nodes_docker_proxy" {
       "  [ -n \"$NO_PROXY\" ] && echo \"Environment=\"\"NO_PROXY=$NO_PROXY\"\"\" | $SUDO tee -a /etc/systemd/system/docker.service.d/proxy.conf >/dev/null",
       "  $SUDO systemctl daemon-reload",
       "  $SUDO systemctl restart docker",
-      "fi"
+      "fi",
+      "if ! $SUDO systemctl is-active docker >/dev/null 2>&1; then",
+      "  for i in $(seq 1 5); do $SUDO systemctl is-active docker >/dev/null 2>&1 && break || { $SUDO systemctl start docker || true; sleep 1; }; done",
+      "  $SUDO systemctl is-active docker >/dev/null 2>&1 || echo \"docker not active; check journalctl -u docker.service\"",
+      "  exit 1",
+      "fi",
     ]
   }
 
