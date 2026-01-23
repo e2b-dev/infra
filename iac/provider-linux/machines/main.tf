@@ -299,8 +299,8 @@ resource "null_resource" "nodes_dns" {
       "$SUDO mkdir -p /etc/systemd/resolved.conf.d/",
       "printf '[Resolve]\\nDNS=127.0.0.1:8600\\nDomains=~consul\\nDNSSEC=false\\n' | $SUDO tee /etc/systemd/resolved.conf.d/consul.conf >/dev/null",
       "printf '[Resolve]\\nDNSStubListener=yes\\nDNSStubListenerExtra=172.17.0.1\\n' | $SUDO tee /etc/systemd/resolved.conf.d/docker.conf >/dev/null",
-      "for i in $(seq 1 10); do echo > /dev/tcp/127.0.0.1/8600 2>/dev/null && break || sleep 1; done",
-      "echo > /dev/tcp/127.0.0.1/8600 2>/dev/null || (echo \"Consul DNS (port 8600) not reachable\"; exit 1)",
+      "for i in $(seq 1 10); do (command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 8600) || (bash -c '>/dev/tcp/127.0.0.1/8600' >/dev/null 2>&1) && break || sleep 1; done",
+      "( (command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 8600) || (bash -c '>/dev/tcp/127.0.0.1/8600' >/dev/null 2>&1) ) || (echo \"Consul DNS (port 8600) not reachable\"; exit 1)",
       "$SUDO systemctl restart systemd-resolved"
     ]
   }
