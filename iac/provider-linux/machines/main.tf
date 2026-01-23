@@ -209,6 +209,8 @@ resource "null_resource" "nodes_consul_nomad" {
       "$SUDO systemctl stop nomad || true",
 
       "$SUDO mkdir -p /etc/consul.d /etc/nomad.d",
+      "echo '# This file is required by systemd ConditionFileNotEmpty, set empty to disable' | $SUDO tee /etc/consul.d/consul.hcl > /dev/null",
+      "echo '# This file is required by systemd ConditionFileNotEmpty, set empty to disable' | $SUDO tee /etc/nomad.d/nomad.hcl > /dev/null",
       "$SUDO mkdir -p /var/lib/consul /var/lib/nomad",
       "$SUDO chown -R consul:consul /var/lib/consul /etc/consul.d",
       "$SUDO chown -R nomad:nomad /var/lib/nomad /etc/nomad.d",
