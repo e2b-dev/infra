@@ -82,10 +82,14 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 		return fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	// Remove the sandbox resources after the sandbox is deleted
-	err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
-	if err != nil {
-		logger.L().Error(ctx, "error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+	// Only remote to routing table if the node is managed by Nomad
+	// For remote cluster nodes we are using gPRC metadata for routing registration instead
+	if node.IsNomadManaged() {
+		// Remove the sandbox resources after the sandbox is deleted
+		err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
+		if err != nil {
+			logger.L().Error(ctx, "error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+		}
 	}
 
 	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",
