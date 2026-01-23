@@ -67,15 +67,13 @@ func (db *Client) Close() error {
 }
 
 // WithTx runs the given function in a transaction.
-func (db *Client) WithTx(ctx context.Context) (*Client, pgx.Tx, error) {
+func (db *Client) WithTx(ctx context.Context) (*authqueries.Queries, pgx.Tx, error) {
 	tx, err := db.writeConn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	client := &Client{Write: db.Write.WithTx(tx), writeConn: db.writeConn, readConn: db.readConn, Read: db.Read}
-
-	return client, tx, nil
+	return db.Write.WithTx(tx), tx, nil
 }
 
 // TestsRawSQL executes raw SQL for tests
