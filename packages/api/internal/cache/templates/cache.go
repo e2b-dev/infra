@@ -84,18 +84,14 @@ func NewTemplateCache(db *sqlcdb.Client) *TemplateCache {
 	aliasCache := NewAliasCache()
 
 	return &TemplateCache{
-		cache:      cache.NewCache[string, *TemplateInfo](config),
+		cache:      cache.NewCache(config),
 		db:         db,
 		aliasCache: aliasCache,
 	}
 }
 
 func buildCacheKey(templateID string, tag *string) string {
-	if tag == nil {
-		return templateID + ":" + id.DefaultTag
-	}
-
-	return templateID + ":" + *tag
+	return id.NameWithTag(templateID, tag)
 }
 
 func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, tag *string, teamID uuid.UUID, clusterID uuid.UUID, public bool) (*api.Template, *queries.EnvBuild, *api.APIError) {
@@ -189,13 +185,19 @@ func (c *TemplateCache) Invalidate(templateID string, tag *string) {
 }
 
 // Invalidate invalidates the cache for the given templateID across all tags
-func (c *TemplateCache) InvalidateAllTags(templateID string) {
-	templateIDKey := templateID + ":"
+func (c *TemplateCache) InvalidateAllTags(templateID string) []string {
+	keys := make([]string, 0)
+
+	templateIDKey := templateID + id.TagSeparator
+
 	for _, key := range c.cache.Keys() {
 		if strings.HasPrefix(key, templateIDKey) {
+			keys = append(keys, key)
 			c.cache.Delete(key)
 		}
 	}
+
+	return keys
 }
 
 func (c *TemplateCache) Close(ctx context.Context) error {
