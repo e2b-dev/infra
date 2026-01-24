@@ -119,7 +119,10 @@ variable "node_pools_config_version" {
   default = "v2"
 }
 
-
+variable "firewall_tools_version" {
+  type    = string
+  default = "v1"
+}
 
 variable "enable_nodes_docker_proxy" {
   type    = bool
@@ -142,6 +145,26 @@ variable "uninstall_version" {
 }
 
 variable "uninstall_confirm_phrase" {
+  type    = string
+  default = ""
+}
+
+variable "enable_network_policy" {
+  type    = bool
+  default = false
+}
+
+variable "network_open_ports" {
+  type    = list(string)
+  default = []
+}
+
+variable "use_nfs_share_storage" {
+  type    = bool
+  default = false
+}
+
+variable "nfs_server_ip" {
   type    = string
   default = ""
 }

@@ -102,7 +102,7 @@ tf_vars := \
 	$(call tfvar, USE_LOCAL_NAMESPACE_STORAGE) \
 	$(call tfvar, USE_NFS_SHARE_STORAGE) \
 	$(call tfvar, NFS_SERVER_IP) \
-	$(call tfvar, ENABLE_NETWORK_POLICY_JOB) \
+	$(call tfvar, ENABLE_NETWORK_POLICY) \
 	$(call tfvar, NETWORK_OPEN_PORTS) \
 	$(call tfvar, KERNEL_SOURCE_BASE_URL) \
 	$(call tfvar, FIRECRACKER_SOURCE_BASE_URL)
@@ -160,3 +160,10 @@ plan-without-jobs:
 	@ printf "Planning Terraform (without jobs) for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
 	@ $(tf_vars) TF_VAR_enable_nomad_jobs=false $(TF) plan -out=.tfplan.$(ENV) -input=false -compact-warnings -refresh=false
+
+.PHONY: uninstall
+uninstall:
+	@ printf "Uninstalling provider-linux for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ # Remove Nomad jobs from state to avoid connection refused errors during destruction
+	@ $(TF) state list | grep "module.nomad.nomad_job" | xargs -I {} $(TF) state rm {} || true
+	@ $(tf_vars) TF_VAR_enable_nodes_uninstall=true $(TF) apply -auto-approve -input=false -compact-warnings

@@ -200,7 +200,7 @@ variable "nfs_server_ip" {
   default = ""
 }
 
-variable "enable_network_policy_job" {
+variable "enable_network_policy" {
   type    = bool
   default = false
 }

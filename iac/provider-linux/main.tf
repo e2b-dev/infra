@@ -24,6 +24,11 @@ locals {
   clients = jsondecode(var.clients_json)
 }
 
+provider "nomad" {
+  address   = var.nomad_address
+  secret_id = var.nomad_acl_token
+}
+
 module "machines" {
   source                      = "./machines"
   datacenter                  = var.datacenter
@@ -47,6 +52,11 @@ module "machines" {
   enable_nodes_uninstall      = var.enable_nodes_uninstall
   uninstall_version           = var.uninstall_version
   uninstall_confirm_phrase    = var.uninstall_confirm_phrase
+  firewall_tools_version      = "v1"
+  enable_network_policy       = var.enable_network_policy
+  network_open_ports          = var.network_open_ports
+  use_nfs_share_storage       = var.use_nfs_share_storage
+  nfs_server_ip               = var.nfs_server_ip
 }
 
 module "nomad" {
@@ -134,9 +144,7 @@ module "nomad" {
 
   use_nfs_share_storage = var.use_nfs_share_storage
   nfs_server_ip         = var.nfs_server_ip
-
-  enable_network_policy_job = var.enable_network_policy_job
-  network_open_ports        = var.network_open_ports
+  depends_on            = [module.machines]
 }
 
 resource "null_resource" "artifact_scp_server" {

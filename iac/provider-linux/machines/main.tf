@@ -61,14 +61,35 @@ resource "null_resource" "nodes_base" {
       "$SUDO_E apt-get update -y",
       "$SUDO_E apt-get install -y curl unzip gnupg ca-certificates lsb-release",
       "if [ ! -f /usr/share/keyrings/hashicorp-archive-keyring.gpg ] || [ ! -f /etc/apt/sources.list.d/hashicorp.list ]; then curl -fsSL https://apt.releases.hashicorp.com/gpg | $SUDO gpg --dearmor --batch --yes | $SUDO tee /usr/share/keyrings/hashicorp-archive-keyring.gpg >/dev/null; CODENAME=$(lsb_release -cs); echo \"deb [arch=amd64 signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $CODENAME main\" | $SUDO tee /etc/apt/sources.list.d/hashicorp.list >/dev/null; $SUDO_E apt-get update -y; fi",
-      "if ! command -v consul >/dev/null 2>&1; then $SUDO_E apt-get install -y consul; fi",
-      "if ! command -v nomad  >/dev/null 2>&1; then $SUDO_E apt-get install -y nomad;  fi",
+      "if ! command -v consul >/dev/null 2>&1; then $SUDO_DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confnew' consul; fi",
+      "if ! command -v nomad  >/dev/null 2>&1; then $SUDO_DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confnew' nomad; fi",
       "if ! command -v docker >/dev/null 2>&1; then (curl -fsSL https://get.docker.com | sh) || ($SUDO_E apt-get update -y && $SUDO_E apt-get install -y docker.io); fi",
       "ROLE=\"${each.value.role}\"",
       "CLIENT_NP=\"${each.value.node_pool}\"",
       "REQUIRE_NBD=$( [ \"$ROLE\" = client ] && { [ \"$CLIENT_NP\" = \"${var.builder_node_pool}\" ] || [ \"$CLIENT_NP\" = \"${var.orchestrator_node_pool}\" ]; } && echo 1 || echo 0 )",
       "UNAME=$(uname -r)",
       "if [ \"$REQUIRE_NBD\" = 1 ]; then PKG_EXTRA=linux-modules-extra-$UNAME; PKG_BASE=linux-modules-$UNAME; if apt-cache show $PKG_EXTRA >/dev/null 2>&1; then $SUDO_E apt-get install -y $PKG_EXTRA || true; elif apt-cache show $PKG_BASE >/dev/null 2>&1; then $SUDO_E apt-get install -y $PKG_BASE || true; else echo \"no matching linux-modules package for $UNAME\"; fi; $SUDO_E apt-get install -y nbd-client || true; fi",
+      "echo 'Verifying installation...'",
+      "command -v consul >/dev/null 2>&1 || (echo 'ERROR: consul not installed'; exit 1)",
+      "command -v nomad >/dev/null 2>&1 || (echo 'ERROR: nomad not installed'; exit 1)",
+      "command -v docker >/dev/null 2>&1 || (echo 'ERROR: docker not installed'; exit 1)",
+      "id consul >/dev/null 2>&1 || (echo 'ERROR: consul user not found'; exit 1)",
+      "id nomad >/dev/null 2>&1 || (echo 'ERROR: nomad user not found'; exit 1)",
+      "echo 'Setting up consul and nomad directories and permissions...'",
+      "$SUDO mkdir -p /etc/consul.d /var/lib/consul /etc/nomad.d /var/lib/nomad",
+      "$SUDO chown -R consul:consul /var/lib/consul /etc/consul.d 2>/dev/null || true",
+      "$SUDO chown -R nomad:nomad /var/lib/nomad /etc/nomad.d 2>/dev/null || true",
+      "$SUDO chmod 755 /var/lib/consul /etc/consul.d /var/lib/nomad /etc/nomad.d",
+      "echo 'Ensuring nomad binary symlink...'",
+      "if command -v nomad >/dev/null 2>&1; then NOMAD_PATH=$(command -v nomad); else echo 'ERROR: nomad not found in PATH'; exit 1; fi",
+      "if [ \"$NOMAD_PATH\" != '/usr/local/bin/nomad' ]; then",
+      "  $SUDO mkdir -p /usr/local/bin",
+      "  $SUDO ln -sf $NOMAD_PATH /usr/local/bin/nomad 2>/dev/null || true",
+      "fi",
+      "echo 'Cleaning any existing service state...'",
+      "$SUDO systemctl reset-failed consul 2>/dev/null || true",
+      "$SUDO systemctl reset-failed nomad 2>/dev/null || true",
+      "echo 'Base installation completed successfully'",
     ]
   }
 }
@@ -134,12 +155,11 @@ resource "null_resource" "nodes_docker_proxy" {
   depends_on = [null_resource.nodes_base]
 }
 
-resource "null_resource" "nodes_consul_nomad" {
+resource "null_resource" "nodes_consul" {
   for_each = var.enable_nodes_uninstall ? {} : local.nodes_for_consul_nomad
 
   triggers = {
     consul_config_version = var.consul_config_version
-    nomad_config_version  = var.nomad_config_version
   }
 
   connection {
@@ -171,6 +191,46 @@ resource "null_resource" "nodes_consul_nomad" {
       } : {}
     ))
     destination = "/tmp/consul.json"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "if [ \"$(id -u)\" -eq 0 ]; then SUDO=\"\"; else SUDO=\"sudo\"; fi",
+      "$SUDO systemctl stop consul || true",
+
+      "$SUDO mkdir -p /etc/consul.d /var/lib/consul",
+      "echo '# This file is required by systemd ConditionFileNotEmpty, set empty to disable' | $SUDO tee /etc/consul.d/consul.hcl > /dev/null",
+      "if ! id consul >/dev/null 2>&1; then $SUDO useradd --system --home /var/lib/consul --shell /bin/false consul; fi",
+      "$SUDO chown -R consul:consul /var/lib/consul /etc/consul.d",
+      "$SUDO mv /tmp/consul.json /etc/consul.d/consul.json",
+
+      "$SUDO systemctl daemon-reload",
+      "$SUDO systemctl enable consul",
+      "$SUDO systemctl restart consul || true",
+      "for i in $(seq 1 12); do $SUDO systemctl is-active consul >/dev/null 2>&1 && break || sleep 2; done",
+      "$SUDO systemctl is-active consul >/dev/null 2>&1 || (echo consul failed to start; $SUDO journalctl -xeu consul.service | tail -n 100; exit 1)",
+
+      "for i in $(seq 1 12); do curl -sSf http://127.0.0.1:8500/v1/status/leader >/dev/null 2>&1 && break || sleep 2; done",
+      "curl -sSf http://127.0.0.1:8500/v1/status/leader >/dev/null 2>&1 || (echo consul http api not ready; $SUDO journalctl -xeu consul.service | tail -n 100; exit 1)",
+    ]
+  }
+
+  depends_on = [null_resource.nodes_base, null_resource.nodes_firewall, null_resource.nodes_nfs_server]
+}
+
+resource "null_resource" "nodes_nomad" {
+  for_each = var.enable_nodes_uninstall ? {} : local.nodes_for_consul_nomad
+
+  triggers = {
+    nomad_config_version = var.nomad_config_version
+  }
+
+  connection {
+    type        = "ssh"
+    host        = each.value.host
+    user        = each.value.ssh_user
+    private_key = file(each.value.ssh_private_key_path)
   }
 
   provisioner "file" {
@@ -205,35 +265,45 @@ resource "null_resource" "nodes_consul_nomad" {
     inline = [
       "set -e",
       "if [ \"$(id -u)\" -eq 0 ]; then SUDO=\"\"; else SUDO=\"sudo\"; fi",
-      "$SUDO systemctl stop consul || true",
       "$SUDO systemctl stop nomad || true",
 
-      "$SUDO mkdir -p /etc/consul.d /etc/nomad.d",
-      "echo '# This file is required by systemd ConditionFileNotEmpty, set empty to disable' | $SUDO tee /etc/consul.d/consul.hcl > /dev/null",
+      "echo 'Ensuring nomad binary is accessible at expected paths...'",
+      "if command -v nomad >/dev/null 2>&1; then NOMAD_PATH=$(command -v nomad); else echo 'ERROR: nomad not found in PATH'; exit 1; fi",
+      "echo 'Found nomad at: $NOMAD_PATH'",
+      "if [ \"$NOMAD_PATH\" != '/usr/local/bin/nomad' ]; then",
+      "  echo 'Creating symlink from $NOMAD_PATH to /usr/local/bin/nomad'",
+      "  $SUDO mkdir -p /usr/local/bin",
+      "  $SUDO ln -sf $NOMAD_PATH /usr/local/bin/nomad 2>/dev/null || true",
+      "fi",
+
+      "echo 'Cleaning old nomad configuration files...'",
+      "$SUDO rm -f /etc/nomad.d/*.json.bak /var/lib/nomad/*.lock /var/lib/nomad/raft/*.lock",
+      "$SUDO systemctl reset-failed nomad || true",
+
+      "$SUDO mkdir -p /etc/nomad.d /var/lib/nomad",
       "echo '# This file is required by systemd ConditionFileNotEmpty, set empty to disable' | $SUDO tee /etc/nomad.d/nomad.hcl > /dev/null",
-      "$SUDO mkdir -p /var/lib/consul /var/lib/nomad",
-      "$SUDO chown -R consul:consul /var/lib/consul /etc/consul.d",
+      "if ! id nomad >/dev/null 2>&1; then $SUDO useradd --system --home /var/lib/nomad --shell /bin/false nomad; fi",
       "$SUDO chown -R nomad:nomad /var/lib/nomad /etc/nomad.d",
-      "$SUDO mv /tmp/consul.json /etc/consul.d/consul.json",
+      "$SUDO chmod 755 /var/lib/nomad /etc/nomad.d",
       "$SUDO mv /tmp/nomad.json /etc/nomad.d/nomad.json",
 
       "$SUDO systemctl daemon-reload",
-      "$SUDO systemctl enable consul",
-      "$SUDO systemctl restart consul || true",
-      "for i in $(seq 1 12); do $SUDO systemctl is-active consul >/dev/null 2>&1 && break || sleep 2; done",
-      "$SUDO systemctl is-active consul >/dev/null 2>&1 || (echo consul failed to start; $SUDO journalctl -xeu consul.service | tail -n 100; exit 1)",
-
-      "for i in $(seq 1 12); do curl -sSf http://127.0.0.1:8500/v1/status/leader >/dev/null 2>&1 && break || sleep 2; done",
-      "curl -sSf http://127.0.0.1:8500/v1/status/leader >/dev/null 2>&1 || (echo consul http api not ready; $SUDO journalctl -xeu consul.service | tail -n 100; exit 1)",
-
       "$SUDO systemctl enable nomad",
       "$SUDO systemctl restart nomad",
-      "for i in $(seq 1 12); do $SUDO systemctl is-active nomad >/dev/null 2>&1 && break || sleep 2; done",
-      "curl -sSf http://127.0.0.1:4646/v1/agent/self >/dev/null 2>&1 || (echo nomad http api not ready; $SUDO journalctl -xeu nomad.service | tail -n 100; exit 1)"
+
+      "echo 'Waiting for nomad service to be active...'",
+      "for i in $(seq 1 30); do if $SUDO systemctl is-active nomad >/dev/null 2>&1; then echo \"nomad is active after $$i s\"; break; fi; sleep 2; done",
+      "$SUDO systemctl is-active nomad >/dev/null 2>&1 || (echo 'ERROR: nomad service not active'; $SUDO journalctl -xeu nomad.service --no-pager | tail -n 50; exit 1)",
+
+      "echo 'Waiting for nomad API to be ready...'",
+      "for i in $(seq 1 60); do if curl -sSf http://127.0.0.1:4646/v1/agent/self >/dev/null 2>&1; then echo \"nomad API ready after $$i s\"; break; fi; echo \"Attempt $$i/60: nomad API not ready yet...\"; sleep 2; done",
+      "curl -sSf http://127.0.0.1:4646/v1/agent/self >/dev/null 2>&1 || (echo 'ERROR: nomad http api not ready after 120s'; $SUDO journalctl -xeu nomad.service --no-pager | tail -n 50; exit 1)",
+
+      "echo 'nomad deployment successful'"
     ]
   }
 
-  depends_on = [null_resource.nodes_base]
+  depends_on = [null_resource.nodes_consul]
 }
 
 resource "null_resource" "servers_node_pools" {
@@ -266,16 +336,22 @@ resource "null_resource" "servers_node_pools" {
       "  fi",
       "fi",
       "echo nomad acl token: $TOKEN",
-      "printf 'node_pool \"${var.api_node_pool}\" {\\n  description = \"Nodes for api.\"\\n}\\n' | $SUDO tee /tmp/api_node_pool.hcl >/dev/null",
-      "printf 'node_pool \"${var.builder_node_pool}\" {\\n  description = \"Nodes for template builds.\"\\n}\\n' | $SUDO tee /tmp/build_node_pool.hcl >/dev/null",
-      "printf 'node_pool \"${var.orchestrator_node_pool}\" {\\n  description = \"Nodes for orchestrator.\"\\n}\\n' | $SUDO tee /tmp/orchestrator_node_pool.hcl >/dev/null",
-      "if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/api_node_pool.hcl; else $SUDO nomad node pool apply /tmp/api_node_pool.hcl; fi",
-      "if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/build_node_pool.hcl; else $SUDO nomad node pool apply /tmp/build_node_pool.hcl; fi",
-      "if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/orchestrator_node_pool.hcl; else $SUDO nomad node pool apply /tmp/orchestrator_node_pool.hcl; fi"
+      "if [ \"${var.api_node_pool}\" != \"default\" ]; then",
+      "  printf 'node_pool \"${var.api_node_pool}\" {\\n  description = \"Nodes for api.\"\\n}\\n' | $SUDO tee /tmp/api_node_pool.hcl >/dev/null",
+      "  if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/api_node_pool.hcl; else $SUDO nomad node pool apply /tmp/api_node_pool.hcl; fi",
+      "fi",
+      "if [ \"${var.builder_node_pool}\" != \"default\" ]; then",
+      "  printf 'node_pool \"${var.builder_node_pool}\" {\\n  description = \"Nodes for template builds.\"\\n}\\n' | $SUDO tee /tmp/build_node_pool.hcl >/dev/null",
+      "  if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/build_node_pool.hcl; else $SUDO nomad node pool apply /tmp/build_node_pool.hcl; fi",
+      "fi",
+      "if [ \"${var.orchestrator_node_pool}\" != \"default\" ]; then",
+      "  printf 'node_pool \"${var.orchestrator_node_pool}\" {\\n  description = \"Nodes for orchestrator.\"\\n}\\n' | $SUDO tee /tmp/orchestrator_node_pool.hcl >/dev/null",
+      "  if [ -n \"$TOKEN\" ]; then $SUDO nomad node pool apply -token \"$TOKEN\" /tmp/orchestrator_node_pool.hcl; else $SUDO nomad node pool apply /tmp/orchestrator_node_pool.hcl; fi",
+      "fi"
     ]
   }
 
-  depends_on = [null_resource.nodes_consul_nomad]
+  depends_on = [null_resource.nodes_nomad]
 }
 
 resource "null_resource" "nodes_dns" {
@@ -305,9 +381,103 @@ resource "null_resource" "nodes_dns" {
     ]
   }
 
-  depends_on = [null_resource.nodes_consul_nomad]
+  depends_on = [null_resource.nodes_consul]
 }
 
+
+resource "null_resource" "nodes_firewall" {
+  for_each = var.enable_nodes_uninstall ? {} : local.all_nodes
+
+  triggers = {
+    firewall_version       = var.firewall_tools_version
+    network_policy_enabled = var.enable_network_policy
+    network_open_ports     = var.enable_network_policy ? join(",", var.network_open_ports) : ""
+  }
+
+  connection {
+    type        = "ssh"
+    host        = each.value.host
+    user        = each.value.ssh_user
+    private_key = file(each.value.ssh_private_key_path)
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "if [ \"$(id -u)\" -eq 0 ]; then SUDO=\"\"; else SUDO=\"sudo\"; fi",
+      "if command -v apt-get >/dev/null 2>&1; then",
+      "  if ! command -v ufw >/dev/null 2>&1; then",
+      "    $SUDO apt-get update -qq 2>/dev/null || true",
+      "    $SUDO apt-get install -y -qq iptables-persistent 2>/dev/null || true",
+      "    if command -v netfilter-persistent >/dev/null 2>&1; then",
+      "      echo 'iptables-persistent installed successfully (UFW not found)'",
+      "    fi",
+      "  else",
+      "    echo 'UFW is available, skipping iptables-persistent installation'",
+      "  fi",
+      "fi"
+    ]
+  }
+
+  provisioner "file" {
+    content = var.enable_network_policy ? templatefile("${path.module}/scripts/network_policy.sh.tpl", {
+      OPEN_PORTS = join(",", var.network_open_ports)
+    }) : "# Network policy disabled, skipping"
+    destination = "/tmp/network_policy.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "if [ \"$(id -u)\" -eq 0 ]; then SUDO=\"\"; else SUDO=\"sudo\"; fi",
+      "if [ \"${var.enable_network_policy}\" = \"true\" ]; then",
+      "  $SUDO chmod +x /tmp/network_policy.sh",
+      "  $SUDO /tmp/network_policy.sh",
+      "  $SUDO rm /tmp/network_policy.sh",
+      "  echo 'Network policy applied successfully'",
+      "else",
+      "  echo 'Network policy disabled, skipping'",
+      "  rm -f /tmp/network_policy.sh",
+      "fi"
+    ]
+  }
+
+  depends_on = [null_resource.nodes_base]
+}
+
+resource "null_resource" "nodes_nfs_server" {
+  for_each = var.enable_nodes_uninstall || !var.use_nfs_share_storage || var.nfs_server_ip == "" ? {} : { for n in local.all_nodes : n.host => n if n.host == var.nfs_server_ip }
+
+  triggers = {
+    nfs_config_version = "v1"
+    nfs_server_ip      = var.nfs_server_ip
+  }
+
+  connection {
+    type        = "ssh"
+    host        = each.value.host
+    user        = each.value.ssh_user
+    private_key = file(each.value.ssh_private_key_path)
+  }
+
+  provisioner "file" {
+    content     = file("${path.module}/scripts/nfs_server_start.sh.tpl")
+    destination = "/tmp/nfs_server_start.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "if [ \"$(id -u)\" -eq 0 ]; then SUDO=\"\"; else SUDO=\"sudo\"; fi",
+      "$SUDO chmod +x /tmp/nfs_server_start.sh",
+      "$SUDO /tmp/nfs_server_start.sh",
+      "$SUDO rm /tmp/nfs_server_start.sh",
+      "echo 'NFS server configured successfully'"
+    ]
+  }
+
+  depends_on = [null_resource.nodes_base]
+}
 
 resource "null_resource" "nodes_fc_artifacts" {
   for_each = (var.enable_nodes_uninstall || !var.enable_nodes_fc_artifacts) ? {} : local.all_nodes
@@ -410,9 +580,8 @@ resource "null_resource" "nodes_uninstall" {
   provisioner "remote-exec" {
     inline = [
       "set -e",
-      "if [ \"$(id -u)\" -eq 0 ]; then SUDO=\"\"; else SUDO=\"sudo\"; fi",
-      "$SUDO chmod +x /tmp/uninstall_provider_linux.sh",
-      "FORCE_UNINSTALL=1 bash /tmp/uninstall_provider_linux.sh"
+      "chmod +x /tmp/uninstall_provider_linux.sh",
+      "FORCE_UNINSTALL=true /tmp/uninstall_provider_linux.sh"
     ]
   }
 

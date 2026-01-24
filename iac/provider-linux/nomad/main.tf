@@ -7,11 +7,6 @@ resource "random_password" "clickhouse_password" {
   special = false
 }
 
-provider "nomad" {
-  address   = var.nomad_address
-  secret_id = var.nomad_acl_token
-}
-
 resource "null_resource" "postgres_change_trigger" {
   triggers = {
     hash = sha1(var.postgres_connection_string)
@@ -46,6 +41,7 @@ resource "nomad_job" "ingress" {
 resource "nomad_job" "api" {
   count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/api.hcl", {
+    count              = var.api_machine_count
     update_stanza      = var.api_machine_count > 1
     node_pool          = var.api_node_pool
     prevent_colocation = var.api_machine_count > 2
@@ -255,8 +251,6 @@ resource "nomad_job" "template_manager" {
       nfs_server_ip         = var.nfs_server_ip
     })
   })
-
-  depends_on = [nomad_job.nfs_server]
 }
 
 resource "nomad_job" "orchestrator" {
@@ -289,30 +283,6 @@ resource "nomad_job" "orchestrator" {
       use_nfs_share_storage = var.use_nfs_share_storage
       nfs_server_ip         = var.nfs_server_ip
     })
-  })
-
-  depends_on = [nomad_job.nfs_server]
-}
-
-resource "nomad_job" "nfs_server" {
-  count = var.enable_nomad_jobs && var.use_nfs_share_storage && var.nfs_server_ip != "" ? 1 : 0
-
-  jobspec = templatefile("${path.module}/jobs/nfs-server.hcl", {
-    datacenter   = var.datacenter
-    node_pool    = var.builder_node_pool
-    server_ip    = var.nfs_server_ip
-    start_script = templatefile("${path.module}/scripts/nfs_server_start.sh.tpl", {})
-  })
-}
-
-resource "nomad_job" "network_policy" {
-  count = var.enable_nomad_jobs && var.enable_network_policy_job ? 1 : 0
-
-  jobspec = templatefile("${path.module}/jobs/network-policy.hcl", {
-    datacenter   = var.datacenter
-    node_pool    = "all"
-    ports        = join(",", var.network_open_ports)
-    start_script = templatefile("${path.module}/scripts/network_policy.sh.tpl", {})
   })
 }
 

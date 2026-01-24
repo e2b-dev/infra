@@ -4,6 +4,8 @@ job "api" {
   priority = 90
 
   group "api-service" {
+    count = ${count}
+
     restart {
       interval         = "5s"
       attempts         = 1

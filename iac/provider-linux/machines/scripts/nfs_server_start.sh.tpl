@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+
 if exportfs -v 2>/dev/null | awk '{print $1}' | grep -qx '/e2b-share' && rpcinfo -p 2>/dev/null | grep -q nfs; then
   exit 0
 fi
