@@ -119,7 +119,7 @@ del(.internal)
 [sinks.local_loki_logs]
 type = "loki"
 inputs = [ "remove_internal" ]
-endpoint = "http://localhost:${loki_service_port_number}"
+endpoint = "http://loki.service.consul:${loki_service_port_number}"
 encoding.codec = "json"
 out_of_order_action = "accept"
 
