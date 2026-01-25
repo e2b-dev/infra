@@ -317,7 +317,7 @@ func doBuild(
 	return nil
 }
 
-func printArtifactSizes(ctx context.Context, s storage.API, buildID string, result *build.Result) {
+func printArtifactSizes(ctx context.Context, s storage.StorageProvider, buildID string, result *build.Result) {
 	files := storage.TemplateFiles{BuildID: buildID}
 	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
 

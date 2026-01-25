@@ -188,7 +188,7 @@ MAPPINGS:
 	return NewHeader(&metadata, mappings)
 }
 
-func StoreFileAndHeader(ctx context.Context, s storage.API, filepath *string, objectPath string, h *Header, headerObjectPath string) (err error) {
+func StoreFileAndHeader(ctx context.Context, s storage.StorageProvider, filepath *string, objectPath string, h *Header, headerObjectPath string) (err error) {
 	var frameTable *storage.FrameTable
 
 	if filepath != nil {

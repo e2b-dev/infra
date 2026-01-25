@@ -35,7 +35,7 @@ type Server struct {
 	templateCache     *template.Cache
 	pauseMu           sync.Mutex
 	devicePool        *nbd.DevicePool
-	storage           storage.API
+	storage           storage.StorageProvider
 	featureFlags      *featureflags.Client
 	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
@@ -51,7 +51,7 @@ type ServiceConfig struct {
 	Proxy            *proxy.SandboxProxy
 	SandboxFactory   *sandbox.Factory
 	Sandboxes        *sandbox.Map
-	Storage          storage.API
+	Storage          storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
 }

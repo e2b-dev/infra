@@ -46,7 +46,7 @@ type Cache struct {
 	config        cfg.BuilderConfig
 	flags         *featureflags.Client
 	cache         *ttlcache.Cache[string, Template]
-	storage       storage.API
+	storage       storage.StorageProvider
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
 	rootCachePath string
@@ -58,7 +58,7 @@ type Cache struct {
 func NewCache(
 	config cfg.Config,
 	flags *featureflags.Client,
-	s storage.API,
+	s storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 ) (*Cache, error) {
 	cache := ttlcache.New(

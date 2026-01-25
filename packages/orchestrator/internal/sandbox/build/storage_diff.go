@@ -24,7 +24,7 @@ type StorageDiff struct {
 	metrics   blockmetrics.Metrics
 
 	objectPath string
-	storage    storage.API
+	storage    storage.StorageProvider
 	frameTable *storage.FrameTable
 }
 
@@ -44,7 +44,7 @@ func newStorageDiff(
 	diffType DiffType,
 	blockSize int64,
 	metrics blockmetrics.Metrics,
-	s storage.API,
+	s storage.StorageProvider,
 	frameTable *storage.FrameTable,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)

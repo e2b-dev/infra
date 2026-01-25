@@ -37,15 +37,15 @@ type Index interface {
 
 type HashIndex struct {
 	cacheScope      string
-	indexStorage    storage.API
-	templateStorage storage.API
+	indexStorage    storage.StorageProvider
+	templateStorage storage.StorageProvider
 	version         string
 }
 
 func NewHashIndex(
 	cacheScope string,
-	indexStorage storage.API,
-	templateStorage storage.API,
+	indexStorage storage.StorageProvider,
+	templateStorage storage.StorageProvider,
 ) *HashIndex {
 	return &HashIndex{
 		cacheScope:      cacheScope,

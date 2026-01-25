@@ -23,18 +23,18 @@ const (
 type Cache struct {
 	rootPath  string
 	chunkSize int64
-	inner     API
+	inner     StorageProvider
 	flags     featureFlagsClient
 
 	tracer trace.Tracer
 }
 
-var _ API = (*Cache)(nil)
+var _ StorageProvider = (*Cache)(nil)
 
 func WrapInNFSCache(
 	ctx context.Context,
 	rootPath string,
-	inner API,
+	inner StorageProvider,
 	flags featureFlagsClient,
 ) *Cache {
 	cacheTracer := tracer

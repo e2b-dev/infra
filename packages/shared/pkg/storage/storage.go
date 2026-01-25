@@ -114,7 +114,7 @@ type Blobber interface {
 	// PutBlob(ctx context.Context, objectPath string, data []byte) error
 }
 
-type API interface {
+type StorageProvider interface {
 	FrameGetter
 	FileStorer
 	Blobber
@@ -126,7 +126,7 @@ type Storage struct {
 	*Provider
 }
 
-var _ API = (*Storage)(nil)
+var _ StorageProvider = (*Storage)(nil)
 
 func ForGCPBucket(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Storage, error) {
 	provider, err := NewGCP(ctx, bucketName, limiter)
@@ -362,7 +362,7 @@ func (s *Storage) StoreBlob(ctx context.Context, path string, in io.Reader) erro
 	return nil
 }
 
-func Exists(ctx context.Context, s API, path string) (bool, error) {
+func Exists(ctx context.Context, s StorageProvider, path string) (bool, error) {
 	_, err := s.Size(ctx, path)
 
 	return err == nil, ignoreNotExists(err)
@@ -428,7 +428,7 @@ func uploadFileInParallel(ctx context.Context, in io.ReaderAt, size int64, uploa
 	return nil
 }
 
-func StoreBlobFromFile(ctx context.Context, s API, inFilePath, objectPath string) error {
+func StoreBlobFromFile(ctx context.Context, s StorageProvider, inFilePath, objectPath string) error {
 	in, err := os.Open(inFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)

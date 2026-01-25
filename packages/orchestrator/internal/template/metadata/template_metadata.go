@@ -194,13 +194,13 @@ func FromFile(path string) (Template, error) {
 	return templateMetadata, nil
 }
 
-func FromBuildID(ctx context.Context, s storage.API, buildID string) (Template, error) {
+func FromBuildID(ctx context.Context, s storage.StorageProvider, buildID string) (Template, error) {
 	return fromTemplate(ctx, s, storage.TemplateFiles{
 		BuildID: buildID,
 	})
 }
 
-func fromTemplate(ctx context.Context, s storage.API, files storage.TemplateFiles) (Template, error) {
+func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.TemplateFiles) (Template, error) {
 	ctx, span := tracer.Start(ctx, "from template")
 	defer span.End()
 

@@ -15,7 +15,7 @@ type storageFile struct {
 
 func newStorageFile(
 	ctx context.Context,
-	s storage.API,
+	s storage.StorageProvider,
 	objectPath string,
 	path string,
 ) (*storageFile, error) {

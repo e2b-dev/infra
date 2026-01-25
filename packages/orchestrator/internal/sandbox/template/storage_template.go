@@ -36,7 +36,7 @@ type storageTemplate struct {
 	localMetafile File
 
 	metrics blockmetrics.Metrics
-	storage storage.API
+	storage storage.StorageProvider
 }
 
 func newTemplateFromStorage(
@@ -44,7 +44,7 @@ func newTemplateFromStorage(
 	buildId string,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
-	s storage.API,
+	s storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 	localSnapfile File,
 	localMetafile File,

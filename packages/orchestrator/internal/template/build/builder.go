@@ -52,8 +52,8 @@ type Builder struct {
 
 	config              cfg.BuilderConfig
 	sandboxFactory      *sandbox.Factory
-	templateStorage     storage.API
-	buildStorage        storage.API
+	templateStorage     storage.StorageProvider
+	buildStorage        storage.StorageProvider
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 	proxy               *proxy.SandboxProxy
@@ -68,8 +68,8 @@ func NewBuilder(
 	logger logger.Logger,
 	featureFlags *featureflags.Client,
 	sandboxFactory *sandbox.Factory,
-	templateStorage storage.API,
-	buildStorage storage.API,
+	templateStorage storage.StorageProvider,
+	buildStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
 	proxy *proxy.SandboxProxy,
@@ -398,7 +398,7 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 
 func getRootfsSize(
 	ctx context.Context,
-	s storage.API,
+	s storage.StorageProvider,
 	metadata storage.TemplateFiles,
 ) (uint64, error) {
 	data, err := s.GetBlob(ctx, metadata.StorageRootfsHeaderPath(), nil)

@@ -13,13 +13,13 @@ import (
 
 type TemplateBuild struct {
 	files   storage.TemplateFiles
-	storage storage.API
+	storage storage.StorageProvider
 
 	memfileHeader *headers.Header
 	rootfsHeader  *headers.Header
 }
 
-func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, s storage.API, files storage.TemplateFiles) *TemplateBuild {
+func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, s storage.StorageProvider, files storage.TemplateFiles) *TemplateBuild {
 	return &TemplateBuild{
 		storage: s,
 		files:   files,

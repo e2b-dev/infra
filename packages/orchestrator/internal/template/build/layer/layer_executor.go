@@ -30,8 +30,8 @@ type LayerExecutor struct {
 	templateCache   *sbxtemplate.Cache
 	proxy           *proxy.SandboxProxy
 	sandboxes       *sandbox.Map
-	templateStorage storage.API
-	buildStorage    storage.API
+	templateStorage storage.StorageProvider
+	buildStorage    storage.StorageProvider
 	index           cache.Index
 }
 
@@ -41,8 +41,8 @@ func NewLayerExecutor(
 	templateCache *sbxtemplate.Cache,
 	proxy *proxy.SandboxProxy,
 	sandboxes *sandbox.Map,
-	templateStorage storage.API,
-	buildStorage storage.API,
+	templateStorage storage.StorageProvider,
+	buildStorage storage.StorageProvider,
 	index cache.Index,
 ) *LayerExecutor {
 	return &LayerExecutor{
