@@ -563,6 +563,7 @@ resource "null_resource" "nodes_uninstall" {
 
   triggers = {
     uninstall_version = var.uninstall_version
+    script_hash       = filemd5("${path.module}/../scripts/uninstall_provider_linux.sh")
   }
 
   connection {
