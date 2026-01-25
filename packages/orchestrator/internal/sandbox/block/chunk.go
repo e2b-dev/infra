@@ -212,7 +212,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 				// Mark the uncompressed range as cached (not the compressed range
 				// returned by GetFrame).
-				c.cache.setIsCached(storage.Range{Start: fetchOff, Length: int(f.U)})
+				c.cache.setIsCached(fetchOff, int64(f.U))
 
 				fetchSW.Success(ctx, int64(len(b)))
 

@@ -19,7 +19,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -50,7 +49,7 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	cached    sync.Map // stores blocks offsets as keys to indicate they are present in the cache
+	dirty     sync.Map // stores blocks offsets as keys to indicate they are present in the cache
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -248,7 +247,7 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 
 func (c *Cache) isCached(off, length int64) bool {
 	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		_, cached := c.cached.Load(off + blockOff)
+		_, cached := c.dirty.Load(off + blockOff)
 		if !cached {
 			return false
 		}
@@ -257,9 +256,9 @@ func (c *Cache) isCached(off, length int64) bool {
 	return true
 }
 
-func (c *Cache) setIsCached(r storage.Range) {
-	for _, blockOff := range header.BlocksOffsets(int64(r.Length), c.blockSize) {
-		c.cached.Store(r.Start+blockOff, struct{}{})
+func (c *Cache) setIsCached(off, length int64) {
+	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
+		c.dirty.Store(off+blockOff, struct{}{})
 	}
 }
 
@@ -277,7 +276,7 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 
 	n := copy((*c.mmap)[off:end], b)
 
-	c.setIsCached(storage.Range{Start: off, Length: int(end - off)})
+	c.setIsCached(off, end-off)
 
 	return n, nil
 }
@@ -286,7 +285,7 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 // Key represents a block offset.
 func (c *Cache) dirtySortedKeys() []int64 {
 	var keys []int64
-	c.cached.Range(func(key, _ any) bool {
+	c.dirty.Range(func(key, _ any) bool {
 		keys = append(keys, key.(int64))
 
 		return true
@@ -483,7 +482,7 @@ func (c *Cache) copyProcessMemory(
 			}
 
 			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				c.cached.Store(offset+blockOff, struct{}{})
+				c.dirty.Store(offset+blockOff, struct{}{})
 			}
 
 			offset += segmentSize

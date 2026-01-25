@@ -7,7 +7,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -43,7 +42,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 
 	eg.Go(func() error {
 		// RootFS
-		err := header.StoreFileAndHeader(ctx, t.storage,
+		err := headers.StoreFileAndHeader(ctx, t.storage,
 			rootfsPath, t.files.StorageRootfsPath(),
 			t.rootfsHeader, t.files.StorageRootfsHeaderPath())
 		if err != nil {
@@ -55,7 +54,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 
 	eg.Go(func() error {
 		// Memfile
-		err := header.StoreFileAndHeader(ctx, t.storage,
+		err := headers.StoreFileAndHeader(ctx, t.storage,
 			memfilePath, t.files.StorageMemfilePath(),
 			t.memfileHeader, t.files.StorageMemfileHeaderPath())
 		if err != nil {
