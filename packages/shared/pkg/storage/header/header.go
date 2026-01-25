@@ -205,6 +205,7 @@ func (t *Header) AddFrames(frameTable *storage.FrameTable) error {
 	if frameTable == nil {
 		return nil
 	}
+
 	for _, mapping := range t.Mapping {
 		if mapping.BuildId == t.Metadata.BuildId {
 			if err := mapping.AddFrames(frameTable); err != nil {
