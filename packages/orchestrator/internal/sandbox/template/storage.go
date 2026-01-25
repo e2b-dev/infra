@@ -61,7 +61,6 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		// TODO LEV inefficient double read
 		headerData, err := persistence.GetBlob(ctx, headerObjectPath, nil)
 		if err != nil {
 			return nil, err

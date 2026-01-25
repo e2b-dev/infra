@@ -89,7 +89,7 @@ type MultipartUploader interface {
 	Complete(ctx context.Context) error
 }
 
-type Provider struct {
+type Backend struct {
 	Basic
 	PublicUploader
 	MultipartUploaderFactory

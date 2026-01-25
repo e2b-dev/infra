@@ -151,7 +151,7 @@ func TestStoreFile_Compressed(t *testing.T) {
 
 	t.Log("Verify downloading slices")
 	fake := &Storage{
-		Provider: &Provider{
+		Backend: &Backend{
 			RangeGetter: &fakeRanger{data: receivedData},
 		},
 	}
@@ -488,7 +488,7 @@ func TestGetFrame_FullFrameDecompression(t *testing.T) {
 	}
 
 	fake := &Storage{
-		Provider: &Provider{
+		Backend: &Backend{
 			RangeGetter: &fakeRanger{data: compressedData},
 		},
 	}
@@ -503,12 +503,12 @@ func TestGetFrame_FullFrameDecompression(t *testing.T) {
 	require.Equal(t, origData, buf, "decompressed data should match original")
 }
 
-// TestStoreFile_Compressed_FS tests compression using the local filesystem provider
+// TestStoreFile_Compressed_FS tests compression using the local filesystem backend
 func TestStoreFile_Compressed_FS(t *testing.T) {
 	t.Parallel()
 
 	tempDir := t.TempDir()
-	storage := &Storage{Provider: NewFS(tempDir)}
+	storage := &Storage{Backend: NewFS(tempDir)}
 
 	const dataSize = 100 * 1024 // 100KB
 
@@ -560,7 +560,7 @@ func TestStoreFile_Compressed_FS_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	tempDir := t.TempDir()
-	storage := &Storage{Provider: NewFS(tempDir)}
+	storage := &Storage{Backend: NewFS(tempDir)}
 
 	const dataSize = 50 * 1024 // 50KB
 
@@ -732,7 +732,7 @@ func TestStoreFile_DataIntegrity_FS(t *testing.T) {
 			t.Parallel()
 
 			tempDir := t.TempDir()
-			storage := &Storage{Provider: NewFS(tempDir)}
+			storage := &Storage{Backend: NewFS(tempDir)}
 
 			// Write test file
 			inputFile := tempDir + "/input.dat"

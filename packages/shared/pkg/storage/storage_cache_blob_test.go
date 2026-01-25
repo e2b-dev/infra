@@ -53,7 +53,7 @@ func TestCachedStorage_Blobber(t *testing.T) {
 		// file is written asynchronously, wait for it to finish
 		wg.Wait()
 
-		// prevent the provider from falling back to cache
+		// prevent the storage provider from falling back to cache
 		c.inner = nil
 
 		gotData, wg, err := c.getBlob(t.Context(), "test-item", nil)

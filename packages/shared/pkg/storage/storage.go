@@ -19,7 +19,7 @@ import (
 
 // Each compressed frames contains 1+ chunks.
 const (
-	// TODO LEV <>/<>: what should be the chunk size? Must be a multiple of all
+	// TODO LEV: what should be the chunk size? Must be a multiple of all
 	// other chunk sizes to align in frames.
 	defaultChunkSizeU             = 2 * megabyte // uncompressed chunk size
 	defaultTargetFrameSizeC       = 4 * megabyte // target compressed frame size
@@ -122,19 +122,19 @@ type StorageProvider interface {
 }
 
 type Storage struct {
-	*Provider
+	*Backend
 }
 
 var _ StorageProvider = (*Storage)(nil)
 
 func ForGCPBucket(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Storage, error) {
-	provider, err := NewGCP(ctx, bucketName, limiter)
+	backend, err := NewGCP(ctx, bucketName, limiter)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Storage{
-		Provider: provider,
+		Backend: backend,
 	}, nil
 }
 
@@ -147,7 +147,7 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 }
 
 func getStorageForEnvironment(ctx context.Context, limiter *limit.Limiter, localBaseEnv, defaultLocalBase, bucketEnv, bucketUsage string) (*Storage, error) {
-	var provider *Provider
+	var provider *Backend
 	var err error
 
 	providerName := ProviderName(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
@@ -156,20 +156,18 @@ func getStorageForEnvironment(ctx context.Context, limiter *limit.Limiter, local
 		provider = NewFS(basePath)
 	} else {
 		bucketName := utils.RequiredEnv(bucketEnv, bucketUsage)
-		provider, err = newCloudProviderForEnvironment(ctx, providerName, bucketName, limiter)
+		provider, err = newCloudBackendForEnvironment(ctx, providerName, bucketName, limiter)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &Storage{
-		Provider: provider,
+		Backend: provider,
 	}, nil
 }
 
-func newCloudProviderForEnvironment(ctx context.Context, providerName ProviderName, bucketName string, limiter *limit.Limiter) (*Provider, error) {
-	var provider *Provider
-
+func newCloudBackendForEnvironment(ctx context.Context, providerName ProviderName, bucketName string, limiter *limit.Limiter) (*Backend, error) {
 	switch providerName {
 	// cloud bucket-based storage
 	case AWSStorageProvider:
@@ -177,7 +175,7 @@ func newCloudProviderForEnvironment(ctx context.Context, providerName ProviderNa
 	case GCPStorageProvider:
 		return NewGCP(ctx, bucketName, limiter)
 	default:
-		return nil, fmt.Errorf("unknown storage provider: %s", provider)
+		return nil, fmt.Errorf("unknown storage backend: %s", providerName)
 	}
 }
 
@@ -215,9 +213,9 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 
 	sizeU := stat.Size()
 
-	if compression == CompressionNone && (s.Provider.MultipartUploaderFactory == nil || sizeU <= int64(partSize)) {
+	if compression == CompressionNone && (s.Backend.MultipartUploaderFactory == nil || sizeU <= int64(partSize)) {
 		// If not using multipart or compressed upload, fall through to simple put.
-		_, err = s.Provider.Upload(ctx, objectPath, in)
+		_, err = s.Backend.Upload(ctx, objectPath, in)
 
 		return nil, err
 	}
@@ -225,7 +223,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrStore))
 
-	partUploader, cleanup, maxConcurrency, err := s.Provider.MakeMultipartUpload(ctx, objectPath, DefaultRetryConfig())
+	partUploader, cleanup, maxConcurrency, err := s.Backend.MakeMultipartUpload(ctx, objectPath, DefaultRetryConfig())
 	defer cleanup()
 	if err != nil {
 		timer.Failure(ctx, 0)
@@ -272,9 +270,9 @@ func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64,
 	}
 
 	// Fetch the compressed data from storage
-	respBody, err := s.Provider.RangeGet(ctx, objectPath, frameStart.C, int(frameSize.C))
+	respBody, err := s.Backend.RangeGet(ctx, objectPath, frameStart.C, int(frameSize.C))
 	if err != nil {
-		return Range{}, fmt.Errorf("getting frame at %#x from %s in %s: %w", frameStart.C, objectPath, s.Provider.String(), err)
+		return Range{}, fmt.Errorf("getting frame at %#x from %s in %s: %w", frameStart.C, objectPath, s.Backend.String(), err)
 	}
 	defer respBody.Close()
 
