@@ -296,7 +296,7 @@ func (pb *OptimizeBuilder) updateMetadata(ctx context.Context, t metadata.Templa
 		return fmt.Errorf("failed to serialize metadata: %w", err)
 	}
 
-	// Open the object for writing
+	// Write to storage
 	err = pb.templateStorage.StoreBlob(ctx, metadataPath, bytes.NewReader(metaBytes))
 	if err != nil {
 		return fmt.Errorf("failed to open metadata object: %w", err)

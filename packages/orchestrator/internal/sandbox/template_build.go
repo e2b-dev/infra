@@ -11,8 +11,8 @@ import (
 )
 
 type TemplateBuild struct {
-	files   storage.TemplateFiles
-	storage storage.StorageProvider
+	files       storage.TemplateFiles
+	persistence storage.StorageProvider
 
 	memfileHeader *headers.Header
 	rootfsHeader  *headers.Header
@@ -20,8 +20,8 @@ type TemplateBuild struct {
 
 func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, s storage.StorageProvider, files storage.TemplateFiles) *TemplateBuild {
 	return &TemplateBuild{
-		storage: s,
-		files:   files,
+		persistence: s,
+		files:       files,
 
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
@@ -29,7 +29,7 @@ func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Heade
 }
 
 func (t *TemplateBuild) Remove(ctx context.Context) error {
-	err := t.storage.DeleteWithPrefix(ctx, t.files.StorageDir())
+	err := t.persistence.DeleteWithPrefix(ctx, t.files.StorageDir())
 	if err != nil {
 		return fmt.Errorf("error when removing template build '%s': %w", t.files.StorageDir(), err)
 	}
@@ -42,7 +42,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 
 	eg.Go(func() error {
 		// RootFS
-		err := headers.StoreFileAndHeader(ctx, t.storage,
+		err := headers.StoreFileAndHeader(ctx, t.persistence,
 			rootfsPath, t.files.StorageRootfsPath(),
 			t.rootfsHeader, t.files.StorageRootfsHeaderPath())
 		if err != nil {
@@ -54,7 +54,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 
 	eg.Go(func() error {
 		// Memfile
-		err := headers.StoreFileAndHeader(ctx, t.storage,
+		err := headers.StoreFileAndHeader(ctx, t.persistence,
 			memfilePath, t.files.StorageMemfilePath(),
 			t.memfileHeader, t.files.StorageMemfileHeaderPath())
 		if err != nil {
@@ -66,7 +66,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 
 	eg.Go(func() error {
 		// Snap file. Small enough so we don't use composite upload.
-		err := storage.StoreBlobFromFile(ctx, t.storage, fcSnapfilePath, t.files.StorageSnapfilePath())
+		err := storage.StoreBlobFromFile(ctx, t.persistence, fcSnapfilePath, t.files.StorageSnapfilePath())
 		if err != nil {
 			return fmt.Errorf("error when uploading snapfile: %w", err)
 		}
@@ -76,7 +76,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 
 	eg.Go(func() error {
 		// Metadata. Small enough so we don't use composite upload.
-		err := storage.StoreBlobFromFile(ctx, t.storage, metadataPath, t.files.StorageMetadataPath())
+		err := storage.StoreBlobFromFile(ctx, t.persistence, metadataPath, t.files.StorageMetadataPath())
 		if err != nil {
 			return fmt.Errorf("error when uploading metadata: %w", err)
 		}

@@ -287,7 +287,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	closers = append(closers, closer{"limiter", limiter.Close})
 
-	templateStorage, err := storage.GetTemplateStorageProvider(ctx, limiter)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create template storage provider", zap.Error(err))
 	}
@@ -297,7 +297,7 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create metrics provider", zap.Error(err))
 	}
 
-	templateCache, err := template.NewCache(config, featureFlags, templateStorage, blockMetrics)
+	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create template cache", zap.Error(err))
 	}
@@ -419,7 +419,7 @@ func run(config cfg.Config) (success bool) {
 		Info:             serviceInfo,
 		Proxy:            sandboxProxy,
 		Sandboxes:        sandboxes,
-		Storage:          templateStorage,
+		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
 	})
@@ -477,7 +477,7 @@ func run(config cfg.Config) (success bool) {
 			sandboxProxy,
 			sandboxes,
 			templateCache,
-			templateStorage,
+			persistence,
 			limiter,
 			serviceInfo,
 		)

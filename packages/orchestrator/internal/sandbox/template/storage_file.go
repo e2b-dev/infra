@@ -15,7 +15,7 @@ type storageFile struct {
 
 func newStorageFile(
 	ctx context.Context,
-	s storage.StorageProvider,
+	persistence storage.StorageProvider,
 	objectPath string,
 	path string,
 ) (*storageFile, error) {
@@ -25,7 +25,7 @@ func newStorageFile(
 	}
 	defer f.Close()
 
-	_, err = s.CopyBlob(ctx, objectPath, f)
+	_, err = persistence.CopyBlob(ctx, objectPath, f)
 	if err != nil {
 		cleanupErr := os.Remove(path)
 
