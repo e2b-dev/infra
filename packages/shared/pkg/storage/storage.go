@@ -139,11 +139,11 @@ func ForGCPBucket(ctx context.Context, bucketName string, limiter *limit.Limiter
 	}, nil
 }
 
-func ForTemplates(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
+func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
 	return getStorageForEnvironment(ctx, limiter, "LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates", "TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
 }
 
-func ForBuilds(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
+func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
 	return getStorageForEnvironment(ctx, limiter, "LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache", "BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
 }
 

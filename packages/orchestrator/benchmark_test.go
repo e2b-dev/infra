@@ -168,7 +168,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	limiter, err := limit.New(b.Context(), featureFlags)
 	require.NoError(b, err)
 
-	s, err := storage.ForTemplates(b.Context(), limiter)
+	s, err := storage.GetTemplateStorageProvider(b.Context(), limiter)
 	require.NoError(b, err)
 
 	blockMetrics, err := blockmetrics.NewMetrics(&noop.MeterProvider{})
@@ -222,10 +222,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(b.Context())
 	require.NoError(b, err)
 
-	st, err := storage.ForTemplates(b.Context(), nil)
+	st, err := storage.GetTemplateStorageProvider(b.Context(), nil)
 	require.NoError(b, err)
 
-	sb, err := storage.ForBuilds(b.Context(), nil)
+	sb, err := storage.GetBuildCacheStorageProvider(b.Context(), nil)
 	require.NoError(b, err)
 
 	var proxyPort uint16 = 5007
