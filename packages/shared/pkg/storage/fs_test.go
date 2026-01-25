@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,30 +83,6 @@ func TestFSPut(t *testing.T) {
 	_, err = io.Copy(&buf, r)
 	require.NoError(t, err)
 	require.Equal(t, payload, buf.String())
-}
-
-func TestDelete(t *testing.T) {
-	t.Parallel()
-	p, base := newTempProvider(t)
-	ctx := t.Context()
-
-	path := filepath.Join(base, "to", "delete.txt")
-	ensureParentDir(t, path)
-
-	_, err := p.Upload(ctx, path, bytes.NewReader([]byte("bye")))
-	require.NoError(t, err)
-
-	size, err := p.Size(ctx, path)
-	require.NoError(t, err)
-	assert.Equal(t, int64(len("bye")), size)
-
-	err = p.DeleteWithPrefix(ctx, filepath.Join("to", "delete.txt"))
-	require.NoError(t, err)
-
-	// subsequent Size call should return 0 (object no longer exists)
-	size, err = p.Size(ctx, path)
-	require.Error(t, err)
-	assert.Equal(t, int64(0), size)
 }
 
 func TestDeleteObjectsWithPrefix(t *testing.T) {
