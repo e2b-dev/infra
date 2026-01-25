@@ -53,9 +53,9 @@ $SUDO udevadm control --reload-rules || true
 $SUDO udevadm trigger || true
 
 echo "清理 NFS 相关配置与包..."
-# 客户端卸载可能的挂载点
+# 客户端卸载可能的挂载点 - 使用 lazy unmount (-l) 防止 Server 不可用时卡死
 if mountpoint -q /e2b-share; then
-  $SUDO umount -f /e2b-share || true
+  $SUDO umount -l -f /e2b-share || true
 fi
 # 服务器侧停止并禁用服务（若存在）
 $SUDO systemctl disable --now nfs-kernel-server || true
