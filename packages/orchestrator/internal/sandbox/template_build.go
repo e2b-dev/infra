@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 
 	"golang.org/x/sync/errgroup"
 
@@ -79,34 +78,12 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) (*s
 
 // Snap-file is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", path, err)
-	}
-	defer f.Close()
-
-	err = t.storage.StoreBlob(ctx, t.files.StorageSnapfilePath(), f)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return storage.StoreBlobFromFile(ctx, t.storage, path, t.files.StorageSnapfilePath())
 }
 
 // Metadata is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadMetadata(ctx context.Context, localFilePath string) error {
-	f, err := os.Open(localFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", localFilePath, err)
-	}
-	defer f.Close()
-
-	err = t.storage.StoreBlob(ctx, t.files.StorageMetadataPath(), f)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return storage.StoreBlobFromFile(ctx, t.storage, localFilePath, t.files.StorageMetadataPath())
 }
 
 func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) chan error {

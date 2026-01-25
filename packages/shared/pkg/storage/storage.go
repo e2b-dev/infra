@@ -128,9 +128,65 @@ type Storage struct {
 
 var _ API = (*Storage)(nil)
 
-// UploadFileFramed compresses the given file and uploads it using multipart
-// upload. If the compression type is unset, the file is uploaded in its
-// entirety.
+func ForGCPBucket(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Storage, error) {
+	provider, err := NewGCP(ctx, bucketName, limiter)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Storage{
+		Provider: provider,
+	}, nil
+}
+
+func ForTemplates(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
+	return getStorageForEnvironment(ctx, limiter, "LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates", "TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
+}
+
+func ForBuilds(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
+	return getStorageForEnvironment(ctx, limiter, "LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache", "BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
+}
+
+func getStorageForEnvironment(ctx context.Context, limiter *limit.Limiter, localBaseEnv, defaultLocalBase, bucketEnv, bucketUsage string) (*Storage, error) {
+	var provider *Provider
+	var err error
+
+	providerName := ProviderName(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
+	if providerName == LocalStorageProvider {
+		basePath := env.GetEnv(localBaseEnv, defaultLocalBase)
+		provider = NewFS(basePath)
+	} else {
+		bucketName := utils.RequiredEnv(bucketEnv, bucketUsage)
+		provider, err = newCloudProviderForEnvironment(ctx, providerName, bucketName, limiter)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &Storage{
+		Provider: provider,
+	}, nil
+}
+
+func newCloudProviderForEnvironment(ctx context.Context, providerName ProviderName, bucketName string, limiter *limit.Limiter) (*Provider, error) {
+	var provider *Provider
+
+	switch providerName {
+	// cloud bucket-based storage
+	case AWSStorageProvider:
+		return NewAWS(ctx, bucketName)
+	case GCPStorageProvider:
+		return NewGCP(ctx, bucketName, limiter)
+	default:
+		return nil, fmt.Errorf("unknown storage provider: %s", provider)
+	}
+}
+
+// StoreFile compresses the given file and uploads it using multipart upload. If
+// the compression type is unset, the file is uploaded in its entirety.
+//
+// TODO LEV If we use fixed-size chunks, we can optimize by reading/compressing
+// in parallel; we can also split the file and still use variable-sized frames.
 func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, e error) {
 	ctx, span := tracer.Start(ctx, "store file")
 	defer func() {
@@ -372,56 +428,17 @@ func uploadFileInParallel(ctx context.Context, in io.ReaderAt, size int64, uploa
 	return nil
 }
 
-func ForGCPBucket(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Storage, error) {
-	provider, err := NewGCP(ctx, bucketName, limiter)
+func StoreBlobFromFile(ctx context.Context, s API, inFilePath, objectPath string) error {
+	in, err := os.Open(inFilePath)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer utils.Cleanup(ctx, "failed to close file", in.Close)
+
+	err = s.StoreBlob(ctx, objectPath, in)
+	if err != nil {
+		return fmt.Errorf("failed to upload blob: %w", err)
 	}
 
-	return &Storage{
-		Provider: provider,
-	}, nil
-}
-
-func ForTemplates(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
-	return getStorageForEnvironment(ctx, limiter, "LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates", "TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
-}
-
-func ForBuilds(ctx context.Context, limiter *limit.Limiter) (*Storage, error) {
-	return getStorageForEnvironment(ctx, limiter, "LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache", "BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
-}
-
-func getStorageForEnvironment(ctx context.Context, limiter *limit.Limiter, localBaseEnv, defaultLocalBase, bucketEnv, bucketUsage string) (*Storage, error) {
-	var provider *Provider
-	var err error
-
-	providerName := ProviderName(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
-	if providerName == LocalStorageProvider {
-		basePath := env.GetEnv(localBaseEnv, defaultLocalBase)
-		provider = NewFS(basePath)
-	} else {
-		bucketName := utils.RequiredEnv(bucketEnv, bucketUsage)
-		provider, err = newCloudProviderForEnvironment(ctx, providerName, bucketName, limiter)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return &Storage{
-		Provider: provider,
-	}, nil
-}
-
-func newCloudProviderForEnvironment(ctx context.Context, providerName ProviderName, bucketName string, limiter *limit.Limiter) (*Provider, error) {
-	var provider *Provider
-
-	switch providerName {
-	// cloud bucket-based storage
-	case AWSStorageProvider:
-		return NewAWS(ctx, bucketName)
-	case GCPStorageProvider:
-		return NewGCP(ctx, bucketName, limiter)
-	default:
-		return nil, fmt.Errorf("unknown storage provider: %s", provider)
-	}
+	return nil
 }
