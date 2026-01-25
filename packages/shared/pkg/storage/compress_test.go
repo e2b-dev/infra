@@ -110,7 +110,7 @@ func TestStoreFile_Compressed(t *testing.T) {
 		ChunkSize:       chunkSize,
 		TargetFrameSize: frameSize,
 	}
-	e := newFrameEncoder(&opts, uploader, partSize, 4, "test-path")
+	e := newFrameEncoder(&opts, uploader, partSize, 4)
 
 	frameTable, err = e.uploadFramed(t.Context(), bytes.NewReader(origData))
 	require.NoError(t, err)

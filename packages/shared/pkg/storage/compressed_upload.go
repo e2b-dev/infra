@@ -26,7 +26,6 @@ func (c CompressionType) String() string {
 }
 
 type encoder struct {
-	objectPath           string // TODO LEV remove, for debugging
 	opts                 *FramedUploadOptions
 	maxUploadConcurrency int
 
@@ -62,9 +61,8 @@ type frame struct {
 
 var _ io.Writer = (*frame)(nil) // for compression output
 
-func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader, targetPartSize int64, maxUploadConcurrency int, objectPath string) *encoder {
+func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader, targetPartSize int64, maxUploadConcurrency int) *encoder {
 	return &encoder{
-		objectPath:           objectPath,
 		opts:                 opts,
 		maxUploadConcurrency: maxUploadConcurrency,
 		targetPartSize:       targetPartSize,

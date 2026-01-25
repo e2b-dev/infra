@@ -19,13 +19,12 @@ import (
 
 // Each compressed frames contains 1+ chunks.
 const (
-	// TODO LEV <>/<>: what should be the chunk size? Must be >= all other chunk
-	// sizes to align in frames.
+	// TODO LEV <>/<>: what should be the chunk size? Must be a multiple of all
+	// other chunk sizes to align in frames.
 	defaultChunkSizeU             = 2 * megabyte // uncompressed chunk size
 	defaultTargetFrameSizeC       = 4 * megabyte // target compressed frame size
 	defaultZstdCompressionLevel   = zstd.SpeedBestCompression
-	defaultCompressionConcurrency = 0 // use default concurrency settings
-	defaultUploadConcurrency      = 8
+	defaultCompressionConcurrency = 0 // use default compression concurrency settings
 	defaultUploadPartSize         = 50 * megabyte
 )
 
@@ -235,7 +234,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	}
 
 	if compression != CompressionNone {
-		ft, err = newFrameEncoder(opts, partUploader, int64(partSize), maxConcurrency, objectPath).uploadFramed(ctx, in)
+		ft, err = newFrameEncoder(opts, partUploader, int64(partSize), maxConcurrency).uploadFramed(ctx, in)
 	} else {
 		err = uploadFileInParallel(ctx, in, sizeU, partUploader, partSize, maxConcurrency)
 	}
