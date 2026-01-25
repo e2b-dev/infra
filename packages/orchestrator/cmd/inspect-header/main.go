@@ -35,12 +35,12 @@ func main() {
 	}
 
 	ctx := context.Background()
-	s, err := storage.GetTemplateStorageProvider(ctx, nil)
+	storage, err := storage.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	headerData, err := s.GetBlob(ctx, storagePath, nil)
+	headerData, err := storage.GetBlob(ctx, storagePath, nil)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}
@@ -58,7 +58,7 @@ func main() {
 
 	fmt.Printf("\nMETADATA\n")
 	fmt.Printf("========\n")
-	fmt.Printf("Storage            %s/%s\n", s.String(), storagePath)
+	fmt.Printf("Storage            %s/%s\n", storage.String(), storagePath)
 	fmt.Printf("Version            %d\n", h.Metadata.Version)
 	fmt.Printf("Generation         %d\n", h.Metadata.Generation)
 	fmt.Printf("Build ID           %s\n", h.Metadata.BuildId)

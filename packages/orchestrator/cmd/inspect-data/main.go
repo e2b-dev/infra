@@ -38,12 +38,12 @@ func main() {
 
 	ctx := context.Background()
 
-	s, err := storage.GetTemplateStorageProvider(ctx, nil)
+	storage, err := storage.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	size, err := s.Size(ctx, storagePath)
+	size, err := storage.Size(ctx, storagePath)
 	if err != nil {
 		log.Fatalf("failed to get object size: %s", err)
 	}
@@ -66,7 +66,7 @@ func main() {
 
 	fmt.Printf("\nMETADATA\n")
 	fmt.Printf("========\n")
-	fmt.Printf("Storage            %s/%s\n", s.String(), storagePath)
+	fmt.Printf("Storage            %s/%s\n", storage.String(), storagePath)
 	fmt.Printf("Build ID           %s\n", *buildId)
 	fmt.Printf("Size               %d B (%d MiB)\n", size, size/1024/1024)
 	fmt.Printf("Block size         %d B\n", blockSize)
@@ -80,7 +80,7 @@ func main() {
 	nonEmptyCount := 0
 
 	for i := *start * blockSize; i < *end*blockSize; i += blockSize {
-		_, err := s.GetFrame(ctx, storagePath, i, nil, false, b)
+		_, err := storage.GetFrame(ctx, storagePath, i, nil, false, b)
 		if err != nil {
 			log.Fatalf("failed to get frame: %s", err)
 		}
