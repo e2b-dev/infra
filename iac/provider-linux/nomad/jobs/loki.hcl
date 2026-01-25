@@ -14,7 +14,9 @@ job "loki" {
     }
 
     network {
-      port "${loki_service_port_name}" { to = "${loki_service_port_number}" }
+      port "${loki_service_port_name}" {
+        static = "${loki_service_port_number}"
+      }
     }
 
     service {
