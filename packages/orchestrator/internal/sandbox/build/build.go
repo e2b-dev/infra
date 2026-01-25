@@ -14,26 +14,26 @@ import (
 )
 
 type File struct {
-	header   *header.Header
-	store    *DiffStore
-	fileType DiffType
-	storage  storage.StorageProvider
-	metrics  blockmetrics.Metrics
+	header      *header.Header
+	store       *DiffStore
+	fileType    DiffType
+	persistence storage.StorageProvider
+	metrics     blockmetrics.Metrics
 }
 
 func NewFile(
 	header *header.Header,
 	store *DiffStore,
 	fileType DiffType,
-	s storage.StorageProvider,
+	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 ) *File {
 	return &File{
-		header:   header,
-		store:    store,
-		fileType: fileType,
-		storage:  s,
-		metrics:  metrics,
+		header:      header,
+		store:       store,
+		fileType:    fileType,
+		persistence: persistence,
+		metrics:     metrics,
 	}
 }
 
@@ -121,7 +121,7 @@ func (b *File) getBuild(ctx context.Context, mappedToBuild *header.BuildMap) (Di
 		b.fileType,
 		int64(b.header.Metadata.BlockSize),
 		b.metrics,
-		b.storage,
+		b.persistence,
 		mappedToBuild.FrameTable,
 	)
 	if err != nil {

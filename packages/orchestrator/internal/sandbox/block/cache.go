@@ -49,7 +49,7 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	dirty     sync.Map // stores blocks offsets as keys to indicate they are present in the cache
+	dirty     sync.Map
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -247,8 +247,8 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 
 func (c *Cache) isCached(off, length int64) bool {
 	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		_, cached := c.dirty.Load(off + blockOff)
-		if !cached {
+		_, dirty := c.dirty.Load(off + blockOff)
+		if !dirty {
 			return false
 		}
 	}
