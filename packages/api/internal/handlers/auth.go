@@ -129,7 +129,7 @@ func (a *APIStore) resolveTemplateAndTeam(
 		team := a.GetTeamInfo(c)
 		aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, templatecache.ErrorToAPIError(err, identifier)
 		}
 
 		if aliasInfo.TeamID != team.ID {
@@ -144,7 +144,7 @@ func (a *APIStore) resolveTemplateAndTeam(
 	case c.Value(auth.UserIDContextKey) != nil:
 		aliasInfo, err := a.templateCache.GetByID(ctx, identifier)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, templatecache.ErrorToAPIError(err, identifier)
 		}
 
 		userTeams, apiErr := a.getUserTeams(ctx, c)

@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -36,8 +37,9 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 		return
 	}
 
-	aliasInfo, apiErr := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
-	if apiErr != nil {
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

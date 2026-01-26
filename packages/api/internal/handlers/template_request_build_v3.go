@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -94,16 +96,17 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	templateID := id.Generate()
 	public := false
 
-	aliasInfo, apiErr := a.templateCache.ResolveAlias(findTemplateCtx, identifier, team.Slug)
+	aliasInfo, err := a.templateCache.ResolveAlias(findTemplateCtx, identifier, team.Slug)
 	switch {
-	case apiErr == nil && aliasInfo.TeamID == team.ID:
+	case err == nil && aliasInfo.TeamID == team.ID:
 		// Template exists and is owned by this team - update it
 		templateID = aliasInfo.TemplateID
 		public = aliasInfo.Public
-	case apiErr == nil || apiErr.Code == http.StatusNotFound:
+	case err == nil || errors.Is(err, templatecache.ErrTemplateNotFound):
 		// Either alias not found, or found but owned by different team (e.g. promoted template)
 		// Team can create their own template with this alias in their namespace
 	default:
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(findTemplateCtx, "error when getting template alias", apiErr.Err)
 
