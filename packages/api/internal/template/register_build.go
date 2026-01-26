@@ -53,6 +53,7 @@ type RegisterBuildResponse struct {
 func RegisterBuild(
 	ctx context.Context,
 	templateBuildsCache *templatecache.TemplatesBuildCache,
+	templateCache *templatecache.TemplateCache,
 	db *sqlcdb.Client,
 	data RegisterBuildData,
 ) (*RegisterBuildResponse, *api.APIError) {
@@ -291,6 +292,10 @@ func RegisterBuild(
 					Code:      http.StatusInternalServerError,
 				}
 			}
+
+			// Invalidate any cached tombstone for this alias
+			templateCache.InvalidateAlias(&data.Team.Slug, alias)
+
 			telemetry.ReportEvent(ctx, "created new alias", attribute.String("env.alias", alias))
 		} else if aliasDB.EnvID != data.TemplateID {
 			err := fmt.Errorf("alias '%s' already used", alias)

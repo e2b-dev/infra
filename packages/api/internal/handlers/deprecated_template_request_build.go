@@ -203,5 +203,5 @@ func (a *APIStore) buildTemplate(
 		FirecrackerVersion: firecrackerVersion,
 	}
 
-	return template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, data)
+	return template.RegisterBuild(ctx, a.templateBuildsCache, a.templateCache, a.sqlcDB, data)
 }
