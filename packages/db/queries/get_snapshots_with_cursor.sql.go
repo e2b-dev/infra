@@ -48,9 +48,9 @@ LIMIT $1
 
 type GetSnapshotsWithCursorParams struct {
 	Limit                 int32
-	TeamID   uuid.UUID
-	Metadata types.JSONBStringMap
-	CursorID string
+	TeamID                uuid.UUID
+	Metadata              types.JSONBStringMap
+	CursorID              string
 	CursorTime            pgtype.Timestamptz
 	SnapshotExcludeSbxIds []string
 }

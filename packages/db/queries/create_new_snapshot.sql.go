@@ -116,15 +116,15 @@ type UpsertSnapshotParams struct {
 	TemplateID          string
 	TeamID              uuid.UUID
 	SandboxID           string
-	BaseTemplateID string
-	Metadata       types.JSONBStringMap
-	StartedAt      pgtype.Timestamptz
+	BaseTemplateID      string
+	Metadata            types.JSONBStringMap
+	StartedAt           pgtype.Timestamptz
 	Secure              bool
 	AllowInternetAccess *bool
 	OriginNodeID        string
-	AutoPause      bool
-	Config         *types.PausedSandboxConfig
-	Vcpu           int64
+	AutoPause           bool
+	Config              *types.PausedSandboxConfig
+	Vcpu                int64
 	RamMb               int64
 	FreeDiskSizeMb      int64
 	KernelVersion       string

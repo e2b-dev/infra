@@ -92,9 +92,9 @@ type EnvBuild struct {
 	EnvID              string
 	EnvdVersion        *string
 	ReadyCmd           *string
-	ClusterNodeID *string
-	Reason        types.BuildReason
-	Version       *string
+	ClusterNodeID      *string
+	Reason             types.BuildReason
+	Version            *string
 	CpuArchitecture    *string
 	CpuFamily          *string
 	CpuModel           *string
@@ -115,16 +115,16 @@ type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string
 	SandboxID           string
-	ID        uuid.UUID
-	Metadata  types.JSONBStringMap
-	BaseEnvID string
+	ID                  uuid.UUID
+	Metadata            types.JSONBStringMap
+	BaseEnvID           string
 	SandboxStartedAt    pgtype.Timestamptz
 	EnvSecure           bool
 	OriginNodeID        string
 	AllowInternetAccess *bool
 	AutoPause           bool
-	TeamID    uuid.UUID
-	Config    *types.PausedSandboxConfig
+	TeamID              uuid.UUID
+	Config              *types.PausedSandboxConfig
 }
 
 type Team struct {

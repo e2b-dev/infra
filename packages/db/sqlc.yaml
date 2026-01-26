@@ -11,10 +11,10 @@ sql:
         sql_package: "pgx/v5"
         overrides:
           - column: "public.env_builds.reason"
-            go_type: "github.com/e2b-dev/infra/packages/db/types.BuildReason"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.BuildReason"
           - column: "public.snapshots.config"
             go_type:
-              import: "github.com/e2b-dev/infra/packages/db/types"
+              import: "github.com/e2b-dev/infra/packages/db/pkg/types"
               type: "PausedSandboxConfig"
               pointer: true
             nullable: true
@@ -45,7 +45,7 @@ sql:
             nullable: true
 
           - db_type: "jsonb"
-            go_type: "github.com/e2b-dev/infra/packages/db/types.JSONBStringMap"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
             nullable: true
   - engine: "postgresql"
     queries: "pkg/auth/sql_queries/**"
@@ -84,5 +84,5 @@ sql:
             nullable: true
 
           - db_type: "jsonb"
-            go_type: "github.com/e2b-dev/infra/packages/db/types.JSONBStringMap"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
             nullable: true
