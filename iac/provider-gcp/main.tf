@@ -164,25 +164,25 @@ module "nomad" {
   ingress_count = var.ingress_count
 
   # API
-  api_resources_cpu_count                             = var.api_resources_cpu_count
-  api_resources_memory_mb                             = var.api_resources_memory_mb
-  api_machine_count                                   = var.api_cluster_size
-  api_node_pool                                       = var.api_node_pool
-  api_port                                            = var.api_port
-  environment                                         = var.environment
-  google_service_account_key                          = module.init.google_service_account_key
-  api_secret                                          = random_password.api_secret.result
-  custom_envs_repository_name                         = google_artifact_registry_repository.custom_environments_repository.name
-  postgres_connection_string_secret_name              = google_secret_manager_secret.postgres_connection_string.name
-  postgres_read_replica_connection_string_secret_name = google_secret_manager_secret_version.postgres_read_replica_connection_string.secret
-  supabase_jwt_secrets_secret_name                    = google_secret_manager_secret.supabase_jwt_secrets.name
-  posthog_api_key_secret_name                         = google_secret_manager_secret.posthog_api_key.name
-  analytics_collector_host_secret_name                = module.init.analytics_collector_host_secret_name
-  analytics_collector_api_token_secret_name           = module.init.analytics_collector_api_token_secret_name
-  api_admin_token                                     = random_password.api_admin_secret.result
-  redis_cluster_url_secret_version                    = google_secret_manager_secret_version.redis_cluster_url
-  redis_tls_ca_base64_secret_version                  = module.init.redis_tls_ca_base64_secret_version
-  sandbox_access_token_hash_seed                      = random_password.sandbox_access_token_hash_seed.result
+  api_resources_cpu_count                                = var.api_resources_cpu_count
+  api_resources_memory_mb                                = var.api_resources_memory_mb
+  api_machine_count                                      = var.api_cluster_size
+  api_node_pool                                          = var.api_node_pool
+  api_port                                               = var.api_port
+  environment                                            = var.environment
+  google_service_account_key                             = module.init.google_service_account_key
+  api_secret                                             = random_password.api_secret.result
+  custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
+  postgres_connection_string_secret_name                 = google_secret_manager_secret.postgres_connection_string.name
+  postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
+  supabase_jwt_secrets_secret_name                       = google_secret_manager_secret.supabase_jwt_secrets.name
+  posthog_api_key_secret_name                            = google_secret_manager_secret.posthog_api_key.name
+  analytics_collector_host_secret_name                   = module.init.analytics_collector_host_secret_name
+  analytics_collector_api_token_secret_name              = module.init.analytics_collector_api_token_secret_name
+  api_admin_token                                        = random_password.api_admin_secret.result
+  redis_cluster_url_secret_version                       = google_secret_manager_secret_version.redis_cluster_url
+  redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
+  sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count
