@@ -60,7 +60,7 @@ func main() {
 		zap.Float64("target_disk_usage_percent", opts.TargetDiskUsagePercent),
 		zap.Int("batch_n", opts.BatchN),
 		zap.Int("delete_n", opts.DeleteN),
-		zap.Int("max_error_retries", opts.MaxErrorRetries),
+		zap.Int("max_retries", opts.MaxErrorRetries),
 		zap.String("path", opts.Path),
 		zap.String("otel_collector_endpoint", opts.OtelCollectorEndpoint),
 		zap.Int("max_concurrent_stat", opts.MaxConcurrentStat),
@@ -104,6 +104,7 @@ func main() {
 
 func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
 	var opts cleaner.Options
+	var featureFlagPresent bool
 
 	flags := flag.NewFlagSet("clean-nfs-cache", flag.ExitOnError)
 	flags.Uint64Var(&opts.TargetFilesToDelete, "target-files-to-delete", 0, "target number of files to delete (overrides disk-usage-target-percent and target-bytes-to-delete)")
@@ -116,7 +117,7 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
 	flags.IntVar(&opts.MaxConcurrentStat, "max-concurrent-stat", 1, "number of concurrent stat goroutines")
 	flags.IntVar(&opts.MaxConcurrentScan, "max-concurrent-scan", 1, "number of concurrent scanner goroutines")
 	flags.IntVar(&opts.MaxConcurrentDelete, "max-concurrent-delete", 1, "number of concurrent deleter goroutines")
-	flags.IntVar(&opts.MaxErrorRetries, "max-error-retries", 10, "maximum number of continuous error retries before giving up")
+	flags.IntVar(&opts.MaxErrorRetries, "max-retries", 10, "maximum number of continuous error or miss retries before giving up")
 
 	args := os.Args[1:] // skip the command name
 	if err := flags.Parse(args); err != nil {
@@ -135,8 +136,9 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
 	}
 	defer ffc.Close(ctx)
 
-	v := ffc.JSONFlag(ctx, featureflags.CleanNFSCacheExperimental)
-	if v.Type() == ldvalue.ObjectType {
+	v := ffc.JSONFlag(ctx, featureflags.CleanNFSCache)
+	featureFlagPresent = v.Type() == ldvalue.ObjectType
+	if featureFlagPresent {
 		m := v.AsValueMap()
 		if m.Get("maxConcurrentDelete").IsNumber() {
 			opts.MaxConcurrentDelete = m.Get("maxConcurrentDelete").IntValue()
@@ -147,8 +149,8 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
 		if m.Get("maxConcurrentStat").IsNumber() {
 			opts.MaxConcurrentStat = m.Get("maxConcurrentStat").IntValue()
 		}
-		if m.Get("maxErrorRetries").IsNumber() {
-			opts.MaxErrorRetries = m.Get("maxErrorRetries").IntValue()
+		if m.Get("maxRetries").IsNumber() {
+			opts.MaxErrorRetries = m.Get("maxRetries").IntValue()
 		}
 		if m.Get("targetBytesToDelete").IsNumber() {
 			opts.TargetBytesToDelete = uint64(m.Get("targetBytesToDelete").Float64Value())
@@ -174,6 +176,10 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
 		Cores:         cores,
 		EnableConsole: true,
 	}))
+
+	if featureFlagPresent {
+		l.Info(ctx, "feature flag present", zap.String("flag", featureflags.CleanNFSCache.String()))
+	}
 
 	if opts.TargetBytesToDelete == 0 && opts.TargetFilesToDelete == 0 && opts.TargetDiskUsagePercent > 0 {
 		var diskInfo cleaner.DiskInfo

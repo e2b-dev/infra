@@ -385,6 +385,26 @@ variable "filestore_cache_cleanup_files_per_loop" {
   type = number
 }
 
+variable "filestore_cache_cleanup_max_concurrent_stat" {
+  type        = number
+  description = "Number of concurrent stat goroutines"
+}
+
+variable "filestore_cache_cleanup_max_concurrent_scan" {
+  type        = number
+  description = "Number of concurrent scanner goroutines"
+}
+
+variable "filestore_cache_cleanup_max_concurrent_delete" {
+  type        = number
+  description = "Number of concurrent deleter goroutines"
+}
+
+variable "filestore_cache_cleanup_max_retries" {
+  type        = number
+  description = "Maximum number of continuous error or miss retries before giving up"
+}
+
 variable "dockerhub_remote_repository_url" {
   type = string
 }
