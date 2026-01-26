@@ -35,7 +35,7 @@ func (p BucketFS) String() string {
 
 var _ billy.Filesystem = (*BucketFS)(nil)
 
-func NewPrefixedGCSBucket(bucket *storage.BucketHandle) *BucketFS {
+func NewGCSBucket(bucket *storage.BucketHandle) *BucketFS {
 	return &BucketFS{bucket: bucket}
 }
 

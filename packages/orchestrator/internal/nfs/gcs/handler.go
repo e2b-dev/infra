@@ -28,7 +28,7 @@ func NewNFSHandler(bucket *storage.BucketHandle) *NFSHandler {
 }
 
 func (h NFSHandler) Mount(_ context.Context, _ net.Conn, req nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
-	fs := NewPrefixedGCSBucket(h.bucket)
+	fs := NewGCSBucket(h.bucket)
 
 	subDir := strings.TrimPrefix(string(req.Dirpath), "/")
 	if subDir != "" {
