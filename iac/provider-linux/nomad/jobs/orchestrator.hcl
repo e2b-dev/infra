@@ -79,6 +79,7 @@ job "orchestrator" {
         NFS_SERVER_IP                 = "${nfs_server_ip}"
 %{ endif }
         E2B_DEBUG="true"
+        FORCE_UPDATE           = "20260126-01"
       }
 
       template {

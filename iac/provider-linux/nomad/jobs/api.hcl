@@ -98,6 +98,7 @@ job "api" {
         
         LOCAL_CLUSTER_ENDPOINT = "${local_cluster_endpoint}"
         LOCAL_CLUSTER_TOKEN    = "${local_cluster_token}"
+        FORCE_UPDATE           = "20260126-01"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
