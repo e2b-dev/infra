@@ -93,7 +93,7 @@ type EnvBuild struct {
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      *string
-	Reason             types.BuildReason
+	Reason             []byte
 	Version            *string
 	CpuArchitecture    *string
 	CpuFamily          *string
@@ -124,7 +124,7 @@ type Snapshot struct {
 	AllowInternetAccess *bool
 	AutoPause           bool
 	TeamID              uuid.UUID
-	Config              *types.PausedSandboxConfig
+	Config              types.JSONBStringMap
 }
 
 type Team struct {
