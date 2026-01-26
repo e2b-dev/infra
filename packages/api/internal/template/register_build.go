@@ -223,7 +223,7 @@ func RegisterBuild(
 		// Extract just the alias portion (without namespace) for storage
 		// The identifier may be "namespace/alias" or just "alias"
 		alias := id.ExtractAlias(*data.Alias)
-		aliases = append(aliases, *data.Alias)
+		aliases = append(aliases, alias)
 
 		exists, err := client.CheckAliasConflictsWithTemplateID(ctx, alias)
 		if err != nil {
