@@ -12,6 +12,15 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+const (
+	// Shared across all sandboxes, so we need enough connections for concurrent log traffic.
+	maxConnsPerHost     = 100
+	maxIdleConnsPerHost = 50
+	idleConnTimeout     = 90 * time.Second
+
+	requestTimeout = 10 * time.Second
+)
+
 type HTTPWriter struct {
 	ctx        context.Context //nolint:containedctx // todo: fix the interface so this can be removed
 	url        string
@@ -26,7 +35,13 @@ func NewHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSyncer {
 		ctx: ctx,
 		url: endpoint,
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: requestTimeout,
+			Transport: &http.Transport{
+				MaxConnsPerHost:     maxConnsPerHost,
+				MaxIdleConns:        maxIdleConnsPerHost * 2,
+				MaxIdleConnsPerHost: maxIdleConnsPerHost,
+				IdleConnTimeout:     idleConnTimeout,
+			},
 		},
 
 		wgLock: sync.Mutex{},
