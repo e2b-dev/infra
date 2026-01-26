@@ -17,8 +17,7 @@ import (
 type Client struct {
 	*database.Queries
 
-	conn        *pgxpool.Pool
-	retryConfig *retry.Config
+	conn *pgxpool.Pool
 }
 
 func NewClient(ctx context.Context, databaseURL string, options ...pool.Option) (*Client, error) {
