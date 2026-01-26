@@ -74,7 +74,7 @@ resource "nomad_job" "api" {
     launch_darkly_api_key          = trimspace(var.launch_darkly_api_key)
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
 
-    local_cluster_endpoint = "127.0.0.1:${var.edge_api_port.port}"
+    local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
     local_cluster_token    = var.edge_api_secret
     domain_name            = var.domain_name
   })
