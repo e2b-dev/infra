@@ -57,14 +57,6 @@ sql:
         out: "pkg/auth/queries/"
         sql_package: "pgx/v5"
         overrides:
-          - column: "public.env_builds.reason"
-            go_type: "github.com/e2b-dev/infra/packages/db/types.BuildReason"
-          - column: "public.snapshots.config"
-            go_type:
-              import: "github.com/e2b-dev/infra/packages/db/types"
-              type: "PausedSandboxConfig"
-              pointer: true
-            nullable: true
           - db_type: "uuid"
             go_type:
               import: "github.com/google/uuid"

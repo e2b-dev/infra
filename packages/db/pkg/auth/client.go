@@ -2,17 +2,13 @@ package authdb
 
 import (
 	"context"
-	"fmt"
 	"strings"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/lib/pq" //nolint:blank-imports
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/lib/pq" //nolint:blank-imports
 )
 
 type Client struct {
@@ -23,16 +19,8 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, databaseURL, replicaURL string, options ...pool.Option) (*Client, error) {
-	if strings.TrimSpace(databaseURL) == "" {
-		logger.L().Error(ctx, "POSTGRES_CONNECTION_STRING is required")
-
-		return nil, fmt.Errorf("POSTGRES_CONNECTION_STRING is required")
-	}
-
 	writePool, err := pool.New(ctx, databaseURL, options...)
 	if err != nil {
-		logger.L().Error(ctx, "Unable to create write connection pool", zap.Error(err))
-
 		return nil, err
 	}
 
@@ -45,7 +33,6 @@ func NewClient(ctx context.Context, databaseURL, replicaURL string, options ...p
 		readPool, err = pool.New(ctx, replicaURL, options...)
 		if err != nil {
 			writePool.Close()
-			logger.L().Error(ctx, "Unable to create read connection pool", zap.Error(err))
 
 			return nil, err
 		}
