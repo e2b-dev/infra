@@ -45,7 +45,7 @@ func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint s
 			keepalive.ClientParameters{
 				Time:                10 * time.Second, // Send ping every 10s
 				Timeout:             2 * time.Second,  // Wait 2s for response
-				PermitWithoutStream: true,
+				PermitWithoutStream: true,             // Allow pings even without active streams
 			},
 		),
 	}
