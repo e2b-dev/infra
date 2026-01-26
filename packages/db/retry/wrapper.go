@@ -14,6 +14,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+type operation string
+
+const (
+	operationExec  operation = "Exec"
+	operationQuery operation = "Query"
+	operationScan  operation = "Scan"
+)
+
 // DBTX is the interface that sqlc expects for database operations.
 type DBTX interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
@@ -30,6 +38,7 @@ type RetryableDBTX struct {
 // Wrap wraps a DBTX with retry logic using the provided options.
 func Wrap(db DBTX, opts ...Option) DBTX {
 	// Don't wrap if it's already a transaction - retries are unsafe in transactions
+	// It's just safety check, we shouldn't be calling it from transaction anyway
 	if _, ok := db.(pgx.Tx); ok {
 		return db
 	}
@@ -53,12 +62,15 @@ func (r *RetryableDBTX) Exec(ctx context.Context, sql string, args ...any) (pgco
 		if lastErr == nil {
 			return result, nil
 		}
-		if !r.shouldRetry(ctx, lastErr, attempt) {
+
+		if !shouldRetry(ctx, attempt, r.config.MaxAttempts, lastErr) {
 			return result, lastErr
 		}
-		r.logRetry(ctx, "Exec", attempt, lastErr)
-		r.recordRetrySpan(ctx, attempt, lastErr)
-		if err := r.backoff(ctx, attempt); err != nil {
+
+		logRetry(ctx, operationExec, attempt, r.config.MaxAttempts, lastErr)
+		recordRetrySpan(ctx, attempt, lastErr)
+
+		if err := backoffFunc(ctx, attempt, float64(r.config.InitialBackoff), r.config.BackoffMultiplier, float64(r.config.MaxBackoff)); err != nil {
 			return result, lastErr
 		}
 	}
@@ -80,12 +92,12 @@ func (r *RetryableDBTX) Query(ctx context.Context, sql string, args ...any) (pgx
 			return rows, nil
 		}
 		lastErr = err
-		if !r.shouldRetry(ctx, lastErr, attempt) {
+		if !shouldRetry(ctx, attempt, r.config.MaxAttempts, lastErr) {
 			return rows, lastErr
 		}
-		r.logRetry(ctx, "Query", attempt, lastErr)
-		r.recordRetrySpan(ctx, attempt, lastErr)
-		if err := r.backoff(ctx, attempt); err != nil {
+		logRetry(ctx, operationQuery, attempt, r.config.MaxAttempts, lastErr)
+		recordRetrySpan(ctx, attempt, lastErr)
+		if err := backoffFunc(ctx, attempt, float64(r.config.InitialBackoff), r.config.BackoffMultiplier, float64(r.config.MaxBackoff)); err != nil {
 			return rows, lastErr
 		}
 	}
@@ -103,74 +115,6 @@ func (r *RetryableDBTX) QueryRow(ctx context.Context, sql string, args ...any) p
 		db:     r.db,
 		config: r.config,
 	}
-}
-
-// logRetry logs a retry attempt.
-func (r *RetryableDBTX) logRetry(ctx context.Context, operation string, attempt int, err error) {
-	logger.L().Warn(ctx, "retrying database operation",
-		zap.String("operation", operation),
-		zap.Int("attempt", attempt),
-		zap.Int("max_attempts", r.config.MaxAttempts),
-		zap.Error(err),
-	)
-}
-
-// recordRetrySpan records retry information in the current span.
-func (r *RetryableDBTX) recordRetrySpan(ctx context.Context, attempt int, err error) {
-	span := trace.SpanFromContext(ctx)
-	if !span.IsRecording() {
-		return
-	}
-
-	span.AddEvent("db.retry", trace.WithAttributes(
-		attribute.Int("attempt", attempt),
-		attribute.String("error", err.Error()),
-	))
-}
-
-// shouldRetry determines if we should retry based on error type and attempt count.
-func (r *RetryableDBTX) shouldRetry(ctx context.Context, err error, attempt int) bool {
-	if ctx.Err() != nil {
-		return false
-	}
-	if attempt >= r.config.MaxAttempts {
-		return false
-	}
-
-	return IsRetriable(err)
-}
-
-// backoff waits before the next retry attempt with exponential backoff and jitter.
-func (r *RetryableDBTX) backoff(ctx context.Context, attempt int) error {
-	duration := r.calculateBackoff(attempt)
-
-	timer := time.NewTimer(duration)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
-// calculateBackoff computes the backoff duration for a given attempt.
-func (r *RetryableDBTX) calculateBackoff(attempt int) time.Duration {
-	backoff := float64(r.config.InitialBackoff)
-	for i := 1; i < attempt; i++ {
-		backoff *= r.config.BackoffMultiplier
-	}
-
-	if backoff > float64(r.config.MaxBackoff) {
-		backoff = float64(r.config.MaxBackoff)
-	}
-
-	// Add jitter: +/- 25%
-	jitter := backoff * 0.25 * (rand.Float64()*2 - 1)
-	backoff += jitter
-
-	return time.Duration(backoff)
 }
 
 // retryableRow wraps a pgx.Row to provide retry logic.
@@ -193,12 +137,15 @@ func (r *retryableRow) Scan(dest ...any) error {
 		if lastErr == nil {
 			return nil
 		}
-		if !r.shouldRetry(lastErr, attempt) {
+
+		if !shouldRetry(r.ctx, attempt, r.config.MaxAttempts, lastErr) {
 			return lastErr
 		}
-		r.logRetry(attempt, lastErr)
-		r.recordRetrySpan(attempt, lastErr)
-		if err := r.backoff(attempt); err != nil {
+
+		logRetry(r.ctx, operationScan, attempt, r.config.MaxAttempts, lastErr)
+		recordRetrySpan(r.ctx, attempt, lastErr)
+
+		if err := backoffFunc(r.ctx, attempt, float64(r.config.InitialBackoff), r.config.BackoffMultiplier, float64(r.config.MaxBackoff)); err != nil {
 			return lastErr
 		}
 	}
@@ -207,41 +154,41 @@ func (r *retryableRow) Scan(dest ...any) error {
 }
 
 // shouldRetry determines if we should retry based on error type and attempt count.
-func (r *retryableRow) shouldRetry(err error, attempt int) bool {
-	if r.ctx.Err() != nil {
+func shouldRetry(ctx context.Context, attempt, maxAttempts int, err error) bool {
+	if ctx.Err() != nil {
 		return false
 	}
-	if attempt >= r.config.MaxAttempts {
+	if attempt >= maxAttempts {
 		return false
 	}
 
 	return IsRetriable(err)
 }
 
-// backoff waits before the next retry attempt with exponential backoff and jitter.
-func (r *retryableRow) backoff(attempt int) error {
-	duration := r.calculateBackoff(attempt)
+// backoffFunc waits before the next retry attempt with exponential backoff and jitter.
+func backoffFunc(ctx context.Context, attempt int, initialBackoff, backoffMultiplier, maxBackoff float64) error {
+	duration := calculateBackoff(initialBackoff, backoffMultiplier, maxBackoff, attempt)
 
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
 
 	select {
-	case <-r.ctx.Done():
-		return r.ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
 	case <-timer.C:
 		return nil
 	}
 }
 
 // calculateBackoff computes the backoff duration for a given attempt.
-func (r *retryableRow) calculateBackoff(attempt int) time.Duration {
-	backoff := float64(r.config.InitialBackoff)
+func calculateBackoff(initialBackoff, backoffMultiplier, maxBackoff float64, attempt int) time.Duration {
+	backoff := initialBackoff
 	for i := 1; i < attempt; i++ {
-		backoff *= r.config.BackoffMultiplier
+		backoff *= backoffMultiplier
 	}
 
-	if backoff > float64(r.config.MaxBackoff) {
-		backoff = float64(r.config.MaxBackoff)
+	if backoff > maxBackoff {
+		backoff = maxBackoff
 	}
 
 	// Add jitter: +/- 25%
@@ -252,17 +199,18 @@ func (r *retryableRow) calculateBackoff(attempt int) time.Duration {
 }
 
 // logRetry logs a retry attempt.
-func (r *retryableRow) logRetry(attempt int, err error) {
-	logger.L().Warn(r.ctx, "retrying database QueryRow",
+func logRetry(ctx context.Context, operation operation, attempt, maxAttempts int, err error) {
+	logger.L().Warn(ctx, "retrying database QueryRow",
+		zap.String("operation", string(operation)),
 		zap.Int("attempt", attempt),
-		zap.Int("max_attempts", r.config.MaxAttempts),
+		zap.Int("max_attempts", maxAttempts),
 		zap.Error(err),
 	)
 }
 
 // recordRetrySpan records retry information in the current span.
-func (r *retryableRow) recordRetrySpan(attempt int, err error) {
-	span := trace.SpanFromContext(r.ctx)
+func recordRetrySpan(ctx context.Context, attempt int, err error) {
+	span := trace.SpanFromContext(ctx)
 	if !span.IsRecording() {
 		return
 	}

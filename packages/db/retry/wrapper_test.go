@@ -306,24 +306,18 @@ func TestConfig_Options(t *testing.T) {
 
 func TestBackoff_ExponentialGrowth(t *testing.T) {
 	t.Parallel()
-	mock := &mockDBTX{}
 
-	wrapped := Wrap(mock,
-		WithInitialBackoff(100*time.Millisecond),
-		WithMaxBackoff(10*time.Second),
-		WithBackoffMultiplier(2.0),
-	)
-
-	retryable, ok := wrapped.(*RetryableDBTX)
-	require.True(t, ok)
+	initialBackoff := float64(100 * time.Millisecond)
+	maxBackoff := float64(10 * time.Second)
+	backoffMultiplier := 2.0
 
 	// Test that backoff grows exponentially (within jitter range)
 	// attempt 1: 100ms * 2^0 = 100ms
 	// attempt 2: 100ms * 2^1 = 200ms
 	// attempt 3: 100ms * 2^2 = 400ms
-	backoff1 := retryable.calculateBackoff(1)
-	backoff2 := retryable.calculateBackoff(2)
-	backoff3 := retryable.calculateBackoff(3)
+	backoff1 := calculateBackoff(initialBackoff, backoffMultiplier, maxBackoff, 1)
+	backoff2 := calculateBackoff(initialBackoff, backoffMultiplier, maxBackoff, 2)
+	backoff3 := calculateBackoff(initialBackoff, backoffMultiplier, maxBackoff, 3)
 
 	// With 25% jitter, backoff1 should be in range [75ms, 125ms]
 	assert.GreaterOrEqual(t, backoff1, 75*time.Millisecond)
@@ -340,19 +334,13 @@ func TestBackoff_ExponentialGrowth(t *testing.T) {
 
 func TestBackoff_MaxBackoffCap(t *testing.T) {
 	t.Parallel()
-	mock := &mockDBTX{}
 
-	wrapped := Wrap(mock,
-		WithInitialBackoff(100*time.Millisecond),
-		WithMaxBackoff(500*time.Millisecond),
-		WithBackoffMultiplier(2.0),
-	)
-
-	retryable, ok := wrapped.(*RetryableDBTX)
-	require.True(t, ok)
+	initialBackoff := float64(100 * time.Millisecond)
+	maxBackoff := float64(500 * time.Millisecond)
+	backoffMultiplier := 2.0
 
 	// attempt 5: 100ms * 2^4 = 1600ms, should be capped at 500ms
-	backoff := retryable.calculateBackoff(5)
+	backoff := calculateBackoff(initialBackoff, backoffMultiplier, maxBackoff, 5)
 
 	// With 25% jitter on capped value, should be in range [375ms, 625ms]
 	assert.GreaterOrEqual(t, backoff, 375*time.Millisecond)
