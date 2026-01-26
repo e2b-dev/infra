@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/dberrors"
@@ -19,7 +21,10 @@ type AliasInfo struct {
 	TemplateID string
 	TeamID     uuid.UUID
 	Public     bool
+	notFound   bool // tombstone marker for caching negative lookups
 }
+
+var notFoundTombstone = &AliasInfo{notFound: true}
 
 // AliasCache resolves namespace/alias to templateID with fallback logic.
 // This is the main resolution layer implementing the namespace lookup flowchart.
@@ -53,7 +58,10 @@ func buildAliasKey(namespace *string, alias string) string {
 //   - Explicit namespace: lookup with namespace directly, no fallback
 //   - Bare alias: try namespaceFallback first, then NULL (promoted templates)
 func (c *AliasCache) Resolve(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, error) {
-	ctx, span := tracer.Start(ctx, "resolve alias")
+	ctx, span := tracer.Start(ctx, "resolve alias", trace.WithAttributes(
+		attribute.String("identifier", identifier),
+		attribute.String("namespace_fallback", namespaceFallback),
+	))
 	defer span.End()
 
 	namespace, alias := id.SplitIdentifier(identifier)
@@ -80,13 +88,21 @@ func (c *AliasCache) Resolve(ctx context.Context, identifier string, namespaceFa
 	return nil, err
 }
 
-// lookup performs a single lookup (cache then DB) for namespace/alias
+// lookup performs a single lookup (cache then DB) for namespace/alias.
+// Caches both positive hits and negative hits to avoid repeated DB queries.
 func (c *AliasCache) lookup(ctx context.Context, namespace *string, alias string) (*AliasInfo, error) {
+	ctx, span := tracer.Start(ctx, "lookup alias")
+	defer span.End()
+
 	key := buildAliasKey(namespace, alias)
 
 	info, err := c.cache.GetOrSet(ctx, key, c.fetchFromDB)
 	if err != nil {
 		return nil, err
+	}
+
+	if info.notFound {
+		return nil, ErrTemplateNotFound
 	}
 
 	// Also cache by template ID for direct ID lookups (use nil namespace since
@@ -100,6 +116,11 @@ func (c *AliasCache) lookup(ctx context.Context, namespace *string, alias string
 }
 
 func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (*AliasInfo, error) {
+	ctx, span := tracer.Start(ctx, "fetch alias from DB", trace.WithAttributes(
+		attribute.String("key", key),
+	))
+	defer span.End()
+
 	namespace, alias := id.SplitIdentifier(key)
 
 	// Try alias lookup first
@@ -135,7 +156,7 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (*AliasInfo, e
 			}
 		}
 
-		return nil, ErrTemplateNotFound
+		return notFoundTombstone, nil
 	}
 
 	return nil, fmt.Errorf("fetching template by alias: %w", err)
