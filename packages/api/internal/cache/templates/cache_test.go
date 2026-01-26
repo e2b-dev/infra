@@ -252,3 +252,168 @@ func TestAliasCacheLookupByID_UsesCache(t *testing.T) {
 	// Same pointer proves cache was hit (not a fresh DB fetch)
 	assert.Same(t, info1, info2)
 }
+
+// TestAliasCacheResolve_NegativeCaching tests that not-found results are cached (tombstones)
+func TestAliasCacheResolve_NegativeCaching(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	// First lookup - not found, should cache tombstone
+	info, err := cache.Resolve(ctx, "non-existent-alias", teamSlug)
+	require.ErrorIs(t, err, ErrTemplateNotFound)
+	require.Nil(t, info)
+
+	// Create the template and alias AFTER the first lookup
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "non-existent-alias", &teamSlug)
+
+	// Second lookup should still return not found (cached tombstone)
+	info, err = cache.Resolve(ctx, "non-existent-alias", teamSlug)
+	require.ErrorIs(t, err, ErrTemplateNotFound)
+	require.Nil(t, info)
+}
+
+// TestAliasCacheResolve_NegativeCachingFallback tests that tombstones are cached
+// for intermediate lookups during fallback resolution
+func TestAliasCacheResolve_NegativeCachingFallback(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	// Create requesting team
+	requestingTeamID := testutils.CreateTestTeam(t, db)
+	requestingTeamSlug := testutils.GetTeamSlug(t, ctx, db, requestingTeamID)
+
+	// Create promoted template with NULL namespace alias
+	promotedTeamID := testutils.CreateTestTeam(t, db)
+	promotedTemplateID := testutils.CreateTestTemplate(t, db, promotedTeamID)
+	testutils.CreateTestTemplateAliasWithName(t, db, promotedTemplateID, "promoted-alias", nil)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	// Resolve bare alias - tries team namespace first (not found, caches tombstone),
+	// then falls back to NULL namespace (found)
+	info1, err := cache.Resolve(ctx, "promoted-alias", requestingTeamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info1)
+	assert.Equal(t, promotedTemplateID, info1.TemplateID)
+
+	// Second resolve should use cached tombstone for team namespace lookup
+	// and cached result for NULL namespace lookup (same pointer)
+	info2, err := cache.Resolve(ctx, "promoted-alias", requestingTeamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info2)
+	assert.Same(t, info1, info2)
+}
+
+// TestAliasCache_InvalidateByTemplateID tests that InvalidateByTemplateID
+// removes all cache entries pointing to that template
+func TestAliasCache_InvalidateByTemplateID(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-to-invalidate", &teamSlug)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	// Resolve to populate cache
+	info1, err := cache.Resolve(ctx, "alias-to-invalidate", teamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info1)
+
+	// Also lookup by ID to cache that entry
+	info2, err := cache.LookupByID(ctx, templateID)
+	require.NoError(t, err)
+	assert.Same(t, info1, info2)
+
+	// Invalidate by template ID
+	cache.InvalidateByTemplateID(templateID)
+
+	// Next resolve should return a different pointer (fresh fetch)
+	info3, err := cache.Resolve(ctx, "alias-to-invalidate", teamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info3)
+	assert.NotSame(t, info1, info3)
+
+	// LookupByID should also return a different pointer
+	info4, err := cache.LookupByID(ctx, templateID)
+	require.NoError(t, err)
+	require.NotNil(t, info4)
+	assert.NotSame(t, info1, info4)
+}
+
+// TestTemplateCache_InvalidateDoesNotInvalidateAliases tests that TemplateCache.Invalidate
+// does NOT invalidate alias cache entries (only InvalidateAllTags does)
+func TestTemplateCache_InvalidateDoesNotInvalidateAliases(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-for-template", &teamSlug)
+
+	cache := NewTemplateCache(db)
+	defer cache.Close(ctx)
+
+	// Resolve alias to populate alias cache
+	info1, err := cache.ResolveAlias(ctx, "alias-for-template", teamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info1)
+
+	// Invalidate the template (should NOT invalidate alias cache)
+	cache.Invalidate(templateID, nil)
+
+	// Next resolve should return the same cached pointer
+	info2, err := cache.ResolveAlias(ctx, "alias-for-template", teamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info2)
+	assert.Same(t, info1, info2)
+}
+
+// TestTemplateCache_InvalidateAllTagsAlsoInvalidatesAliases tests that
+// TemplateCache.InvalidateAllTags also invalidates the alias cache entries
+func TestTemplateCache_InvalidateAllTagsAlsoInvalidatesAliases(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-all-tags", &teamSlug)
+
+	cache := NewTemplateCache(db)
+	defer cache.Close(ctx)
+
+	// Resolve alias to populate alias cache
+	info1, err := cache.ResolveAlias(ctx, "alias-all-tags", teamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info1)
+
+	// Invalidate all tags (should also invalidate alias cache)
+	cache.InvalidateAllTags(templateID)
+
+	// Next resolve should return a different pointer (fresh fetch)
+	info2, err := cache.ResolveAlias(ctx, "alias-all-tags", teamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info2)
+	assert.NotSame(t, info1, info2)
+}
