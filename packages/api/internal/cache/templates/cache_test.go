@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/db/testutils"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
 // TestAliasCacheResolve_BareAliasInTeamNamespace tests that a bare alias
