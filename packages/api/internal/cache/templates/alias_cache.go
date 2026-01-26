@@ -77,12 +77,20 @@ func (c *AliasCache) Resolve(ctx context.Context, identifier string, namespaceFa
 		return info, nil
 	}
 
-	// If not found, try NULL namespace (promoted templates)
+	// If not found in team namespace, try NULL namespace (promoted templates).
+	// Always attempt the fallback regardless of error type to be resilient to
+	// transient errors - if a promoted template exists, we should find it even
+	// if the team namespace lookup encountered a temporary failure.
+	nullInfo, nullErr := c.lookup(ctx, nil, alias)
+	if nullErr == nil {
+		return nullInfo, nil
+	}
+
+	// Both lookups failed. If the team namespace failed with a not-found error,
+	// return the NULL namespace error (more specific). Otherwise, return the
+	// original team namespace error as it may indicate a more serious issue.
 	if errors.Is(err, ErrTemplateNotFound) {
-		info, err = c.lookup(ctx, nil, alias)
-		if err == nil {
-			return info, nil
-		}
+		return nil, nullErr
 	}
 
 	return nil, err
