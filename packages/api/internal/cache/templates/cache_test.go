@@ -101,7 +101,7 @@ func TestAliasCacheResolve_ExplicitNamespaceNoIDFallback(t *testing.T) {
 	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
 	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
-	cache := NewAliasCache(db)
+	cache := NewAliasCache(db.SqlcClient)
 	defer cache.Close(ctx)
 
 	// Request "team-slug/<templateID>" - no alias exists with this name in team namespace.
@@ -262,7 +262,7 @@ func TestAliasCacheResolve_NegativeCaching(t *testing.T) {
 	teamID := testutils.CreateTestTeam(t, db)
 	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
 
-	cache := NewAliasCache(db)
+	cache := NewAliasCache(db.SqlcClient)
 	defer cache.Close(ctx)
 
 	// First lookup - not found, should cache tombstone
@@ -296,7 +296,7 @@ func TestAliasCacheResolve_NegativeCachingFallback(t *testing.T) {
 	promotedTemplateID := testutils.CreateTestTemplate(t, db, promotedTeamID)
 	testutils.CreateTestTemplateAliasWithName(t, db, promotedTemplateID, "promoted-alias", nil)
 
-	cache := NewAliasCache(db)
+	cache := NewAliasCache(db.SqlcClient)
 	defer cache.Close(ctx)
 
 	// Resolve bare alias - tries team namespace first (not found, caches tombstone),
@@ -327,7 +327,7 @@ func TestAliasCache_InvalidateByTemplateID(t *testing.T) {
 
 	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-to-invalidate", &teamSlug)
 
-	cache := NewAliasCache(db)
+	cache := NewAliasCache(db.SqlcClient)
 	defer cache.Close(ctx)
 
 	// Resolve to populate cache
@@ -369,7 +369,7 @@ func TestTemplateCache_InvalidateDoesNotInvalidateAliases(t *testing.T) {
 
 	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-for-template", &teamSlug)
 
-	cache := NewTemplateCache(db)
+	cache := NewTemplateCache(db.SqlcClient)
 	defer cache.Close(ctx)
 
 	// Resolve alias to populate alias cache
@@ -400,7 +400,7 @@ func TestTemplateCache_InvalidateAllTagsAlsoInvalidatesAliases(t *testing.T) {
 
 	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-all-tags", &teamSlug)
 
-	cache := NewTemplateCache(db)
+	cache := NewTemplateCache(db.SqlcClient)
 	defer cache.Close(ctx)
 
 	// Resolve alias to populate alias cache
