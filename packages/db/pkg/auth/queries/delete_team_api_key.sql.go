@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: delete_team_api_key.sql
 
-package queries
+package authqueries
 
 import (
 	"context"

@@ -22,7 +22,7 @@ func TestDeleteTemplateAliases_Success(t *testing.T) {
 	templateID, _ := testutils.CreateTestTemplateWithAlias(t, client, teamID)
 
 	// Execute UpsertSnapshot for a new snapshot
-	result, err := client.DeleteOtherTemplateAliases(ctx, templateID)
+	result, err := client.SqlcClient.DeleteOtherTemplateAliases(ctx, templateID)
 	require.NoError(t, err, "Failed to create new snapshot")
 	require.Len(t, result, 1, "Expected 1 deleted alias")
 }
@@ -40,7 +40,7 @@ func TestDeleteTemplateAliases_NoAlias(t *testing.T) {
 	anotherTemplateID := testutils.CreateTestTemplate(t, client, teamID)
 
 	// Execute UpsertSnapshot for a new snapshot
-	result, err := client.DeleteOtherTemplateAliases(ctx, anotherTemplateID)
+	result, err := client.SqlcClient.DeleteOtherTemplateAliases(ctx, anotherTemplateID)
 	require.NoError(t, err, "Failed to create new snapshot")
 	assert.Empty(t, result, "Expected no deleted aliases")
 }

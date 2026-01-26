@@ -23,7 +23,7 @@ func TestInvalidateUnstartedTemplateBuilds_InvalidatesWaitingBuilds(t *testing.T
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
 
 	// Invalidate waiting builds for default tag
-	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: templateID,
 		Tags:       []string{"default"},
 		Reason:     types.BuildReason{Message: "Test invalidation"},
@@ -54,7 +54,7 @@ func TestInvalidateUnstartedTemplateBuilds_OnlyAffectsSpecificTag(t *testing.T) 
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, v1BuildID, "v1")
 
 	// Invalidate only 'default' tag builds
-	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: templateID,
 		Tags:       []string{"default"},
 		Reason:     types.BuildReason{Message: "Test invalidation"},
@@ -86,7 +86,7 @@ func TestInvalidateUnstartedTemplateBuilds_DoesNotAffectOtherTemplates(t *testin
 	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, build2ID, "default")
 
 	// Invalidate only template1's builds
-	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: template1ID,
 		Tags:       []string{"default"},
 		Reason:     types.BuildReason{Message: "Test invalidation"},
@@ -120,7 +120,7 @@ func TestInvalidateUnstartedTemplateBuilds_DoesNotAffectNonWaitingBuilds(t *test
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, uploadedBuildID, "default")
 
 	// Invalidate waiting builds
-	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: templateID,
 		Tags:       []string{"default"},
 		Reason:     types.BuildReason{Message: "Test invalidation"},
@@ -157,7 +157,7 @@ func TestInvalidateUnstartedTemplateBuilds_MultipleWaitingBuilds(t *testing.T) {
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, build3ID, "default")
 
 	// Invalidate all waiting builds
-	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: templateID,
 		Tags:       []string{"default"},
 		Reason:     types.BuildReason{Message: "Test invalidation"},
@@ -199,7 +199,7 @@ func TestInvalidateUnstartedTemplateBuilds_MultipleTagsInSingleCall(t *testing.T
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, stableBuildID, "stable")
 
 	// Invalidate 'default', 'v1', and 'v2' tags in a single call
-	err := db.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		TemplateID: templateID,
 		Tags:       []string{"default", "v1", "v2"},
 		Reason:     types.BuildReason{Message: "Test batch invalidation"},

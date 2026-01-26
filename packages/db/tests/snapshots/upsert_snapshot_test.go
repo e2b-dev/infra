@@ -65,7 +65,7 @@ func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 	}
 
 	// Execute UpsertSnapshot for a new snapshot
-	result, err := client.UpsertSnapshot(ctx, params)
+	result, err := client.SqlcClient.UpsertSnapshot(ctx, params)
 	require.NoError(t, err, "Failed to create new snapshot")
 
 	// Verify the result
@@ -144,7 +144,7 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	}
 
 	// Create the initial snapshot
-	initialResult, err := client.UpsertSnapshot(ctx, initialParams)
+	initialResult, err := client.SqlcClient.UpsertSnapshot(ctx, initialParams)
 	require.NoError(t, err, "Failed to create initial snapshot")
 	initialBuildID := initialResult.BuildID
 	initialTemplateID := initialResult.TemplateID
@@ -201,7 +201,7 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	}
 
 	// Execute UpsertSnapshot for the existing snapshot (same sandbox_id)
-	updatedResult, err := client.UpsertSnapshot(ctx, updatedParams)
+	updatedResult, err := client.SqlcClient.UpsertSnapshot(ctx, updatedParams)
 	require.NoError(t, err, "Failed to update existing snapshot")
 
 	// Verify the key behavior of upserting an existing snapshot:
@@ -257,7 +257,7 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 		Status:              "snapshotting",
 	}
 
-	thirdResult, err := client.UpsertSnapshot(ctx, thirdParams)
+	thirdResult, err := client.SqlcClient.UpsertSnapshot(ctx, thirdParams)
 	require.NoError(t, err, "Failed to update snapshot a third time")
 
 	// Verify consistent behavior on third upsert

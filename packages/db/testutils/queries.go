@@ -10,19 +10,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 )
 
 // CreateTestTeam creates a test team in the database using raw SQL
-func CreateTestTeam(t *testing.T, db *client.Client) uuid.UUID {
+func CreateTestTeam(t *testing.T, db *Database) uuid.UUID {
 	t.Helper()
 	teamID := uuid.New()
 
 	// Insert a team directly into the database using raw SQL
 	// Using the default tier 'base_v1' that is created in migrations
-	err := db.TestsRawSQL(t.Context(),
+	err := db.AuthDb.TestsRawSQL(t.Context(),
 		"INSERT INTO public.teams (id, name, tier, email) VALUES ($1, $2, $3, $4)",
 		teamID, "Test Team "+teamID.String(), "base_v1", "test-"+teamID.String()+"@example.com",
 	)
@@ -32,13 +31,13 @@ func CreateTestTeam(t *testing.T, db *client.Client) uuid.UUID {
 }
 
 // CreateTestTemplate creates a base env in the database (required by foreign key constraint)
-func CreateTestTemplate(t *testing.T, db *client.Client, teamID uuid.UUID) string {
+func CreateTestTemplate(t *testing.T, db *Database, teamID uuid.UUID) string {
 	t.Helper()
 	envID := "base-env-" + uuid.New().String()
 
 	// Insert a base env directly into the database
 	// After the env_builds migration, envs table only has: id, team_id, public, updated_at, build_count, spawn_count, last_spawned_at
-	err := db.TestsRawSQL(t.Context(),
+	err := db.SqlcClient.TestsRawSQL(t.Context(),
 		"INSERT INTO public.envs (id, team_id, public, updated_at) VALUES ($1, $2, $3, NOW())",
 		envID, teamID, true,
 	)
@@ -47,13 +46,13 @@ func CreateTestTemplate(t *testing.T, db *client.Client, teamID uuid.UUID) strin
 	return envID
 }
 
-func CreateTestTemplateAlias(t *testing.T, db *client.Client, templateID string) string {
+func CreateTestTemplateAlias(t *testing.T, db *Database, templateID string) string {
 	t.Helper()
 	alias := "alias-" + uuid.New().String()
 
 	// Insert a base env directly into the database
 	// After the env_builds migration, envs table only has: id, team_id, public, updated_at, build_count, spawn_count, last_spawned_at
-	err := db.TestsRawSQL(t.Context(),
+	err := db.SqlcClient.TestsRawSQL(t.Context(),
 		"INSERT INTO public.env_aliases (alias, env_id, is_renamable) VALUES ($1, $2, $3)",
 		alias, templateID, true,
 	)
@@ -62,7 +61,7 @@ func CreateTestTemplateAlias(t *testing.T, db *client.Client, templateID string)
 	return alias
 }
 
-func CreateTestTemplateWithAlias(t *testing.T, db *client.Client, teamID uuid.UUID) (string, string) {
+func CreateTestTemplateWithAlias(t *testing.T, db *Database, teamID uuid.UUID) (string, string) {
 	t.Helper()
 
 	templateID := CreateTestTemplate(t, db, teamID)
@@ -72,11 +71,11 @@ func CreateTestTemplateWithAlias(t *testing.T, db *client.Client, teamID uuid.UU
 }
 
 // CreateTestBuild creates a build for a template with the given status
-func CreateTestBuild(t *testing.T, ctx context.Context, db *client.Client, templateID string, status string) uuid.UUID {
+func CreateTestBuild(t *testing.T, ctx context.Context, db *Database, templateID string, status string) uuid.UUID {
 	t.Helper()
 	buildID := uuid.New()
 
-	err := db.TestsRawSQL(ctx,
+	err := db.SqlcClient.TestsRawSQL(ctx,
 		`INSERT INTO public.env_builds 
 		(id, env_id, status, vcpu, ram_mb, free_disk_size_mb, kernel_version, firecracker_version, cluster_node_id, created_at, updated_at)
 		VALUES ($1, $2, $3, 2, 2048, 512, '6.1.0', '1.4.0', 'test-node', NOW(), NOW())`,
@@ -88,10 +87,10 @@ func CreateTestBuild(t *testing.T, ctx context.Context, db *client.Client, templ
 }
 
 // CreateTestBuildAssignment creates a build assignment with a specific tag
-func CreateTestBuildAssignment(t *testing.T, ctx context.Context, db *client.Client, templateID string, buildID uuid.UUID, tag string) {
+func CreateTestBuildAssignment(t *testing.T, ctx context.Context, db *Database, templateID string, buildID uuid.UUID, tag string) {
 	t.Helper()
 
-	err := db.TestsRawSQL(ctx,
+	err := db.SqlcClient.TestsRawSQL(ctx,
 		`INSERT INTO public.env_build_assignments (env_id, build_id, tag, source, created_at)
 		VALUES ($1, $2, $3, 'app', NOW())`,
 		templateID, buildID, tag,
@@ -100,11 +99,11 @@ func CreateTestBuildAssignment(t *testing.T, ctx context.Context, db *client.Cli
 }
 
 // GetBuildStatus retrieves the status of a build
-func GetBuildStatus(t *testing.T, ctx context.Context, db *client.Client, buildID uuid.UUID) string {
+func GetBuildStatus(t *testing.T, ctx context.Context, db *Database, buildID uuid.UUID) string {
 	t.Helper()
 	var status string
 
-	err := db.TestsRawSQLQuery(ctx,
+	err := db.SqlcClient.TestsRawSQLQuery(ctx,
 		"SELECT status FROM public.env_builds WHERE id = $1",
 		func(rows pgx.Rows) error {
 			if rows.Next() {
@@ -122,10 +121,10 @@ func GetBuildStatus(t *testing.T, ctx context.Context, db *client.Client, buildI
 
 // DeleteTriggerBuildAssignment deletes a trigger-created build assignment
 // This is useful for tests that need to create builds without the auto-assigned 'default' tag
-func DeleteTriggerBuildAssignment(t *testing.T, ctx context.Context, db *client.Client, templateID string, buildID uuid.UUID, tag string) {
+func DeleteTriggerBuildAssignment(t *testing.T, ctx context.Context, db *Database, templateID string, buildID uuid.UUID, tag string) {
 	t.Helper()
 
-	err := db.TestsRawSQL(ctx,
+	err := db.SqlcClient.TestsRawSQL(ctx,
 		`DELETE FROM public.env_build_assignments 
 		WHERE env_id = $1 AND build_id = $2 AND tag = $3 AND source = 'trigger'`,
 		templateID, buildID, tag,
@@ -134,10 +133,10 @@ func DeleteTriggerBuildAssignment(t *testing.T, ctx context.Context, db *client.
 }
 
 // CreateSnapshotRecord creates just the snapshot record without creating a new build
-func CreateSnapshotRecord(t *testing.T, ctx context.Context, db *client.Client, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string) {
+func CreateSnapshotRecord(t *testing.T, ctx context.Context, db *Database, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string) {
 	t.Helper()
 
-	err := db.TestsRawSQL(ctx,
+	err := db.SqlcClient.TestsRawSQL(ctx,
 		`INSERT INTO public.snapshots 
 		(sandbox_id, env_id, team_id, base_env_id, sandbox_started_at, metadata, origin_node_id)
 		VALUES ($1, $2, $3, $4, NOW(), '{}'::jsonb, 'test-node')`,
@@ -147,21 +146,21 @@ func CreateSnapshotRecord(t *testing.T, ctx context.Context, db *client.Client, 
 }
 
 // UpsertTestSnapshot creates/updates a snapshot for testing with success status
-func UpsertTestSnapshot(t *testing.T, ctx context.Context, db *client.Client, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string) queries.UpsertSnapshotRow {
+func UpsertTestSnapshot(t *testing.T, ctx context.Context, db *Database, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string) queries.UpsertSnapshotRow {
 	t.Helper()
 
 	return UpsertTestSnapshotWithStatus(t, ctx, db, templateID, sandboxID, teamID, baseTemplateID, "success")
 }
 
 // UpsertTestSnapshotWithStatus creates/updates a snapshot with a specific status
-func UpsertTestSnapshotWithStatus(t *testing.T, ctx context.Context, db *client.Client, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string, status string) queries.UpsertSnapshotRow {
+func UpsertTestSnapshotWithStatus(t *testing.T, ctx context.Context, db *Database, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string, status string) queries.UpsertSnapshotRow {
 	t.Helper()
 
 	totalDiskSize := int64(1024)
 	envdVersion := "v1.0.0"
 	allowInternet := true
 
-	result, err := db.UpsertSnapshot(ctx, queries.UpsertSnapshotParams{
+	result, err := db.SqlcClient.UpsertSnapshot(ctx, queries.UpsertSnapshotParams{
 		TemplateID:          templateID,
 		TeamID:              teamID,
 		SandboxID:           sandboxID,
@@ -186,11 +185,11 @@ func UpsertTestSnapshotWithStatus(t *testing.T, ctx context.Context, db *client.
 }
 
 // GetSnapshotMetadata retrieves the metadata from a snapshot using raw SQL
-func GetSnapshotMetadata(t *testing.T, ctx context.Context, db *client.Client, sandboxID string) types.JSONBStringMap {
+func GetSnapshotMetadata(t *testing.T, ctx context.Context, db *Database, sandboxID string) types.JSONBStringMap {
 	t.Helper()
 	var metadata types.JSONBStringMap
 
-	err := db.TestsRawSQLQuery(ctx,
+	err := db.SqlcClient.TestsRawSQLQuery(ctx,
 		"SELECT metadata FROM public.snapshots WHERE sandbox_id = $1",
 		func(rows pgx.Rows) error {
 			if !rows.Next() {
@@ -216,11 +215,11 @@ type BuildAssignment struct {
 }
 
 // GetBuildAssignments retrieves all build assignments for a given env_id
-func GetBuildAssignments(t *testing.T, ctx context.Context, db *client.Client, envID string) []BuildAssignment {
+func GetBuildAssignments(t *testing.T, ctx context.Context, db *Database, envID string) []BuildAssignment {
 	t.Helper()
 	var assignments []BuildAssignment
 
-	err := db.TestsRawSQLQuery(ctx,
+	err := db.SqlcClient.TestsRawSQLQuery(ctx,
 		"SELECT id, env_id, build_id, tag, source FROM public.env_build_assignments WHERE env_id = $1 ORDER BY created_at DESC",
 		func(rows pgx.Rows) error {
 			for rows.Next() {
@@ -241,11 +240,11 @@ func GetBuildAssignments(t *testing.T, ctx context.Context, db *client.Client, e
 }
 
 // GetBuildAssignmentByBuildID retrieves a build assignment for a specific build_id
-func GetBuildAssignmentByBuildID(t *testing.T, ctx context.Context, db *client.Client, buildID uuid.UUID) *BuildAssignment {
+func GetBuildAssignmentByBuildID(t *testing.T, ctx context.Context, db *Database, buildID uuid.UUID) *BuildAssignment {
 	t.Helper()
 	var assignment *BuildAssignment
 
-	err := db.TestsRawSQLQuery(ctx,
+	err := db.SqlcClient.TestsRawSQLQuery(ctx,
 		"SELECT id, env_id, build_id, tag, source FROM public.env_build_assignments WHERE build_id = $1",
 		func(rows pgx.Rows) error {
 			if rows.Next() {
@@ -264,11 +263,11 @@ func GetBuildAssignmentByBuildID(t *testing.T, ctx context.Context, db *client.C
 }
 
 // GetEnvByID retrieves an env by ID to verify it exists
-func GetEnvByID(t *testing.T, ctx context.Context, db *client.Client, envID string) bool {
+func GetEnvByID(t *testing.T, ctx context.Context, db *Database, envID string) bool {
 	t.Helper()
 	var exists bool
 
-	err := db.TestsRawSQLQuery(ctx,
+	err := db.SqlcClient.TestsRawSQLQuery(ctx,
 		"SELECT EXISTS(SELECT 1 FROM public.envs WHERE id = $1)",
 		func(rows pgx.Rows) error {
 			if rows.Next() {
@@ -285,11 +284,11 @@ func GetEnvByID(t *testing.T, ctx context.Context, db *client.Client, envID stri
 }
 
 // GetEnvBuildByID retrieves an env_build by ID to verify it exists
-func GetEnvBuildByID(t *testing.T, ctx context.Context, db *client.Client, buildID uuid.UUID) bool {
+func GetEnvBuildByID(t *testing.T, ctx context.Context, db *Database, buildID uuid.UUID) bool {
 	t.Helper()
 	var exists bool
 
-	err := db.TestsRawSQLQuery(ctx,
+	err := db.SqlcClient.TestsRawSQLQuery(ctx,
 		"SELECT EXISTS(SELECT 1 FROM public.env_builds WHERE id = $1)",
 		func(rows pgx.Rows) error {
 			if rows.Next() {

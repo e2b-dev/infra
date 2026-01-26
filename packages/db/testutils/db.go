@@ -15,6 +15,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	db "github.com/e2b-dev/infra/packages/db/client"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 )
 
 const (
@@ -27,10 +28,11 @@ const (
 // Database encapsulates the test database container and clients
 type Database struct {
 	SqlcClient *db.Client
+	AuthDb     *authdb.Client
 }
 
 // SetupDatabase creates a fresh PostgreSQL container with migrations applied
-func SetupDatabase(t *testing.T) *db.Client {
+func SetupDatabase(t *testing.T) *Database {
 	t.Helper()
 
 	if testing.Short() {
@@ -46,15 +48,22 @@ func SetupDatabase(t *testing.T) *db.Client {
 	runDatabaseMigrations(t, connStr)
 
 	// Create database client
-	sqlcClient, err := db.NewClientFromConnectionString(t.Context(), connStr)
+	sqlcClient, err := db.NewClient(t.Context(), connStr)
 	require.NoError(t, err, "Failed to create sqlc client")
+
+	authDb, err := authdb.NewClient(t.Context(), connStr, connStr)
+	require.NoError(t, err, "Failed to create auth db client")
 
 	// Register cleanup
 	t.Cleanup(func() {
+		_ = authDb.Close()
 		cleanupTestDatabase(t, context.WithoutCancel(t.Context()), sqlcClient, container)
 	})
 
-	return sqlcClient
+	return &Database{
+		SqlcClient: sqlcClient,
+		AuthDb:     authDb,
+	}
 }
 
 // startPostgresContainer initializes and starts a PostgreSQL container
