@@ -43,8 +43,8 @@ func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint s
 		),
 		grpc.WithKeepaliveParams(
 			keepalive.ClientParameters{
-				Time:                10 * time.Second, // Send ping every 10s
-				Timeout:             2 * time.Second,  // Wait 2s for response
+				Time:                30 * time.Second, // Send ping every 30s
+				Timeout:             5 * time.Second,  // Wait 5s for response
 				PermitWithoutStream: true,             // Allow pings even without active streams
 			},
 		),
