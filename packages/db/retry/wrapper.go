@@ -78,7 +78,6 @@ func (r *RetryableDBTX) Query(ctx context.Context, sql string, args ...any) (pgx
 
 	for attempt := 1; attempt <= r.config.MaxAttempts; attempt++ {
 		rows, lastErr = r.db.Query(ctx, sql, args...)
-		lastErr = handleRetry(ctx, operationQuery, attempt, r.config, lastErr)
 		if lastErr == nil {
 			return rows, nil
 		}
