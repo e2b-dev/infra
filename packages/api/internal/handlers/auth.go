@@ -39,7 +39,7 @@ func (a *APIStore) GetTeam(
 		return teamInfo, nil
 	case c.Value(auth.UserIDContextKey) != nil:
 		userID := a.GetUserID(c)
-		teams, err := dbapi.GetTeamsByUser(ctx, a.sqlcDB, userID)
+		teams, err := dbapi.GetTeamsByUser(ctx, a.authDB, userID)
 		if err != nil {
 			return nil, &api.APIError{
 				Code:      http.StatusInternalServerError,

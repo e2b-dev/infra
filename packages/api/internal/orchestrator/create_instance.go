@@ -19,13 +19,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/pkg/builds"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -253,7 +253,7 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := utils.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, machineinfo.FromDB(build))
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build))
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,

@@ -8,7 +8,7 @@ package queries
 import (
 	"context"
 
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 )
 

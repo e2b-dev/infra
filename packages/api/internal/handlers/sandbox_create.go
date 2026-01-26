@@ -21,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"

@@ -59,3 +59,8 @@ test: build-tools
 .PHONY: build-and-upload
 build-and-upload:
 	@docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push -f ./Dockerfile ..
+
+.PHONY: seed-db
+seed-db:
+	@echo "Seeding database..."
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/seed-db.go

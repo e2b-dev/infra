@@ -9,24 +9,24 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
+	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
-func CreateUser(t *testing.T, db *client.Client) uuid.UUID {
+func CreateUser(t *testing.T, db *setup.Database) uuid.UUID {
 	t.Helper()
 
 	userID := uuid.New()
 
-	err := db.TestsRawSQL(t.Context(), `
+	err := db.AuthDb.TestsRawSQL(t.Context(), `
 INSERT INTO auth.users (id, email)
 VALUES ($1, $2)
 `, userID, fmt.Sprintf("user-test-integration-%s@e2b.dev", userID))
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		db.TestsRawSQL(t.Context(), `
+		db.AuthDb.TestsRawSQL(t.Context(), `
 DELETE FROM auth.users WHERE id = $1
 `, userID)
 	})
@@ -34,7 +34,7 @@ DELETE FROM auth.users WHERE id = $1
 	return userID
 }
 
-func CreateAccessToken(t *testing.T, db *client.Client, userID uuid.UUID) string {
+func CreateAccessToken(t *testing.T, db *setup.Database, userID uuid.UUID) string {
 	t.Helper()
 
 	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
@@ -49,7 +49,7 @@ func CreateAccessToken(t *testing.T, db *client.Client, userID uuid.UUID) string
 	accessTokenMask, err := keys.MaskKey(keys.AccessTokenPrefix, tokenWithoutPrefix)
 	require.NoError(t, err)
 
-	_, err = db.CreateAccessToken(t.Context(), queries.CreateAccessTokenParams{
+	_, err = db.AuthDb.Write.CreateAccessToken(t.Context(), authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
 		AccessTokenHash:       accessTokenHash,
