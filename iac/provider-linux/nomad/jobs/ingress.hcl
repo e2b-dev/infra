@@ -38,12 +38,14 @@ job "ingress" {
       task = "ingress"
 
       check {
-        type     = "http"
-        name     = "health"
-        path     = "/ping"
-        interval = "3s"
-        timeout  = "3s"
-        port     = "${ingress_port}"
+        type                  = "http"
+        name                  = "health"
+        path                  = "/ping"
+        interval              = "3s"
+        timeout               = "3s"
+        port                  = "${ingress_port}"
+        success_before_passing = 1
+        initial_status        = "passing"
       }
     }
 
