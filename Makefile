@@ -43,10 +43,41 @@ plan-only-jobs:
 	$(MAKE) -C $(PROVIDER_DIR) plan-only-jobs
 
 # Deploy a specific job name in Nomad
-# When job name is specified, all '-' are replaced with '_' in the job name
+# When job name is specified, all '-' are replaced with '_' in job name
 .PHONY: plan-only-jobs/%
 plan-only-jobs/%:
 	$(MAKE) -C $(PROVIDER_DIR) plan-only-jobs/$(subst -,_,$(notdir $@))
+
+# Firewall management targets
+.PHONY: plan-firewall
+plan-firewall:
+	$(MAKE) -C $(PROVIDER_DIR) plan-firewall
+
+.PHONY: apply-firewall
+apply-firewall:
+	$(MAKE) -C $(PROVIDER_DIR) apply-firewall
+
+.PHONY: taint-firewall
+taint-firewall:
+	$(MAKE) -C $(PROVIDER_DIR) taint-firewall
+
+# Single node firewall management
+.PHONY: plan-firewall/%
+plan-firewall/%:
+	$(MAKE) -C $(PROVIDER_DIR) plan-firewall/$(notdir $@)
+
+.PHONY: apply-firewall/%
+apply-firewall/%:
+	$(MAKE) -C $(PROVIDER_DIR) apply-firewall/$(notdir $@)
+
+.PHONY: taint-firewall/%
+taint-firewall/%:
+	$(MAKE) -C $(PROVIDER_DIR) taint-firewall/$(notdir $@)
+
+# Helper to show detected hosts
+.PHONY: show-firewall-hosts
+show-firewall-hosts:
+	$(MAKE) -C $(PROVIDER_DIR) show-firewall-hosts
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
