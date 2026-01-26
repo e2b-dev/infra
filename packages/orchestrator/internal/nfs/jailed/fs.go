@@ -3,6 +3,7 @@ package jailed
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-git/go-billy/v5"
@@ -67,11 +68,25 @@ func (j jailedFS) Remove(filename string) error {
 }
 
 func (j jailedFS) Join(elem ...string) string {
-	if j.needsPrefix(elem) {
-		elem = append([]string{j.prefix}, elem...)
+	path := j.inner.Join(elem...)
+
+	// prevent directory traversal
+	path = filepath.ToSlash(path)
+	path = filepath.Clean(path)
+	for {
+		trimmed, ok := strings.CutPrefix(path, ".."+string(filepath.Separator))
+		if !ok {
+			break
+		}
+
+		path = trimmed
 	}
 
-	return j.inner.Join(elem...)
+	if !strings.HasPrefix(elem[0], j.prefix+"/") {
+		path = filepath.Join(j.prefix, path)
+	}
+
+	return path
 }
 
 func (j jailedFS) TempFile(dir, prefix string) (billy.File, error) {
@@ -120,20 +135,4 @@ func (j jailedFS) Chroot(path string) (billy.Filesystem, error) {
 
 func (j jailedFS) Root() string {
 	return j.inner.Root()
-}
-
-func (j jailedFS) needsPrefix(elem []string) bool {
-	if len(elem) == 0 {
-		return true
-	}
-
-	if elem[0] == j.prefix {
-		return false
-	}
-
-	if strings.HasPrefix(elem[0], j.prefix+"/") {
-		return false
-	}
-
-	return true
 }

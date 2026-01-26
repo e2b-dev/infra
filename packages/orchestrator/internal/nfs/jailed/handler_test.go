@@ -2,7 +2,9 @@ package jailed
 
 import (
 	"context"
+	"io"
 	"net"
+	"os"
 	"testing"
 
 	"github.com/go-git/go-billy/v5"
@@ -13,28 +15,36 @@ import (
 	"github.com/willscott/go-nfs/helpers"
 )
 
+func mkdir(t *testing.T, fs billy.Filesystem, path string, perm os.FileMode) {
+	t.Helper()
+
+	err := fs.MkdirAll(path, perm)
+	require.NoError(t, err)
+}
+
+func write(t *testing.T, fs billy.Filesystem, path string, perm os.FileMode, content string) {
+	t.Helper()
+
+	f, err := fs.OpenFile(path, os.O_CREATE|os.O_WRONLY, perm)
+	require.NoError(t, err)
+	_, err = f.Write([]byte(content))
+	require.NoError(t, err)
+	err = f.Close()
+	require.NoError(t, err)
+}
+
 func TestJailedFS(t *testing.T) {
 	t.Parallel()
 
 	fs := memfs.New()
 
-	// Create a "good" folder and a "bad" file outside of it
-	err := fs.MkdirAll("good_folder", 0o755)
-	require.NoError(t, err)
-
-	f, err := fs.Create("bad_file")
-	require.NoError(t, err)
-	_, err = f.Write([]byte("bad content"))
-	require.NoError(t, err)
-	err = f.Close()
-	require.NoError(t, err)
-
-	f, err = fs.Create("good_folder/good_file")
-	require.NoError(t, err)
-	_, err = f.Write([]byte("good content"))
-	require.NoError(t, err)
-	err = f.Close()
-	require.NoError(t, err)
+	// create file system
+	write(t, fs, "bad_file", 0o644, "bad content")
+	mkdir(t, fs, "good_folder", 0o755)
+	write(t, fs, "good_folder/bad_file", 0o644, "okay content")
+	write(t, fs, "good_folder/good_file", 0o644, "good content")
+	mkdir(t, fs, "good_folder/more_dir", 0o755)
+	write(t, fs, "good_folder/more_dir/other_file", 0o644, "more content")
 
 	// Setup jailed handler
 	getPrefix := func(_ context.Context, _ net.Conn, _ nfs.MountRequest) (string, error) {
@@ -70,8 +80,31 @@ func TestJailedFS(t *testing.T) {
 		t.Parallel()
 
 		// This should fail if jailed
-		path := jfs.Join("../bad_file")
-		_, err := jfs.Open(path)
-		require.ErrorIs(t, err, billy.ErrCrossedBoundary)
+		path := jfs.Join("../../bad_file")
+		fp, err := jfs.Open(path)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err := fp.Close()
+			assert.NoError(t, err)
+		})
+		data, err := io.ReadAll(fp)
+		require.NoError(t, err)
+		assert.Equal(t, "okay content", string(data)) // redirected to a good file
+	})
+
+	t.Run("access good file via traversal", func(t *testing.T) {
+		t.Parallel()
+
+		// This should succeed if jailed
+		path := jfs.Join("more_dir/../more_dir/other_file")
+		fp, err := jfs.Open(path)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err := fp.Close()
+			assert.NoError(t, err)
+		})
+		data, err := io.ReadAll(fp)
+		require.NoError(t, err)
+		assert.Equal(t, "more content", string(data))
 	})
 }
