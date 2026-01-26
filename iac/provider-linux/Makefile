@@ -161,6 +161,76 @@ plan-without-jobs:
 	$(TF) fmt -recursive
 	@ $(tf_vars) TF_VAR_enable_nomad_jobs=false $(TF) plan -out=.tfplan.$(ENV) -input=false -compact-warnings -refresh=false
 
+# Extract hosts from environment JSON variables using external script
+# Create a temporary script to avoid Makefile quoting issues
+CLIENT_HOSTS := $(shell python3 -c "import json, re; j='$(CLIENTS_JSON)'; j=re.sub(r'\\\\\n', '', j); print(' '.join([h['host'] for h in json.loads(j)]))" 2>/dev/null || echo "192.168.123.82 192.168.123.84 192.168.123.85")
+SERVER_HOSTS := $(shell python3 -c "import json, re; j='$(SERVERS_JSON)'; j=re.sub(r'\\\\\n', '', j); print(' '.join([h['host'] for h in json.loads(j)]))" 2>/dev/null || echo "192.168.123.82 192.168.123.83 192.168.123.84")
+ALL_HOSTS := $(sort $(CLIENT_HOSTS) $(SERVER_HOSTS))
+
+# Generate target resources for all hosts  
+define firewall_targets
+$(foreach host,$(ALL_HOSTS),-target='module.machines.null_resource.nodes_firewall["$(host)"]')
+endef
+
+# Firewall-specific targets for network policy management
+.PHONY: plan-firewall
+plan-firewall:
+	@ printf "Planning firewall resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ printf "Found hosts: $(ALL_HOSTS)\n\n"
+	@ $(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV).firewall -compact-warnings $(call firewall_targets)
+
+.PHONY: apply-firewall
+apply-firewall:
+	@ printf "Applying firewall resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(tf_vars) \
+	$(TF) apply \
+	-auto-approve \
+	-input=false \
+	-compact-warnings \
+	.tfplan.$(ENV).firewall
+	@ rm .tfplan.$(ENV).firewall
+
+.PHONY: taint-firewall
+taint-firewall:
+	@ printf "Tainting firewall resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ printf "Found hosts: $(ALL_HOSTS)\n\n"
+	@ $(foreach host,$(ALL_HOSTS), \
+		$(tf_vars) $(TF) taint 'module.machines.null_resource.nodes_firewall["$(host)"]' || true; \
+	)
+
+# Single node firewall targets for granular control
+.PHONY: plan-firewall/%
+plan-firewall/%:
+	@ printf "Planning firewall for node: `tput setaf 2``tput bold`$(notdir $@)`tput sgr0` for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV).firewall.$(notdir $@) -compact-warnings \
+		-target='module.machines.null_resource.nodes_firewall["$(notdir $@)"]'
+
+.PHONY: apply-firewall/%
+apply-firewall/%:
+	@ printf "Applying firewall for node: `tput setaf 2``tput bold`$(notdir $@)`tput sgr0` for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(tf_vars) \
+	$(TF) apply \
+	-auto-approve \
+	-input=false \
+	-compact-warnings \
+	.tfplan.$(ENV).firewall.$(notdir $@)
+	@ rm .tfplan.$(ENV).firewall.$(notdir $@)
+
+.PHONY: taint-firewall/%
+taint-firewall/%:
+	@ printf "Tainting firewall for node: `tput setaf 2``tput bold`$(notdir $@)`tput sgr0` for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(tf_vars) $(TF) taint 'module.machines.null_resource.nodes_firewall["$(notdir $@)"]' || true
+
+# Helper target to show detected hosts
+.PHONY: show-firewall-hosts
+show-firewall-hosts:
+	@ printf "Firewall hosts detected for env `tput setaf 2``tput bold`$(ENV)`tput sgr0`:\n\n"
+	@ printf "Clients: $(CLIENT_HOSTS)\n"
+	@ printf "Servers: $(SERVER_HOSTS)\n"
+	@ printf "All hosts: $(ALL_HOSTS)\n"
+
 .PHONY: uninstall
 uninstall:
 	@ printf "Uninstalling provider-linux for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
