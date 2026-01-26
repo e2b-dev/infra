@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,13 +18,12 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, databaseURL string, options ...pool.Option) (*Client, error) {
-	connPool, err := pool.New(ctx, databaseURL, options...)
+	dbClient, connPool, err := pool.New(ctx, databaseURL, options...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+		return nil, err
 	}
-	queries := database.New(connPool)
 
-	return &Client{Queries: queries, conn: connPool}, nil
+	return &Client{Queries: database.New(dbClient), conn: connPool}, nil
 }
 
 func (db *Client) Close() error {

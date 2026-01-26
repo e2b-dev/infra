@@ -10,6 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
 type Client struct {
@@ -20,28 +21,28 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, databaseURL, replicaURL string, options ...pool.Option) (*Client, error) {
-	writePool, err := pool.New(ctx, databaseURL, options...)
+	writeClient, writePool, err := pool.New(ctx, databaseURL, options...)
 	if err != nil {
 		return nil, err
 	}
 
-	writeClient := authqueries.New(writePool)
-
-	var readPool *pgxpool.Pool
-	readClient := writeClient
+	writeQueries := authqueries.New(writeClient)
+	readPool := writePool
+	readQueries := writeQueries
 
 	if strings.TrimSpace(replicaURL) != "" {
-		readPool, err = pool.New(ctx, replicaURL, options...)
+		var readClient types.DBTX
+		readClient, readPool, err = pool.New(ctx, replicaURL, options...)
 		if err != nil {
 			writePool.Close()
 
 			return nil, err
 		}
 
-		readClient = authqueries.New(readPool)
+		readQueries = authqueries.New(readClient)
 	}
 
-	return &Client{Read: readClient, Write: writeClient, writeConn: writePool, readConn: readPool}, nil
+	return &Client{Read: readQueries, Write: writeQueries, writeConn: writePool, readConn: readPool}, nil
 }
 
 func (db *Client) Close() error {

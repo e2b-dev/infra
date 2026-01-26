@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
-	dbtypes "github.com/e2b-dev/infra/packages/db/types"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )

@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
-	"github.com/e2b-dev/infra/packages/db/testutils"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
 func TestQueryNotExistingTemplateAlias(t *testing.T) {

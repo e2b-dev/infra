@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/db/testutils"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
 func TestDeleteTemplateAliases_Success(t *testing.T) {

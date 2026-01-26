@@ -7,7 +7,7 @@ package authqueries
 import (
 	"time"
 
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )

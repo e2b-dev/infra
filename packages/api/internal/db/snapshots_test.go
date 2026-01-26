@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	apidb "github.com/e2b-dev/infra/packages/api/internal/db"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/testutils"
-	"github.com/e2b-dev/infra/packages/db/types"
 )
 
 // createTestTeam creates a test team in the database using raw SQL
