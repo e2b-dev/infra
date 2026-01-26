@@ -18,7 +18,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		MaxAttempts:       5,
-		InitialBackoff:    10 * time.Millisecond,
+		InitialBackoff:    100 * time.Millisecond,
 		MaxBackoff:        2 * time.Second,
 		BackoffMultiplier: 2.0,
 	}
