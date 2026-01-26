@@ -120,27 +120,27 @@ func TestExec_RetryOnConnectionError(t *testing.T) {
 	assert.Equal(t, int64(1), result.RowsAffected())
 }
 
-func TestExec_RetryOnDeadlock(t *testing.T) {
+func TestExec_NoRetryOnDeadlock(t *testing.T) {
 	t.Parallel()
 	callCount := 0
 	mock := &mockDBTX{
 		execFunc: func(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 			callCount++
-			if callCount == 1 {
-				return pgconn.CommandTag{}, &pgconn.PgError{Code: "40P01"} // deadlock
-			}
 
-			return pgconn.NewCommandTag("UPDATE 1"), nil
+			return pgconn.CommandTag{}, &pgconn.PgError{Code: "40P01"} // deadlock
 		},
 	}
 
 	wrapped := Wrap(mock, testConfig())
 	ctx := context.Background()
 
-	result, err := wrapped.Exec(ctx, "UPDATE test SET val = 1")
-	require.NoError(t, err)
-	assert.Equal(t, 2, callCount)
-	assert.Equal(t, int64(1), result.RowsAffected())
+	_, err := wrapped.Exec(ctx, "UPDATE test SET val = 1")
+	require.Error(t, err)
+	assert.Equal(t, 1, callCount, "should not retry on deadlock")
+
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr)
+	assert.Equal(t, "40P01", pgErr.Code)
 }
 
 func TestExec_NoRetryOnConstraintViolation(t *testing.T) {

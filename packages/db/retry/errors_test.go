@@ -48,10 +48,10 @@ func TestIsRetriable_PostgreSQLErrors(t *testing.T) {
 		{"connection failure", "08006", true},
 		{"sqlclient unable to establish connection", "08001", true},
 
-		// Transaction rollback (Class 40) - should retry
-		{"serialization failure", "40001", true},
-		{"deadlock detected", "40P01", true},
-		{"transaction rollback", "40000", true},
+		// Transaction rollback (Class 40) - should NOT retry (handled at application level)
+		{"serialization failure", "40001", false},
+		{"deadlock detected", "40P01", false},
+		{"transaction rollback", "40000", false},
 
 		// Operator intervention (Class 57) - should retry
 		{"admin shutdown", "57P01", true},
@@ -155,8 +155,8 @@ func TestIsRetriable_ErrorMessages(t *testing.T) {
 
 func TestIsRetriable_WrappedErrors(t *testing.T) {
 	t.Parallel()
-	// Wrapped PostgreSQL error
-	pgErr := &pgconn.PgError{Code: "40P01"} // deadlock
+	// Wrapped PostgreSQL error (connection error - retriable)
+	pgErr := &pgconn.PgError{Code: "08006"} // connection failure
 	wrappedPgErr := errors.Join(errors.New("query failed"), pgErr)
 	assert.True(t, IsRetriable(wrappedPgErr))
 
