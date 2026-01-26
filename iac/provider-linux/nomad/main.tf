@@ -255,6 +255,17 @@ resource "nomad_job" "template_manager" {
   })
 }
 
+resource "nomad_job" "canary" {
+  count = var.enable_nomad_jobs ? 1 : 0
+  jobspec = templatefile("${path.module}/jobs/canary.hcl", {
+    datacenter            = var.datacenter
+    node_pool             = var.api_node_pool
+    api_port              = var.api_port.port
+    orchestrator_port     = var.orchestrator_port
+    template_manager_port = var.template_manager_port
+  })
+}
+
 resource "nomad_job" "orchestrator" {
   count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/orchestrator.hcl", {
