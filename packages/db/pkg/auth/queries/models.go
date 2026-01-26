@@ -7,7 +7,7 @@ package authqueries
 import (
 	"time"
 
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -115,16 +115,16 @@ type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string
 	SandboxID           string
-	ID                  uuid.UUID
-	Metadata            types.JSONBStringMap
-	BaseEnvID           string
+	ID        uuid.UUID
+	Metadata  types.JSONBStringMap
+	BaseEnvID string
 	SandboxStartedAt    pgtype.Timestamptz
 	EnvSecure           bool
 	OriginNodeID        string
 	AllowInternetAccess *bool
 	AutoPause           bool
-	TeamID              uuid.UUID
-	Config              types.JSONBStringMap
+	TeamID    uuid.UUID
+	Config    types.JSONBStringMap
 }
 
 type Team struct {

@@ -3,7 +3,7 @@ package pool
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/e2b-dev/infra/packages/db/retry"
+	"github.com/e2b-dev/infra/packages/db/pkg/retry"
 )
 
 type Option func(config *pgxpool.Config, retryConfig *retry.Config)

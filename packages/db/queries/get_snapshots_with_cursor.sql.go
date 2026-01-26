@@ -8,7 +8,7 @@ package queries
 import (
 	"context"
 
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -48,9 +48,9 @@ LIMIT $1
 
 type GetSnapshotsWithCursorParams struct {
 	Limit                 int32
-	TeamID                uuid.UUID
-	Metadata              types.JSONBStringMap
-	CursorID              string
+	TeamID   uuid.UUID
+	Metadata types.JSONBStringMap
+	CursorID string
 	CursorTime            pgtype.Timestamptz
 	SnapshotExcludeSbxIds []string
 }

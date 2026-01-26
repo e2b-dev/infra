@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
-	"github.com/e2b-dev/infra/packages/db/testutils"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 

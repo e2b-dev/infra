@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	retry2 "github.com/e2b-dev/infra/packages/db/pkg/retry"
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
-	"github.com/e2b-dev/infra/packages/db/retry"
 )
 
 func New(ctx context.Context, databaseURL string, options ...Option) (types.DBTX, *pgxpool.Pool, error) {
@@ -18,7 +18,7 @@ func New(ctx context.Context, databaseURL string, options ...Option) (types.DBTX
 		return nil, nil, fmt.Errorf("failed to parse connection pool config: %w", err)
 	}
 
-	retryConfig := &retry.Config{}
+	retryConfig := &retry2.Config{}
 
 	for _, opt := range options {
 		opt(config, retryConfig)
@@ -44,5 +44,5 @@ func New(ctx context.Context, databaseURL string, options ...Option) (types.DBTX
 	// Disable statement caching to avoid issues with prepared statements in transactions
 	// config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
 
-	return retry.Wrap(pool, *retryConfig), pool, nil
+	return retry2.Wrap(pool, *retryConfig), pool, nil
 }
