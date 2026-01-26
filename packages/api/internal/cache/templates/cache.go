@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -70,51 +69,43 @@ func NewTemplateCache(db *sqlcdb.Client) *TemplateCache {
 // ResolveAlias resolves an identifier to AliasInfo (templateID, teamID, public).
 // The identifier is "namespace/alias" or just "alias" (already validated by id.ParseName).
 // namespaceFallback is used for bare aliases (no explicit namespace).
-func (c *TemplateCache) ResolveAlias(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, *api.APIError) {
+func (c *TemplateCache) ResolveAlias(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, error) {
 	return c.aliasCache.Resolve(ctx, identifier, namespaceFallback)
 }
 
 // GetByID looks up template info by direct template ID only (no alias resolution).
-func (c *TemplateCache) GetByID(ctx context.Context, templateID string) (*AliasInfo, *api.APIError) {
+func (c *TemplateCache) GetByID(ctx context.Context, templateID string) (*AliasInfo, error) {
 	return c.aliasCache.LookupByID(ctx, templateID)
 }
 
 // Get fetches a template with build by templateID and tag.
 // Does NOT do alias resolution - callers should use ResolveAlias first.
 // Performs access control and cluster checks.
-func (c *TemplateCache) Get(ctx context.Context, templateID string, tag *string, teamID uuid.UUID, clusterID uuid.UUID) (*api.Template, *queries.EnvBuild, *api.APIError) {
+func (c *TemplateCache) Get(ctx context.Context, templateID string, tag *string, teamID uuid.UUID, clusterID uuid.UUID) (*api.Template, *queries.EnvBuild, error) {
 	ctx, span := tracer.Start(ctx, "get template")
 	defer span.End()
 
 	// Step 1: Get template with build by ID and tag
-	templateInfo, apiErr := c.getByID(ctx, templateID, tag)
-	if apiErr != nil {
-		return nil, nil, apiErr
+	templateInfo, err := c.getByID(ctx, templateID, tag)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// Step 2: Access control check
 	if templateInfo.TeamID != teamID && !templateInfo.Template.Public {
-		return nil, nil, &api.APIError{
-			Code:      http.StatusForbidden,
-			ClientMsg: fmt.Sprintf("Team '%s' does not have access to the template '%s'", teamID, templateID),
-			Err:       fmt.Errorf("team '%s' does not have access to the template '%s'", teamID, templateID),
-		}
+		return nil, nil, fmt.Errorf("%w: team '%s' cannot access template '%s'", ErrAccessDenied, teamID, templateID)
 	}
 
 	// Step 3: Cluster check
 	if templateInfo.ClusterID != clusterID {
-		return nil, nil, &api.APIError{
-			Code:      http.StatusBadRequest,
-			ClientMsg: fmt.Sprintf("Template '%s' is not available in requested cluster", templateID),
-			Err:       fmt.Errorf("template '%s' is not available in requested cluster '%s'", templateID, clusterID),
-		}
+		return nil, nil, fmt.Errorf("%w: template '%s' not in cluster '%s'", ErrClusterMismatch, templateID, clusterID)
 	}
 
 	return templateInfo.Template, templateInfo.Build, nil
 }
 
 // getByID fetches template+build by templateID and tag
-func (c *TemplateCache) getByID(ctx context.Context, templateID string, tag *string) (*TemplateInfo, *api.APIError) {
+func (c *TemplateCache) getByID(ctx context.Context, templateID string, tag *string) (*TemplateInfo, error) {
 	tagValue := id.DefaultTag
 	if tag != nil {
 		tagValue = *tag
@@ -125,16 +116,7 @@ func (c *TemplateCache) getByID(ctx context.Context, templateID string, tag *str
 		return c.fetchTemplateWithBuild(ctx, templateID, tag)
 	})
 	if err != nil {
-		var apiErr *api.APIError
-		if errors.As(err, &apiErr) {
-			return nil, apiErr
-		}
-
-		return nil, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: fmt.Sprintf("error fetching template: %v", err),
-			Err:       err,
-		}
+		return nil, err
 	}
 
 	return info, nil
@@ -150,23 +132,10 @@ func (c *TemplateCache) fetchTemplateWithBuild(ctx context.Context, templateID s
 	})
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
-			tagMsg := ""
-			if tag != nil {
-				tagMsg = fmt.Sprintf(" with tag '%s'", *tag)
-			}
-
-			return nil, &api.APIError{
-				Code:      http.StatusNotFound,
-				ClientMsg: fmt.Sprintf("template '%s'%s not found", templateID, tagMsg),
-				Err:       err,
-			}
+			return nil, ErrTemplateNotFound
 		}
 
-		return nil, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: fmt.Sprintf("error fetching template: %v", err),
-			Err:       err,
-		}
+		return nil, fmt.Errorf("fetching template with build: %w", err)
 	}
 
 	build := &result.EnvBuild

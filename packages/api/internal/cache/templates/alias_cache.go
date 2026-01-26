@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -54,7 +52,7 @@ func buildAliasKey(namespace *string, alias string) string {
 // Resolve implements the namespace resolution flowchart:
 //   - Explicit namespace: lookup with namespace directly, no fallback
 //   - Bare alias: try namespaceFallback first, then NULL (promoted templates)
-func (c *AliasCache) Resolve(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, *api.APIError) {
+func (c *AliasCache) Resolve(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, error) {
 	ctx, span := tracer.Start(ctx, "resolve alias")
 	defer span.End()
 
@@ -72,7 +70,7 @@ func (c *AliasCache) Resolve(ctx context.Context, identifier string, namespaceFa
 	}
 
 	// If not found, try NULL namespace (promoted templates)
-	if err.Code == http.StatusNotFound {
+	if errors.Is(err, ErrTemplateNotFound) {
 		info, err = c.lookup(ctx, nil, alias)
 		if err == nil {
 			return info, nil
@@ -83,21 +81,12 @@ func (c *AliasCache) Resolve(ctx context.Context, identifier string, namespaceFa
 }
 
 // lookup performs a single lookup (cache then DB) for namespace/alias
-func (c *AliasCache) lookup(ctx context.Context, namespace *string, alias string) (*AliasInfo, *api.APIError) {
+func (c *AliasCache) lookup(ctx context.Context, namespace *string, alias string) (*AliasInfo, error) {
 	key := buildAliasKey(namespace, alias)
 
 	info, err := c.cache.GetOrSet(ctx, key, c.fetchFromDB)
 	if err != nil {
-		var apiErr *api.APIError
-		if errors.As(err, &apiErr) {
-			return nil, apiErr
-		}
-
-		return nil, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: fmt.Sprintf("error resolving template: %v", err),
-			Err:       err,
-		}
+		return nil, err
 	}
 
 	// Also cache by template ID for direct ID lookups (use nil namespace since
@@ -132,8 +121,8 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (*AliasInfo, e
 	// - "<templateID>" (bare) should succeed via ID lookup after alias lookups fail
 	if dberrors.IsNotFoundError(err) {
 		if namespace == nil {
-			idResult, err := c.db.GetTemplateById(ctx, alias)
-			if err == nil {
+			idResult, idErr := c.db.GetTemplateById(ctx, alias)
+			if idErr == nil {
 				return &AliasInfo{
 					TemplateID: idResult.ID,
 					TeamID:     idResult.TeamID,
@@ -141,33 +130,20 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (*AliasInfo, e
 				}, nil
 			}
 
-			if !dberrors.IsNotFoundError(err) {
-				return nil, &api.APIError{
-					Code:      http.StatusInternalServerError,
-					ClientMsg: fmt.Sprintf("error resolving template: %v", err),
-					Err:       err,
-				}
+			if !dberrors.IsNotFoundError(idErr) {
+				return nil, fmt.Errorf("fetching template by ID: %w", idErr)
 			}
 		}
 
-		return nil, &api.APIError{
-			Code:      http.StatusNotFound,
-			ClientMsg: fmt.Sprintf("template '%s' not found", alias),
-			Err:       err,
-		}
+		return nil, ErrTemplateNotFound
 	}
 
-	// GetTemplateByAlias failed with a non-"not found" error
-	return nil, &api.APIError{
-		Code:      http.StatusInternalServerError,
-		ClientMsg: fmt.Sprintf("error resolving template: %v", err),
-		Err:       err,
-	}
+	return nil, fmt.Errorf("fetching template by alias: %w", err)
 }
 
 // LookupByID looks up template info by direct template ID only (no alias resolution).
 // Uses the same cache as alias lookups since we cache by template ID too.
-func (c *AliasCache) LookupByID(ctx context.Context, templateID string) (*AliasInfo, *api.APIError) {
+func (c *AliasCache) LookupByID(ctx context.Context, templateID string) (*AliasInfo, error) {
 	return c.lookup(ctx, nil, templateID)
 }
 

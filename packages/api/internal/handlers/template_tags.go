@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -64,8 +65,9 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		targetTagValue = *tag
 	}
 
-	aliasInfo, apiErr := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
-	if apiErr != nil {
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(identifier))
 
@@ -236,8 +238,9 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 		return
 	}
 
-	aliasInfo, apiErr := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
-	if apiErr != nil {
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(identifier))
 

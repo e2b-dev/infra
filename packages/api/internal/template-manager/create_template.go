@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -304,11 +305,16 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 		}
 
 		// Step 1: Resolve alias to template ID (using cache with fallback for promoted templates)
-		aliasInfo, apiErr := tm.templateCache.ResolveAlias(ctx, identifier, teamSlug)
-		if apiErr != nil {
+		aliasInfo, err := tm.templateCache.ResolveAlias(ctx, identifier, teamSlug)
+		if err != nil {
+			msg := fmt.Sprintf("error resolving base template '%s'", *fromTemplate)
+			if errors.Is(err, templatecache.ErrTemplateNotFound) {
+				msg = fmt.Sprintf("base template '%s' not found", *fromTemplate)
+			}
+
 			return &FromTemplateError{
-				err:     apiErr.Err,
-				message: fmt.Sprintf("base template '%s' not found", *fromTemplate),
+				err:     err,
+				message: msg,
 			}
 		}
 

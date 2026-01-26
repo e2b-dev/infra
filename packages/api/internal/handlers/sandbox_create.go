@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -71,18 +72,20 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
-	aliasInfo, checkErr := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Team.Slug)
-	if checkErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when resolving template alias", checkErr.Err)
-		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
+		telemetry.ReportCriticalError(ctx, "error when resolving template alias", apiErr.Err)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
 
-	env, build, checkErr := a.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamInfo.Team.ID, clusterID)
-	if checkErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
-		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
+	env, build, err := a.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamInfo.Team.ID, clusterID)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, aliasInfo.TemplateID)
+		telemetry.ReportCriticalError(ctx, "error when getting template", apiErr.Err)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}

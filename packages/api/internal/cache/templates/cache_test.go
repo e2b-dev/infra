@@ -1,7 +1,6 @@
 package templatecache
 
 import (
-	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,7 +27,7 @@ func TestAliasCacheResolve_BareAliasInTeamNamespace(t *testing.T) {
 
 	// Bare alias should resolve via team namespace fallback
 	info, err := cache.Resolve(ctx, "my-alias", teamSlug)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, templateID, info.TemplateID)
 	assert.Equal(t, teamID, info.TeamID)
@@ -59,7 +58,7 @@ func TestAliasCacheResolve_BareAliasFallbackToNullNamespace(t *testing.T) {
 	// 1. Try requesting team's namespace -> not found
 	// 2. Fall back to NULL namespace -> found
 	info, err := cache.Resolve(ctx, "base", requestingTeamSlug)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, promotedTemplateID, info.TemplateID)
 	assert.Equal(t, promotedTeamID, info.TeamID)
@@ -85,9 +84,8 @@ func TestAliasCacheResolve_ExplicitNamespaceNoFallback(t *testing.T) {
 
 	// Explicit namespace lookup should NOT fall back to NULL
 	info, err := cache.Resolve(ctx, teamSlug+"/only-promoted", teamSlug)
-	require.NotNil(t, err)
+	require.ErrorIs(t, err, ErrTemplateNotFound)
 	require.Nil(t, info)
-	assert.Equal(t, http.StatusNotFound, err.Code)
 }
 
 // TestAliasCacheResolve_ExplicitNamespaceNoIDFallback tests that an explicit namespace
@@ -110,13 +108,12 @@ func TestAliasCacheResolve_ExplicitNamespaceNoIDFallback(t *testing.T) {
 	// Even though templateID is a valid template ID, it should NOT resolve because
 	// explicit namespace lookups should not fall back to ID lookup.
 	info, err := cache.Resolve(ctx, teamSlug+"/"+templateID, teamSlug)
-	require.NotNil(t, err)
+	require.ErrorIs(t, err, ErrTemplateNotFound)
 	require.Nil(t, info)
-	assert.Equal(t, http.StatusNotFound, err.Code)
 
 	// But bare templateID should still resolve via ID fallback
 	info, err = cache.Resolve(ctx, templateID, teamSlug)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, templateID, info.TemplateID)
 }
@@ -150,7 +147,7 @@ func TestAliasCacheResolve_TeamOverridesPromoted(t *testing.T) {
 
 	// Team's alias should take precedence
 	info, err := cache.Resolve(ctx, "shared-name", teamSlug)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, teamTemplateID, info.TemplateID, "Team's alias should override promoted")
 }
@@ -170,7 +167,7 @@ func TestAliasCacheResolve_DirectTemplateID(t *testing.T) {
 
 	// Direct template ID should resolve
 	info, err := cache.Resolve(ctx, templateID, teamSlug)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, templateID, info.TemplateID)
 }
@@ -188,9 +185,8 @@ func TestAliasCacheResolve_NotFound(t *testing.T) {
 	defer cache.Close(ctx)
 
 	info, err := cache.Resolve(ctx, "non-existent", teamSlug)
-	require.NotNil(t, err)
+	require.ErrorIs(t, err, ErrTemplateNotFound)
 	require.Nil(t, info)
-	assert.Equal(t, http.StatusNotFound, err.Code)
 }
 
 // TestAliasCacheLookupByID tests direct template ID lookup
@@ -206,7 +202,7 @@ func TestAliasCacheLookupByID(t *testing.T) {
 	defer cache.Close(ctx)
 
 	info, err := cache.LookupByID(ctx, templateID)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, templateID, info.TemplateID)
 	assert.Equal(t, teamID, info.TeamID)
@@ -222,9 +218,8 @@ func TestAliasCacheLookupByID_NotFound(t *testing.T) {
 	defer cache.Close(ctx)
 
 	info, err := cache.LookupByID(ctx, "non-existent-id")
-	require.NotNil(t, err)
+	require.ErrorIs(t, err, ErrTemplateNotFound)
 	require.Nil(t, info)
-	assert.Equal(t, http.StatusNotFound, err.Code)
 }
 
 // TestAliasCacheLookupByID_UsesCache tests that LookupByID uses cached entries from Resolve
@@ -244,12 +239,12 @@ func TestAliasCacheLookupByID_UsesCache(t *testing.T) {
 
 	// First, resolve by alias (this caches by both alias and template ID)
 	info1, err := cache.Resolve(ctx, "cached-alias", teamSlug)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, info1)
 
 	// Lookup by ID should return the same cached pointer
 	info2, err := cache.LookupByID(ctx, templateID)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, info2)
 	assert.Equal(t, templateID, info2.TemplateID)
 	assert.Equal(t, teamID, info2.TeamID)
