@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	testutils2 "github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
@@ -16,23 +16,23 @@ import (
 // order takes precedence.
 func TestGetTemplateWithBuildByTag_AssignmentOrderDifferentFromBuildOrder(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create team and template
-	teamID := testutils2.CreateTestTeam(t, db)
-	templateID := testutils2.CreateTestTemplate(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Create builds: build1 (older), build2 (newer)
-	build1ID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	build1ID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
 	time.Sleep(10 * time.Millisecond)
-	build2ID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	build2ID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
 
 	// Assign in REVERSE order: build2 first, then build1
 	// Even though build2 was created later, build1 has the latest assignment
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, build2ID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, build2ID, "default")
 	time.Sleep(10 * time.Millisecond)
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, build1ID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, build1ID, "default")
 
 	// GetTemplateWithBuildByTag should return build1 (latest assignment)
 	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
@@ -49,21 +49,21 @@ func TestGetTemplateWithBuildByTag_AssignmentOrderDifferentFromBuildOrder(t *tes
 // returns the build from the most recent assignment for a specific tag.
 func TestGetTemplateWithBuildByTag_AssignmentOrderSameAsBuildOrder(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create team and template
-	teamID := testutils2.CreateTestTeam(t, db)
-	templateID := testutils2.CreateTestTemplate(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Create two builds
-	build1ID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
-	build2ID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	build1ID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	build2ID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
 
 	// Assign both to 'default' tag - build2 should be latest
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, build1ID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, build1ID, "default")
 	time.Sleep(10 * time.Millisecond)
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, build2ID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, build2ID, "default")
 
 	// GetTemplateWithBuildByTag should return build2 (latest assignment)
 	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
@@ -80,21 +80,21 @@ func TestGetTemplateWithBuildByTag_AssignmentOrderSameAsBuildOrder(t *testing.T)
 // with status='uploaded' are returned, even if a non-uploaded build has a more recent assignment.
 func TestGetTemplateWithBuildByTag_OnlyReturnsUploadedBuilds(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create team and template
-	teamID := testutils2.CreateTestTeam(t, db)
-	templateID := testutils2.CreateTestTemplate(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Create an uploaded build and a waiting build
-	uploadedBuildID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
-	waitingBuildID := testutils2.CreateTestBuild(t, ctx, db, templateID, "waiting")
+	uploadedBuildID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	waitingBuildID := testutils.CreateTestBuild(t, ctx, db, templateID, "waiting")
 
 	// Assign uploaded first, then waiting (latest)
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, uploadedBuildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, uploadedBuildID, "default")
 	time.Sleep(10 * time.Millisecond)
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, waitingBuildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, waitingBuildID, "default")
 
 	// GetTemplateWithBuildByTag should return the uploaded build, not waiting
 	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
@@ -111,20 +111,20 @@ func TestGetTemplateWithBuildByTag_OnlyReturnsUploadedBuilds(t *testing.T) {
 // the correct build for a specific non-default tag.
 func TestGetTemplateWithBuildByTag_SpecificTag(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create team and template
-	teamID := testutils2.CreateTestTeam(t, db)
-	templateID := testutils2.CreateTestTemplate(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Create two builds
-	defaultBuildID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
-	v1BuildID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	defaultBuildID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	v1BuildID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
 
 	// Assign to different tags
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, defaultBuildID, "default")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, v1BuildID, "v1")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, defaultBuildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, v1BuildID, "v1")
 
 	// Query for 'v1' tag
 	v1Tag := "v1"
@@ -142,22 +142,22 @@ func TestGetTemplateWithBuildByTag_SpecificTag(t *testing.T) {
 // GetTeamTemplates uses assignment order for determining the latest build.
 func TestGetTeamTemplates_AssignmentOrderDifferentFromBuildOrder(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create team and template
-	teamID := testutils2.CreateTestTeam(t, db)
-	templateID := testutils2.CreateTestTemplate(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Create builds: build1 (older), build2 (newer)
-	build1ID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	build1ID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
 	time.Sleep(10 * time.Millisecond)
-	build2ID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	build2ID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
 
 	// Assign in REVERSE order: build2 first, then build1 (latest assignment)
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, build2ID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, build2ID, "default")
 	time.Sleep(10 * time.Millisecond)
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, build1ID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, build1ID, "default")
 
 	// GetTeamTemplates should return build1 (latest assignment)
 	results, err := db.SqlcClient.GetTeamTemplates(ctx, teamID)

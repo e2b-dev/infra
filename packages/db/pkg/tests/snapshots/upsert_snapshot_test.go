@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	testutils2 "github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
@@ -18,13 +18,13 @@ import (
 func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 	t.Parallel()
 	// Setup test database with migrations
-	client := testutils2.SetupDatabase(t)
+	client := testutils.SetupDatabase(t)
 	ctx := context.Background()
 
 	// Create a test team first (required by foreign key constraint)
-	teamID := testutils2.CreateTestTeam(t, client)
+	teamID := testutils.CreateTestTeam(t, client)
 	// Create a base env (required by foreign key constraint on snapshots table)
-	baseTemplateID := testutils2.CreateTestTemplate(t, client, teamID)
+	baseTemplateID := testutils.CreateTestTemplate(t, client, teamID)
 
 	// Prepare test data for a new snapshot
 	templateID := "test-template-" + uuid.New().String()
@@ -79,20 +79,20 @@ func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, result.BuildID, "BuildID should not be nil")
 
 	// Verify metadata was stored correctly
-	storedMetadata := testutils2.GetSnapshotMetadata(t, ctx, client, sandboxID)
+	storedMetadata := testutils.GetSnapshotMetadata(t, ctx, client, sandboxID)
 	assert.Equal(t, params.Metadata, storedMetadata, "Stored metadata should match the input metadata")
 	assert.Equal(t, "value", storedMetadata["key"], "Metadata key 'key' should have value 'value'")
 
 	// Verify envs entry was created
-	envExists := testutils2.GetEnvByID(t, ctx, client, result.TemplateID)
+	envExists := testutils.GetEnvByID(t, ctx, client, result.TemplateID)
 	assert.True(t, envExists, "Env entry should exist in envs table")
 
 	// Verify env_builds entry was created
-	buildExists := testutils2.GetEnvBuildByID(t, ctx, client, result.BuildID)
+	buildExists := testutils.GetEnvBuildByID(t, ctx, client, result.BuildID)
 	assert.True(t, buildExists, "Build entry should exist in env_builds table")
 
 	// Verify env_build_assignments entry was created
-	assignment := testutils2.GetBuildAssignmentByBuildID(t, ctx, client, result.BuildID)
+	assignment := testutils.GetBuildAssignmentByBuildID(t, ctx, client, result.BuildID)
 	require.NotNil(t, assignment, "Build assignment should exist for the new build")
 	assert.Equal(t, result.TemplateID, assignment.EnvID, "Assignment env_id should match template_id")
 	assert.Equal(t, result.BuildID, assignment.BuildID, "Assignment build_id should match")
@@ -102,13 +102,13 @@ func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	t.Parallel()
 	// Setup test database with migrations
-	client := testutils2.SetupDatabase(t)
+	client := testutils.SetupDatabase(t)
 	ctx := context.Background()
 
 	// Create a test team first (required by foreign key constraint)
-	teamID := testutils2.CreateTestTeam(t, client)
+	teamID := testutils.CreateTestTeam(t, client)
 	// Create a base env (required by foreign key constraint on snapshots table)
-	baseTemplateID := testutils2.CreateTestTemplate(t, client, teamID)
+	baseTemplateID := testutils.CreateTestTemplate(t, client, teamID)
 
 	// Prepare test data for the first snapshot creation
 	templateID := "test-template-" + uuid.New().String()
@@ -154,14 +154,14 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	assert.Equal(t, templateID, initialTemplateID, "Initial TemplateID should match input")
 
 	// Verify initial metadata was stored correctly
-	initialStoredMetadata := testutils2.GetSnapshotMetadata(t, ctx, client, sandboxID)
+	initialStoredMetadata := testutils.GetSnapshotMetadata(t, ctx, client, sandboxID)
 	assert.Equal(t, initialParams.Metadata, initialStoredMetadata, "Initial metadata should match")
 	assert.Equal(t, "initial_value", initialStoredMetadata["key"], "Initial metadata key should have correct value")
 
 	// Verify initial envs, env_builds, and build assignment were created
-	assert.True(t, testutils2.GetEnvByID(t, ctx, client, initialTemplateID), "Initial env should exist")
-	assert.True(t, testutils2.GetEnvBuildByID(t, ctx, client, initialBuildID), "Initial build should exist")
-	initialAssignment := testutils2.GetBuildAssignmentByBuildID(t, ctx, client, initialBuildID)
+	assert.True(t, testutils.GetEnvByID(t, ctx, client, initialTemplateID), "Initial env should exist")
+	assert.True(t, testutils.GetEnvBuildByID(t, ctx, client, initialBuildID), "Initial build should exist")
+	initialAssignment := testutils.GetBuildAssignmentByBuildID(t, ctx, client, initialBuildID)
 	require.NotNil(t, initialAssignment, "Initial build assignment should exist")
 	assert.Equal(t, initialTemplateID, initialAssignment.EnvID, "Initial assignment env_id should match")
 	assert.Equal(t, "default", initialAssignment.Tag, "Initial assignment tag should be 'default'")
@@ -218,21 +218,21 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 		"New BuildID should not be nil")
 
 	// 4. Verify metadata was updated correctly
-	updatedStoredMetadata := testutils2.GetSnapshotMetadata(t, ctx, client, sandboxID)
+	updatedStoredMetadata := testutils.GetSnapshotMetadata(t, ctx, client, sandboxID)
 	assert.Equal(t, updatedParams.Metadata, updatedStoredMetadata, "Updated metadata should match")
 	assert.Equal(t, "updated_value", updatedStoredMetadata["key"], "Updated metadata key should have new value")
 	assert.Equal(t, "new_value", updatedStoredMetadata["new_key"], "New metadata key should be present")
 	assert.NotEqual(t, initialStoredMetadata, updatedStoredMetadata, "Updated metadata should be different from initial")
 
 	// 5. Verify the second build and its assignment were created
-	assert.True(t, testutils2.GetEnvBuildByID(t, ctx, client, updatedResult.BuildID), "Second build should exist")
-	secondAssignment := testutils2.GetBuildAssignmentByBuildID(t, ctx, client, updatedResult.BuildID)
+	assert.True(t, testutils.GetEnvBuildByID(t, ctx, client, updatedResult.BuildID), "Second build should exist")
+	secondAssignment := testutils.GetBuildAssignmentByBuildID(t, ctx, client, updatedResult.BuildID)
 	require.NotNil(t, secondAssignment, "Second build assignment should exist")
 	assert.Equal(t, initialTemplateID, secondAssignment.EnvID, "Second assignment env_id should match original template")
 	assert.Equal(t, "default", secondAssignment.Tag, "Second assignment tag should be 'default'")
 
 	// 6. Verify we now have 2 build assignments for the same env_id
-	allAssignments := testutils2.GetBuildAssignments(t, ctx, client, initialTemplateID)
+	allAssignments := testutils.GetBuildAssignments(t, ctx, client, initialTemplateID)
 	assert.GreaterOrEqual(t, len(allAssignments), 2, "Should have at least 2 build assignments after second upsert")
 
 	// Test calling upsert a third time to ensure consistent behavior
@@ -269,19 +269,19 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 		"BuildID should be different from the first upsert")
 
 	// Verify metadata was updated again
-	thirdStoredMetadata := testutils2.GetSnapshotMetadata(t, ctx, client, sandboxID)
+	thirdStoredMetadata := testutils.GetSnapshotMetadata(t, ctx, client, sandboxID)
 	assert.Equal(t, thirdParams.Metadata, thirdStoredMetadata, "Third metadata should match")
 	assert.Equal(t, "third_value", thirdStoredMetadata["key"], "Third metadata key should have latest value")
 	assert.NotEqual(t, updatedStoredMetadata, thirdStoredMetadata, "Third metadata should be different from second")
 
 	// Verify the third build and its assignment were created
-	assert.True(t, testutils2.GetEnvBuildByID(t, ctx, client, thirdResult.BuildID), "Third build should exist")
-	thirdAssignment := testutils2.GetBuildAssignmentByBuildID(t, ctx, client, thirdResult.BuildID)
+	assert.True(t, testutils.GetEnvBuildByID(t, ctx, client, thirdResult.BuildID), "Third build should exist")
+	thirdAssignment := testutils.GetBuildAssignmentByBuildID(t, ctx, client, thirdResult.BuildID)
 	require.NotNil(t, thirdAssignment, "Third build assignment should exist")
 	assert.Equal(t, initialTemplateID, thirdAssignment.EnvID, "Third assignment env_id should match original template")
 	assert.Equal(t, "default", thirdAssignment.Tag, "Third assignment tag should be 'default'")
 
 	// Verify we now have 3 build assignments for the same env_id
-	finalAssignments := testutils2.GetBuildAssignments(t, ctx, client, initialTemplateID)
+	finalAssignments := testutils.GetBuildAssignments(t, ctx, client, initialTemplateID)
 	assert.GreaterOrEqual(t, len(finalAssignments), 3, "Should have at least 3 build assignments after third upsert")
 }

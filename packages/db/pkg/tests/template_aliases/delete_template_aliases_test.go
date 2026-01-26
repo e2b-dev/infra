@@ -7,19 +7,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	testutils2 "github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
 func TestDeleteTemplateAliases_Success(t *testing.T) {
 	t.Parallel()
 	// Setup test database with migrations
-	client := testutils2.SetupDatabase(t)
+	client := testutils.SetupDatabase(t)
 	ctx := context.Background()
 
 	// Create a test team first (required by foreign key constraint)
-	teamID := testutils2.CreateTestTeam(t, client)
+	teamID := testutils.CreateTestTeam(t, client)
 	// Create a base env (required by foreign key constraint on snapshots table)
-	templateID, _ := testutils2.CreateTestTemplateWithAlias(t, client, teamID)
+	templateID, _ := testutils.CreateTestTemplateWithAlias(t, client, teamID)
 
 	// Execute UpsertSnapshot for a new snapshot
 	result, err := client.SqlcClient.DeleteOtherTemplateAliases(ctx, templateID)
@@ -30,14 +30,14 @@ func TestDeleteTemplateAliases_Success(t *testing.T) {
 func TestDeleteTemplateAliases_NoAlias(t *testing.T) {
 	t.Parallel()
 	// Setup test database with migrations
-	client := testutils2.SetupDatabase(t)
+	client := testutils.SetupDatabase(t)
 	ctx := context.Background()
 
 	// Create a test team first (required by foreign key constraint)
-	teamID := testutils2.CreateTestTeam(t, client)
+	teamID := testutils.CreateTestTeam(t, client)
 	// Create a base env (required by foreign key constraint on snapshots table)
-	_, _ = testutils2.CreateTestTemplateWithAlias(t, client, teamID)
-	anotherTemplateID := testutils2.CreateTestTemplate(t, client, teamID)
+	_, _ = testutils.CreateTestTemplateWithAlias(t, client, teamID)
+	anotherTemplateID := testutils.CreateTestTemplate(t, client, teamID)
 
 	// Execute UpsertSnapshot for a new snapshot
 	result, err := client.SqlcClient.DeleteOtherTemplateAliases(ctx, anotherTemplateID)

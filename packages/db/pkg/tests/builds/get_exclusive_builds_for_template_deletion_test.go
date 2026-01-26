@@ -6,19 +6,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	testutils2 "github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
 func TestGetExclusiveBuildsForTemplateDeletion_ExclusiveBuild(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create a template with a build assigned only to it
-	teamID := testutils2.CreateTestTeam(t, db)
-	templateID := testutils2.CreateTestTemplate(t, db, teamID)
-	buildID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
 
 	// Execute query
 	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
@@ -31,20 +31,20 @@ func TestGetExclusiveBuildsForTemplateDeletion_ExclusiveBuild(t *testing.T) {
 
 func TestGetExclusiveBuildsForTemplateDeletion_SharedBuild(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create two templates
-	teamID := testutils2.CreateTestTeam(t, db)
-	template1ID := testutils2.CreateTestTemplate(t, db, teamID)
-	template2ID := testutils2.CreateTestTemplate(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	template1ID := testutils.CreateTestTemplate(t, db, teamID)
+	template2ID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Create a build assigned to template1
-	buildID := testutils2.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, template1ID, buildID, "default")
+	buildID := testutils.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template1ID, buildID, "default")
 
 	// Also assign the same build to template2 (shared build)
-	testutils2.CreateTestBuildAssignment(t, ctx, db, template2ID, buildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, buildID, "default")
 
 	// Execute query for template1
 	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
@@ -56,22 +56,22 @@ func TestGetExclusiveBuildsForTemplateDeletion_SharedBuild(t *testing.T) {
 
 func TestGetExclusiveBuildsForTemplateDeletion_MixedBuilds(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create two templates
-	teamID := testutils2.CreateTestTeam(t, db)
-	template1ID := testutils2.CreateTestTemplate(t, db, teamID)
-	template2ID := testutils2.CreateTestTemplate(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	template1ID := testutils.CreateTestTemplate(t, db, teamID)
+	template2ID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Create an exclusive build for template1
-	exclusiveBuildID := testutils2.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, template1ID, exclusiveBuildID, "default")
+	exclusiveBuildID := testutils.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template1ID, exclusiveBuildID, "default")
 
 	// Create a shared build (assigned to both templates)
-	sharedBuildID := testutils2.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, template1ID, sharedBuildID, "default")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, template2ID, sharedBuildID, "default")
+	sharedBuildID := testutils.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template1ID, sharedBuildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, sharedBuildID, "default")
 
 	// Execute query for template1
 	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
@@ -84,12 +84,12 @@ func TestGetExclusiveBuildsForTemplateDeletion_MixedBuilds(t *testing.T) {
 
 func TestGetExclusiveBuildsForTemplateDeletion_NoBuilds(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create template without any builds
-	teamID := testutils2.CreateTestTeam(t, db)
-	templateID := testutils2.CreateTestTemplate(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Execute query
 	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
@@ -101,18 +101,18 @@ func TestGetExclusiveBuildsForTemplateDeletion_NoBuilds(t *testing.T) {
 
 func TestGetExclusiveBuildsForTemplateDeletion_MultipleTagsSameTemplate(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create template with a build assigned with multiple tags
-	teamID := testutils2.CreateTestTeam(t, db)
-	templateID := testutils2.CreateTestTemplate(t, db, teamID)
-	buildID := testutils2.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
 
 	// Assign same build with multiple tags to same template
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "v1")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "latest")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "v1")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "latest")
 
 	// Execute query
 	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
@@ -125,21 +125,21 @@ func TestGetExclusiveBuildsForTemplateDeletion_MultipleTagsSameTemplate(t *testi
 
 func TestGetExclusiveBuildsForTemplateDeletion_SharedBuildAcrossTeams(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create two templates belonging to different teams
-	team1ID := testutils2.CreateTestTeam(t, db)
-	team2ID := testutils2.CreateTestTeam(t, db)
-	template1ID := testutils2.CreateTestTemplate(t, db, team1ID)
-	template2ID := testutils2.CreateTestTemplate(t, db, team2ID)
+	team1ID := testutils.CreateTestTeam(t, db)
+	team2ID := testutils.CreateTestTeam(t, db)
+	template1ID := testutils.CreateTestTemplate(t, db, team1ID)
+	template2ID := testutils.CreateTestTemplate(t, db, team2ID)
 
 	// Create a build assigned to template1
-	buildID := testutils2.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, template1ID, buildID, "default")
+	buildID := testutils.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template1ID, buildID, "default")
 
 	// Also assign the same build to template2 (shared build across teams)
-	testutils2.CreateTestBuildAssignment(t, ctx, db, template2ID, buildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, buildID, "default")
 
 	// Execute query for template1
 	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
@@ -151,23 +151,23 @@ func TestGetExclusiveBuildsForTemplateDeletion_SharedBuildAcrossTeams(t *testing
 
 func TestGetExclusiveBuildsForTemplateDeletion_MixedBuildsAcrossTeams(t *testing.T) {
 	t.Parallel()
-	db := testutils2.SetupDatabase(t)
+	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
 	// Create two templates belonging to different teams
-	team1ID := testutils2.CreateTestTeam(t, db)
-	team2ID := testutils2.CreateTestTeam(t, db)
-	template1ID := testutils2.CreateTestTemplate(t, db, team1ID)
-	template2ID := testutils2.CreateTestTemplate(t, db, team2ID)
+	team1ID := testutils.CreateTestTeam(t, db)
+	team2ID := testutils.CreateTestTeam(t, db)
+	template1ID := testutils.CreateTestTemplate(t, db, team1ID)
+	template2ID := testutils.CreateTestTemplate(t, db, team2ID)
 
 	// Create an exclusive build for template1
-	exclusiveBuildID := testutils2.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, template1ID, exclusiveBuildID, "default")
+	exclusiveBuildID := testutils.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template1ID, exclusiveBuildID, "default")
 
 	// Create a shared build (assigned to both templates from different teams)
-	sharedBuildID := testutils2.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, template1ID, sharedBuildID, "default")
-	testutils2.CreateTestBuildAssignment(t, ctx, db, template2ID, sharedBuildID, "default")
+	sharedBuildID := testutils.CreateTestBuild(t, ctx, db, template1ID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template1ID, sharedBuildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, template2ID, sharedBuildID, "default")
 
 	// Execute query for template1
 	results, err := db.SqlcClient.GetExclusiveBuildsForTemplateDeletion(ctx, template1ID)
