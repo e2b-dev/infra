@@ -55,12 +55,22 @@ func (m *mockRow) Scan(dest ...any) error {
 	return nil
 }
 
+// testConfig returns a config with fast backoffs for testing.
+func testConfig() Config {
+	return Config{
+		MaxAttempts:       5,
+		InitialBackoff:    1 * time.Millisecond,
+		MaxBackoff:        10 * time.Millisecond,
+		BackoffMultiplier: 2.0,
+	}
+}
+
 func TestWrap_ReturnsOriginalForTransaction(t *testing.T) {
 	t.Parallel()
 	// We can't easily create a real pgx.Tx without a database connection,
 	// so we verify the type assertion logic indirectly.
 	mock := &mockDBTX{}
-	wrapped := Wrap(mock)
+	wrapped := Wrap(mock, DefaultConfig())
 
 	// Should wrap non-transaction DBTX
 	_, isRetryable := wrapped.(*RetryableDBTX)
@@ -78,7 +88,7 @@ func TestExec_SuccessOnFirstAttempt(t *testing.T) {
 		},
 	}
 
-	wrapped := Wrap(mock)
+	wrapped := Wrap(mock, testConfig())
 	ctx := context.Background()
 
 	result, err := wrapped.Exec(ctx, "INSERT INTO test VALUES (1)")
@@ -101,7 +111,7 @@ func TestExec_RetryOnConnectionError(t *testing.T) {
 		},
 	}
 
-	wrapped := Wrap(mock, WithInitialBackoff(1*time.Millisecond), WithMaxBackoff(10*time.Millisecond))
+	wrapped := Wrap(mock, testConfig())
 	ctx := context.Background()
 
 	result, err := wrapped.Exec(ctx, "INSERT INTO test VALUES (1)")
@@ -124,7 +134,7 @@ func TestExec_RetryOnDeadlock(t *testing.T) {
 		},
 	}
 
-	wrapped := Wrap(mock, WithInitialBackoff(1*time.Millisecond))
+	wrapped := Wrap(mock, testConfig())
 	ctx := context.Background()
 
 	result, err := wrapped.Exec(ctx, "UPDATE test SET val = 1")
@@ -144,7 +154,7 @@ func TestExec_NoRetryOnConstraintViolation(t *testing.T) {
 		},
 	}
 
-	wrapped := Wrap(mock, WithInitialBackoff(1*time.Millisecond))
+	wrapped := Wrap(mock, testConfig())
 	ctx := context.Background()
 
 	_, err := wrapped.Exec(ctx, "INSERT INTO test VALUES (1)")
@@ -167,7 +177,9 @@ func TestExec_MaxAttemptsExceeded(t *testing.T) {
 		},
 	}
 
-	wrapped := Wrap(mock, WithMaxAttempts(3), WithInitialBackoff(1*time.Millisecond))
+	config := testConfig()
+	config.MaxAttempts = 3
+	wrapped := Wrap(mock, config)
 	ctx := context.Background()
 
 	_, err := wrapped.Exec(ctx, "INSERT INTO test VALUES (1)")
@@ -186,7 +198,9 @@ func TestExec_ContextCancellation(t *testing.T) {
 		},
 	}
 
-	wrapped := Wrap(mock, WithInitialBackoff(100*time.Millisecond))
+	config := testConfig()
+	config.InitialBackoff = 100 * time.Millisecond
+	wrapped := Wrap(mock, config)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Cancel context after a short delay
@@ -215,7 +229,7 @@ func TestQuery_RetryOnConnectionError(t *testing.T) {
 		},
 	}
 
-	wrapped := Wrap(mock, WithInitialBackoff(1*time.Millisecond))
+	wrapped := Wrap(mock, testConfig())
 	ctx := context.Background()
 
 	rows, err := wrapped.Query(ctx, "SELECT id FROM test")
@@ -250,7 +264,7 @@ func TestQueryRow_RetryOnConnectionError(t *testing.T) {
 		},
 	}
 
-	wrapped := Wrap(mock, WithInitialBackoff(1*time.Millisecond))
+	wrapped := Wrap(mock, testConfig())
 	ctx := context.Background()
 
 	var result int
@@ -275,7 +289,7 @@ func TestQueryRow_NoRetryOnNoRows(t *testing.T) {
 		},
 	}
 
-	wrapped := Wrap(mock, WithInitialBackoff(1*time.Millisecond))
+	wrapped := Wrap(mock, testConfig())
 	ctx := context.Background()
 
 	var result int
@@ -284,24 +298,32 @@ func TestQueryRow_NoRetryOnNoRows(t *testing.T) {
 	assert.Equal(t, 1, callCount, "should not retry on ErrNoRows")
 }
 
+func TestConfig_DefaultValues(t *testing.T) {
+	t.Parallel()
+
+	config := DefaultConfig()
+
+	assert.Equal(t, 5, config.MaxAttempts)
+	assert.Equal(t, 10*time.Millisecond, config.InitialBackoff)
+	assert.Equal(t, 2*time.Second, config.MaxBackoff)
+	assert.InDelta(t, 2.0, config.BackoffMultiplier, 0.001)
+}
+
 func TestConfig_Options(t *testing.T) {
 	t.Parallel()
-	mock := &mockDBTX{}
 
-	wrapped := Wrap(mock,
+	config := DefaultConfig()
+	config.Apply(
 		WithMaxAttempts(10),
 		WithInitialBackoff(50*time.Millisecond),
 		WithMaxBackoff(5*time.Second),
 		WithBackoffMultiplier(3.0),
 	)
 
-	retryable, ok := wrapped.(*RetryableDBTX)
-	require.True(t, ok)
-
-	assert.Equal(t, 10, retryable.config.MaxAttempts)
-	assert.Equal(t, 50*time.Millisecond, retryable.config.InitialBackoff)
-	assert.Equal(t, 5*time.Second, retryable.config.MaxBackoff)
-	assert.InDelta(t, 3.0, retryable.config.BackoffMultiplier, 0.001)
+	assert.Equal(t, 10, config.MaxAttempts)
+	assert.Equal(t, 50*time.Millisecond, config.InitialBackoff)
+	assert.Equal(t, 5*time.Second, config.MaxBackoff)
+	assert.InDelta(t, 3.0, config.BackoffMultiplier, 0.001)
 }
 
 func TestBackoff_ExponentialGrowth(t *testing.T) {

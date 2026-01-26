@@ -81,10 +81,10 @@ func NewClientFromConnectionString(ctx context.Context, databaseURL string, opti
 	}
 
 	// Wrap the pool with retry logic
-	retryableDB := retry.Wrap(pool)
+	retryableDB := retry.Wrap(pool, retryConfig)
 	queries := database.New(retryableDB)
 
-	return &Client{Queries: queries, conn: pool, retryConfig: &retryConfig}, nil
+	return &Client{Queries: queries, conn: pool}, nil
 }
 
 func (db *Client) Close() error {

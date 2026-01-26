@@ -36,15 +36,11 @@ type RetryableDBTX struct {
 }
 
 // Wrap wraps a DBTX with retry logic using the provided options.
-func Wrap(db DBTX, opts ...Option) DBTX {
-	// Don't wrap if it's already a transaction - retries are unsafe in transactions
-	// It's just safety check, we shouldn't be calling it from transaction anyway
-	if _, ok := db.(pgx.Tx); ok {
+func Wrap(db DBTX, config Config) DBTX {
+	// Skip wrapping if max attempts is 0
+	if config.MaxAttempts <= 0 {
 		return db
 	}
-
-	config := DefaultConfig()
-	config.Apply(opts...)
 
 	return &RetryableDBTX{
 		db:     db,
@@ -200,7 +196,7 @@ func calculateBackoff(initialBackoff, backoffMultiplier, maxBackoff float64, att
 
 // logRetry logs a retry attempt.
 func logRetry(ctx context.Context, operation operation, attempt, maxAttempts int, err error) {
-	logger.L().Warn(ctx, "retrying database QueryRow",
+	logger.L().Warn(ctx, "retrying database operation",
 		zap.String("operation", string(operation)),
 		zap.Int("attempt", attempt),
 		zap.Int("max_attempts", maxAttempts),
