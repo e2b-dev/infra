@@ -16,8 +16,6 @@ import (
 const (
 	// Connection errors (Class 08)
 	pgErrClassConnection = "08"
-	// Transaction rollback errors (Class 40)
-	pgErrClassTransactionRollback = "40"
 	// Operator intervention (Class 57)
 	pgErrClassOperatorIntervention = "57"
 )
