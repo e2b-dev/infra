@@ -99,8 +99,10 @@ resource "nomad_job" "client_proxy" {
       datacenter  = var.datacenter
       environment = var.environment
 
-      redis_url         = var.redis_url
-      redis_cluster_url = var.redis_secure_cluster_url
+      redis_url                = var.redis_url
+      redis_cluster_url        = var.redis_secure_cluster_url
+      redis_secure_cluster_url = var.redis_secure_cluster_url
+      redis_tls_ca_base64      = var.redis_tls_ca_base64
 
       loki_url = "http://loki.service.consul:${var.loki_service_port.port}"
 
