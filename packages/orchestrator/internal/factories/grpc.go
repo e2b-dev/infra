@@ -32,7 +32,7 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 	srv := grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             5 * time.Second, // Minimum time between pings from client
-			PermitWithoutStream: true,             // Allow pings even when no active streams
+			PermitWithoutStream: true,            // Allow pings even when no active streams
 		}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			Time:    15 * time.Second, // Server sends keepalive pings every 15s
