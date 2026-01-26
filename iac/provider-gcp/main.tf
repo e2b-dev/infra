@@ -174,7 +174,7 @@ module "nomad" {
   api_secret                                          = random_password.api_secret.result
   custom_envs_repository_name                         = google_artifact_registry_repository.custom_environments_repository.name
   postgres_connection_string_secret_name              = google_secret_manager_secret.postgres_connection_string.name
-  postgres_read_replica_connection_string_secret_name = google_secret_manager_secret.postgres_read_replica_connection_string.name
+  postgres_read_replica_connection_string_secret_name = google_secret_manager_secret_version.postgres_read_replica_connection_string.secret
   supabase_jwt_secrets_secret_name                    = google_secret_manager_secret.supabase_jwt_secrets.name
   posthog_api_key_secret_name                         = google_secret_manager_secret.posthog_api_key.name
   analytics_collector_host_secret_name                = module.init.analytics_collector_host_secret_name
