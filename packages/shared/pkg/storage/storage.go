@@ -110,7 +110,6 @@ type Blobber interface {
 	GetBlob(ctx context.Context, objectPath string, userBuffer []byte) ([]byte, error)
 	CopyBlob(ctx context.Context, objectPath string, dst io.Writer) (n int64, err error)
 	StoreBlob(ctx context.Context, objectPath string, in io.Reader) error
-	// PutBlob(ctx context.Context, objectPath string, data []byte) error
 }
 
 type StorageProvider interface {
@@ -118,7 +117,7 @@ type StorageProvider interface {
 	FileStorer
 	Blobber
 	PublicUploader
-	Admin
+	Manager
 }
 
 type Storage struct {

@@ -25,7 +25,7 @@ func NewFS(basePath string) *Backend {
 
 	return &Backend{
 		Basic:                    fs,
-		Admin:                    fs,
+		Manager:                  fs,
 		MultipartUploaderFactory: fs,
 		RangeGetter:              fs,
 	}

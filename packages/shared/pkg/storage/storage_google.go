@@ -84,7 +84,7 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Ba
 
 	return &Backend{
 		Basic:                    gcp,
-		Admin:                    gcp,
+		Manager:                  gcp,
 		MultipartUploaderFactory: gcp,
 		PublicUploader:           gcp,
 		RangeGetter:              gcp,

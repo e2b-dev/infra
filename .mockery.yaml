@@ -15,11 +15,11 @@ packages:
           inpackage: true
           filename: mock_featureflagsclient.go
           structname: MockFeatureFlagsClient
-      API:
+      StorageProvider:
         config:
           dir: packages/shared/pkg/storage
           inpackage: true
-          filename: mock_api.go
+          filename: mock_storage_provider.go
 
   io:
     interfaces:

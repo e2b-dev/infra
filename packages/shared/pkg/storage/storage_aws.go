@@ -52,7 +52,7 @@ func NewAWS(ctx context.Context, bucketName string) (*Backend, error) {
 	return &Backend{
 		Basic:          aws,
 		PublicUploader: aws,
-		Admin:          aws,
+		Manager:        aws,
 	}, nil
 }
 

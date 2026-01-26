@@ -23,7 +23,7 @@ func TestCache_MakeChunkFilename(t *testing.T) {
 func TestCache_SizeCaches(t *testing.T) {
 	t.Parallel()
 
-	inner := NewMockAPI(t)
+	inner := NewMockStorageProvider(t)
 	inner.EXPECT().Size(mock.Anything, "obj").Return(int64(123), nil).Once()
 	inner.EXPECT().String().Return("inner").Maybe()
 
@@ -59,7 +59,7 @@ func TestCache_StoreFile_WritesCache(t *testing.T) {
 	inFilePath := filepath.Join(t.TempDir(), "input.bin")
 	require.NoError(t, os.WriteFile(inFilePath, data, 0o600))
 
-	inner := NewMockAPI(t)
+	inner := NewMockStorageProvider(t)
 	inner.EXPECT().StoreFile(mock.Anything, inFilePath, objectPath, mock.Anything).Return((*FrameTable)(nil), nil)
 	inner.EXPECT().String().Return("inner").Maybe()
 

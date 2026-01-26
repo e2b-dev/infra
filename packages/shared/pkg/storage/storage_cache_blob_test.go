@@ -29,7 +29,7 @@ func TestCachedStorage_Blobber(t *testing.T) {
 		err := os.MkdirAll(cacheDir, os.ModePerm)
 		require.NoError(t, err)
 
-		inner := NewMockAPI(t)
+		inner := NewMockStorageProvider(t)
 		inner.EXPECT().
 			StoreBlob(mock.Anything, mock.Anything, mock.Anything).
 			Return(nil)
@@ -63,10 +63,10 @@ func TestCachedStorage_Blobber(t *testing.T) {
 		wg.Wait()
 	})
 
-	apiWithData := func(t *testing.T, data []byte) *MockAPI {
+	apiWithData := func(t *testing.T, data []byte) *MockStorageProvider {
 		t.Helper()
 
-		inner := NewMockAPI(t)
+		inner := NewMockStorageProvider(t)
 		inner.EXPECT().
 			GetBlob(mock.Anything, mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, _ string, _ []byte) ([]byte, error) {

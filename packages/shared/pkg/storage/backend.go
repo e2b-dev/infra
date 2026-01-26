@@ -77,7 +77,7 @@ type MultipartUploaderFactory interface {
 	MakeMultipartUpload(ctx context.Context, objectPath string, retryConfig RetryConfig) (MultipartUploader, func(), int, error)
 }
 
-type Admin interface {
+type Manager interface {
 	Size(ctx context.Context, objectPath string) (int64, error)
 	DeleteWithPrefix(ctx context.Context, prefix string) error
 	fmt.Stringer
@@ -94,7 +94,7 @@ type Backend struct {
 	PublicUploader
 	MultipartUploaderFactory
 	RangeGetter
-	Admin
+	Manager
 }
 
 func recordError(span trace.Span, err error) {
