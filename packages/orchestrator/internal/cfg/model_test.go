@@ -8,9 +8,6 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	// set required env vars, unset to test them
-	t.Setenv("SANDBOX_PERSISTENCE_BUCKET_NAME", "bucket")
-
 	t.Run("embedded structs get defaults", func(t *testing.T) { //nolint:paralleltest // siblings set env, which may cause issues
 		config, err := Parse()
 		require.NoError(t, err)

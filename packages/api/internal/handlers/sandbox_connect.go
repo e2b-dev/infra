@@ -156,7 +156,26 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		network = snap.Config.Network
 	}
 
-	sbx, createErr := a.startSandbox(ctx, snap.SandboxID, timeout, nil, snap.Metadata, alias, teamInfo, build, &c.Request.Header, true, nodeID, snap.BaseEnvID, autoPause, envdAccessToken, snap.AllowInternetAccess, network, nil, nil)
+	sbx, createErr := a.startSandbox(
+		ctx,
+		snap.SandboxID,
+		timeout,
+		nil,
+		snap.Metadata,
+		alias,
+		teamInfo,
+		build,
+		&c.Request.Header,
+		true,
+		nodeID,
+		snap.BaseEnvID,
+		autoPause,
+		envdAccessToken,
+		snap.AllowInternetAccess,
+		network,
+		nil, // mcp
+		nil, // volumes
+	)
 	if createErr != nil {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
 

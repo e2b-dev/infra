@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -120,13 +121,15 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.Volumes != nil {
+		var wg sync.WaitGroup
 		for _, volume := range *data.Volumes {
 			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
 
-			go func(ctx context.Context) {
-				a.setupNfs(ctx, volume.NfsTarget, volume.Path)
-			}(context.WithoutCancel(ctx))
+			wg.Go(func() {
+				a.setupNfs(context.WithoutCancel(ctx), volume.NfsTarget, volume.Path)
+			})
 		}
+		wg.Wait()
 	}
 
 	if data.DefaultUser != nil && *data.DefaultUser != "" {
