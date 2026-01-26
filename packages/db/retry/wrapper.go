@@ -2,6 +2,7 @@ package retry
 
 import (
 	"context"
+	"fmt"
 	"math/rand/v2"
 	"time"
 
@@ -20,6 +21,8 @@ const (
 	operationExec  operation = "Exec"
 	operationQuery operation = "Query"
 	operationScan  operation = "Scan"
+
+	jitterMultiplier = 0.25
 )
 
 // DBTX is the interface that sqlc expects for database operations.
@@ -122,22 +125,26 @@ func (r *retryableRow) Scan(dest ...any) error {
 		}
 
 		if err := handleRetry(r.ctx, operationScan, attempt, r.config, lastErr); err != nil {
-			return err
+			return fmt.Errorf("failed to scan row after %d attempts: %w, original error %w", attempt, err, lastErr)
 		}
 	}
 
 	return lastErr
 }
 
-func handleRetry(ctx context.Context, operation operation, attempt int, config Config, err error) error {
-	if !shouldRetry(ctx, attempt, config.MaxAttempts, err) {
-		return err
+func handleRetry(ctx context.Context, operation operation, attempt int, config Config, dbErr error) error {
+	if !shouldRetry(ctx, attempt, config.MaxAttempts, dbErr) {
+		return dbErr
 	}
 
-	logRetry(ctx, operation, attempt, config.MaxAttempts, err)
-	recordRetrySpan(ctx, attempt, err)
+	logRetry(ctx, operation, attempt, config.MaxAttempts, dbErr)
+	recordRetrySpan(ctx, attempt, dbErr)
 
-	return backoffFunc(ctx, attempt, float64(config.InitialBackoff), config.BackoffMultiplier, float64(config.MaxBackoff))
+	if err := backoffFunc(ctx, attempt, float64(config.InitialBackoff), config.BackoffMultiplier, float64(config.MaxBackoff)); err != nil {
+		return fmt.Errorf("retry backoff interrupted: %w, original error: %w", err, dbErr)
+	}
+
+	return nil
 }
 
 // shouldRetry determines if we should retry based on error type and attempt count.
@@ -179,7 +186,7 @@ func calculateBackoff(initialBackoff, backoffMultiplier, maxBackoff float64, att
 	}
 
 	// Add jitter: +/- 25%
-	jitter := backoff * 0.25 * (rand.Float64()*2 - 1)
+	jitter := backoff * jitterMultiplier * (rand.Float64()*2 - 1)
 	backoff += jitter
 
 	return time.Duration(backoff)

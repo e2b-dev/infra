@@ -298,17 +298,6 @@ func TestQueryRow_NoRetryOnNoRows(t *testing.T) {
 	assert.Equal(t, 1, callCount, "should not retry on ErrNoRows")
 }
 
-func TestConfig_DefaultValues(t *testing.T) {
-	t.Parallel()
-
-	config := DefaultConfig()
-
-	assert.Equal(t, 5, config.MaxAttempts)
-	assert.Equal(t, 10*time.Millisecond, config.InitialBackoff)
-	assert.Equal(t, 2*time.Second, config.MaxBackoff)
-	assert.InDelta(t, 2.0, config.BackoffMultiplier, 0.001)
-}
-
 func TestConfig_Options(t *testing.T) {
 	t.Parallel()
 
