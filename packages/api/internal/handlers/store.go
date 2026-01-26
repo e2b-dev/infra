@@ -81,7 +81,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		pool.WithMinIdle(config.AuthDBMinIdleConnections),
 	)
 	if err != nil {
-		logger.L().Fatal(ctx, "Initializing SQLC client", zap.Error(err))
+		logger.L().Fatal(ctx, "Initializing auth DB client", zap.Error(err))
 	}
 
 	logger.L().Info(ctx, "Created database client")
