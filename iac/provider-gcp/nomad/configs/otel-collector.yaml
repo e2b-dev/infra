@@ -249,6 +249,7 @@ processors:
             label_set:
               - service.instance.id
               - state
+              - deployment.environment
             aggregation_type: sum
 
       - include: "system.cpu.utilization"
@@ -259,6 +260,7 @@ processors:
             label_set:
               - service.instance.id
               - state
+              - deployment.environment
             aggregation_type: sum
           - action: aggregate_label_values
             label: state
