@@ -90,6 +90,37 @@ func TestAliasCacheResolve_ExplicitNamespaceNoFallback(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, err.Code)
 }
 
+// TestAliasCacheResolve_ExplicitNamespaceNoIDFallback tests that an explicit namespace
+// does NOT fall back to template ID lookup, even if the alias token matches a real template ID.
+// This prevents "team-x/<templateID>" from resolving when no alias exists.
+func TestAliasCacheResolve_ExplicitNamespaceNoIDFallback(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	// Create team and template
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	cache := NewAliasCache(db)
+	defer cache.Close(ctx)
+
+	// Request "team-slug/<templateID>" - no alias exists with this name in team namespace.
+	// Even though templateID is a valid template ID, it should NOT resolve because
+	// explicit namespace lookups should not fall back to ID lookup.
+	info, err := cache.Resolve(ctx, teamSlug+"/"+templateID, teamSlug)
+	require.NotNil(t, err)
+	require.Nil(t, info)
+	assert.Equal(t, http.StatusNotFound, err.Code)
+
+	// But bare templateID should still resolve via ID fallback
+	info, err = cache.Resolve(ctx, templateID, teamSlug)
+	require.Nil(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, templateID, info.TemplateID)
+}
+
 // TestAliasCacheResolve_TeamOverridesPromoted tests that team's alias
 // takes precedence over promoted template with same name.
 // NOTE: This test is for Phase 2 when PK becomes (alias, namespace).

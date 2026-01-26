@@ -126,30 +126,34 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (*AliasInfo, e
 		}, nil
 	}
 
-	// If alias not found, try direct ID lookup
+	// If alias not found and no explicit namespace, try direct ID lookup.
+	// ID fallback is only allowed for bare aliases (namespace == nil) because:
+	// - "team-x/<templateID>" should fail if no alias exists in that namespace
+	// - "<templateID>" (bare) should succeed via ID lookup after alias lookups fail
 	if dberrors.IsNotFoundError(err) {
-		idResult, idErr := c.db.GetTemplateById(ctx, alias)
-		if idErr == nil {
-			return &AliasInfo{
-				TemplateID: idResult.ID,
-				TeamID:     idResult.TeamID,
-				Public:     idResult.Public,
-			}, nil
-		}
+		if namespace == nil {
+			idResult, err := c.db.GetTemplateById(ctx, alias)
+			if err == nil {
+				return &AliasInfo{
+					TemplateID: idResult.ID,
+					TeamID:     idResult.TeamID,
+					Public:     idResult.Public,
+				}, nil
+			}
 
-		if dberrors.IsNotFoundError(idErr) {
-			return nil, &api.APIError{
-				Code:      http.StatusNotFound,
-				ClientMsg: fmt.Sprintf("template '%s' not found", alias),
-				Err:       idErr,
+			if !dberrors.IsNotFoundError(err) {
+				return nil, &api.APIError{
+					Code:      http.StatusInternalServerError,
+					ClientMsg: fmt.Sprintf("error resolving template: %v", err),
+					Err:       err,
+				}
 			}
 		}
 
-		// GetTemplateById failed with a non-"not found" error (e.g., DB connection error)
 		return nil, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: fmt.Sprintf("error resolving template: %v", idErr),
-			Err:       idErr,
+			Code:      http.StatusNotFound,
+			ClientMsg: fmt.Sprintf("template '%s' not found", alias),
+			Err:       err,
 		}
 	}
 
