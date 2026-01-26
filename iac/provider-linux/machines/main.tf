@@ -64,6 +64,8 @@ resource "null_resource" "nodes_base" {
       "if ! command -v consul >/dev/null 2>&1; then $SUDO_E apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confnew' consul; fi",
       "if ! command -v nomad  >/dev/null 2>&1; then $SUDO_E apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confnew' nomad; fi",
       "if ! command -v docker >/dev/null 2>&1; then (curl -fsSL https://get.docker.com | sh) || ($SUDO_E apt-get update -y && $SUDO_E apt-get install -y docker.io); fi",
+      "$SUDO systemctl enable docker",
+      "$SUDO systemctl start docker",
       "ROLE=\"${each.value.role}\"",
       "CLIENT_NP=\"${each.value.node_pool}\"",
       "REQUIRE_NBD=$( [ \"$ROLE\" = client ] && { [ \"$CLIENT_NP\" = \"${var.builder_node_pool}\" ] || [ \"$CLIENT_NP\" = \"${var.orchestrator_node_pool}\" ]; } && echo 1 || echo 0 )",
