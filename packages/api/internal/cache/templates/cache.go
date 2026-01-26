@@ -178,6 +178,8 @@ func (c *TemplateCache) InvalidateAllTags(templateID string) []string {
 		}
 	}
 
+	c.aliasCache.InvalidateByTemplateID(templateID)
+
 	return keys
 }
 

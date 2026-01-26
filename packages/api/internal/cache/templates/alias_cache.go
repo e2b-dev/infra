@@ -173,6 +173,15 @@ func (c *AliasCache) Invalidate(namespace *string, alias string) {
 	c.cache.Delete(key)
 }
 
+// InvalidateByTemplateID removes all cache entries pointing to the given template ID
+func (c *AliasCache) InvalidateByTemplateID(templateID string) {
+	for _, key := range c.cache.Keys() {
+		if info, found := c.cache.Get(key); found && info != nil && info.TemplateID == templateID {
+			c.cache.Delete(key)
+		}
+	}
+}
+
 func (c *AliasCache) Close(ctx context.Context) error {
 	return c.cache.Close(ctx)
 }
