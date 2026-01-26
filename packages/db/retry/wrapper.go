@@ -83,7 +83,7 @@ func (r *RetryableDBTX) Query(ctx context.Context, sql string, args ...any) (pgx
 		}
 
 		if err := handleRetry(ctx, operationQuery, attempt, r.config, lastErr); err != nil {
-			return rows, err
+			return nil, err
 		}
 	}
 
