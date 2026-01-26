@@ -10,6 +10,10 @@ data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = var.postgres_connection_string_secret_name
 }
 
+data "google_secret_manager_secret_version" "postgres_read_replica_connection_string" {
+  secret = var.postgres_read_replica_connection_string_secret_version.secret
+}
+
 data "google_secret_manager_secret_version" "supabase_jwt_secrets" {
   secret = var.supabase_jwt_secrets_secret_name
 }
@@ -79,30 +83,31 @@ resource "nomad_job" "api" {
     memory_mb = var.api_resources_memory_mb
     cpu_count = var.api_resources_cpu_count
 
-    orchestrator_port              = var.orchestrator_port
-    otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
-    logs_collector_address         = "http://localhost:${var.logs_proxy_port.port}"
-    gcp_zone                       = var.gcp_zone
-    port_name                      = var.api_port.name
-    port_number                    = var.api_port.port
-    api_docker_image               = data.google_artifact_registry_docker_image.api_image.self_link
-    postgres_connection_string     = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-    supabase_jwt_secrets           = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
-    posthog_api_key                = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
-    environment                    = var.environment
-    analytics_collector_host       = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
-    analytics_collector_api_token  = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
-    otel_tracing_print             = var.otel_tracing_print
-    nomad_acl_token                = var.nomad_acl_token_secret
-    admin_token                    = var.api_admin_token
-    redis_url                      = local.redis_url
-    redis_cluster_url              = local.redis_cluster_url
-    redis_tls_ca_base64            = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-    clickhouse_connection_string   = local.clickhouse_connection_string
-    loki_url                       = local.loki_url
-    sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
-    db_migrator_docker_image       = data.google_artifact_registry_docker_image.db_migrator_image.self_link
-    launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    orchestrator_port                       = var.orchestrator_port
+    otel_collector_grpc_endpoint            = "localhost:${var.otel_collector_grpc_port}"
+    logs_collector_address                  = "http://localhost:${var.logs_proxy_port.port}"
+    gcp_zone                                = var.gcp_zone
+    port_name                               = var.api_port.name
+    port_number                             = var.api_port.port
+    api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
+    postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+    supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+    posthog_api_key                         = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
+    environment                             = var.environment
+    analytics_collector_host                = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
+    analytics_collector_api_token           = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
+    otel_tracing_print                      = var.otel_tracing_print
+    nomad_acl_token                         = var.nomad_acl_token_secret
+    admin_token                             = var.api_admin_token
+    redis_url                               = local.redis_url
+    redis_cluster_url                       = local.redis_cluster_url
+    redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    clickhouse_connection_string            = local.clickhouse_connection_string
+    loki_url                                = local.loki_url
+    sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
+    db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
+    launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
 }
 

@@ -13,8 +13,8 @@ import (
 	apispec "github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/testutils"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
 func TestQueryNotExistingTemplateAlias(t *testing.T) {
@@ -23,7 +23,8 @@ func TestQueryNotExistingTemplateAlias(t *testing.T) {
 	testDB := testutils.SetupDatabase(t)
 
 	store := &APIStore{
-		sqlcDB: testDB,
+		sqlcDB: testDB.SqlcClient,
+		authDB: testDB.AuthDb,
 	}
 
 	alias := "non-existing-template-alias"
@@ -35,7 +36,7 @@ func TestQueryNotExistingTemplateAlias(t *testing.T) {
 	c.Set(
 		auth.TeamContextKey,
 		&types.Team{
-			Team: &queries.Team{
+			Team: &authqueries.Team{
 				ID: teamID,
 			},
 		},
@@ -57,7 +58,8 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 	templateID, alias := testutils.CreateTestTemplateWithAlias(t, testDB, teamID)
 
 	store := &APIStore{
-		sqlcDB: testDB,
+		sqlcDB: testDB.SqlcClient,
+		authDB: testDB.AuthDb,
 	}
 
 	w := httptest.NewRecorder()
@@ -66,7 +68,7 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 	c.Set(
 		auth.TeamContextKey,
 		&types.Team{
-			Team: &queries.Team{
+			Team: &authqueries.Team{
 				ID: teamID,
 			},
 		},
@@ -95,7 +97,8 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 	_, alias := testutils.CreateTestTemplateWithAlias(t, testDB, ownerTeamID)
 
 	store := &APIStore{
-		sqlcDB: testDB,
+		sqlcDB: testDB.SqlcClient,
+		authDB: testDB.AuthDb,
 	}
 
 	w := httptest.NewRecorder()
@@ -104,7 +107,7 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 	c.Set(
 		auth.TeamContextKey,
 		&types.Team{
-			Team: &queries.Team{
+			Team: &authqueries.Team{
 				ID: foreignTeamID,
 			},
 		},

@@ -7,11 +7,11 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/pkg/auth"
 )
 
-func GetTeamsByUser(ctx context.Context, db *sqlcdb.Client, userID uuid.UUID) ([]*types.TeamWithDefault, error) {
-	teams, err := db.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+func GetTeamsByUser(ctx context.Context, db *authdb.Client, userID uuid.UUID) ([]*types.TeamWithDefault, error) {
+	teams, err := db.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("error when getting default team: %w", err)
 	}
