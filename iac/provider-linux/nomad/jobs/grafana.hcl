@@ -70,7 +70,7 @@ datasources:
     type: loki
     access: proxy
     orgId: 1
-    url: "http://localhost:${loki_service_port_number}"
+    url: "http://loki.service.consul:${loki_service_port_number}"
     isDefault: true
     version: 1
     editable: false

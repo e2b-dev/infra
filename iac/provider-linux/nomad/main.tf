@@ -115,7 +115,7 @@ resource "nomad_job" "client_proxy" {
       image_name = var.client_proxy_image
 
       nomad_endpoint = "http://localhost:4646"
-      nomad_token    = var.nomad_acl_token
+      nomad_token    = var.nomad_acl_token != "" ? var.nomad_acl_token : "anonymous"
 
       otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
@@ -172,7 +172,7 @@ resource "nomad_job" "otel_collector" {
     otel_collector_grpc_port = var.otel_collector_grpc_port
     otel_collector_config = templatefile("${path.module}/configs/otel-collector.yaml", {
       otel_collector_grpc_port = var.otel_collector_grpc_port
-      loki_endpoint            = "http://localhost:${var.loki_service_port.port}"
+      loki_endpoint            = "http://loki.service.consul:${var.loki_service_port.port}"
     })
     docker_image_prefix = var.docker_image_prefix
   })
