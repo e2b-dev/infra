@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -25,21 +26,14 @@ const (
 	jitterMultiplier = 0.25
 )
 
-// DBTX is the interface that sqlc expects for database operations.
-type DBTX interface {
-	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
-
 // RetryableDBTX wraps a DBTX with retry logic.
 type RetryableDBTX struct {
-	db     DBTX
+	db     types.DBTX
 	config Config
 }
 
 // Wrap wraps a DBTX with retry logic using the provided options.
-func Wrap(db DBTX, config Config) DBTX {
+func Wrap(db types.DBTX, config Config) types.DBTX {
 	// Skip wrapping if max attempts is 0
 	if config.MaxAttempts <= 0 {
 		return db
@@ -108,7 +102,7 @@ type retryableRow struct {
 	ctx    context.Context //nolint:containedctx // Context must be stored for deferred Scan() retry
 	sql    string
 	args   []any
-	db     DBTX
+	db     types.DBTX
 	config Config
 }
 
