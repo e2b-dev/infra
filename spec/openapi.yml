@@ -617,6 +617,7 @@ components:
         - buildCount
         - envdVersion
         - aliases
+        - names
         - buildStatus
       properties:
         templateID:
@@ -637,6 +638,12 @@ components:
         aliases:
           type: array
           description: Aliases of the template
+          deprecated: true
+          items:
+            type: string
+        names:
+          type: array
+          description: Names of the template (namespace/alias format when namespaced)
           items:
             type: string
         createdAt:
@@ -810,6 +817,7 @@ components:
         - templateID
         - public
         - aliases
+        - names
         - createdAt
         - updatedAt
         - lastSpawnedAt
@@ -825,6 +833,12 @@ components:
         aliases:
           type: array
           description: Aliases of the template
+          deprecated: true
+          items:
+            type: string
+        names:
+          type: array
+          description: Names of the template (namespace/alias format when namespaced)
           items:
             type: string
         createdAt:

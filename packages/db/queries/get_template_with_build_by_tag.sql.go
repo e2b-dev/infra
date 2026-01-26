@@ -10,7 +10,7 @@ import (
 )
 
 const getTemplateWithBuildByTag = `-- name: GetTemplateWithBuildByTag :one
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags, aliases
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags, aliases, names
 FROM public.envs AS e
 JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
     AND (
@@ -23,7 +23,9 @@ JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
 JOIN public.env_builds AS eb ON eb.id = eba.build_id
     AND eb.status = 'uploaded'
 CROSS JOIN LATERAL (
-    SELECT array_agg(alias)::text[] AS aliases
+    SELECT 
+        array_agg(alias)::text[] AS aliases,
+        array_agg(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END)::text[] AS names
     FROM public.env_aliases
     WHERE env_id = e.id
 ) AS al
@@ -41,6 +43,7 @@ type GetTemplateWithBuildByTagRow struct {
 	Env      Env
 	EnvBuild EnvBuild
 	Aliases  []string
+	Names    []string
 }
 
 // Fetches a template with its build by template ID and tag.
@@ -85,6 +88,7 @@ func (q *Queries) GetTemplateWithBuildByTag(ctx context.Context, arg GetTemplate
 		&i.EnvBuild.CpuModelName,
 		&i.EnvBuild.CpuFlags,
 		&i.Aliases,
+		&i.Names,
 	)
 	return i, err
 }

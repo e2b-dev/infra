@@ -67,6 +67,7 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
 		Aliases:    template.Aliases,
+		Names:      template.Names,
 		Public:     false,
 	})
 }
@@ -145,6 +146,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
 		Aliases:    template.Aliases,
+		Names:      template.Names,
 		Public:     templateDB.Public,
 	})
 }

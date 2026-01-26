@@ -150,6 +150,7 @@ func (c *TemplateCache) fetchTemplateWithBuild(ctx context.Context, templateID s
 			BuildID:    build.ID.String(),
 			Public:     template.Public,
 			Aliases:    result.Aliases,
+			Names:      result.Names,
 		},
 		TeamID:    template.TeamID,
 		ClusterID: clusterID,

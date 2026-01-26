@@ -755,6 +755,7 @@ type TeamUser struct {
 // Template defines model for Template.
 type Template struct {
 	// Aliases Aliases of the template
+	// Deprecated:
 	Aliases []string `json:"aliases"`
 
 	// BuildCount Number of times the template was built
@@ -784,6 +785,9 @@ type Template struct {
 
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB `json:"memoryMB"`
+
+	// Names Names of the template (namespace/alias format when namespaced)
+	Names []string `json:"names"`
 
 	// Public Whether the template is public or only accessible by the team
 	Public bool `json:"public"`
@@ -1048,6 +1052,7 @@ type TemplateUpdateRequest struct {
 // TemplateWithBuilds defines model for TemplateWithBuilds.
 type TemplateWithBuilds struct {
 	// Aliases Aliases of the template
+	// Deprecated:
 	Aliases []string `json:"aliases"`
 
 	// Builds List of builds for the template
@@ -1058,6 +1063,9 @@ type TemplateWithBuilds struct {
 
 	// LastSpawnedAt Time when the template was last used
 	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
+
+	// Names Names of the template (namespace/alias format when namespaced)
+	Names []string `json:"names"`
 
 	// Public Whether the template is public or only accessible by the team
 	Public bool `json:"public"`
