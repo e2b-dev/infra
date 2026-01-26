@@ -87,18 +87,21 @@ func (r *RetryableDBTX) Query(ctx context.Context, sql string, args ...any) (pgx
 		if err == nil {
 			return rows, nil
 		}
+
 		lastErr = err
 		if !shouldRetry(ctx, attempt, r.config.MaxAttempts, lastErr) {
-			return rows, lastErr
+			return nil, lastErr
 		}
+
 		logRetry(ctx, operationQuery, attempt, r.config.MaxAttempts, lastErr)
 		recordRetrySpan(ctx, attempt, lastErr)
+
 		if err := backoffFunc(ctx, attempt, float64(r.config.InitialBackoff), r.config.BackoffMultiplier, float64(r.config.MaxBackoff)); err != nil {
-			return rows, lastErr
+			return nil, lastErr
 		}
 	}
 
-	return rows, lastErr
+	return nil, lastErr
 }
 
 // QueryRow executes a query that returns a single row with retry logic.

@@ -8,22 +8,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
-)
-
-// PostgreSQL error code classes that are retriable.
-// See: https://www.postgresql.org/docs/current/errcodes-appendix.html
-const (
-	// Connection errors (Class 08)
-	pgErrClassConnection = "08"
-	// Operator intervention (Class 57)
-	pgErrClassOperatorIntervention = "57"
-)
-
-// Specific PostgreSQL error codes that are retriable.
-const (
-	// Too many connections (53300)
-	pgErrTooManyConnections = "53300"
 )
 
 // IsRetriable determines if an error is retriable.
@@ -84,18 +70,15 @@ func isRetriablePgError(pgErr *pgconn.PgError) bool {
 	code := pgErr.Code
 
 	// Check error class (first two characters)
-	if len(code) >= 2 {
-		class := code[:2]
-		switch class {
-		case pgErrClassConnection: // Connection exceptions
-			return true
-		case pgErrClassOperatorIntervention: // Operator intervention
-			return true
-		}
+	switch {
+	case pgerrcode.IsConnectionException(code): // Connection exceptions
+		return true
+	case pgerrcode.IsOperatorIntervention(code):
+		return true
 	}
 
 	// Check specific error codes
-	if code == pgErrTooManyConnections {
+	if code == pgerrcode.TooManyConnections {
 		return true
 	}
 
