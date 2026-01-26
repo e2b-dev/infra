@@ -91,8 +91,6 @@ func isRetriablePgError(pgErr *pgconn.PgError) bool {
 		switch class {
 		case pgErrClassConnection: // Connection exceptions
 			return true
-		case pgErrClassTransactionRollback: // Transaction rollback
-			return true
 		case pgErrClassOperatorIntervention: // Operator intervention
 			return true
 		}
