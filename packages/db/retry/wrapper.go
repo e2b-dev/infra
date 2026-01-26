@@ -59,15 +59,8 @@ func (r *RetryableDBTX) Exec(ctx context.Context, sql string, args ...any) (pgco
 			return result, nil
 		}
 
-		if !shouldRetry(ctx, attempt, r.config.MaxAttempts, lastErr) {
-			return result, lastErr
-		}
-
-		logRetry(ctx, operationExec, attempt, r.config.MaxAttempts, lastErr)
-		recordRetrySpan(ctx, attempt, lastErr)
-
-		if err := backoffFunc(ctx, attempt, float64(r.config.InitialBackoff), r.config.BackoffMultiplier, float64(r.config.MaxBackoff)); err != nil {
-			return result, lastErr
+		if err := handleRetry(ctx, operationExec, attempt, r.config, lastErr); err != nil {
+			return result, err
 		}
 	}
 
@@ -81,23 +74,14 @@ func (r *RetryableDBTX) Query(ctx context.Context, sql string, args ...any) (pgx
 	var lastErr error
 
 	for attempt := 1; attempt <= r.config.MaxAttempts; attempt++ {
-		var err error
-
-		rows, err = r.db.Query(ctx, sql, args...)
-		if err == nil {
+		rows, lastErr = r.db.Query(ctx, sql, args...)
+		lastErr = handleRetry(ctx, operationQuery, attempt, r.config, lastErr)
+		if lastErr == nil {
 			return rows, nil
 		}
 
-		lastErr = err
-		if !shouldRetry(ctx, attempt, r.config.MaxAttempts, lastErr) {
-			return nil, lastErr
-		}
-
-		logRetry(ctx, operationQuery, attempt, r.config.MaxAttempts, lastErr)
-		recordRetrySpan(ctx, attempt, lastErr)
-
-		if err := backoffFunc(ctx, attempt, float64(r.config.InitialBackoff), r.config.BackoffMultiplier, float64(r.config.MaxBackoff)); err != nil {
-			return nil, lastErr
+		if err := handleRetry(ctx, operationQuery, attempt, r.config, lastErr); err != nil {
+			return rows, err
 		}
 	}
 
@@ -137,19 +121,23 @@ func (r *retryableRow) Scan(dest ...any) error {
 			return nil
 		}
 
-		if !shouldRetry(r.ctx, attempt, r.config.MaxAttempts, lastErr) {
-			return lastErr
-		}
-
-		logRetry(r.ctx, operationScan, attempt, r.config.MaxAttempts, lastErr)
-		recordRetrySpan(r.ctx, attempt, lastErr)
-
-		if err := backoffFunc(r.ctx, attempt, float64(r.config.InitialBackoff), r.config.BackoffMultiplier, float64(r.config.MaxBackoff)); err != nil {
-			return lastErr
+		if err := handleRetry(r.ctx, operationScan, attempt, r.config, lastErr); err != nil {
+			return err
 		}
 	}
 
 	return lastErr
+}
+
+func handleRetry(ctx context.Context, operation operation, attempt int, config Config, err error) error {
+	if !shouldRetry(ctx, attempt, config.MaxAttempts, err) {
+		return err
+	}
+
+	logRetry(ctx, operation, attempt, config.MaxAttempts, err)
+	recordRetrySpan(ctx, attempt, err)
+
+	return backoffFunc(ctx, attempt, float64(config.InitialBackoff), config.BackoffMultiplier, float64(config.MaxBackoff))
 }
 
 // shouldRetry determines if we should retry based on error type and attempt count.
