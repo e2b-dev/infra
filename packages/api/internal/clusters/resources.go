@@ -2,6 +2,7 @@ package clusters
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"go.uber.org/zap"
@@ -94,7 +95,7 @@ func logsFromBuilderInstance(ctx context.Context, instance *Instance, templateID
 			return nil, &api.APIError{
 				Err:       err,
 				ClientMsg: "Failed to fetch build logs from builder instance",
-				Code:      500,
+				Code:      http.StatusInternalServerError,
 			}
 		}
 

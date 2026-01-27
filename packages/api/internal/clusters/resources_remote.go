@@ -181,7 +181,7 @@ func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, 
 			return nil, &api.APIError{
 				Err:       fmt.Errorf("failed to get build logs in template manager: %w", err),
 				ClientMsg: "Failed to fetch build logs",
-				Code:      500,
+				Code:      http.StatusInternalServerError,
 			}
 		}
 
