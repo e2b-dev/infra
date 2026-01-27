@@ -81,7 +81,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 		return nil, &api.APIError{
 			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
 			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      res.StatusCode(),
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
