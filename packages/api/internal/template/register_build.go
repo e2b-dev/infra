@@ -47,6 +47,7 @@ type RegisterBuildResponse struct {
 	TemplateID string
 	BuildID    string
 	Aliases    []string
+	Names      []string
 	Tags       []string
 }
 
@@ -219,12 +220,13 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "inserted new build")
 
 	// Check if the alias is available and claim it
-	var aliases []string
+	var aliases, names []string
 	if data.Alias != nil {
 		// Extract just the alias portion (without namespace) for storage
 		// The identifier may be "namespace/alias" or just "alias"
 		alias := id.ExtractAlias(*data.Alias)
 		aliases = append(aliases, alias)
+		names = append(names, id.WithNamespace(data.Team.Slug, alias))
 
 		exists, err := client.CheckAliasConflictsWithTemplateID(ctx, alias)
 		if err != nil {
@@ -371,6 +373,7 @@ func RegisterBuild(
 		TemplateID: data.TemplateID,
 		BuildID:    buildID.String(),
 		Aliases:    aliases,
+		Names:      names,
 		Tags:       tags,
 	}, nil
 }
