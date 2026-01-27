@@ -26,7 +26,7 @@ func newRemoteClusterResourceProvider(instances *smap.Map[*Instance], client *ed
 	}
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, error) {
+func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, *api.APIError) {
 	req := &edgeapi.V1SandboxMetricsParams{
 		TeamID: teamID,
 		Start:  qStart,
@@ -35,15 +35,27 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 
 	res, err := r.client.V1SandboxMetricsWithResponse(ctx, sandboxID, req)
 	if err != nil {
-		return nil, err
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: "Failed to fetch sandbox metrics",
+			Code:      500,
+		}
 	}
 
 	if res.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode())
+		return nil, &api.APIError{
+			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
+			ClientMsg: "Failed to fetch sandbox metrics",
+			Code:      res.StatusCode(),
+		}
 	}
 
 	if res.JSON200 == nil {
-		return nil, errors.New("request returned nil response")
+		return nil, &api.APIError{
+			Err:       errors.New("request returned nil response"),
+			ClientMsg: "Failed to fetch sandbox metrics",
+			Code:      500,
+		}
 	}
 
 	raw := *res.JSON200
@@ -64,18 +76,30 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, error) {
+func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, *api.APIError) {
 	res, err := r.client.V1SandboxesMetricsWithResponse(ctx, &edgeapi.V1SandboxesMetricsParams{TeamID: teamID, SandboxIds: sandboxIDs})
 	if err != nil {
-		return nil, err
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: "Failed to fetch sandbox metrics",
+			Code:      500,
+		}
 	}
 
 	if res.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode())
+		return nil, &api.APIError{
+			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
+			ClientMsg: "Failed to fetch sandbox metrics",
+			Code:      res.StatusCode(),
+		}
 	}
 
 	if res.JSON200 == nil {
-		return nil, errors.New("request returned nil response")
+		return nil, &api.APIError{
+			Err:       errors.New("request returned nil response"),
+			ClientMsg: "Failed to fetch sandbox metrics",
+			Code:      500,
+		}
 	}
 
 	raw := *res.JSON200
@@ -96,18 +120,30 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, error) {
+func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, *api.APIError) {
 	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, Limit: limit})
 	if err != nil {
-		return api.SandboxLogs{}, err
+		return api.SandboxLogs{}, &api.APIError{
+			Err:       err,
+			ClientMsg: "Failed to fetch sandbox logs",
+			Code:      500,
+		}
 	}
 
 	if res.StatusCode() != http.StatusOK {
-		return api.SandboxLogs{}, fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode())
+		return api.SandboxLogs{}, &api.APIError{
+			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
+			ClientMsg: "Failed to fetch sandbox logs",
+			Code:      res.StatusCode(),
+		}
 	}
 
 	if res.JSON200 == nil {
-		return api.SandboxLogs{}, errors.New("request returned nil response")
+		return api.SandboxLogs{}, &api.APIError{
+			Err:       errors.New("request returned nil response"),
+			ClientMsg: "Failed to fetch sandbox logs",
+			Code:      500,
+		}
 	}
 
 	raw := *res.JSON200
@@ -143,7 +179,7 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 	cursor *time.Time,
 	direction api.LogsDirection,
 	source *api.LogsSource,
-) ([]logs.LogEntry, error) {
+) ([]logs.LogEntry, *api.APIError) {
 	// Use shared implementation with Edge API as the persistent log backend
 	start, end := logQueryWindow(cursor, direction)
 	persistentFetcher := r.getBuildLogsFromEdge(ctx, templateID, buildID, offset, limit, level, start, end, direction)
@@ -152,7 +188,7 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 }
 
 func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) logSourceFunc {
-	return func() ([]logs.LogEntry, error) {
+	return func() ([]logs.LogEntry, *api.APIError) {
 		res, err := r.client.V1TemplateBuildLogsWithResponse(
 			ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{
 				TemplateID: templateID,
@@ -167,15 +203,27 @@ func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, 
 			},
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get build logs in template manager: %w", err)
+			return nil, &api.APIError{
+				Err:       fmt.Errorf("failed to get build logs in template manager: %w", err),
+				ClientMsg: "Failed to fetch build logs",
+				Code:      500,
+			}
 		}
 
 		if res.StatusCode() != 200 {
-			return nil, errors.New("failed to get build logs in template manager")
+			return nil, &api.APIError{
+				Err:       errors.New("failed to get build logs in template manager"),
+				ClientMsg: "Failed to fetch build logs",
+				Code:      res.StatusCode(),
+			}
 		}
 
 		if res.JSON200 == nil {
-			return nil, errors.New("request returned nil response")
+			return nil, &api.APIError{
+				Err:       errors.New("request returned nil response"),
+				ClientMsg: "Failed to fetch build logs",
+				Code:      500,
+			}
 		}
 
 		raw := *res.JSON200
