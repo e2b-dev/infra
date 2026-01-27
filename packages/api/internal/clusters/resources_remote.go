@@ -215,7 +215,7 @@ func handleEdgeErrorResponse(statusCode int, json400, json401, json500 *edgeapi.
 		}
 	}
 
-	if errMsg != "" {
+	if errMsg == "" {
 		errMsg = "Unexpected error occurred"
 	}
 
