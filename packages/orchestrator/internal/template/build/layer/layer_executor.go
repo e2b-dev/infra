@@ -288,6 +288,11 @@ func (lb *LayerExecutor) PauseAndUpload(
 		ctx, span := tracer.Start(ctx, "upload snapshot")
 		defer span.End()
 
+		// Always signal completion to unblock waiting goroutines, even on error.
+		// This prevents deadlocks when an earlier layer fails - later layers can
+		// still unblock and the errgroup can properly collect all errors.
+		defer completeUpload()
+
 		err := snapshot.Upload(
 			ctx,
 			lb.templateStorage,
@@ -304,10 +309,6 @@ func (lb *LayerExecutor) PauseAndUpload(
 		if err != nil {
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}
-
-		// Mark this upload as complete AFTER waiting for dependencies.
-		// This ensures Layer N+1 can only proceed after Layer N's dependencies are ready.
-		completeUpload()
 
 		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
 			Template: cache.Template{
