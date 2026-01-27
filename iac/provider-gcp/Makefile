@@ -4,7 +4,7 @@ ENV_FILE := ../../.env.${ENV}
 -include ${ENV_FILE}
 
 TF := $(shell which terraform)
-TF_VAR_FILE := ./.terraform.dev.tfvars
+TF_VAR_FILE := ./.terraform.${ENV}.tfvars
 TF_VAR_FILE_ARG := $(if $(wildcard $(TF_VAR_FILE)),-var-file=$(TF_VAR_FILE))
 TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
@@ -94,6 +94,7 @@ init:
 switch:
 	@ printf "Switching Terraform backend for different env ${ENV}\n"
 	@ $(TF) init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
+	touch ${TF_VAR_FILE}
 
 .PHONY: destroy
 destroy:
