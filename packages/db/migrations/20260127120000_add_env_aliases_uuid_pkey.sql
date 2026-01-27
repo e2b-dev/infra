@@ -34,6 +34,15 @@ DROP INDEX CONCURRENTLY IF EXISTS idx_env_aliases_alias_namespace_unique;
 CREATE INDEX CONCURRENTLY idx_env_aliases_alias_namespace 
   ON public.env_aliases (alias, namespace);
 
+-- Remove duplicate aliases before restoring PRIMARY KEY (alias)
+-- Keep only one row per alias, preferring namespace=NULL (closest to original schema)
+DELETE FROM public.env_aliases
+WHERE id NOT IN (
+  SELECT DISTINCT ON (alias) id
+  FROM public.env_aliases
+  ORDER BY alias, (CASE WHEN namespace IS NULL THEN 0 ELSE 1 END), id
+);
+
 ALTER TABLE public.env_aliases 
   DROP CONSTRAINT env_aliases_uuid_pkey,
   ADD CONSTRAINT env_aliases_pkey PRIMARY KEY (alias),
