@@ -297,9 +297,6 @@ func (lb *LayerExecutor) PauseAndUpload(
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		// Mark this upload as complete
-		completeUpload()
-
 		// Wait for all previous layer uploads to complete before saving the cache entry.
 		// This prevents race conditions where another build hits this cache entry
 		// before its dependencies (previous layers) are available in storage.
@@ -307,6 +304,10 @@ func (lb *LayerExecutor) PauseAndUpload(
 		if err != nil {
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}
+
+		// Mark this upload as complete AFTER waiting for dependencies.
+		// This ensures Layer N+1 can only proceed after Layer N's dependencies are ready.
+		completeUpload()
 
 		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
 			Template: cache.Template{
