@@ -14,10 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var (
-	errMaxInstanceLengthExceeded = fmt.Errorf("max instance length exceeded")
-	errCannotSetTTL              = fmt.Errorf("cannot set ttl")
-)
+var errMaxInstanceLengthExceeded = fmt.Errorf("max instance length exceeded")
 
 func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
 	now := time.Now()
@@ -35,7 +32,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 		}
 
 		if !allowShorter && newEndTime.Before(sbx.EndTime) {
-			return sbx, errCannotSetTTL
+			return sbx, sandbox.ErrCannotSetTTL
 		}
 
 		logger.L().Debug(ctx, "sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
@@ -52,7 +49,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
 		case errors.Is(err, errMaxInstanceLengthExceeded):
 			return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
-		case errors.Is(err, errCannotSetTTL):
+		case errors.Is(err, sandbox.ErrCannotSetTTL):
 			// If shorter than the current end time, we don't extend, so we can return
 			return nil
 		default:

@@ -2,6 +2,7 @@ package populate_redis
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -63,7 +64,9 @@ func (m *PopulateRedisStorage) Update(ctx context.Context, sandboxID string, upd
 
 	_, err = m.redisBackend.Update(ctx, sandboxID, updateFunc)
 	if err != nil {
-		logger.L().Error(ctx, "failed to update sandbox in redis", zap.Error(err), logger.WithSandboxID(sandboxID))
+		if !errors.Is(err, sandbox.ErrCannotSetTTL) {
+			logger.L().Error(ctx, "failed to update sandbox in redis", zap.Error(err), logger.WithSandboxID(sandboxID))
+		}
 	}
 
 	return sbx, nil

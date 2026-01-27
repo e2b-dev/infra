@@ -120,7 +120,7 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 	// Apply update
 	newSbx, err := updateFunc(sbx)
 	if err != nil {
-		return sandbox.Sandbox{}, err
+		return sandbox.Sandbox{}, fmt.Errorf("failed to update sandbox: %w", err)
 	}
 
 	updatedSbx = newSbx
@@ -134,7 +134,7 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 	// Execute transaction
 	err = s.redisClient.Set(ctx, key, newData, redis.KeepTTL).Err()
 	if err != nil {
-		return sandbox.Sandbox{}, err
+		return sandbox.Sandbox{}, fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
 
 	return updatedSbx, nil
