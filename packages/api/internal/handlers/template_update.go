@@ -116,6 +116,7 @@ func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.Template
 
 // createBackwardCompatibleAlias creates a non-namespaced alias for older CLIs
 // that don't support namespace-prefixed template names.
+// Uses atomic upsert to avoid race conditions.
 func (a *APIStore) createBackwardCompatibleAlias(
 	ctx context.Context,
 	identifier string,
@@ -125,43 +126,22 @@ func (a *APIStore) createBackwardCompatibleAlias(
 	alias := id.ExtractAlias(identifier)
 	namespacedName := id.WithNamespace(teamSlug, alias)
 
-	existingAlias, err := a.sqlcDB.CheckAliasExistsInNamespace(ctx, queries.CheckAliasExistsInNamespaceParams{
-		Alias:     alias,
-		Namespace: nil,
+	// Atomically try to create the alias or get the existing owner
+	existingTemplateID, err := a.sqlcDB.UpsertTemplateAliasIfNotExists(ctx, queries.UpsertTemplateAliasIfNotExistsParams{
+		Alias:      alias,
+		TemplateID: templateID,
+		Namespace:  nil,
 	})
 	if err != nil {
-		if !dberrors.IsNotFoundError(err) {
-			return &api.APIError{
-				Code:      http.StatusInternalServerError,
-				ClientMsg: "Error checking alias availability",
-				Err:       err,
-			}
+		return &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Error creating backward compatible alias",
+			Err:       err,
 		}
-
-		// Non-namespaced alias doesn't exist - create it
-		err = a.sqlcDB.CreateTemplateAlias(ctx, queries.CreateTemplateAliasParams{
-			Alias:      alias,
-			TemplateID: templateID,
-			Namespace:  nil,
-		})
-		if err != nil {
-			return &api.APIError{
-				Code:      http.StatusInternalServerError,
-				ClientMsg: "Error creating backward compatible alias",
-				Err:       err,
-			}
-		}
-
-		a.templateCache.InvalidateAlias(nil, alias)
-		logger.L().Info(ctx, "Created backward compatible non-namespaced alias",
-			logger.WithTemplateID(templateID),
-			zap.String("alias", alias))
-
-		return nil
 	}
 
-	// Non-namespaced alias exists - check if it belongs to this template
-	if existingAlias.EnvID != templateID {
+	// Check if the alias belongs to this template (either newly created or already existed)
+	if existingTemplateID != templateID {
 		return &api.APIError{
 			Code: http.StatusConflict,
 			ClientMsg: fmt.Sprintf(
@@ -170,6 +150,11 @@ func (a *APIStore) createBackwardCompatibleAlias(
 			Err: nil,
 		}
 	}
+
+	a.templateCache.InvalidateAlias(nil, alias)
+	logger.L().Info(ctx, "Created or verified backward compatible non-namespaced alias",
+		logger.WithTemplateID(templateID),
+		zap.String("alias", alias))
 
 	return nil
 }
