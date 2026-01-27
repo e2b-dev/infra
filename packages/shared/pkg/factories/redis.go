@@ -74,7 +74,9 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 	}
 
 	if _, err := redisClient.Ping(ctx).Result(); err != nil {
-		return nil, fmt.Errorf("failed to ping redis: %w", err)
+		closeErr := redisClient.Close()
+
+		return nil, errors.Join(fmt.Errorf("failed to ping redis: %w", err), closeErr)
 	}
 
 	return redisClient, nil
