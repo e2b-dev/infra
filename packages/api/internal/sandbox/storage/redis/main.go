@@ -12,6 +12,7 @@ import (
 const (
 	sandboxKeyPrefix = "sandbox:storage:"
 	lockTimeout      = time.Minute
+	retryInterval    = 20 * time.Millisecond
 )
 
 var _ sandbox.Storage = (*Storage)(nil)
@@ -29,7 +30,7 @@ func NewStorage(
 		redisClient: redisClient,
 		lockService: redislock.New(redisClient),
 		lockOption: &redislock.Options{
-			RetryStrategy: redislock.LinearBackoff(50 * time.Millisecond),
+			RetryStrategy: NewConstantBackoff(retryInterval),
 		},
 	}
 }
