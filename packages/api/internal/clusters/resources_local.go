@@ -3,15 +3,14 @@ package clusters
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseutils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -41,15 +40,23 @@ func newLocalClusterResourceProvider(
 	}
 }
 
-func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, error) {
+func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, *api.APIError) {
 	start, end, err := clickhouseutils.GetSandboxStartEndTime(ctx, l.querySandboxMetricsProvider, teamID, sandboxID, qStart, qEnd)
 	if err != nil {
-		return nil, fmt.Errorf(`error when getting metrics time range: %w`, err)
+		return nil, &api.APIError{
+			Err:       fmt.Errorf(`error when getting metrics time range: %w`, err),
+			ClientMsg: "Failed to fetch sandbox metrics",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	start, end, err = clickhouseutils.ValidateRange(start, end)
 	if err != nil {
-		return nil, fmt.Errorf(`error when validating range of metrics: %w`, err)
+		return nil, &api.APIError{
+			Err:       fmt.Errorf(`error when validating range of metrics: %w`, err),
+			ClientMsg: "Invalid time range for metrics",
+			Code:      http.StatusBadRequest,
+		}
 	}
 
 	// Calculate the step size
@@ -57,7 +64,11 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 
 	rawMetrics, err := l.querySandboxMetricsProvider.QuerySandboxMetrics(ctx, sandboxID, teamID, start, end, step)
 	if err != nil {
-		return nil, fmt.Errorf(`error when querying sandbox metrics: %w`, err)
+		return nil, &api.APIError{
+			Err:       fmt.Errorf(`error when querying sandbox metrics: %w`, err),
+			ClientMsg: "Failed to fetch sandbox metrics",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	metrics := make([]api.SandboxMetric, len(rawMetrics))
@@ -77,12 +88,14 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 	return metrics, nil
 }
 
-func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, error) {
+func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, *api.APIError) {
 	rawMetrics, err := l.querySandboxMetricsProvider.QueryLatestMetrics(ctx, sandboxIDs, teamID)
 	if err != nil {
-		logger.L().Error(ctx, "Error fetching sandbox metrics from ClickHouse", logger.WithTeamID(teamID), zap.Error(err))
-
-		return nil, err
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: "Failed to fetch sandbox metrics",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	metrics := make(map[string]api.SandboxMetric)
@@ -102,7 +115,7 @@ func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, 
 	return metrics, nil
 }
 
-func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, qStart *int64, qLimit *int32) (api.SandboxLogs, error) {
+func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, qStart *int64, qLimit *int32) (api.SandboxLogs, *api.APIError) {
 	end := time.Now()
 	var start time.Time
 
@@ -119,7 +132,11 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 
 	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit)
 	if err != nil {
-		return api.SandboxLogs{}, fmt.Errorf("error when fetching sandbox logs: %w", err)
+		return api.SandboxLogs{}, &api.APIError{
+			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),
+			ClientMsg: "Failed to fetch sandbox logs",
+			Code:      http.StatusInternalServerError,
+		}
 	}
 
 	ll := make([]api.SandboxLog, len(raw))
@@ -151,7 +168,7 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 	cursor *time.Time,
 	direction api.LogsDirection,
 	source *api.LogsSource,
-) ([]logs.LogEntry, error) {
+) ([]logs.LogEntry, *api.APIError) {
 	// Use shared implementation with Loki as the persistent log backend
 	start, end := logQueryWindow(cursor, direction)
 
@@ -166,10 +183,14 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 }
 
 func (l *LocalClusterResourceProvider) logsFromLocalLoki(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int32, level *logs.LogLevel, direction logproto.Direction) logSourceFunc {
-	return func() ([]logs.LogEntry, error) {
+	return func() ([]logs.LogEntry, *api.APIError) {
 		entries, err := l.queryLogsProvider.QueryBuildLogs(ctx, templateID, buildID, start, end, limit, offset, level, direction)
 		if err != nil {
-			return nil, fmt.Errorf("error when fetching build logs from Loki: %w", err)
+			return nil, &api.APIError{
+				Err:       fmt.Errorf("error when fetching build logs from Loki: %w", err),
+				ClientMsg: "Failed to fetch build logs",
+				Code:      http.StatusInternalServerError,
+			}
 		}
 
 		return entries, nil
