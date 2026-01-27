@@ -308,6 +308,32 @@ func RegisterBuild(
 				ClientMsg: fmt.Sprintf("Alias '%s' already used", alias),
 				Code:      http.StatusForbidden,
 			}
+		} else {
+			// Alias exists and points to the same template
+			// Update namespace if it's NULL or different from team's namespace
+			if aliasDB.Namespace == nil || *aliasDB.Namespace != data.Team.Slug {
+				err = client.UpdateAliasNamespace(ctx, queries.UpdateAliasNamespaceParams{
+					Alias:     alias,
+					Namespace: &data.Team.Slug,
+				})
+				if err != nil {
+					telemetry.ReportCriticalError(ctx, "error when updating alias namespace", err, attribute.String("alias", alias))
+
+					return nil, &api.APIError{
+						Err:       err,
+						ClientMsg: fmt.Sprintf("Error when updating alias namespace: %s", err),
+						Code:      http.StatusInternalServerError,
+					}
+				}
+
+				// Invalidate any cached entry for this alias
+				templateCache.InvalidateAlias(&data.Team.Slug, alias)
+				if aliasDB.Namespace != nil {
+					templateCache.InvalidateAlias(aliasDB.Namespace, alias)
+				}
+
+				telemetry.ReportEvent(ctx, "updated alias namespace", attribute.String("env.alias", alias))
+			}
 		}
 
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
