@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) {
@@ -55,7 +56,13 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	metrics, apiErr := cluster.GetResources().GetSandboxMetrics(ctx, team.ID.String(), sandboxID, params.Start, params.End)
 	if apiErr != nil {
-		a.handleAPIError(ctx, c, apiErr, "error getting sandbox metrics")
+		if apiErr.Code >= 500 {
+			telemetry.ReportCriticalError(ctx, "error getting sandbox metrics", apiErr.Err)
+		} else {
+			telemetry.ReportError(ctx, "error getting sandbox metrics", apiErr.Err)
+		}
+
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}

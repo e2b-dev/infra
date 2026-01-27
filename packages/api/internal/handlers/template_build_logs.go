@@ -93,7 +93,8 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templ
 
 	logs, apiErr := cluster.GetResources().GetBuildLogs(ctx, buildInfo.NodeID, templateID, buildID, 0, limit, apiToLogLevel(params.Level), cursor, direction, params.Source)
 	if apiErr != nil {
-		a.handleAPIError(ctx, c, apiErr, "error when getting build logs", telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+		telemetry.ReportCriticalError(ctx, "error when getting build logs", apiErr.Err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}

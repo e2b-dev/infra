@@ -94,7 +94,8 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, utils.WithClusterFallback(team.ClusterID), params.SandboxIds)
 	if apiErr != nil {
-		a.handleAPIError(ctx, c, apiErr, "error fetching sandboxes metrics")
+		telemetry.ReportCriticalError(ctx, "error fetching sandboxes metrics", apiErr.Err)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}

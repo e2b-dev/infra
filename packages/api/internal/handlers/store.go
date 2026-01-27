@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
@@ -257,22 +256,6 @@ func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
 
 	c.Error(errors.New(message))
 	c.JSON(code, apiErr)
-}
-
-// handleAPIError reports the error to telemetry based on its severity (determined by HTTP status code)
-// and sends the error response to the client. This consolidates error handling logic and eliminates
-// the need to repeat the severity check in every handler.
-//
-// For 5xx errors (server errors), it reports as critical using ReportCriticalError.
-// For 4xx errors (client errors), it reports as a regular error using ReportError.
-func (a *APIStore) handleAPIError(ctx context.Context, c *gin.Context, apiErr *api.APIError, message string, attrs ...attribute.KeyValue) {
-	if apiErr.Code >= 500 {
-		telemetry.ReportCriticalError(ctx, message, apiErr.Err, attrs...)
-	} else {
-		telemetry.ReportError(ctx, message, apiErr.Err, attrs...)
-	}
-
-	a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 }
 
 func (a *APIStore) GetHealth(c *gin.Context) {
