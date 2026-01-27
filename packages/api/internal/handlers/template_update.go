@@ -87,6 +87,9 @@ func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.Template
 			return
 		}
 
+		// Invalidate cache immediately after successful DB update
+		a.templateCache.InvalidateAllTags(aliasInfo.TemplateID)
+
 		// For backward compatibility with older CLIs (v1 endpoint), also create a non-namespaced alias
 		// when publishing a template, so older CLIs can still find it by bare alias name
 		if createBackwardCompatAlias && *body.Public {
@@ -100,8 +103,6 @@ func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.Template
 			}
 		}
 	}
-
-	a.templateCache.InvalidateAllTags(aliasInfo.TemplateID)
 
 	telemetry.ReportEvent(ctx, "updated template")
 
