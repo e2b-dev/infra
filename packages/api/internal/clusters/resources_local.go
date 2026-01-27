@@ -45,8 +45,8 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 	if err != nil {
 		return nil, &api.APIError{
 			Err:       fmt.Errorf(`error when getting metrics time range: %w`, err),
-			ClientMsg: "Invalid time range for metrics",
-			Code:      http.StatusBadRequest,
+			ClientMsg: "Failed to fetch sandbox metrics",
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
