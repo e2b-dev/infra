@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"regexp"
 	"time"
@@ -92,24 +93,21 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 
 			// Log errors if present
 			if len(c.Errors) > 0 {
-				for _, e := range c.Errors.Errors() {
-					if status >= http.StatusInternalServerError {
-						logger.Error(ctx, e, fields...)
-					} else {
-						logger.Warn(ctx, e, fields...)
-					}
+				errs := make([]error, 0, len(c.Errors))
+				for _, e := range c.Errors {
+					errs = append(errs, e.Err)
 				}
-			} else {
-				// No errors, let's log the request
-				level := conf.DefaultLevel
-				if status >= http.StatusInternalServerError {
-					level = zapcore.ErrorLevel
-				} else if status >= http.StatusBadRequest {
-					level = zapcore.WarnLevel
-				}
-
-				logger.Log(ctx, level, path, fields...)
+				fields = append(fields, zap.Error(errors.Join(errs...)))
 			}
+
+			level := conf.DefaultLevel
+			if status >= http.StatusInternalServerError {
+				level = zapcore.ErrorLevel
+			} else if status >= http.StatusBadRequest {
+				level = zapcore.WarnLevel
+			}
+
+			logger.Log(ctx, level, path, fields...)
 		}
 	}
 }
