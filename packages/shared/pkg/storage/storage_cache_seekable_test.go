@@ -657,6 +657,10 @@ func TestCache_GetFrame_Compressed_CacheMiss_Raw(t *testing.T) {
 	assert.Equal(t, int64(0), rng.Start)
 	assert.Equal(t, len(compressed), rng.Length)
 	assert.Equal(t, compressed, buf[:rng.Length])
+
+	// Wait for async cache write to complete before test cleanup
+	framePath := c.makeFrameFilename("obj", frameOffset, frameSize)
+	waitForCacheFile(t, framePath)
 }
 
 func TestCache_GetFrame_Compressed_RoundTrip(t *testing.T) {
@@ -1389,6 +1393,128 @@ func TestCache_GetFrame_Uncompressed_PartialRead(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1024, rng.Length)
 	assert.Equal(t, data[:1024], buf)
+}
+
+// =============================================================================
+// Parameterized Cache Mode Tests (cacheCompressed flag)
+// =============================================================================
+
+func TestCache_getCompressedFrameInternal_Passthrough_Decompress(t *testing.T) {
+	t.Parallel()
+
+	// When cacheCompressed=false, pass through to inner without caching
+	const chunkSize = 4096
+	origData := makeRepetitiveData(chunkSize)
+	compressed := compressTestData(t, origData)
+
+	frameTable := &FrameTable{
+		CompressionType: CompressionZstd,
+		StartAt:         FrameOffset{U: 0, C: 0},
+		Frames:          []FrameSize{{U: int32(chunkSize), C: int32(len(compressed))}},
+	}
+
+	// Inner is asked with the same decompress flag we pass
+	inner := NewMockStorageProvider(t)
+	inner.EXPECT().GetFrame(mock.Anything, "obj", int64(0), frameTable, true, mock.Anything).
+		Run(func(_ context.Context, _ string, _ int64, _ *FrameTable, _ bool, buf []byte) {
+			copy(buf, origData) // Inner returns decompressed data
+		}).
+		Return(Range{Start: 0, Length: chunkSize}, nil).Once()
+
+	c := newTestCache(t, inner, chunkSize)
+
+	buf := make([]byte, chunkSize)
+	// cacheCompressed=false -> passthrough to inner
+	rng, _, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, true, buf, false)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), rng.Start)
+	assert.Equal(t, chunkSize, rng.Length)
+	assert.Equal(t, origData, buf)
+
+	// No cache file should be written
+	time.Sleep(50 * time.Millisecond) // Give time for any async write
+	chunkPath := c.makeChunkFilename("obj", 0)
+	_, err = os.Stat(chunkPath)
+	assert.True(t, os.IsNotExist(err), "no cache file should be written in passthrough mode")
+}
+
+func TestCache_getCompressedFrameInternal_Passthrough_Raw(t *testing.T) {
+	t.Parallel()
+
+	// When cacheCompressed=false and caller wants raw compressed data, just pass through
+	const chunkSize = 4096
+	origData := makeRepetitiveData(chunkSize)
+	compressed := compressTestData(t, origData)
+
+	frameTable := &FrameTable{
+		CompressionType: CompressionZstd,
+		StartAt:         FrameOffset{U: 0, C: 0},
+		Frames:          []FrameSize{{U: int32(chunkSize), C: int32(len(compressed))}},
+	}
+
+	// Raw read passes through to inner without caching
+	inner := NewMockStorageProvider(t)
+	inner.EXPECT().GetFrame(mock.Anything, "obj", int64(0), frameTable, false, mock.Anything).
+		Run(func(_ context.Context, _ string, _ int64, _ *FrameTable, _ bool, buf []byte) {
+			copy(buf, compressed)
+		}).
+		Return(Range{Start: 0, Length: len(compressed)}, nil).Once()
+
+	c := newTestCache(t, inner, chunkSize)
+
+	buf := make([]byte, len(compressed))
+	// cacheCompressed=false, decompress=false -> passthrough
+	rng, _, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, false, buf, false)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), rng.Start)
+	assert.Equal(t, len(compressed), rng.Length)
+	assert.Equal(t, compressed, buf[:rng.Length])
+}
+
+func TestCache_getCompressedFrameInternal_CompressedFrameMode(t *testing.T) {
+	t.Parallel()
+
+	// When cacheCompressed=true (default), cache compressed frames
+	const chunkSize = 4096
+	origData := makeRepetitiveData(chunkSize)
+	compressed := compressTestData(t, origData)
+
+	frameOffset := FrameOffset{U: 0, C: 0}
+	frameSize := FrameSize{U: int32(chunkSize), C: int32(len(compressed))}
+	frameTable := &FrameTable{
+		CompressionType: CompressionZstd,
+		StartAt:         frameOffset,
+		Frames:          []FrameSize{frameSize},
+	}
+
+	// Inner returns compressed data
+	inner := NewMockStorageProvider(t)
+	inner.EXPECT().GetFrame(mock.Anything, "obj", int64(0), frameTable, false, mock.Anything).
+		Run(func(_ context.Context, _ string, _ int64, _ *FrameTable, _ bool, buf []byte) {
+			copy(buf, compressed)
+		}).
+		Return(Range{Start: 0, Length: len(compressed)}, nil).Once()
+
+	c := newTestCache(t, inner, chunkSize)
+
+	buf := make([]byte, chunkSize)
+	// cacheCompressed=true -> cache compressed frames
+	rng, _, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, true, buf, true)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), rng.Start)
+	assert.Equal(t, chunkSize, rng.Length)
+	assert.Equal(t, origData, buf)
+
+	// Verify compressed data was cached (.frm)
+	framePath := c.makeFrameFilename("obj", frameOffset, frameSize)
+	waitForCacheFile(t, framePath)
+
+	cached, err := os.ReadFile(framePath)
+	require.NoError(t, err)
+	assert.Equal(t, compressed, cached)
 }
 
 // =============================================================================

@@ -28,6 +28,18 @@ const (
 	defaultUploadPartSize         = 50 * megabyte
 )
 
+// Global flags for compression behavior. These will become feature flags later.
+var (
+	// EnableGCSCompression controls whether files are compressed when uploading to GCS.
+	// When false, files are uploaded uncompressed even if compression options are provided.
+	EnableGCSCompression = true
+
+	// EnableNFSCompressedCache controls whether the NFS cache stores compressed frames.
+	// When true (default): Cache stores compressed frames, decompresses on read.
+	// When false: Cache stores uncompressed chunks (inner decompresses, cache stores raw data).
+	EnableNFSCompressedCache = true
+)
+
 const (
 	CompressionNone = CompressionType(iota)
 	CompressionZstd
@@ -190,13 +202,10 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 		span.End()
 	}()
 
-	compression := CompressionNone
+	noCompression := !EnableGCSCompression || opts == nil || opts.CompressionType == CompressionNone
 	partSize := defaultUploadPartSize
-	if opts != nil {
-		compression = opts.CompressionType
-		if opts.TargetPartSize > 0 {
-			partSize = opts.TargetPartSize
-		}
+	if opts != nil && opts.TargetPartSize > 0 {
+		partSize = opts.TargetPartSize
 	}
 
 	in, err := os.Open(inFilePath)
@@ -212,7 +221,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 
 	sizeU := stat.Size()
 
-	if compression == CompressionNone && (s.Backend.MultipartUploaderFactory == nil || sizeU <= int64(partSize)) {
+	if noCompression && (s.Backend.MultipartUploaderFactory == nil || sizeU <= int64(partSize)) {
 		// If not using multipart or compressed upload, fall through to simple put.
 		_, err = s.Backend.Upload(ctx, objectPath, in)
 
@@ -230,10 +239,10 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 		return nil, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
-	if compression != CompressionNone {
-		ft, err = newFrameEncoder(opts, partUploader, int64(partSize), maxConcurrency).uploadFramed(ctx, in)
-	} else {
+	if noCompression {
 		err = uploadFileInParallel(ctx, in, sizeU, partUploader, partSize, maxConcurrency)
+	} else {
+		ft, err = newFrameEncoder(opts, partUploader, int64(partSize), maxConcurrency).uploadFramed(ctx, in)
 	}
 
 	if err != nil {

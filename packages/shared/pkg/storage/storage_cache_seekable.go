@@ -71,6 +71,18 @@ func (c Cache) GetFrame(ctx context.Context, path string, offU int64, frameTable
 }
 
 func (c Cache) getCompressedFrame(ctx context.Context, objectPath string, offU int64, frameTable *FrameTable, decompress bool, buf []byte) (resultRange Range, wg *sync.WaitGroup, err error) {
+	return c.getCompressedFrameInternal(ctx, objectPath, offU, frameTable, decompress, buf, EnableNFSCompressedCache)
+}
+
+// getCompressedFrameInternal is the parameterized implementation for testing.
+// cacheCompressed controls whether to cache compressed frames (true) or pass through to inner (false).
+func (c Cache) getCompressedFrameInternal(ctx context.Context, objectPath string, offU int64, frameTable *FrameTable, decompress bool, buf []byte, cacheCompressed bool) (resultRange Range, wg *sync.WaitGroup, err error) {
+	// When compressed frame caching is disabled, pass through to inner without caching
+	if !cacheCompressed {
+		rng, err := c.inner.GetFrame(ctx, objectPath, offU, frameTable, decompress, buf)
+		return rng, &sync.WaitGroup{}, err
+	}
+
 	wg = &sync.WaitGroup{}
 
 	ctx, span := c.tracer.Start(ctx, "read compressed frame at offset", trace.WithAttributes(
