@@ -56,7 +56,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/posthog/posthog-go v0.0.0-20230801140217-d607812dee69
 	github.com/pressly/goose/v3 v3.24.2
-	github.com/redis/go-redis/v9 v9.12.1
+	github.com/redis/go-redis/v9 v9.17.3
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.57.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0
@@ -261,6 +261,8 @@ require (
 	github.com/prometheus/exporter-toolkit v0.10.1-0.20230714054209-2f4150c63f97 // indirect
 	github.com/prometheus/procfs v0.16.0 // indirect
 	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852 // indirect
+	github.com/redis/go-redis/extra/rediscmd/v9 v9.17.3 // indirect
+	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect

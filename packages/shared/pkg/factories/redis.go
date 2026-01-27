@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
@@ -71,6 +72,13 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		})
 	default:
 		return nil, ErrRedisDisabled
+	}
+
+	// Enable tracing
+	if err := redisotel.InstrumentTracing(redisClient); err != nil {
+		closeErr := redisClient.Close()
+
+		return nil, errors.Join(fmt.Errorf("failed to enable redis tracing: %w", err), closeErr)
 	}
 
 	if _, err := redisClient.Ping(ctx).Result(); err != nil {
