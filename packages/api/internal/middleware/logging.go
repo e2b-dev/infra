@@ -79,10 +79,10 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 				zap.String("method", c.Request.Method),
 				zap.String("path", path),
 				zap.String("query", query),
-				zap.String("ip", c.ClientIP()),
 				zap.String("user-agent", c.Request.UserAgent()),
 				zap.Duration("latency", latency),
 			}
+
 			if conf.TimeFormat != "" {
 				fields = append(fields, zap.String("time", end.Format(conf.TimeFormat)))
 			}
