@@ -42,11 +42,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 	}
 
 	if res.StatusCode() != http.StatusOK || res.JSON200 == nil {
-		return nil, &api.APIError{
-			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
-			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      http.StatusInternalServerError,
-		}
+		return nil, handleEdgeErrorResponse(res.StatusCode(), res.JSON400, res.JSON401, res.JSON500, "Failed to fetch sandbox metrics")
 	}
 
 	raw := *res.JSON200
@@ -72,17 +68,13 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 	if err != nil {
 		return nil, &api.APIError{
 			Err:       err,
-			ClientMsg: "Failed to fetch sandbox metrics",
+			ClientMsg: "Failed to fetch sandboxes metrics",
 			Code:      http.StatusInternalServerError,
 		}
 	}
 
 	if res.StatusCode() != http.StatusOK || res.JSON200 == nil {
-		return nil, &api.APIError{
-			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
-			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      http.StatusInternalServerError,
-		}
+		return nil, handleEdgeErrorResponse(res.StatusCode(), res.JSON400, res.JSON401, res.JSON500, "Failed to fetch sandboxes metrics")
 	}
 
 	raw := *res.JSON200
@@ -114,11 +106,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 	}
 
 	if res.StatusCode() != http.StatusOK || res.JSON200 == nil {
-		return api.SandboxLogs{}, &api.APIError{
-			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
-			ClientMsg: "Failed to fetch sandbox logs",
-			Code:      http.StatusInternalServerError,
-		}
+		return api.SandboxLogs{}, handleEdgeErrorResponse(res.StatusCode(), res.JSON400, res.JSON401, res.JSON500, "Failed to fetch sandbox logs")
 	}
 
 	raw := *res.JSON200
@@ -186,11 +174,7 @@ func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, 
 		}
 
 		if res.StatusCode() != 200 || res.JSON200 == nil {
-			return nil, &api.APIError{
-				Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
-				ClientMsg: "Failed to fetch build logs",
-				Code:      res.StatusCode(),
-			}
+			return nil, handleEdgeErrorResponse(res.StatusCode(), res.JSON400, res.JSON401, res.JSON500, "Failed to fetch build logs")
 		}
 
 		raw := *res.JSON200
@@ -205,5 +189,39 @@ func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, 
 		}
 
 		return l, nil
+	}
+}
+
+// handleEdgeErrorResponse extracts error information from edge API error responses
+func handleEdgeErrorResponse(statusCode int, json400, json401, json500 *edgeapi.Error, clientMsg string) *api.APIError {
+	// Try to extract error message from response body
+	var errMsg string
+	switch statusCode {
+	case http.StatusBadRequest:
+		if json400 != nil && json400.Message != "" {
+			return &api.APIError{
+				Err:       fmt.Errorf("bad request: %s", json400.Message),
+				ClientMsg: json400.Message,
+				Code:      http.StatusBadRequest,
+			}
+		}
+	case http.StatusUnauthorized:
+		if json401 != nil && json401.Message != "" {
+			errMsg = json401.Message
+		}
+	case http.StatusInternalServerError:
+		if json500 != nil && json500.Message != "" {
+			errMsg = json500.Message
+		}
+	}
+
+	if errMsg != "" {
+		errMsg = "Unexpected error occurred"
+	}
+
+	return &api.APIError{
+		Err:       fmt.Errorf("edge error: %s (http code %d)", errMsg, statusCode),
+		ClientMsg: clientMsg,
+		Code:      http.StatusInternalServerError,
 	}
 }
