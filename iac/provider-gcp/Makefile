@@ -94,7 +94,6 @@ init:
 switch:
 	@ printf "Switching Terraform backend for different env ${ENV}\n"
 	@ $(TF) init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
-	touch ${TF_VAR_FILE}
 
 .PHONY: destroy
 destroy:
