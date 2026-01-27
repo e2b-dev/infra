@@ -1287,6 +1287,9 @@ type PostTemplatesTemplateIDJSONRequestBody = TemplateBuildRequest
 // PostV2TemplatesJSONRequestBody defines body for PostV2Templates for application/json ContentType.
 type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2
 
+// PatchV2TemplatesTemplateIDJSONRequestBody defines body for PatchV2TemplatesTemplateID for application/json ContentType.
+type PatchV2TemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
+
 // PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody defines body for PostV2TemplatesTemplateIDBuildsBuildID for application/json ContentType.
 type PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody = TemplateBuildStartV2
 

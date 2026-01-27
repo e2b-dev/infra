@@ -2423,6 +2423,33 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /v2/templates/{templateID}:
+    patch:
+      description: Update template
+      tags: [templates]
+      security:
+        - ApiKeyAuth: []
+        - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateUpdateRequest"
+      responses:
+        "200":
+          description: The template was updated successfully
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
   /templates/{templateID}/builds/{buildID}/status:
     get:
       description: Get template build info

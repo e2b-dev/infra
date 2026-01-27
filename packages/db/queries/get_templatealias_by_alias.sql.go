@@ -12,7 +12,7 @@ import (
 )
 
 const getTemplateAliasByAlias = `-- name: GetTemplateAliasByAlias :one
-SELECT ea.alias, ea.is_renamable, ea.env_id, ea.namespace, e.team_id, e.public
+SELECT ea.alias, ea.is_renamable, ea.env_id, ea.namespace, ea.id, e.team_id, e.public
 FROM "public"."env_aliases" ea
 JOIN "public"."envs" e ON ea.env_id = e.id
 WHERE ea.alias = $1
@@ -23,6 +23,7 @@ type GetTemplateAliasByAliasRow struct {
 	IsRenamable bool
 	EnvID       string
 	Namespace   *string
+	ID          uuid.UUID
 	TeamID      uuid.UUID
 	Public      bool
 }
@@ -35,6 +36,7 @@ func (q *Queries) GetTemplateAliasByAlias(ctx context.Context, alias string) (Ge
 		&i.IsRenamable,
 		&i.EnvID,
 		&i.Namespace,
+		&i.ID,
 		&i.TeamID,
 		&i.Public,
 	)
