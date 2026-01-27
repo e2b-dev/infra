@@ -3,6 +3,7 @@ package clusters
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -45,7 +46,7 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 		return nil, &api.APIError{
 			Err:       fmt.Errorf(`error when getting metrics time range: %w`, err),
 			ClientMsg: "Invalid time range for metrics",
-			Code:      400,
+			Code:      http.StatusBadRequest,
 		}
 	}
 
@@ -54,7 +55,7 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 		return nil, &api.APIError{
 			Err:       fmt.Errorf(`error when validating range of metrics: %w`, err),
 			ClientMsg: "Invalid time range for metrics",
-			Code:      400,
+			Code:      http.StatusBadRequest,
 		}
 	}
 
@@ -66,7 +67,7 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 		return nil, &api.APIError{
 			Err:       fmt.Errorf(`error when querying sandbox metrics: %w`, err),
 			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      500,
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -93,7 +94,7 @@ func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, 
 		return nil, &api.APIError{
 			Err:       err,
 			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      500,
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -134,7 +135,7 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),
 			ClientMsg: "Failed to fetch sandbox logs",
-			Code:      500,
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -188,7 +189,7 @@ func (l *LocalClusterResourceProvider) logsFromLocalLoki(ctx context.Context, te
 			return nil, &api.APIError{
 				Err:       fmt.Errorf("error when fetching build logs from Loki: %w", err),
 				ClientMsg: "Failed to fetch build logs",
-				Code:      500,
+				Code:      http.StatusInternalServerError,
 			}
 		}
 

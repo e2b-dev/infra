@@ -38,7 +38,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 		return nil, &api.APIError{
 			Err:       err,
 			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      500,
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -46,7 +46,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 		return nil, &api.APIError{
 			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
 			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      res.StatusCode(),
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -54,7 +54,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 		return nil, &api.APIError{
 			Err:       errors.New("request returned nil response"),
 			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      500,
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -82,7 +82,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 		return nil, &api.APIError{
 			Err:       err,
 			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      500,
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -98,7 +98,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 		return nil, &api.APIError{
 			Err:       errors.New("request returned nil response"),
 			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      500,
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -126,7 +126,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       err,
 			ClientMsg: "Failed to fetch sandbox logs",
-			Code:      500,
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -134,7 +134,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
 			ClientMsg: "Failed to fetch sandbox logs",
-			Code:      res.StatusCode(),
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -142,7 +142,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       errors.New("request returned nil response"),
 			ClientMsg: "Failed to fetch sandbox logs",
-			Code:      500,
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
