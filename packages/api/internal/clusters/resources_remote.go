@@ -2,7 +2,6 @@ package clusters
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -42,17 +41,9 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 		}
 	}
 
-	if res.StatusCode() != http.StatusOK {
+	if res.StatusCode() != http.StatusOK || res.JSON200 == nil {
 		return nil, &api.APIError{
 			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
-			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      http.StatusInternalServerError,
-		}
-	}
-
-	if res.JSON200 == nil {
-		return nil, &api.APIError{
-			Err:       errors.New("request returned nil response"),
 			ClientMsg: "Failed to fetch sandbox metrics",
 			Code:      http.StatusInternalServerError,
 		}
@@ -86,19 +77,11 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 		}
 	}
 
-	if res.StatusCode() != http.StatusOK {
+	if res.StatusCode() != http.StatusOK || res.JSON200 == nil {
 		return nil, &api.APIError{
 			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
 			ClientMsg: "Failed to fetch sandbox metrics",
 			Code:      res.StatusCode(),
-		}
-	}
-
-	if res.JSON200 == nil {
-		return nil, &api.APIError{
-			Err:       errors.New("request returned nil response"),
-			ClientMsg: "Failed to fetch sandbox metrics",
-			Code:      http.StatusInternalServerError,
 		}
 	}
 
@@ -130,17 +113,9 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 		}
 	}
 
-	if res.StatusCode() != http.StatusOK {
+	if res.StatusCode() != http.StatusOK || res.JSON200 == nil {
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
-			ClientMsg: "Failed to fetch sandbox logs",
-			Code:      http.StatusInternalServerError,
-		}
-	}
-
-	if res.JSON200 == nil {
-		return api.SandboxLogs{}, &api.APIError{
-			Err:       errors.New("request returned nil response"),
 			ClientMsg: "Failed to fetch sandbox logs",
 			Code:      http.StatusInternalServerError,
 		}
@@ -210,19 +185,11 @@ func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, 
 			}
 		}
 
-		if res.StatusCode() != 200 {
+		if res.StatusCode() != 200 || res.JSON200 == nil {
 			return nil, &api.APIError{
-				Err:       errors.New("failed to get build logs in template manager"),
+				Err:       fmt.Errorf("unexpected response with HTTP status '%d'", res.StatusCode()),
 				ClientMsg: "Failed to fetch build logs",
 				Code:      res.StatusCode(),
-			}
-		}
-
-		if res.JSON200 == nil {
-			return nil, &api.APIError{
-				Err:       errors.New("request returned nil response"),
-				ClientMsg: "Failed to fetch build logs",
-				Code:      500,
 			}
 		}
 
