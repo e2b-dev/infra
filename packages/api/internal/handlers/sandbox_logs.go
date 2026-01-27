@@ -34,10 +34,9 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 		return
 	}
 
-	logs, err := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, params.Start, params.Limit)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when returning logs for sandbox", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning logs for sandbox '%s'", sandboxID))
+	logs, apiErr := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, params.Start, params.Limit)
+	if apiErr != nil {
+		a.handleAPIError(ctx, c, apiErr, "error when returning logs for sandbox")
 
 		return
 	}

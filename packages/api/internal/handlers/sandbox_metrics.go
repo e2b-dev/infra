@@ -5,7 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -54,10 +53,9 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
-	metrics, err := cluster.GetResources().GetSandboxMetrics(ctx, team.ID.String(), sandboxID, params.Start, params.End)
-	if err != nil {
-		logger.L().Error(ctx, "error getting sandbox metrics", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "error getting sandbox metrics")
+	metrics, apiErr := cluster.GetResources().GetSandboxMetrics(ctx, team.ID.String(), sandboxID, params.Start, params.End)
+	if apiErr != nil {
+		a.handleAPIError(ctx, c, apiErr, "error getting sandbox metrics")
 
 		return
 	}
