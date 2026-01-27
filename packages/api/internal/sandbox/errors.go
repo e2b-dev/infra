@@ -23,5 +23,5 @@ func (e *NotFoundError) Error() string {
 
 var (
 	ErrAlreadyExists = errors.New("sandbox already exists")
-	ErrCannotSetTTL = errors.New("cannot set ttl")
+	ErrCannotSetTTL  = errors.New("cannot set ttl")
 )
