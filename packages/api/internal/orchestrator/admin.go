@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -46,7 +47,14 @@ func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
 		}
 	}
 
-	for _, sbx := range o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning}) {
+	sbxs, err := o.sandboxStore.Items(ctx, nil, []sandbox.State{sandbox.StateRunning})
+	if err != nil {
+		logger.L().Error(ctx, "failed to list running sandboxes", zap.Error(err))
+
+		return nil
+	}
+
+	for _, sbx := range sbxs {
 		n, ok := apiNodes[sbx.NodeID]
 		if !ok {
 			logger.L().Error(ctx, "node for sandbox wasn't found", logger.WithNodeID(sbx.NodeID), logger.WithSandboxID(sbx.SandboxID))
@@ -69,7 +77,7 @@ func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
 	return result
 }
 
-func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeShortID string) (*api.NodeDetail, error) {
+func (o *Orchestrator) AdminNodeDetail(ctx context.Context, clusterID uuid.UUID, nodeIDOrNomadNodeShortID string) (*api.NodeDetail, error) {
 	n := o.GetNodeByIDOrNomadShortID(clusterID, nodeIDOrNomadNodeShortID)
 	if n == nil {
 		return nil, ErrNodeNotFound
@@ -98,7 +106,12 @@ func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeSho
 		Metrics:         metrics,
 	}
 
-	for _, sbx := range o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning}) {
+	sbxs, err := o.sandboxStore.Items(ctx, nil, []sandbox.State{sandbox.StateRunning})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, sbx := range sbxs {
 		if sbx.NodeID == n.ID && sbx.ClusterID == n.ClusterID {
 			var metadata *api.SandboxMetadata
 			if sbx.Metadata != nil {

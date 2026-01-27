@@ -39,7 +39,7 @@ func (s *Storage) get(sandboxID string) (*memorySandbox, error) {
 }
 
 // Get the item from the cache.
-func (s *Storage) Get(_ context.Context, sandboxID string) (sandbox.Sandbox, error) {
+func (s *Storage) Get(_ context.Context, _ uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
 		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
@@ -48,13 +48,13 @@ func (s *Storage) Get(_ context.Context, sandboxID string) (sandbox.Sandbox, err
 	return item.Data(), nil
 }
 
-func (s *Storage) Remove(_ context.Context, sandboxID string) error {
+func (s *Storage) Remove(_ context.Context, _ uuid.UUID, sandboxID string) error {
 	s.items.Remove(sandboxID)
 
 	return nil
 }
 
-func (s *Storage) Items(teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) []sandbox.Sandbox {
+func (s *Storage) Items(_ context.Context, teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
 	filter := sandbox.NewItemsFilter()
 	for _, opt := range options {
 		opt(filter)
@@ -79,10 +79,10 @@ func (s *Storage) Items(teamID *uuid.UUID, states []sandbox.State, options ...sa
 		items = append(items, data)
 	}
 
-	return items
+	return items, nil
 }
 
-func (s *Storage) Update(_ context.Context, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
+func (s *Storage) Update(_ context.Context, _ uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
 		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
@@ -101,7 +101,7 @@ func (s *Storage) Update(_ context.Context, sandboxID string, updateFunc func(sa
 	return sbx, nil
 }
 
-func (s *Storage) StartRemoving(ctx context.Context, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
+func (s *Storage) StartRemoving(ctx context.Context, _ uuid.UUID, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
 	sbx, err := s.get(sandboxID)
 	if err != nil {
 		return false, nil, err
@@ -180,7 +180,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 	return false, callback, nil
 }
 
-func (s *Storage) WaitForStateChange(ctx context.Context, sandboxID string) error {
+func (s *Storage) WaitForStateChange(ctx context.Context, _ uuid.UUID, sandboxID string) error {
 	sbx, err := s.get(sandboxID)
 	if err != nil {
 		return fmt.Errorf("failed to get sandbox: %w", err)

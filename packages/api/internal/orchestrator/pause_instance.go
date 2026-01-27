@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gogo/status"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"google.golang.org/grpc/codes"
 
@@ -130,6 +131,6 @@ func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.S
 	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
 }
 
-func (o *Orchestrator) WaitForStateChange(ctx context.Context, sandboxID string) error {
-	return o.sandboxStore.WaitForStateChange(ctx, sandboxID)
+func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
+	return o.sandboxStore.WaitForStateChange(ctx, teamID, sandboxID)
 }

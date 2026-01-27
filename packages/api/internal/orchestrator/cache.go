@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -22,8 +23,8 @@ const cacheSyncTime = 20 * time.Second
 
 const nodeConnectTimeout = 5 * time.Second
 
-func (o *Orchestrator) GetSandbox(ctx context.Context, sandboxID string) (sandbox.Sandbox, error) {
-	return o.sandboxStore.Get(ctx, sandboxID)
+func (o *Orchestrator) GetSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
+	return o.sandboxStore.Get(ctx, teamID, sandboxID)
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.

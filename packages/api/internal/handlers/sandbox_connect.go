@@ -50,8 +50,9 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		return
 	}
 
+	teamID := teamInfo.ID
 	sandboxID = utils.ShortID(sandboxID)
-	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
+	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sandboxData.TeamID != teamInfo.Team.ID {
 			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
@@ -62,7 +63,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		switch sandboxData.State {
 		case sandbox.StatePausing:
 			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
-			err = a.orchestrator.WaitForStateChange(ctx, sandboxID)
+			err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
 			if err != nil {
 				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
 
@@ -80,7 +81,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 				zap.String("node_id", sandboxData.NodeID),
 			)
 
-			apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, timeout, false)
+			apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
 			if apiErr != nil {
 				logger.L().Error(ctx, "Error when resuming sandbox", zap.Error(apiErr.Err))
 				a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)

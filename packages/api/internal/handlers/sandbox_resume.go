@@ -54,8 +54,9 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
+	teamID := teamInfo.ID
 	sandboxID = utils.ShortID(sandboxID)
-	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
+	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sandboxData.TeamID != teamInfo.Team.ID {
 			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
@@ -66,7 +67,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		switch sandboxData.State {
 		case sandbox.StatePausing:
 			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
-			err = a.orchestrator.WaitForStateChange(ctx, sandboxID)
+			err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
 			if err != nil {
 				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
 

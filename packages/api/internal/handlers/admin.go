@@ -20,8 +20,10 @@ func (a *APIStore) GetNodes(c *gin.Context) {
 }
 
 func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.GetNodesNodeIDParams) {
+	ctx := c.Request.Context()
+
 	clusterID := utils.WithClusterFallback(params.ClusterID)
-	result, err := a.orchestrator.AdminNodeDetail(clusterID, nodeID)
+	result, err := a.orchestrator.AdminNodeDetail(ctx, clusterID, nodeID)
 	if err != nil {
 		if errors.Is(err, orchestrator.ErrNodeNotFound) {
 			c.Status(http.StatusNotFound)
