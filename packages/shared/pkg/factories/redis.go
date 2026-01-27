@@ -8,11 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+)
+
+const (
+	retryAttempts        = 3
+	initialRetryInterval = 10 * time.Millisecond
 )
 
 var ErrRedisDisabled = errors.New("redis is disabled")
@@ -33,8 +39,10 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
 		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
 		clusterOpts := &redis.ClusterOptions{
-			Addrs:        []string{config.RedisClusterURL},
-			MinIdleConns: 1,
+			Addrs:           []string{config.RedisClusterURL},
+			MinIdleConns:    1,
+			MaxRetries:      retryAttempts,
+			MinRetryBackoff: initialRetryInterval,
 		}
 
 		if config.RedisTLSCABase64 != "" {
@@ -66,14 +74,18 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		redisClient = redis.NewClusterClient(clusterOpts)
 	case config.RedisURL != "":
 		redisClient = redis.NewClient(&redis.Options{
-			Addr:         config.RedisURL,
-			MinIdleConns: 1,
+			Addr:            config.RedisURL,
+			MinIdleConns:    1,
+			MaxRetries:      retryAttempts,
+			MinRetryBackoff: initialRetryInterval,
 		})
 	default:
 		return nil, ErrRedisDisabled
 	}
 
 	if _, err := redisClient.Ping(ctx).Result(); err != nil {
+		_ = redisClient.Close()
+
 		return nil, fmt.Errorf("failed to ping redis: %w", err)
 	}
 
