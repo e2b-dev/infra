@@ -25,7 +25,7 @@ func (q *Queries) CheckAliasConflictsWithTemplateID(ctx context.Context, alias s
 }
 
 const checkAliasExists = `-- name: CheckAliasExists :one
-SELECT alias, is_renamable, env_id, namespace
+SELECT alias, is_renamable, env_id, namespace, id
 FROM "public"."env_aliases"
 WHERE alias = $1
 `
@@ -40,12 +40,13 @@ func (q *Queries) CheckAliasExists(ctx context.Context, alias string) (EnvAlias,
 		&i.IsRenamable,
 		&i.EnvID,
 		&i.Namespace,
+		&i.ID,
 	)
 	return i, err
 }
 
 const checkAliasExistsInNamespace = `-- name: CheckAliasExistsInNamespace :one
-SELECT alias, is_renamable, env_id, namespace
+SELECT alias, is_renamable, env_id, namespace, id
 FROM "public"."env_aliases"
 WHERE alias = $1
   AND namespace IS NOT DISTINCT FROM $2::text
@@ -66,6 +67,7 @@ func (q *Queries) CheckAliasExistsInNamespace(ctx context.Context, arg CheckAlia
 		&i.IsRenamable,
 		&i.EnvID,
 		&i.Namespace,
+		&i.ID,
 	)
 	return i, err
 }

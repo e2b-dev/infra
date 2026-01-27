@@ -243,6 +243,11 @@ type ClientInterface interface {
 
 	PostV2Templates(ctx context.Context, body PostV2TemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PatchV2TemplatesTemplateIDWithBody request with any body
+	PatchV2TemplatesTemplateIDWithBody(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PatchV2TemplatesTemplateID(ctx context.Context, templateID TemplateID, body PatchV2TemplatesTemplateIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PostV2TemplatesTemplateIDBuildsBuildIDWithBody request with any body
 	PostV2TemplatesTemplateIDBuildsBuildIDWithBody(ctx context.Context, templateID TemplateID, buildID BuildID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -916,6 +921,30 @@ func (c *Client) PostV2TemplatesWithBody(ctx context.Context, contentType string
 
 func (c *Client) PostV2Templates(ctx context.Context, body PostV2TemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostV2TemplatesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchV2TemplatesTemplateIDWithBody(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchV2TemplatesTemplateIDRequestWithBody(c.Server, templateID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchV2TemplatesTemplateID(ctx context.Context, templateID TemplateID, body PatchV2TemplatesTemplateIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchV2TemplatesTemplateIDRequest(c.Server, templateID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2982,6 +3011,53 @@ func NewPostV2TemplatesRequestWithBody(server string, contentType string, body i
 	return req, nil
 }
 
+// NewPatchV2TemplatesTemplateIDRequest calls the generic PatchV2TemplatesTemplateID builder with application/json body
+func NewPatchV2TemplatesTemplateIDRequest(server string, templateID TemplateID, body PatchV2TemplatesTemplateIDJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchV2TemplatesTemplateIDRequestWithBody(server, templateID, "application/json", bodyReader)
+}
+
+// NewPatchV2TemplatesTemplateIDRequestWithBody generates requests for PatchV2TemplatesTemplateID with any type of body
+func NewPatchV2TemplatesTemplateIDRequestWithBody(server string, templateID TemplateID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "templateID", runtime.ParamLocationPath, templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v2/templates/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewPostV2TemplatesTemplateIDBuildsBuildIDRequest calls the generic PostV2TemplatesTemplateIDBuildsBuildID builder with application/json body
 func NewPostV2TemplatesTemplateIDBuildsBuildIDRequest(server string, templateID TemplateID, buildID BuildID, body PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -3271,6 +3347,11 @@ type ClientWithResponsesInterface interface {
 	PostV2TemplatesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV2TemplatesResponse, error)
 
 	PostV2TemplatesWithResponse(ctx context.Context, body PostV2TemplatesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostV2TemplatesResponse, error)
+
+	// PatchV2TemplatesTemplateIDWithBodyWithResponse request with any body
+	PatchV2TemplatesTemplateIDWithBodyWithResponse(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchV2TemplatesTemplateIDResponse, error)
+
+	PatchV2TemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, body PatchV2TemplatesTemplateIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchV2TemplatesTemplateIDResponse, error)
 
 	// PostV2TemplatesTemplateIDBuildsBuildIDWithBodyWithResponse request with any body
 	PostV2TemplatesTemplateIDBuildsBuildIDWithBodyWithResponse(ctx context.Context, templateID TemplateID, buildID BuildID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV2TemplatesTemplateIDBuildsBuildIDResponse, error)
@@ -4293,6 +4374,30 @@ func (r PostV2TemplatesResponse) StatusCode() int {
 	return 0
 }
 
+type PatchV2TemplatesTemplateIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *N400
+	JSON401      *N401
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchV2TemplatesTemplateIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchV2TemplatesTemplateIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type PostV2TemplatesTemplateIDBuildsBuildIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4828,6 +4933,23 @@ func (c *ClientWithResponses) PostV2TemplatesWithResponse(ctx context.Context, b
 		return nil, err
 	}
 	return ParsePostV2TemplatesResponse(rsp)
+}
+
+// PatchV2TemplatesTemplateIDWithBodyWithResponse request with arbitrary body returning *PatchV2TemplatesTemplateIDResponse
+func (c *ClientWithResponses) PatchV2TemplatesTemplateIDWithBodyWithResponse(ctx context.Context, templateID TemplateID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchV2TemplatesTemplateIDResponse, error) {
+	rsp, err := c.PatchV2TemplatesTemplateIDWithBody(ctx, templateID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchV2TemplatesTemplateIDResponse(rsp)
+}
+
+func (c *ClientWithResponses) PatchV2TemplatesTemplateIDWithResponse(ctx context.Context, templateID TemplateID, body PatchV2TemplatesTemplateIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchV2TemplatesTemplateIDResponse, error) {
+	rsp, err := c.PatchV2TemplatesTemplateID(ctx, templateID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchV2TemplatesTemplateIDResponse(rsp)
 }
 
 // PostV2TemplatesTemplateIDBuildsBuildIDWithBodyWithResponse request with arbitrary body returning *PostV2TemplatesTemplateIDBuildsBuildIDResponse
@@ -6660,6 +6782,46 @@ func ParsePostV2TemplatesResponse(rsp *http.Response) (*PostV2TemplatesResponse,
 		}
 		response.JSON202 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePatchV2TemplatesTemplateIDResponse parses an HTTP response from a PatchV2TemplatesTemplateIDWithResponse call
+func ParsePatchV2TemplatesTemplateIDResponse(rsp *http.Response) (*PatchV2TemplatesTemplateIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchV2TemplatesTemplateIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest N400
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
