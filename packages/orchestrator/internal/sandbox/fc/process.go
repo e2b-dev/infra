@@ -491,10 +491,13 @@ func (p *Process) Stop(ctx context.Context) error {
 		return fmt.Errorf("fc process not started")
 	}
 
-	if hasProcessExited(p.cmd) {
+	// Check if process has already exited.
+	select {
+	case <-p.Exit.Done():
 		logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
 
 		return nil
+	default:
 	}
 
 	// this function should never fail b/c a previous context was canceled.
@@ -543,10 +546,6 @@ func (p *Process) Stop(ctx context.Context) error {
 	}()
 
 	return nil
-}
-
-func hasProcessExited(cmd *exec.Cmd) bool {
-	return cmd == nil || cmd.ProcessState != nil
 }
 
 func (p *Process) Pause(ctx context.Context) error {
