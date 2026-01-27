@@ -34,6 +34,7 @@ type encoder struct {
 	frame       *frame
 	frameTable  *FrameTable
 	readyFrames [][]byte
+	offset      FrameOffset // tracks cumulative offset for OnFrameReady callback
 
 	// Upload-specific data
 	targetPartSize int64
@@ -162,9 +163,21 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 		U: int32(f.lenU),
 		C: int32(f.lenC),
 	}
+
 	e.frameTable.Frames = append(e.frameTable.Frames, ft)
 
 	data := f.compressedBuffer.Bytes()
+
+	// Notify callback if provided (e.g., for cache write-through)
+	if e.opts.OnFrameReady != nil {
+		if err := e.opts.OnFrameReady(e.offset, ft, data); err != nil {
+			return fmt.Errorf("OnFrameReady callback failed: %w", err)
+		}
+	}
+
+	// Advance offset for next frame
+	e.offset.Add(ft)
+
 	e.partLen += int64(len(data))
 	e.readyFrames = append(e.readyFrames, data)
 

@@ -70,18 +70,23 @@ func (c Cache) GetFrame(ctx context.Context, path string, offU int64, frameTable
 	return Range{Start: offU, Length: n}, err
 }
 
-func (c Cache) getCompressedFrame(ctx context.Context, objectPath string, offU int64, frameTable *FrameTable, decompress bool, buf []byte) (compressedRange Range, wg *sync.WaitGroup, err error) {
+func (c Cache) getCompressedFrame(ctx context.Context, objectPath string, offU int64, frameTable *FrameTable, decompress bool, buf []byte) (resultRange Range, wg *sync.WaitGroup, err error) {
 	wg = &sync.WaitGroup{}
-	if !decompress {
-		return Range{}, wg, fmt.Errorf("raw compressed reads are not supported from the cache")
-	}
 
 	ctx, span := c.tracer.Start(ctx, "read compressed frame at offset", trace.WithAttributes(
 		attribute.Int64("offset", offU),
 		attribute.Int("length", len(buf)),
+		attribute.Bool("decompress", decompress),
 	))
+
+	var n int
+	isHit := false
 	defer func() {
-		recordError(span, err)
+		if err != nil {
+			recordError(span, err)
+		} else {
+			recordCacheRead(ctx, isHit, int64(n), cacheTypeSeekable, cacheOpReadAt)
+		}
 		span.End()
 	}()
 
@@ -93,15 +98,22 @@ func (c Cache) getCompressedFrame(ctx context.Context, objectPath string, offU i
 
 	// try to read from cache first
 	readTimer := cacheSlabReadTimerFactory.Begin()
-
 	chunkPath := c.makeFrameFilename(objectPath, frameStarts, frameSize)
 
-	count, err := c.decompressFromCache(ctx, chunkPath, frameTable.CompressionType, buf)
-	if ignoreEOF(err) == nil {
-		recordCacheRead(ctx, true, int64(count), cacheTypeSeekable, cacheOpReadAt)
-		readTimer.Success(ctx, int64(count))
+	var count int
+	if decompress {
+		count, err = c.decompressFromCache(ctx, chunkPath, frameTable.CompressionType, buf)
+	} else {
+		count, err = c.readAtFromCache(ctx, chunkPath, buf[:frameSize.C])
+	}
 
-		return Range{Start: frameStarts.U, Length: count}, wg, err // return `err` in case it's io.EOF
+	if ignoreEOF(err) == nil {
+		isHit = true
+		readTimer.Success(ctx, int64(count))
+		if decompress {
+			return Range{Start: frameStarts.U, Length: count}, wg, err
+		}
+		return Range{Start: frameStarts.C, Length: count}, wg, err
 	}
 	readTimer.Failure(ctx, int64(count))
 
@@ -116,7 +128,7 @@ func (c Cache) getCompressedFrame(ctx context.Context, objectPath string, offU i
 
 	// read from remote file, compressed
 	compressedData := make([]byte, frameSize.C)
-	compressedRange, err = c.inner.GetFrame(ctx, objectPath, offU, frameTable, false, compressedData)
+	compressedRange, err := c.inner.GetFrame(ctx, objectPath, offU, frameTable, false, compressedData)
 	if err != nil {
 		return Range{}, wg, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
@@ -131,11 +143,18 @@ func (c Cache) getCompressedFrame(ctx context.Context, objectPath string, offU i
 		}
 	})
 
-	n, err := decompressBytes(ctx, frameTable.CompressionType, compressedData, buf)
+	starts := frameStarts.U
+	if decompress {
+		n, err = decompressBytes(ctx, frameTable.CompressionType, compressedData, buf)
+		if err != nil {
+			return Range{}, wg, fmt.Errorf("failed to decompress data: %w", err)
+		}
+	} else {
+		n = copy(buf, compressedData)
+		starts = frameStarts.C
+	}
 
-	recordCacheRead(ctx, false, int64(n), cacheTypeSeekable, cacheOpReadAt)
-
-	return Range{Start: compressedRange.Start, Length: n}, wg, err
+	return Range{Start: starts, Length: n}, wg, nil
 }
 
 func (c Cache) getUncompressedChunk(ctx context.Context, path string, offset int64, buf []byte) (n int, wg *sync.WaitGroup, err error) {
@@ -264,7 +283,7 @@ func (c Cache) storeCompressed(ctx context.Context, inFilePath, objectPath strin
 
 func (c Cache) StoreFile(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, err error) {
 	if opts != nil && opts.CompressionType != CompressionNone {
-		ft, _, err := c.storeCompressed(ctx, objectPath, inFilePath, opts)
+		ft, _, err := c.storeCompressed(ctx, inFilePath, objectPath, opts)
 
 		return ft, err
 	}
@@ -377,20 +396,22 @@ func decompressStream(_ context.Context, compressionType CompressionType, from i
 }
 
 func decompressBytes(_ context.Context, compressionType CompressionType, from []byte, buff []byte) (n int, e error) {
+	// TODO LEV: consolidate with other places where we create zstd readers
 	switch compressionType {
 	case CompressionZstd:
+		// TODO LEV: add a reader pool
 		dec, err := zstd.NewReader(nil)
 		if err != nil {
 			return 0, fmt.Errorf("failed to create zstd reader: %w", err)
 		}
 		defer dec.Close()
 
-		_, err = dec.DecodeAll(from, buff)
+		decompressed, err := dec.DecodeAll(from, buff[:0])
 		if err != nil {
 			return 0, fmt.Errorf("failed to decompress bytes: %w", err)
 		}
 
-		return len(buff), nil // return `err` in case it's io.EOF
+		return len(decompressed), nil
 
 	default:
 		return 0, fmt.Errorf("unsupported compression type: %d", compressionType)
