@@ -18,19 +18,31 @@ const (
 	accessTokenHeader = "X-Access-Token"
 )
 
-// allowedPathPrefixes are paths that bypass general authentication
+// allowedExactPaths are paths that bypass general authentication using exact matching
 // (e.g., health check, endpoints supporting signing)
-// Uses prefix matching to support both exact paths and paths with dynamic segments
-var allowedPathPrefixes = []string{
+var allowedExactPaths = []string{
 	"GET/health",
 	"GET/files",
 	"POST/files",
+}
+
+// allowedPathPrefixes are paths that bypass general authentication using prefix matching
+// These are for paths with dynamic segments (e.g., upload ID)
+var allowedPathPrefixes = []string{
 	"PUT/files/upload/",
 	"DELETE/files/upload/",
 	"POST/files/upload/",
 }
 
 func isAllowedPath(methodPath string) bool {
+	// Check exact matches first
+	for _, path := range allowedExactPaths {
+		if methodPath == path {
+			return true
+		}
+	}
+
+	// Check prefix matches for paths with dynamic segments
 	for _, prefix := range allowedPathPrefixes {
 		if strings.HasPrefix(methodPath, prefix) {
 			return true
