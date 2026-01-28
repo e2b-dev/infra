@@ -479,7 +479,6 @@ func run(config cfg.Config) (success bool) {
 			templateCache,
 			persistence,
 			limiter,
-			serviceInfo,
 		)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create template manager", zap.Error(err))
