@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -15,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Add stores a sandbox in Redis atomically with its team index entry.
