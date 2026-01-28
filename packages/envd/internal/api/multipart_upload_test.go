@@ -26,6 +26,7 @@ func newTestAPI(t *testing.T) *API {
 		User:    "root",
 		EnvVars: utils.NewMap[string, string](),
 	}
+
 	return New(&logger, defaults, nil, true)
 }
 
@@ -391,7 +392,7 @@ func TestMultipartUpload(t *testing.T) {
 		tempDir := t.TempDir()
 
 		// Create maxUploadSessions sessions
-		for i := 0; i < maxUploadSessions; i++ {
+		for i := range maxUploadSessions {
 			body := PostFilesUploadInitJSONRequestBody{
 				Path:      filepath.Join(tempDir, fmt.Sprintf("file-%d.txt", i)),
 				TotalSize: 100,
@@ -526,11 +527,13 @@ func TestMultipartUpload(t *testing.T) {
 		// Verify file exists and is empty
 		content, err := os.ReadFile(destPath)
 		require.NoError(t, err)
-		assert.Equal(t, "", string(content))
+		assert.Empty(t, string(content))
 	})
 }
 
 func TestMultipartUploadRouting(t *testing.T) {
+	t.Parallel()
+
 	// Skip if not running as root
 	if os.Geteuid() != 0 {
 		t.Skip("skipping routing tests: requires root")
@@ -542,6 +545,7 @@ func TestMultipartUploadRouting(t *testing.T) {
 
 	// Test that routes are registered
 	t.Run("init route exists", func(t *testing.T) {
+		t.Parallel()
 		body := PostFilesUploadInitJSONRequestBody{
 			Path:      "/tmp/test-file.txt",
 			TotalSize: 100,

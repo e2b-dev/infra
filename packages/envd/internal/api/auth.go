@@ -36,6 +36,7 @@ func isAllowedPath(methodPath string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 

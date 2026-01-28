@@ -41,20 +41,24 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to decode request body")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+
 		return
 	}
 
 	// Validate totalSize and partSize
 	if body.TotalSize < 0 {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("totalSize must be non-negative"))
+
 		return
 	}
 	if body.PartSize <= 0 {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("partSize must be positive"))
+
 		return
 	}
 	if body.PartSize > maxPartSize {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("partSize exceeds maximum allowed size of %d bytes", maxPartSize))
+
 		return
 	}
 
@@ -63,6 +67,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error during auth validation")
 		jsonError(w, http.StatusUnauthorized, err)
+
 		return
 	}
 
@@ -71,6 +76,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("no user specified")
 		jsonError(w, http.StatusBadRequest, err)
+
 		return
 	}
 
@@ -79,6 +85,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Str("username", username).Msg("error looking up user")
 		jsonError(w, http.StatusUnauthorized, fmt.Errorf("error looking up user '%s': %w", username, err))
+
 		return
 	}
 
@@ -86,6 +93,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error getting user ids")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error getting user ids: %w", err))
+
 		return
 	}
 
@@ -94,6 +102,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error resolving path")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("error resolving path: %w", err))
+
 		return
 	}
 
@@ -101,6 +110,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if err := permissions.EnsureDirs(filepath.Dir(filePath), uid, gid); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error ensuring directories")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error ensuring directories: %w", err))
+
 		return
 	}
 
@@ -110,10 +120,12 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		if errors.Is(err, syscall.ENOSPC) {
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
+
 			return
 		}
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error creating destination file")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error creating destination file: %w", err))
+
 		return
 	}
 
@@ -125,10 +137,12 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 			if errors.Is(err, syscall.ENOSPC) {
 				a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 				jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
+
 				return
 			}
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error preallocating file")
 			jsonError(w, http.StatusInternalServerError, fmt.Errorf("error preallocating file: %w", err))
+
 			return
 		}
 	}
@@ -139,6 +153,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		os.Remove(filePath)
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error changing file ownership")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error changing file ownership: %w", err))
+
 		return
 	}
 
@@ -172,6 +187,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		os.Remove(filePath)
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("maxSessions", maxUploadSessions).Msg("too many concurrent upload sessions")
 		jsonError(w, http.StatusTooManyRequests, fmt.Errorf("too many concurrent upload sessions (max %d)", maxUploadSessions))
+
 		return
 	}
 	a.uploads[uploadID] = session
@@ -188,9 +204,11 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(MultipartUploadInit{
+	if err := json.NewEncoder(w).Encode(MultipartUploadInit{
 		UploadId: uploadID,
-	})
+	}); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode response")
+	}
 }
 
 // PutFilesUploadUploadId uploads a part of a multipart upload directly to the destination file
@@ -203,6 +221,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	if _, err := uuid.Parse(uploadId); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("invalid upload ID format")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("invalid upload ID format: must be a valid UUID"))
+
 		return
 	}
 
@@ -214,6 +233,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	if !exists {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session not found")
 		jsonError(w, http.StatusNotFound, fmt.Errorf("upload session not found: %s", uploadId))
+
 		return
 	}
 
@@ -221,6 +241,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	if session.completed.Load() {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
 		jsonError(w, http.StatusConflict, fmt.Errorf("upload session is already completing or aborted"))
+
 		return
 	}
 
@@ -230,6 +251,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	if partNumber < 0 {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNumber).Msg("invalid part number")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number must be non-negative"))
+
 		return
 	}
 
@@ -237,6 +259,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	if session.NumParts > 0 && partNumber >= session.NumParts {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNumber).Int("numParts", session.NumParts).Msg("part number out of range")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number %d out of range (expected 0-%d)", partNumber, session.NumParts-1))
+
 		return
 	}
 
@@ -254,6 +277,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error reading part data")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error reading part data: %w", err))
+
 		return
 	}
 
@@ -263,6 +287,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	if size > expectedSize {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int64("size", size).Int64("expectedSize", expectedSize).Msg("part size exceeds expected size")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("part size %d exceeds expected size %d", size, expectedSize))
+
 		return
 	}
 
@@ -274,10 +299,12 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		if errors.Is(err, syscall.ENOSPC) {
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
+
 			return
 		}
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing part data")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error writing part data: %w", err))
+
 		return
 	}
 
@@ -302,10 +329,12 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(MultipartUploadPart{
+	if err := json.NewEncoder(w).Encode(MultipartUploadPart{
 		PartNumber: partNumber,
 		Size:       size,
-	})
+	}); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode response")
+	}
 }
 
 // PostFilesUploadUploadIdComplete completes a multipart upload
@@ -324,6 +353,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 			a.uploadsLock.Unlock()
 			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
 			jsonError(w, http.StatusConflict, fmt.Errorf("upload session is already completing"))
+
 			return
 		}
 		delete(a.uploads, uploadId)
@@ -333,13 +363,14 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	if !exists {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session not found")
 		jsonError(w, http.StatusNotFound, fmt.Errorf("upload session not found: %s", uploadId))
+
 		return
 	}
 
 	// Verify all parts were uploaded
 	session.mu.Lock()
 	missingParts := []int{}
-	for i := 0; i < session.NumParts; i++ {
+	for i := range session.NumParts {
 		if !session.PartsWritten[i] {
 			missingParts = append(missingParts, i)
 		}
@@ -355,6 +386,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 			Ints("missingParts", missingParts).
 			Msg("missing parts in upload")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("missing parts: %v", missingParts))
+
 		return
 	}
 
@@ -362,6 +394,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	if err := session.DestFile.Close(); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error closing destination file")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error closing destination file: %w", err))
+
 		return
 	}
 
@@ -375,10 +408,12 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(MultipartUploadComplete{
+	if err := json.NewEncoder(w).Encode(MultipartUploadComplete{
 		Path: session.FilePath,
 		Size: session.TotalSize,
-	})
+	}); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode response")
+	}
 }
 
 // DeleteFilesUploadUploadId aborts a multipart upload and cleans up
@@ -397,6 +432,7 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 			a.uploadsLock.Unlock()
 			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
 			jsonError(w, http.StatusConflict, fmt.Errorf("upload session is already completing or aborted"))
+
 			return
 		}
 		delete(a.uploads, uploadId)
@@ -406,6 +442,7 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 	if !exists {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session not found")
 		jsonError(w, http.StatusNotFound, fmt.Errorf("upload session not found: %s", uploadId))
+
 		return
 	}
 
