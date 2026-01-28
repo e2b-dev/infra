@@ -94,7 +94,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxID)
 	if err != nil {
 		logger.L().Error(ctx, "Error getting snapshot after pause", zap.Error(err), logger.WithSandboxID(sandboxID))
-		a.tryResumeSandbox(ctx, sandboxID, teamInfo)
+		a.tryResumeSandbox(ctx, sandboxID, teamInfo, &c.Request.Header)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error creating snapshot")
 
 		return
@@ -127,7 +127,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	})
 	if err != nil {
 		logger.L().Error(ctx, "Error creating snapshot template", zap.Error(err), logger.WithSandboxID(sandboxID))
-		a.tryResumeSandbox(ctx, sandboxID, teamInfo)
+		a.tryResumeSandbox(ctx, sandboxID, teamInfo, &c.Request.Header)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error creating snapshot")
 
 		return
@@ -143,7 +143,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		build.TotalDiskSizeMb,
 	)
 
-	resumeErr := a.resumeSandboxAfterSnapshot(ctx, sandboxID, teamInfo, lastSnapshot)
+	resumeErr := a.resumeSandboxAfterSnapshot(ctx, sandboxID, teamInfo, lastSnapshot, &c.Request.Header)
 	if resumeErr != nil {
 		logger.L().Error(ctx, "Error resuming sandbox after snapshot", zap.Error(resumeErr.Err), logger.WithSandboxID(sandboxID))
 		telemetry.ReportError(ctx, "Snapshot created but failed to resume sandbox", resumeErr.Err)
@@ -160,6 +160,7 @@ func (a *APIStore) resumeSandboxAfterSnapshot(
 	sandboxID string,
 	teamInfo *typesteam.Team,
 	lastSnapshot queries.GetLastSnapshotRow,
+	requestHeader *http.Header,
 ) *api.APIError {
 	snap := lastSnapshot.Snapshot
 	build := lastSnapshot.EnvBuild
@@ -195,7 +196,7 @@ func (a *APIStore) resumeSandboxAfterSnapshot(
 		alias,
 		teamInfo,
 		build,
-		nil,
+		requestHeader,
 		true,
 		nodeID,
 		snap.BaseEnvID,
@@ -209,7 +210,7 @@ func (a *APIStore) resumeSandboxAfterSnapshot(
 	return createErr
 }
 
-func (a *APIStore) tryResumeSandbox(ctx context.Context, sandboxID string, teamInfo *typesteam.Team) {
+func (a *APIStore) tryResumeSandbox(ctx context.Context, sandboxID string, teamInfo *typesteam.Team, requestHeader *http.Header) {
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxID)
 	if err != nil {
 		logger.L().Error(ctx, "Error getting snapshot for recovery resume", zap.Error(err), logger.WithSandboxID(sandboxID))
@@ -217,7 +218,7 @@ func (a *APIStore) tryResumeSandbox(ctx context.Context, sandboxID string, teamI
 		return
 	}
 
-	resumeErr := a.resumeSandboxAfterSnapshot(ctx, sandboxID, teamInfo, lastSnapshot)
+	resumeErr := a.resumeSandboxAfterSnapshot(ctx, sandboxID, teamInfo, lastSnapshot, requestHeader)
 	if resumeErr != nil {
 		logger.L().Error(ctx, "Error during recovery resume of sandbox", zap.Error(resumeErr.Err), logger.WithSandboxID(sandboxID))
 	}
