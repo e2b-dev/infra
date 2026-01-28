@@ -60,7 +60,7 @@ const (
 )
 
 var (
-	commitSHA string
+	commitSHA                  string
 	expectedMigrationTimestamp string
 )
 
