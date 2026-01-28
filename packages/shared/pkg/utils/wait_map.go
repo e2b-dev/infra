@@ -35,3 +35,10 @@ func (m *WaitMap) Wait(key int64, fn func() error) error {
 
 	return once()
 }
+
+// Delete removes the cached result for the given key, allowing future Wait calls to re-execute.
+func (m *WaitMap) Delete(key int64) {
+	m.mu.Lock()
+	delete(m.m, key)
+	m.mu.Unlock()
+}

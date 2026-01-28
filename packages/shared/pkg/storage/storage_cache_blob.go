@@ -119,7 +119,7 @@ func (c Cache) storeBlob(ctx context.Context, objectPath string, in io.Reader) (
 	}()
 
 	wg = &sync.WaitGroup{}
-	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
+	if c.boolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 		// Copy the file contents into memory buffer to allow writing to cache asynchronously
 		buf := bytes.NewBuffer(make([]byte, 0, 2*megabyte))
 		_, err := io.Copy(buf, in)

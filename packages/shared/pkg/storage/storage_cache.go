@@ -53,6 +53,36 @@ func WrapInNFSCache(
 	}
 }
 
+// WrapInLocalCache creates a file cache wrapper for local disk storage.
+// Unlike WrapInNFSCache, this doesn't require feature flags and uses a no-op tracer.
+func WrapInLocalCache(rootPath string, inner StorageProvider) *Cache {
+	return &Cache{
+		rootPath:  rootPath,
+		inner:     inner,
+		chunkSize: MemoryChunkSize,
+		flags:     nil,
+		tracer:    noop.NewTracerProvider().Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage"),
+	}
+}
+
+// boolFlag returns the flag value, or the fallback if flags is nil.
+func (c Cache) boolFlag(ctx context.Context, flag featureflags.BoolFlag) bool {
+	if c.flags == nil {
+		return flag.Fallback()
+	}
+
+	return c.flags.BoolFlag(ctx, flag)
+}
+
+// intFlag returns the flag value, or the fallback if flags is nil.
+func (c Cache) intFlag(ctx context.Context, flag featureflags.IntFlag) int {
+	if c.flags == nil {
+		return flag.Fallback()
+	}
+
+	return c.flags.IntFlag(ctx, flag)
+}
+
 func (c Cache) DeleteWithPrefix(ctx context.Context, prefix string) error {
 	// no need to wait for cache deletion before returning
 	go func(ctx context.Context) {

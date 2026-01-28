@@ -80,6 +80,7 @@ func (c Cache) getCompressedFrameInternal(ctx context.Context, objectPath string
 	// When compressed frame caching is disabled, pass through to inner without caching
 	if !cacheCompressed {
 		rng, err := c.inner.GetFrame(ctx, objectPath, offU, frameTable, decompress, buf)
+
 		return rng, &sync.WaitGroup{}, err
 	}
 
@@ -125,6 +126,7 @@ func (c Cache) getCompressedFrameInternal(ctx context.Context, objectPath string
 		if decompress {
 			return Range{Start: frameStarts.U, Length: count}, wg, err
 		}
+
 		return Range{Start: frameStarts.C, Length: count}, wg, err
 	}
 	readTimer.Failure(ctx, int64(count))
@@ -312,7 +314,7 @@ func (c Cache) StoreFile(ctx context.Context, inFilePath, objectPath string, opt
 	// this opens the file twice, but the API makes it difficult to use a MultiWriter
 
 	wg := &sync.WaitGroup{}
-	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
+	if c.boolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 		goCtx(ctx, wg, func(ctx context.Context) {
 			ctx, span := c.tracer.Start(ctx, "write cache object from file system",
 				trace.WithAttributes(attribute.String("path", objectPath)))
@@ -471,7 +473,7 @@ func (c Cache) validateGetFrameParams(off int64, length int, frameTable *FrameTa
 		return ErrBufferTooSmall
 	}
 	if off%c.chunkSize != 0 {
-		return ErrOffsetUnaligned
+		return fmt.Errorf("offset %#x is not aligned to chunk size %#x, %w", off, c.chunkSize, ErrOffsetUnaligned)
 	}
 	if !frameTable.IsCompressed() {
 		if length > int(c.chunkSize) {
@@ -493,7 +495,7 @@ func (c Cache) validateReadAtParams(buffSize, offset int64) error {
 		return ErrBufferTooLarge
 	}
 	if offset%c.chunkSize != 0 {
-		return ErrOffsetUnaligned
+		return fmt.Errorf("offset %#x is not aligned to chunk size %#x, %w", offset, c.chunkSize, ErrOffsetUnaligned)
 	}
 	if (offset%c.chunkSize)+buffSize > c.chunkSize {
 		return ErrMultipleChunks
@@ -611,7 +613,7 @@ func (c Cache) createCacheBlocksFromFile(ctx context.Context, inFilePath, object
 
 	totalSize := stat.Size()
 
-	maxConcurrency := c.flags.IntFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag)
+	maxConcurrency := c.intFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag)
 	if maxConcurrency <= 0 {
 		logger.L().Warn(ctx, "max cache writer concurrency is too low, falling back to 1",
 			zap.Int("max_concurrency", maxConcurrency))

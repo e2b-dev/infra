@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -15,6 +14,21 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+// DataSource is an interface for reading block data from either local cache or remote storage.
+// Both Chunker (mmap-based) and CompressedChunker (LRU + compressed cache) implement this interface.
+type DataSource interface {
+	ReadAt(ctx context.Context, b []byte, off int64) (int, error)
+	Slice(ctx context.Context, off, length int64) ([]byte, error)
+	Close() error
+	FileSize() (int64, error)
+}
+
+// Verify that both chunker types implement DataSource.
+var (
+	_ DataSource = (*Chunker)(nil)
+	_ DataSource = (*CompressedChunker)(nil)
 )
 
 type Chunker struct {
@@ -58,6 +72,7 @@ func NewChunker(
 }
 
 func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
+	fmt.Printf("<>/<> Chunker/ReadAt path=%s off=%#x len=%#x\n", c.objectPath, off, len(b))
 	slice, err := c.Slice(ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
@@ -66,29 +81,13 @@ func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) 
 	return copy(b, slice), nil
 }
 
-func (c *Chunker) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
-	for i := int64(0); i < c.size; i += storage.MemoryChunkSize {
-		chunk := make([]byte, storage.MemoryChunkSize)
-
-		n, err := c.ReadAt(ctx, chunk, i)
-		if err != nil {
-			return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", i, i+storage.MemoryChunkSize, err)
-		}
-
-		_, err = w.Write(chunk[:n])
-		if err != nil {
-			return 0, fmt.Errorf("failed to write chunk %d to writer: %w", i, err)
-		}
-	}
-
-	return c.size, nil
-}
-
 func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	fmt.Printf("<>/<> Chunker/Slice path=%s off=%#x len=%#x\n", c.objectPath, off, length)
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
+		fmt.Printf("<>/<> Chunker/Slice path=%s off=%#x len=%#x -> cache hit\n", c.objectPath, off, length)
 		timer.Success(ctx, length,
 			attribute.String(pullType, pullTypeLocal))
 
@@ -103,6 +102,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
+	fmt.Printf("<>/<> Chunker/Slice path=%s off=%#x len=%#x -> cache miss, fetching\n", c.objectPath, off, length)
 	chunkErr := c.fetchToCache(ctx, off, length)
 	if chunkErr != nil {
 		timer.Failure(ctx, length,
@@ -121,6 +121,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
+	fmt.Printf("<>/<> Chunker/Slice path=%s off=%#x len=%#x -> fetched OK\n", c.objectPath, off, length)
 	timer.Success(ctx, length,
 		attribute.String(pullType, pullTypeRemote))
 
@@ -180,7 +181,6 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 					err = fmt.Errorf("recovered from panic in the fetch handler: %v", r)
 				}
 			}()
-
 			err = c.fetchers.Wait(fetchOff, func() error {
 				select {
 				case <-ctx.Done():

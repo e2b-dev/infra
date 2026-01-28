@@ -3,7 +3,6 @@ package build
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -15,10 +14,23 @@ func storagePath(buildId string, diffType DiffType) string {
 	return fmt.Sprintf("%s/%s", buildId, diffType)
 }
 
+// ChunkerType specifies which chunker implementation to use.
+type ChunkerType int
+
+const (
+	// ChunkerTypeMmap uses the traditional mmap-based chunker that stores uncompressed data.
+	ChunkerTypeMmap ChunkerType = iota
+	// ChunkerTypeCompressed uses an LRU cache for decompressed chunks and an append-only
+	// file cache for compressed frames, reducing disk I/O for compressed data.
+	ChunkerTypeCompressed
+)
+
 type StorageDiff struct {
-	chunker   *utils.SetOnce[*block.Chunker]
-	cachePath string
-	cacheKey  DiffStoreKey
+	dataSource  *utils.SetOnce[block.DataSource]
+	cachePath   string
+	cacheKey    DiffStoreKey
+	chunkerType ChunkerType
+	lruSize     int // Number of 4MB chunks in LRU cache (only for ChunkerTypeCompressed)
 
 	blockSize int64
 	metrics   blockmetrics.Metrics
@@ -38,6 +50,23 @@ func (e UnknownDiffTypeError) Error() string {
 	return fmt.Sprintf("unknown diff type: %s", e.DiffType)
 }
 
+// StorageDiffOption is a functional option for configuring StorageDiff.
+type StorageDiffOption func(*StorageDiff)
+
+// WithChunkerType sets the chunker implementation to use.
+func WithChunkerType(t ChunkerType) StorageDiffOption {
+	return func(s *StorageDiff) {
+		s.chunkerType = t
+	}
+}
+
+// WithLRUSize sets the LRU cache size for compressed chunker (number of 4MB chunks).
+func WithLRUSize(size int) StorageDiffOption {
+	return func(s *StorageDiff) {
+		s.lruSize = size
+	}
+}
+
 func newStorageDiff(
 	basePath string,
 	buildId string,
@@ -46,6 +75,7 @@ func newStorageDiff(
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
 	frameTable *storage.FrameTable,
+	opts ...StorageDiffOption,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
 	_, ok := storageObjectType(diffType)
@@ -55,16 +85,23 @@ func newStorageDiff(
 
 	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 
-	return &StorageDiff{
+	sd := &StorageDiff{
 		objectPath:  storagePath,
 		cachePath:   cachePath,
-		chunker:     utils.NewSetOnce[*block.Chunker](),
+		dataSource:  utils.NewSetOnce[block.DataSource](),
 		blockSize:   blockSize,
 		metrics:     metrics,
 		persistence: persistence,
 		frameTable:  frameTable,
 		cacheKey:    GetDiffStoreKey(buildId, diffType),
-	}, nil
+		chunkerType: ChunkerTypeMmap, // Default to existing behavior
+	}
+
+	for _, opt := range opts {
+		opt(sd)
+	}
+
+	return sd, nil
 }
 
 func storageObjectType(diffType DiffType) (storage.SeekableObjectType, bool) {
@@ -87,65 +124,73 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 	var err error
 
 	if b.frameTable.IsCompressed() {
+		fmt.Printf("<>/<> Init: compressed frame table detected: %s\n", b.objectPath)
 		// For compressed data, we need the uncompressed size for the cache.
 		// The cache stores uncompressed data at uncompressed offsets.
 		size = b.frameTable.StartAt.U + b.frameTable.TotalUncompressedSize()
 	} else {
-		// For uncompressed data, the storage size is the data size.
+		fmt.Printf("<>/<> Init: uncompressed frame table detected: %s\n", b.objectPath)
 		size, err = b.persistence.Size(ctx, b.objectPath)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to get object size: %w", err)
-			b.chunker.SetError(errMsg)
+			b.dataSource.SetError(errMsg)
 
 			return errMsg
 		}
 	}
 
-	chunker, err := block.NewChunker(size, b.blockSize, b.persistence, b.objectPath, b.frameTable, b.cachePath, b.metrics)
+	var dataSource block.DataSource
+
+	fmt.Printf("<>/<> Init: chunker type %d\n", b.chunkerType)
+	switch b.chunkerType {
+	case ChunkerTypeCompressed:
+		dataSource, err = block.NewCompressedChunker(
+			size,
+			b.persistence,
+			b.objectPath,
+			b.frameTable,
+			b.lruSize,
+			b.metrics,
+		)
+	default: // ChunkerTypeMmap
+		dataSource, err = block.NewChunker(size, b.blockSize, b.persistence, b.objectPath, b.frameTable, b.cachePath, b.metrics)
+	}
+
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
-		b.chunker.SetError(errMsg)
+		b.dataSource.SetError(errMsg)
 
 		return errMsg
 	}
 
-	return b.chunker.SetValue(chunker)
+	return b.dataSource.SetValue(dataSource)
 }
 
 func (b *StorageDiff) Close() error {
-	c, err := b.chunker.Wait()
+	ds, err := b.dataSource.Wait()
 	if err != nil {
 		return err
 	}
 
-	return c.Close()
+	return ds.Close()
 }
 
 func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
-	c, err := b.chunker.Wait()
+	ds, err := b.dataSource.Wait()
 	if err != nil {
 		return 0, err
 	}
 
-	return c.ReadAt(ctx, p, off)
+	return ds.ReadAt(ctx, p, off)
 }
 
 func (b *StorageDiff) Slice(ctx context.Context, off, length int64) ([]byte, error) {
-	c, err := b.chunker.Wait()
+	ds, err := b.dataSource.Wait()
 	if err != nil {
 		return nil, err
 	}
 
-	return c.Slice(ctx, off, length)
-}
-
-func (b *StorageDiff) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
-	c, err := b.chunker.Wait()
-	if err != nil {
-		return 0, err
-	}
-
-	return c.WriteTo(ctx, w)
+	return ds.Slice(ctx, off, length)
 }
 
 // The local file might not be synced.
@@ -154,12 +199,12 @@ func (b *StorageDiff) CachePath() (string, error) {
 }
 
 func (b *StorageDiff) FileSize() (int64, error) {
-	c, err := b.chunker.Wait()
+	ds, err := b.dataSource.Wait()
 	if err != nil {
 		return 0, err
 	}
 
-	return c.FileSize()
+	return ds.FileSize()
 }
 
 func (b *StorageDiff) Size(_ context.Context) (int64, error) {

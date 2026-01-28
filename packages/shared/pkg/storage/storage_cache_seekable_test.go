@@ -27,6 +27,7 @@ func compressTestData(t *testing.T, data []byte) []byte {
 	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedBestCompression))
 	require.NoError(t, err)
 	defer enc.Close()
+
 	return enc.EncodeAll(data, nil)
 }
 
@@ -36,6 +37,7 @@ func makeTestData(size int, seed byte) []byte {
 	for i := range data {
 		data[i] = byte((int(seed) + i) % 256)
 	}
+
 	return data
 }
 
@@ -46,12 +48,14 @@ func makeRepetitiveData(size int) []byte {
 	for i := range data {
 		data[i] = pattern[i%len(pattern)]
 	}
+
 	return data
 }
 
 // newTestCache creates a Cache for testing with sensible defaults.
 func newTestCache(t *testing.T, inner StorageProvider, chunkSize int64) *Cache {
 	t.Helper()
+
 	return &Cache{
 		rootPath:  t.TempDir(),
 		inner:     inner,
@@ -64,6 +68,7 @@ func newTestCache(t *testing.T, inner StorageProvider, chunkSize int64) *Cache {
 func newTestCacheWithFlags(t *testing.T, inner StorageProvider, chunkSize int64) (*Cache, *MockFeatureFlagsClient) {
 	t.Helper()
 	flags := NewMockFeatureFlagsClient(t)
+
 	return &Cache{
 		rootPath:  t.TempDir(),
 		inner:     inner,
@@ -85,6 +90,7 @@ func waitForCacheFile(t *testing.T, path string) {
 	t.Helper()
 	require.Eventually(t, func() bool {
 		_, err := os.Stat(path)
+
 		return err == nil
 	}, time.Second, time.Millisecond, "cache file should be written: %s", path)
 }
@@ -936,6 +942,7 @@ func TestCache_StoreFile_Compressed_WritesFramesToCache(t *testing.T) {
 			}
 			offset.Add(frame)
 		}
+
 		return true
 	}, 2*time.Second, 10*time.Millisecond)
 
@@ -945,7 +952,7 @@ func TestCache_StoreFile_Compressed_WritesFramesToCache(t *testing.T) {
 		framePath := c.makeFrameFilename("obj", offset, frame)
 		cached, err := os.ReadFile(framePath)
 		require.NoError(t, err, "frame %d", i)
-		require.Equal(t, int(frame.C), len(cached), "frame %d size", i)
+		require.Len(t, cached, int(frame.C), "frame %d size", i)
 
 		buf := make([]byte, frame.U)
 		n, err := decompressBytes(t.Context(), CompressionZstd, cached, buf)
@@ -996,6 +1003,7 @@ func TestCache_GetFrame_DataIntegrity(t *testing.T) {
 			for i := range d {
 				d[i] = byte((i*7 + i*i*3) % 256)
 			}
+
 			return d
 		}()},
 		{"single byte", []byte{0x42}},
@@ -1060,14 +1068,17 @@ func TestCache_GetFrame_ConcurrentReads(t *testing.T) {
 			rng, err := c.GetFrame(context.Background(), "obj", 0, frameTable, true, buf)
 			if err != nil {
 				errs <- err
+
 				return
 			}
 			if rng.Length != uncompressedSize {
 				errs <- errors.New("wrong length")
+
 				return
 			}
 			if !bytes.Equal(buf, origData) {
 				errs <- errors.New("data mismatch")
+
 				return
 			}
 		})
@@ -1116,14 +1127,17 @@ func TestCache_GetFrame_ConcurrentCacheMisses(t *testing.T) {
 			rng, err := c.GetFrame(context.Background(), "obj", 0, frameTable, true, buf)
 			if err != nil {
 				errs <- err
+
 				return
 			}
 			if rng.Length != uncompressedSize {
 				errs <- errors.New("wrong length")
+
 				return
 			}
 			if !bytes.Equal(buf, origData) {
 				errs <- errors.New("data mismatch")
+
 				return
 			}
 		})
@@ -1352,6 +1366,7 @@ func TestCache_FullWorkflow_StoreAndRetrieve(t *testing.T) {
 			}
 			offset.Add(frame)
 		}
+
 		return true
 	}, 2*time.Second, 10*time.Millisecond)
 

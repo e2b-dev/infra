@@ -115,6 +115,15 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 }
 
 func (b *File) getBuild(ctx context.Context, mappedToBuild *header.BuildMap) (Diff, error) {
+	var opts []StorageDiffOption
+
+	// Use compressed chunker when the data is compressed (determined by the FrameTable).
+	// The compressed chunker uses an LRU cache for decompressed chunks and stores
+	// compressed frames in a directory-based file cache.
+	if mappedToBuild.FrameTable.IsCompressed() {
+		opts = append(opts, WithChunkerType(ChunkerTypeCompressed))
+	}
+
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		mappedToBuild.BuildId.String(),
@@ -123,6 +132,7 @@ func (b *File) getBuild(ctx context.Context, mappedToBuild *header.BuildMap) (Di
 		b.metrics,
 		b.persistence,
 		mappedToBuild.FrameTable,
+		opts...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage diff: %w", err)
