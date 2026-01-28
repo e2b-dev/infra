@@ -18,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 )
 
-
 const (
 	// maxDownloadSessions limits concurrent download sessions to prevent resource exhaustion
 	maxDownloadSessions = 100
