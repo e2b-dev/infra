@@ -2,13 +2,19 @@ name: Ensure generated files are up-to-date
 
 on:
   workflow_call:
+    inputs:
+      commit:
+        type: boolean
+        description: 'Whether to commit and push changes automatically'
+        required: false
+        default: false
     secrets:
       app_id:
         description: 'GitHub App ID for pushing commits that trigger workflows'
-        required: true
+        required: false
       app_secret:
         description: 'GitHub PAT for pushing commits that trigger workflows'
-        required: true
+        required: false
 
 permissions:
   contents: write
@@ -17,8 +23,24 @@ jobs:
   run-check:
     runs-on: ubuntu-24.04
     steps:
+      - name: Generate GitHub App installation token
+        id: app-token
+        if: ${{ inputs.commit == true }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.app_id }}
+          private-key: ${{ secrets.app_secret }}
+
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        if: ${{ inputs.commit == true }}
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        if: ${{ inputs.commit == false }}
 
       - name: Parse .tool-versions
         uses: wistia/parse-tool-versions@v2.1.1
@@ -55,6 +77,12 @@ jobs:
             exit 0
           fi
 
+          if [[ "${{ secrets.commit }}" != "true" ]]; then
+            echo "❌ Generated files are not up to date. Please run 'make generate' and commit the changes."
+            git status --short
+            exit 1
+          fi
+          
           echo "📝 Generated files are not up to date. Committing changes..."
           git status --short
 
