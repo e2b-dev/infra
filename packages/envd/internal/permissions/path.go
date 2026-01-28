@@ -36,7 +36,8 @@ func ExpandAndResolve(path string, user *user.User, defaultPath *string) (string
 	}
 
 	if filepath.IsAbs(path) {
-		return path, nil
+		// Clean the path to remove any .. or . components
+		return filepath.Clean(path), nil
 	}
 
 	// The filepath.Abs can correctly resolve paths like /home/user/../file
@@ -47,7 +48,8 @@ func ExpandAndResolve(path string, user *user.User, defaultPath *string) (string
 		return "", fmt.Errorf("failed to resolve path '%s' for user '%s' with home dir '%s': %w", path, user.Username, user.HomeDir, err)
 	}
 
-	return abs, nil
+	// filepath.Abs already cleans the path, but we explicitly clean again for clarity
+	return filepath.Clean(abs), nil
 }
 
 func getSubpaths(path string) (subpaths []string) {
