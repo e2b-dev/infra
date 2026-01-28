@@ -1628,6 +1628,15 @@ components:
       required:
         - name
 
+    UpdateVolume:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the volume
+      required:
+        - name
+
 tags:
   - name: templates
   - name: sandboxes
@@ -2946,6 +2955,12 @@ paths:
       tags: [volumes]
       parameters:
         - $ref: "#/components/parameters/volumeID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVolume"
       responses:
         "200":
           description: Successfully updated a team volume

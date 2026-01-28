@@ -1094,6 +1094,12 @@ type UpdateTeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// UpdateVolume defines model for UpdateVolume.
+type UpdateVolume struct {
+	// Name Name of the volume
+	Name string `json:"name"`
+}
+
 // Volume defines model for Volume.
 type Volume struct {
 	// Id ID of the volume
@@ -1323,6 +1329,9 @@ type PostV3TemplatesJSONRequestBody = TemplateBuildRequestV3
 
 // PostVolumesJSONRequestBody defines body for PostVolumes for application/json ContentType.
 type PostVolumesJSONRequestBody = NewVolume
+
+// PatchVolumesVolumeIDJSONRequestBody defines body for PatchVolumesVolumeID for application/json ContentType.
+type PatchVolumesVolumeIDJSONRequestBody = UpdateVolume
 
 // AsAWSRegistry returns the union data inside the FromImageRegistry as a AWSRegistry
 func (t FromImageRegistry) AsAWSRegistry() (AWSRegistry, error) {
