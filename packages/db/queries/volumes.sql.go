@@ -12,30 +12,32 @@ import (
 )
 
 const createVolume = `-- name: CreateVolume :one
-INSERT INTO volumes (team_id, name)
-VALUES ($1, $2)
-RETURNING id, team_id, name, created_at
+INSERT INTO volumes (team_id, volume_type, name)
+VALUES ($1, $2, $3)
+RETURNING id, team_id, name, volume_type, created_at
 `
 
 type CreateVolumeParams struct {
-	TeamID uuid.UUID
-	Name   string
+	TeamID     uuid.UUID
+	VolumeType string
+	Name       string
 }
 
 func (q *Queries) CreateVolume(ctx context.Context, arg CreateVolumeParams) (Volume, error) {
-	row := q.db.QueryRow(ctx, createVolume, arg.TeamID, arg.Name)
+	row := q.db.QueryRow(ctx, createVolume, arg.TeamID, arg.VolumeType, arg.Name)
 	var i Volume
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
+		&i.VolumeType,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const findVolumesByTeamID = `-- name: FindVolumesByTeamID :many
-SELECT id, team_id, name, created_at FROM volumes WHERE team_id = $1
+SELECT id, team_id, name, volume_type, created_at FROM volumes WHERE team_id = $1
 `
 
 func (q *Queries) FindVolumesByTeamID(ctx context.Context, teamID uuid.UUID) ([]Volume, error) {
@@ -51,6 +53,7 @@ func (q *Queries) FindVolumesByTeamID(ctx context.Context, teamID uuid.UUID) ([]
 			&i.ID,
 			&i.TeamID,
 			&i.Name,
+			&i.VolumeType,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -64,7 +67,7 @@ func (q *Queries) FindVolumesByTeamID(ctx context.Context, teamID uuid.UUID) ([]
 }
 
 const getVolume = `-- name: GetVolume :one
-SELECT id, team_id, name, created_at FROM volumes WHERE id = $1 AND team_id = $2
+SELECT id, team_id, name, volume_type, created_at FROM volumes WHERE id = $1 AND team_id = $2
 `
 
 type GetVolumeParams struct {
@@ -79,16 +82,54 @@ func (q *Queries) GetVolume(ctx context.Context, arg GetVolumeParams) (Volume, e
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
+		&i.VolumeType,
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getVolumesByName = `-- name: GetVolumesByName :many
+SELECT id, team_id, name, volume_type, created_at FROM volumes WHERE team_id = $1 AND name IN (
+    SELECT UNNEST($2::text[])
+)
+`
+
+type GetVolumesByNameParams struct {
+	TeamID      uuid.UUID
+	VolumeNames []string
+}
+
+func (q *Queries) GetVolumesByName(ctx context.Context, arg GetVolumesByNameParams) ([]Volume, error) {
+	rows, err := q.db.Query(ctx, getVolumesByName, arg.TeamID, arg.VolumeNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Volume
+	for rows.Next() {
+		var i Volume
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Name,
+			&i.VolumeType,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateVolume = `-- name: UpdateVolume :one
 UPDATE volumes
 SET name = $1
 WHERE id = $2
-RETURNING id, team_id, name, created_at
+RETURNING id, team_id, name, volume_type, created_at
 `
 
 type UpdateVolumeParams struct {
@@ -103,6 +144,7 @@ func (q *Queries) UpdateVolume(ctx context.Context, arg UpdateVolumeParams) (Vol
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
+		&i.VolumeType,
 		&i.CreatedAt,
 	)
 	return i, err

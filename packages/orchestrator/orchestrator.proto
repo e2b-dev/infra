@@ -53,6 +53,7 @@ message SandboxConfig {
 message SandboxVolume {
   string name = 1;
   string path = 2;
+  string type = 3;
 }
 
 message SandboxNetworkConfig {

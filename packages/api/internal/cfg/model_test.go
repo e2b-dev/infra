@@ -33,6 +33,21 @@ func TestParse(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []string{"aaa", "bbb"}, result.SupabaseJWTSecrets)
 	})
+
+	t.Run("default persistent volume type must be in types", func(t *testing.T) {
+		t.Setenv("PERSISTENT_VOLUME_TYPES", "valid:1,other:2")
+
+		_, err := Parse()
+		require.NoError(t, err, "no default is acceptable")
+
+		t.Setenv("DEFAULT_PERSISTENT_VOLUME_TYPE", "invalid")
+		_, err = Parse()
+		require.Error(t, err, "invalid default is not acceptable")
+
+		t.Setenv("DEFAULT_PERSISTENT_VOLUME_TYPE", "valid")
+		_, err = Parse()
+		require.NoError(t, err, "valid default is acceptable")
+	})
 }
 
 // removeEnv was mostly copied from the implementation of t.Setenv

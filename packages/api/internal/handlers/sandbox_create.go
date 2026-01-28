@@ -147,6 +147,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if len(volumes) != 0 {
 		if !a.featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, "use of volumes is not enabled")
+
+			return
 		}
 	}
 

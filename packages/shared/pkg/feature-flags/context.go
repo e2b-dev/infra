@@ -172,3 +172,7 @@ func ServiceContext(serviceName string) ldcontext.Context {
 func TemplateContext(templateID string) ldcontext.Context {
 	return ldcontext.NewWithKind(TemplateKind, templateID)
 }
+
+func VolumeContext(volumeName string) ldcontext.Context {
+	return ldcontext.NewWithKind(VolumeKind, volumeName)
+}

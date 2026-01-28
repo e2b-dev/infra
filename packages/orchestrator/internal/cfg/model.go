@@ -27,6 +27,8 @@ type BuilderConfig struct {
 
 	StorageConfig storage.Config
 	NetworkConfig network.Config
+
+	PersistentVolumeTypes map[string]string `env:"PERSISTENT_VOLUME_TYPES"`
 }
 
 func makePathsAbsolute(c *BuilderConfig) error {

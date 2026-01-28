@@ -1,6 +1,10 @@
 package cfg
 
-import "github.com/caarlos0/env/v11"
+import (
+	"fmt"
+
+	"github.com/caarlos0/env/v11"
+)
 
 const (
 	DefaultKernelVersion = "vmlinux-6.1.158"
@@ -42,6 +46,9 @@ type Config struct {
 	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
 
 	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
+
+	PersistentVolumeTypes       map[string]string `env:"PERSISTENT_VOLUME_TYPES"`
+	DefaultPersistentVolumeType string            `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
 }
 
 func Parse() (Config, error) {
@@ -54,6 +61,12 @@ func Parse() (Config, error) {
 
 	if config.AuthDBConnectionString == "" {
 		config.AuthDBConnectionString = config.PostgresConnectionString
+	}
+
+	if defPVType := config.DefaultPersistentVolumeType; defPVType != "" {
+		if _, ok := config.PersistentVolumeTypes[defPVType]; !ok {
+			return config, fmt.Errorf("default persistent volume type %s not found in available types", defPVType)
+		}
 	}
 
 	return config, err

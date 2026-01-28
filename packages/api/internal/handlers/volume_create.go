@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -38,9 +40,17 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
+	ctx = feature_flags.AddToContext(ctx, feature_flags.VolumeContext(body.Name))
+
+	volumeType, done := a.getVolumeType(ctx, c)
+	if done {
+		return
+	}
+
 	volume, err := a.sqlcDB.CreateVolume(ctx, queries.CreateVolumeParams{
-		TeamID: team.ID,
-		Name:   body.Name,
+		TeamID:     team.ID,
+		Name:       body.Name,
+		VolumeType: volumeType,
 	})
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating volume")
@@ -55,4 +65,19 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, result)
+}
+
+func (a *APIStore) getVolumeType(ctx context.Context, c *gin.Context) (string, bool) {
+	volumeType := a.featureFlags.StringFlag(ctx, feature_flags.DefaultPersistentVolumeType)
+	if volumeType == "" {
+		volumeType = a.config.DefaultPersistentVolumeType
+	}
+	if volumeType == "" {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Default persistent volume type is not configured")
+		telemetry.ReportCriticalError(ctx, "default persistent volume type is not configured", nil)
+
+		return "", true
+	}
+
+	return volumeType, false
 }

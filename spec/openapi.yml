@@ -357,6 +357,9 @@ components:
         path:
           type: string
           description: Path of the volume
+      required:
+        - name
+        - path
 
     Sandbox:
       required:

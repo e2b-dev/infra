@@ -700,10 +700,10 @@ type SandboxState string
 // SandboxVolume defines model for SandboxVolume.
 type SandboxVolume struct {
 	// Name Name of the volume
-	Name *string `json:"name,omitempty"`
+	Name string `json:"name"`
 
 	// Path Path of the volume
-	Path *string `json:"path,omitempty"`
+	Path string `json:"path"`
 }
 
 // SandboxesWithMetrics defines model for SandboxesWithMetrics.

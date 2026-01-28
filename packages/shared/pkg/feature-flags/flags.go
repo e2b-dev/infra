@@ -23,6 +23,7 @@ const (
 	TierKind       ldcontext.Kind = "tier"
 	ServiceKind    ldcontext.Kind = "service"
 	TemplateKind   ldcontext.Kind = "template"
+	VolumeKind     ldcontext.Kind = "volume"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
@@ -188,10 +189,11 @@ var firecrackerVersions = map[string]string{
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
-	BuildFirecrackerVersion = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
-	BuildIoEngine           = newStringFlag("build-io-engine", "Sync")
-	BuildNodeInfo           = newJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions     = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
+	BuildFirecrackerVersion     = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildIoEngine               = newStringFlag("build-io-engine", "Sync")
+	DefaultPersistentVolumeType = newStringFlag("default-persistent-volume-type", "pd-ssd")
+	BuildNodeInfo               = newJSONFlag("preferred-build-node", ldvalue.Null())
+	FirecrackerVersions         = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
 )
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.
