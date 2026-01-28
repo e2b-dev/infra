@@ -46,7 +46,7 @@ func (o *Orchestrator) AdminNodes(ctx context.Context) ([]*api.Node, error) {
 		}
 	}
 
-	sbxs, err := o.sandboxStore.Items(ctx, nil, []sandbox.State{sandbox.StateRunning})
+	sbxs, err := o.sandboxStore.AllItems(ctx, []sandbox.State{sandbox.StateRunning})
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (o *Orchestrator) AdminNodeDetail(ctx context.Context, clusterID uuid.UUID,
 		Metrics:         metrics,
 	}
 
-	sbxs, err := o.sandboxStore.Items(ctx, nil, []sandbox.State{sandbox.StateRunning})
+	sbxs, err := o.sandboxStore.AllItems(ctx, []sandbox.State{sandbox.StateRunning})
 	if err != nil {
 		return nil, err
 	}
