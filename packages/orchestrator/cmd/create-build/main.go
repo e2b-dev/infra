@@ -72,9 +72,9 @@ func main() {
 	// Always suppress OTEL tracing logs
 	cmdutil.SuppressOTELLogs()
 
-	// Suppress other noisy output unless verbose
+	// Suppress other noisy output unless verbose, but keep std log for fatal errors
 	if !*verbose {
-		cmdutil.SuppressNoisyLogs()
+		cmdutil.SuppressNoisyLogsKeepStdLog()
 	}
 
 	ctx := context.Background()

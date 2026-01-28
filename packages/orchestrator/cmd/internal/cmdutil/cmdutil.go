@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"syscall"
 
 	"go.uber.org/zap"
@@ -103,41 +102,5 @@ func SmallArtifacts() []struct{ Name, File string } {
 		{"Memfile header", storage.MemfileName + storage.HeaderSuffix},
 		{"Snapfile", storage.SnapfileName},
 		{"Metadata", storage.MetadataName},
-	}
-}
-
-// PrintArtifactSizes prints artifact sizes for a build.
-func PrintArtifactSizes(basePath, buildID string) {
-	if basePath == "" {
-		return
-	}
-
-	dir := filepath.Join(basePath, buildID)
-
-	for _, a := range MainArtifacts() {
-		path := filepath.Join(dir, a.File)
-		_, actual, err := GetFileSizes(path)
-		if err != nil {
-			continue
-		}
-
-		headerPath := filepath.Join(dir, a.HeaderFile)
-		totalSize, blockSize := GetHeaderInfo(headerPath)
-		if totalSize == 0 {
-			log.Printf("   %s: %d MB (this layer)\n", a.Name, actual>>20)
-
-			continue
-		}
-
-		pct := float64(actual) / float64(totalSize) * 100
-		log.Printf("   %s: %d MB diff / %d MB total (%.1f%%), block size: %d KB\n",
-			a.Name, actual>>20, totalSize>>20, pct, blockSize>>10)
-	}
-
-	for _, a := range SmallArtifacts() {
-		path := filepath.Join(dir, a.File)
-		if actual, err := GetActualFileSize(path); err == nil {
-			log.Printf("   %s: %d KB\n", a.Name, actual>>10)
-		}
 	}
 }

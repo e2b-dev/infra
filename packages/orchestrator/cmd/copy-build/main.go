@@ -194,26 +194,16 @@ func gcloudCopy(ctx context.Context, from, to *Destination) error {
 }
 
 func main() {
-	build := flag.String("build", "", "build ID to copy")
-	fromStorage := flag.String("from-storage", "", "source storage: local path or gs://bucket")
-	toStorage := flag.String("to-storage", "", "destination storage: local path or gs://bucket")
+	buildId := flag.String("build", "", "build id")
+	from := flag.String("from", "", "from destination")
+	to := flag.String("to", "", "to destination")
 
 	flag.Parse()
 
-	if *build == "" {
-		log.Fatal("-build required")
-	}
-	if *fromStorage == "" {
-		log.Fatal("-from-storage required")
-	}
-	if *toStorage == "" {
-		log.Fatal("-to-storage required")
-	}
-
-	fmt.Printf("Copying build '%s' from '%s' to '%s'\n", *build, *fromStorage, *toStorage)
+	fmt.Printf("Copying build '%s' from '%s' to '%s'\n", *buildId, *from, *to)
 
 	template := storage.TemplateFiles{
-		BuildID: *build,
+		BuildID: *buildId,
 	}
 
 	ctx := context.Background()
@@ -224,8 +214,8 @@ func main() {
 	buildMemfileHeaderPath := template.StorageMemfileHeaderPath()
 
 	var memfileHeader *header.Header
-	if strings.HasPrefix(*fromStorage, "gs://") {
-		bucketName, _ := strings.CutPrefix(*fromStorage, "gs://")
+	if strings.HasPrefix(*from, "gs://") {
+		bucketName, _ := strings.CutPrefix(*from, "gs://")
 
 		h, err := NewHeaderFromObject(ctx, bucketName, buildMemfileHeaderPath, storage.MemfileHeaderObjectType)
 		if err != nil {
@@ -234,7 +224,7 @@ func main() {
 
 		memfileHeader = h
 	} else {
-		h, err := NewHeaderFromPath(ctx, *fromStorage, buildMemfileHeaderPath)
+		h, err := NewHeaderFromPath(ctx, *from, buildMemfileHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from path: %s", err)
 		}
@@ -254,8 +244,8 @@ func main() {
 	buildRootfsHeaderPath := template.StorageRootfsHeaderPath()
 
 	var rootfsHeader *header.Header
-	if strings.HasPrefix(*fromStorage, "gs://") {
-		bucketName, _ := strings.CutPrefix(*fromStorage, "gs://")
+	if strings.HasPrefix(*from, "gs://") {
+		bucketName, _ := strings.CutPrefix(*from, "gs://")
 		h, err := NewHeaderFromObject(ctx, bucketName, buildRootfsHeaderPath, storage.RootFSHeaderObjectType)
 		if err != nil {
 			log.Fatalf("failed to create header from object: %s", err)
@@ -263,7 +253,7 @@ func main() {
 
 		rootfsHeader = h
 	} else {
-		h, err := NewHeaderFromPath(ctx, *fromStorage, buildRootfsHeaderPath)
+		h, err := NewHeaderFromPath(ctx, *from, buildRootfsHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from path: %s", err)
 		}
@@ -305,8 +295,8 @@ func main() {
 	for _, file := range filesToCopy {
 		errgroup.Go(func() error {
 			var fromDestination *Destination
-			if strings.HasPrefix(*fromStorage, "gs://") {
-				bucketName, _ := strings.CutPrefix(*fromStorage, "gs://")
+			if strings.HasPrefix(*from, "gs://") {
+				bucketName, _ := strings.CutPrefix(*from, "gs://")
 				fromObject := googleStorageClient.Bucket(bucketName).Object(file)
 				d, destErr := NewDestinationFromObject(ctx, fromObject)
 				if destErr != nil {
@@ -315,7 +305,7 @@ func main() {
 
 				fromDestination = d
 			} else {
-				d, destErr := NewDestinationFromPath(*fromStorage, file)
+				d, destErr := NewDestinationFromPath(*from, file)
 				if destErr != nil {
 					return fmt.Errorf("failed to create destination from path: %w", destErr)
 				}
@@ -324,8 +314,8 @@ func main() {
 			}
 
 			var toDestination *Destination
-			if strings.HasPrefix(*toStorage, "gs://") {
-				bucketName, _ := strings.CutPrefix(*toStorage, "gs://")
+			if strings.HasPrefix(*to, "gs://") {
+				bucketName, _ := strings.CutPrefix(*to, "gs://")
 				toObject := googleStorageClient.Bucket(bucketName).Object(file)
 				d, destErr := NewDestinationFromObject(ctx, toObject)
 				if destErr != nil {
@@ -334,7 +324,7 @@ func main() {
 
 				toDestination = d
 			} else {
-				d, destErr := NewDestinationFromPath(*toStorage, file)
+				d, destErr := NewDestinationFromPath(*to, file)
 				if destErr != nil {
 					return fmt.Errorf("failed to create destination from path: %w", destErr)
 				}
@@ -381,5 +371,5 @@ func main() {
 		log.Fatalf("failed to copy files: %s", err)
 	}
 
-	fmt.Printf("\n✅ Build copied: %s\n", *build)
+	fmt.Printf("Build '%s' copied to '%s'\n", *buildId, *to)
 }
