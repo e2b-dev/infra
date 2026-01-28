@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,10 +37,8 @@ var allowedPathPrefixes = []string{
 
 func isAllowedPath(methodPath string) bool {
 	// Check exact matches first
-	for _, path := range allowedExactPaths {
-		if methodPath == path {
-			return true
-		}
+	if slices.Contains(allowedExactPaths, methodPath) {
+		return true
 	}
 
 	// Check prefix matches for paths with dynamic segments
