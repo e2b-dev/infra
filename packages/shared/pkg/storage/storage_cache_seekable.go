@@ -468,19 +468,21 @@ func (c Cache) readLocalSize(_ context.Context, path string) (int64, error) {
 	return size, nil
 }
 
-func (c Cache) validateGetFrameParams(off int64, length int, frameTable *FrameTable) error {
+func (c Cache) validateGetFrameParams(off int64, length int, frameTable *FrameTable, decompress bool) error {
 	if length == 0 {
 		return ErrBufferTooSmall
 	}
-	if off%c.chunkSize != 0 {
-		return fmt.Errorf("offset %#x is not aligned to chunk size %#x, %w", off, c.chunkSize, ErrOffsetUnaligned)
-	}
-	if !frameTable.IsCompressed() {
-		if length > int(c.chunkSize) {
-			return ErrBufferTooLarge
+	if decompress {
+		if off%c.chunkSize != 0 {
+			return fmt.Errorf("offset %#x is not aligned to chunk size %#x, %w", off, c.chunkSize, ErrOffsetUnaligned)
 		}
-		if (off%c.chunkSize + int64(length)) > c.chunkSize {
-			return ErrMultipleChunks
+		if !frameTable.IsCompressed() {
+			if length > int(c.chunkSize) {
+				return ErrBufferTooLarge
+			}
+			if (off%c.chunkSize + int64(length)) > c.chunkSize {
+				return ErrMultipleChunks
+			}
 		}
 	}
 
