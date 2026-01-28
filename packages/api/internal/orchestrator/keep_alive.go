@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -19,7 +20,7 @@ var (
 	errCannotSetTTL              = fmt.Errorf("cannot set ttl")
 )
 
-func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
+func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
 	now := time.Now()
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
@@ -45,7 +46,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 	}
 
 	var sbxNotFoundErr *sandbox.NotFoundError
-	sbx, err := o.sandboxStore.Update(ctx, sandboxID, updateFunc)
+	sbx, err := o.sandboxStore.Update(ctx, teamID, sandboxID, updateFunc)
 	if err != nil {
 		switch {
 		case errors.As(err, &sbxNotFoundErr):

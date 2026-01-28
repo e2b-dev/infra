@@ -35,7 +35,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 }
 
 // Get retrieves a sandbox from Redis
-func (s *Storage) Get(ctx context.Context, sandboxID string) (sandbox.Sandbox, error) {
+func (s *Storage) Get(ctx context.Context, _ uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
 	key := getSandboxKey(sandboxID)
 	data, err := s.redisClient.Get(ctx, key).Bytes()
 	if errors.Is(err, redis.Nil) {
@@ -55,8 +55,7 @@ func (s *Storage) Get(ctx context.Context, sandboxID string) (sandbox.Sandbox, e
 }
 
 // Remove deletes a sandbox from Redis
-func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
-	// Remove from Redis
+func (s *Storage) Remove(ctx context.Context, _ uuid.UUID, sandboxID string) error {
 	key := getSandboxKey(sandboxID)
 
 	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
@@ -80,13 +79,12 @@ func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
 }
 
 // Items returns sandboxes matching the given filters
-func (s *Storage) Items(_ *uuid.UUID, _ []sandbox.State, _ ...sandbox.ItemsOption) []sandbox.Sandbox {
+func (s *Storage) Items(_ context.Context, _ *uuid.UUID, _ []sandbox.State, _ ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
 	// TODO: Implement later (ENG-3312)
-	return nil
+	return nil, nil
 }
 
-// Update modifies a sandbox atomically using a Lua script
-func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
+func (s *Storage) Update(ctx context.Context, _ uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	key := getSandboxKey(sandboxID)
 	var updatedSbx sandbox.Sandbox
 
@@ -141,13 +139,13 @@ func (s *Storage) Update(ctx context.Context, sandboxID string, updateFunc func(
 }
 
 // StartRemoving initiates the removal process for a sandbox
-func (s *Storage) StartRemoving(_ context.Context, _ string, _ sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
+func (s *Storage) StartRemoving(_ context.Context, _ uuid.UUID, _ string, _ sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
 	// TODO: Implement later (ENG-3285)
 	return false, nil, nil
 }
 
 // WaitForStateChange waits for a sandbox state to change
-func (s *Storage) WaitForStateChange(_ context.Context, _ string) error {
+func (s *Storage) WaitForStateChange(_ context.Context, _ uuid.UUID, _ string) error {
 	// TODO: Implement later (ENG-3285)
 	return nil
 }

@@ -108,7 +108,7 @@ func (o *Orchestrator) CreateSandbox(
 	totalConcurrentInstances := team.Limits.SandboxConcurrency
 
 	// Check if team has reached max instances
-	finishStart, waitForStart, err := o.sandboxStore.Reserve(ctx, team.Team.ID.String(), sandboxID, int(totalConcurrentInstances))
+	finishStart, waitForStart, err := o.sandboxStore.Reserve(ctx, team.Team.ID, sandboxID, int(totalConcurrentInstances))
 	if err != nil {
 		var limitErr *sandbox.LimitExceededError
 

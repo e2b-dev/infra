@@ -17,7 +17,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 	defer span.End()
 
 	sandboxID := sbx.SandboxID
-	alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, sandboxID, stateAction)
+	alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, sbx.TeamID, sandboxID, stateAction)
 	if err != nil {
 		switch stateAction {
 		case sandbox.StateActionKill:
@@ -60,7 +60,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 
 	defer func() { go o.countersRemove(context.WithoutCancel(ctx), sbx, stateAction) }()
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, stateAction) }()
-	defer o.sandboxStore.Remove(ctx, sbx.TeamID.String(), sbx.SandboxID)
+	defer o.sandboxStore.Remove(ctx, sbx.TeamID, sbx.SandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, stateAction)
 	if err != nil {
 		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))

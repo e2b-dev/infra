@@ -3,14 +3,16 @@ package sandbox
 import (
 	"errors"
 	"fmt"
+
+	"github.com/google/uuid"
 )
 
 type LimitExceededError struct {
-	TeamID string
+	TeamID uuid.UUID
 }
 
 func (e *LimitExceededError) Error() string {
-	return fmt.Sprintf("team %s has exceeded the limit", e.TeamID)
+	return fmt.Sprintf("team %s has exceeded the limit", e.TeamID.String())
 }
 
 type NotFoundError struct {
