@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -85,7 +86,8 @@ func writeToCache(t *testing.T, path string, data []byte) {
 	require.NoError(t, os.WriteFile(path, data, 0o644))
 }
 
-// waitForCacheFile waits for a cache file to exist.
+// waitForCacheFile waits for a cache file to exist and for all async operations
+// (lock files, temp files) to be cleaned up in the same directory.
 func waitForCacheFile(t *testing.T, path string) {
 	t.Helper()
 	require.Eventually(t, func() bool {
@@ -93,6 +95,9 @@ func waitForCacheFile(t *testing.T, path string) {
 
 		return err == nil
 	}, time.Second, time.Millisecond, "cache file should be written: %s", path)
+
+	// Also wait for any async cache operations to complete in the same directory
+	waitForAsyncCacheOps(t, filepath.Dir(path))
 }
 
 // singleFrameTable creates a FrameTable with one frame.
@@ -263,7 +268,7 @@ func TestCache_validateGetFrameParams(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			c := Cache{chunkSize: tc.chunkSize}
-			err := c.validateGetFrameParams(tc.offset, tc.length, tc.frameTable)
+			err := c.validateGetFrameParams(tc.offset, tc.length, tc.frameTable, true)
 			if tc.wantErr == nil {
 				require.NoError(t, err)
 			} else {
@@ -411,13 +416,42 @@ func TestCache_Size_CorruptedCache(t *testing.T) {
 	c := newTestCache(t, inner, 1024)
 
 	// Pre-populate with corrupted data
-	writeToCache(t, c.sizeFilename("obj"), []byte("not-a-number"))
+	sizeFile := c.sizeFilename("obj")
+	writeToCache(t, sizeFile, []byte("not-a-number"))
 
 	// Should fall back to inner and re-cache
 	size, err := c.Size(t.Context(), "obj")
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(5555), size)
+
+	// Wait for async cache write to complete before test cleanup.
+	// Since the file already exists with corrupted data, the async write
+	// will fail (hard link can't overwrite), but we still need to wait
+	// for the goroutine to finish so it cleans up lock/temp files.
+	waitForAsyncCacheOps(t, filepath.Dir(sizeFile))
+}
+
+// waitForAsyncCacheOps waits until no .lock or temp files exist in the given directory.
+// It first sleeps briefly to allow any pending goroutines to start.
+func waitForAsyncCacheOps(t *testing.T, dir string) {
+	t.Helper()
+	// Brief sleep to ensure any pending goroutines have started and created their temp/lock files
+	time.Sleep(10 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return true // directory doesn't exist or can't be read
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			// Check for lock files and temp files
+			if filepath.Ext(name) == ".lock" || strings.HasPrefix(name, ".temp.") || strings.HasPrefix(name, ".size.") {
+				return false
+			}
+		}
+		return true
+	}, time.Second, time.Millisecond, "async cache operations should complete in %s", dir)
 }
 
 // =============================================================================
@@ -505,6 +539,10 @@ func TestCache_GetFrame_Uncompressed_NonZeroOffset(t *testing.T) {
 	assert.Equal(t, int64(chunkSize*5), rng.Start)
 	assert.Equal(t, chunkSize, rng.Length)
 	assert.Equal(t, data, buf)
+
+	// Wait for async cache write to complete
+	chunkPath := c.makeChunkFilename("obj", int64(chunkSize*5))
+	waitForCacheFile(t, chunkPath)
 }
 
 func TestCache_GetFrame_Uncompressed_InnerError(t *testing.T) {
@@ -915,10 +953,10 @@ func TestCache_StoreFile_Compressed_WritesFramesToCache(t *testing.T) {
 		Level:           int(zstd.SpeedBestCompression),
 	}
 
-	c, flags := newTestCacheWithFlags(t, innerStorage, 4096)
-	flags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(false).Maybe()
+	c, _ := newTestCacheWithFlags(t, innerStorage, 4096)
 
-	ft, err := c.StoreFile(t.Context(), inputFile, "obj", opts)
+	// Use storeCompressed directly to get the WaitGroup for async writes
+	ft, wg, err := c.storeCompressed(t.Context(), inputFile, "obj", opts)
 
 	require.NoError(t, err)
 	require.NotNil(t, ft)
@@ -932,19 +970,8 @@ func TestCache_StoreFile_Compressed_WritesFramesToCache(t *testing.T) {
 	}
 	assert.Equal(t, int64(dataSize), totalU)
 
-	// Wait for async cache writes
-	require.Eventually(t, func() bool {
-		var offset FrameOffset
-		for _, frame := range ft.Frames {
-			framePath := c.makeFrameFilename("obj", offset, frame)
-			if _, err := os.Stat(framePath); err != nil {
-				return false
-			}
-			offset.Add(frame)
-		}
-
-		return true
-	}, 2*time.Second, 10*time.Millisecond)
+	// Wait for async cache writes to complete
+	wg.Wait()
 
 	// Verify each cached frame decompresses correctly
 	var offset FrameOffset
@@ -1317,12 +1344,16 @@ func TestCache_GetFrame_CorruptedCacheFile_FallsBackToInner(t *testing.T) {
 	writeToCache(t, framePath, []byte("corrupted data that is not valid zstd"))
 
 	buf := make([]byte, uncompressedSize)
-	rng, err := c.GetFrame(t.Context(), "obj", 0, frameTable, true, buf)
+	// Use internal method to get WaitGroup for async cache write
+	rng, wg, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, true, buf, true)
 
 	// Should succeed by falling back to inner
 	require.NoError(t, err)
 	assert.Equal(t, uncompressedSize, rng.Length)
 	assert.Equal(t, origData, buf)
+
+	// Wait for async cache write to complete before test cleanup
+	wg.Wait()
 }
 
 // =============================================================================
