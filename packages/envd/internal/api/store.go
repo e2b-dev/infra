@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -15,13 +17,15 @@ import (
 
 // MultipartUploadSession tracks an in-progress multipart upload
 type MultipartUploadSession struct {
-	UploadID string
-	FilePath string // Final destination path
-	TempDir  string // Temp directory for parts
-	UID      int
-	GID      int
-	Parts    map[int]string // partNumber -> temp file path
-	mu       sync.Mutex
+	UploadID  string
+	FilePath  string // Final destination path
+	TempDir   string // Temp directory for parts
+	UID       int
+	GID       int
+	Parts     map[int]string // partNumber -> temp file path
+	CreatedAt time.Time
+	completed atomic.Bool // Set to true when complete/abort starts to prevent new parts
+	mu        sync.Mutex
 }
 
 type API struct {
@@ -47,13 +51,43 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		l.Warn().Err(err).Str("dir", multipartTempDir).Msg("failed to cleanup stale multipart temp directory")
 	}
 
-	return &API{
+	api := &API{
 		logger:      l,
 		defaults:    defaults,
 		mmdsChan:    mmdsChan,
 		isNotFC:     isNotFC,
 		lastSetTime: utils.NewAtomicMax(),
 		uploads:     make(map[string]*MultipartUploadSession),
+	}
+
+	// Start background cleanup for expired upload sessions
+	go api.cleanupExpiredUploads()
+
+	return api
+}
+
+// cleanupExpiredUploads periodically removes upload sessions that have exceeded their TTL
+func (a *API) cleanupExpiredUploads() {
+	ticker := time.NewTicker(uploadSessionCleanupInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		a.uploadsLock.Lock()
+		now := time.Now()
+		for uploadID, session := range a.uploads {
+			if now.Sub(session.CreatedAt) > uploadSessionTTL {
+				delete(a.uploads, uploadID)
+				// Clean up temp directory in background
+				tempDir := session.TempDir
+				go func() {
+					if err := os.RemoveAll(tempDir); err != nil {
+						a.logger.Warn().Err(err).Str("tempDir", tempDir).Msg("failed to cleanup expired upload temp directory")
+					}
+				}()
+				a.logger.Info().Str("uploadId", uploadID).Msg("cleaned up expired multipart upload session")
+			}
+		}
+		a.uploadsLock.Unlock()
 	}
 }
 

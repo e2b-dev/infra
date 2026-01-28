@@ -1,15 +1,19 @@
 package api
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/user"
 	"path/filepath"
 	"sort"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -22,6 +26,12 @@ const (
 	multipartTempDir = "/tmp/envd-multipart"
 	// maxUploadSessions limits concurrent upload sessions to prevent resource exhaustion
 	maxUploadSessions = 100
+	// maxPartSize limits individual part size to 100MB to prevent DoS
+	maxPartSize = 100 * 1024 * 1024
+	// uploadSessionTTL is the maximum time an upload session can remain active
+	uploadSessionTTL = 1 * time.Hour
+	// uploadSessionCleanupInterval is how often to check for expired sessions
+	uploadSessionCleanupInterval = 5 * time.Minute
 )
 
 // PostFilesUploadInit initializes a multipart upload session
@@ -90,12 +100,13 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 
 	// Store the session
 	session := &MultipartUploadSession{
-		UploadID: uploadID,
-		FilePath: filePath,
-		TempDir:  tempDir,
-		UID:      uid,
-		GID:      gid,
-		Parts:    make(map[int]string),
+		UploadID:  uploadID,
+		FilePath:  filePath,
+		TempDir:   tempDir,
+		UID:       uid,
+		GID:       gid,
+		Parts:     make(map[int]string),
+		CreatedAt: time.Now(),
 	}
 
 	a.uploadsLock.Lock()
@@ -128,6 +139,13 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 	operationID := logs.AssignOperationID()
 
+	// Validate uploadId is a valid UUID to prevent path traversal
+	if _, err := uuid.Parse(uploadId); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("invalid upload ID format")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("invalid upload ID format: must be a valid UUID"))
+		return
+	}
+
 	// Get the session
 	a.uploadsLock.RLock()
 	session, exists := a.uploads[uploadId]
@@ -139,7 +157,21 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
+	// Check if session is already being completed/aborted
+	if session.completed.Load() {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
+		jsonError(w, http.StatusConflict, fmt.Errorf("upload session is already completing or aborted"))
+		return
+	}
+
 	partNumber := params.Part
+
+	// Check for negative part numbers
+	if partNumber < 0 {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNumber).Msg("invalid part number")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number must be non-negative"))
+		return
+	}
 
 	// Create the part file
 	partPath := filepath.Join(session.TempDir, fmt.Sprintf("part_%d", partNumber))
@@ -156,8 +188,9 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	// Write the part data using ReadFrom for efficient copying
-	size, err := partFile.ReadFrom(r.Body)
+	// Write the part data using ReadFrom with size limit to prevent DoS
+	limitedReader := io.LimitReader(r.Body, maxPartSize+1)
+	size, err := partFile.ReadFrom(limitedReader)
 	partFile.Close()
 
 	if err != nil {
@@ -172,19 +205,47 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	// Record the part
+	// Check if part exceeded size limit
+	if size > maxPartSize {
+		os.Remove(partPath)
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int64("size", size).Int64("maxSize", maxPartSize).Msg("part size exceeds limit")
+		jsonError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("part size exceeds maximum allowed size of %d bytes", maxPartSize))
+		return
+	}
+
+	// Record the part (check for duplicates and warn)
 	session.mu.Lock()
+	if existingPath, exists := session.Parts[partNumber]; exists {
+		a.logger.Warn().
+			Str(string(logs.OperationIDKey), operationID).
+			Str("uploadId", uploadId).
+			Int("partNumber", partNumber).
+			Str("existingPath", existingPath).
+			Msg("overwriting existing part")
+	}
 	session.Parts[partNumber] = partPath
 	session.mu.Unlock()
+
+	// Calculate ETag (MD5 of part content)
+	partData, err := os.ReadFile(partPath)
+	var etag string
+	if err == nil {
+		hash := md5.Sum(partData)
+		etag = hex.EncodeToString(hash[:])
+	}
 
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
 		Str("uploadId", uploadId).
 		Int("partNumber", partNumber).
 		Int64("size", size).
+		Str("etag", etag).
 		Msg("part uploaded")
 
 	w.Header().Set("Content-Type", "application/json")
+	if etag != "" {
+		w.Header().Set("ETag", fmt.Sprintf("\"%s\"", etag))
+	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(MultipartUploadPart{
 		PartNumber: partNumber,
@@ -202,6 +263,14 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	a.uploadsLock.Lock()
 	session, exists := a.uploads[uploadId]
 	if exists {
+		// Mark as completed to prevent new parts from being uploaded
+		if !session.completed.CompareAndSwap(false, true) {
+			// Already being completed by another request
+			a.uploadsLock.Unlock()
+			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
+			jsonError(w, http.StatusConflict, fmt.Errorf("upload session is already completing"))
+			return
+		}
 		delete(a.uploads, uploadId)
 	}
 	a.uploadsLock.Unlock()
@@ -221,6 +290,18 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 				logger.Warn().Err(err).Str("tempDir", tempDir).Msg("failed to cleanup multipart temp directory")
 			}
 		}()
+	}()
+
+	// Track if we need to clean up destination file on error
+	destFilePath := session.FilePath
+	destFileCreated := false
+	assemblySucceeded := false
+	defer func() {
+		if destFileCreated && !assemblySucceeded {
+			if err := os.Remove(destFilePath); err != nil && !os.IsNotExist(err) {
+				logger.Warn().Err(err).Str("path", destFilePath).Msg("failed to cleanup partial destination file")
+			}
+		}
 	}()
 
 	// Ensure parent directories exist
@@ -243,10 +324,11 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error creating destination file: %w", err))
 		return
 	}
-	defer destFile.Close()
+	destFileCreated = true
 
 	// Set ownership
 	if err := os.Chown(session.FilePath, session.UID, session.GID); err != nil {
+		destFile.Close()
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error changing file ownership")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error changing file ownership: %w", err))
 		return
@@ -263,12 +345,30 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	session.mu.Unlock()
 	sort.Ints(partNumbers)
 
+	// Validate that parts are contiguous (0, 1, 2, ..., n-1)
+	if len(partNumbers) > 0 {
+		for i, partNum := range partNumbers {
+			if partNum != i {
+				destFile.Close()
+				a.logger.Error().
+					Str(string(logs.OperationIDKey), operationID).
+					Int("expected", i).
+					Int("got", partNum).
+					Ints("allParts", partNumbers).
+					Msg("missing part in upload sequence")
+				jsonError(w, http.StatusBadRequest, fmt.Errorf("missing part %d: parts must be contiguous starting from 0", i))
+				return
+			}
+		}
+	}
+
 	// Assemble the file using sendfile via io.Copy (which uses copy_file_range on Linux)
 	var totalSize int64
 	for _, partNum := range partNumbers {
 		partPath := partPaths[partNum]
 		partFile, err := os.Open(partPath)
 		if err != nil {
+			destFile.Close()
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNum).Msg("error opening part file")
 			jsonError(w, http.StatusInternalServerError, fmt.Errorf("error opening part %d: %w", partNum, err))
 			return
@@ -279,6 +379,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		partFile.Close()
 
 		if err != nil {
+			destFile.Close()
 			if errors.Is(err, syscall.ENOSPC) {
 				a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 				jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
@@ -291,6 +392,16 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 		totalSize += written
 	}
+
+	// Close the file before marking success
+	if err := destFile.Close(); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error closing destination file")
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error closing destination file: %w", err))
+		return
+	}
+
+	// Mark assembly as successful so we don't clean up the file
+	assemblySucceeded = true
 
 	// Note: We skip fsync here for performance. The kernel will flush data to disk
 	// eventually. For sandbox use cases, immediate durability is not critical.
@@ -321,6 +432,14 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 	a.uploadsLock.Lock()
 	session, exists := a.uploads[uploadId]
 	if exists {
+		// Mark as completed to prevent new parts from being uploaded
+		if !session.completed.CompareAndSwap(false, true) {
+			// Already being completed/aborted by another request
+			a.uploadsLock.Unlock()
+			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
+			jsonError(w, http.StatusConflict, fmt.Errorf("upload session is already completing or aborted"))
+			return
+		}
 		delete(a.uploads, uploadId)
 	}
 	a.uploadsLock.Unlock()

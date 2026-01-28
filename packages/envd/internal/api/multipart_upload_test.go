@@ -108,6 +108,10 @@ func TestMultipartUpload(t *testing.T) {
 		assert.Equal(t, 0, part0Resp.PartNumber)
 		assert.Equal(t, int64(len(part0Content)), part0Resp.Size)
 
+		// Verify ETag is returned
+		etag := part0W.Header().Get("ETag")
+		assert.NotEmpty(t, etag, "ETag should be returned for uploaded part")
+
 		// Upload part 1
 		part1Content := []byte("World!")
 		part1Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=1", bytes.NewReader(part1Content))
@@ -224,6 +228,195 @@ func TestMultipartUpload(t *testing.T) {
 
 		api.DeleteFilesUploadUploadId(w, req, "non-existent")
 		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("invalid upload ID format", func(t *testing.T) {
+		t.Parallel()
+		api := newTestAPI(t)
+
+		// Try to upload with an invalid UUID (path traversal attempt)
+		req := httptest.NewRequest(http.MethodPut, "/files/upload/../../../etc/passwd?part=0", bytes.NewReader([]byte("test")))
+		w := httptest.NewRecorder()
+
+		api.PutFilesUploadUploadId(w, req, "../../../etc/passwd", PutFilesUploadUploadIdParams{Part: 0})
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("negative part number", func(t *testing.T) {
+		t.Parallel()
+		api := newTestAPI(t)
+		tempDir := t.TempDir()
+
+		// Initialize upload
+		body := PostFilesUploadInitJSONRequestBody{
+			Path: filepath.Join(tempDir, "test-file.txt"),
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+		uploadId := initResp.UploadId
+
+		// Try to upload with negative part number
+		req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=-1", bytes.NewReader([]byte("test")))
+		w := httptest.NewRecorder()
+
+		api.PutFilesUploadUploadId(w, req, uploadId, PutFilesUploadUploadIdParams{Part: -1})
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		// Clean up
+		api.uploadsLock.Lock()
+		session := api.uploads[uploadId]
+		if session != nil {
+			os.RemoveAll(session.TempDir)
+		}
+		delete(api.uploads, uploadId)
+		api.uploadsLock.Unlock()
+	})
+
+	t.Run("missing part in sequence", func(t *testing.T) {
+		t.Parallel()
+		api := newTestAPI(t)
+		tempDir := t.TempDir()
+
+		// Initialize upload
+		body := PostFilesUploadInitJSONRequestBody{
+			Path: filepath.Join(tempDir, "gap-file.txt"),
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+		uploadId := initResp.UploadId
+
+		// Upload parts 0 and 2, but skip part 1
+		for _, partNum := range []int{0, 2} {
+			partReq := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/files/upload/%s?part=%d", uploadId, partNum), bytes.NewReader([]byte("X")))
+			partReq.Header.Set("Content-Type", "application/octet-stream")
+			partW := httptest.NewRecorder()
+
+			api.PutFilesUploadUploadId(partW, partReq, uploadId, PutFilesUploadUploadIdParams{Part: partNum})
+			require.Equal(t, http.StatusOK, partW.Code)
+		}
+
+		// Complete should fail due to missing part 1
+		completeReq := httptest.NewRequest(http.MethodPost, "/files/upload/"+uploadId+"/complete", nil)
+		completeW := httptest.NewRecorder()
+
+		api.PostFilesUploadUploadIdComplete(completeW, completeReq, uploadId)
+		assert.Equal(t, http.StatusBadRequest, completeW.Code)
+	})
+
+	t.Run("upload part after complete started", func(t *testing.T) {
+		t.Parallel()
+		api := newTestAPI(t)
+		tempDir := t.TempDir()
+
+		// Initialize upload
+		body := PostFilesUploadInitJSONRequestBody{
+			Path: filepath.Join(tempDir, "race-file.txt"),
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+		uploadId := initResp.UploadId
+
+		// Upload part 0
+		part0Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=0", bytes.NewReader([]byte("A")))
+		part0Req.Header.Set("Content-Type", "application/octet-stream")
+		part0W := httptest.NewRecorder()
+
+		api.PutFilesUploadUploadId(part0W, part0Req, uploadId, PutFilesUploadUploadIdParams{Part: 0})
+		require.Equal(t, http.StatusOK, part0W.Code)
+
+		// Mark the session as completing
+		api.uploadsLock.RLock()
+		session := api.uploads[uploadId]
+		api.uploadsLock.RUnlock()
+		require.NotNil(t, session)
+		session.completed.Store(true)
+
+		// Try to upload another part - should fail with 409 Conflict
+		part1Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=1", bytes.NewReader([]byte("B")))
+		part1Req.Header.Set("Content-Type", "application/octet-stream")
+		part1W := httptest.NewRecorder()
+
+		api.PutFilesUploadUploadId(part1W, part1Req, uploadId, PutFilesUploadUploadIdParams{Part: 1})
+		assert.Equal(t, http.StatusConflict, part1W.Code)
+
+		// Clean up
+		api.uploadsLock.Lock()
+		delete(api.uploads, uploadId)
+		api.uploadsLock.Unlock()
+		os.RemoveAll(session.TempDir)
+	})
+
+	t.Run("part size limit", func(t *testing.T) {
+		t.Parallel()
+		api := newTestAPI(t)
+		tempDir := t.TempDir()
+
+		// Initialize upload
+		body := PostFilesUploadInitJSONRequestBody{
+			Path: filepath.Join(tempDir, "large-file.txt"),
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+		uploadId := initResp.UploadId
+
+		// Try to upload a part that exceeds the size limit
+		// We create content that's just over the limit
+		oversizedContent := make([]byte, maxPartSize+1)
+		partReq := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=0", bytes.NewReader(oversizedContent))
+		partReq.Header.Set("Content-Type", "application/octet-stream")
+		partW := httptest.NewRecorder()
+
+		api.PutFilesUploadUploadId(partW, partReq, uploadId, PutFilesUploadUploadIdParams{Part: 0})
+		assert.Equal(t, http.StatusRequestEntityTooLarge, partW.Code)
+
+		// Clean up
+		api.uploadsLock.Lock()
+		session := api.uploads[uploadId]
+		if session != nil {
+			os.RemoveAll(session.TempDir)
+		}
+		delete(api.uploads, uploadId)
+		api.uploadsLock.Unlock()
 	})
 
 	t.Run("max sessions limit", func(t *testing.T) {
