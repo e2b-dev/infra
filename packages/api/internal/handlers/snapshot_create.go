@@ -116,7 +116,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		KernelVersion:      build.KernelVersion,
 		FirecrackerVersion: build.FirecrackerVersion,
 		EnvdVersion:        build.EnvdVersion,
-		Status:             "success",
+		Status:             string(types.BuildStatusUploaded),
 		OriginNodeID:       build.ClusterNodeID,
 		TotalDiskSizeMb:    build.TotalDiskSizeMb,
 		CpuArchitecture:    build.CpuArchitecture,
