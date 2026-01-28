@@ -9,6 +9,7 @@ import (
 	"github.com/willscott/go-nfs"
 	"github.com/willscott/go-nfs/helpers"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/fileio"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/gcs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/jailed"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/logged"
@@ -36,6 +37,23 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map) jailed.GetPrefix {
 func NewProxy(ctx context.Context, sandboxes *sandbox.Map, bucket *storage.BucketHandle) *Proxy {
 	var handler nfs.Handler
 	handler = gcs.NewNFSHandler(bucket)
+	handler = helpers.NewCachingHandler(handler, cacheLimit)
+	handler = jailed.NewNFSHandler(handler, getPrefixFromSandbox(sandboxes))
+	handler = logged.NewHandler(ctx, handler)
+	handler = recovery.NewHandler(ctx, handler)
+
+	s := &nfs.Server{
+		Handler: handler,
+		Context: ctx,
+	}
+
+	return &Proxy{server: s}
+}
+
+// NewLocalProxy creates a new NFS proxy backed by a local filesystem at rootPath.
+func NewLocalProxy(ctx context.Context, sandboxes *sandbox.Map, rootPath string) *Proxy {
+	var handler nfs.Handler
+	handler = fileio.NewNFSHandler(rootPath)
 	handler = helpers.NewCachingHandler(handler, cacheLimit)
 	handler = jailed.NewNFSHandler(handler, getPrefixFromSandbox(sandboxes))
 	handler = logged.NewHandler(ctx, handler)
