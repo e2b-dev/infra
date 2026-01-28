@@ -76,7 +76,10 @@ variable "supabase_jwt_secrets" { type = string }
 variable "posthog_api_key" { type = string }
 variable "analytics_collector_host" { type = string }
 variable "analytics_collector_api_token" { type = string }
-variable "redis_url" { type = string }
+variable "redis_url" {
+  type    = string
+  default = "redis://redis.service.consul:6379"
+}
 variable "launch_darkly_api_key" {
   type    = string
   default = ""
