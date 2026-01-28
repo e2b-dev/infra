@@ -52,11 +52,7 @@ func (m *PopulateRedisStorage) Remove(ctx context.Context, teamID uuid.UUID, san
 }
 
 func (m *PopulateRedisStorage) Items(ctx context.Context, teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
-	if teamID == nil {
-		return m.memoryBackend.Items(ctx, teamID, states, options...)
-	}
-
-	return m.redisBackend.Items(ctx, teamID, states, options...)
+	return m.memoryBackend.Items(ctx, teamID, states, options...)
 }
 
 func (m *PopulateRedisStorage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
