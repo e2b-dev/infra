@@ -24,19 +24,20 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 			return sbx, &sandbox.NotFoundError{SandboxID: sandboxID}
 		}
 
-		maxAllowedTTL := getMaxAllowedTTL(now, sbx.StartTime, duration, sbx.MaxInstanceLength)
-		newEndTime := now.Add(maxAllowedTTL)
+		// Calculate the maximum TTL that can be set without exceeding the max instance length
+		ttl := getMaxAllowedTTL(now, sbx.StartTime, duration, sbx.MaxInstanceLength)
+		endTime := now.Add(ttl)
 
 		if (time.Since(sbx.StartTime)) > sbx.MaxInstanceLength {
 			return sbx, errMaxInstanceLengthExceeded
 		}
 
-		if !allowShorter && newEndTime.Before(sbx.EndTime) {
+		if !allowShorter && endTime.Before(sbx.EndTime) {
 			return sbx, sandbox.ErrCannotShortenTTL
 		}
 
-		logger.L().Debug(ctx, "sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
-		sbx.EndTime = newEndTime
+		logger.L().Debug(ctx, "sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", endTime))
+		sbx.EndTime = endTime
 
 		return sbx, nil
 	}
@@ -68,6 +69,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 	return nil
 }
 
+// getMaxAllowedTTL calculates the maximum allowed TTL for a sandbox without exceeding its max instance length.
 func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
 	timeLeft := maxInstanceLength - now.Sub(startTime)
 	if timeLeft <= 0 {
