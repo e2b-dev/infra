@@ -198,10 +198,12 @@ func TestMultipartUpload(t *testing.T) {
 		t.Parallel()
 		api := newTestAPI(t)
 
-		req := httptest.NewRequest(http.MethodPut, "/files/upload/non-existent?part=0", bytes.NewReader([]byte("test")))
+		// Use a valid UUID that doesn't exist in the sessions map
+		nonExistentUUID := "00000000-0000-0000-0000-000000000000"
+		req := httptest.NewRequest(http.MethodPut, "/files/upload/"+nonExistentUUID+"?part=0", bytes.NewReader([]byte("test")))
 		w := httptest.NewRecorder()
 
-		api.PutFilesUploadUploadId(w, req, "non-existent", PutFilesUploadUploadIdParams{Part: 0})
+		api.PutFilesUploadUploadId(w, req, nonExistentUUID, PutFilesUploadUploadIdParams{Part: 0})
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 
