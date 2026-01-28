@@ -106,9 +106,9 @@ DELETE FROM teams WHERE email = $1
 
 	// Create team
 	err = authDb.TestsRawSQL(ctx, `
-INSERT INTO teams (id, email, name, tier, is_blocked)
-VALUES ($1, $2, $3, $4, $5)
-`, teamUUID, email, "E2B", "base_v1", false)
+INSERT INTO teams (id, email, name, tier, is_blocked, slug)
+VALUES ($1, $2, $3, $4, $5, $6)
+`, teamUUID, email, "E2B", "base_v1", false, "e2b")
 	if err != nil {
 		panic(err)
 	}

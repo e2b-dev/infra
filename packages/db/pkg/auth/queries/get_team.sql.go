@@ -12,7 +12,7 @@ import (
 )
 
 const getTeamWithTierByAPIKey = `-- name: GetTeamWithTierByAPIKey :one
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb FROM "public"."team_api_keys" tak
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.slug, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb FROM "public"."team_api_keys" tak
 JOIN "public"."teams" t ON tak.team_id = t.id
 JOIN "public"."team_limits" tl on tl.id = t.id
 WHERE tak.team_id = t.id
@@ -37,6 +37,7 @@ func (q *Queries) GetTeamWithTierByAPIKey(ctx context.Context, apiKeyHash string
 		&i.Team.IsBanned,
 		&i.Team.BlockedReason,
 		&i.Team.ClusterID,
+		&i.Team.Slug,
 		&i.TeamLimit.ID,
 		&i.TeamLimit.MaxLengthHours,
 		&i.TeamLimit.ConcurrentSandboxes,
@@ -49,7 +50,7 @@ func (q *Queries) GetTeamWithTierByAPIKey(ctx context.Context, apiKeyHash string
 }
 
 const getTeamWithTierByTeamAndUser = `-- name: GetTeamWithTierByTeamAndUser :one
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.slug, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb
 FROM "public"."teams" t
          JOIN "public"."users_teams" ut ON ut.team_id = t.id
          JOIN "public"."team_limits" tl on tl.id = t.id
@@ -79,6 +80,7 @@ func (q *Queries) GetTeamWithTierByTeamAndUser(ctx context.Context, arg GetTeamW
 		&i.Team.IsBanned,
 		&i.Team.BlockedReason,
 		&i.Team.ClusterID,
+		&i.Team.Slug,
 		&i.TeamLimit.ID,
 		&i.TeamLimit.MaxLengthHours,
 		&i.TeamLimit.ConcurrentSandboxes,
@@ -91,7 +93,7 @@ func (q *Queries) GetTeamWithTierByTeamAndUser(ctx context.Context, arg GetTeamW
 }
 
 const getTeamsWithUsersTeamsWithTier = `-- name: GetTeamsWithUsersTeamsWithTier :many
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, ut.id, ut.user_id, ut.team_id, ut.is_default, ut.added_by, ut.created_at, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.slug, ut.id, ut.user_id, ut.team_id, ut.is_default, ut.added_by, ut.created_at, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb
 FROM "public"."teams" t
          JOIN "public"."users_teams" ut ON ut.team_id = t.id
          JOIN "public"."team_limits" tl on tl.id = t.id
@@ -123,6 +125,7 @@ func (q *Queries) GetTeamsWithUsersTeamsWithTier(ctx context.Context, userID uui
 			&i.Team.IsBanned,
 			&i.Team.BlockedReason,
 			&i.Team.ClusterID,
+			&i.Team.Slug,
 			&i.UsersTeam.ID,
 			&i.UsersTeam.UserID,
 			&i.UsersTeam.TeamID,
