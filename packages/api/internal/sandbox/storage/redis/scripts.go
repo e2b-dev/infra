@@ -3,8 +3,7 @@ package redis
 import "github.com/redis/go-redis/v9"
 
 // Lua scripts for atomic operations.
-// These scripts ensure true atomicity in Redis cluster mode, unlike TxPipelined
-// which only batches commands and can leave inconsistent state on partial failures.
+// These scripts ensure true atomicity in Redis cluster mode
 var (
 	// addSandboxScript atomically stores a sandbox and adds it to the team index.
 	// KEYS[1] = sandbox key, KEYS[2] = team index key
