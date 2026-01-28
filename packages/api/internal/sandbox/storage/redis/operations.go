@@ -105,9 +105,10 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 	}
 
 	// Build keys and batch fetch with MGET
+	teamIDString := teamID.String()
 	keys := make([]string, len(sandboxIDs))
 	for i, id := range sandboxIDs {
-		keys[i] = getSandboxKey(teamID.String(), id)
+		keys[i] = getSandboxKey(teamIDString, id)
 	}
 
 	results, err := s.redisClient.MGet(ctx, keys...).Result()
