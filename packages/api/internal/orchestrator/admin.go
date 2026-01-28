@@ -5,16 +5,14 @@ import (
 	"context"
 	"slices"
 
-	"github.com/google/uuid"
-	"go.uber.org/zap"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/google/uuid"
 )
 
-func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
+func (o *Orchestrator) AdminNodes(ctx context.Context) ([]*api.Node, error) {
 	apiNodes := make(map[string]*api.Node)
 
 	for _, n := range o.nodes.Items() {
@@ -49,9 +47,7 @@ func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
 
 	sbxs, err := o.sandboxStore.Items(ctx, nil, []sandbox.State{sandbox.StateRunning})
 	if err != nil {
-		logger.L().Error(ctx, "failed to list running sandboxes", zap.Error(err))
-
-		return nil
+		return nil, err
 	}
 
 	for _, sbx := range sbxs {
@@ -74,7 +70,7 @@ func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
 		return cmp.Compare(i.NodeID, j.NodeID)
 	})
 
-	return result
+	return result, nil
 }
 
 func (o *Orchestrator) AdminNodeDetail(ctx context.Context, clusterID uuid.UUID, nodeIDOrNomadNodeShortID string) (*api.NodeDetail, error) {

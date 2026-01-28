@@ -15,7 +15,14 @@ import (
 
 func (a *APIStore) GetNodes(c *gin.Context) {
 	ctx := c.Request.Context()
-	result := a.orchestrator.AdminNodes(ctx)
+	result, err := a.orchestrator.AdminNodes(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(c.Request.Context(), "error when getting nodes", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting nodes")
+
+		return
+	}
+
 	c.JSON(http.StatusOK, result)
 }
 

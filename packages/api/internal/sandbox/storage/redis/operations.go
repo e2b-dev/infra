@@ -15,7 +15,7 @@ import (
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
-// Add stores a sandbox in Redis atomically with its team index entry
+// Add stores a sandbox in Redis
 func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	// Serialize sandbox
 	data, err := json.Marshal(sbx)
