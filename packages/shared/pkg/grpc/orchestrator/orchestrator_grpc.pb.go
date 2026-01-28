@@ -25,6 +25,7 @@ const (
 	SandboxService_List_FullMethodName             = "/SandboxService/List"
 	SandboxService_Delete_FullMethodName           = "/SandboxService/Delete"
 	SandboxService_Pause_FullMethodName            = "/SandboxService/Pause"
+	SandboxService_Checkpoint_FullMethodName       = "/SandboxService/Checkpoint"
 	SandboxService_ListCachedBuilds_FullMethodName = "/SandboxService/ListCachedBuilds"
 )
 
@@ -37,6 +38,7 @@ type SandboxServiceClient interface {
 	List(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListResponse, error)
 	Delete(ctx context.Context, in *SandboxDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Pause(ctx context.Context, in *SandboxPauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Checkpoint(ctx context.Context, in *SandboxCheckpointRequest, opts ...grpc.CallOption) (*SandboxCheckpointResponse, error)
 	ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error)
 }
 
@@ -98,6 +100,16 @@ func (c *sandboxServiceClient) Pause(ctx context.Context, in *SandboxPauseReques
 	return out, nil
 }
 
+func (c *sandboxServiceClient) Checkpoint(ctx context.Context, in *SandboxCheckpointRequest, opts ...grpc.CallOption) (*SandboxCheckpointResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxCheckpointResponse)
+	err := c.cc.Invoke(ctx, SandboxService_Checkpoint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sandboxServiceClient) ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SandboxListCachedBuildsResponse)
@@ -117,6 +129,7 @@ type SandboxServiceServer interface {
 	List(context.Context, *emptypb.Empty) (*SandboxListResponse, error)
 	Delete(context.Context, *SandboxDeleteRequest) (*emptypb.Empty, error)
 	Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error)
+	Checkpoint(context.Context, *SandboxCheckpointRequest) (*SandboxCheckpointResponse, error)
 	ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
@@ -142,6 +155,9 @@ func (UnimplementedSandboxServiceServer) Delete(context.Context, *SandboxDeleteR
 }
 func (UnimplementedSandboxServiceServer) Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method Pause not implemented")
+}
+func (UnimplementedSandboxServiceServer) Checkpoint(context.Context, *SandboxCheckpointRequest) (*SandboxCheckpointResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Checkpoint not implemented")
 }
 func (UnimplementedSandboxServiceServer) ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCachedBuilds not implemented")
@@ -257,6 +273,24 @@ func _SandboxService_Pause_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SandboxService_Checkpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxCheckpointRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SandboxServiceServer).Checkpoint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SandboxService_Checkpoint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SandboxServiceServer).Checkpoint(ctx, req.(*SandboxCheckpointRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SandboxService_ListCachedBuilds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -301,6 +335,10 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Pause",
 			Handler:    _SandboxService_Pause_Handler,
+		},
+		{
+			MethodName: "Checkpoint",
+			Handler:    _SandboxService_Checkpoint_Handler,
 		},
 		{
 			MethodName: "ListCachedBuilds",
