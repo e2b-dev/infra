@@ -4,19 +4,24 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
+	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
 	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -24,8 +29,13 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -34,24 +44,62 @@ import (
 )
 
 func main() {
-	buildID := flag.String("build", "", "build ID (UUID)")
-	from := flag.String("from", ".local-build", "template source: local path or gs://bucket")
+	fromBuild := flag.String("from-build", "", "build ID (UUID) to resume from (required)")
+	toBuild := flag.String("to-build", "", "output build ID (UUID) for pause snapshot (auto-generated if not specified)")
+	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
 	iterations := flag.Int("iterations", 0, "run N iterations (0 = interactive)")
 	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
 	verbose := flag.Bool("v", false, "verbose logging")
 
+	// Pause flags
+	pause := flag.Bool("pause", false, "start and immediately pause (snapshot)")
+	signalPause := flag.String("signal-pause", "", "wait for signal before pause (e.g., SIGTERM, SIGUSR1)")
+	cmdPause := flag.String("cmd-pause", "", "execute command in sandbox, then pause on success")
+
 	flag.Parse()
 
-	if *buildID == "" {
-		log.Fatal("-build required")
+	if *fromBuild == "" {
+		log.Fatal("-from-build required")
 	}
 
 	if os.Geteuid() != 0 {
 		log.Fatal("run as root")
 	}
 
-	if err := setupEnv(*from); err != nil {
+	// Count pause options - only one allowed
+	pauseCount := 0
+	if *pause {
+		pauseCount++
+	}
+	if *signalPause != "" {
+		pauseCount++
+	}
+	if *cmdPause != "" {
+		pauseCount++
+	}
+	if pauseCount > 1 {
+		log.Fatal("only one of -pause, -signal-pause, or -cmd-pause can be specified")
+	}
+
+	// Pause mode is incompatible with benchmark iterations
+	isPauseMode := pauseCount > 0
+	if isPauseMode && *iterations > 0 {
+		log.Fatal("pause flags are incompatible with -iterations")
+	}
+
+	// -to-build only makes sense with pause
+	if *toBuild != "" && !isPauseMode {
+		log.Fatal("-to-build requires a pause flag (-pause, -signal-pause, or -cmd-pause)")
+	}
+
+	// Generate new build ID if not specified and pause mode is enabled
+	outputBuildID := *toBuild
+	if isPauseMode && outputBuildID == "" {
+		outputBuildID = uuid.New().String()
+	}
+
+	if err := setupEnv(*storagePath); err != nil {
 		log.Fatal(err)
 	}
 
@@ -61,7 +109,17 @@ func main() {
 	signal.Notify(sig, os.Interrupt)
 	go func() { <-sig; fmt.Println("\n🛑 Stopping..."); cancel() }()
 
-	err := run(ctx, *buildID, *iterations, *coldStart, *noPrefetch, *verbose)
+	isRemoteStorage := strings.HasPrefix(*storagePath, "gs://")
+	pauseOpts := pauseOptions{
+		immediate:       *pause,
+		signalName:      *signalPause,
+		command:         *cmdPause,
+		storagePath:     *storagePath,
+		isRemoteStorage: isRemoteStorage,
+		newBuildID:      outputBuildID,
+	}
+
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *verbose, pauseOpts)
 	cancel()
 
 	if err != nil {
@@ -71,6 +129,19 @@ func main() {
 		}
 		os.Exit(1)
 	}
+}
+
+type pauseOptions struct {
+	immediate       bool
+	signalName      string
+	command         string
+	storagePath     string
+	isRemoteStorage bool
+	newBuildID      string
+}
+
+func (p pauseOptions) enabled() bool {
+	return p.immediate || p.signalName != "" || p.command != ""
 }
 
 func setupEnv(from string) error {
@@ -126,12 +197,15 @@ func setupEnv(from string) error {
 
 type runner struct {
 	factory    *sandbox.Factory
+	sandboxes  *sandbox.Map
 	tmpl       template.Template
 	sbxConfig  sandbox.Config
 	buildID    string
 	cache      *template.Cache
 	coldStart  bool
 	noPrefetch bool
+	config     cfg.BuilderConfig
+	storage    storage.StorageProvider
 }
 
 func (r *runner) resumeOnce(ctx context.Context, iter int) (time.Duration, error) {
@@ -168,6 +242,10 @@ func (r *runner) interactive(ctx context.Context) error {
 		return err
 	}
 
+	// Register sandbox in map for TCP firewall to find
+	r.sandboxes.Insert(sbx)
+	defer r.sandboxes.Remove(runtime.SandboxID)
+
 	fmt.Printf("✅ Running (resumed in %s)\n", time.Since(t0))
 	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
 	fmt.Println("Ctrl+C to stop")
@@ -175,6 +253,102 @@ func (r *runner) interactive(ctx context.Context) error {
 	<-ctx.Done()
 	fmt.Println("🧹 Cleanup...")
 	sbx.Close(context.WithoutCancel(ctx))
+
+	return nil
+}
+
+func (r *runner) pauseMode(ctx context.Context, opts pauseOptions) error {
+	runtime := sandbox.RuntimeMetadata{
+		TemplateID:  r.buildID,
+		TeamID:      "local",
+		SandboxID:   fmt.Sprintf("sbx-%d", time.Now().UnixNano()),
+		ExecutionID: fmt.Sprintf("exec-%d", time.Now().UnixNano()),
+	}
+
+	fmt.Println("🚀 Starting sandbox...")
+	t0 := time.Now()
+	sbx, err := r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	if err != nil {
+		return err
+	}
+	defer sbx.Close(context.WithoutCancel(ctx))
+
+	// Register sandbox in map for TCP firewall to find
+	r.sandboxes.Insert(sbx)
+	defer r.sandboxes.Remove(runtime.SandboxID)
+
+	fmt.Printf("✅ Sandbox running (resumed in %s)\n", time.Since(t0))
+
+	// Handle pause trigger based on options
+	if opts.command != "" {
+		fmt.Printf("🔧 Running command: %s\n", opts.command)
+		if err := runCommandInSandbox(ctx, sbx, opts.command); err != nil {
+			return fmt.Errorf("command failed: %w", err)
+		}
+		fmt.Println("✅ Command completed successfully")
+	} else if opts.signalName != "" {
+		sig := parseSignal(opts.signalName)
+		if sig == nil {
+			return fmt.Errorf("unknown signal: %s", opts.signalName)
+		}
+		fmt.Printf("⏳ Waiting for %s signal...\n", opts.signalName)
+		fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, sig)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-sigCh:
+			fmt.Printf("📨 Received %s signal\n", opts.signalName)
+		}
+	}
+	// For opts.immediate, we proceed directly to pause
+
+	fmt.Printf("⏸️  Pausing sandbox (new build: %s)...\n", opts.newBuildID)
+
+	// Sync and drop caches before pause
+	if err := syncAndDropCaches(ctx, sbx); err != nil {
+		fmt.Printf("⚠️  Warning: sync/drop_caches failed: %v\n", err)
+	}
+
+	// Get original metadata and update for new build
+	origMeta, err := r.tmpl.Metadata()
+	if err != nil {
+		return fmt.Errorf("failed to get metadata: %w", err)
+	}
+
+	newMeta := origMeta
+	newMeta.Template.BuildID = opts.newBuildID
+
+	// Pause and create snapshot
+	snapshot, err := sbx.Pause(ctx, newMeta)
+	if err != nil {
+		return fmt.Errorf("failed to pause: %w", err)
+	}
+	defer snapshot.Close(context.WithoutCancel(ctx))
+
+	// Upload to remote storage if using GCS, otherwise snapshot is already in local cache
+	templateFiles := storage.TemplateFiles{BuildID: opts.newBuildID}
+	if opts.isRemoteStorage {
+		fmt.Println("📤 Uploading snapshot...")
+		if err := snapshot.Upload(ctx, r.storage, templateFiles); err != nil {
+			return fmt.Errorf("failed to upload snapshot: %w", err)
+		}
+		fmt.Println("✅ Snapshot uploaded successfully")
+	} else {
+		// For local storage, copy from cache to templates directory
+		fmt.Println("💾 Saving snapshot to local storage...")
+		if err := snapshot.Upload(ctx, r.storage, templateFiles); err != nil {
+			return fmt.Errorf("failed to save snapshot: %w", err)
+		}
+		fmt.Println("✅ Snapshot saved successfully")
+	}
+
+	fmt.Printf("\n✅ Build finished: %s\n", opts.newBuildID)
+
+	// Print artifact sizes
+	printArtifactSizes(opts.storagePath, opts.newBuildID)
 
 	return nil
 }
@@ -222,10 +396,17 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, verbose bool) error {
-	// Silence loggers unless verbose mode
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, verbose bool, pauseOpts pauseOptions) error {
+	// Always suppress OTEL tracing logs
+	cmdutil.SuppressOTELLogs()
+
+	// Silence other loggers unless verbose mode
+	var l logger.Logger
 	if !verbose {
-		log.SetOutput(io.Discard)
+		cmdutil.SuppressNoisyLogs()
+		l = logger.NewNopLogger()
+	} else {
+		l, _ = logger.NewDevelopmentLogger()
 	}
 	sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 
@@ -265,7 +446,11 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating feature flags client...")
 	}
-	flags, _ := featureflags.NewClient()
+	logLevel := ldlog.Error
+	if verbose {
+		logLevel = ldlog.Info
+	}
+	flags, _ := featureflags.NewClientWithLogLevel(logLevel)
 
 	if verbose {
 		fmt.Println("🔧 Creating storage provider...")
@@ -299,7 +484,15 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
+	sandboxes := sandbox.NewSandboxesMap()
 	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags)
+
+	if verbose {
+		fmt.Println("🔧 Starting TCP firewall...")
+	}
+	tcpFw := tcpfirewall.New(l, config.NetworkConfig, sandboxes, noop.NewMeterProvider())
+	go tcpFw.Start(ctx)
+	defer tcpFw.Close(context.WithoutCancel(ctx))
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
 	tmpl, err := cache.GetTemplate(ctx, buildID, false, false)
@@ -323,11 +516,14 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	token := "local"
 	r := &runner{
 		factory:    factory,
+		sandboxes:  sandboxes,
 		tmpl:       tmpl,
 		buildID:    buildID,
 		cache:      cache,
 		coldStart:  coldStart,
 		noPrefetch: noPrefetch,
+		config:     config.BuilderConfig,
+		storage:    persistence,
 		sbxConfig: sandbox.Config{
 			BaseTemplateID: buildID,
 			Vcpu:           1,
@@ -339,6 +535,10 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 				FirecrackerVersion: meta.Template.FirecrackerVersion,
 			},
 		},
+	}
+
+	if pauseOpts.enabled() {
+		return r.pauseMode(ctx, pauseOpts)
 	}
 
 	if iterations > 0 {
@@ -353,7 +553,8 @@ func printTemplateInfo(ctx context.Context, tmpl template.Template, meta metadat
 
 	if memfile, err := tmpl.Memfile(ctx); err == nil {
 		if size, err := memfile.Size(ctx); err == nil {
-			fmt.Printf("   Memfile: %d MB (%d KB blocks)\n", size>>20, memfile.BlockSize()>>10)
+			blockSize := memfile.BlockSize()
+			fmt.Printf("   Memfile: %d MB (%d KB blocks)\n", size>>20, blockSize>>10)
 		}
 	}
 
@@ -365,6 +566,146 @@ func printTemplateInfo(ctx context.Context, tmpl template.Template, meta metadat
 
 	if meta.Prefetch != nil && meta.Prefetch.Memory != nil {
 		fmt.Printf("   Prefetch: %d blocks\n", meta.Prefetch.Memory.Count())
+	}
+}
+
+// runCommandInSandbox runs a command inside the sandbox via envd
+func runCommandInSandbox(ctx context.Context, sbx *sandbox.Sandbox, command string) error {
+	// Connect directly to envd on the sandbox
+	envdURL := fmt.Sprintf("http://%s:%d", sbx.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+
+	hc := http.Client{
+		Timeout:   10 * time.Minute,
+		Transport: sandbox.SandboxHttpTransport,
+	}
+
+	processC := processconnect.NewProcessClient(&hc, envdURL)
+
+	req := connect.NewRequest(&process.StartRequest{
+		Process: &process.ProcessConfig{
+			Cmd:  "/bin/bash",
+			Args: []string{"-l", "-c", command},
+		},
+	})
+	grpc.SetUserHeader(req.Header(), "root")
+
+	// Set access token if available
+	if sbx.Config.Envd.AccessToken != nil {
+		req.Header().Set("X-Access-Token", *sbx.Config.Envd.AccessToken)
+	}
+
+	stream, err := processC.Start(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to start process: %w", err)
+	}
+	defer stream.Close()
+
+	// Read stream until completion
+	for stream.Receive() {
+		msg := stream.Msg()
+		event := msg.GetEvent()
+		if event == nil {
+			continue
+		}
+
+		switch e := event.GetEvent().(type) {
+		case *process.ProcessEvent_Data:
+			// Handle data events (stdout/stderr)
+			if data := e.Data; data != nil {
+				if stdout := data.GetStdout(); stdout != nil {
+					fmt.Print(string(stdout))
+				}
+				if stderrData := data.GetStderr(); stderrData != nil {
+					fmt.Print(string(stderrData))
+				}
+			}
+		case *process.ProcessEvent_End:
+			// Handle exit event
+			if end := e.End; end != nil {
+				if !end.GetExited() || end.GetExitCode() != 0 {
+					return fmt.Errorf("command exited with code %d", end.GetExitCode())
+				}
+
+				return nil
+			}
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		return fmt.Errorf("stream error: %w", err)
+	}
+
+	return nil
+}
+
+// syncAndDropCaches syncs filesystem and drops caches before snapshot
+func syncAndDropCaches(ctx context.Context, sbx *sandbox.Sandbox) error {
+	// Run sync command
+	if err := runCommandInSandbox(ctx, sbx, "/usr/bin/busybox sync"); err != nil {
+		return fmt.Errorf("sync failed: %w", err)
+	}
+
+	// Drop caches
+	if err := runCommandInSandbox(ctx, sbx, "echo 3 > /proc/sys/vm/drop_caches"); err != nil {
+		return fmt.Errorf("drop_caches failed: %w", err)
+	}
+
+	return nil
+}
+
+// parseSignal converts a signal name to os.Signal
+func parseSignal(name string) os.Signal {
+	name = strings.ToUpper(strings.TrimPrefix(name, "SIG"))
+	signals := map[string]os.Signal{
+		"TERM":  syscall.SIGTERM,
+		"USR1":  syscall.SIGUSR1,
+		"USR2":  syscall.SIGUSR2,
+		"HUP":   syscall.SIGHUP,
+		"INT":   syscall.SIGINT,
+		"QUIT":  syscall.SIGQUIT,
+		"CONT":  syscall.SIGCONT,
+		"WINCH": syscall.SIGWINCH,
+	}
+
+	return signals[name]
+}
+
+// printArtifactSizes prints artifact sizes
+func printArtifactSizes(_, buildID string) {
+	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
+	if basePath == "" {
+		return
+	}
+
+	dir := filepath.Join(basePath, buildID)
+
+	fmt.Println("\n📦 Artifacts:")
+
+	for _, a := range cmdutil.MainArtifacts() {
+		path := filepath.Join(dir, a.File)
+		_, actual, err := cmdutil.GetFileSizes(path)
+		if err != nil {
+			continue
+		}
+
+		headerPath := filepath.Join(dir, a.HeaderFile)
+		totalSize, blockSize := cmdutil.GetHeaderInfo(headerPath)
+		if totalSize == 0 {
+			fmt.Printf("   %s: %d MB (this layer)\n", a.Name, actual>>20)
+
+			continue
+		}
+
+		pct := float64(actual) / float64(totalSize) * 100
+		fmt.Printf("   %s: %d MB diff / %d MB total (%.1f%%), block size: %d KB\n",
+			a.Name, actual>>20, totalSize>>20, pct, blockSize>>10)
+	}
+
+	for _, a := range cmdutil.SmallArtifacts() {
+		path := filepath.Join(dir, a.File)
+		if actual, err := cmdutil.GetActualFileSize(path); err == nil {
+			fmt.Printf("   %s: %d KB\n", a.Name, actual>>10)
+		}
 	}
 }
 
@@ -423,7 +764,7 @@ func printResults(results []benchResult) {
 	avg := total / time.Duration(successCount)
 
 	// Print individual results
-	fmt.Printf("\n📋 Run times:\n")
+	fmt.Println("\n📋 Run times:")
 	for i, r := range results {
 		if r.err != nil {
 			fmt.Printf("   [%2d] ❌ Failed: %v\n", i+1, r.err)
