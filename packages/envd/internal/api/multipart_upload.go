@@ -292,10 +292,9 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	}
 
 	// Write directly to the destination file at the correct offset
-	session.mu.Lock()
+	// WriteAt is safe for concurrent writes at different offsets, no lock needed here
 	_, err = session.DestFile.WriteAt(data, offset)
 	if err != nil {
-		session.mu.Unlock()
 		if errors.Is(err, syscall.ENOSPC) {
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
@@ -308,7 +307,8 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	// Mark part as written
+	// Mark part as written - only lock for map access
+	session.mu.Lock()
 	if session.PartsWritten[partNumber] {
 		a.logger.Warn().
 			Str(string(logs.OperationIDKey), operationID).
