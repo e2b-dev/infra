@@ -27,6 +27,7 @@ var allowedPathPrefixes = []string{
 	"POST/files",
 	"PUT/files/upload/",
 	"DELETE/files/upload/",
+	"POST/files/upload/",
 }
 
 func isAllowedPath(methodPath string) bool {

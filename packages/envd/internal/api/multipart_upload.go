@@ -20,6 +20,8 @@ import (
 
 const (
 	multipartTempDir = "/tmp/envd-multipart"
+	// maxUploadSessions limits concurrent upload sessions to prevent resource exhaustion
+	maxUploadSessions = 100
 )
 
 // PostFilesUploadInit initializes a multipart upload session
@@ -97,6 +99,13 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	}
 
 	a.uploadsLock.Lock()
+	if len(a.uploads) >= maxUploadSessions {
+		a.uploadsLock.Unlock()
+		os.RemoveAll(tempDir)
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("maxSessions", maxUploadSessions).Msg("too many concurrent upload sessions")
+		jsonError(w, http.StatusTooManyRequests, fmt.Errorf("too many concurrent upload sessions (max %d)", maxUploadSessions))
+		return
+	}
 	a.uploads[uploadID] = session
 	a.uploadsLock.Unlock()
 
@@ -205,8 +214,13 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	// Cleanup temp directory in background (don't block response)
 	tempDir := session.TempDir
+	logger := a.logger
 	defer func() {
-		go os.RemoveAll(tempDir)
+		go func() {
+			if err := os.RemoveAll(tempDir); err != nil {
+				logger.Warn().Err(err).Str("tempDir", tempDir).Msg("failed to cleanup multipart temp directory")
+			}
+		}()
 	}()
 
 	// Ensure parent directories exist
@@ -238,11 +252,13 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Get the part numbers in order
+	// Get the part numbers and paths in order (copy under lock to avoid race with concurrent uploads)
 	session.mu.Lock()
 	partNumbers := make([]int, 0, len(session.Parts))
-	for num := range session.Parts {
+	partPaths := make(map[int]string, len(session.Parts))
+	for num, path := range session.Parts {
 		partNumbers = append(partNumbers, num)
+		partPaths[num] = path
 	}
 	session.mu.Unlock()
 	sort.Ints(partNumbers)
@@ -250,7 +266,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	// Assemble the file using sendfile via io.Copy (which uses copy_file_range on Linux)
 	var totalSize int64
 	for _, partNum := range partNumbers {
-		partPath := session.Parts[partNum]
+		partPath := partPaths[partNum]
 		partFile, err := os.Open(partPath)
 		if err != nil {
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNum).Msg("error opening part file")

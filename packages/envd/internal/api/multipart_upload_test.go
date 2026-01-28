@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -225,6 +226,47 @@ func TestMultipartUpload(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 
+	t.Run("max sessions limit", func(t *testing.T) {
+		t.Parallel()
+		api := newTestAPI(t)
+		tempDir := t.TempDir()
+
+		// Create maxUploadSessions sessions
+		for i := 0; i < maxUploadSessions; i++ {
+			body := PostFilesUploadInitJSONRequestBody{
+				Path: filepath.Join(tempDir, fmt.Sprintf("file-%d.txt", i)),
+			}
+			bodyBytes, _ := json.Marshal(body)
+
+			req := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			api.PostFilesUploadInit(w, req, PostFilesUploadInitParams{})
+			require.Equal(t, http.StatusOK, w.Code, "session %d should succeed", i)
+		}
+
+		// The next one should fail with 429
+		body := PostFilesUploadInitJSONRequestBody{
+			Path: filepath.Join(tempDir, "one-too-many.txt"),
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		req := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(w, req, PostFilesUploadInitParams{})
+		assert.Equal(t, http.StatusTooManyRequests, w.Code)
+
+		// Clean up all sessions
+		api.uploadsLock.Lock()
+		for _, session := range api.uploads {
+			os.RemoveAll(session.TempDir)
+		}
+		api.uploadsLock.Unlock()
+	})
+
 	t.Run("parts uploaded out of order", func(t *testing.T) {
 		t.Parallel()
 		api := newTestAPI(t)
@@ -260,7 +302,7 @@ func TestMultipartUpload(t *testing.T) {
 		}
 
 		for _, part := range parts {
-			partReq := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part="+string(rune('0'+part.num)), bytes.NewReader([]byte(part.content)))
+			partReq := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/files/upload/%s?part=%d", uploadId, part.num), bytes.NewReader([]byte(part.content)))
 			partReq.Header.Set("Content-Type", "application/octet-stream")
 			partW := httptest.NewRecorder()
 

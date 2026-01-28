@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/rs/zerolog"
@@ -41,6 +42,11 @@ type API struct {
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
+	// Clean up any stale multipart upload temp directories from previous runs
+	if err := os.RemoveAll(multipartTempDir); err != nil {
+		l.Warn().Err(err).Str("dir", multipartTempDir).Msg("failed to cleanup stale multipart temp directory")
+	}
+
 	return &API{
 		logger:      l,
 		defaults:    defaults,
