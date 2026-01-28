@@ -18,14 +18,14 @@ import (
 
 // MultipartDownloadSession represents an active multipart download session
 type MultipartDownloadSession struct {
-	DownloadID string
-	FilePath   string
-	SrcFile    *os.File // Open file handle for ReadAt()
-	TotalSize  int64
-	PartSize   int64
-	NumParts   int
-	CreatedAt  time.Time
-	closed     atomic.Bool
+	DownloadID  string
+	FilePath    string
+	SrcFile     *os.File // Open file handle for ReadAt()
+	TotalSize   int64
+	PartSize    int64
+	NumParts    int
+	CreatedAt   time.Time
+	closed      atomic.Bool
 	activeReads atomic.Int32 // Reference count for active read operations
 }
 
