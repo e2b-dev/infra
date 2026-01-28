@@ -77,7 +77,7 @@ jobs:
             exit 0
           fi
 
-          if [[ "${{ secrets.commit }}" != "true" ]]; then
+          if [[ "${{ inputs.commit }}" != "true" ]]; then
             echo "❌ Generated files are not up to date. Please run 'make generate' and commit the changes."
             git status --short
             exit 1
