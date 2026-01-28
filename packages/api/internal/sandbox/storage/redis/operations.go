@@ -15,9 +15,8 @@ import (
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
-// Add stores a sandbox in Redis atomically with its team index entry
+// Add stores a sandbox in Redis atomically with its team index entry.
 func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
-	// Serialize sandbox
 	data, err := json.Marshal(sbx)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sandbox: %w", err)
@@ -26,13 +25,8 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	key := getSandboxKey(sbx.TeamID.String(), sbx.SandboxID)
 	teamKey := getTeamIndexKey(sbx.TeamID.String())
 
-	// Store sandbox and add to team index atomically using a transaction
-	_, err = s.redisClient.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.Set(ctx, key, data, 0)
-		pipe.SAdd(ctx, teamKey, sbx.SandboxID)
-
-		return nil
-	})
+	// Execute Lua script for atomic SET + SADD
+	err = addSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
 	if err != nil {
 		return fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
@@ -60,7 +54,7 @@ func (s *Storage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (
 	return sbx, nil
 }
 
-// Remove deletes a sandbox from Redis atomically with its team index entry
+// Remove deletes a sandbox from Redis atomically with its team index entry.
 func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
 	key := getSandboxKey(teamID.String(), sandboxID)
 	teamKey := getTeamIndexKey(teamID.String())
@@ -77,13 +71,8 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 		}
 	}()
 
-	// Remove sandbox and its team index entry atomically using a transaction
-	_, err = s.redisClient.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.Del(ctx, key)
-		pipe.SRem(ctx, teamKey, sandboxID)
-
-		return nil
-	})
+	// Execute Lua script for atomic DEL + SREM
+	err = removeSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, sandboxID).Err()
 	if err != nil {
 		return fmt.Errorf("failed to remove sandbox from Redis: %w", err)
 	}
@@ -105,10 +94,10 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 	}
 
 	// Build keys and batch fetch with MGET
-	teamIDString := teamID.String()
+	team := teamID.String()
 	keys := make([]string, len(sandboxIDs))
 	for i, id := range sandboxIDs {
-		keys[i] = getSandboxKey(teamIDString, id)
+		keys[i] = getSandboxKey(team, id)
 	}
 
 	results, err := s.redisClient.MGet(ctx, keys...).Result()
