@@ -16,7 +16,7 @@ const getTemplateByID = `-- name: GetTemplateByID :one
 SELECT t.id, t.created_at, t.updated_at, t.public, t.build_count, t.spawn_count, t.last_spawned_at, t.team_id, t.created_by, t.cluster_id, t.source
 FROM "public"."envs" t
 WHERE t.id = $1
-  AND t.source = 'template'
+  AND t.source IN ('template', 'snapshot_template')
 `
 
 func (q *Queries) GetTemplateByID(ctx context.Context, id string) (Env, error) {
@@ -49,7 +49,7 @@ CROSS JOIN LATERAL (
     WHERE env_id = e.id
 ) AS al
 WHERE e.id = $1
-  AND e.source = 'template'
+  AND e.source IN ('template', 'snapshot_template')
 `
 
 type GetTemplateByIDWithAliasesRow struct {

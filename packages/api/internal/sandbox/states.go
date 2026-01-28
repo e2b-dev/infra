@@ -7,8 +7,9 @@ import (
 type StateAction string
 
 var AllowedTransitions = map[State]map[State]bool{
-	StateRunning: {StatePausing: true, StateKilling: true},
-	StatePausing: {StateKilling: true},
+	StateRunning:      {StatePausing: true, StateKilling: true, StateSnapshotting: true},
+	StatePausing:      {StateKilling: true},
+	StateSnapshotting: {StateRunning: true},
 }
 
 const (
@@ -25,7 +26,8 @@ const (
 type State string
 
 const (
-	StateRunning State = "running"
-	StatePausing State = "pausing"
-	StateKilling State = "killing"
+	StateRunning      State = "running"
+	StatePausing      State = "pausing"
+	StateKilling      State = "killing"
+	StateSnapshotting State = "snapshotting"
 )
