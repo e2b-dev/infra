@@ -5,11 +5,12 @@ import (
 	"context"
 	"slices"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/google/uuid"
 )
 
 func (o *Orchestrator) AdminNodes(ctx context.Context) ([]*api.Node, error) {
