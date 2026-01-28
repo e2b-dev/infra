@@ -26,6 +26,14 @@ packages:
           filename: mockseekableobjectprovider.go
           pkgname: storagemocks
 
+  github.com/e2b-dev/infra/packages/shared/pkg/utils:
+    interfaces:
+      fileOps:
+        config:
+          dir: packages/shared/pkg/utils
+          filename: mocks_test.go
+          pkgname: utils
+
   io:
     interfaces:
       Reader:
@@ -34,10 +42,18 @@ packages:
           filename: mockioreader.go
           pkgname: storagemocks
 
-  github.com/e2b-dev/infra/packages/shared/pkg/utils:
+  github.com/willscott/go-nfs:
     interfaces:
-      fileOps:
+      Handler:
         config:
-          dir: packages/shared/pkg/utils
-          filename: mocks_test.go
-          pkgname: utils
+          dir: packages/orchestrator/internal/nfs/mocks
+          filename: handler.go
+          pkgname: mocks
+
+  github.com/go-git/go-billy/v5:
+    interfaces:
+      Filesystem:
+        config:
+          dir: packages/orchestrator/internal/nfs/mocks
+          filename: billy.go
+          pkgname: mocks

@@ -1,0 +1,78 @@
+package gcs
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"time"
+
+	"cloud.google.com/go/storage"
+)
+
+type impliedDirInfo struct {
+	path string
+}
+
+func (i impliedDirInfo) String() string {
+	return fmt.Sprintf("impliedDirInfo{path=%s}", i.path)
+}
+
+var _ os.FileInfo = (*impliedDirInfo)(nil)
+
+func (i impliedDirInfo) Name() string {
+	return i.path
+}
+
+func (i impliedDirInfo) Size() int64 {
+	return 0
+}
+
+func (i impliedDirInfo) Mode() fs.FileMode {
+	return 0o777
+}
+
+func (i impliedDirInfo) ModTime() time.Time {
+	return bootTime
+}
+
+func (i impliedDirInfo) IsDir() bool {
+	return true
+}
+
+func (i impliedDirInfo) Sys() any {
+	return nil
+}
+
+type dirInfo struct {
+	attrs *storage.ObjectAttrs
+}
+
+func (d dirInfo) String() string {
+	return fmt.Sprintf("dirInfo{name=%s}", d.Name())
+}
+
+var _ os.FileInfo = (*dirInfo)(nil)
+
+func (d dirInfo) Name() string {
+	return d.attrs.Name
+}
+
+func (d dirInfo) Size() int64 {
+	return d.attrs.Size
+}
+
+func (d dirInfo) Mode() fs.FileMode {
+	return fromMetadataToPerm(d.attrs.Metadata)
+}
+
+func (d dirInfo) ModTime() time.Time {
+	return d.attrs.Updated
+}
+
+func (d dirInfo) IsDir() bool {
+	return true
+}
+
+func (d dirInfo) Sys() any {
+	return toFileInfo(d.attrs)
+}

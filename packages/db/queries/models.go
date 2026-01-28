@@ -193,3 +193,10 @@ type UsersTeam struct {
 	AddedBy   *uuid.UUID
 	CreatedAt pgtype.Timestamp
 }
+
+type Volume struct {
+	ID        uuid.UUID
+	TeamID    uuid.UUID
+	Name      string
+	CreatedAt pgtype.Timestamptz
+}

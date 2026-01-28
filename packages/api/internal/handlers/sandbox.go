@@ -41,6 +41,7 @@ func (a *APIStore) startSandbox(
 	allowInternetAccess *bool,
 	network *types.SandboxNetworkConfig,
 	mcp api.Mcp,
+	volumes []api.SandboxVolume,
 ) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
@@ -66,6 +67,7 @@ func (a *APIStore) startSandbox(
 		envdAccessToken,
 		allowInternetAccess,
 		network,
+		volumes,
 	)
 	if instanceErr != nil {
 		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)

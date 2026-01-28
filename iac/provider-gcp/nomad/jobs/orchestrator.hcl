@@ -76,6 +76,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         REDIS_TLS_CA_BASE64          = "${redis_tls_ca_base64}"
         GRPC_PORT                    = "${port}"
         PROXY_PORT                   = "${proxy_port}"
+        PERSISTENT_VOLUMES_BUCKET    = "${persistent_volumes_bucket}"
         GIN_MODE                     = "release"
 
 %{ if launch_darkly_api_key != "" }

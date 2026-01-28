@@ -408,3 +408,7 @@ variable "filestore_cache_cleanup_max_retries" {
 variable "dockerhub_remote_repository_url" {
   type = string
 }
+
+variable "persistent_volumes_bucket" {
+  type = string
+}

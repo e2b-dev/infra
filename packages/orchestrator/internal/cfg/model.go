@@ -64,8 +64,13 @@ func makePathsAbsolute(c *BuilderConfig) error {
 	return nil
 }
 
+type SandboxPersistence struct {
+	BucketName string `env:"PERSISTENT_VOLUMES_BUCKET"`
+}
+
 type Config struct {
 	BuilderConfig
+	SandboxPersistence
 
 	ClickhouseConnectionString string   `env:"CLICKHOUSE_CONNECTION_STRING"`
 	ForceStop                  bool     `env:"FORCE_STOP"`

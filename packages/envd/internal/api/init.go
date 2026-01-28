@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -51,7 +53,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
-			err = a.SetData(logger, initRequest)
+			err = a.SetData(r.Context(), logger, initRequest)
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrAccessTokenAlreadySet):
@@ -79,7 +81,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
+func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJSONBody) error {
 	if data.Timestamp != nil {
 		// Check if current time differs significantly from the received timestamp
 		if shouldSetSystemTime(time.Now(), *data.Timestamp) {
@@ -118,6 +120,18 @@ func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 		go a.SetupHyperloop(*data.HyperloopIP)
 	}
 
+	if data.Volumes != nil {
+		var wg sync.WaitGroup
+		for _, volume := range *data.Volumes {
+			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
+
+			wg.Go(func() {
+				a.setupNfs(context.WithoutCancel(ctx), volume.NfsTarget, volume.Path)
+			})
+		}
+		wg.Wait()
+	}
+
 	if data.DefaultUser != nil && *data.DefaultUser != "" {
 		logger.Debug().Msgf("Setting default user to: %s", *data.DefaultUser)
 		a.defaults.User = *data.DefaultUser
@@ -129,6 +143,22 @@ func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 	}
 
 	return nil
+}
+
+func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
+	a.nfsLock.Lock()
+	defer a.nfsLock.Unlock()
+
+	data, err := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf(`
+set -e
+mkdir -p %q
+mount -v -t nfs -o mountproto=tcp,mountport=2049,proto=tcp,port=2049,nfsvers=3,noacl %q %q
+`, path, nfsTarget, path)).CombinedOutput()
+
+	a.logger.Info().
+		Str("output", string(data)).
+		Err(err).
+		Msg("Mount NFS")
 }
 
 func (a *API) SetupHyperloop(address string) {

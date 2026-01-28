@@ -266,3 +266,12 @@ module "client_cluster" {
     google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
   ]
 }
+
+module "shared-persistence" {
+  source = "./shared-persistence"
+
+  bucket_name           = "${var.prefix}persistent-volumes"
+  gcp_region            = var.gcp_region
+  labels                = var.labels
+  service_account_email = var.google_service_account_email
+}

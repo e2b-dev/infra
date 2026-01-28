@@ -73,6 +73,13 @@ type Config struct {
 	Envd EnvdMetadata
 
 	FirecrackerConfig fc.Config
+
+	VolumeMounts []VolumeMountConfig
+}
+
+type VolumeMountConfig struct {
+	Name string
+	Path string
 }
 
 type EnvdMetadata struct {
@@ -562,18 +569,11 @@ func (f *Factory) ResumeSandbox(
 
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
-	fcStartErr := fcHandle.Resume(
-		uffdStartCtx,
-		sbxlogger.SandboxMetadata{
-			SandboxID:  runtime.SandboxID,
-			TemplateID: runtime.TemplateID,
-			TeamID:     runtime.TeamID,
-		},
-		fcUffdPath,
-		snapfile,
-		fcUffd.Ready(),
-		ips,
-	)
+	fcStartErr := fcHandle.Resume(uffdStartCtx, sbxlogger.SandboxMetadata{
+		SandboxID:  runtime.SandboxID,
+		TemplateID: runtime.TemplateID,
+		TeamID:     runtime.TeamID,
+	}, fcUffdPath, snapfile, fcUffd.Ready())
 	if fcStartErr != nil {
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
