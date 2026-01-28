@@ -128,7 +128,7 @@ func (a *APIStore) createBackwardCompatibleAlias(
 	namespacedName := id.WithNamespace(teamSlug, alias)
 
 	// Atomically try to create the alias or get the existing owner
-	existingTemplateID, err := a.sqlcDB.UpsertTemplateAliasIfNotExists(ctx, queries.UpsertTemplateAliasIfNotExistsParams{
+	upsertedTemplateID, err := a.sqlcDB.UpsertTemplateAliasIfNotExists(ctx, queries.UpsertTemplateAliasIfNotExistsParams{
 		Alias:      alias,
 		TemplateID: templateID,
 		Namespace:  nil,
@@ -142,7 +142,7 @@ func (a *APIStore) createBackwardCompatibleAlias(
 	}
 
 	// Check if the alias belongs to this template (either newly created or already existed)
-	if existingTemplateID != templateID {
+	if upsertedTemplateID != templateID {
 		return &api.APIError{
 			Code: http.StatusConflict,
 			ClientMsg: fmt.Sprintf(
