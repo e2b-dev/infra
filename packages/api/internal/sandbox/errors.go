@@ -23,4 +23,7 @@ func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("sandbox %s not found", e.SandboxID)
 }
 
-var ErrAlreadyExists = errors.New("sandbox already exists")
+var (
+	ErrAlreadyExists    = errors.New("sandbox already exists")
+	ErrCannotShortenTTL = errors.New("cannot shorten ttl")
+)
