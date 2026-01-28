@@ -9,72 +9,80 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 func main() {
-	baseBuildId := flag.String("base", "", "base build id")
-	diffBuildId := flag.String("diff", "", "diff build id")
-	kind := flag.String("kind", "", "'memfile' or 'rootfs'")
+	fromBuild := flag.String("from-build", "", "base build ID")
+	toBuild := flag.String("to-build", "", "diff build ID")
+	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
+	memfile := flag.Bool("memfile", false, "inspect memfile artifact")
+	rootfs := flag.Bool("rootfs", false, "inspect rootfs artifact")
 	visualize := flag.Bool("visualize", false, "visualize the headers")
 
 	flag.Parse()
 
+	if *fromBuild == "" {
+		log.Fatal("-from-build required")
+	}
+	if *toBuild == "" {
+		log.Fatal("-to-build required")
+	}
+
+	// Determine artifact type
+	if !*memfile && !*rootfs {
+		*memfile = true // default to memfile
+	}
+	if *memfile && *rootfs {
+		log.Fatal("specify either -memfile or -rootfs, not both")
+	}
+
 	baseTemplate := storage.TemplateFiles{
-		BuildID: *baseBuildId,
+		BuildID: *fromBuild,
 	}
 
 	diffTemplate := storage.TemplateFiles{
-		BuildID: *diffBuildId,
+		BuildID: *toBuild,
 	}
 
-	var baseStoragePath string
-	var diffStoragePath string
-	var objectType storage.ObjectType
+	var baseHeaderFile string
+	var diffHeaderFile string
 
-	switch *kind {
-	case "memfile":
-		baseStoragePath = baseTemplate.StorageMemfileHeaderPath()
-		diffStoragePath = diffTemplate.StorageMemfileHeaderPath()
-		objectType = storage.MemfileHeaderObjectType
-	case "rootfs":
-		baseStoragePath = baseTemplate.StorageRootfsHeaderPath()
-		diffStoragePath = diffTemplate.StorageRootfsHeaderPath()
-		objectType = storage.RootFSHeaderObjectType
-	default:
-		log.Fatalf("invalid kind: %s", *kind)
+	if *memfile {
+		baseHeaderFile = baseTemplate.StorageMemfileHeaderPath()
+		diffHeaderFile = diffTemplate.StorageMemfileHeaderPath()
+	} else {
+		baseHeaderFile = baseTemplate.StorageRootfsHeaderPath()
+		diffHeaderFile = diffTemplate.StorageRootfsHeaderPath()
 	}
 
 	ctx := context.Background()
 
-	storageProvider, err := storage.GetTemplateStorageProvider(ctx, nil)
+	// Read headers directly
+	baseData, baseSource, err := cmdutil.ReadHeader(ctx, *storagePath, baseHeaderFile)
 	if err != nil {
-		log.Fatalf("failed to get storage provider: %s", err)
+		log.Fatalf("failed to read base header: %s", err)
 	}
 
-	baseObj, err := storageProvider.OpenBlob(ctx, baseStoragePath, objectType)
+	diffData, diffSource, err := cmdutil.ReadHeader(ctx, *storagePath, diffHeaderFile)
 	if err != nil {
-		log.Fatalf("failed to open object: %s", err)
+		log.Fatalf("failed to read diff header: %s", err)
 	}
 
-	diffObj, err := storageProvider.OpenBlob(ctx, diffStoragePath, objectType)
-	if err != nil {
-		log.Fatalf("failed to open object: %s", err)
-	}
-
-	baseHeader, err := header.Deserialize(ctx, baseObj)
+	baseHeader, err := header.DeserializeBytes(baseData)
 	if err != nil {
 		log.Fatalf("failed to deserialize base header: %s", err)
 	}
 
-	diffHeader, err := header.Deserialize(ctx, diffObj)
+	diffHeader, err := header.DeserializeBytes(diffData)
 	if err != nil {
 		log.Fatalf("failed to deserialize diff header: %s", err)
 	}
 
 	fmt.Printf("\nBASE METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", storageProvider.GetDetails(), baseStoragePath)
+	fmt.Printf("Storage path       %s\n", baseSource)
 	fmt.Printf("========\n")
 
 	for _, mapping := range baseHeader.Mapping {
@@ -105,7 +113,7 @@ func main() {
 	}
 
 	fmt.Printf("\nDIFF METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", storageProvider.GetDetails(), diffStoragePath)
+	fmt.Printf("Storage path       %s\n", diffSource)
 	fmt.Printf("========\n")
 
 	onlyDiffMappings := make([]*header.BuildMap, 0)

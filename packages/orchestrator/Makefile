@@ -98,13 +98,6 @@ build-and-upload/orchestrator: build upload/orchestrator
 .PHONY: build-and-upload/template-manager
 build-and-upload/template-manager: build upload/template-manager
 
-.PHONY: mock
-mock:
-	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="testclient" go run cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -build "f0370054-b669-eeee-b33b-573d5287c6ef" -alive 1 -count 2
-
-.PHONY: mock-snapshot
-mock-snapshot:
-	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="testclient" go run cmd/mock-snapshot/mock.go  -template 5wzg6c91u51yaebviysf -build "f0370054-b669-4d7e-b33b-573d5287c6ef" -alive 1 -count 1
 
 .PHONY: test
 test:
@@ -131,9 +124,9 @@ build-template:
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GCP_REGION=$(GCP_REGION) \
 	ENVIRONMENT=local \
-	go run cmd/build-template/main.go \
+	go run cmd/create-build/main.go \
 	-template $(TEMPLATE_ID) \
-	-build $(BUILD_ID) \
+	-to-build $(BUILD_ID) \
 	-kernel $(KERNEL_VERSION) \
 	-firecracker $(FIRECRACKER_VERSION)
 
