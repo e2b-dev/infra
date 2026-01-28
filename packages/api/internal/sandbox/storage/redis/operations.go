@@ -123,20 +123,20 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 
 	// Deserialize and filter
 	var sandboxes []sandbox.Sandbox
-	for _, result := range results {
-		if result == nil {
+	for _, rawResult := range results {
+		if rawResult == nil {
 			continue // Stale index entry - sandbox was deleted
 		}
 
 		var sbx sandbox.Sandbox
-		resultString, ok := result.(string)
+		result, ok := rawResult.(string)
 		if !ok {
 			logger.L().Error(ctx, "Invalid sandbox data type in Redis")
 
 			continue
 		}
 
-		if err := json.Unmarshal([]byte(resultString), &sbx); err != nil {
+		if err := json.Unmarshal([]byte(result), &sbx); err != nil {
 			logger.L().Error(ctx, "Failed to unmarshal sandbox", zap.Error(err))
 
 			continue
