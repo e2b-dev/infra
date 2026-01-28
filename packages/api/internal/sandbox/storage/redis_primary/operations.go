@@ -28,12 +28,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 }
 
 func (s *Storage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
-	sbx, err := s.redisBackend.Get(ctx, teamID, sandboxID)
-	if err != nil {
-		return s.memoryBackend.Get(ctx, teamID, sandboxID)
-	}
-
-	return sbx, nil
+	return s.redisBackend.Get(ctx, teamID, sandboxID)
 }
 
 func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
