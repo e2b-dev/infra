@@ -2,7 +2,7 @@
 SELECT t.*
 FROM "public"."envs" t
 WHERE t.id = $1
-  AND t.source = 'template';
+  AND t.source IN ('template', 'snapshot_template');
 
 -- name: GetTemplateByIDWithAliases :one
 SELECT e.*, al.aliases, al.names
@@ -15,4 +15,4 @@ CROSS JOIN LATERAL (
     WHERE env_id = e.id
 ) AS al
 WHERE e.id = $1
-  AND e.source = 'template';
+  AND e.source IN ('template', 'snapshot_template');

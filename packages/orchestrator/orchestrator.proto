@@ -92,6 +92,14 @@ message SandboxPauseRequest {
   string build_id = 3;
 }
 
+message SandboxCheckpointRequest {
+  string sandbox_id = 1;
+  string build_id = 3;
+}
+
+message SandboxCheckpointResponse {
+}
+
 message RunningSandbox {
   SandboxConfig config = 1;
   string client_id = 2;
@@ -119,6 +127,7 @@ service SandboxService {
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
   rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
+  rpc Checkpoint(SandboxCheckpointRequest) returns (SandboxCheckpointResponse);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
 }
