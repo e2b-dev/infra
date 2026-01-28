@@ -25,7 +25,7 @@ LEFT JOIN LATERAL (
     SELECT b.*
     FROM "public"."env_build_assignments" ba
     JOIN "public"."env_builds" b ON b.id = ba.build_id
-    WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status = 'success'
+    WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status = 'uploaded'
     ORDER BY ba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
