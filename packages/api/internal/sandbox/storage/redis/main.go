@@ -10,9 +10,8 @@ import (
 )
 
 const (
-	sandboxKeyPrefix = "sandbox:storage:"
-	lockTimeout      = time.Minute
-	retryInterval    = 20 * time.Millisecond
+	lockTimeout   = time.Minute
+	retryInterval = 20 * time.Millisecond
 )
 
 var _ sandbox.Storage = (*Storage)(nil)
