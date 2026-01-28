@@ -1,6 +1,7 @@
 -- +goose Up
--- +goose StatementBegin
+-- +goose NO TRANSACTION
 
+-- +goose StatementBegin
 -- Add source column to track where the env came from (template build vs snapshot)
 -- 'template' = built from Dockerfile (default)
 -- 'snapshot' = created from a running sandbox snapshot
@@ -16,10 +17,8 @@ ALTER TABLE "public"."envs"
 -- NULL for templates built from Dockerfile
 ALTER TABLE "public"."envs"
     ADD COLUMN IF NOT EXISTS "base_template_id" text NULL;
-
 -- +goose StatementEnd
 
--- +goose NO TRANSACTION
 -- Create index for listing snapshots by team (used in GET /snapshots endpoint)
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_envs_team_source
     ON "public"."envs" (team_id, source)
