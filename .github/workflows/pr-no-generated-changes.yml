@@ -1,7 +1,17 @@
 name: Ensure generated files are up-to-date
-on: [workflow_call]
+
+on:
+  workflow_call:
+    secrets:
+      app_id:
+        description: 'GitHub App ID for pushing commits that trigger workflows'
+        required: true
+      app_secret:
+        description: 'GitHub PAT for pushing commits that trigger workflows'
+        required: true
+
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   run-check:
@@ -38,13 +48,24 @@ jobs:
       - name: Format code
         run: make fmt
 
-      - name: Check for uncommitted changes
+      - name: Commit generated changes if any
         run: |
-          if [[ -n $(git status --porcelain) ]]; then
-            echo "❌ Generated files are not up to date:"
-            git status --short
-            git diff
-            exit 1
-          else
+          if [[ -z $(git status --porcelain) ]]; then
             echo "✅ No changes detected."
+            exit 0
           fi
+
+          echo "📝 Generated files are not up to date. Committing changes..."
+          git status --short
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "chore: auto-commit generated changes"
+          git push origin HEAD:${{ github.head_ref }}
+
+          echo "✅ Changes committed and pushed successfully."
+
+          # There were changes, exit with an error code so that the workflow fails.
+          exit 1

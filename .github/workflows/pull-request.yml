@@ -1,7 +1,7 @@
 name: Pull Request
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 concurrency:
@@ -16,6 +16,9 @@ jobs:
     uses: ./.github/workflows/lint.yml
   generated-code-check:
     uses: ./.github/workflows/pr-no-generated-changes.yml
+    secrets:
+      app_id: ${{ vars.AUTOFIXER_APP_ID }}
+      app_secret: ${{ secrets.AUTOFIXER_APP_SECRET }}
   out-of-order-migrations:
     uses: ./.github/workflows/out-of-order-migrations.yml
   unit-tests:
