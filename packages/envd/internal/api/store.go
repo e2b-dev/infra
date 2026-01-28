@@ -3,7 +3,10 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -11,6 +14,19 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
+
+// MultipartDownloadSession represents an active multipart download session
+type MultipartDownloadSession struct {
+	DownloadID string
+	FilePath   string
+	SrcFile    *os.File // Open file handle for ReadAt()
+	TotalSize  int64
+	PartSize   int64
+	NumParts   int
+	CreatedAt  time.Time
+	closed     atomic.Bool
+	mu         sync.Mutex
+}
 
 type API struct {
 	isNotFC     bool
@@ -23,16 +39,26 @@ type API struct {
 
 	lastSetTime *utils.AtomicMax
 	initLock    sync.Mutex
+
+	// Multipart download session storage
+	downloads     map[string]*MultipartDownloadSession
+	downloadsLock sync.RWMutex
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
-	return &API{
+	api := &API{
 		logger:      l,
 		defaults:    defaults,
 		mmdsChan:    mmdsChan,
 		isNotFC:     isNotFC,
 		lastSetTime: utils.NewAtomicMax(),
+		downloads:   make(map[string]*MultipartDownloadSession),
 	}
+
+	// Start cleanup goroutine for expired download sessions
+	go api.cleanupExpiredDownloads()
+
+	return api
 }
 
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {
