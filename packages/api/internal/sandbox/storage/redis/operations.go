@@ -199,6 +199,7 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 }
 
 func (s *Storage) AllItems(_ context.Context, _ []sandbox.State, _ ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
+	// TODO: Implement later (ENG-3451)
 	return nil, nil
 }
 
