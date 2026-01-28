@@ -12,6 +12,17 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
+// MultipartUploadSession tracks an in-progress multipart upload
+type MultipartUploadSession struct {
+	UploadID string
+	FilePath string // Final destination path
+	TempDir  string // Temp directory for parts
+	UID      int
+	GID      int
+	Parts    map[int]string // partNumber -> temp file path
+	mu       sync.Mutex
+}
+
 type API struct {
 	isNotFC     bool
 	logger      *zerolog.Logger
@@ -23,6 +34,10 @@ type API struct {
 
 	lastSetTime *utils.AtomicMax
 	initLock    sync.Mutex
+
+	// Multipart upload sessions
+	uploads     map[string]*MultipartUploadSession
+	uploadsLock sync.RWMutex
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
@@ -32,6 +47,7 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		mmdsChan:    mmdsChan,
 		isNotFC:     isNotFC,
 		lastSetTime: utils.NewAtomicMax(),
+		uploads:     make(map[string]*MultipartUploadSession),
 	}
 }
 
