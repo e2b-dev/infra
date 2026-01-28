@@ -144,10 +144,20 @@ paths:
               type: object
               required:
                 - path
+                - totalSize
+                - partSize
               properties:
                 path:
                   type: string
                   description: Path to the file to upload
+                totalSize:
+                  type: integer
+                  format: int64
+                  description: Total size of the file in bytes
+                partSize:
+                  type: integer
+                  format: int64
+                  description: Size of each part in bytes (last part may be smaller)
       responses:
         "200":
           description: Upload session initialized

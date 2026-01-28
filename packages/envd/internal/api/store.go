@@ -17,15 +17,18 @@ import (
 
 // MultipartUploadSession tracks an in-progress multipart upload
 type MultipartUploadSession struct {
-	UploadID  string
-	FilePath  string // Final destination path
-	TempDir   string // Temp directory for parts
-	UID       int
-	GID       int
-	Parts     map[int]string // partNumber -> temp file path
-	CreatedAt time.Time
-	completed atomic.Bool // Set to true when complete/abort starts to prevent new parts
-	mu        sync.Mutex
+	UploadID     string
+	FilePath     string   // Final destination path
+	DestFile     *os.File // Open file handle for direct writes
+	TotalSize    int64    // Total expected file size
+	PartSize     int64    // Size of each part (except possibly last)
+	NumParts     int      // Total number of expected parts
+	UID          int
+	GID          int
+	PartsWritten map[int]bool // partNumber -> whether it's been written
+	CreatedAt    time.Time
+	completed    atomic.Bool // Set to true when complete/abort starts to prevent new parts
+	mu           sync.Mutex
 }
 
 type API struct {
@@ -46,11 +49,6 @@ type API struct {
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
-	// Clean up any stale multipart upload temp directories from previous runs
-	if err := os.RemoveAll(multipartTempDir); err != nil {
-		l.Warn().Err(err).Str("dir", multipartTempDir).Msg("failed to cleanup stale multipart temp directory")
-	}
-
 	api := &API{
 		logger:      l,
 		defaults:    defaults,
@@ -76,15 +74,18 @@ func (a *API) cleanupExpiredUploads() {
 		now := time.Now()
 		for uploadID, session := range a.uploads {
 			if now.Sub(session.CreatedAt) > uploadSessionTTL {
-				delete(a.uploads, uploadID)
-				// Clean up temp directory in background
-				tempDir := session.TempDir
-				go func() {
-					if err := os.RemoveAll(tempDir); err != nil {
-						a.logger.Warn().Err(err).Str("tempDir", tempDir).Msg("failed to cleanup expired upload temp directory")
-					}
-				}()
-				a.logger.Info().Str("uploadId", uploadID).Msg("cleaned up expired multipart upload session")
+				// Mark as completed to prevent races
+				if session.completed.CompareAndSwap(false, true) {
+					delete(a.uploads, uploadID)
+					// Close file handle and remove file in background
+					go func(s *MultipartUploadSession) {
+						s.DestFile.Close()
+						if err := os.Remove(s.FilePath); err != nil && !os.IsNotExist(err) {
+							a.logger.Warn().Err(err).Str("filePath", s.FilePath).Msg("failed to cleanup expired upload file")
+						}
+					}(session)
+					a.logger.Info().Str("uploadId", uploadID).Msg("cleaned up expired multipart upload session")
+				}
 			}
 		}
 		a.uploadsLock.Unlock()

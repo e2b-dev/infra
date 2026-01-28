@@ -168,8 +168,14 @@ type PostFilesParams struct {
 
 // PostFilesUploadInitJSONBody defines parameters for PostFilesUploadInit.
 type PostFilesUploadInitJSONBody struct {
+	// PartSize Size of each part in bytes (last part may be smaller)
+	PartSize int64 `json:"partSize"`
+
 	// Path Path to the file to upload
 	Path string `json:"path"`
+
+	// TotalSize Total size of the file in bytes
+	TotalSize int64 `json:"totalSize"`
 }
 
 // PostFilesUploadInitParams defines parameters for PostFilesUploadInit.

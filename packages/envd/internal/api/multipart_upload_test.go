@@ -43,7 +43,9 @@ func TestMultipartUpload(t *testing.T) {
 		tempDir := t.TempDir()
 
 		body := PostFilesUploadInitJSONRequestBody{
-			Path: filepath.Join(tempDir, "test-file.txt"),
+			Path:      filepath.Join(tempDir, "test-file.txt"),
+			TotalSize: 100,
+			PartSize:  50,
 		}
 		bodyBytes, _ := json.Marshal(body)
 
@@ -63,10 +65,12 @@ func TestMultipartUpload(t *testing.T) {
 		// Clean up
 		api.uploadsLock.Lock()
 		session := api.uploads[resp.UploadId]
-		api.uploadsLock.Unlock()
 		if session != nil {
-			os.RemoveAll(session.TempDir)
+			session.DestFile.Close()
+			os.Remove(session.FilePath)
 		}
+		delete(api.uploads, resp.UploadId)
+		api.uploadsLock.Unlock()
 	})
 
 	t.Run("complete multipart upload", func(t *testing.T) {
@@ -75,9 +79,16 @@ func TestMultipartUpload(t *testing.T) {
 		tempDir := t.TempDir()
 		destPath := filepath.Join(tempDir, "assembled-file.txt")
 
+		part0Content := []byte("Hello, ")
+		part1Content := []byte("World!")
+		totalSize := int64(len(part0Content) + len(part1Content))
+		partSize := int64(len(part0Content))
+
 		// Initialize upload
 		initBody := PostFilesUploadInitJSONRequestBody{
-			Path: destPath,
+			Path:      destPath,
+			TotalSize: totalSize,
+			PartSize:  partSize,
 		}
 		initBodyBytes, _ := json.Marshal(initBody)
 
@@ -94,7 +105,6 @@ func TestMultipartUpload(t *testing.T) {
 		uploadId := initResp.UploadId
 
 		// Upload part 0
-		part0Content := []byte("Hello, ")
 		part0Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=0", bytes.NewReader(part0Content))
 		part0Req.Header.Set("Content-Type", "application/octet-stream")
 		part0W := httptest.NewRecorder()
@@ -109,7 +119,6 @@ func TestMultipartUpload(t *testing.T) {
 		assert.Equal(t, int64(len(part0Content)), part0Resp.Size)
 
 		// Upload part 1
-		part1Content := []byte("World!")
 		part1Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=1", bytes.NewReader(part1Content))
 		part1Req.Header.Set("Content-Type", "application/octet-stream")
 		part1W := httptest.NewRecorder()
@@ -128,7 +137,7 @@ func TestMultipartUpload(t *testing.T) {
 		err = json.Unmarshal(completeW.Body.Bytes(), &completeResp)
 		require.NoError(t, err)
 		assert.Equal(t, destPath, completeResp.Path)
-		assert.Equal(t, int64(len(part0Content)+len(part1Content)), completeResp.Size)
+		assert.Equal(t, totalSize, completeResp.Size)
 
 		// Verify file contents
 		content, err := os.ReadFile(destPath)
@@ -140,10 +149,13 @@ func TestMultipartUpload(t *testing.T) {
 		t.Parallel()
 		api := newTestAPI(t)
 		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "aborted-file.txt")
 
 		// Initialize upload
 		initBody := PostFilesUploadInitJSONRequestBody{
-			Path: filepath.Join(tempDir, "aborted-file.txt"),
+			Path:      destPath,
+			TotalSize: 100,
+			PartSize:  50,
 		}
 		initBodyBytes, _ := json.Marshal(initBody)
 
@@ -159,21 +171,9 @@ func TestMultipartUpload(t *testing.T) {
 		require.NoError(t, err)
 		uploadId := initResp.UploadId
 
-		// Get temp dir before deletion
-		api.uploadsLock.RLock()
-		session := api.uploads[uploadId]
-		api.uploadsLock.RUnlock()
-		require.NotNil(t, session)
-		sessionTempDir := session.TempDir
-
-		// Upload a part
-		partContent := []byte("test content")
-		partReq := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=0", bytes.NewReader(partContent))
-		partReq.Header.Set("Content-Type", "application/octet-stream")
-		partW := httptest.NewRecorder()
-
-		api.PutFilesUploadUploadId(partW, partReq, uploadId, PutFilesUploadUploadIdParams{Part: 0})
-		require.Equal(t, http.StatusOK, partW.Code)
+		// Verify file was created
+		_, err = os.Stat(destPath)
+		require.NoError(t, err, "destination file should exist after init")
 
 		// Abort upload
 		abortReq := httptest.NewRequest(http.MethodDelete, "/files/upload/"+uploadId, nil)
@@ -188,8 +188,8 @@ func TestMultipartUpload(t *testing.T) {
 		api.uploadsLock.RUnlock()
 		assert.False(t, exists)
 
-		// Verify temp dir is cleaned up
-		_, err = os.Stat(sessionTempDir)
+		// Verify file is cleaned up
+		_, err = os.Stat(destPath)
 		assert.True(t, os.IsNotExist(err))
 	})
 
@@ -245,7 +245,9 @@ func TestMultipartUpload(t *testing.T) {
 
 		// Initialize upload
 		body := PostFilesUploadInitJSONRequestBody{
-			Path: filepath.Join(tempDir, "test-file.txt"),
+			Path:      filepath.Join(tempDir, "test-file.txt"),
+			TotalSize: 100,
+			PartSize:  50,
 		}
 		bodyBytes, _ := json.Marshal(body)
 
@@ -272,7 +274,8 @@ func TestMultipartUpload(t *testing.T) {
 		api.uploadsLock.Lock()
 		session := api.uploads[uploadId]
 		if session != nil {
-			os.RemoveAll(session.TempDir)
+			session.DestFile.Close()
+			os.Remove(session.FilePath)
 		}
 		delete(api.uploads, uploadId)
 		api.uploadsLock.Unlock()
@@ -282,10 +285,13 @@ func TestMultipartUpload(t *testing.T) {
 		t.Parallel()
 		api := newTestAPI(t)
 		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "gap-file.txt")
 
-		// Initialize upload
+		// Initialize upload with 3 parts
 		body := PostFilesUploadInitJSONRequestBody{
-			Path: filepath.Join(tempDir, "gap-file.txt"),
+			Path:      destPath,
+			TotalSize: 30,
+			PartSize:  10,
 		}
 		bodyBytes, _ := json.Marshal(body)
 
@@ -303,7 +309,8 @@ func TestMultipartUpload(t *testing.T) {
 
 		// Upload parts 0 and 2, but skip part 1
 		for _, partNum := range []int{0, 2} {
-			partReq := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/files/upload/%s?part=%d", uploadId, partNum), bytes.NewReader([]byte("X")))
+			content := make([]byte, 10)
+			partReq := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/files/upload/%s?part=%d", uploadId, partNum), bytes.NewReader(content))
 			partReq.Header.Set("Content-Type", "application/octet-stream")
 			partW := httptest.NewRecorder()
 
@@ -323,10 +330,13 @@ func TestMultipartUpload(t *testing.T) {
 		t.Parallel()
 		api := newTestAPI(t)
 		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "race-file.txt")
 
 		// Initialize upload
 		body := PostFilesUploadInitJSONRequestBody{
-			Path: filepath.Join(tempDir, "race-file.txt"),
+			Path:      destPath,
+			TotalSize: 10,
+			PartSize:  10,
 		}
 		bodyBytes, _ := json.Marshal(body)
 
@@ -343,7 +353,8 @@ func TestMultipartUpload(t *testing.T) {
 		uploadId := initResp.UploadId
 
 		// Upload part 0
-		part0Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=0", bytes.NewReader([]byte("A")))
+		part0Content := make([]byte, 10)
+		part0Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=0", bytes.NewReader(part0Content))
 		part0Req.Header.Set("Content-Type", "application/octet-stream")
 		part0W := httptest.NewRecorder()
 
@@ -358,61 +369,20 @@ func TestMultipartUpload(t *testing.T) {
 		session.completed.Store(true)
 
 		// Try to upload another part - should fail with 409 Conflict
-		part1Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=1", bytes.NewReader([]byte("B")))
+		part1Content := make([]byte, 10)
+		part1Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=0", bytes.NewReader(part1Content))
 		part1Req.Header.Set("Content-Type", "application/octet-stream")
 		part1W := httptest.NewRecorder()
 
-		api.PutFilesUploadUploadId(part1W, part1Req, uploadId, PutFilesUploadUploadIdParams{Part: 1})
+		api.PutFilesUploadUploadId(part1W, part1Req, uploadId, PutFilesUploadUploadIdParams{Part: 0})
 		assert.Equal(t, http.StatusConflict, part1W.Code)
 
 		// Clean up
 		api.uploadsLock.Lock()
 		delete(api.uploads, uploadId)
 		api.uploadsLock.Unlock()
-		os.RemoveAll(session.TempDir)
-	})
-
-	t.Run("part size limit", func(t *testing.T) {
-		t.Parallel()
-		api := newTestAPI(t)
-		tempDir := t.TempDir()
-
-		// Initialize upload
-		body := PostFilesUploadInitJSONRequestBody{
-			Path: filepath.Join(tempDir, "large-file.txt"),
-		}
-		bodyBytes, _ := json.Marshal(body)
-
-		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
-		initReq.Header.Set("Content-Type", "application/json")
-		initW := httptest.NewRecorder()
-
-		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
-		require.Equal(t, http.StatusOK, initW.Code)
-
-		var initResp MultipartUploadInit
-		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
-		require.NoError(t, err)
-		uploadId := initResp.UploadId
-
-		// Try to upload a part that exceeds the size limit
-		// We create content that's just over the limit
-		oversizedContent := make([]byte, maxPartSize+1)
-		partReq := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=0", bytes.NewReader(oversizedContent))
-		partReq.Header.Set("Content-Type", "application/octet-stream")
-		partW := httptest.NewRecorder()
-
-		api.PutFilesUploadUploadId(partW, partReq, uploadId, PutFilesUploadUploadIdParams{Part: 0})
-		assert.Equal(t, http.StatusRequestEntityTooLarge, partW.Code)
-
-		// Clean up
-		api.uploadsLock.Lock()
-		session := api.uploads[uploadId]
-		if session != nil {
-			os.RemoveAll(session.TempDir)
-		}
-		delete(api.uploads, uploadId)
-		api.uploadsLock.Unlock()
+		session.DestFile.Close()
+		os.Remove(destPath)
 	})
 
 	t.Run("max sessions limit", func(t *testing.T) {
@@ -423,7 +393,9 @@ func TestMultipartUpload(t *testing.T) {
 		// Create maxUploadSessions sessions
 		for i := 0; i < maxUploadSessions; i++ {
 			body := PostFilesUploadInitJSONRequestBody{
-				Path: filepath.Join(tempDir, fmt.Sprintf("file-%d.txt", i)),
+				Path:      filepath.Join(tempDir, fmt.Sprintf("file-%d.txt", i)),
+				TotalSize: 100,
+				PartSize:  50,
 			}
 			bodyBytes, _ := json.Marshal(body)
 
@@ -437,7 +409,9 @@ func TestMultipartUpload(t *testing.T) {
 
 		// The next one should fail with 429
 		body := PostFilesUploadInitJSONRequestBody{
-			Path: filepath.Join(tempDir, "one-too-many.txt"),
+			Path:      filepath.Join(tempDir, "one-too-many.txt"),
+			TotalSize: 100,
+			PartSize:  50,
 		}
 		bodyBytes, _ := json.Marshal(body)
 
@@ -451,8 +425,10 @@ func TestMultipartUpload(t *testing.T) {
 		// Clean up all sessions
 		api.uploadsLock.Lock()
 		for _, session := range api.uploads {
-			os.RemoveAll(session.TempDir)
+			session.DestFile.Close()
+			os.Remove(session.FilePath)
 		}
+		api.uploads = make(map[string]*MultipartUploadSession)
 		api.uploadsLock.Unlock()
 	})
 
@@ -462,13 +438,15 @@ func TestMultipartUpload(t *testing.T) {
 		tempDir := t.TempDir()
 		destPath := filepath.Join(tempDir, "out-of-order-file.txt")
 
-		// Initialize upload
-		initBody := PostFilesUploadInitJSONRequestBody{
-			Path: destPath,
+		// Initialize upload with 3 parts of 1 byte each
+		body := PostFilesUploadInitJSONRequestBody{
+			Path:      destPath,
+			TotalSize: 3,
+			PartSize:  1,
 		}
-		initBodyBytes, _ := json.Marshal(initBody)
+		bodyBytes, _ := json.Marshal(body)
 
-		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(initBodyBytes))
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
 		initReq.Header.Set("Content-Type", "application/json")
 		initW := httptest.NewRecorder()
 
@@ -511,6 +489,45 @@ func TestMultipartUpload(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "ABC", string(content))
 	})
+
+	t.Run("empty file upload", func(t *testing.T) {
+		t.Parallel()
+		api := newTestAPI(t)
+		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "empty-file.txt")
+
+		// Initialize upload with 0 size
+		body := PostFilesUploadInitJSONRequestBody{
+			Path:      destPath,
+			TotalSize: 0,
+			PartSize:  1024,
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+		uploadId := initResp.UploadId
+
+		// Complete upload (no parts needed)
+		completeReq := httptest.NewRequest(http.MethodPost, "/files/upload/"+uploadId+"/complete", nil)
+		completeW := httptest.NewRecorder()
+
+		api.PostFilesUploadUploadIdComplete(completeW, completeReq, uploadId)
+		require.Equal(t, http.StatusOK, completeW.Code)
+
+		// Verify file exists and is empty
+		content, err := os.ReadFile(destPath)
+		require.NoError(t, err)
+		assert.Equal(t, "", string(content))
+	})
 }
 
 func TestMultipartUploadRouting(t *testing.T) {
@@ -526,7 +543,9 @@ func TestMultipartUploadRouting(t *testing.T) {
 	// Test that routes are registered
 	t.Run("init route exists", func(t *testing.T) {
 		body := PostFilesUploadInitJSONRequestBody{
-			Path: "/tmp/test-file.txt",
+			Path:      "/tmp/test-file.txt",
+			TotalSize: 100,
+			PartSize:  50,
 		}
 		bodyBytes, _ := json.Marshal(body)
 

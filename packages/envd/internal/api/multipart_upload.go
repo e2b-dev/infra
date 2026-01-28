@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-	"sort"
 	"syscall"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 )
 
 const (
-	multipartTempDir = "/tmp/envd-multipart"
 	// maxUploadSessions limits concurrent upload sessions to prevent resource exhaustion
 	maxUploadSessions = 100
 	// maxPartSize limits individual part size to 100MB to prevent DoS
@@ -43,6 +41,20 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to decode request body")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+
+	// Validate totalSize and partSize
+	if body.TotalSize < 0 {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("totalSize must be non-negative"))
+		return
+	}
+	if body.PartSize <= 0 {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("partSize must be positive"))
+		return
+	}
+	if body.PartSize > maxPartSize {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("partSize exceeds maximum allowed size of %d bytes", maxPartSize))
 		return
 	}
 
@@ -85,32 +97,79 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	// Create upload ID
-	uploadID := uuid.New().String()
-
-	// Create temp directory for this upload
-	tempDir := filepath.Join(multipartTempDir, uploadID)
-	if err := os.MkdirAll(tempDir, 0o755); err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error creating temp directory")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error creating temp directory: %w", err))
+	// Ensure parent directories exist
+	if err := permissions.EnsureDirs(filepath.Dir(filePath), uid, gid); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error ensuring directories")
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error ensuring directories: %w", err))
 		return
 	}
 
-	// Store the session
+	// Create and preallocate the destination file
+	destFile, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o666)
+	if err != nil {
+		if errors.Is(err, syscall.ENOSPC) {
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
+			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
+			return
+		}
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error creating destination file")
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error creating destination file: %w", err))
+		return
+	}
+
+	// Preallocate the file to the total size (creates sparse file)
+	if body.TotalSize > 0 {
+		if err := destFile.Truncate(body.TotalSize); err != nil {
+			destFile.Close()
+			os.Remove(filePath)
+			if errors.Is(err, syscall.ENOSPC) {
+				a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
+				jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
+				return
+			}
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error preallocating file")
+			jsonError(w, http.StatusInternalServerError, fmt.Errorf("error preallocating file: %w", err))
+			return
+		}
+	}
+
+	// Set ownership
+	if err := os.Chown(filePath, uid, gid); err != nil {
+		destFile.Close()
+		os.Remove(filePath)
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error changing file ownership")
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error changing file ownership: %w", err))
+		return
+	}
+
+	// Create upload ID
+	uploadID := uuid.New().String()
+
+	// Calculate number of parts
+	numParts := int((body.TotalSize + body.PartSize - 1) / body.PartSize)
+	if numParts == 0 && body.TotalSize == 0 {
+		numParts = 0 // Empty file, no parts needed
+	}
+
+	// Store the session with the open file handle
 	session := &MultipartUploadSession{
-		UploadID:  uploadID,
-		FilePath:  filePath,
-		TempDir:   tempDir,
-		UID:       uid,
-		GID:       gid,
-		Parts:     make(map[int]string),
-		CreatedAt: time.Now(),
+		UploadID:     uploadID,
+		FilePath:     filePath,
+		DestFile:     destFile,
+		TotalSize:    body.TotalSize,
+		PartSize:     body.PartSize,
+		NumParts:     numParts,
+		UID:          uid,
+		GID:          gid,
+		PartsWritten: make(map[int]bool),
+		CreatedAt:    time.Now(),
 	}
 
 	a.uploadsLock.Lock()
 	if len(a.uploads) >= maxUploadSessions {
 		a.uploadsLock.Unlock()
-		os.RemoveAll(tempDir)
+		destFile.Close()
+		os.Remove(filePath)
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("maxSessions", maxUploadSessions).Msg("too many concurrent upload sessions")
 		jsonError(w, http.StatusTooManyRequests, fmt.Errorf("too many concurrent upload sessions (max %d)", maxUploadSessions))
 		return
@@ -122,6 +181,9 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		Str(string(logs.OperationIDKey), operationID).
 		Str("uploadId", uploadID).
 		Str("filePath", filePath).
+		Int64("totalSize", body.TotalSize).
+		Int64("partSize", body.PartSize).
+		Int("numParts", numParts).
 		Msg("multipart upload initialized")
 
 	w.Header().Set("Content-Type", "application/json")
@@ -131,7 +193,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	})
 }
 
-// PutFilesUploadUploadId uploads a part of a multipart upload
+// PutFilesUploadUploadId uploads a part of a multipart upload directly to the destination file
 func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId string, params PutFilesUploadUploadIdParams) {
 	defer r.Body.Close()
 
@@ -171,28 +233,44 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	// Create the part file
-	partPath := filepath.Join(session.TempDir, fmt.Sprintf("part_%d", partNumber))
-
-	partFile, err := os.OpenFile(partPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		if errors.Is(err, syscall.ENOSPC) {
-			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
-			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
-			return
-		}
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error creating part file")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error creating part file: %w", err))
+	// Check part number is within range
+	if session.NumParts > 0 && partNumber >= session.NumParts {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNumber).Int("numParts", session.NumParts).Msg("part number out of range")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number %d out of range (expected 0-%d)", partNumber, session.NumParts-1))
 		return
 	}
 
-	// Write the part data using ReadFrom with size limit to prevent DoS
-	limitedReader := io.LimitReader(r.Body, maxPartSize+1)
-	size, err := partFile.ReadFrom(limitedReader)
-	partFile.Close()
+	// Calculate offset and expected size for this part
+	offset := int64(partNumber) * session.PartSize
+	expectedSize := session.PartSize
+	if partNumber == session.NumParts-1 {
+		// Last part may be smaller
+		expectedSize = session.TotalSize - offset
+	}
 
+	// Read the part data with size limit
+	limitedReader := io.LimitReader(r.Body, expectedSize+1)
+	data, err := io.ReadAll(limitedReader)
 	if err != nil {
-		os.Remove(partPath)
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error reading part data")
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error reading part data: %w", err))
+		return
+	}
+
+	size := int64(len(data))
+
+	// Check if part exceeded expected size
+	if size > expectedSize {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int64("size", size).Int64("expectedSize", expectedSize).Msg("part size exceeds expected size")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("part size %d exceeds expected size %d", size, expectedSize))
+		return
+	}
+
+	// Write directly to the destination file at the correct offset
+	session.mu.Lock()
+	_, err = session.DestFile.WriteAt(data, offset)
+	if err != nil {
+		session.mu.Unlock()
 		if errors.Is(err, syscall.ENOSPC) {
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
@@ -203,25 +281,15 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	// Check if part exceeded size limit
-	if size > maxPartSize {
-		os.Remove(partPath)
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int64("size", size).Int64("maxSize", maxPartSize).Msg("part size exceeds limit")
-		jsonError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("part size exceeds maximum allowed size of %d bytes", maxPartSize))
-		return
-	}
-
-	// Record the part (check for duplicates and warn)
-	session.mu.Lock()
-	if existingPath, exists := session.Parts[partNumber]; exists {
+	// Mark part as written
+	if session.PartsWritten[partNumber] {
 		a.logger.Warn().
 			Str(string(logs.OperationIDKey), operationID).
 			Str("uploadId", uploadId).
 			Int("partNumber", partNumber).
-			Str("existingPath", existingPath).
 			Msg("overwriting existing part")
 	}
-	session.Parts[partNumber] = partPath
+	session.PartsWritten[partNumber] = true
 	session.mu.Unlock()
 
 	a.logger.Debug().
@@ -229,6 +297,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		Str("uploadId", uploadId).
 		Int("partNumber", partNumber).
 		Int64("size", size).
+		Int64("offset", offset).
 		Msg("part uploaded")
 
 	w.Header().Set("Content-Type", "application/json")
@@ -239,7 +308,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	})
 }
 
-// PostFilesUploadUploadIdComplete completes a multipart upload and assembles the file
+// PostFilesUploadUploadIdComplete completes a multipart upload
 func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request, uploadId string) {
 	defer r.Body.Close()
 
@@ -267,148 +336,52 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Cleanup temp directory in background (don't block response)
-	tempDir := session.TempDir
-	logger := a.logger
-	defer func() {
-		go func() {
-			if err := os.RemoveAll(tempDir); err != nil {
-				logger.Warn().Err(err).Str("tempDir", tempDir).Msg("failed to cleanup multipart temp directory")
-			}
-		}()
-	}()
-
-	// Track if we need to clean up destination file on error
-	destFilePath := session.FilePath
-	destFileCreated := false
-	assemblySucceeded := false
-	defer func() {
-		if destFileCreated && !assemblySucceeded {
-			if err := os.Remove(destFilePath); err != nil && !os.IsNotExist(err) {
-				logger.Warn().Err(err).Str("path", destFilePath).Msg("failed to cleanup partial destination file")
-			}
-		}
-	}()
-
-	// Ensure parent directories exist
-	err := permissions.EnsureDirs(filepath.Dir(session.FilePath), session.UID, session.GID)
-	if err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error ensuring directories")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error ensuring directories: %w", err))
-		return
-	}
-
-	// Create the destination file
-	destFile, err := os.OpenFile(session.FilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
-	if err != nil {
-		if errors.Is(err, syscall.ENOSPC) {
-			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
-			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
-			return
-		}
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error creating destination file")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error creating destination file: %w", err))
-		return
-	}
-	destFileCreated = true
-
-	// Set ownership
-	if err := os.Chown(session.FilePath, session.UID, session.GID); err != nil {
-		destFile.Close()
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error changing file ownership")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error changing file ownership: %w", err))
-		return
-	}
-
-	// Get the part numbers and paths in order (copy under lock to avoid race with concurrent uploads)
+	// Verify all parts were uploaded
 	session.mu.Lock()
-	partNumbers := make([]int, 0, len(session.Parts))
-	partPaths := make(map[int]string, len(session.Parts))
-	for num, path := range session.Parts {
-		partNumbers = append(partNumbers, num)
-		partPaths[num] = path
+	missingParts := []int{}
+	for i := 0; i < session.NumParts; i++ {
+		if !session.PartsWritten[i] {
+			missingParts = append(missingParts, i)
+		}
 	}
 	session.mu.Unlock()
-	sort.Ints(partNumbers)
 
-	// Validate that parts are contiguous (0, 1, 2, ..., n-1)
-	if len(partNumbers) > 0 {
-		for i, partNum := range partNumbers {
-			if partNum != i {
-				destFile.Close()
-				a.logger.Error().
-					Str(string(logs.OperationIDKey), operationID).
-					Int("expected", i).
-					Int("got", partNum).
-					Ints("allParts", partNumbers).
-					Msg("missing part in upload sequence")
-				jsonError(w, http.StatusBadRequest, fmt.Errorf("missing part %d: parts must be contiguous starting from 0", i))
-				return
-			}
-		}
+	if len(missingParts) > 0 {
+		session.DestFile.Close()
+		os.Remove(session.FilePath)
+		a.logger.Error().
+			Str(string(logs.OperationIDKey), operationID).
+			Str("uploadId", uploadId).
+			Ints("missingParts", missingParts).
+			Msg("missing parts in upload")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("missing parts: %v", missingParts))
+		return
 	}
 
-	// Assemble the file using sendfile via io.Copy (which uses copy_file_range on Linux)
-	var totalSize int64
-	for _, partNum := range partNumbers {
-		partPath := partPaths[partNum]
-		partFile, err := os.Open(partPath)
-		if err != nil {
-			destFile.Close()
-			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNum).Msg("error opening part file")
-			jsonError(w, http.StatusInternalServerError, fmt.Errorf("error opening part %d: %w", partNum, err))
-			return
-		}
-
-		// Use ReadFrom which on Linux uses copy_file_range for zero-copy
-		written, err := destFile.ReadFrom(partFile)
-		partFile.Close()
-
-		if err != nil {
-			destFile.Close()
-			if errors.Is(err, syscall.ENOSPC) {
-				a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
-				jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
-				return
-			}
-			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNum).Msg("error copying part")
-			jsonError(w, http.StatusInternalServerError, fmt.Errorf("error copying part %d: %w", partNum, err))
-			return
-		}
-
-		totalSize += written
-	}
-
-	// Close the file before marking success
-	if err := destFile.Close(); err != nil {
+	// Close the file
+	if err := session.DestFile.Close(); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error closing destination file")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error closing destination file: %w", err))
 		return
 	}
 
-	// Mark assembly as successful so we don't clean up the file
-	assemblySucceeded = true
-
-	// Note: We skip fsync here for performance. The kernel will flush data to disk
-	// eventually. For sandbox use cases, immediate durability is not critical.
-
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
 		Str("uploadId", uploadId).
 		Str("filePath", session.FilePath).
-		Int64("totalSize", totalSize).
-		Int("numParts", len(partNumbers)).
+		Int64("totalSize", session.TotalSize).
+		Int("numParts", session.NumParts).
 		Msg("multipart upload completed")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(MultipartUploadComplete{
 		Path: session.FilePath,
-		Size: totalSize,
+		Size: session.TotalSize,
 	})
 }
 
-// DeleteFilesUploadUploadId aborts a multipart upload and cleans up temporary files
+// DeleteFilesUploadUploadId aborts a multipart upload and cleans up
 func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId string) {
 	defer r.Body.Close()
 
@@ -436,9 +409,10 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	// Clean up temp directory
-	if err := os.RemoveAll(session.TempDir); err != nil {
-		a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("error cleaning up temp directory")
+	// Close and remove the file
+	session.DestFile.Close()
+	if err := os.Remove(session.FilePath); err != nil && !os.IsNotExist(err) {
+		a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("error removing file")
 	}
 
 	a.logger.Debug().
