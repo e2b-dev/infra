@@ -411,6 +411,30 @@ variable "filestore_cache_cleanup_deletions_per_loop" {
   default = 900
 }
 
+variable "filestore_cache_cleanup_max_concurrent_stat" {
+  type        = number
+  description = "Number of concurrent stat goroutines"
+  default     = 16
+}
+
+variable "filestore_cache_cleanup_max_concurrent_scan" {
+  type        = number
+  description = "Number of concurrent scanner goroutines"
+  default     = 16
+}
+
+variable "filestore_cache_cleanup_max_concurrent_delete" {
+  type        = number
+  description = "Number of concurrent deleter goroutines"
+  default     = 4
+}
+
+variable "filestore_cache_cleanup_max_retries" {
+  type        = number
+  description = "Maximum number of continuous error or miss retries before giving up"
+  default     = 10000
+}
+
 variable "remote_repository_enabled" {
   type        = bool
   description = "Set to true to enable remote repository cache. Can be set via TF_VAR_remote_repository_enabled or REMOTE_REPOSITORY_ENABLED env var."

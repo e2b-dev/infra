@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -43,8 +44,9 @@ type ServerStore struct {
 	templateStorage   storage.StorageProvider
 	buildStorage      storage.StorageProvider
 
-	wg   *sync.WaitGroup // wait group for running builds
-	info *service.ServiceInfo
+	wg           *sync.WaitGroup // wait group for running builds
+	activeBuilds atomic.Int64    // counter for active builds (for debugging)
+	info         *service.ServiceInfo
 
 	closers []closeable
 }
@@ -157,7 +159,7 @@ func (s *ServerStore) Wait(ctx context.Context) error {
 	case <-ctx.Done():
 		return errors.New("force exit, not waiting for builds to finish")
 	default:
-		s.logger.Info(ctx, "Waiting for all build jobs to finish")
+		s.logger.Info(ctx, "Waiting for all build jobs to finish", zap.Int64("active_builds", s.activeBuilds.Load()))
 		s.wg.Wait()
 
 		if !env.IsLocal() {

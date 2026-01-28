@@ -52,7 +52,7 @@ func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
 	return flag
 }
 
-var CleanNFSCacheExperimental = newJSONFlag("clean-nfs-cache-experimental", ldvalue.Null())
+var CleanNFSCache = newJSONFlag("clean-nfs-cache", ldvalue.Null())
 
 type BoolFlag struct {
 	name     string

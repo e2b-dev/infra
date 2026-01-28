@@ -58,18 +58,9 @@ func (a *APIStore) getSandboxesMetrics(
 		}
 	}
 
-	metrics, err := cluster.GetResources().GetSandboxesMetrics(ctx, teamID.String(), sandboxIDs)
-	if err != nil {
-		logger.L().Error(ctx, "error fetching sandbox metrics from cluster resources provider",
-			logger.WithTeamID(teamID.String()),
-			zap.Error(err),
-		)
-
-		return nil, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: "Error fetching sandbox metrics",
-			Err:       err,
-		}
+	metrics, apiErr := cluster.GetResources().GetSandboxesMetrics(ctx, teamID.String(), sandboxIDs)
+	if apiErr != nil {
+		return nil, apiErr
 	}
 
 	return metrics, nil
@@ -103,6 +94,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, utils.WithClusterFallback(team.ClusterID), params.SandboxIds)
 	if apiErr != nil {
+		telemetry.ReportCriticalError(ctx, "error fetching sandboxes metrics", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
