@@ -32,7 +32,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 		}
 
 		if !allowShorter && newEndTime.Before(sbx.EndTime) {
-			return sbx, sandbox.ErrCannotSetTTL
+			return sbx, sandbox.ErrCannotShortenTTL
 		}
 
 		logger.L().Debug(ctx, "sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
@@ -49,7 +49,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
 		case errors.Is(err, errMaxInstanceLengthExceeded):
 			return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
-		case errors.Is(err, sandbox.ErrCannotSetTTL):
+		case errors.Is(err, sandbox.ErrCannotShortenTTL):
 			// If shorter than the current end time, we don't extend, so we can return
 			return nil
 		default:

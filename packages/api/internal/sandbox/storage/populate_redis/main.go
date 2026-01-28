@@ -64,7 +64,7 @@ func (m *PopulateRedisStorage) Update(ctx context.Context, sandboxID string, upd
 
 	_, err = m.redisBackend.Update(ctx, sandboxID, updateFunc)
 	if err != nil {
-		if !errors.Is(err, sandbox.ErrCannotSetTTL) {
+		if !errors.Is(err, sandbox.ErrCannotShortenTTL) {
 			logger.L().Error(ctx, "failed to update sandbox in redis", zap.Error(err), logger.WithSandboxID(sandboxID))
 		}
 	}
