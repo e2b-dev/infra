@@ -46,7 +46,6 @@ type ServerStore struct {
 
 	wg           *sync.WaitGroup // wait group for running builds
 	activeBuilds atomic.Int64    // counter for active builds (for debugging)
-	info         *service.ServiceInfo
 
 	closers []closeable
 }
@@ -64,7 +63,6 @@ func New(
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
-	info *service.ServiceInfo,
 ) (s *ServerStore, e error) {
 	logger.Info(ctx, "Initializing template manager")
 
@@ -126,7 +124,6 @@ func New(
 		artifactsregistry: artifactsRegistry,
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistence,
-		info:              info,
 		wg:                &sync.WaitGroup{},
 		closers:           closers,
 	}
