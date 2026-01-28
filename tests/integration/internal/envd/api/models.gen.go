@@ -69,6 +69,30 @@ type Metrics struct {
 	Ts *int64 `json:"ts,omitempty"`
 }
 
+// MultipartUploadComplete defines model for MultipartUploadComplete.
+type MultipartUploadComplete struct {
+	// Path Path to the final assembled file
+	Path string `json:"path"`
+
+	// Size Total size of the assembled file in bytes
+	Size int64 `json:"size"`
+}
+
+// MultipartUploadInit defines model for MultipartUploadInit.
+type MultipartUploadInit struct {
+	// UploadId Unique identifier for the upload session
+	UploadId string `json:"uploadId"`
+}
+
+// MultipartUploadPart defines model for MultipartUploadPart.
+type MultipartUploadPart struct {
+	// PartNumber The part number that was uploaded
+	PartNumber int `json:"partNumber"`
+
+	// Size Size of the uploaded part in bytes
+	Size int64 `json:"size"`
+}
+
 // FilePath defines model for FilePath.
 type FilePath = string
 
@@ -95,6 +119,9 @@ type InvalidUser = Error
 
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
+
+// UploadNotFound defines model for UploadNotFound.
+type UploadNotFound = Error
 
 // UploadSuccess defines model for UploadSuccess.
 type UploadSuccess = []EntryInfo
@@ -134,6 +161,30 @@ type PostFilesParams struct {
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
+// PostFilesUploadInitJSONBody defines parameters for PostFilesUploadInit.
+type PostFilesUploadInitJSONBody struct {
+	// Path Path to the file to upload
+	Path string `json:"path"`
+}
+
+// PostFilesUploadInitParams defines parameters for PostFilesUploadInit.
+type PostFilesUploadInitParams struct {
+	// Username User used for setting the owner, or resolving relative paths.
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
+
+	// Signature Signature used for file access permission verification.
+	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
+
+	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
+}
+
+// PutFilesUploadUploadIdParams defines parameters for PutFilesUploadUploadId.
+type PutFilesUploadUploadIdParams struct {
+	// Part The part number (0-indexed)
+	Part int `form:"part" json:"part"`
+}
+
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
@@ -157,6 +208,9 @@ type PostInitJSONBody struct {
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
+
+// PostFilesUploadInitJSONRequestBody defines body for PostFilesUploadInit for application/json ContentType.
+type PostFilesUploadInitJSONRequestBody PostFilesUploadInitJSONBody
 
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody
