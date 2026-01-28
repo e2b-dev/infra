@@ -22,6 +22,6 @@ CROSS JOIN LATERAL (
     WHERE env_id = e.id
 ) AS al
 WHERE e.id = @template_id
-  AND e.source = 'template'
+  AND e.source IN ('template', 'snapshot_template')
 ORDER BY eba.created_at DESC
 LIMIT 1;
