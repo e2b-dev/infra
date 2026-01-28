@@ -203,8 +203,11 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Ensure cleanup happens
-	defer os.RemoveAll(session.TempDir)
+	// Cleanup temp directory in background (don't block response)
+	tempDir := session.TempDir
+	defer func() {
+		go os.RemoveAll(tempDir)
+	}()
 
 	// Ensure parent directories exist
 	err := permissions.EnsureDirs(filepath.Dir(session.FilePath), session.UID, session.GID)
@@ -273,12 +276,8 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		totalSize += written
 	}
 
-	// Sync to ensure all data is written
-	if err := destFile.Sync(); err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error syncing file")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error syncing file: %w", err))
-		return
-	}
+	// Note: We skip fsync here for performance. The kernel will flush data to disk
+	// eventually. For sandbox use cases, immediate durability is not critical.
 
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
