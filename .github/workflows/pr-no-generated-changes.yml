@@ -17,7 +17,7 @@ on:
         required: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   run-check:
