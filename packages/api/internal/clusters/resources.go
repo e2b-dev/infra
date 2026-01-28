@@ -2,6 +2,7 @@ package clusters
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"go.uber.org/zap"
@@ -13,15 +14,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type ClusterResource interface {
-	GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, error)
-	GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, error)
-	GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, error)
-	GetBuildLogs(ctx context.Context, nodeID *string, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, cursor *time.Time, direction api.LogsDirection, source *api.LogsSource) ([]logs.LogEntry, error)
+	GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, *api.APIError)
+	GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, *api.APIError)
+	GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, *api.APIError)
+	GetBuildLogs(ctx context.Context, nodeID *string, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, cursor *time.Time, direction api.LogsDirection, source *api.LogsSource) ([]logs.LogEntry, *api.APIError)
 }
 
 const (
@@ -70,10 +70,10 @@ func logCheckSourceType(source *api.LogsSource, sourceType api.LogsSource) bool 
 	return source == nil || *source == sourceType
 }
 
-type logSourceFunc func() ([]logs.LogEntry, error)
+type logSourceFunc func() ([]logs.LogEntry, *api.APIError)
 
 func logsFromBuilderInstance(ctx context.Context, instance *Instance, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) logSourceFunc {
-	return func() ([]logs.LogEntry, error) {
+	return func() ([]logs.LogEntry, *api.APIError) {
 		var lvlReq *templatemanagergrpc.LogLevel
 		if level != nil {
 			lvlReq = templatemanagergrpc.LogLevel(*level).Enum()
@@ -92,10 +92,11 @@ func logsFromBuilderInstance(ctx context.Context, instance *Instance, templateID
 			},
 		)
 		if err != nil {
-			telemetry.ReportError(ctx, "error when returning logs for template build", err)
-			logger.L().Error(ctx, "error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
-
-			return nil, err
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: "Failed to fetch build logs from builder instance",
+				Code:      http.StatusInternalServerError,
+			}
 		}
 
 		raw := res.GetLogEntries()
@@ -137,7 +138,7 @@ func getBuildLogsWithSources(
 	direction api.LogsDirection,
 	source *api.LogsSource,
 	persistentLogFetcher logSourceFunc, // Backend-specific strategy for persistent logs (Loki for local, Edge API for remote)
-) ([]logs.LogEntry, error) {
+) ([]logs.LogEntry, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get build-logs")
 	defer span.End()
 

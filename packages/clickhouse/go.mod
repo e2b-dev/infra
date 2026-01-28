@@ -38,7 +38,7 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/paulmach/orb v0.11.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
-	github.com/redis/go-redis/v9 v9.12.1 // indirect
+	github.com/redis/go-redis/v9 v9.17.3 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.0 // indirect

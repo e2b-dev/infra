@@ -242,7 +242,9 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/rasky/go-xdr v0.0.0-20170124162913-1a41d1a06c93 // indirect
-	github.com/redis/go-redis/v9 v9.12.1 // indirect
+	github.com/redis/go-redis/extra/rediscmd/v9 v9.17.3 // indirect
+	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3 // indirect
+	github.com/redis/go-redis/v9 v9.17.3 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect

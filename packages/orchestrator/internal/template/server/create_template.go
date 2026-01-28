@@ -104,8 +104,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	)
 
 	s.wg.Add(1)
+	s.activeBuilds.Add(1)
 	go func(ctx context.Context) {
 		defer s.wg.Done()
+		defer s.activeBuilds.Add(-1)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()

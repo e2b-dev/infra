@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +23,7 @@ const (
 type Checks struct {
 	sandbox *Sandbox
 
+	mu        sync.Mutex
 	cancelCtx context.CancelCauseFunc
 
 	healthy atomic.Bool
@@ -46,12 +48,17 @@ func NewChecks(sandbox *Sandbox, useClickhouseMetrics bool) *Checks {
 }
 
 func (c *Checks) Start(ctx context.Context) {
+	c.mu.Lock()
 	ctx, c.cancelCtx = context.WithCancelCause(ctx)
+	c.mu.Unlock()
 
 	c.logHealth(ctx)
 }
 
 func (c *Checks) Stop() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.cancelCtx != nil {
 		c.cancelCtx(ErrChecksStopped)
 	}

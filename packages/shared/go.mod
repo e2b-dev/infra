@@ -51,7 +51,8 @@ require (
 	github.com/ngrok/firewall_toolkit v0.0.18
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/orcaman/concurrent-map/v2 v2.0.1
-	github.com/redis/go-redis/v9 v9.12.1
+	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3
+	github.com/redis/go-redis/v9 v9.17.3
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/bridges/otelzap v0.13.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0
@@ -272,6 +273,7 @@ require (
 	github.com/prometheus/exporter-toolkit v0.10.1-0.20230714054209-2f4150c63f97 // indirect
 	github.com/prometheus/procfs v0.16.0 // indirect
 	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852 // indirect
+	github.com/redis/go-redis/extra/rediscmd/v9 v9.17.3 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect

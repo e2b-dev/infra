@@ -542,6 +542,12 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
 	}
+
+	// Create all matchers BEFORE starting Serve() to avoid data race.
+	// cmux.Match() modifies internal state that Serve() reads from.
+	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
+	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
+
 	startService("cmux server", func() error {
 		logger.L().Info(ctx, "Starting network server", zap.Uint16("port", config.GRPCPort))
 		err := cmuxServer.Serve()
@@ -559,8 +565,6 @@ func run(config cfg.Config) (success bool) {
 	}})
 
 	// http server
-	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
-
 	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create healthcheck", zap.Error(err))
@@ -583,7 +587,6 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"http server", httpServer.Shutdown})
 
 	// grpc server
-	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
 	startService("grpc server", func() error {
 		return grpcServer.Serve(grpcListener)
 	})
@@ -610,6 +613,7 @@ func run(config cfg.Config) (success bool) {
 
 	// Mark service draining if not already.
 	// If service stats was previously changed via API, we don't want to override it.
+	logger.L().Info(ctx, "Starting drain phase", zap.Int("sandbox_count", sandboxes.Count()))
 	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
 		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
 
