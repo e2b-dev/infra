@@ -81,12 +81,12 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 		}
 
 		result = append(result, api.SnapshotInfo{
-			SnapshotID:  snap.SnapshotID,
-			SandboxID:   snap.SourceSandboxID,
-			CreatedAt:   snap.CreatedAt,
-			CpuCount:    &cpuCount,
-			MemoryMB:    &memoryMB,
-			DiskSizeMB:  diskSizeMB,
+			SnapshotID: snap.SnapshotID,
+			SandboxID:  snap.SourceSandboxID,
+			CreatedAt:  snap.CreatedAt,
+			CpuCount:   &cpuCount,
+			MemoryMB:   &memoryMB,
+			DiskSizeMB: diskSizeMB,
 		})
 	}
 

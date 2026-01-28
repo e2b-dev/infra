@@ -130,13 +130,13 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	}
 
 	c.JSON(http.StatusCreated, &api.SnapshotInfo{
-		SnapshotID:  snapshotResult.SnapshotID,
-		SandboxID:   &sandboxID,
-		TemplateID:  &snap.BaseEnvID,
-		CreatedAt:   lastSnapshot.EnvBuild.CreatedAt,
-		CpuCount:    &cpuCount,
-		MemoryMB:    &memoryMB,
-		DiskSizeMB:  diskSizeMB,
+		SnapshotID: snapshotResult.SnapshotID,
+		SandboxID:  &sandboxID,
+		TemplateID: &snap.BaseEnvID,
+		CreatedAt:  lastSnapshot.EnvBuild.CreatedAt,
+		CpuCount:   &cpuCount,
+		MemoryMB:   &memoryMB,
+		DiskSizeMB: diskSizeMB,
 	})
 }
 

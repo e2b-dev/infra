@@ -50,11 +50,11 @@ func (a *APIStore) GetSnapshotsSnapshotID(c *gin.Context, snapshotID api.Snapsho
 	}
 
 	c.JSON(http.StatusOK, &api.SnapshotInfo{
-		SnapshotID:  snapshot.SnapshotID,
-		SandboxID:   snapshot.SourceSandboxID,
-		CreatedAt:   snapshot.CreatedAt,
-		CpuCount:    &cpuCount,
-		MemoryMB:    &memoryMB,
-		DiskSizeMB:  diskSizeMB,
+		SnapshotID: snapshot.SnapshotID,
+		SandboxID:  snapshot.SourceSandboxID,
+		CreatedAt:  snapshot.CreatedAt,
+		CpuCount:   &cpuCount,
+		MemoryMB:   &memoryMB,
+		DiskSizeMB: diskSizeMB,
 	})
 }
