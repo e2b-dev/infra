@@ -77,7 +77,7 @@ func (so *TeamObserver) Start(store *sandbox.Store) (err error) {
 	// Register callbacks for team sandbox metrics
 	so.registration, err = so.meter.RegisterCallback(
 		func(ctx context.Context, obs metric.Observer) error {
-			sbxs, err := store.Items(ctx, nil, []sandbox.State{sandbox.StateRunning})
+			sbxs, err := store.AllItems(ctx, []sandbox.State{sandbox.StateRunning})
 			if err != nil {
 				return fmt.Errorf("failed to get running sandboxes: %w", err)
 			}

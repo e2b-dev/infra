@@ -54,7 +54,7 @@ func (s *Storage) Remove(_ context.Context, _ uuid.UUID, sandboxID string) error
 	return nil
 }
 
-func (s *Storage) Items(_ context.Context, teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
+func (s *Storage) getItems(teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) []sandbox.Sandbox {
 	filter := sandbox.NewItemsFilter()
 	for _, opt := range options {
 		opt(filter)
@@ -68,7 +68,7 @@ func (s *Storage) Items(_ context.Context, teamID *uuid.UUID, states []sandbox.S
 			continue
 		}
 
-		if states != nil && !slices.Contains(states, data.State) {
+		if len(states) > 0 && !slices.Contains(states, data.State) {
 			continue
 		}
 
@@ -79,7 +79,15 @@ func (s *Storage) Items(_ context.Context, teamID *uuid.UUID, states []sandbox.S
 		items = append(items, data)
 	}
 
-	return items, nil
+	return items
+}
+
+func (s *Storage) TeamItems(_ context.Context, teamID uuid.UUID, states []sandbox.State) ([]sandbox.Sandbox, error) {
+	return s.getItems(&teamID, states), nil
+}
+
+func (s *Storage) AllItems(_ context.Context, states []sandbox.State, options ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
+	return s.getItems(nil, states, options...), nil
 }
 
 func (s *Storage) Update(_ context.Context, _ uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {

@@ -31,7 +31,7 @@ func (e *Evictor) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(50 * time.Millisecond):
-			sbxs, err := e.store.Items(ctx, nil, []sandbox.State{sandbox.StateRunning}, sandbox.WithOnlyExpired(true))
+			sbxs, err := e.store.AllItems(ctx, []sandbox.State{sandbox.StateRunning}, sandbox.WithOnlyExpired(true))
 			if err != nil {
 				logger.L().Error(ctx, "Failed to get expired sandboxes", zap.Error(err))
 

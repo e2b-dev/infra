@@ -15,7 +15,7 @@ import (
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
-// Add stores a sandbox in Redis
+// Add stores a sandbox in Redis atomically with its team index entry
 func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	// Serialize sandbox
 	data, err := json.Marshal(sbx)
@@ -23,10 +23,16 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 		return fmt.Errorf("failed to marshal sandbox: %w", err)
 	}
 
-	key := getSandboxKey(sbx.SandboxID)
+	key := getSandboxKey(sbx.TeamID.String(), sbx.SandboxID)
+	teamKey := getTeamIndexKey(sbx.TeamID.String())
 
-	// Storage in Redis with max expiration little bit longer than max instance length to prevent leaking
-	err = s.redisClient.Set(ctx, key, data, 0).Err()
+	// Store sandbox and add to team index atomically using a transaction
+	_, err = s.redisClient.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.Set(ctx, key, data, 0)
+		pipe.SAdd(ctx, teamKey, sbx.SandboxID)
+
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
@@ -35,8 +41,8 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 }
 
 // Get retrieves a sandbox from Redis
-func (s *Storage) Get(ctx context.Context, _ uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
-	key := getSandboxKey(sandboxID)
+func (s *Storage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
+	key := getSandboxKey(teamID.String(), sandboxID)
 	data, err := s.redisClient.Get(ctx, key).Bytes()
 	if errors.Is(err, redis.Nil) {
 		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
@@ -54,9 +60,10 @@ func (s *Storage) Get(ctx context.Context, _ uuid.UUID, sandboxID string) (sandb
 	return sbx, nil
 }
 
-// Remove deletes a sandbox from Redis
-func (s *Storage) Remove(ctx context.Context, _ uuid.UUID, sandboxID string) error {
-	key := getSandboxKey(sandboxID)
+// Remove deletes a sandbox from Redis atomically with its team index entry
+func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
+	key := getSandboxKey(teamID.String(), sandboxID)
+	teamKey := getTeamIndexKey(teamID.String())
 
 	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
 	if err != nil {
@@ -70,7 +77,13 @@ func (s *Storage) Remove(ctx context.Context, _ uuid.UUID, sandboxID string) err
 		}
 	}()
 
-	err = s.redisClient.Del(ctx, key).Err()
+	// Remove sandbox and its team index entry atomically using a transaction
+	_, err = s.redisClient.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.Del(ctx, key)
+		pipe.SRem(ctx, teamKey, sandboxID)
+
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("failed to remove sandbox from Redis: %w", err)
 	}
@@ -78,14 +91,64 @@ func (s *Storage) Remove(ctx context.Context, _ uuid.UUID, sandboxID string) err
 	return nil
 }
 
-// Items returns sandboxes matching the given filters
-func (s *Storage) Items(_ context.Context, _ *uuid.UUID, _ []sandbox.State, _ ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
-	// TODO: Implement later (ENG-3312)
-	return nil, nil
+// TeamItems retrieves sandboxes for a specific team, filtered by states and options
+func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandbox.State) ([]sandbox.Sandbox, error) {
+	// Get sandbox IDs from team index
+	teamKey := getTeamIndexKey(teamID.String())
+	sandboxIDs, err := s.redisClient.SMembers(ctx, teamKey).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sandbox IDs from team index: %w", err)
+	}
+
+	if len(sandboxIDs) == 0 {
+		return []sandbox.Sandbox{}, nil
+	}
+
+	// Build keys and batch fetch with MGET
+	keys := make([]string, len(sandboxIDs))
+	for i, id := range sandboxIDs {
+		keys[i] = getSandboxKey(teamID.String(), id)
+	}
+
+	results, err := s.redisClient.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sandboxes from Redis: %w", err)
+	}
+
+	// Build state set for efficient lookup
+	stateSet := make(map[sandbox.State]bool)
+	for _, state := range states {
+		stateSet[state] = true
+	}
+
+	// Deserialize and filter
+	var sandboxes []sandbox.Sandbox
+	for _, result := range results {
+		if result == nil {
+			continue // Stale index entry - sandbox was deleted
+		}
+
+		var sbx sandbox.Sandbox
+		if err := json.Unmarshal([]byte(result.(string)), &sbx); err != nil {
+			logger.L().Error(ctx, "Failed to unmarshal sandbox", zap.Error(err))
+
+			continue
+		}
+
+		// Filter by state if states are specified
+		if len(states) > 0 && !stateSet[sbx.State] {
+			continue
+		}
+
+		sandboxes = append(sandboxes, sbx)
+	}
+
+	return sandboxes, nil
 }
 
-func (s *Storage) Update(ctx context.Context, _ uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
-	key := getSandboxKey(sandboxID)
+// Update modifies a sandbox atomically
+func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
+	key := getSandboxKey(teamID.String(), sandboxID)
 	var updatedSbx sandbox.Sandbox
 
 	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
@@ -136,6 +199,10 @@ func (s *Storage) Update(ctx context.Context, _ uuid.UUID, sandboxID string, upd
 	}
 
 	return updatedSbx, nil
+}
+
+func (s *Storage) AllItems(_ context.Context, _ []sandbox.State, _ ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
+	return nil, nil
 }
 
 // StartRemoving initiates the removal process for a sandbox

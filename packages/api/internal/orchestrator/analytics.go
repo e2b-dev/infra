@@ -36,7 +36,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 
 			return
 		case <-ticker.C:
-			sandboxes, err := o.sandboxStore.Items(ctx, nil, []sandbox.State{sandbox.StateRunning})
+			sandboxes, err := o.sandboxStore.AllItems(ctx, []sandbox.State{sandbox.StateRunning})
 			if err != nil {
 				logger.L().Error(ctx, "failed to list running sandboxes", zap.Error(err))
 
