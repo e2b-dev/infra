@@ -617,6 +617,7 @@ components:
         - buildCount
         - envdVersion
         - aliases
+        - names
         - buildStatus
       properties:
         templateID:
@@ -637,6 +638,12 @@ components:
         aliases:
           type: array
           description: Aliases of the template
+          deprecated: true
+          items:
+            type: string
+        names:
+          type: array
+          description: Names of the template (namespace/alias format when namespaced)
           items:
             type: string
         createdAt:
@@ -810,6 +817,7 @@ components:
         - templateID
         - public
         - aliases
+        - names
         - createdAt
         - updatedAt
         - lastSpawnedAt
@@ -825,6 +833,12 @@ components:
         aliases:
           type: array
           description: Aliases of the template
+          deprecated: true
+          items:
+            type: string
+        names:
+          type: array
+          description: Names of the template (namespace/alias format when namespaced)
           items:
             type: string
         createdAt:
@@ -2354,6 +2368,7 @@ paths:
           $ref: "#/components/responses/500"
     patch:
       description: Update template
+      deprecated: true
       tags: [templates]
       security:
         - ApiKeyAuth: []
@@ -2418,6 +2433,33 @@ paths:
       responses:
         "202":
           description: The build has started
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v2/templates/{templateID}:
+    patch:
+      description: Update template
+      tags: [templates]
+      security:
+        - ApiKeyAuth: []
+        - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateUpdateRequest"
+      responses:
+        "200":
+          description: The template was updated successfully
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "500":

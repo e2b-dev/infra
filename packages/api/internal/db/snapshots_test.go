@@ -19,12 +19,13 @@ import (
 func createTestTeam(t *testing.T, db *testutils.Database) uuid.UUID {
 	t.Helper()
 	teamID := uuid.New()
+	slug := "test-team-" + teamID.String()[:8]
 
 	// Insert a team directly into the database using raw SQL
 	// Using the default tier 'base_v1' that is created in migrations
 	err := db.AuthDb.TestsRawSQL(t.Context(),
-		"INSERT INTO public.teams (id, name, tier, email) VALUES ($1, $2, $3, $4)",
-		teamID, "Test Team "+teamID.String(), "base_v1", "test-"+teamID.String()+"@example.com",
+		"INSERT INTO public.teams (id, name, tier, email, slug) VALUES ($1, $2, $3, $4, $5)",
+		teamID, "Test Team "+teamID.String(), "base_v1", "test-"+teamID.String()+"@example.com", slug,
 	)
 	require.NoError(t, err, "Failed to create test team")
 

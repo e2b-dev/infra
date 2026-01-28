@@ -2,16 +2,16 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -64,8 +64,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	// Parse template ID/alias and optional tag from input (e.g., "template:v1" -> alias="template", tag="v1")
-	alias, t, err := id.ParseTemplateIDOrAliasWithTag(input)
+	identifier, tag, err := id.ParseName(input)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", err))
 		telemetry.ReportError(ctx, "invalid name", err)
@@ -73,13 +72,17 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	// Collect tags: tag from input (if present) + additional tags from body.Tags
-	allTags := utils.DerefOrDefault(body.Tags, nil)
-	if t != nil {
-		allTags = append([]string{*t}, allTags...)
+	if err := id.ValidateNamespaceMatchesTeam(identifier, team.Slug); err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
+		return nil
 	}
 
-	// Validate and deduplicate all tags
+	allTags := utils.DerefOrDefault(body.Tags, nil)
+	if tag != nil {
+		allTags = append([]string{*tag}, allTags...)
+	}
+
 	tags, err := id.ValidateAndDeduplicateTags(allTags)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
@@ -88,41 +91,36 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
-	// Create the build, find the template ID by alias or generate a new one
 	findTemplateCtx, span := tracer.Start(ctx, "find-template-alias")
 	defer span.End()
 	templateID := id.Generate()
 	public := false
-	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(findTemplateCtx, alias)
+
+	aliasInfo, err := a.templateCache.ResolveAlias(findTemplateCtx, identifier, team.Slug)
 	switch {
-	case err == nil:
-		if templateAlias.TeamID != team.ID {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", alias))
-			telemetry.ReportError(findTemplateCtx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", alias))
-
-			return nil
-		}
-
-		templateID = templateAlias.EnvID
-		public = templateAlias.Public
-	case dberrors.IsNotFoundError(err):
-		// Alias is available and not used
+	case err == nil && aliasInfo.TeamID == team.ID:
+		// Template exists and is owned by this team - update it
+		templateID = aliasInfo.TemplateID
+		public = aliasInfo.Public
+	case err == nil || errors.Is(err, templatecache.ErrTemplateNotFound):
+		// Either alias not found, or found but owned by different team (e.g. promoted template)
+		// Team can create their own template with this alias in their namespace
 	default:
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
-		telemetry.ReportCriticalError(findTemplateCtx, "error when getting template alias", err)
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(findTemplateCtx, "error when getting template alias", apiErr.Err)
 
 		return nil
 	}
 	span.End()
 
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
-
 	buildReq := template.RegisterBuildData{
 		ClusterID:          apiutils.WithClusterFallback(team.ClusterID),
 		TemplateID:         templateID,
 		UserID:             nil,
 		Team:               team,
-		Alias:              &alias,
+		Alias:              &identifier,
 		Tags:               tags,
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
@@ -131,7 +129,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		FirecrackerVersion: firecrackerVersion,
 	}
 
-	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, buildReq)
+	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.templateCache, a.sqlcDB, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
@@ -146,7 +144,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	a.posthog.CreateAnalyticsTeamEvent(posthogCtx, team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
-		Set("alias", alias).
+		Set("alias", identifier).
 		Set("tags", tags),
 	)
 	span.End()
@@ -155,7 +153,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
 		Aliases:    template.Aliases,
-		Names:      template.Aliases,
+		Names:      template.Names,
 		Tags:       template.Tags,
 		Public:     public,
 	}

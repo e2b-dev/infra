@@ -165,6 +165,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	err = a.templateManager.CreateTemplate(
 		ctx,
 		team.ID,
+		team.Slug,
 		templateID,
 		buildUUID,
 		build.KernelVersion,
