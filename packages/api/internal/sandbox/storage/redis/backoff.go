@@ -5,12 +5,12 @@ import (
 	"time"
 )
 
-type ConstantBackoff struct {
+type constantBackoff struct {
 	backoff time.Duration
 }
 
-func NewConstantBackoff(backoff time.Duration) *ConstantBackoff {
-	return &ConstantBackoff{backoff: backoff}
+func newConstantBackoff(backoff time.Duration) *constantBackoff {
+	return &constantBackoff{backoff: backoff}
 }
 
 const jitter = 0.25 // ±25%
@@ -22,7 +22,7 @@ const jitter = 0.25 // ±25%
 // Without jitter, concurrent goroutines using a constant 20ms backoff would retry
 // simultaneously, hitting the Redis lock at the same time on every attempt. The
 // randomization breaks this synchronization pattern while maintaining fast retries.
-func (b *ConstantBackoff) NextBackoff() time.Duration {
+func (b *constantBackoff) NextBackoff() time.Duration {
 	factor := 1 + jitter*(2*(rand.Float64()-0.5))
 
 	return time.Duration(float64(b.backoff) * factor)

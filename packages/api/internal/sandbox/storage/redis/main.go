@@ -30,7 +30,7 @@ func NewStorage(
 		redisClient: redisClient,
 		lockService: redislock.New(redisClient),
 		lockOption: &redislock.Options{
-			RetryStrategy: NewConstantBackoff(retryInterval),
+			RetryStrategy: newConstantBackoff(retryInterval),
 		},
 	}
 }
