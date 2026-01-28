@@ -1,8 +1,6 @@
 package api
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -226,26 +224,14 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	session.Parts[partNumber] = partPath
 	session.mu.Unlock()
 
-	// Calculate ETag (MD5 of part content)
-	partData, err := os.ReadFile(partPath)
-	var etag string
-	if err == nil {
-		hash := md5.Sum(partData)
-		etag = hex.EncodeToString(hash[:])
-	}
-
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
 		Str("uploadId", uploadId).
 		Int("partNumber", partNumber).
 		Int64("size", size).
-		Str("etag", etag).
 		Msg("part uploaded")
 
 	w.Header().Set("Content-Type", "application/json")
-	if etag != "" {
-		w.Header().Set("ETag", fmt.Sprintf("\"%s\"", etag))
-	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(MultipartUploadPart{
 		PartNumber: partNumber,

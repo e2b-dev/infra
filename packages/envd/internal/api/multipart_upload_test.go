@@ -108,10 +108,6 @@ func TestMultipartUpload(t *testing.T) {
 		assert.Equal(t, 0, part0Resp.PartNumber)
 		assert.Equal(t, int64(len(part0Content)), part0Resp.Size)
 
-		// Verify ETag is returned
-		etag := part0W.Header().Get("ETag")
-		assert.NotEmpty(t, etag, "ETag should be returned for uploaded part")
-
 		// Upload part 1
 		part1Content := []byte("World!")
 		part1Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=1", bytes.NewReader(part1Content))
