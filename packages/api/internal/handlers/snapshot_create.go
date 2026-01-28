@@ -105,25 +105,12 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	snap := lastSnapshot.Snapshot
 
 	snapshotResult, err := a.sqlcDB.CreateSnapshotTemplate(ctx, queries.CreateSnapshotTemplateParams{
-		SnapshotID:         snapshotID,
-		CreatedBy:          nil,
-		TeamID:             teamID,
-		SourceSandboxID:    &sandboxID,
-		BaseTemplateID:     &snap.BaseEnvID,
-		Vcpu:               build.Vcpu,
-		RamMb:              build.RamMb,
-		FreeDiskSizeMb:     build.FreeDiskSizeMb,
-		KernelVersion:      build.KernelVersion,
-		FirecrackerVersion: build.FirecrackerVersion,
-		EnvdVersion:        build.EnvdVersion,
-		Status:             string(types.BuildStatusUploaded),
-		OriginNodeID:       build.ClusterNodeID,
-		TotalDiskSizeMb:    build.TotalDiskSizeMb,
-		CpuArchitecture:    build.CpuArchitecture,
-		CpuFamily:          build.CpuFamily,
-		CpuModel:           build.CpuModel,
-		CpuModelName:       build.CpuModelName,
-		CpuFlags:           build.CpuFlags,
+		SnapshotID:      snapshotID,
+		CreatedBy:       nil,
+		TeamID:          teamID,
+		SourceSandboxID: &sandboxID,
+		BaseTemplateID:  &snap.BaseEnvID,
+		ExistingBuildID: build.ID,
 	})
 	if err != nil {
 		logger.L().Error(ctx, "Error creating snapshot template", zap.Error(err), logger.WithSandboxID(sandboxID))

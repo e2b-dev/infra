@@ -21,7 +21,7 @@ SELECT
     eb.cpu_model_name,
     COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases
 FROM "public"."envs" e
-LEFT JOIN LATERAL (
+JOIN LATERAL (
     SELECT b.*
     FROM "public"."env_build_assignments" ba
     JOIN "public"."env_builds" b ON b.id = ba.build_id
