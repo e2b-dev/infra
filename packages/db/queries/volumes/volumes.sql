@@ -4,7 +4,7 @@ VALUES (@team_id, @name)
 RETURNING *;
 
 -- name: GetVolume :one
-SELECT * FROM volumes WHERE id = @volume_id;
+SELECT * FROM volumes WHERE id = @volume_id AND team_id = @team_id;
 
 -- name: FindVolumesByTeamID :many
 SELECT * FROM volumes WHERE team_id = @team_id;
