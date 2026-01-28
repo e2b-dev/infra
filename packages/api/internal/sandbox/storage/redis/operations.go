@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -96,10 +97,9 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 
 	// Build keys and batch fetch with MGET
 	team := teamID.String()
-	keys := make([]string, len(sandboxIDs))
-	for i, id := range sandboxIDs {
-		keys[i] = getSandboxKey(team, id)
-	}
+	keys := utils.Map(sandboxIDs, func(id string) string {
+		return getSandboxKey(team, id)
+	})
 
 	results, err := s.redisClient.MGet(ctx, keys...).Result()
 	if err != nil {
@@ -141,7 +141,6 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 // Update modifies a sandbox atomically
 func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	key := getSandboxKey(teamID.String(), sandboxID)
-	var updatedSbx sandbox.Sandbox
 
 	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
 	if err != nil {
@@ -171,15 +170,13 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 	}
 
 	// Apply update
-	newSbx, err := updateFunc(sbx)
+	updatedSbx, err := updateFunc(sbx)
 	if err != nil {
 		return sandbox.Sandbox{}, err
 	}
 
-	updatedSbx = newSbx
-
 	// Serialize updated sandbox
-	newData, err := json.Marshal(newSbx)
+	newData, err := json.Marshal(updatedSbx)
 	if err != nil {
 		return sandbox.Sandbox{}, err
 	}
