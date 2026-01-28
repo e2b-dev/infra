@@ -52,7 +52,7 @@ type featureFlagsClient interface {
 }
 
 func (c Cache) GetFrame(ctx context.Context, path string, offU int64, frameTable *FrameTable, decompress bool, buf []byte) (rng Range, err error) {
-	if err := c.validateGetFrameParams(offU, len(buf), frameTable); err != nil {
+	if err := c.validateGetFrameParams(offU, len(buf), frameTable, decompress); err != nil {
 		return Range{}, err
 	}
 
