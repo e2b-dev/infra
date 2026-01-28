@@ -23,7 +23,7 @@ func sameSlot(key string) string {
 }
 
 func getTeamPrefix(teamID string) string {
-	return createKey(sandboxKeyPrefix, sameSlot(teamID), separator)
+	return createKey(sandboxKeyPrefix, sameSlot(teamID))
 }
 
 func getSandboxKey(teamID, sandboxID string) string {
