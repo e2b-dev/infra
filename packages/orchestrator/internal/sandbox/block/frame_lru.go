@@ -34,9 +34,9 @@ func NewFrameLRU(maxFrames int) (*FrameLRU, error) {
 	}, nil
 }
 
-// Get retrieves a frame from the LRU cache by its start offset.
+// get retrieves a frame from the LRU cache by its start offset.
 // Returns the cached frame and true if found, nil and false otherwise.
-func (l *FrameLRU) Get(frameOffset int64) (*cachedFrame, bool) {
+func (l *FrameLRU) get(frameOffset int64) (*cachedFrame, bool) {
 	val, ok := l.cache.Get(frameOffset)
 	if !ok {
 		return nil, false
@@ -50,9 +50,9 @@ func (l *FrameLRU) Get(frameOffset int64) (*cachedFrame, bool) {
 	return frame, true
 }
 
-// Put stores a decompressed frame in the LRU cache.
+// put stores a decompressed frame in the LRU cache.
 // The data slice is stored directly (not copied) - caller must not modify it after this call.
-func (l *FrameLRU) Put(frameOffset int64, frameSize int64, data []byte) {
+func (l *FrameLRU) put(frameOffset int64, frameSize int64, data []byte) {
 	frame := &cachedFrame{
 		data:   data,
 		offset: frameOffset,

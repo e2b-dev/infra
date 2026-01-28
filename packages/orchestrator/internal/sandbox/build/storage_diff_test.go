@@ -49,7 +49,7 @@ func setupMockProvider(t *testing.T, frames map[int64][]byte, frameTable *storag
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,
-	).RunAndReturn(func(ctx context.Context, objectPath string, offsetU int64, ft *storage.FrameTable, decompress bool, buf []byte) (storage.Range, error) {
+	).RunAndReturn(func(_ context.Context, _ string, offsetU int64, _ *storage.FrameTable, decompress bool, buf []byte) (storage.Range, error) {
 		data, ok := frames[offsetU]
 		if !ok {
 			return storage.Range{}, nil
@@ -476,7 +476,8 @@ func TestStorageDiff_CompressedChunker_MultipleFrames(t *testing.T) {
 		data1[i] = byte(i % 256)
 		data2[i] = byte((i + 100) % 256)
 	}
-	fullData := append(data1, data2...)
+	fullData := append([]byte{}, data1...)
+	fullData = append(fullData, data2...)
 
 	compressed1 := compressTestBytes(t, data1)
 	compressed2 := compressTestBytes(t, data2)

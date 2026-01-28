@@ -117,7 +117,7 @@ func (c *CompressedChunker) Slice(ctx context.Context, off, length int64) ([]byt
 
 		eg.Go(func() error {
 			// Check LRU cache first
-			if frame, ok := c.frameLRU.Get(frameStarts.U); ok {
+			if frame, ok := c.frameLRU.get(frameStarts.U); ok {
 				fmt.Printf("<>/<> CompressedChunker/Slice path=%s frame=%#x -> LRU hit\n", c.objectPath, frameStarts.U)
 				copy(result[resultOff:], frame.data[startInFrame:startInFrame+int64(toCopy)])
 
@@ -129,7 +129,7 @@ func (c *CompressedChunker) Slice(ctx context.Context, off, length int64) ([]byt
 			key := strconv.FormatInt(frameStarts.U, 10)
 			dataI, err, shared := c.fetchGroup.Do(key, func() (any, error) {
 				// Double-check LRU after acquiring the fetch slot
-				if frame, ok := c.frameLRU.Get(frameStarts.U); ok {
+				if frame, ok := c.frameLRU.get(frameStarts.U); ok {
 					fmt.Printf("<>/<> CompressedChunker/Slice path=%s frame=%#x -> LRU hit after singleflight\n", c.objectPath, frameStarts.U)
 
 					return frame.data, nil
@@ -191,7 +191,7 @@ func (c *CompressedChunker) fetchAndDecompress(ctx context.Context, frameOffU in
 		return nil, fmt.Errorf("failed to decompress frame at %d: %w", frameOffU, err)
 	}
 
-	c.frameLRU.Put(frameOffU, int64(frameSize.U), data)
+	c.frameLRU.put(frameOffU, int64(frameSize.U), data)
 
 	return data, nil
 }
