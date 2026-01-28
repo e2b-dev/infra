@@ -18,21 +18,14 @@ func newStorageFile(
 	persistence storage.StorageProvider,
 	objectPath string,
 	path string,
-	objectType storage.ObjectType,
 ) (*storageFile, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file: %w", err)
 	}
-
 	defer f.Close()
 
-	object, err := persistence.OpenBlob(ctx, objectPath, objectType)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = object.WriteTo(ctx, f)
+	_, err = persistence.CopyBlob(ctx, objectPath, f)
 	if err != nil {
 		cleanupErr := os.Remove(path)
 

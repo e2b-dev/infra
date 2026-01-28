@@ -2,9 +2,7 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -22,23 +20,23 @@ const (
 	cacheDirPermissions  = 0o700
 )
 
-type cache struct {
+type Cache struct {
 	rootPath  string
 	chunkSize int64
 	inner     StorageProvider
-	flags     *featureflags.Client
+	flags     featureFlagsClient
 
 	tracer trace.Tracer
 }
 
-var _ StorageProvider = (*cache)(nil)
+var _ StorageProvider = (*Cache)(nil)
 
 func WrapInNFSCache(
 	ctx context.Context,
 	rootPath string,
 	inner StorageProvider,
-	flags *featureflags.Client,
-) StorageProvider {
+	flags featureFlagsClient,
+) *Cache {
 	cacheTracer := tracer
 
 	createCacheSpans := flags.BoolFlag(ctx, featureflags.CreateStorageCacheSpansFlag)
@@ -46,7 +44,7 @@ func WrapInNFSCache(
 		cacheTracer = noop.NewTracerProvider().Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
 	}
 
-	return &cache{
+	return &Cache{
 		rootPath:  rootPath,
 		inner:     inner,
 		chunkSize: MemoryChunkSize,
@@ -55,65 +53,51 @@ func WrapInNFSCache(
 	}
 }
 
-func (c cache) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+// WrapInLocalCache creates a file cache wrapper for local disk storage.
+// Unlike WrapInNFSCache, this doesn't require feature flags and uses a no-op tracer.
+func WrapInLocalCache(rootPath string, inner StorageProvider) *Cache {
+	return &Cache{
+		rootPath:  rootPath,
+		inner:     inner,
+		chunkSize: MemoryChunkSize,
+		flags:     nil,
+		tracer:    noop.NewTracerProvider().Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage"),
+	}
+}
+
+// boolFlag returns the flag value, or the fallback if flags is nil.
+func (c Cache) boolFlag(ctx context.Context, flag featureflags.BoolFlag) bool {
+	if c.flags == nil {
+		return flag.Fallback()
+	}
+
+	return c.flags.BoolFlag(ctx, flag)
+}
+
+// intFlag returns the flag value, or the fallback if flags is nil.
+func (c Cache) intFlag(ctx context.Context, flag featureflags.IntFlag) int {
+	if c.flags == nil {
+		return flag.Fallback()
+	}
+
+	return c.flags.IntFlag(ctx, flag)
+}
+
+func (c Cache) DeleteWithPrefix(ctx context.Context, prefix string) error {
 	// no need to wait for cache deletion before returning
 	go func(ctx context.Context) {
 		c.deleteCachedObjectsWithPrefix(ctx, prefix)
 	}(context.WithoutCancel(ctx))
 
-	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
+	return c.inner.DeleteWithPrefix(ctx, prefix)
 }
 
-func (c cache) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
-	return c.inner.UploadSignedURL(ctx, path, ttl)
-}
-
-func (c cache) OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error) {
-	innerObject, err := c.inner.OpenBlob(ctx, path, objectType)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open object: %w", err)
-	}
-
-	localPath := filepath.Join(c.rootPath, path)
-	if err = os.MkdirAll(localPath, cacheDirPermissions); err != nil {
-		return nil, fmt.Errorf("failed to create cache directory: %w", err)
-	}
-
-	return &cachedBlob{
-		path:      localPath,
-		chunkSize: c.chunkSize,
-		inner:     innerObject,
-		flags:     c.flags,
-		tracer:    c.tracer,
-	}, nil
-}
-
-func (c cache) OpenSeekable(ctx context.Context, path string, objectType SeekableObjectType) (Seekable, error) {
-	innerObject, err := c.inner.OpenSeekable(ctx, path, objectType)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open object: %w", err)
-	}
-
-	localPath := filepath.Join(c.rootPath, path)
-	if err = os.MkdirAll(localPath, cacheDirPermissions); err != nil {
-		return nil, fmt.Errorf("failed to create cache directory: %w", err)
-	}
-
-	return &cachedSeekable{
-		path:      localPath,
-		chunkSize: c.chunkSize,
-		inner:     innerObject,
-		flags:     c.flags,
-		tracer:    c.tracer,
-	}, nil
-}
-
-func (c cache) GetDetails() string {
+func (c Cache) String() string {
 	return fmt.Sprintf("[Caching file storage, base path set to %s, which wraps %s]",
-		c.rootPath, c.inner.GetDetails())
+		c.rootPath, c.inner.String())
 }
 
-func (c cache) deleteCachedObjectsWithPrefix(ctx context.Context, prefix string) {
+func (c Cache) deleteCachedObjectsWithPrefix(ctx context.Context, prefix string) {
 	fullPrefix := filepath.Join(c.rootPath, prefix)
 	if err := os.RemoveAll(fullPrefix); err != nil {
 		logger.L().Error(ctx, "failed to remove object with prefix",
@@ -123,10 +107,6 @@ func (c cache) deleteCachedObjectsWithPrefix(ctx context.Context, prefix string)
 	}
 }
 
-func ignoreEOF(err error) error {
-	if errors.Is(err, io.EOF) {
-		return nil
-	}
-
-	return err
+func (c Cache) PublicUploadURL(ctx context.Context, objectPath string, ttl time.Duration) (string, error) {
+	return c.inner.PublicUploadURL(ctx, objectPath, ttl)
 }

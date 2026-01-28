@@ -18,7 +18,7 @@ func Delete(ctx context.Context, artifactRegistry artifactsregistry.ArtifactsReg
 	childCtx, childSpan := tracer.Start(ctx, "delete-template")
 	defer childSpan.End()
 
-	err := templateStorage.DeleteObjectsWithPrefix(ctx, buildId)
+	err := templateStorage.DeleteWithPrefix(ctx, buildId)
 	if err != nil {
 		return fmt.Errorf("error when deleting template objects: %w", err)
 	}

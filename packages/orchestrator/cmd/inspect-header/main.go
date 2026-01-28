@@ -22,15 +22,12 @@ func main() {
 	}
 
 	var storagePath string
-	var objectType storage.ObjectType
 
 	switch *kind {
 	case "memfile":
 		storagePath = template.StorageMemfileHeaderPath()
-		objectType = storage.MemfileHeaderObjectType
 	case "rootfs":
 		storagePath = template.StorageRootfsHeaderPath()
-		objectType = storage.RootFSHeaderObjectType
 	default:
 		log.Fatalf("invalid kind: %s", *kind)
 
@@ -43,12 +40,12 @@ func main() {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	obj, err := storage.OpenBlob(ctx, storagePath, objectType)
+	headerData, err := storage.GetBlob(ctx, storagePath, nil)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}
 
-	h, err := header.Deserialize(ctx, obj)
+	h, err := header.Deserialize(ctx, headerData)
 	if err != nil {
 		log.Fatalf("failed to deserialize header: %s", err)
 	}
@@ -61,7 +58,7 @@ func main() {
 
 	fmt.Printf("\nMETADATA\n")
 	fmt.Printf("========\n")
-	fmt.Printf("Storage            %s/%s\n", storage.GetDetails(), storagePath)
+	fmt.Printf("Storage            %s/%s\n", storage.String(), storagePath)
 	fmt.Printf("Version            %d\n", h.Metadata.Version)
 	fmt.Printf("Generation         %d\n", h.Metadata.Generation)
 	fmt.Printf("Build ID           %s\n", h.Metadata.BuildId)

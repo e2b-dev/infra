@@ -25,7 +25,7 @@ func TestOpenFile(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, f)
 
-		count, err := f.Write(expected)
+		count, err := f.WriteAt(expected, 0)
 		require.NoError(t, err)
 		assert.Equal(t, len(expected), count)
 
@@ -53,7 +53,7 @@ func TestOpenFile(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, f)
 
-		count, err := f.Write(expected)
+		count, err := f.WriteAt(expected, 0)
 		require.NoError(t, err)
 		assert.Equal(t, len(expected), count)
 

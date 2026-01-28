@@ -31,17 +31,14 @@ func main() {
 
 	var baseStoragePath string
 	var diffStoragePath string
-	var objectType storage.ObjectType
 
 	switch *kind {
 	case "memfile":
 		baseStoragePath = baseTemplate.StorageMemfileHeaderPath()
 		diffStoragePath = diffTemplate.StorageMemfileHeaderPath()
-		objectType = storage.MemfileHeaderObjectType
 	case "rootfs":
 		baseStoragePath = baseTemplate.StorageRootfsHeaderPath()
 		diffStoragePath = diffTemplate.StorageRootfsHeaderPath()
-		objectType = storage.RootFSHeaderObjectType
 	default:
 		log.Fatalf("invalid kind: %s", *kind)
 	}
@@ -53,28 +50,27 @@ func main() {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	baseObj, err := storageProvider.OpenBlob(ctx, baseStoragePath, objectType)
+	baseData, err := storageProvider.GetBlob(ctx, baseStoragePath, nil)
 	if err != nil {
-		log.Fatalf("failed to open object: %s", err)
+		log.Fatalf("failed to get base object: %s", err)
 	}
-
-	diffObj, err := storageProvider.OpenBlob(ctx, diffStoragePath, objectType)
-	if err != nil {
-		log.Fatalf("failed to open object: %s", err)
-	}
-
-	baseHeader, err := header.Deserialize(ctx, baseObj)
+	baseHeader, err := header.Deserialize(ctx, baseData)
 	if err != nil {
 		log.Fatalf("failed to deserialize base header: %s", err)
 	}
 
-	diffHeader, err := header.Deserialize(ctx, diffObj)
+	diffData, err := storageProvider.GetBlob(ctx, diffStoragePath, nil)
+	if err != nil {
+		log.Fatalf("failed to get diff object: %s", err)
+	}
+
+	diffHeader, err := header.Deserialize(ctx, diffData)
 	if err != nil {
 		log.Fatalf("failed to deserialize diff header: %s", err)
 	}
 
 	fmt.Printf("\nBASE METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", storageProvider.GetDetails(), baseStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", storageProvider.String(), baseStoragePath)
 	fmt.Printf("========\n")
 
 	for _, mapping := range baseHeader.Mapping {
@@ -105,7 +101,7 @@ func main() {
 	}
 
 	fmt.Printf("\nDIFF METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", storageProvider.GetDetails(), diffStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", storageProvider.String(), diffStoragePath)
 	fmt.Printf("========\n")
 
 	onlyDiffMappings := make([]*header.BuildMap, 0)

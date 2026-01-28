@@ -60,7 +60,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		fcVersion       = featureflags.DefaultFirecrackerVersion
 		templateID      = "fcb33d09-3141-42c4-8d3b-c2df411681db"
 		buildID         = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
-		useHugePages    = false
+		useHugePages    = true
 		templateVersion = "v2.0.0"
 	)
 
