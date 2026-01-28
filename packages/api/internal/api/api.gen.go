@@ -143,6 +143,18 @@ type ServerInterface interface {
 
 	// (POST /v3/templates)
 	PostV3Templates(c *gin.Context)
+
+	// (GET /volumes)
+	GetVolumes(c *gin.Context)
+
+	// (POST /volumes)
+	PostVolumes(c *gin.Context)
+
+	// (GET /volumes/{volumeID})
+	GetVolumesVolumeID(c *gin.Context, volumeID VolumeID)
+
+	// (PATCH /volumes/{volumeID})
+	PatchVolumesVolumeID(c *gin.Context, volumeID VolumeID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1559,6 +1571,80 @@ func (siw *ServerInterfaceWrapper) PostV3Templates(c *gin.Context) {
 	siw.Handler.PostV3Templates(c)
 }
 
+// GetVolumes operation middleware
+func (siw *ServerInterfaceWrapper) GetVolumes(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetVolumes(c)
+}
+
+// PostVolumes operation middleware
+func (siw *ServerInterfaceWrapper) PostVolumes(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostVolumes(c)
+}
+
+// GetVolumesVolumeID operation middleware
+func (siw *ServerInterfaceWrapper) GetVolumesVolumeID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "volumeID" -------------
+	var volumeID VolumeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetVolumesVolumeID(c, volumeID)
+}
+
+// PatchVolumesVolumeID operation middleware
+func (siw *ServerInterfaceWrapper) PatchVolumesVolumeID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "volumeID" -------------
+	var volumeID VolumeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PatchVolumesVolumeID(c, volumeID)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -1629,4 +1715,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/v2/templates", wrapper.PostV2Templates)
 	router.POST(options.BaseURL+"/v2/templates/:templateID/builds/:buildID", wrapper.PostV2TemplatesTemplateIDBuildsBuildID)
 	router.POST(options.BaseURL+"/v3/templates", wrapper.PostV3Templates)
+	router.GET(options.BaseURL+"/volumes", wrapper.GetVolumes)
+	router.POST(options.BaseURL+"/volumes", wrapper.PostVolumes)
+	router.GET(options.BaseURL+"/volumes/:volumeID", wrapper.GetVolumesVolumeID)
+	router.PATCH(options.BaseURL+"/volumes/:volumeID", wrapper.PatchVolumesVolumeID)
 }

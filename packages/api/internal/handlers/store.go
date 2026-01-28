@@ -65,6 +65,25 @@ type APIStore struct {
 	clusters             *clusters.Pool
 }
 
+func (a *APIStore) GetVolumes(c *gin.Context) {
+	panic("implement me")
+}
+
+func (a *APIStore) PostVolumes(c *gin.Context) {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (a *APIStore) GetVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (a *APIStore) PatchVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
+	// TODO implement me
+	panic("implement me")
+}
+
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
 	logger.L().Info(ctx, "Initializing API store and services")
 

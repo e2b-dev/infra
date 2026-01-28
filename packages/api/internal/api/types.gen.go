@@ -410,6 +410,12 @@ type NewTeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// NewVolume defines model for NewVolume.
+type NewVolume struct {
+	// Name Name of the volume
+	Name string `json:"name"`
+}
+
 // Node defines model for Node.
 type Node struct {
 	// ClusterID Identifier of the cluster
@@ -1088,6 +1094,15 @@ type UpdateTeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// Volume defines model for Volume.
+type Volume struct {
+	// Id ID of the volume
+	Id string `json:"id"`
+
+	// Name Name of the volume
+	Name string `json:"name"`
+}
+
 // AccessTokenID defines model for accessTokenID.
 type AccessTokenID = string
 
@@ -1114,6 +1129,9 @@ type TeamID = string
 
 // TemplateID defines model for templateID.
 type TemplateID = string
+
+// VolumeID defines model for volumeID.
+type VolumeID = string
 
 // N400 defines model for 400.
 type N400 = Error
@@ -1302,6 +1320,9 @@ type PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody = TemplateBuildStartV
 
 // PostV3TemplatesJSONRequestBody defines body for PostV3Templates for application/json ContentType.
 type PostV3TemplatesJSONRequestBody = TemplateBuildRequestV3
+
+// PostVolumesJSONRequestBody defines body for PostVolumes for application/json ContentType.
+type PostVolumesJSONRequestBody = NewVolume
 
 // AsAWSRegistry returns the union data inside the FromImageRegistry as a AWSRegistry
 func (t FromImageRegistry) AsAWSRegistry() (AWSRegistry, error) {
