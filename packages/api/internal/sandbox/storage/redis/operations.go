@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -105,12 +106,6 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 		return nil, fmt.Errorf("failed to get sandboxes from Redis: %w", err)
 	}
 
-	// Build state set for efficient lookup
-	stateSet := make(map[sandbox.State]bool)
-	for _, state := range states {
-		stateSet[state] = true
-	}
-
 	// Deserialize and filter
 	var sandboxes []sandbox.Sandbox
 	for _, rawResult := range results {
@@ -133,7 +128,7 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 		}
 
 		// Filter by state if states are specified
-		if len(states) > 0 && !stateSet[sbx.State] {
+		if len(states) > 0 && !slices.Contains(states, sbx.State) {
 			continue
 		}
 
