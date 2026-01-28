@@ -18,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// PatchTemplatesTemplateID serves to update a template (v1 - for older CLIs, creates backward-compatible aliases)
+// PatchTemplatesTemplateID serves to update a template (v1 - deprecated, for older CLIs, creates backward-compatible aliases)
 func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	a.updateTemplate(c, aliasOrTemplateID, true)
 }

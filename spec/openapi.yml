@@ -2368,6 +2368,7 @@ paths:
           $ref: "#/components/responses/500"
     patch:
       description: Update template
+      deprecated: true
       tags: [templates]
       security:
         - ApiKeyAuth: []
