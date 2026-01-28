@@ -74,6 +74,7 @@ type EnvAlias struct {
 	IsRenamable bool
 	EnvID       string
 	Namespace   *string
+	ID          uuid.UUID
 }
 
 type EnvBuild struct {

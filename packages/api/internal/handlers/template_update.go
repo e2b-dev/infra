@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -16,8 +18,18 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// PatchTemplatesTemplateID serves to update a template
+// PatchTemplatesTemplateID serves to update a template (v1 - deprecated, for older CLIs, creates backward-compatible aliases)
 func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
+	a.updateTemplate(c, aliasOrTemplateID, true)
+}
+
+// PatchV2TemplatesTemplateID serves to update a template (v2 - for new CLIs)
+func (a *APIStore) PatchV2TemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
+	a.updateTemplate(c, aliasOrTemplateID, false)
+}
+
+// updateTemplate contains the shared logic for updating a template
+func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.TemplateID, createBackwardCompatAlias bool) {
 	ctx := c.Request.Context()
 
 	body, err := utils.ParseBody[api.TemplateUpdateRequest](ctx, c)
@@ -49,6 +61,8 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
+		attribute.String("package_version", c.Request.Header.Get("package_version")),
+		attribute.Bool("create_backward_compat_alias", createBackwardCompatAlias),
 		telemetry.WithTemplateID(aliasInfo.TemplateID),
 	)
 
@@ -72,9 +86,23 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 			return
 		}
-	}
 
-	a.templateCache.InvalidateAllTags(aliasInfo.TemplateID)
+		// Invalidate cache immediately after successful DB update
+		a.templateCache.InvalidateAllTags(aliasInfo.TemplateID)
+
+		// For backward compatibility with older CLIs (v1 endpoint), also create a non-namespaced alias
+		// when publishing a template, so older CLIs can still find it by bare alias name
+		if createBackwardCompatAlias && *body.Public {
+			if apiErr := a.createBackwardCompatibleAlias(ctx, identifier, aliasInfo.TemplateID, team.Slug); apiErr != nil {
+				a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+				if apiErr.Err != nil {
+					telemetry.ReportError(ctx, "error creating backward compatible alias", apiErr.Err)
+				}
+
+				return
+			}
+		}
+	}
 
 	telemetry.ReportEvent(ctx, "updated template")
 
@@ -85,4 +113,49 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	logger.L().Info(ctx, "Updated template", logger.WithTemplateID(aliasInfo.TemplateID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
+}
+
+// createBackwardCompatibleAlias creates a non-namespaced alias for older CLIs
+// that don't support namespace-prefixed template names.
+// Uses atomic upsert to avoid race conditions.
+func (a *APIStore) createBackwardCompatibleAlias(
+	ctx context.Context,
+	identifier string,
+	templateID string,
+	teamSlug string,
+) *api.APIError {
+	alias := id.ExtractAlias(identifier)
+	namespacedName := id.WithNamespace(teamSlug, alias)
+
+	// Atomically try to create the alias or get the existing owner
+	upsertedTemplateID, err := a.sqlcDB.UpsertTemplateAliasIfNotExists(ctx, queries.UpsertTemplateAliasIfNotExistsParams{
+		Alias:      alias,
+		TemplateID: templateID,
+		Namespace:  nil,
+	})
+	if err != nil {
+		return &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Error creating backward compatible alias",
+			Err:       err,
+		}
+	}
+
+	// Check if the alias belongs to this template (either newly created or already existed)
+	if upsertedTemplateID != templateID {
+		return &api.APIError{
+			Code: http.StatusConflict,
+			ClientMsg: fmt.Sprintf(
+				"Public template name '%s' is already taken. Your template is available at '%s'. Please update your CLI to remove this error message.",
+				alias, namespacedName),
+			Err: nil,
+		}
+	}
+
+	a.templateCache.InvalidateAlias(nil, alias)
+	logger.L().Info(ctx, "Created or verified backward compatible non-namespaced alias",
+		logger.WithTemplateID(templateID),
+		zap.String("alias", alias))
+
+	return nil
 }

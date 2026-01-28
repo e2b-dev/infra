@@ -138,6 +138,9 @@ type ServerInterface interface {
 	// (POST /v2/templates)
 	PostV2Templates(c *gin.Context)
 
+	// (PATCH /v2/templates/{templateID})
+	PatchV2TemplatesTemplateID(c *gin.Context, templateID TemplateID)
+
 	// (POST /v2/templates/{templateID}/builds/{buildID})
 	PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID TemplateID, buildID BuildID)
 
@@ -1501,6 +1504,38 @@ func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
 	siw.Handler.PostV2Templates(c)
 }
 
+// PatchV2TemplatesTemplateID operation middleware
+func (siw *ServerInterfaceWrapper) PatchV2TemplatesTemplateID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PatchV2TemplatesTemplateID(c, templateID)
+}
+
 // PostV2TemplatesTemplateIDBuildsBuildID operation middleware
 func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context) {
 
@@ -1627,6 +1662,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/templates/:templateID/files/:hash", wrapper.GetTemplatesTemplateIDFilesHash)
 	router.GET(options.BaseURL+"/v2/sandboxes", wrapper.GetV2Sandboxes)
 	router.POST(options.BaseURL+"/v2/templates", wrapper.PostV2Templates)
+	router.PATCH(options.BaseURL+"/v2/templates/:templateID", wrapper.PatchV2TemplatesTemplateID)
 	router.POST(options.BaseURL+"/v2/templates/:templateID/builds/:buildID", wrapper.PostV2TemplatesTemplateIDBuildsBuildID)
 	router.POST(options.BaseURL+"/v3/templates", wrapper.PostV3Templates)
 }
