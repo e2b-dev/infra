@@ -158,6 +158,21 @@ type BuildStatusReason struct {
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
 
+// CheckpointInfo defines model for CheckpointInfo.
+type CheckpointInfo struct {
+	// CheckpointID Unique identifier for the checkpoint (build ID)
+	CheckpointID openapi_types.UUID `json:"checkpointID"`
+
+	// CreatedAt Time when the checkpoint was created
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Name Human-readable name for the checkpoint
+	Name *string `json:"name,omitempty"`
+
+	// SandboxID Identifier of the sandbox this checkpoint belongs to
+	SandboxID string `json:"sandboxID"`
+}
+
 // ConnectSandbox defines model for ConnectSandbox.
 type ConnectSandbox struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
@@ -379,6 +394,12 @@ type NewAccessToken struct {
 	Name string `json:"name"`
 }
 
+// NewCheckpoint defines model for NewCheckpoint.
+type NewCheckpoint struct {
+	// Name Optional human-readable name for the checkpoint
+	Name *string `json:"name,omitempty"`
+}
+
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
 	// AllowInternetAccess Allow sandbox to access the internet. When set to false, it behaves the same as specifying denyOut to 0.0.0.0/0 in the network config.
@@ -401,6 +422,11 @@ type NewSandbox struct {
 
 	// Timeout Time to live for the sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
+}
+
+// NewSnapshot defines model for NewSnapshot.
+type NewSnapshot struct {
+	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 }
 
 // NewTeamAPIKey defines model for NewTeamAPIKey.
@@ -693,6 +719,30 @@ type SandboxState string
 // SandboxesWithMetrics defines model for SandboxesWithMetrics.
 type SandboxesWithMetrics struct {
 	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
+}
+
+// SnapshotInfo defines model for SnapshotInfo.
+type SnapshotInfo struct {
+	// CpuCount CPU cores for the sandbox
+	CpuCount *CPUCount `json:"cpuCount,omitempty"`
+
+	// CreatedAt Time when the snapshot was created
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB *DiskSizeMB `json:"diskSizeMB,omitempty"`
+
+	// MemoryMB Memory for the sandbox in MiB
+	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
+
+	// SandboxID Identifier of the source sandbox
+	SandboxID *string `json:"sandboxID,omitempty"`
+
+	// SnapshotID Unique identifier for the snapshot (can be used as templateID in Sandbox.create)
+	SnapshotID string `json:"snapshotID"`
+
+	// TemplateID Identifier of the original template
+	TemplateID *string `json:"templateID,omitempty"`
 }
 
 // Team defines model for Team.
@@ -1095,6 +1145,9 @@ type ApiKeyID = string
 // BuildID defines model for buildID.
 type BuildID = string
 
+// CheckpointID Identifier of the checkpoint (build ID)
+type CheckpointID = openapi_types.UUID
+
 // NodeID defines model for nodeID.
 type NodeID = string
 
@@ -1106,6 +1159,9 @@ type PaginationNextToken = string
 
 // SandboxID defines model for sandboxID.
 type SandboxID = string
+
+// SnapshotID Identifier of the snapshot (template ID)
+type SnapshotID = string
 
 // TeamID defines model for teamID.
 type TeamID = string
@@ -1175,6 +1231,17 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
+}
+
+// GetSnapshotsParams defines parameters for GetSnapshots.
+type GetSnapshotsParams struct {
+	SandboxID *string `form:"sandboxID,omitempty" json:"sandboxID,omitempty"`
+
+	// Limit Maximum number of items to return per page
+	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// NextToken Cursor to start the list from
+	NextToken *PaginationNextToken `form:"nextToken,omitempty" json:"nextToken,omitempty"`
 }
 
 // GetTeamsTeamIDMetricsParams defines parameters for GetTeamsTeamIDMetrics.
@@ -1265,6 +1332,9 @@ type PostNodesNodeIDJSONRequestBody = NodeStatusChange
 // PostSandboxesJSONRequestBody defines body for PostSandboxes for application/json ContentType.
 type PostSandboxesJSONRequestBody = NewSandbox
 
+// PostSandboxesSandboxIDCheckpointsJSONRequestBody defines body for PostSandboxesSandboxIDCheckpoints for application/json ContentType.
+type PostSandboxesSandboxIDCheckpointsJSONRequestBody = NewCheckpoint
+
 // PostSandboxesSandboxIDConnectJSONRequestBody defines body for PostSandboxesSandboxIDConnect for application/json ContentType.
 type PostSandboxesSandboxIDConnectJSONRequestBody = ConnectSandbox
 
@@ -1273,6 +1343,9 @@ type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefres
 
 // PostSandboxesSandboxIDResumeJSONRequestBody defines body for PostSandboxesSandboxIDResume for application/json ContentType.
 type PostSandboxesSandboxIDResumeJSONRequestBody = ResumedSandbox
+
+// PostSandboxesSandboxIDSnapshotsJSONRequestBody defines body for PostSandboxesSandboxIDSnapshots for application/json ContentType.
+type PostSandboxesSandboxIDSnapshotsJSONRequestBody = NewSnapshot
 
 // PostSandboxesSandboxIDTimeoutJSONRequestBody defines body for PostSandboxesSandboxIDTimeout for application/json ContentType.
 type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJSONBody

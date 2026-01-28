@@ -63,6 +63,18 @@ type ServerInterface interface {
 	// (GET /sandboxes/{sandboxID})
 	GetSandboxesSandboxID(c *gin.Context, sandboxID SandboxID)
 
+	// (GET /sandboxes/{sandboxID}/checkpoints)
+	GetSandboxesSandboxIDCheckpoints(c *gin.Context, sandboxID SandboxID)
+
+	// (POST /sandboxes/{sandboxID}/checkpoints)
+	PostSandboxesSandboxIDCheckpoints(c *gin.Context, sandboxID SandboxID)
+
+	// (DELETE /sandboxes/{sandboxID}/checkpoints/{checkpointID})
+	DeleteSandboxesSandboxIDCheckpointsCheckpointID(c *gin.Context, sandboxID SandboxID, checkpointID CheckpointID)
+
+	// (POST /sandboxes/{sandboxID}/checkpoints/{checkpointID}/restore)
+	PostSandboxesSandboxIDCheckpointsCheckpointIDRestore(c *gin.Context, sandboxID SandboxID, checkpointID CheckpointID)
+
 	// (POST /sandboxes/{sandboxID}/connect)
 	PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID SandboxID)
 
@@ -81,8 +93,20 @@ type ServerInterface interface {
 	// (POST /sandboxes/{sandboxID}/resume)
 	PostSandboxesSandboxIDResume(c *gin.Context, sandboxID SandboxID)
 
+	// (POST /sandboxes/{sandboxID}/snapshots)
+	PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID SandboxID)
+
 	// (POST /sandboxes/{sandboxID}/timeout)
 	PostSandboxesSandboxIDTimeout(c *gin.Context, sandboxID SandboxID)
+
+	// (GET /snapshots)
+	GetSnapshots(c *gin.Context, params GetSnapshotsParams)
+
+	// (DELETE /snapshots/{snapshotID})
+	DeleteSnapshotsSnapshotID(c *gin.Context, snapshotID SnapshotID)
+
+	// (GET /snapshots/{snapshotID})
+	GetSnapshotsSnapshotID(c *gin.Context, snapshotID SnapshotID)
 
 	// (GET /teams)
 	GetTeams(c *gin.Context)
@@ -555,6 +579,144 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxID(c *gin.Context) {
 	siw.Handler.GetSandboxesSandboxID(c, sandboxID)
 }
 
+// GetSandboxesSandboxIDCheckpoints operation middleware
+func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDCheckpoints(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID SandboxID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSandboxesSandboxIDCheckpoints(c, sandboxID)
+}
+
+// PostSandboxesSandboxIDCheckpoints operation middleware
+func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDCheckpoints(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID SandboxID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostSandboxesSandboxIDCheckpoints(c, sandboxID)
+}
+
+// DeleteSandboxesSandboxIDCheckpointsCheckpointID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSandboxesSandboxIDCheckpointsCheckpointID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID SandboxID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "checkpointID" -------------
+	var checkpointID CheckpointID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "checkpointID", c.Param("checkpointID"), &checkpointID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter checkpointID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSandboxesSandboxIDCheckpointsCheckpointID(c, sandboxID, checkpointID)
+}
+
+// PostSandboxesSandboxIDCheckpointsCheckpointIDRestore operation middleware
+func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDCheckpointsCheckpointIDRestore(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID SandboxID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "checkpointID" -------------
+	var checkpointID CheckpointID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "checkpointID", c.Param("checkpointID"), &checkpointID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter checkpointID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostSandboxesSandboxIDCheckpointsCheckpointIDRestore(c, sandboxID, checkpointID)
+}
+
 // PostSandboxesSandboxIDConnect operation middleware
 func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDConnect(c *gin.Context) {
 
@@ -773,6 +935,36 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDResume(c *gin.Context) 
 	siw.Handler.PostSandboxesSandboxIDResume(c, sandboxID)
 }
 
+// PostSandboxesSandboxIDSnapshots operation middleware
+func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDSnapshots(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID SandboxID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostSandboxesSandboxIDSnapshots(c, sandboxID)
+}
+
 // PostSandboxesSandboxIDTimeout operation middleware
 func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context) {
 
@@ -801,6 +993,114 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context)
 	}
 
 	siw.Handler.PostSandboxesSandboxIDTimeout(c, sandboxID)
+}
+
+// GetSnapshots operation middleware
+func (siw *ServerInterfaceWrapper) GetSnapshots(c *gin.Context) {
+
+	var err error
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSnapshotsParams
+
+	// ------------- Optional query parameter "sandboxID" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sandboxID", c.Request.URL.Query(), &params.SandboxID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "nextToken" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "nextToken", c.Request.URL.Query(), &params.NextToken)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nextToken: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSnapshots(c, params)
+}
+
+// DeleteSnapshotsSnapshotID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSnapshotsSnapshotID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "snapshotID" -------------
+	var snapshotID SnapshotID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "snapshotID", c.Param("snapshotID"), &snapshotID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter snapshotID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSnapshotsSnapshotID(c, snapshotID)
+}
+
+// GetSnapshotsSnapshotID operation middleware
+func (siw *ServerInterfaceWrapper) GetSnapshotsSnapshotID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "snapshotID" -------------
+	var snapshotID SnapshotID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "snapshotID", c.Param("snapshotID"), &snapshotID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter snapshotID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSnapshotsSnapshotID(c, snapshotID)
 }
 
 // GetTeams operation middleware
@@ -1637,13 +1937,21 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/sandboxes/metrics", wrapper.GetSandboxesMetrics)
 	router.DELETE(options.BaseURL+"/sandboxes/:sandboxID", wrapper.DeleteSandboxesSandboxID)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID", wrapper.GetSandboxesSandboxID)
+	router.GET(options.BaseURL+"/sandboxes/:sandboxID/checkpoints", wrapper.GetSandboxesSandboxIDCheckpoints)
+	router.POST(options.BaseURL+"/sandboxes/:sandboxID/checkpoints", wrapper.PostSandboxesSandboxIDCheckpoints)
+	router.DELETE(options.BaseURL+"/sandboxes/:sandboxID/checkpoints/:checkpointID", wrapper.DeleteSandboxesSandboxIDCheckpointsCheckpointID)
+	router.POST(options.BaseURL+"/sandboxes/:sandboxID/checkpoints/:checkpointID/restore", wrapper.PostSandboxesSandboxIDCheckpointsCheckpointIDRestore)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/connect", wrapper.PostSandboxesSandboxIDConnect)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID/logs", wrapper.GetSandboxesSandboxIDLogs)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID/metrics", wrapper.GetSandboxesSandboxIDMetrics)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/pause", wrapper.PostSandboxesSandboxIDPause)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/refreshes", wrapper.PostSandboxesSandboxIDRefreshes)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/resume", wrapper.PostSandboxesSandboxIDResume)
+	router.POST(options.BaseURL+"/sandboxes/:sandboxID/snapshots", wrapper.PostSandboxesSandboxIDSnapshots)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/timeout", wrapper.PostSandboxesSandboxIDTimeout)
+	router.GET(options.BaseURL+"/snapshots", wrapper.GetSnapshots)
+	router.DELETE(options.BaseURL+"/snapshots/:snapshotID", wrapper.DeleteSnapshotsSnapshotID)
+	router.GET(options.BaseURL+"/snapshots/:snapshotID", wrapper.GetSnapshotsSnapshotID)
 	router.GET(options.BaseURL+"/teams", wrapper.GetTeams)
 	router.GET(options.BaseURL+"/teams/:teamID/metrics", wrapper.GetTeamsTeamIDMetrics)
 	router.GET(options.BaseURL+"/teams/:teamID/metrics/max", wrapper.GetTeamsTeamIDMetricsMax)

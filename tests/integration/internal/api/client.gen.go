@@ -148,6 +148,20 @@ type ClientInterface interface {
 	// GetSandboxesSandboxID request
 	GetSandboxesSandboxID(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetSandboxesSandboxIDCheckpoints request
+	GetSandboxesSandboxIDCheckpoints(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSandboxesSandboxIDCheckpointsWithBody request with any body
+	PostSandboxesSandboxIDCheckpointsWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostSandboxesSandboxIDCheckpoints(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDCheckpointsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSandboxesSandboxIDCheckpointsCheckpointID request
+	DeleteSandboxesSandboxIDCheckpointsCheckpointID(ctx context.Context, sandboxID SandboxID, checkpointID CheckpointID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSandboxesSandboxIDCheckpointsCheckpointIDRestore request
+	PostSandboxesSandboxIDCheckpointsCheckpointIDRestore(ctx context.Context, sandboxID SandboxID, checkpointID CheckpointID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PostSandboxesSandboxIDConnectWithBody request with any body
 	PostSandboxesSandboxIDConnectWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -172,10 +186,24 @@ type ClientInterface interface {
 
 	PostSandboxesSandboxIDResume(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDResumeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostSandboxesSandboxIDSnapshotsWithBody request with any body
+	PostSandboxesSandboxIDSnapshotsWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostSandboxesSandboxIDSnapshots(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDSnapshotsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PostSandboxesSandboxIDTimeoutWithBody request with any body
 	PostSandboxesSandboxIDTimeoutWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PostSandboxesSandboxIDTimeout(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSnapshots request
+	GetSnapshots(ctx context.Context, params *GetSnapshotsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSnapshotsSnapshotID request
+	DeleteSnapshotsSnapshotID(ctx context.Context, snapshotID SnapshotID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSnapshotsSnapshotID request
+	GetSnapshotsSnapshotID(ctx context.Context, snapshotID SnapshotID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTeams request
 	GetTeams(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -511,6 +539,66 @@ func (c *Client) GetSandboxesSandboxID(ctx context.Context, sandboxID SandboxID,
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetSandboxesSandboxIDCheckpoints(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSandboxesSandboxIDCheckpointsRequest(c.Server, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDCheckpointsWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDCheckpointsRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDCheckpoints(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDCheckpointsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDCheckpointsRequest(c.Server, sandboxID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteSandboxesSandboxIDCheckpointsCheckpointID(ctx context.Context, sandboxID SandboxID, checkpointID CheckpointID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSandboxesSandboxIDCheckpointsCheckpointIDRequest(c.Server, sandboxID, checkpointID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDCheckpointsCheckpointIDRestore(ctx context.Context, sandboxID SandboxID, checkpointID CheckpointID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDCheckpointsCheckpointIDRestoreRequest(c.Server, sandboxID, checkpointID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) PostSandboxesSandboxIDConnectWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostSandboxesSandboxIDConnectRequestWithBody(c.Server, sandboxID, contentType, body)
 	if err != nil {
@@ -619,6 +707,30 @@ func (c *Client) PostSandboxesSandboxIDResume(ctx context.Context, sandboxID San
 	return c.Client.Do(req)
 }
 
+func (c *Client) PostSandboxesSandboxIDSnapshotsWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDSnapshotsRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDSnapshots(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDSnapshotsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDSnapshotsRequest(c.Server, sandboxID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) PostSandboxesSandboxIDTimeoutWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostSandboxesSandboxIDTimeoutRequestWithBody(c.Server, sandboxID, contentType, body)
 	if err != nil {
@@ -633,6 +745,42 @@ func (c *Client) PostSandboxesSandboxIDTimeoutWithBody(ctx context.Context, sand
 
 func (c *Client) PostSandboxesSandboxIDTimeout(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostSandboxesSandboxIDTimeoutRequest(c.Server, sandboxID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSnapshots(ctx context.Context, params *GetSnapshotsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSnapshotsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteSnapshotsSnapshotID(ctx context.Context, snapshotID SnapshotID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSnapshotsSnapshotIDRequest(c.Server, snapshotID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSnapshotsSnapshotID(ctx context.Context, snapshotID SnapshotID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSnapshotsSnapshotIDRequest(c.Server, snapshotID)
 	if err != nil {
 		return nil, err
 	}
@@ -1618,6 +1766,169 @@ func NewGetSandboxesSandboxIDRequest(server string, sandboxID SandboxID) (*http.
 	return req, nil
 }
 
+// NewGetSandboxesSandboxIDCheckpointsRequest generates requests for GetSandboxesSandboxIDCheckpoints
+func NewGetSandboxesSandboxIDCheckpointsRequest(server string, sandboxID SandboxID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sandboxID", runtime.ParamLocationPath, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/checkpoints", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostSandboxesSandboxIDCheckpointsRequest calls the generic PostSandboxesSandboxIDCheckpoints builder with application/json body
+func NewPostSandboxesSandboxIDCheckpointsRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDCheckpointsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSandboxesSandboxIDCheckpointsRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPostSandboxesSandboxIDCheckpointsRequestWithBody generates requests for PostSandboxesSandboxIDCheckpoints with any type of body
+func NewPostSandboxesSandboxIDCheckpointsRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sandboxID", runtime.ParamLocationPath, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/checkpoints", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSandboxesSandboxIDCheckpointsCheckpointIDRequest generates requests for DeleteSandboxesSandboxIDCheckpointsCheckpointID
+func NewDeleteSandboxesSandboxIDCheckpointsCheckpointIDRequest(server string, sandboxID SandboxID, checkpointID CheckpointID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sandboxID", runtime.ParamLocationPath, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "checkpointID", runtime.ParamLocationPath, checkpointID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/checkpoints/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostSandboxesSandboxIDCheckpointsCheckpointIDRestoreRequest generates requests for PostSandboxesSandboxIDCheckpointsCheckpointIDRestore
+func NewPostSandboxesSandboxIDCheckpointsCheckpointIDRestoreRequest(server string, sandboxID SandboxID, checkpointID CheckpointID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sandboxID", runtime.ParamLocationPath, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "checkpointID", runtime.ParamLocationPath, checkpointID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/checkpoints/%s/restore", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewPostSandboxesSandboxIDConnectRequest calls the generic PostSandboxesSandboxIDConnect builder with application/json body
 func NewPostSandboxesSandboxIDConnectRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDConnectJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1937,6 +2248,53 @@ func NewPostSandboxesSandboxIDResumeRequestWithBody(server string, sandboxID San
 	return req, nil
 }
 
+// NewPostSandboxesSandboxIDSnapshotsRequest calls the generic PostSandboxesSandboxIDSnapshots builder with application/json body
+func NewPostSandboxesSandboxIDSnapshotsRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDSnapshotsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSandboxesSandboxIDSnapshotsRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPostSandboxesSandboxIDSnapshotsRequestWithBody generates requests for PostSandboxesSandboxIDSnapshots with any type of body
+func NewPostSandboxesSandboxIDSnapshotsRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sandboxID", runtime.ParamLocationPath, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/snapshots", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewPostSandboxesSandboxIDTimeoutRequest calls the generic PostSandboxesSandboxIDTimeout builder with application/json body
 func NewPostSandboxesSandboxIDTimeoutRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1980,6 +2338,155 @@ func NewPostSandboxesSandboxIDTimeoutRequestWithBody(server string, sandboxID Sa
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetSnapshotsRequest generates requests for GetSnapshots
+func NewGetSnapshotsRequest(server string, params *GetSnapshotsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/snapshots")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.SandboxID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sandboxID", runtime.ParamLocationQuery, *params.SandboxID); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.NextToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "nextToken", runtime.ParamLocationQuery, *params.NextToken); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteSnapshotsSnapshotIDRequest generates requests for DeleteSnapshotsSnapshotID
+func NewDeleteSnapshotsSnapshotIDRequest(server string, snapshotID SnapshotID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "snapshotID", runtime.ParamLocationPath, snapshotID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/snapshots/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSnapshotsSnapshotIDRequest generates requests for GetSnapshotsSnapshotID
+func NewGetSnapshotsSnapshotIDRequest(server string, snapshotID SnapshotID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "snapshotID", runtime.ParamLocationPath, snapshotID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/snapshots/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -3253,6 +3760,20 @@ type ClientWithResponsesInterface interface {
 	// GetSandboxesSandboxIDWithResponse request
 	GetSandboxesSandboxIDWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDResponse, error)
 
+	// GetSandboxesSandboxIDCheckpointsWithResponse request
+	GetSandboxesSandboxIDCheckpointsWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDCheckpointsResponse, error)
+
+	// PostSandboxesSandboxIDCheckpointsWithBodyWithResponse request with any body
+	PostSandboxesSandboxIDCheckpointsWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDCheckpointsResponse, error)
+
+	PostSandboxesSandboxIDCheckpointsWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDCheckpointsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDCheckpointsResponse, error)
+
+	// DeleteSandboxesSandboxIDCheckpointsCheckpointIDWithResponse request
+	DeleteSandboxesSandboxIDCheckpointsCheckpointIDWithResponse(ctx context.Context, sandboxID SandboxID, checkpointID CheckpointID, reqEditors ...RequestEditorFn) (*DeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse, error)
+
+	// PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreWithResponse request
+	PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreWithResponse(ctx context.Context, sandboxID SandboxID, checkpointID CheckpointID, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse, error)
+
 	// PostSandboxesSandboxIDConnectWithBodyWithResponse request with any body
 	PostSandboxesSandboxIDConnectWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDConnectResponse, error)
 
@@ -3277,10 +3798,24 @@ type ClientWithResponsesInterface interface {
 
 	PostSandboxesSandboxIDResumeWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDResumeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDResumeResponse, error)
 
+	// PostSandboxesSandboxIDSnapshotsWithBodyWithResponse request with any body
+	PostSandboxesSandboxIDSnapshotsWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDSnapshotsResponse, error)
+
+	PostSandboxesSandboxIDSnapshotsWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDSnapshotsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDSnapshotsResponse, error)
+
 	// PostSandboxesSandboxIDTimeoutWithBodyWithResponse request with any body
 	PostSandboxesSandboxIDTimeoutWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDTimeoutResponse, error)
 
 	PostSandboxesSandboxIDTimeoutWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDTimeoutResponse, error)
+
+	// GetSnapshotsWithResponse request
+	GetSnapshotsWithResponse(ctx context.Context, params *GetSnapshotsParams, reqEditors ...RequestEditorFn) (*GetSnapshotsResponse, error)
+
+	// DeleteSnapshotsSnapshotIDWithResponse request
+	DeleteSnapshotsSnapshotIDWithResponse(ctx context.Context, snapshotID SnapshotID, reqEditors ...RequestEditorFn) (*DeleteSnapshotsSnapshotIDResponse, error)
+
+	// GetSnapshotsSnapshotIDWithResponse request
+	GetSnapshotsSnapshotIDWithResponse(ctx context.Context, snapshotID SnapshotID, reqEditors ...RequestEditorFn) (*GetSnapshotsSnapshotIDResponse, error)
 
 	// GetTeamsWithResponse request
 	GetTeamsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTeamsResponse, error)
@@ -3752,6 +4287,107 @@ func (r GetSandboxesSandboxIDResponse) StatusCode() int {
 	return 0
 }
 
+type GetSandboxesSandboxIDCheckpointsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]CheckpointInfo
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSandboxesSandboxIDCheckpointsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSandboxesSandboxIDCheckpointsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostSandboxesSandboxIDCheckpointsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *CheckpointInfo
+	JSON400      *N400
+	JSON401      *N401
+	JSON404      *N404
+	JSON429      *Error
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostSandboxesSandboxIDCheckpointsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostSandboxesSandboxIDCheckpointsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *N401
+	JSON404      *N404
+	JSON409      *N409
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type PostSandboxesSandboxIDConnectResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3904,6 +4540,32 @@ func (r PostSandboxesSandboxIDResumeResponse) StatusCode() int {
 	return 0
 }
 
+type PostSandboxesSandboxIDSnapshotsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *SnapshotInfo
+	JSON400      *N400
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostSandboxesSandboxIDSnapshotsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostSandboxesSandboxIDSnapshotsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type PostSandboxesSandboxIDTimeoutResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3922,6 +4584,83 @@ func (r PostSandboxesSandboxIDTimeoutResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PostSandboxesSandboxIDTimeoutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSnapshotsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		// NextToken Token for the next page of results
+		NextToken *string        `json:"nextToken,omitempty"`
+		Snapshots []SnapshotInfo `json:"snapshots"`
+	}
+	JSON401 *N401
+	JSON500 *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSnapshotsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSnapshotsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteSnapshotsSnapshotIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSnapshotsSnapshotIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSnapshotsSnapshotIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSnapshotsSnapshotIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SnapshotInfo
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSnapshotsSnapshotIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSnapshotsSnapshotIDResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4630,6 +5369,50 @@ func (c *ClientWithResponses) GetSandboxesSandboxIDWithResponse(ctx context.Cont
 	return ParseGetSandboxesSandboxIDResponse(rsp)
 }
 
+// GetSandboxesSandboxIDCheckpointsWithResponse request returning *GetSandboxesSandboxIDCheckpointsResponse
+func (c *ClientWithResponses) GetSandboxesSandboxIDCheckpointsWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDCheckpointsResponse, error) {
+	rsp, err := c.GetSandboxesSandboxIDCheckpoints(ctx, sandboxID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSandboxesSandboxIDCheckpointsResponse(rsp)
+}
+
+// PostSandboxesSandboxIDCheckpointsWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDCheckpointsResponse
+func (c *ClientWithResponses) PostSandboxesSandboxIDCheckpointsWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDCheckpointsResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDCheckpointsWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDCheckpointsResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostSandboxesSandboxIDCheckpointsWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDCheckpointsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDCheckpointsResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDCheckpoints(ctx, sandboxID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDCheckpointsResponse(rsp)
+}
+
+// DeleteSandboxesSandboxIDCheckpointsCheckpointIDWithResponse request returning *DeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse
+func (c *ClientWithResponses) DeleteSandboxesSandboxIDCheckpointsCheckpointIDWithResponse(ctx context.Context, sandboxID SandboxID, checkpointID CheckpointID, reqEditors ...RequestEditorFn) (*DeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse, error) {
+	rsp, err := c.DeleteSandboxesSandboxIDCheckpointsCheckpointID(ctx, sandboxID, checkpointID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse(rsp)
+}
+
+// PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreWithResponse request returning *PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse
+func (c *ClientWithResponses) PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreWithResponse(ctx context.Context, sandboxID SandboxID, checkpointID CheckpointID, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDCheckpointsCheckpointIDRestore(ctx, sandboxID, checkpointID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse(rsp)
+}
+
 // PostSandboxesSandboxIDConnectWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDConnectResponse
 func (c *ClientWithResponses) PostSandboxesSandboxIDConnectWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDConnectResponse, error) {
 	rsp, err := c.PostSandboxesSandboxIDConnectWithBody(ctx, sandboxID, contentType, body, reqEditors...)
@@ -4708,6 +5491,23 @@ func (c *ClientWithResponses) PostSandboxesSandboxIDResumeWithResponse(ctx conte
 	return ParsePostSandboxesSandboxIDResumeResponse(rsp)
 }
 
+// PostSandboxesSandboxIDSnapshotsWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDSnapshotsResponse
+func (c *ClientWithResponses) PostSandboxesSandboxIDSnapshotsWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDSnapshotsResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDSnapshotsWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDSnapshotsResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostSandboxesSandboxIDSnapshotsWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDSnapshotsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDSnapshotsResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDSnapshots(ctx, sandboxID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDSnapshotsResponse(rsp)
+}
+
 // PostSandboxesSandboxIDTimeoutWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDTimeoutResponse
 func (c *ClientWithResponses) PostSandboxesSandboxIDTimeoutWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDTimeoutResponse, error) {
 	rsp, err := c.PostSandboxesSandboxIDTimeoutWithBody(ctx, sandboxID, contentType, body, reqEditors...)
@@ -4723,6 +5523,33 @@ func (c *ClientWithResponses) PostSandboxesSandboxIDTimeoutWithResponse(ctx cont
 		return nil, err
 	}
 	return ParsePostSandboxesSandboxIDTimeoutResponse(rsp)
+}
+
+// GetSnapshotsWithResponse request returning *GetSnapshotsResponse
+func (c *ClientWithResponses) GetSnapshotsWithResponse(ctx context.Context, params *GetSnapshotsParams, reqEditors ...RequestEditorFn) (*GetSnapshotsResponse, error) {
+	rsp, err := c.GetSnapshots(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSnapshotsResponse(rsp)
+}
+
+// DeleteSnapshotsSnapshotIDWithResponse request returning *DeleteSnapshotsSnapshotIDResponse
+func (c *ClientWithResponses) DeleteSnapshotsSnapshotIDWithResponse(ctx context.Context, snapshotID SnapshotID, reqEditors ...RequestEditorFn) (*DeleteSnapshotsSnapshotIDResponse, error) {
+	rsp, err := c.DeleteSnapshotsSnapshotID(ctx, snapshotID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSnapshotsSnapshotIDResponse(rsp)
+}
+
+// GetSnapshotsSnapshotIDWithResponse request returning *GetSnapshotsSnapshotIDResponse
+func (c *ClientWithResponses) GetSnapshotsSnapshotIDWithResponse(ctx context.Context, snapshotID SnapshotID, reqEditors ...RequestEditorFn) (*GetSnapshotsSnapshotIDResponse, error) {
+	rsp, err := c.GetSnapshotsSnapshotID(ctx, snapshotID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSnapshotsSnapshotIDResponse(rsp)
 }
 
 // GetTeamsWithResponse request returning *GetTeamsResponse
@@ -5654,6 +6481,201 @@ func ParseGetSandboxesSandboxIDResponse(rsp *http.Response) (*GetSandboxesSandbo
 	return response, nil
 }
 
+// ParseGetSandboxesSandboxIDCheckpointsResponse parses an HTTP response from a GetSandboxesSandboxIDCheckpointsWithResponse call
+func ParseGetSandboxesSandboxIDCheckpointsResponse(rsp *http.Response) (*GetSandboxesSandboxIDCheckpointsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSandboxesSandboxIDCheckpointsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []CheckpointInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostSandboxesSandboxIDCheckpointsResponse parses an HTTP response from a PostSandboxesSandboxIDCheckpointsWithResponse call
+func ParsePostSandboxesSandboxIDCheckpointsResponse(rsp *http.Response) (*PostSandboxesSandboxIDCheckpointsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostSandboxesSandboxIDCheckpointsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest CheckpointInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse parses an HTTP response from a DeleteSandboxesSandboxIDCheckpointsCheckpointIDWithResponse call
+func ParseDeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse(rsp *http.Response) (*DeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSandboxesSandboxIDCheckpointsCheckpointIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse parses an HTTP response from a PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreWithResponse call
+func ParsePostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse(rsp *http.Response) (*PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostSandboxesSandboxIDCheckpointsCheckpointIDRestoreResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParsePostSandboxesSandboxIDConnectResponse parses an HTTP response from a PostSandboxesSandboxIDConnectWithResponse call
 func ParsePostSandboxesSandboxIDConnectResponse(rsp *http.Response) (*PostSandboxesSandboxIDConnectResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -5950,6 +6972,60 @@ func ParsePostSandboxesSandboxIDResumeResponse(rsp *http.Response) (*PostSandbox
 	return response, nil
 }
 
+// ParsePostSandboxesSandboxIDSnapshotsResponse parses an HTTP response from a PostSandboxesSandboxIDSnapshotsWithResponse call
+func ParsePostSandboxesSandboxIDSnapshotsResponse(rsp *http.Response) (*PostSandboxesSandboxIDSnapshotsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostSandboxesSandboxIDSnapshotsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SnapshotInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParsePostSandboxesSandboxIDTimeoutResponse parses an HTTP response from a PostSandboxesSandboxIDTimeoutWithResponse call
 func ParsePostSandboxesSandboxIDTimeoutResponse(rsp *http.Response) (*PostSandboxesSandboxIDTimeoutResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -5964,6 +7040,137 @@ func ParsePostSandboxesSandboxIDTimeoutResponse(rsp *http.Response) (*PostSandbo
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSnapshotsResponse parses an HTTP response from a GetSnapshotsWithResponse call
+func ParseGetSnapshotsResponse(rsp *http.Response) (*GetSnapshotsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSnapshotsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			// NextToken Token for the next page of results
+			NextToken *string        `json:"nextToken,omitempty"`
+			Snapshots []SnapshotInfo `json:"snapshots"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSnapshotsSnapshotIDResponse parses an HTTP response from a DeleteSnapshotsSnapshotIDWithResponse call
+func ParseDeleteSnapshotsSnapshotIDResponse(rsp *http.Response) (*DeleteSnapshotsSnapshotIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSnapshotsSnapshotIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSnapshotsSnapshotIDResponse parses an HTTP response from a GetSnapshotsSnapshotIDWithResponse call
+func ParseGetSnapshotsSnapshotIDResponse(rsp *http.Response) (*GetSnapshotsSnapshotIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSnapshotsSnapshotIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SnapshotInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

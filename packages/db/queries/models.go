@@ -63,10 +63,12 @@ type Env struct {
 	// Number of times the env was spawned
 	SpawnCount int64
 	// Timestamp of the last time the env was spawned
-	LastSpawnedAt *time.Time
-	TeamID        uuid.UUID
-	CreatedBy     *uuid.UUID
-	ClusterID     *uuid.UUID
+	LastSpawnedAt   *time.Time
+	TeamID          uuid.UUID
+	CreatedBy       *uuid.UUID
+	ClusterID       *uuid.UUID
+	Source          string
+	SourceSandboxID *string
 }
 
 type EnvAlias struct {

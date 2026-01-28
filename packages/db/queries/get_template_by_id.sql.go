@@ -13,7 +13,7 @@ import (
 )
 
 const getTemplateByID = `-- name: GetTemplateByID :one
-SELECT t.id, t.created_at, t.updated_at, t.public, t.build_count, t.spawn_count, t.last_spawned_at, t.team_id, t.created_by, t.cluster_id
+SELECT t.id, t.created_at, t.updated_at, t.public, t.build_count, t.spawn_count, t.last_spawned_at, t.team_id, t.created_by, t.cluster_id, t.source, t.source_sandbox_id
 FROM "public"."envs" t
 WHERE t.id = $1
   AND NOT EXISTS (
@@ -37,12 +37,14 @@ func (q *Queries) GetTemplateByID(ctx context.Context, id string) (Env, error) {
 		&i.TeamID,
 		&i.CreatedBy,
 		&i.ClusterID,
+		&i.Source,
+		&i.SourceSandboxID,
 	)
 	return i, err
 }
 
 const getTemplateByIDWithAliases = `-- name: GetTemplateByIDWithAliases :one
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, al.aliases, al.names
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, e.source_sandbox_id, al.aliases, al.names
 FROM "public"."envs" e
 CROSS JOIN LATERAL (
     SELECT 
@@ -60,18 +62,20 @@ WHERE e.id = $1
 `
 
 type GetTemplateByIDWithAliasesRow struct {
-	ID            string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	Public        bool
-	BuildCount    int32
-	SpawnCount    int64
-	LastSpawnedAt *time.Time
-	TeamID        uuid.UUID
-	CreatedBy     *uuid.UUID
-	ClusterID     *uuid.UUID
-	Aliases       []string
-	Names         []string
+	ID              string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	Public          bool
+	BuildCount      int32
+	SpawnCount      int64
+	LastSpawnedAt   *time.Time
+	TeamID          uuid.UUID
+	CreatedBy       *uuid.UUID
+	ClusterID       *uuid.UUID
+	Source          string
+	SourceSandboxID *string
+	Aliases         []string
+	Names           []string
 }
 
 func (q *Queries) GetTemplateByIDWithAliases(ctx context.Context, id string) (GetTemplateByIDWithAliasesRow, error) {
@@ -88,6 +92,8 @@ func (q *Queries) GetTemplateByIDWithAliases(ctx context.Context, id string) (Ge
 		&i.TeamID,
 		&i.CreatedBy,
 		&i.ClusterID,
+		&i.Source,
+		&i.SourceSandboxID,
 		&i.Aliases,
 		&i.Names,
 	)
