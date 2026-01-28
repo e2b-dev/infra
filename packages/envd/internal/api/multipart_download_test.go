@@ -26,6 +26,9 @@ func setupTestAPIForDownload(t *testing.T) *API {
 	logger := zerolog.New(io.Discard)
 	defaults := &execcontext.Defaults{}
 	api := New(&logger, defaults, nil, true)
+	t.Cleanup(func() {
+		api.Close()
+	})
 	return api
 }
 

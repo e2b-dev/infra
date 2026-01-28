@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -200,7 +201,11 @@ func (a *API) GetFilesDownloadDownloadId(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	// Check if session is already closed
+	// Increment active reads counter to prevent file from being closed during read
+	session.activeReads.Add(1)
+	defer session.activeReads.Add(-1)
+
+	// Check if session is already closed (after incrementing counter to ensure proper ordering)
 	if session.closed.Load() {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("downloadId", downloadIdStr).Msg("download session is already closed")
 		jsonError(w, http.StatusConflict, fmt.Errorf("download session is already closed"))
@@ -242,8 +247,17 @@ func (a *API) GetFilesDownloadDownloadId(w http.ResponseWriter, r *http.Request,
 		partSize = session.TotalSize - offset
 	}
 
+	// Get buffer from pool or allocate if needed for larger sizes
+	var buffer []byte
+	if partSize <= defaultDownloadPartSize {
+		poolBuf := a.downloadBuffers.Get().([]byte)
+		buffer = poolBuf[:partSize]
+		defer a.downloadBuffers.Put(poolBuf[:defaultDownloadPartSize]) // Return full-size buffer to pool
+	} else {
+		buffer = make([]byte, partSize)
+	}
+
 	// Read the part data - ReadAt is thread-safe
-	buffer := make([]byte, partSize)
 	n, err := session.SrcFile.ReadAt(buffer, offset)
 	if err != nil && n == 0 {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error reading part data")
@@ -285,7 +299,7 @@ func (a *API) DeleteFilesDownloadDownloadId(w http.ResponseWriter, r *http.Reque
 	a.downloadsLock.Lock()
 	session, exists := a.downloads[downloadIdStr]
 	if exists {
-		// Mark as closed to prevent reads during cleanup
+		// Mark as closed to prevent new reads
 		if !session.closed.CompareAndSwap(false, true) {
 			// Already being closed by another request
 			a.downloadsLock.Unlock()
@@ -305,6 +319,11 @@ func (a *API) DeleteFilesDownloadDownloadId(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Wait for active reads to complete before closing the file
+	for session.activeReads.Load() > 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	// Close the file handle
 	if err := session.SrcFile.Close(); err != nil {
 		a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("downloadId", downloadIdStr).Msg("error closing file")
@@ -319,24 +338,46 @@ func (a *API) DeleteFilesDownloadDownloadId(w http.ResponseWriter, r *http.Reque
 }
 
 // cleanupExpiredDownloads periodically removes expired download sessions
-func (a *API) cleanupExpiredDownloads() {
+func (a *API) cleanupExpiredDownloads(ctx context.Context) {
 	ticker := time.NewTicker(downloadSessionCleanupInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		a.downloadsLock.Lock()
-		now := time.Now()
-		for id, session := range a.downloads {
-			if now.Sub(session.CreatedAt) > downloadSessionTTL {
+	for {
+		select {
+		case <-ctx.Done():
+			// Cleanup all remaining sessions on shutdown
+			a.downloadsLock.Lock()
+			for id, session := range a.downloads {
 				if session.closed.CompareAndSwap(false, true) {
+					// Wait for active reads
+					for session.activeReads.Load() > 0 {
+						time.Sleep(10 * time.Millisecond)
+					}
 					session.SrcFile.Close()
 					delete(a.downloads, id)
-					a.logger.Debug().
-						Str("downloadId", id).
-						Msg("cleaned up expired download session")
 				}
 			}
+			a.downloadsLock.Unlock()
+			return
+		case <-ticker.C:
+			a.downloadsLock.Lock()
+			now := time.Now()
+			for id, session := range a.downloads {
+				if now.Sub(session.CreatedAt) > downloadSessionTTL {
+					if session.closed.CompareAndSwap(false, true) {
+						// Wait for active reads before closing
+						for session.activeReads.Load() > 0 {
+							time.Sleep(10 * time.Millisecond)
+						}
+						session.SrcFile.Close()
+						delete(a.downloads, id)
+						a.logger.Debug().
+							Str("downloadId", id).
+							Msg("cleaned up expired download session")
+					}
+				}
+			}
+			a.downloadsLock.Unlock()
 		}
-		a.downloadsLock.Unlock()
 	}
 }

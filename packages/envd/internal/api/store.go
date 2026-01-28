@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -25,7 +26,7 @@ type MultipartDownloadSession struct {
 	NumParts   int
 	CreatedAt  time.Time
 	closed     atomic.Bool
-	mu         sync.Mutex
+	activeReads atomic.Int32 // Reference count for active read operations
 }
 
 type API struct {
@@ -41,24 +42,42 @@ type API struct {
 	initLock    sync.Mutex
 
 	// Multipart download session storage
-	downloads     map[string]*MultipartDownloadSession
-	downloadsLock sync.RWMutex
+	downloads       map[string]*MultipartDownloadSession
+	downloadsLock   sync.RWMutex
+	downloadBuffers sync.Pool // Buffer pool for download operations
+	cleanupCancel   context.CancelFunc
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	api := &API{
-		logger:      l,
-		defaults:    defaults,
-		mmdsChan:    mmdsChan,
-		isNotFC:     isNotFC,
-		lastSetTime: utils.NewAtomicMax(),
-		downloads:   make(map[string]*MultipartDownloadSession),
+		logger:        l,
+		defaults:      defaults,
+		mmdsChan:      mmdsChan,
+		isNotFC:       isNotFC,
+		lastSetTime:   utils.NewAtomicMax(),
+		downloads:     make(map[string]*MultipartDownloadSession),
+		cleanupCancel: cancel,
+		downloadBuffers: sync.Pool{
+			New: func() any {
+				// Allocate default part size buffer
+				return make([]byte, defaultDownloadPartSize)
+			},
+		},
 	}
 
 	// Start cleanup goroutine for expired download sessions
-	go api.cleanupExpiredDownloads()
+	go api.cleanupExpiredDownloads(ctx)
 
 	return api
+}
+
+// Close stops the cleanup goroutine and releases resources
+func (a *API) Close() {
+	if a.cleanupCancel != nil {
+		a.cleanupCancel()
+	}
 }
 
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {
