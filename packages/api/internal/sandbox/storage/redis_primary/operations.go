@@ -58,7 +58,9 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 
 	_, err = s.memoryBackend.Update(ctx, teamID, sandboxID, updateFunc)
 	if err != nil {
-		logger.L().Warn(ctx, "failed to update sandbox in memory", zap.Error(err), logger.WithSandboxID(sandboxID))
+		if !errors.Is(err, sandbox.ErrCannotShortenTTL) {
+			logger.L().Warn(ctx, "failed to update sandbox in memory", zap.Error(err), logger.WithSandboxID(sandboxID))
+		}
 	}
 
 	return sbx, nil
