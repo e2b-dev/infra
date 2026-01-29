@@ -35,6 +35,8 @@ runs:
         echo "TESTS_SANDBOX_USER_ID=${TESTS_SANDBOX_USER_ID}" >> .env.test
         echo "TESTS_SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}" >> .env.test
         echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRET}" >> .env.test
+        # TODO: [ENG-3453] Remove this once we fully migrate to redis
+        echo "REDIS_PRIMARY_SANDBOX_BACKEND=true" >> .env.test
         set -x
         make migrate
         make -C tests/integration seed
