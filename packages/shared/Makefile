@@ -7,6 +7,7 @@ generate-fc:
 
 .PHONE: generate
 generate: generate-fc
+	go generate ./...
 
 .PHONY: build-base-template
 build-base-template:

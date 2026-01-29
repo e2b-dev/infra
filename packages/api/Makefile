@@ -13,10 +13,7 @@ endif
 
 .PHONY: generate
 generate:
-	$(codegen) -old-config-style -generate gin --package api $(openapi) > internal/api/api.gen.go
-	$(codegen) -old-config-style -generate types --package api $(openapi) > internal/api/types.gen.go
-	$(codegen) -old-config-style -generate spec --package api $(openapi) > internal/api/spec.gen.go
-	$(codegen) -old-config-style -generate client --package api $(openapi) > internal/api/client.gen.go
+	go generate ./...
 
 .PHONY: build
 build:
