@@ -511,25 +511,20 @@ download_prebuilt_binaries() {
 build_binaries() {
     echo "Building binaries..."
 
-    # Build envd
-    ENVD_DEBUG_PATH="$ENVD_DIR/bin/debug/envd"
+    # Build envd - MUST use regular build (not build-debug) for static linking
+    # The debug build uses CGO_ENABLED=1 which produces a dynamically linked binary
+    # that won't work inside the minimal Firecracker VM
     ENVD_PATH="$ENVD_DIR/bin/envd"
-    if [[ -f "$ENVD_DEBUG_PATH" ]]; then
+    if [[ -f "$ENVD_PATH" ]]; then
         echo -e "  ${GREEN}✓${NC} envd already built"
     else
-        echo "  Building envd..."
-        if make -C "$ENVD_DIR" build-debug > /dev/null 2>&1; then
+        echo "  Building envd (statically linked for VM)..."
+        if make -C "$ENVD_DIR" build > /dev/null 2>&1; then
             echo -e "  ${GREEN}✓${NC} envd built"
         else
             echo -e "${RED}Error: Failed to build envd${NC}"
             exit 1
         fi
-    fi
-
-    # Create symlink for envd
-    if [[ ! -L "$ENVD_PATH" ]] && [[ ! -f "$ENVD_PATH" ]]; then
-        ln -s "$ENVD_DEBUG_PATH" "$ENVD_PATH"
-        echo -e "  ${GREEN}✓${NC} envd symlink created"
     fi
 
     # Build API
