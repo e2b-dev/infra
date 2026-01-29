@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	loki "github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/logproto"
+	loki "github.com/grafana/loki/v3/pkg/logcli/client"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
