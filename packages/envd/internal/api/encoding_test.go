@@ -47,42 +47,42 @@ func TestParseEncodingWithQuality(t *testing.T) {
 		t.Parallel()
 		eq := parseEncodingWithQuality("gzip")
 		assert.Equal(t, "gzip", eq.encoding)
-		assert.Equal(t, 1.0, eq.quality)
+		assert.InDelta(t, 1.0, eq.quality, 0.001)
 	})
 
 	t.Run("parses quality value", func(t *testing.T) {
 		t.Parallel()
 		eq := parseEncodingWithQuality("gzip;q=0.5")
 		assert.Equal(t, "gzip", eq.encoding)
-		assert.Equal(t, 0.5, eq.quality)
+		assert.InDelta(t, 0.5, eq.quality, 0.001)
 	})
 
 	t.Run("parses quality value with whitespace", func(t *testing.T) {
 		t.Parallel()
 		eq := parseEncodingWithQuality("gzip ; q=0.8")
 		assert.Equal(t, "gzip", eq.encoding)
-		assert.Equal(t, 0.8, eq.quality)
+		assert.InDelta(t, 0.8, eq.quality, 0.001)
 	})
 
 	t.Run("handles q=0", func(t *testing.T) {
 		t.Parallel()
 		eq := parseEncodingWithQuality("gzip;q=0")
 		assert.Equal(t, "gzip", eq.encoding)
-		assert.Equal(t, 0.0, eq.quality)
+		assert.InDelta(t, 0.0, eq.quality, 0.001)
 	})
 
 	t.Run("handles invalid quality value", func(t *testing.T) {
 		t.Parallel()
 		eq := parseEncodingWithQuality("gzip;q=invalid")
 		assert.Equal(t, "gzip", eq.encoding)
-		assert.Equal(t, 1.0, eq.quality) // defaults to 1.0 on parse error
+		assert.InDelta(t, 1.0, eq.quality, 0.001) // defaults to 1.0 on parse error
 	})
 
 	t.Run("trims whitespace from encoding", func(t *testing.T) {
 		t.Parallel()
 		eq := parseEncodingWithQuality("  gzip  ")
 		assert.Equal(t, "gzip", eq.encoding)
-		assert.Equal(t, 1.0, eq.quality)
+		assert.InDelta(t, 1.0, eq.quality, 0.001)
 	})
 
 	t.Run("normalizes encoding to lowercase", func(t *testing.T) {
@@ -95,7 +95,7 @@ func TestParseEncodingWithQuality(t *testing.T) {
 		t.Parallel()
 		eq := parseEncodingWithQuality("Gzip;q=0.5")
 		assert.Equal(t, "gzip", eq.encoding)
-		assert.Equal(t, 0.5, eq.quality)
+		assert.InDelta(t, 0.5, eq.quality, 0.001)
 	})
 }
 
@@ -128,16 +128,16 @@ func TestParseContentEncoding(t *testing.T) {
 
 	t.Run("returns empty string when no header", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodPost, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 
 		encoding, err := parseContentEncoding(req)
 		require.NoError(t, err)
-		assert.Equal(t, "", encoding)
+		assert.Empty(t, encoding)
 	})
 
 	t.Run("returns gzip when Content-Encoding is gzip", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodPost, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 		req.Header.Set("Content-Encoding", "gzip")
 
 		encoding, err := parseContentEncoding(req)
@@ -147,7 +147,7 @@ func TestParseContentEncoding(t *testing.T) {
 
 	t.Run("returns gzip when Content-Encoding is GZIP (case-insensitive)", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodPost, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 		req.Header.Set("Content-Encoding", "GZIP")
 
 		encoding, err := parseContentEncoding(req)
@@ -157,7 +157,7 @@ func TestParseContentEncoding(t *testing.T) {
 
 	t.Run("returns gzip when Content-Encoding is Gzip (case-insensitive)", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodPost, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 		req.Header.Set("Content-Encoding", "Gzip")
 
 		encoding, err := parseContentEncoding(req)
@@ -167,17 +167,17 @@ func TestParseContentEncoding(t *testing.T) {
 
 	t.Run("returns empty string for identity encoding", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodPost, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 		req.Header.Set("Content-Encoding", "identity")
 
 		encoding, err := parseContentEncoding(req)
 		require.NoError(t, err)
-		assert.Equal(t, "", encoding)
+		assert.Empty(t, encoding)
 	})
 
 	t.Run("returns error for unsupported encoding", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodPost, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 		req.Header.Set("Content-Encoding", "br")
 
 		_, err := parseContentEncoding(req)
@@ -188,7 +188,7 @@ func TestParseContentEncoding(t *testing.T) {
 
 	t.Run("handles gzip with quality value", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodPost, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 		req.Header.Set("Content-Encoding", "gzip;q=1.0")
 
 		encoding, err := parseContentEncoding(req)
@@ -202,16 +202,16 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 	t.Run("returns empty string when no header", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Equal(t, "", encoding)
+		assert.Empty(t, encoding)
 	})
 
 	t.Run("returns gzip when Accept-Encoding is gzip", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "gzip")
 
 		encoding, err := parseAcceptEncoding(req)
@@ -221,7 +221,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 	t.Run("returns gzip when Accept-Encoding is GZIP (case-insensitive)", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "GZIP")
 
 		encoding, err := parseAcceptEncoding(req)
@@ -231,7 +231,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 	t.Run("returns gzip when gzip is among multiple encodings", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "deflate, gzip, br")
 
 		encoding, err := parseAcceptEncoding(req)
@@ -241,7 +241,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 	t.Run("returns gzip with quality value", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "gzip;q=1.0")
 
 		encoding, err := parseAcceptEncoding(req)
@@ -251,27 +251,27 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 	t.Run("returns empty string for identity encoding", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "identity")
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Equal(t, "", encoding)
+		assert.Empty(t, encoding)
 	})
 
 	t.Run("returns empty string for wildcard encoding", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "*")
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Equal(t, "", encoding)
+		assert.Empty(t, encoding)
 	})
 
 	t.Run("returns error for unsupported encoding only", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "br")
 
 		_, err := parseAcceptEncoding(req)
@@ -282,7 +282,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 	t.Run("returns error when only unsupported encodings", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "deflate, br")
 
 		_, err := parseAcceptEncoding(req)
@@ -292,7 +292,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 	t.Run("selects gzip when it has highest quality", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "br;q=0.5, gzip;q=1.0, deflate;q=0.8")
 
 		encoding, err := parseAcceptEncoding(req)
@@ -302,7 +302,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 	t.Run("selects gzip even with lower quality when others unsupported", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "br;q=1.0, gzip;q=0.5")
 
 		encoding, err := parseAcceptEncoding(req)
@@ -312,27 +312,27 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 	t.Run("returns identity when it has higher quality than gzip", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "gzip;q=0.5, identity;q=1.0")
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Equal(t, "", encoding) // identity means no compression
+		assert.Empty(t, encoding) // identity means no compression
 	})
 
 	t.Run("skips encoding with q=0", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "gzip;q=0, identity")
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Equal(t, "", encoding) // gzip rejected, identity accepted
+		assert.Empty(t, encoding) // gzip rejected, identity accepted
 	})
 
 	t.Run("returns error when gzip explicitly rejected and no other supported", func(t *testing.T) {
 		t.Parallel()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "gzip;q=0, br")
 
 		_, err := parseAcceptEncoding(req)
@@ -347,7 +347,7 @@ func TestGetDecompressedBody(t *testing.T) {
 	t.Run("returns original body when no Content-Encoding header", func(t *testing.T) {
 		t.Parallel()
 		content := []byte("test content")
-		req, _ := http.NewRequest(http.MethodPost, "/test", bytes.NewReader(content))
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", bytes.NewReader(content))
 
 		body, err := getDecompressedBody(req)
 		require.NoError(t, err)
@@ -369,7 +369,7 @@ func TestGetDecompressedBody(t *testing.T) {
 		err = gw.Close()
 		require.NoError(t, err)
 
-		req, _ := http.NewRequest(http.MethodPost, "/test", bytes.NewReader(compressed.Bytes()))
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", bytes.NewReader(compressed.Bytes()))
 		req.Header.Set("Content-Encoding", "gzip")
 
 		body, err := getDecompressedBody(req)
@@ -386,7 +386,7 @@ func TestGetDecompressedBody(t *testing.T) {
 	t.Run("returns error for invalid gzip data", func(t *testing.T) {
 		t.Parallel()
 		invalidGzip := []byte("this is not gzip data")
-		req, _ := http.NewRequest(http.MethodPost, "/test", bytes.NewReader(invalidGzip))
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", bytes.NewReader(invalidGzip))
 		req.Header.Set("Content-Encoding", "gzip")
 
 		_, err := getDecompressedBody(req)
@@ -397,7 +397,7 @@ func TestGetDecompressedBody(t *testing.T) {
 	t.Run("returns original body for identity encoding", func(t *testing.T) {
 		t.Parallel()
 		content := []byte("test content")
-		req, _ := http.NewRequest(http.MethodPost, "/test", bytes.NewReader(content))
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", bytes.NewReader(content))
 		req.Header.Set("Content-Encoding", "identity")
 
 		body, err := getDecompressedBody(req)
@@ -412,7 +412,7 @@ func TestGetDecompressedBody(t *testing.T) {
 	t.Run("returns error for unsupported encoding", func(t *testing.T) {
 		t.Parallel()
 		content := []byte("test content")
-		req, _ := http.NewRequest(http.MethodPost, "/test", bytes.NewReader(content))
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", bytes.NewReader(content))
 		req.Header.Set("Content-Encoding", "br")
 
 		_, err := getDecompressedBody(req)
@@ -431,7 +431,7 @@ func TestGetDecompressedBody(t *testing.T) {
 		err = gw.Close()
 		require.NoError(t, err)
 
-		req, _ := http.NewRequest(http.MethodPost, "/test", bytes.NewReader(compressed.Bytes()))
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", bytes.NewReader(compressed.Bytes()))
 		req.Header.Set("Content-Encoding", "gzip;q=1.0")
 
 		body, err := getDecompressedBody(req)

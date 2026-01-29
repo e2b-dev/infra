@@ -140,6 +140,7 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 			// Headers already sent, can only log the error. Client will receive truncated response.
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing gzip response")
 		}
+
 		return
 	}
 

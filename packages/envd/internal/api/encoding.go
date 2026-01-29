@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,13 +26,7 @@ type encodingWithQuality struct {
 // isSupportedEncoding checks if the given encoding is in the supported list.
 // Per RFC 7231, content-coding values are case-insensitive.
 func isSupportedEncoding(encoding string) bool {
-	encoding = strings.ToLower(encoding)
-	for _, supported := range SupportedEncodings {
-		if encoding == supported {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(SupportedEncodings, strings.ToLower(encoding))
 }
 
 // parseEncodingWithQuality parses an encoding value and extracts the quality.
@@ -46,7 +41,7 @@ func parseEncodingWithQuality(value string) encodingWithQuality {
 		value = strings.TrimSpace(value[:idx])
 
 		// Parse q=X.X parameter
-		for _, param := range strings.Split(params, ";") {
+		for param := range strings.SplitSeq(params, ";") {
 			param = strings.TrimSpace(param)
 			if strings.HasPrefix(strings.ToLower(param), "q=") {
 				if q, err := strconv.ParseFloat(param[2:], 64); err == nil {
@@ -99,7 +94,7 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 
 	// Parse all encodings with their quality values
 	var encodings []encodingWithQuality
-	for _, value := range strings.Split(header, ",") {
+	for value := range strings.SplitSeq(header, ",") {
 		eq := parseEncodingWithQuality(value)
 		encodings = append(encodings, eq)
 	}
@@ -132,6 +127,7 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 // multiCloser wraps a reader and closes multiple underlying closers.
 type multiCloser struct {
 	io.Reader
+
 	closers []io.Closer
 }
 
@@ -142,6 +138,7 @@ func (m *multiCloser) Close() error {
 			firstErr = err
 		}
 	}
+
 	return firstErr
 }
 
