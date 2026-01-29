@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -212,10 +213,19 @@ func (o *Orchestrator) CreateSandbox(
 
 	sbxVolumeMounts, err := o.convertVolumeMounts(ctx, team.ID, volumeMounts)
 	if err != nil {
+		var vne VolumesNotFoundError
+		if errors.As(err, &vne) {
+			return sandbox.Sandbox{}, &api.APIError{
+				Code:      http.StatusBadRequest,
+				ClientMsg: "Volume(s) not found",
+				Err:       fmt.Errorf("volume(s) not found: %q", strings.Join(vne.VolumeNames, ", ")),
+			}
+		}
+
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
-			ClientMsg: "Failed to convert volumes",
-			Err:       fmt.Errorf("failed to convert volumes: %w", err),
+			ClientMsg: "Failed to convert volume mounts",
+			Err:       fmt.Errorf("failed to convert volume mounts: %w", err),
 		}
 	}
 
@@ -346,31 +356,20 @@ func (o *Orchestrator) CreateSandbox(
 	return sbx, nil
 }
 
-func (o *Orchestrator) convertVolumeMounts(ctx context.Context, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) ([]*orchestrator.SandboxVolumeMount, error) {
-	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumeMounts))
-
-	dbVolumesMap, err := o.getVolumesMap(ctx, teamID, volumeMounts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get volumes map: %w", err)
-	}
-
-	for _, v := range volumeMounts {
-		actualVolume, ok := dbVolumesMap[v.Name]
-		if !ok {
-			return nil, fmt.Errorf("volume '%s' not found", v.Name)
-		}
-
-		results = append(results, &orchestrator.SandboxVolumeMount{
-			Name: v.Name,
-			Path: v.Path,
-			Type: actualVolume.VolumeType,
-		})
-	}
-
-	return results, nil
+type VolumesNotFoundError struct {
+	VolumeNames []string
 }
 
-func (o *Orchestrator) getVolumesMap(ctx context.Context, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) (map[string]queries.Volume, error) {
+func (e VolumesNotFoundError) Error() string {
+	volumes := strings.Join(e.VolumeNames, ", ")
+	return fmt.Sprintf("volumes not found: %s", volumes)
+}
+
+func (o *Orchestrator) convertVolumeMounts(
+	ctx context.Context,
+	teamID uuid.UUID,
+	volumeMounts []api.SandboxVolumeMount,
+) ([]*orchestrator.SandboxVolumeMount, error) {
 	// dedupe mounted volumes
 	uniqueVolumeNames := make(map[string]struct{}, len(volumeMounts))
 	for _, v := range volumeMounts {
@@ -398,5 +397,26 @@ func (o *Orchestrator) getVolumesMap(ctx context.Context, teamID uuid.UUID, volu
 		dbVolumesMap[v.Name] = v
 	}
 
-	return dbVolumesMap, nil
+	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumeMounts))
+
+	var missingVolumes []string
+	for _, v := range volumeMounts {
+		actualVolume, ok := dbVolumesMap[v.Name]
+		if !ok {
+			missingVolumes = append(missingVolumes, v.Name)
+			continue
+		}
+
+		results = append(results, &orchestrator.SandboxVolumeMount{
+			Name: v.Name,
+			Path: v.Path,
+			Type: actualVolume.VolumeType,
+		})
+	}
+
+	if len(missingVolumes) > 0 {
+		return nil, VolumesNotFoundError{missingVolumes}
+	}
+
+	return results, nil
 }
