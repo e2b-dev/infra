@@ -82,41 +82,45 @@ func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.Template
 		telemetry.WithTemplateID(aliasInfo.TemplateID),
 	)
 
-	// Update template
-	if body.Public != nil {
-		_, err := a.sqlcDB.UpdateTemplate(ctx, queries.UpdateTemplateParams{
-			TemplateIDOrAlias: aliasInfo.TemplateID,
-			TeamID:            team.ID,
-			Public:            *body.Public,
-		})
-		if err != nil {
-			if dberrors.IsNotFoundError(err) {
-				a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
-				telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(aliasInfo.TemplateID))
+	// Update template only if public field is provided
+	if body.Public == nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "No update fields provided")
 
-				return nil
-			}
+		return nil
+	}
 
-			telemetry.ReportError(ctx, "error when updating template", err)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error updating template")
+	_, err = a.sqlcDB.UpdateTemplate(ctx, queries.UpdateTemplateParams{
+		TemplateIDOrAlias: aliasInfo.TemplateID,
+		TeamID:            team.ID,
+		Public:            *body.Public,
+	})
+	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
+			telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(aliasInfo.TemplateID))
 
 			return nil
 		}
 
-		// Invalidate cache immediately after successful DB update
-		a.templateCache.InvalidateAllTags(aliasInfo.TemplateID)
+		telemetry.ReportError(ctx, "error when updating template", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error updating template")
 
-		// For backward compatibility with older CLIs (v1 endpoint), also create a non-namespaced alias
-		// when publishing a template, so older CLIs can still find it by bare alias name
-		if createBackwardCompatAlias && *body.Public {
-			if apiErr := a.createBackwardCompatibleAlias(ctx, identifier, aliasInfo.TemplateID, team.Slug); apiErr != nil {
-				a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-				if apiErr.Err != nil {
-					telemetry.ReportError(ctx, "error creating backward compatible alias", apiErr.Err)
-				}
+		return nil
+	}
 
-				return nil
+	// Invalidate cache immediately after successful DB update
+	a.templateCache.InvalidateAllTags(aliasInfo.TemplateID)
+
+	// For backward compatibility with older CLIs (v1 endpoint), also create a non-namespaced alias
+	// when publishing a template, so older CLIs can still find it by bare alias name
+	if createBackwardCompatAlias && *body.Public {
+		if apiErr := a.createBackwardCompatibleAlias(ctx, identifier, aliasInfo.TemplateID, team.Slug); apiErr != nil {
+			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+			if apiErr.Err != nil {
+				telemetry.ReportError(ctx, "error creating backward compatible alias", apiErr.Err)
 			}
+
+			return nil
 		}
 	}
 
