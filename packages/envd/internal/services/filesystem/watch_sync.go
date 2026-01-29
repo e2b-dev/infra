@@ -170,7 +170,7 @@ func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.Cre
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error checking mount status: %w", err))
 	}
 	if isNetworkMount {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("cannot watch path on network filesystem: %s", watchPath))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cannot watch path on network filesystem: %s", watchPath))
 	}
 
 	watcherId := "w" + id.Generate()

@@ -49,7 +49,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("error checking mount status: %w", err))
 	}
 	if isNetworkMount {
-		return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("cannot watch path on network filesystem: %s", watchPath))
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cannot watch path on network filesystem: %s", watchPath))
 	}
 
 	w, err := fsnotify.NewWatcher()
