@@ -14,22 +14,12 @@ import (
 
 // Filesystem magic numbers from Linux kernel (include/uapi/linux/magic.h)
 const (
-	NfsSuperMagic   = 0x6969
-	CifsMagic       = 0xFF534D42
-	SmbSuperMagic   = 0x517B
-	Smb2MagicNumber = 0xFE534D42
-	FuseSuperMagic  = 0x65735546
+	nfsSuperMagic   = 0x6969
+	cifsMagic       = 0xFF534D42
+	smbSuperMagic   = 0x517B
+	smb2MagicNumber = 0xFE534D42
+	fuseSuperMagic  = 0x65735546
 )
-
-// IsNetworkFilesystemType checks if the given filesystem type (from statfs) is a network filesystem.
-func IsNetworkFilesystemType[T ~int32 | ~int64 | ~uint32 | ~uint64](fsType T) bool {
-	switch int64(fsType) {
-	case NfsSuperMagic, CifsMagic, SmbSuperMagic, Smb2MagicNumber, FuseSuperMagic:
-		return true
-	default:
-		return false
-	}
-}
 
 // IsPathOnNetworkMount checks if the given path is on a network filesystem mount.
 // Returns true if the path is on NFS, CIFS, SMB, or FUSE filesystem.
@@ -39,7 +29,12 @@ func IsPathOnNetworkMount(path string) (bool, error) {
 		return false, fmt.Errorf("failed to statfs %s: %w", path, err)
 	}
 
-	return IsNetworkFilesystemType(statfs.Type), nil
+	switch statfs.Type {
+	case nfsSuperMagic, cifsMagic, smbSuperMagic, smb2MagicNumber, fuseSuperMagic:
+		return true, nil
+	default:
+		return false, nil
+	}
 }
 
 // getEntryType determines the type of file entry based on its mode and path.

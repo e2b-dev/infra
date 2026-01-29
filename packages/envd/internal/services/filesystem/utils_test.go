@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"testing"
@@ -13,34 +14,6 @@ import (
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
 
-func TestIsNetworkFilesystemType(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		fsType   int64
-		expected bool
-	}{
-		{"NFS", NfsSuperMagic, true},
-		{"CIFS", CifsMagic, true},
-		{"SMB", SmbSuperMagic, true},
-		{"SMB2", Smb2MagicNumber, true},
-		{"FUSE", FuseSuperMagic, true},
-		{"ext4", 0xEF53, false},
-		{"tmpfs", 0x01021994, false},
-		{"overlay", 0x794c7630, false},
-		{"xfs", 0x58465342, false},
-		{"zero", 0, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.expected, IsNetworkFilesystemType(tt.fsType))
-		})
-	}
-}
-
 func TestIsPathOnNetworkMount(t *testing.T) {
 	t.Parallel()
 
@@ -49,6 +22,43 @@ func TestIsPathOnNetworkMount(t *testing.T) {
 	isNetwork, err := IsPathOnNetworkMount(tempDir)
 	require.NoError(t, err)
 	assert.False(t, isNetwork, "temp directory should not be on a network mount")
+}
+
+func TestIsPathOnNetworkMount_FuseMount(t *testing.T) {
+	// Skip if bindfs is not available
+	if _, err := exec.LookPath("bindfs"); err != nil {
+		t.Skip("bindfs not available, skipping FUSE mount test")
+	}
+
+	// Skip if fusermount is not available (needed for unmounting)
+	if _, err := exec.LookPath("fusermount"); err != nil {
+		t.Skip("fusermount not available, skipping FUSE mount test")
+	}
+
+	// Create source and mount directories
+	sourceDir := t.TempDir()
+	mountDir := t.TempDir()
+
+	// Mount sourceDir onto mountDir using bindfs (FUSE)
+	cmd := exec.Command("bindfs", sourceDir, mountDir)
+	if err := cmd.Run(); err != nil {
+		t.Skipf("failed to mount bindfs (may need permissions): %v", err)
+	}
+
+	// Ensure we unmount on cleanup
+	t.Cleanup(func() {
+		exec.Command("fusermount", "-u", mountDir).Run()
+	})
+
+	// Test that the FUSE mount is detected
+	isNetwork, err := IsPathOnNetworkMount(mountDir)
+	require.NoError(t, err)
+	assert.True(t, isNetwork, "FUSE mount should be detected as network filesystem")
+
+	// Test that the source directory is NOT detected as network mount
+	isNetworkSource, err := IsPathOnNetworkMount(sourceDir)
+	require.NoError(t, err)
+	assert.False(t, isNetworkSource, "source directory should not be detected as network filesystem")
 }
 
 func TestGetEntryType(t *testing.T) {
