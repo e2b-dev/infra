@@ -20,23 +20,39 @@ import (
 
 // PatchTemplatesTemplateID serves to update a template (v1 - deprecated, for older CLIs, creates backward-compatible aliases)
 func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
-	a.updateTemplate(c, aliasOrTemplateID, true)
+	if a.updateTemplate(c, aliasOrTemplateID, true) == nil {
+		return
+	}
+
+	c.JSON(http.StatusOK, nil)
 }
 
 // PatchV2TemplatesTemplateID serves to update a template (v2 - for new CLIs)
 func (a *APIStore) PatchV2TemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
-	a.updateTemplate(c, aliasOrTemplateID, false)
+	result := a.updateTemplate(c, aliasOrTemplateID, false)
+	if result == nil {
+		return
+	}
+
+	c.JSON(http.StatusOK, api.TemplateUpdateResponse{
+		Names: result.Names,
+	})
 }
 
-// updateTemplate contains the shared logic for updating a template
-func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.TemplateID, createBackwardCompatAlias bool) {
+type templateUpdateResult struct {
+	Names []string
+}
+
+// updateTemplate contains the shared logic for updating a template.
+// Returns nil if an error occurred (error response already sent), or the result on success.
+func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.TemplateID, createBackwardCompatAlias bool) *templateUpdateResult {
 	ctx := c.Request.Context()
 
 	body, err := utils.ParseBody[api.TemplateUpdateRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 
-		return
+		return nil
 	}
 
 	identifier, _, err := id.ParseName(aliasOrTemplateID)
@@ -44,7 +60,7 @@ func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.Template
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid template ID", err)
 
-		return
+		return nil
 	}
 
 	// Resolve template and get the owning team
@@ -55,7 +71,7 @@ func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.Template
 			telemetry.ReportCriticalError(ctx, "error resolving template", apiErr.Err)
 		}
 
-		return
+		return nil
 	}
 
 	telemetry.SetAttributes(ctx,
@@ -78,13 +94,13 @@ func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.Template
 				a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found or you don't have access to it", aliasOrTemplateID))
 				telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(aliasInfo.TemplateID))
 
-				return
+				return nil
 			}
 
 			telemetry.ReportError(ctx, "error when updating template", err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error updating template")
 
-			return
+			return nil
 		}
 
 		// Invalidate cache immediately after successful DB update
@@ -99,7 +115,7 @@ func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.Template
 					telemetry.ReportError(ctx, "error creating backward compatible alias", apiErr.Err)
 				}
 
-				return
+				return nil
 			}
 		}
 	}
@@ -112,7 +128,17 @@ func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.Template
 
 	logger.L().Info(ctx, "Updated template", logger.WithTemplateID(aliasInfo.TemplateID), logger.WithTeamID(team.ID.String()))
 
-	c.JSON(http.StatusOK, nil)
+	template, err := a.sqlcDB.GetTemplateByIDWithAliases(ctx, aliasInfo.TemplateID)
+	if err != nil {
+		telemetry.ReportError(ctx, "error getting template names after update", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error retrieving template after update")
+
+		return nil
+	}
+
+	return &templateUpdateResult{
+		Names: template.Names,
+	}
 }
 
 // createBackwardCompatibleAlias creates a non-namespaced alias for older CLIs
