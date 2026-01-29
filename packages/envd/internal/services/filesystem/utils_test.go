@@ -13,6 +13,34 @@ import (
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
 
+func TestIsNetworkFilesystemType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		fsType   int64
+		expected bool
+	}{
+		{"NFS", NfsSuperMagic, true},
+		{"CIFS", CifsMagic, true},
+		{"SMB", SmbSuperMagic, true},
+		{"SMB2", Smb2MagicNumber, true},
+		{"FUSE", FuseSuperMagic, true},
+		{"ext4", 0xEF53, false},
+		{"tmpfs", 0x01021994, false},
+		{"overlay", 0x794c7630, false},
+		{"xfs", 0x58465342, false},
+		{"zero", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, IsNetworkFilesystemType(tt.fsType))
+		})
+	}
+}
+
 func TestIsPathOnNetworkMount(t *testing.T) {
 	t.Parallel()
 
