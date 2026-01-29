@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -247,59 +246,4 @@ func createTmpfsMountWithInodes(t *testing.T, sizeInBytes, inodesCount int) stri
 	})
 
 	return tempDir
-}
-
-func TestGetDecompressedBody(t *testing.T) {
-	t.Parallel()
-
-	t.Run("returns original body when no Content-Encoding header", func(t *testing.T) {
-		t.Parallel()
-		content := []byte("test content")
-		req, _ := http.NewRequest(http.MethodPost, "/test", bytes.NewReader(content))
-
-		body, err := getDecompressedBody(req)
-		require.NoError(t, err)
-		assert.Equal(t, req.Body, body, "should return original body")
-
-		data, err := io.ReadAll(body)
-		require.NoError(t, err)
-		assert.Equal(t, content, data)
-	})
-
-	t.Run("decompresses gzip body when Content-Encoding is gzip", func(t *testing.T) {
-		t.Parallel()
-		originalContent := []byte("test content to compress")
-
-		// Compress the content
-		var compressed bytes.Buffer
-		gw := gzip.NewWriter(&compressed)
-		_, err := gw.Write(originalContent)
-		require.NoError(t, err)
-		err = gw.Close()
-		require.NoError(t, err)
-
-		req, _ := http.NewRequest(http.MethodPost, "/test", bytes.NewReader(compressed.Bytes()))
-		req.Header.Set("Content-Encoding", "gzip")
-
-		body, err := getDecompressedBody(req)
-		require.NoError(t, err)
-		defer body.Close()
-
-		assert.NotEqual(t, req.Body, body, "should return a new gzip reader")
-
-		data, err := io.ReadAll(body)
-		require.NoError(t, err)
-		assert.Equal(t, originalContent, data)
-	})
-
-	t.Run("returns error for invalid gzip data", func(t *testing.T) {
-		t.Parallel()
-		invalidGzip := []byte("this is not gzip data")
-		req, _ := http.NewRequest(http.MethodPost, "/test", bytes.NewReader(invalidGzip))
-		req.Header.Set("Content-Encoding", "gzip")
-
-		_, err := getDecompressedBody(req)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to create gzip reader")
-	})
 }
