@@ -13,6 +13,16 @@ import (
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
 
+func TestIsPathOnNetworkMount(t *testing.T) {
+	t.Parallel()
+
+	// Test with a regular directory (should not be on network mount)
+	tempDir := t.TempDir()
+	isNetwork, err := IsPathOnNetworkMount(tempDir)
+	require.NoError(t, err)
+	assert.False(t, isNetwork, "temp directory should not be on a network mount")
+}
+
 func TestGetEntryType(t *testing.T) {
 	t.Parallel()
 
