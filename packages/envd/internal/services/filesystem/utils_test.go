@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"os/user"
@@ -25,6 +26,8 @@ func TestIsPathOnNetworkMount(t *testing.T) {
 }
 
 func TestIsPathOnNetworkMount_FuseMount(t *testing.T) {
+	t.Parallel()
+
 	// Skip if bindfs is not available
 	if _, err := exec.LookPath("bindfs"); err != nil {
 		t.Skip("bindfs not available, skipping FUSE mount test")
@@ -40,14 +43,15 @@ func TestIsPathOnNetworkMount_FuseMount(t *testing.T) {
 	mountDir := t.TempDir()
 
 	// Mount sourceDir onto mountDir using bindfs (FUSE)
-	cmd := exec.Command("bindfs", sourceDir, mountDir)
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "bindfs", sourceDir, mountDir)
 	if err := cmd.Run(); err != nil {
 		t.Skipf("failed to mount bindfs (may need permissions): %v", err)
 	}
 
 	// Ensure we unmount on cleanup
 	t.Cleanup(func() {
-		exec.Command("fusermount", "-u", mountDir).Run()
+		_ = exec.CommandContext(context.Background(), "fusermount", "-u", mountDir).Run()
 	})
 
 	// Test that the FUSE mount is detected
