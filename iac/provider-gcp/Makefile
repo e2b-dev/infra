@@ -35,7 +35,6 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, GCP_PROJECT_ID) \
 	$(call tfvar, GCP_REGION) \
 	$(call tfvar, GCP_ZONE) \
-	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, ADDITIONAL_API_SERVICES_JSON) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \

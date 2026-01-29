@@ -43,9 +43,6 @@ variable "api_nat_min_ports_per_vm" {
   type = number
 }
 
-variable "cloudflare_api_token_secret_name" {
-  type = string
-}
 
 variable "api_port" {
   type = object({
@@ -122,9 +119,4 @@ variable "additional_api_path_rules" {
 variable "additional_ports" {
   description = "Additional ports to expose on the load balancer."
   type        = list(number)
-}
-
-variable "internal_domain_name" {
-  description = "The internal domain name for the private load balancer (e.g., e2b.internal)"
-  type        = string
 }

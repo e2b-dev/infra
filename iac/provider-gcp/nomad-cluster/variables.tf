@@ -160,19 +160,12 @@ variable "docker_contexts_bucket_name" {
 }
 
 variable "domain_name" {
-  type        = string
-  description = "The domain name where e2b will run"
+  type = string
 }
 
 variable "additional_domains" {
   type        = list(string)
   description = "Additional domains which can be used to access the e2b cluster"
-}
-
-variable "internal_domain_name" {
-  type        = string
-  description = "The internal domain name for the private load balancer (e.g., e2b.internal)"
-  default     = "e2b.internal"
 }
 
 variable "cluster_setup_bucket_name" {
@@ -256,9 +249,6 @@ variable "filestore_cache_enabled" {
   default = false
 }
 
-variable "cloudflare_api_token_secret_name" {
-  type = string
-}
 
 variable "filestore_cache_tier" {
   type    = string
