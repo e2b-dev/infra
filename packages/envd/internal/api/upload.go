@@ -193,6 +193,20 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		l.Msg("File write")
 	}()
 
+	// Handle gzip-encoded request body
+	body, err := getDecompressedBody(r)
+	if err != nil {
+		errMsg = fmt.Errorf("error decompressing request body: %w", err)
+		errorCode = http.StatusBadRequest
+		jsonError(w, errorCode, errMsg)
+
+		return
+	}
+	if body != r.Body {
+		defer body.Close()
+	}
+	r.Body = body
+
 	f, err := r.MultipartReader()
 	if err != nil {
 		errMsg = fmt.Errorf("error parsing multipart form: %w", err)

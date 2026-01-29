@@ -1,8 +1,10 @@
 package api
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/user"
@@ -101,6 +103,16 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		return
 	}
 
+	// Validate Accept-Encoding header
+	encoding, err := parseAcceptEncoding(r)
+	if err != nil {
+		errMsg = err
+		errorCode = http.StatusBadRequest
+		jsonError(w, errorCode, errMsg)
+
+		return
+	}
+
 	file, err := os.Open(resolvedPath)
 	if err != nil {
 		errMsg = fmt.Errorf("error opening file '%s': %w", resolvedPath, err)
@@ -110,6 +122,23 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		return
 	}
 	defer file.Close()
+
+	// Serve with gzip encoding if requested
+	if encoding == "gzip" {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusOK)
+
+		gw := gzip.NewWriter(w)
+		defer gw.Close()
+
+		_, err = io.Copy(gw, file)
+		if err != nil {
+			// Headers already sent, can only log the error
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing gzip response")
+		}
+		return
+	}
 
 	http.ServeContent(w, r, path, time.Now(), file)
 }
