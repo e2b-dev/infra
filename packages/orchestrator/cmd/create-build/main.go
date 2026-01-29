@@ -61,6 +61,7 @@ func main() {
 	disk := flag.Int("disk", 1024, "disk MB")
 	hugePages := flag.Bool("hugepages", true, "use 2MB huge pages for memory (false = 4KB pages)")
 	startCmd := flag.String("start-cmd", "", "start command")
+	setupCmd := flag.String("setup-cmd", "", "setup command to run during build (e.g., install deps)")
 	readyCmd := flag.String("ready-cmd", "", "ready check command")
 	verbose := flag.Bool("v", false, "verbose output")
 	flag.Parse()
@@ -98,7 +99,7 @@ func main() {
 		log.Fatalf("network config: %v", err)
 	}
 
-	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *readyCmd, localMode, *verbose, builderConfig, networkConfig)
+	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, localMode, *verbose, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -179,7 +180,7 @@ func doBuild(
 	templateID, buildID, fromBuild, kernel, fc string,
 	vcpu, memory, disk int,
 	hugePages bool,
-	startCmd, readyCmd string,
+	startCmd, setupCmd, readyCmd string,
 	localMode, verbose bool,
 	builderConfig cfg.BuilderConfig,
 	networkConfig network.Config,
@@ -300,8 +301,16 @@ func doBuild(
 	l = l.With(zap.String("envID", templateID)).With(zap.String("buildID", buildID))
 
 	force := true
-	if startCmd == "" {
-		startCmd = "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'"
+
+	// Build steps list for setup commands
+	var steps []*templatemanager.TemplateStep
+	if setupCmd != "" {
+		fmt.Printf("Setup command (as root): %s\n", setupCmd)
+		// Add a RUN step that executes as root
+		steps = append(steps, &templatemanager.TemplateStep{
+			Type: "RUN",
+			Args: []string{setupCmd, "root"}, // command, user
+		})
 	}
 
 	tmpl := config.TemplateConfig{
@@ -316,6 +325,7 @@ func doBuild(
 		ReadyCmd:           readyCmd,
 		KernelVersion:      kernel,
 		FirecrackerVersion: fc,
+		Steps:              steps,
 	}
 
 	pageSizeStr := "2MB (hugepages)"
