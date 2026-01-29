@@ -742,10 +742,13 @@ build_base_template() {
 
     # Set environment for template building
     export STORAGE_PROVIDER=Local
+    export ARTIFACTS_REGISTRY_PROVIDER=Local
     export LOCAL_TEMPLATE_STORAGE_BASE_PATH="$TEMPLATE_STORAGE"
     export HOST_ENVD_PATH="$ENVD_DIR/bin/envd"
     export HOST_KERNELS_DIR="$KERNELS_DIR"
     export FIRECRACKER_VERSIONS_DIR="$FC_VERSIONS_DIR"
+    export ORCHESTRATOR_BASE_PATH="$ORCHESTRATOR_DIR/tmp"
+    export SANDBOX_DIR="$ORCHESTRATOR_DIR/tmp/sandbox"
     export POSTGRES_CONNECTION_STRING="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 
     # Generate IDs
@@ -756,9 +759,9 @@ build_base_template() {
     echo "  Build ID: $BUILD_ID"
     echo "  Building template (this may take a few minutes)..."
 
-    if go run "$ORCHESTRATOR_DIR/cmd/build-template/main.go" \
+    if go run "$ORCHESTRATOR_DIR/cmd/create-build/main.go" \
         -template "$TEMPLATE_ID" \
-        -build "$BUILD_ID" \
+        -to-build "$BUILD_ID" \
         -storage "$ORCHESTRATOR_DIR/tmp" \
         -kernel "$KERNEL_VERSION" \
         -firecracker "$FC_VERSION" \
