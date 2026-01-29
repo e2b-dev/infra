@@ -98,7 +98,7 @@ switch:
 .PHONY: destroy
 destroy:
 	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	@ $(tf_vars) $(TF) destroy
+	@ $(tf_vars) $(TF) destroy $(TF_VAR_FILE_ARG)
 
 .PHONY: plan
 plan:
