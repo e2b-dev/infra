@@ -23,7 +23,9 @@ type encodingWithQuality struct {
 }
 
 // isSupportedEncoding checks if the given encoding is in the supported list.
+// Per RFC 7231, content-coding values are case-insensitive.
 func isSupportedEncoding(encoding string) bool {
+	encoding = strings.ToLower(encoding)
 	for _, supported := range SupportedEncodings {
 		if encoding == supported {
 			return true
@@ -33,7 +35,8 @@ func isSupportedEncoding(encoding string) bool {
 }
 
 // parseEncodingWithQuality parses an encoding value and extracts the quality.
-// Returns the encoding name and quality value (default 1.0 if not specified).
+// Returns the encoding name (lowercased) and quality value (default 1.0 if not specified).
+// Per RFC 7231, content-coding values are case-insensitive.
 func parseEncodingWithQuality(value string) encodingWithQuality {
 	value = strings.TrimSpace(value)
 	quality := 1.0
@@ -45,7 +48,7 @@ func parseEncodingWithQuality(value string) encodingWithQuality {
 		// Parse q=X.X parameter
 		for _, param := range strings.Split(params, ";") {
 			param = strings.TrimSpace(param)
-			if strings.HasPrefix(param, "q=") {
+			if strings.HasPrefix(strings.ToLower(param), "q=") {
 				if q, err := strconv.ParseFloat(param[2:], 64); err == nil {
 					quality = q
 				}
@@ -53,7 +56,8 @@ func parseEncodingWithQuality(value string) encodingWithQuality {
 		}
 	}
 
-	return encodingWithQuality{encoding: value, quality: quality}
+	// Normalize encoding to lowercase per RFC 7231
+	return encodingWithQuality{encoding: strings.ToLower(value), quality: quality}
 }
 
 // parseEncoding extracts the encoding name from a header value, stripping quality.
@@ -125,10 +129,27 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 	return "", fmt.Errorf("unsupported Accept-Encoding: %s, supported: %v", header, SupportedEncodings)
 }
 
+// multiCloser wraps a reader and closes multiple underlying closers.
+type multiCloser struct {
+	io.Reader
+	closers []io.Closer
+}
+
+func (m *multiCloser) Close() error {
+	var firstErr error
+	for _, c := range m.closers {
+		if err := c.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 // getDecompressedBody returns a reader that decompresses the request body based on
 // Content-Encoding header. Returns the original body if no encoding is specified.
 // Returns an error if an unsupported encoding is specified.
-// The caller is responsible for closing the returned ReadCloser.
+// The caller is responsible for closing the returned ReadCloser, which will also
+// close the underlying request body.
 func getDecompressedBody(r *http.Request) (io.ReadCloser, error) {
 	encoding, err := parseContentEncoding(r)
 	if err != nil {
@@ -145,7 +166,11 @@ func getDecompressedBody(r *http.Request) (io.ReadCloser, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
-		return gzReader, nil
+		// Return a multiCloser that closes both the gzip reader and the original body
+		return &multiCloser{
+			Reader:  gzReader,
+			closers: []io.Closer{gzReader, r.Body},
+		}, nil
 	default:
 		// This shouldn't happen if isSupportedEncoding is correct
 		return nil, fmt.Errorf("encoding %s is supported but not implemented", encoding)

@@ -149,8 +149,6 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 }
 
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
-	defer r.Body.Close()
-
 	var errorCode int
 	var errMsg error
 
@@ -202,9 +200,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 
 		return
 	}
-	if body != r.Body {
-		defer body.Close()
-	}
+	defer body.Close()
 	r.Body = body
 
 	f, err := r.MultipartReader()

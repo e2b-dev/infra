@@ -19,6 +19,16 @@ func TestIsSupportedEncoding(t *testing.T) {
 		assert.True(t, isSupportedEncoding("gzip"))
 	})
 
+	t.Run("GZIP is supported (case-insensitive)", func(t *testing.T) {
+		t.Parallel()
+		assert.True(t, isSupportedEncoding("GZIP"))
+	})
+
+	t.Run("Gzip is supported (case-insensitive)", func(t *testing.T) {
+		t.Parallel()
+		assert.True(t, isSupportedEncoding("Gzip"))
+	})
+
 	t.Run("br is not supported", func(t *testing.T) {
 		t.Parallel()
 		assert.False(t, isSupportedEncoding("br"))
@@ -74,6 +84,19 @@ func TestParseEncodingWithQuality(t *testing.T) {
 		assert.Equal(t, "gzip", eq.encoding)
 		assert.Equal(t, 1.0, eq.quality)
 	})
+
+	t.Run("normalizes encoding to lowercase", func(t *testing.T) {
+		t.Parallel()
+		eq := parseEncodingWithQuality("GZIP")
+		assert.Equal(t, "gzip", eq.encoding)
+	})
+
+	t.Run("normalizes mixed case encoding", func(t *testing.T) {
+		t.Parallel()
+		eq := parseEncodingWithQuality("Gzip;q=0.5")
+		assert.Equal(t, "gzip", eq.encoding)
+		assert.Equal(t, 0.5, eq.quality)
+	})
 }
 
 func TestParseEncoding(t *testing.T) {
@@ -116,6 +139,26 @@ func TestParseContentEncoding(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequest(http.MethodPost, "/test", nil)
 		req.Header.Set("Content-Encoding", "gzip")
+
+		encoding, err := parseContentEncoding(req)
+		require.NoError(t, err)
+		assert.Equal(t, "gzip", encoding)
+	})
+
+	t.Run("returns gzip when Content-Encoding is GZIP (case-insensitive)", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequest(http.MethodPost, "/test", nil)
+		req.Header.Set("Content-Encoding", "GZIP")
+
+		encoding, err := parseContentEncoding(req)
+		require.NoError(t, err)
+		assert.Equal(t, "gzip", encoding)
+	})
+
+	t.Run("returns gzip when Content-Encoding is Gzip (case-insensitive)", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequest(http.MethodPost, "/test", nil)
+		req.Header.Set("Content-Encoding", "Gzip")
 
 		encoding, err := parseContentEncoding(req)
 		require.NoError(t, err)
@@ -170,6 +213,16 @@ func TestParseAcceptEncoding(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "gzip")
+
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Equal(t, "gzip", encoding)
+	})
+
+	t.Run("returns gzip when Accept-Encoding is GZIP (case-insensitive)", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "GZIP")
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)

@@ -123,7 +123,10 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	}
 	defer file.Close()
 
-	// Serve with gzip encoding if requested
+	// Serve with gzip encoding if requested.
+	// Note: If io.Copy fails after headers are sent, the client receives a truncated
+	// gzip stream with HTTP 200. Buffering the entire response would fix this but
+	// has memory implications for large files. Clients should validate gzip integrity.
 	if encoding == "gzip" {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -134,7 +137,7 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 
 		_, err = io.Copy(gw, file)
 		if err != nil {
-			// Headers already sent, can only log the error
+			// Headers already sent, can only log the error. Client will receive truncated response.
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing gzip response")
 		}
 		return
