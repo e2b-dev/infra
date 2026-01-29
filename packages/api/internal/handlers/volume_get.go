@@ -30,6 +30,8 @@ func (a *APIStore) GetVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid volume ID")
 		telemetry.ReportCriticalError(ctx, "error when parsing volume ID", err)
+
+		return
 	}
 
 	volume, err := a.sqlcDB.GetVolume(ctx, queries.GetVolumeParams{

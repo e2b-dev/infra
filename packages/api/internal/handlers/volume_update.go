@@ -3,12 +3,14 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -32,6 +34,8 @@ func (a *APIStore) PatchVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid volume ID")
 		telemetry.ReportCriticalError(ctx, "error when parsing volume ID", err)
+
+		return
 	}
 
 	body, err := utils.ParseBody[api.PatchVolumesVolumeIDJSONRequestBody](ctx, c)
@@ -45,11 +49,27 @@ func (a *APIStore) PatchVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
+	// validate body
+	if !isValidVolumeName(body.Name) {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid volume name")
+		telemetry.ReportError(ctx, "invalid volume name", nil)
+
+		return
+	}
+
 	volume, err := a.sqlcDB.UpdateVolume(ctx, queries.UpdateVolumeParams{
+		TeamID:   team.ID,
 		VolumeID: volumeIDuuid,
 		Name:     body.Name,
 	})
 	if err != nil {
+		if dberrors.IsUniqueConstraintViolation(err) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume with name '%s' already exists", body.Name))
+			telemetry.ReportError(ctx, "volume already exists", err)
+
+			return
+		}
+
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating volume")
 		telemetry.ReportCriticalError(ctx, "error when updating volume", err)
 
@@ -62,4 +82,10 @@ func (a *APIStore) PatchVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+var validVolumeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+func isValidVolumeName(name string) bool {
+	return validVolumeNameRegex.MatchString(name)
 }

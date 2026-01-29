@@ -114,11 +114,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		attribute.String("env.firecracker.version", build.FirecrackerVersion),
 	)
 
-	autoPause := safeGet(body.AutoPause, sandbox.AutoPauseDefault)
-	envVars := safeGet(body.EnvVars, nil)
-	mcp := safeGet(body.Mcp, nil)
-	metadata := safeGet(body.Metadata, nil)
-	volumeMounts := safeGet(body.VolumeMounts, nil)
+	autoPause := sharedUtils.DerefOrDefault(body.AutoPause, sandbox.AutoPauseDefault)
+	envVars := sharedUtils.DerefOrDefault(body.EnvVars, nil)
+	mcp := sharedUtils.DerefOrDefault(body.Mcp, nil)
+	metadata := sharedUtils.DerefOrDefault(body.Metadata, nil)
+	volumeMounts := sharedUtils.DerefOrDefault(body.VolumeMounts, nil)
 
 	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
@@ -210,14 +210,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, &sbx)
-}
-
-func safeGet[T any](maybeValue *T, defaultValue T) T {
-	if maybeValue != nil {
-		return *maybeValue
-	}
-
-	return defaultValue
 }
 
 func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (string, *api.APIError) {

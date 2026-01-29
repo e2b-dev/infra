@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
@@ -43,6 +44,7 @@ func TestQueries_Volumes(t *testing.T) {
 			Name:       "volume-name",
 		})
 		require.Error(t, err)
+		assert.True(t, dberrors.IsUniqueConstraintViolation(err))
 
 		// get volume = success
 		gotVolume, err := db.GetVolume(ctx, queries.GetVolumeParams{
@@ -69,6 +71,7 @@ func TestQueries_Volumes(t *testing.T) {
 
 		// update volume = success
 		updatedVolume, err := db.UpdateVolume(ctx, queries.UpdateVolumeParams{
+			TeamID:   teamID,
 			VolumeID: volume.ID,
 			Name:     "new-volume-name",
 		})

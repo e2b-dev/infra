@@ -349,23 +349,9 @@ func (o *Orchestrator) CreateSandbox(
 func (o *Orchestrator) convertVolumeMounts(ctx context.Context, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) ([]*orchestrator.SandboxVolumeMount, error) {
 	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumeMounts))
 
-	volumeNames := make([]string, 0, len(volumeMounts))
-	for _, v := range volumeMounts {
-		volumeNames = append(volumeNames, v.Name)
-	}
-
-	dbVolumes, err := o.sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
-		TeamID:      teamID,
-		VolumeNames: volumeNames,
-	})
+	dbVolumesMap, err := o.getVolumesMap(ctx, teamID, volumeMounts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get volumes: %w", err)
-	}
-
-	dbVolumesMap := make(map[string]queries.Volume, len(dbVolumes))
-
-	for _, v := range dbVolumes {
-		dbVolumesMap[v.Name] = v
+		return nil, fmt.Errorf("failed to get volumes map: %w", err)
 	}
 
 	for _, v := range volumeMounts {
@@ -382,4 +368,34 @@ func (o *Orchestrator) convertVolumeMounts(ctx context.Context, teamID uuid.UUID
 	}
 
 	return results, nil
+}
+
+func (o *Orchestrator) getVolumesMap(ctx context.Context, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) (map[string]queries.Volume, error) {
+	// dedupe mounted volumes
+	dbVolumesMap := make(map[string]queries.Volume, len(volumeMounts))
+	for _, v := range volumeMounts {
+		dbVolumesMap[v.Name] = queries.Volume{}
+	}
+
+	// make a slice
+	volumeNames := make([]string, 0, len(dbVolumesMap))
+	for name := range dbVolumesMap {
+		volumeNames = append(volumeNames, name)
+	}
+
+	// get volumes from db
+	dbVolumes, err := o.sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
+		TeamID:      teamID,
+		VolumeNames: volumeNames,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get volumes: %w", err)
+	}
+
+	// populate the map
+	for _, v := range dbVolumes {
+		dbVolumesMap[v.Name] = v
+	}
+
+	return dbVolumesMap, nil
 }

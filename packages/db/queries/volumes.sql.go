@@ -128,17 +128,18 @@ func (q *Queries) GetVolumesByName(ctx context.Context, arg GetVolumesByNamePara
 const updateVolume = `-- name: UpdateVolume :one
 UPDATE volumes
 SET name = $1
-WHERE id = $2
+WHERE id = $2 AND team_id = $3
 RETURNING id, team_id, name, volume_type, created_at
 `
 
 type UpdateVolumeParams struct {
 	Name     string
 	VolumeID uuid.UUID
+	TeamID   uuid.UUID
 }
 
 func (q *Queries) UpdateVolume(ctx context.Context, arg UpdateVolumeParams) (Volume, error) {
-	row := q.db.QueryRow(ctx, updateVolume, arg.Name, arg.VolumeID)
+	row := q.db.QueryRow(ctx, updateVolume, arg.Name, arg.VolumeID, arg.TeamID)
 	var i Volume
 	err := row.Scan(
 		&i.ID,
