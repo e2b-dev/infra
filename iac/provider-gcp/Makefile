@@ -85,7 +85,7 @@ init:
 	@ rm -f $(LIFECYCLE_FILE)
 
 	@ $(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
-	@ $(tf_vars) $(TF) apply $(TF_VAR_FILE_ARG) -target=module.init -auto-approve -input=false -compact-warnings
+	@ $(tf_vars) $(TF) apply -target=module.init -auto-approve -input=false -compact-warnings
 
 	@ TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
 	@ gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
@@ -98,7 +98,7 @@ switch:
 .PHONY: destroy
 destroy:
 	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	@ $(tf_vars) $(TF) destroy $(TF_VAR_FILE_ARG)
+	@ $(tf_vars) $(TF) destroy
 
 .PHONY: plan
 plan:
@@ -110,7 +110,7 @@ plan:
 terraform:
 	@ printf "Terraform command for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(TF) fmt -recursive
-	@ $(tf_vars) $(TF) $(TF_VAR_FILE_ARG) $(ARGS)
+	@ $(tf_vars) $(TF) $(ARGS)
 
 # Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
