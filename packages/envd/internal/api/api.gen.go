@@ -74,6 +74,21 @@ type Metrics struct {
 	Ts *int64 `json:"ts,omitempty"`
 }
 
+// MultipartDownloadInit defines model for MultipartDownloadInit.
+type MultipartDownloadInit struct {
+	// DownloadId Unique identifier for the download session
+	DownloadId openapi_types.UUID `json:"downloadId"`
+
+	// NumParts Total number of parts to download
+	NumParts int `json:"numParts"`
+
+	// PartSize Size of each part in bytes
+	PartSize int64 `json:"partSize"`
+
+	// TotalSize Total size of the file in bytes
+	TotalSize int64 `json:"totalSize"`
+}
+
 // FilePath defines model for FilePath.
 type FilePath = string
 
@@ -139,6 +154,33 @@ type PostFilesParams struct {
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
+// PostFilesDownloadInitJSONBody defines parameters for PostFilesDownloadInit.
+type PostFilesDownloadInitJSONBody struct {
+	// PartSize Size of each part in bytes (optional, defaults to 5MB, max 100MB)
+	PartSize *int64 `json:"partSize,omitempty"`
+
+	// Path Path to the file to download
+	Path string `json:"path"`
+}
+
+// PostFilesDownloadInitParams defines parameters for PostFilesDownloadInit.
+type PostFilesDownloadInitParams struct {
+	// Username User used for setting the owner, or resolving relative paths.
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
+
+	// Signature Signature used for file access permission verification.
+	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
+
+	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
+}
+
+// GetFilesDownloadDownloadIdParams defines parameters for GetFilesDownloadDownloadId.
+type GetFilesDownloadDownloadIdParams struct {
+	// Part The part number to download (0-indexed)
+	Part int `form:"part" json:"part"`
+}
+
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
@@ -163,6 +205,9 @@ type PostInitJSONBody struct {
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
 
+// PostFilesDownloadInitJSONRequestBody defines body for PostFilesDownloadInit for application/json ContentType.
+type PostFilesDownloadInitJSONRequestBody PostFilesDownloadInitJSONBody
+
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody
 
@@ -177,6 +222,15 @@ type ServerInterface interface {
 	// Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
 	// (POST /files)
 	PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams)
+	// Initialize a multipart file download session
+	// (POST /files/download/init)
+	PostFilesDownloadInit(w http.ResponseWriter, r *http.Request, params PostFilesDownloadInitParams)
+	// Close a download session and release resources
+	// (DELETE /files/download/{downloadId})
+	DeleteFilesDownloadDownloadId(w http.ResponseWriter, r *http.Request, downloadId openapi_types.UUID)
+	// Download a specific part of a file
+	// (GET /files/download/{downloadId})
+	GetFilesDownloadDownloadId(w http.ResponseWriter, r *http.Request, downloadId openapi_types.UUID, params GetFilesDownloadDownloadIdParams)
 	// Check the health of the service
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -207,6 +261,24 @@ func (_ Unimplemented) GetFiles(w http.ResponseWriter, r *http.Request, params G
 // Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
 // (POST /files)
 func (_ Unimplemented) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Initialize a multipart file download session
+// (POST /files/download/init)
+func (_ Unimplemented) PostFilesDownloadInit(w http.ResponseWriter, r *http.Request, params PostFilesDownloadInitParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Close a download session and release resources
+// (DELETE /files/download/{downloadId})
+func (_ Unimplemented) DeleteFilesDownloadDownloadId(w http.ResponseWriter, r *http.Request, downloadId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Download a specific part of a file
+// (GET /files/download/{downloadId})
+func (_ Unimplemented) GetFilesDownloadDownloadId(w http.ResponseWriter, r *http.Request, downloadId openapi_types.UUID, params GetFilesDownloadDownloadIdParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -362,6 +434,135 @@ func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostFiles(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFilesDownloadInit operation middleware
+func (siw *ServerInterfaceWrapper) PostFilesDownloadInit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostFilesDownloadInitParams
+
+	// ------------- Optional query parameter "username" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "username", r.URL.Query(), &params.Username)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "signature" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "signature", r.URL.Query(), &params.Signature)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "signature_expiration" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "signature_expiration", r.URL.Query(), &params.SignatureExpiration)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature_expiration", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFilesDownloadInit(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFilesDownloadDownloadId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFilesDownloadDownloadId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "downloadId" -------------
+	var downloadId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "downloadId", chi.URLParam(r, "downloadId"), &downloadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "downloadId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFilesDownloadDownloadId(w, r, downloadId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFilesDownloadDownloadId operation middleware
+func (siw *ServerInterfaceWrapper) GetFilesDownloadDownloadId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "downloadId" -------------
+	var downloadId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "downloadId", chi.URLParam(r, "downloadId"), &downloadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "downloadId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFilesDownloadDownloadIdParams
+
+	// ------------- Required query parameter "part" -------------
+
+	if paramValue := r.URL.Query().Get("part"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "part"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "part", r.URL.Query(), &params.Part)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "part", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFilesDownloadDownloadId(w, r, downloadId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -546,6 +747,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/files", wrapper.PostFiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/files/download/init", wrapper.PostFilesDownloadInit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/files/download/{downloadId}", wrapper.DeleteFilesDownloadDownloadId)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/files/download/{downloadId}", wrapper.GetFilesDownloadDownloadId)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)

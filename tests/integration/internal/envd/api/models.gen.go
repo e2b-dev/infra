@@ -69,6 +69,21 @@ type Metrics struct {
 	Ts *int64 `json:"ts,omitempty"`
 }
 
+// MultipartDownloadInit defines model for MultipartDownloadInit.
+type MultipartDownloadInit struct {
+	// DownloadId Unique identifier for the download session
+	DownloadId openapi_types.UUID `json:"downloadId"`
+
+	// NumParts Total number of parts to download
+	NumParts int `json:"numParts"`
+
+	// PartSize Size of each part in bytes
+	PartSize int64 `json:"partSize"`
+
+	// TotalSize Total size of the file in bytes
+	TotalSize int64 `json:"totalSize"`
+}
+
 // FilePath defines model for FilePath.
 type FilePath = string
 
@@ -134,6 +149,33 @@ type PostFilesParams struct {
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
+// PostFilesDownloadInitJSONBody defines parameters for PostFilesDownloadInit.
+type PostFilesDownloadInitJSONBody struct {
+	// PartSize Size of each part in bytes (optional, defaults to 5MB, max 100MB)
+	PartSize *int64 `json:"partSize,omitempty"`
+
+	// Path Path to the file to download
+	Path string `json:"path"`
+}
+
+// PostFilesDownloadInitParams defines parameters for PostFilesDownloadInit.
+type PostFilesDownloadInitParams struct {
+	// Username User used for setting the owner, or resolving relative paths.
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
+
+	// Signature Signature used for file access permission verification.
+	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
+
+	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
+}
+
+// GetFilesDownloadDownloadIdParams defines parameters for GetFilesDownloadDownloadId.
+type GetFilesDownloadDownloadIdParams struct {
+	// Part The part number to download (0-indexed)
+	Part int `form:"part" json:"part"`
+}
+
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
@@ -157,6 +199,9 @@ type PostInitJSONBody struct {
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
+
+// PostFilesDownloadInitJSONRequestBody defines body for PostFilesDownloadInit for application/json ContentType.
+type PostFilesDownloadInitJSONRequestBody PostFilesDownloadInitJSONBody
 
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody
