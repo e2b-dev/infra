@@ -136,8 +136,10 @@ func New(
 	if redisClient != nil {
 		redisStorage := redisbackend.NewStorage(redisClient)
 		if config.RedisPrimarySandboxBackend || featureFlags.BoolFlag(ctx, featureflags.UseRedisPrimarySandboxStorage) {
+			logger.L().Info(ctx, "Using RedisPrimary as a sandbox storage")
 			sandboxStorage = redis_primary.NewStorage(redisStorage, memoryStorage)
 		} else {
+			logger.L().Info(ctx, "Using PopulateRedis as a sandbox storage")
 			sandboxStorage = populate_redis.NewStorage(memoryStorage, redisStorage)
 		}
 	} else {
