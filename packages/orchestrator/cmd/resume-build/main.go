@@ -52,6 +52,9 @@ func main() {
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
 	verbose := flag.Bool("v", false, "verbose logging")
 
+	// Command execution (no pause)
+	cmd := flag.String("cmd", "", "execute command in sandbox and exit (no snapshot)")
+
 	// Pause flags
 	pause := flag.Bool("pause", false, "start and immediately pause (snapshot)")
 	signalPause := flag.String("signal-pause", "", "wait for signal before pause (e.g., SIGTERM, SIGUSR1)")
@@ -82,10 +85,17 @@ func main() {
 		log.Fatal("only one of -pause, -signal-pause, or -cmd-pause can be specified")
 	}
 
-	// Pause mode is incompatible with benchmark iterations
+	// -cmd is incompatible with pause flags
+	isCmdMode := *cmd != ""
+	if isCmdMode && pauseCount > 0 {
+		log.Fatal("-cmd is incompatible with pause flags")
+	}
+
 	isPauseMode := pauseCount > 0
-	if isPauseMode && *iterations > 0 {
-		log.Fatal("pause flags are incompatible with -iterations")
+
+	// -signal-pause and -cmd-pause are incompatible with iterations (they require interaction)
+	if *iterations > 0 && (*signalPause != "" || *cmdPause != "") {
+		log.Fatal("-signal-pause and -cmd-pause are incompatible with -iterations")
 	}
 
 	// -to-build only makes sense with pause
@@ -117,9 +127,15 @@ func main() {
 		storagePath:     *storagePath,
 		isRemoteStorage: isRemoteStorage,
 		newBuildID:      outputBuildID,
+		iterations:      *iterations,
 	}
 
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *verbose, pauseOpts)
+	runOpts := runOptions{
+		cmd:        *cmd,
+		iterations: *iterations,
+	}
+
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *verbose, pauseOpts, runOpts)
 	cancel()
 
 	if err != nil {
@@ -138,10 +154,36 @@ type pauseOptions struct {
 	storagePath     string
 	isRemoteStorage bool
 	newBuildID      string
+	iterations      int // for benchmarking pause (only with immediate)
 }
 
 func (p pauseOptions) enabled() bool {
 	return p.immediate || p.signalName != "" || p.command != ""
+}
+
+// pauseTimings holds timing breakdown for a pause operation
+type pauseTimings struct {
+	resume time.Duration
+	pause  time.Duration
+	total  time.Duration
+	err    error
+}
+
+type runOptions struct {
+	cmd        string // command to run and exit (no pause)
+	iterations int    // number of iterations (0 = single run)
+}
+
+func (r runOptions) enabled() bool {
+	return r.cmd != ""
+}
+
+// cmdTimings holds timing breakdown for a command run
+type cmdTimings struct {
+	resume  time.Duration
+	command time.Duration
+	total   time.Duration
+	err     error
 }
 
 func setupEnv(from string) error {
@@ -257,7 +299,17 @@ func (r *runner) interactive(ctx context.Context) error {
 	return nil
 }
 
-func (r *runner) pauseMode(ctx context.Context, opts pauseOptions) error {
+func (r *runner) cmdMode(ctx context.Context, opts runOptions) error {
+	if opts.iterations > 0 {
+		return r.cmdBenchmark(ctx, opts)
+	}
+
+	_, err := r.cmdOnce(ctx, opts, true)
+
+	return err
+}
+
+func (r *runner) cmdOnce(ctx context.Context, opts runOptions, verbose bool) (cmdTimings, error) {
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  r.buildID,
 		TeamID:      "local",
@@ -265,11 +317,14 @@ func (r *runner) pauseMode(ctx context.Context, opts pauseOptions) error {
 		ExecutionID: fmt.Sprintf("exec-%d", time.Now().UnixNano()),
 	}
 
-	fmt.Println("🚀 Starting sandbox...")
+	if verbose {
+		fmt.Println("🚀 Starting sandbox...")
+	}
 	t0 := time.Now()
 	sbx, err := r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	resumeDur := time.Since(t0)
 	if err != nil {
-		return err
+		return cmdTimings{resume: resumeDur, err: err}, err
 	}
 	defer sbx.Close(context.WithoutCancel(ctx))
 
@@ -277,19 +332,234 @@ func (r *runner) pauseMode(ctx context.Context, opts pauseOptions) error {
 	r.sandboxes.Insert(sbx)
 	defer r.sandboxes.Remove(runtime.SandboxID)
 
-	fmt.Printf("✅ Sandbox running (resumed in %s)\n", time.Since(t0))
+	if verbose {
+		fmt.Printf("✅ Sandbox resumed in %s\n", resumeDur)
+		fmt.Printf("🔧 Running: %s\n", opts.cmd)
+	}
+
+	cmdStart := time.Now()
+	cmdErr := runCommandInSandbox(ctx, sbx, opts.cmd)
+	cmdDur := time.Since(cmdStart)
+	totalDur := time.Since(t0)
+
+	timings := cmdTimings{
+		resume:  resumeDur,
+		command: cmdDur,
+		total:   totalDur,
+		err:     cmdErr,
+	}
+
+	if verbose {
+		if cmdErr != nil {
+			fmt.Printf("❌ Command failed: %v\n", cmdErr)
+		} else {
+			fmt.Println()
+			fmt.Println("📊 Timing breakdown:")
+			fmt.Printf("   Resume:  %s\n", fmtDur(resumeDur))
+			fmt.Printf("   Command: %s\n", fmtDur(cmdDur))
+			fmt.Printf("   Total:   %s\n", fmtDur(totalDur))
+		}
+	}
+
+	return timings, cmdErr
+}
+
+func (r *runner) cmdBenchmark(ctx context.Context, opts runOptions) error {
+	results := make([]cmdTimings, 0, opts.iterations)
+
+	fmt.Printf("📦 Benchmarking command: %s\n", opts.cmd)
+	fmt.Printf("   Iterations: %d, Cold start: %v\n\n", opts.iterations, r.coldStart)
+
+	for i := range opts.iterations {
+		if ctx.Err() != nil {
+			break
+		}
+
+		// Clear caches for cold start
+		if r.coldStart && i > 0 {
+			r.cache.InvalidateAll()
+			if err := dropPageCache(); err != nil {
+				return fmt.Errorf("drop page cache: %w", err)
+			}
+			tmpl, err := r.cache.GetTemplate(ctx, r.buildID, false, false)
+			if err != nil {
+				return fmt.Errorf("reload template: %w", err)
+			}
+			if r.noPrefetch {
+				tmpl = &noPrefetchTemplate{tmpl}
+			}
+			r.tmpl = tmpl
+		}
+
+		fmt.Printf("\r[%d/%d] Running...    ", i+1, opts.iterations)
+		timings, _ := r.cmdOnce(ctx, opts, false)
+		results = append(results, timings)
+
+		if timings.err != nil {
+			fmt.Printf("\r[%d/%d] ❌ Failed: %v\n", i+1, opts.iterations, timings.err)
+
+			break
+		}
+	}
+	fmt.Print("\r                         \r")
+
+	printCmdResults(results)
+
+	// Return last error if any
+	for _, t := range results {
+		if t.err != nil {
+			return t.err
+		}
+	}
+
+	return nil
+}
+
+func printCmdResults(results []cmdTimings) {
+	if len(results) == 0 {
+		return
+	}
+
+	// Separate successful results
+	var successful []cmdTimings
+	for _, r := range results {
+		if r.err == nil {
+			successful = append(successful, r)
+		}
+	}
+
+	if len(successful) == 0 {
+		fmt.Println("\n❌ All runs failed")
+
+		return
+	}
+
+	// Calculate averages
+	var totalResume, totalCmd, totalTotal time.Duration
+	for _, t := range successful {
+		totalResume += t.resume
+		totalCmd += t.command
+		totalTotal += t.total
+	}
+	n := len(successful)
+	avgResume := totalResume / time.Duration(n)
+	avgCmd := totalCmd / time.Duration(n)
+	avgTotal := totalTotal / time.Duration(n)
+
+	// Print individual results
+	fmt.Println("\n📋 Run times (resume / command / total):")
+	for i, t := range results {
+		if t.err != nil {
+			fmt.Printf("   [%2d] ❌ Failed: %v\n", i+1, t.err)
+
+			continue
+		}
+
+		resumeDiff := float64(t.resume-avgResume) / float64(avgResume) * 100
+		cmdDiff := float64(t.command-avgCmd) / float64(avgCmd) * 100
+
+		fmt.Printf("   [%2d] %s / %s / %s  (resume: %s%+.1f%%%s, cmd: %s%+.1f%%%s)\n",
+			i+1,
+			fmtDur(t.resume), fmtDur(t.command), fmtDur(t.total),
+			colorForDiff(resumeDiff), resumeDiff, colorReset,
+			colorForDiff(cmdDiff), cmdDiff, colorReset)
+	}
+
+	// Print summary
+	fmt.Printf("\n📊 Summary (%d runs):\n", n)
+	fmt.Printf("   Resume:  Avg %s\n", fmtDur(avgResume))
+	fmt.Printf("   Command: Avg %s\n", fmtDur(avgCmd))
+	fmt.Printf("   Total:   Avg %s\n", fmtDur(avgTotal))
+
+	// Min/Max for each
+	if n > 1 {
+		minR, maxR := successful[0].resume, successful[0].resume
+		minC, maxC := successful[0].command, successful[0].command
+		for _, t := range successful[1:] {
+			if t.resume < minR {
+				minR = t.resume
+			}
+			if t.resume > maxR {
+				maxR = t.resume
+			}
+			if t.command < minC {
+				minC = t.command
+			}
+			if t.command > maxC {
+				maxC = t.command
+			}
+		}
+		fmt.Printf("   Resume:  Min %s | Max %s\n", fmtDur(minR), fmtDur(maxR))
+		fmt.Printf("   Command: Min %s | Max %s\n", fmtDur(minC), fmtDur(maxC))
+	}
+}
+
+func colorForDiff(diff float64) string {
+	switch {
+	case diff < -5:
+		return colorGreen
+	case diff > 5:
+		return colorRed
+	default:
+		return colorYellow
+	}
+}
+
+func (r *runner) pauseMode(ctx context.Context, opts pauseOptions) error {
+	// Benchmark mode for immediate pause
+	if opts.immediate && opts.iterations > 0 {
+		return r.pauseBenchmark(ctx, opts)
+	}
+
+	_, err := r.pauseOnce(ctx, opts, true)
+
+	return err
+}
+
+func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool) (pauseTimings, error) {
+	runtime := sandbox.RuntimeMetadata{
+		TemplateID:  r.buildID,
+		TeamID:      "local",
+		SandboxID:   fmt.Sprintf("sbx-%d", time.Now().UnixNano()),
+		ExecutionID: fmt.Sprintf("exec-%d", time.Now().UnixNano()),
+	}
+
+	if verbose {
+		fmt.Println("🚀 Starting sandbox...")
+	}
+	t0 := time.Now()
+	sbx, err := r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	resumeDur := time.Since(t0)
+	if err != nil {
+		return pauseTimings{resume: resumeDur, err: err}, err
+	}
+	defer sbx.Close(context.WithoutCancel(ctx))
+
+	// Register sandbox in map for TCP firewall to find
+	r.sandboxes.Insert(sbx)
+	defer r.sandboxes.Remove(runtime.SandboxID)
+
+	if verbose {
+		fmt.Printf("✅ Sandbox resumed in %s\n", resumeDur)
+	}
 
 	// Handle pause trigger based on options
 	if opts.command != "" {
-		fmt.Printf("🔧 Running command: %s\n", opts.command)
-		if err := runCommandInSandbox(ctx, sbx, opts.command); err != nil {
-			return fmt.Errorf("command failed: %w", err)
+		if verbose {
+			fmt.Printf("🔧 Running command: %s\n", opts.command)
 		}
-		fmt.Println("✅ Command completed successfully")
+		if err := runCommandInSandbox(ctx, sbx, opts.command); err != nil {
+			return pauseTimings{resume: resumeDur, err: err}, fmt.Errorf("command failed: %w", err)
+		}
+		if verbose {
+			fmt.Println("✅ Command completed successfully")
+		}
 	} else if opts.signalName != "" {
 		sig := parseSignal(opts.signalName)
 		if sig == nil {
-			return fmt.Errorf("unknown signal: %s", opts.signalName)
+			err := fmt.Errorf("unknown signal: %s", opts.signalName)
+
+			return pauseTimings{resume: resumeDur, err: err}, err
 		}
 		fmt.Printf("⏳ Waiting for %s signal...\n", opts.signalName)
 		fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
@@ -298,59 +568,213 @@ func (r *runner) pauseMode(ctx context.Context, opts pauseOptions) error {
 		signal.Notify(sigCh, sig)
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return pauseTimings{resume: resumeDur, err: ctx.Err()}, ctx.Err()
 		case <-sigCh:
 			fmt.Printf("📨 Received %s signal\n", opts.signalName)
 		}
 	}
 	// For opts.immediate, we proceed directly to pause
 
-	fmt.Printf("⏸️  Pausing sandbox (new build: %s)...\n", opts.newBuildID)
+	if verbose {
+		fmt.Printf("⏸️  Pausing sandbox (new build: %s)...\n", opts.newBuildID)
+	}
 
 	// Sync and drop caches before pause
-	if err := syncAndDropCaches(ctx, sbx); err != nil {
+	if err := syncAndDropCaches(ctx, sbx); err != nil && verbose {
 		fmt.Printf("⚠️  Warning: sync/drop_caches failed: %v\n", err)
 	}
 
 	// Get original metadata and update for new build
 	origMeta, err := r.tmpl.Metadata()
 	if err != nil {
-		return fmt.Errorf("failed to get metadata: %w", err)
+		return pauseTimings{resume: resumeDur, err: err}, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
 	newMeta := origMeta
 	newMeta.Template.BuildID = opts.newBuildID
 
 	// Pause and create snapshot
+	pauseStart := time.Now()
 	snapshot, err := sbx.Pause(ctx, newMeta)
+	pauseDur := time.Since(pauseStart)
+	totalDur := time.Since(t0)
+
+	timings := pauseTimings{
+		resume: resumeDur,
+		pause:  pauseDur,
+		total:  totalDur,
+		err:    err,
+	}
+
 	if err != nil {
-		return fmt.Errorf("failed to pause: %w", err)
+		return timings, fmt.Errorf("failed to pause: %w", err)
 	}
 	defer snapshot.Close(context.WithoutCancel(ctx))
 
-	// Upload to remote storage if using GCS, otherwise snapshot is already in local cache
-	templateFiles := storage.TemplateFiles{BuildID: opts.newBuildID}
-	if opts.isRemoteStorage {
-		fmt.Println("📤 Uploading snapshot...")
-		if err := snapshot.Upload(ctx, r.storage, templateFiles); err != nil {
-			return fmt.Errorf("failed to upload snapshot: %w", err)
-		}
-		fmt.Println("✅ Snapshot uploaded successfully")
-	} else {
-		// For local storage, copy from cache to templates directory
-		fmt.Println("💾 Saving snapshot to local storage...")
-		if err := snapshot.Upload(ctx, r.storage, templateFiles); err != nil {
-			return fmt.Errorf("failed to save snapshot: %w", err)
-		}
-		fmt.Println("✅ Snapshot saved successfully")
+	if verbose {
+		fmt.Println()
+		fmt.Println("📊 Timing breakdown:")
+		fmt.Printf("   Resume: %s\n", fmtDur(resumeDur))
+		fmt.Printf("   Pause:  %s\n", fmtDur(pauseDur))
+		fmt.Printf("   Total:  %s\n", fmtDur(totalDur))
 	}
 
-	fmt.Printf("\n✅ Build finished: %s\n", opts.newBuildID)
+	// Only upload when not in benchmark mode (verbose = true means single run)
+	if verbose {
+		templateFiles := storage.TemplateFiles{BuildID: opts.newBuildID}
+		if opts.isRemoteStorage {
+			fmt.Println("📤 Uploading snapshot...")
+			if err := snapshot.Upload(ctx, r.storage, templateFiles); err != nil {
+				return timings, fmt.Errorf("failed to upload snapshot: %w", err)
+			}
+			fmt.Println("✅ Snapshot uploaded successfully")
+		} else {
+			fmt.Println("💾 Saving snapshot to local storage...")
+			if err := snapshot.Upload(ctx, r.storage, templateFiles); err != nil {
+				return timings, fmt.Errorf("failed to save snapshot: %w", err)
+			}
+			fmt.Println("✅ Snapshot saved successfully")
+		}
 
-	// Print artifact sizes
-	printArtifactSizes(opts.storagePath, opts.newBuildID)
+		fmt.Printf("\n✅ Build finished: %s\n", opts.newBuildID)
+		printArtifactSizes(opts.storagePath, opts.newBuildID)
+	}
+
+	return timings, nil
+}
+
+func (r *runner) pauseBenchmark(ctx context.Context, opts pauseOptions) error {
+	results := make([]pauseTimings, 0, opts.iterations)
+
+	fmt.Println("📦 Benchmarking pause (resume -> snapshot)")
+	fmt.Printf("   Iterations: %d, Cold start: %v\n\n", opts.iterations, r.coldStart)
+
+	for i := range opts.iterations {
+		if ctx.Err() != nil {
+			break
+		}
+
+		// Clear caches for cold start
+		if r.coldStart && i > 0 {
+			r.cache.InvalidateAll()
+			if err := dropPageCache(); err != nil {
+				return fmt.Errorf("drop page cache: %w", err)
+			}
+			tmpl, err := r.cache.GetTemplate(ctx, r.buildID, false, false)
+			if err != nil {
+				return fmt.Errorf("reload template: %w", err)
+			}
+			if r.noPrefetch {
+				tmpl = &noPrefetchTemplate{tmpl}
+			}
+			r.tmpl = tmpl
+		}
+
+		// Generate unique build ID for each iteration (not saved)
+		iterOpts := opts
+		iterOpts.newBuildID = uuid.New().String()
+
+		fmt.Printf("\r[%d/%d] Running...    ", i+1, opts.iterations)
+		timings, _ := r.pauseOnce(ctx, iterOpts, false)
+		results = append(results, timings)
+
+		if timings.err != nil {
+			fmt.Printf("\r[%d/%d] ❌ Failed: %v\n", i+1, opts.iterations, timings.err)
+
+			break
+		}
+	}
+	fmt.Print("\r                         \r")
+
+	printPauseResults(results)
+
+	// Return last error if any
+	for _, t := range results {
+		if t.err != nil {
+			return t.err
+		}
+	}
 
 	return nil
+}
+
+func printPauseResults(results []pauseTimings) {
+	if len(results) == 0 {
+		return
+	}
+
+	// Separate successful results
+	var successful []pauseTimings
+	for _, r := range results {
+		if r.err == nil {
+			successful = append(successful, r)
+		}
+	}
+
+	if len(successful) == 0 {
+		fmt.Println("\n❌ All runs failed")
+
+		return
+	}
+
+	// Calculate averages
+	var totalResume, totalPause, totalTotal time.Duration
+	for _, t := range successful {
+		totalResume += t.resume
+		totalPause += t.pause
+		totalTotal += t.total
+	}
+	n := len(successful)
+	avgResume := totalResume / time.Duration(n)
+	avgPause := totalPause / time.Duration(n)
+	avgTotal := totalTotal / time.Duration(n)
+
+	// Print individual results
+	fmt.Println("\n📋 Run times (resume / pause / total):")
+	for i, t := range results {
+		if t.err != nil {
+			fmt.Printf("   [%2d] ❌ Failed: %v\n", i+1, t.err)
+
+			continue
+		}
+
+		resumeDiff := float64(t.resume-avgResume) / float64(avgResume) * 100
+		pauseDiff := float64(t.pause-avgPause) / float64(avgPause) * 100
+
+		fmt.Printf("   [%2d] %s / %s / %s  (resume: %s%+.1f%%%s, pause: %s%+.1f%%%s)\n",
+			i+1,
+			fmtDur(t.resume), fmtDur(t.pause), fmtDur(t.total),
+			colorForDiff(resumeDiff), resumeDiff, colorReset,
+			colorForDiff(pauseDiff), pauseDiff, colorReset)
+	}
+
+	// Print summary
+	fmt.Printf("\n📊 Summary (%d runs):\n", n)
+	fmt.Printf("   Resume: Avg %s\n", fmtDur(avgResume))
+	fmt.Printf("   Pause:  Avg %s\n", fmtDur(avgPause))
+	fmt.Printf("   Total:  Avg %s\n", fmtDur(avgTotal))
+
+	// Min/Max for each
+	if n > 1 {
+		minR, maxR := successful[0].resume, successful[0].resume
+		minP, maxP := successful[0].pause, successful[0].pause
+		for _, t := range successful[1:] {
+			if t.resume < minR {
+				minR = t.resume
+			}
+			if t.resume > maxR {
+				maxR = t.resume
+			}
+			if t.pause < minP {
+				minP = t.pause
+			}
+			if t.pause > maxP {
+				maxP = t.pause
+			}
+		}
+		fmt.Printf("   Resume: Min %s | Max %s\n", fmtDur(minR), fmtDur(maxR))
+		fmt.Printf("   Pause:  Min %s | Max %s\n", fmtDur(minP), fmtDur(maxP))
+	}
 }
 
 func (r *runner) benchmark(ctx context.Context, n int) error {
@@ -396,7 +820,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, verbose bool, pauseOpts pauseOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
 	// Always suppress OTEL tracing logs
 	cmdutil.SuppressOTELLogs()
 
@@ -535,6 +959,10 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 				FirecrackerVersion: meta.Template.FirecrackerVersion,
 			},
 		},
+	}
+
+	if runOpts.enabled() {
+		return r.cmdMode(ctx, runOpts)
 	}
 
 	if pauseOpts.enabled() {
