@@ -46,8 +46,8 @@ SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count,
 FROM "public"."envs" e
 CROSS JOIN LATERAL (
     SELECT 
-        array_agg(alias)::text[] AS aliases,
-        array_agg(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END)::text[] AS names
+        COALESCE(array_agg(alias) FILTER (WHERE alias IS NOT NULL), '{}')::text[] AS aliases,
+        COALESCE(array_agg(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END) FILTER (WHERE alias IS NOT NULL), '{}')::text[] AS names
     FROM public.env_aliases
     WHERE env_id = e.id
 ) AS al

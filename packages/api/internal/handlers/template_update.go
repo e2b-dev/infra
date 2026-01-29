@@ -45,6 +45,7 @@ type templateUpdateResult struct {
 
 // updateTemplate contains the shared logic for updating a template.
 // Returns nil if an error occurred (error response already sent), or the result on success.
+// For v1 endpoint (createBackwardCompatAlias=true), returns empty result on names fetch error to maintain backward compatibility.
 func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.TemplateID, createBackwardCompatAlias bool) *templateUpdateResult {
 	ctx := c.Request.Context()
 
@@ -135,6 +136,11 @@ func (a *APIStore) updateTemplate(c *gin.Context, aliasOrTemplateID api.Template
 	template, err := a.sqlcDB.GetTemplateByIDWithAliases(ctx, aliasInfo.TemplateID)
 	if err != nil {
 		telemetry.ReportError(ctx, "error getting template names after update", err)
+		// For v1 endpoint, don't fail on names fetch error since it doesn't use names in response
+		if createBackwardCompatAlias {
+			logger.L().Warn(ctx, "Failed to fetch template names for v1 response, returning empty result", zap.Error(err))
+			return &templateUpdateResult{Names: []string{}}
+		}
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error retrieving template after update")
 
 		return nil
