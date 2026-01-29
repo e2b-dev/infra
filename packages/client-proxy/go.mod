@@ -2,24 +2,28 @@ module github.com/e2b-dev/infra/packages/proxy
 
 go 1.25.4
 
-replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.2.12
-
 replace (
 	github.com/e2b-dev/infra/packages/clickhouse v0.0.0 => ../clickhouse
 	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 )
 
+replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.2.12
+
 require (
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/google/uuid v1.6.0
+	github.com/launchdarkly/go-server-sdk/v7 v7.13.0
+	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel/metric v1.39.0
 	go.uber.org/zap v1.27.1
+	google.golang.org/grpc v1.77.0
 )
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -35,10 +39,10 @@ require (
 	github.com/launchdarkly/go-sdk-events/v3 v3.5.0 // indirect
 	github.com/launchdarkly/go-semver v1.0.3 // indirect
 	github.com/launchdarkly/go-server-sdk-evaluation/v3 v3.0.1 // indirect
-	github.com/launchdarkly/go-server-sdk/v7 v7.13.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.17.3 // indirect
 	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3 // indirect
 	github.com/redis/go-redis/v9 v9.17.3 // indirect
@@ -64,6 +68,6 @@ require (
 	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251213004720-97cd9d5aeac2 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
-	google.golang.org/grpc v1.77.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -841,6 +841,7 @@ type WatchDirResponse struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Event:
+	//
 	//	*WatchDirResponse_Start
 	//	*WatchDirResponse_Filesystem
 	//	*WatchDirResponse_Keepalive
