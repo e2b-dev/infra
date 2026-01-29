@@ -1,6 +1,7 @@
 package api
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -225,6 +226,20 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
+	// Handle gzip-encoded request body
+	var body io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, err := gzip.NewReader(r.Body)
+		if err != nil {
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to create gzip reader")
+			jsonError(w, http.StatusBadRequest, fmt.Errorf("failed to decompress gzip body: %w", err))
+
+			return
+		}
+		defer gzReader.Close()
+		body = gzReader
+	}
+
 	// Get the session
 	a.uploadsLock.RLock()
 	session, exists := a.uploads[uploadId]
@@ -272,7 +287,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	}
 
 	// Read the part data with size limit
-	limitedReader := io.LimitReader(r.Body, expectedSize+1)
+	limitedReader := io.LimitReader(body, expectedSize+1)
 	data, err := io.ReadAll(limitedReader)
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error reading part data")

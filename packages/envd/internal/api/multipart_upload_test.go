@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -530,6 +531,79 @@ func TestMultipartUpload(t *testing.T) {
 		content, err := os.ReadFile(destPath)
 		require.NoError(t, err)
 		assert.Empty(t, string(content))
+	})
+
+	t.Run("gzip encoded part upload", func(t *testing.T) {
+		t.Parallel()
+		api := newTestAPI(t)
+		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "gzip-file.txt")
+
+		part0Content := []byte("Hello, ")
+		part1Content := []byte("World!")
+		totalSize := int64(len(part0Content) + len(part1Content))
+		partSize := int64(len(part0Content))
+
+		// Initialize upload
+		initBody := PostFilesUploadInitJSONRequestBody{
+			Path:      destPath,
+			TotalSize: totalSize,
+			PartSize:  partSize,
+		}
+		initBodyBytes, _ := json.Marshal(initBody)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(initBodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+		uploadId := initResp.UploadId
+
+		// Helper to gzip compress data
+		gzipCompress := func(data []byte) []byte {
+			var buf bytes.Buffer
+			gw := gzip.NewWriter(&buf)
+			gw.Write(data)
+			gw.Close()
+			return buf.Bytes()
+		}
+
+		// Upload part 0 with gzip encoding
+		part0Gzipped := gzipCompress(part0Content)
+		part0Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=0", bytes.NewReader(part0Gzipped))
+		part0Req.Header.Set("Content-Type", "application/octet-stream")
+		part0Req.Header.Set("Content-Encoding", "gzip")
+		part0W := httptest.NewRecorder()
+
+		api.PutFilesUploadUploadId(part0W, part0Req, uploadId, PutFilesUploadUploadIdParams{Part: 0})
+		require.Equal(t, http.StatusOK, part0W.Code)
+
+		// Upload part 1 with gzip encoding
+		part1Gzipped := gzipCompress(part1Content)
+		part1Req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=1", bytes.NewReader(part1Gzipped))
+		part1Req.Header.Set("Content-Type", "application/octet-stream")
+		part1Req.Header.Set("Content-Encoding", "gzip")
+		part1W := httptest.NewRecorder()
+
+		api.PutFilesUploadUploadId(part1W, part1Req, uploadId, PutFilesUploadUploadIdParams{Part: 1})
+		require.Equal(t, http.StatusOK, part1W.Code)
+
+		// Complete upload
+		completeReq := httptest.NewRequest(http.MethodPost, "/files/upload/"+uploadId+"/complete", nil)
+		completeW := httptest.NewRecorder()
+
+		api.PostFilesUploadUploadIdComplete(completeW, completeReq, uploadId)
+		require.Equal(t, http.StatusOK, completeW.Code)
+
+		// Verify file contents
+		content, err := os.ReadFile(destPath)
+		require.NoError(t, err)
+		assert.Equal(t, "Hello, World!", string(content))
 	})
 }
 

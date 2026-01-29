@@ -1,6 +1,7 @@
 package api
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,20 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
+
+// getDecompressedBody returns a reader that decompresses the request body if
+// Content-Encoding is gzip, otherwise returns the original body.
+// The caller is responsible for closing the returned ReadCloser.
+func getDecompressedBody(r *http.Request) (io.ReadCloser, error) {
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, err := gzip.NewReader(r.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		return gzReader, nil
+	}
+	return r.Body, nil
+}
 
 var ErrNoDiskSpace = fmt.Errorf("not enough disk space available")
 
@@ -192,6 +207,20 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 
 		l.Msg("File write")
 	}()
+
+	// Handle gzip-encoded request body
+	body, err := getDecompressedBody(r)
+	if err != nil {
+		errMsg = fmt.Errorf("error decompressing request body: %w", err)
+		errorCode = http.StatusBadRequest
+		jsonError(w, errorCode, errMsg)
+
+		return
+	}
+	if body != r.Body {
+		defer body.Close()
+	}
+	r.Body = body
 
 	f, err := r.MultipartReader()
 	if err != nil {
