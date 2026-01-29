@@ -362,6 +362,7 @@ type VolumesNotFoundError struct {
 
 func (e VolumesNotFoundError) Error() string {
 	volumes := strings.Join(e.VolumeNames, ", ")
+
 	return fmt.Sprintf("volumes not found: %s", volumes)
 }
 
@@ -404,6 +405,7 @@ func (o *Orchestrator) convertVolumeMounts(
 		actualVolume, ok := dbVolumesMap[v.Name]
 		if !ok {
 			missingVolumes = append(missingVolumes, v.Name)
+
 			continue
 		}
 
