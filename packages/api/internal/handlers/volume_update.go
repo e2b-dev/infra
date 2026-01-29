@@ -62,26 +62,25 @@ func (a *APIStore) PatchVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 		VolumeID: volumeIDuuid,
 		Name:     body.Name,
 	})
-	if err != nil {
-		if dberrors.IsUniqueConstraintViolation(err) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume with name '%s' already exists", body.Name))
-			telemetry.ReportError(ctx, "volume already exists", err)
 
-			return
-		}
-
+	switch {
+	case dberrors.IsNotFoundError(err):
+		a.sendAPIStoreError(c, http.StatusNotFound, "Volume not found")
+		telemetry.ReportError(ctx, "volume not found", err)
+	case dberrors.IsUniqueConstraintViolation(err):
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume with name '%s' already exists", body.Name))
+		telemetry.ReportError(ctx, "volume already exists", err)
+	case err != nil:
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating volume")
 		telemetry.ReportCriticalError(ctx, "error when updating volume", err)
+	default:
+		result := api.Volume{
+			Id:   volume.ID.String(),
+			Name: volume.Name,
+		}
 
-		return
+		c.JSON(http.StatusOK, result)
 	}
-
-	result := api.Volume{
-		Id:   volume.ID.String(),
-		Name: volume.Name,
-	}
-
-	c.JSON(http.StatusOK, result)
 }
 
 var validVolumeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)

@@ -73,26 +73,22 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		Name:       body.Name,
 		VolumeType: volumeType,
 	})
-	if err != nil {
-		if dberrors.IsUniqueConstraintViolation(err) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume with name '%s' already exists", body.Name))
-			telemetry.ReportError(ctx, "volume already exists", err)
 
-			return
-		}
-
+	switch {
+	case dberrors.IsUniqueConstraintViolation(err):
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume with name '%s' already exists", body.Name))
+		telemetry.ReportError(ctx, "volume already exists", err)
+	case err != nil:
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating volume")
 		telemetry.ReportCriticalError(ctx, "error when creating volume", err)
+	default:
+		result := api.Volume{
+			Id:   volume.ID.String(),
+			Name: volume.Name,
+		}
 
-		return
+		c.JSON(http.StatusCreated, result)
 	}
-
-	result := api.Volume{
-		Id:   volume.ID.String(),
-		Name: volume.Name,
-	}
-
-	c.JSON(http.StatusCreated, result)
 }
 
 func (a *APIStore) getVolumeType(ctx context.Context) string {

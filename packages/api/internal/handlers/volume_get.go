@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -38,17 +39,20 @@ func (a *APIStore) GetVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 		VolumeID: volumeIDuuid,
 		TeamID:   team.ID,
 	})
-	if err != nil {
+
+	switch {
+	case dberrors.IsNotFoundError(err):
+		a.sendAPIStoreError(c, http.StatusNotFound, "Volume not found")
+		telemetry.ReportError(ctx, "volume not found", err)
+	case err != nil:
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting volume")
 		telemetry.ReportCriticalError(ctx, "error when getting volume", err)
+	default:
+		result := api.Volume{
+			Id:   volume.ID.String(),
+			Name: volume.Name,
+		}
 
-		return
+		c.JSON(http.StatusOK, result)
 	}
-
-	result := api.Volume{
-		Id:   volume.ID.String(),
-		Name: volume.Name,
-	}
-
-	c.JSON(http.StatusOK, result)
 }

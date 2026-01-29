@@ -372,14 +372,14 @@ func (o *Orchestrator) convertVolumeMounts(ctx context.Context, teamID uuid.UUID
 
 func (o *Orchestrator) getVolumesMap(ctx context.Context, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) (map[string]queries.Volume, error) {
 	// dedupe mounted volumes
-	dbVolumesMap := make(map[string]queries.Volume, len(volumeMounts))
+	uniqueVolumeNames := make(map[string]struct{}, len(volumeMounts))
 	for _, v := range volumeMounts {
-		dbVolumesMap[v.Name] = queries.Volume{}
+		uniqueVolumeNames[v.Name] = struct{}{}
 	}
 
 	// make a slice
-	volumeNames := make([]string, 0, len(dbVolumesMap))
-	for name := range dbVolumesMap {
+	volumeNames := make([]string, 0, len(uniqueVolumeNames))
+	for name := range uniqueVolumeNames {
 		volumeNames = append(volumeNames, name)
 	}
 
@@ -393,6 +393,7 @@ func (o *Orchestrator) getVolumesMap(ctx context.Context, teamID uuid.UUID, volu
 	}
 
 	// populate the map
+	dbVolumesMap := make(map[string]queries.Volume, len(dbVolumes))
 	for _, v := range dbVolumes {
 		dbVolumesMap[v.Name] = v
 	}
