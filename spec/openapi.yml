@@ -185,6 +185,16 @@ components:
           type: boolean
           description: Whether the template is public or only accessible by the team
 
+    TemplateUpdateResponse:
+      required:
+        - names
+      properties:
+        names:
+          type: array
+          description: Names of the template (namespace/alias format when namespaced)
+          items:
+            type: string
+
     CPUCount:
       type: integer
       format: int32
@@ -2513,6 +2523,10 @@ paths:
       responses:
         "200":
           description: The template was updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateUpdateResponse"
         "400":
           $ref: "#/components/responses/400"
         "401":

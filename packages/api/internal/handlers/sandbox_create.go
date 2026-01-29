@@ -66,7 +66,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	identifier, tag, err := id.ParseName(body.TemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template reference: %s", err))
-		telemetry.ReportCriticalError(ctx, "invalid template reference", err)
+		telemetry.ReportError(ctx, "invalid template reference", err)
 
 		return
 	}
@@ -75,7 +75,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Team.Slug)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
-		telemetry.ReportCriticalError(ctx, "error when resolving template alias", apiErr.Err)
+		telemetry.ReportCriticalError(ctx, "error when resolving template alias", apiErr.Err, attribute.String("identifier", identifier))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
@@ -84,7 +84,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	env, build, err := a.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamInfo.Team.ID, clusterID)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, aliasInfo.TemplateID)
-		telemetry.ReportCriticalError(ctx, "error when getting template", apiErr.Err)
+		telemetry.ReportCriticalError(ctx, "error when getting template", apiErr.Err, telemetry.WithTemplateID(aliasInfo.TemplateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

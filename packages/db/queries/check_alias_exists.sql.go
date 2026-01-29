@@ -24,27 +24,6 @@ func (q *Queries) CheckAliasConflictsWithTemplateID(ctx context.Context, alias s
 	return exists, err
 }
 
-const checkAliasExists = `-- name: CheckAliasExists :one
-SELECT alias, is_renamable, env_id, namespace, id
-FROM "public"."env_aliases"
-WHERE alias = $1
-`
-
-// Phase 1: Check global alias uniqueness (PK is still alias only).
-// TODO(phase2): Change to CheckAliasExistsInNamespace when PK becomes (alias, namespace)
-func (q *Queries) CheckAliasExists(ctx context.Context, alias string) (EnvAlias, error) {
-	row := q.db.QueryRow(ctx, checkAliasExists, alias)
-	var i EnvAlias
-	err := row.Scan(
-		&i.Alias,
-		&i.IsRenamable,
-		&i.EnvID,
-		&i.Namespace,
-		&i.ID,
-	)
-	return i, err
-}
-
 const checkAliasExistsInNamespace = `-- name: CheckAliasExistsInNamespace :one
 SELECT alias, is_renamable, env_id, namespace, id
 FROM "public"."env_aliases"

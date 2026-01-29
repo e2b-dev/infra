@@ -251,7 +251,10 @@ func RegisterBuild(
 			}
 		}
 
-		aliasDB, err := client.CheckAliasExists(ctx, alias)
+		aliasDB, err := client.CheckAliasExistsInNamespace(ctx, queries.CheckAliasExistsInNamespaceParams{
+			Alias:     alias,
+			Namespace: &data.Team.Slug,
+		})
 		if err != nil {
 			if !dberrors.IsNotFoundError(err) {
 				telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))

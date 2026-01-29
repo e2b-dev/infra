@@ -5,13 +5,6 @@ SELECT EXISTS(
     WHERE id = @alias
 );
 
--- name: CheckAliasExists :one
--- Phase 1: Check global alias uniqueness (PK is still alias only).
--- TODO(phase2): Change to CheckAliasExistsInNamespace when PK becomes (alias, namespace)
-SELECT *
-FROM "public"."env_aliases"
-WHERE alias = @alias;
-
 -- name: CheckAliasExistsInNamespace :one
 -- Check if alias exists within a specific namespace.
 -- Used for namespace-aware lookups. Returns the alias if found.

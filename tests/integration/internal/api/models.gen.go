@@ -1065,6 +1065,12 @@ type TemplateUpdateRequest struct {
 	Public *bool `json:"public,omitempty"`
 }
 
+// TemplateUpdateResponse defines model for TemplateUpdateResponse.
+type TemplateUpdateResponse struct {
+	// Names Names of the template (namespace/alias format when namespaced)
+	Names []string `json:"names"`
+}
+
 // TemplateWithBuilds defines model for TemplateWithBuilds.
 type TemplateWithBuilds struct {
 	// Aliases Aliases of the template
