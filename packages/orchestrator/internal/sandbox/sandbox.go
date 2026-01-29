@@ -80,6 +80,7 @@ type Config struct {
 type VolumeMountConfig struct {
 	Name string
 	Path string
+	Type string
 }
 
 type EnvdMetadata struct {

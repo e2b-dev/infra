@@ -248,6 +248,7 @@ func convertVolumeMounts(volumeMounts []*orchestrator.SandboxVolumeMount) []sand
 		results = append(results, sandbox.VolumeMountConfig{
 			Name: v.GetName(),
 			Path: v.GetPath(),
+			Type: v.GetType(),
 		})
 	}
 
