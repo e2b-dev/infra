@@ -14,11 +14,11 @@ import (
 
 // Filesystem magic numbers from Linux kernel (include/uapi/linux/magic.h)
 const (
-	nfsSuperMagic  = 0x6969
-	cifsMagic      = 0xFF534D42
-	smbSuperMagic  = 0x517B
+	nfsSuperMagic   = 0x6969
+	cifsMagic       = 0xFF534D42
+	smbSuperMagic   = 0x517B
 	smb2MagicNumber = 0xFE534D42
-	fuseSuperMagic = 0x65735546
+	fuseSuperMagic  = 0x65735546
 )
 
 // IsPathOnNetworkMount checks if the given path is on a network filesystem mount.
