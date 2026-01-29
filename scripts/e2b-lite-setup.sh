@@ -348,8 +348,12 @@ create_directories() {
     mkdir -p "$TMP_DIR/sandbox-cache"
     mkdir -p "$TMP_DIR/snapshot-cache"
     mkdir -p "$ORCHESTRATOR_DIR/tmp/local-template-storage"
-    mkdir -p "$ORCHESTRATOR_DIR/tmp/sandbox-cache-dir"
+    mkdir -p "$ORCHESTRATOR_DIR/tmp/sandbox"
     mkdir -p "$ORCHESTRATOR_DIR/tmp/snapshot-cache"
+    mkdir -p "$ORCHESTRATOR_DIR/tmp/orchestrator/sandbox"
+    mkdir -p "$ORCHESTRATOR_DIR/tmp/orchestrator/template"
+    mkdir -p "$ORCHESTRATOR_DIR/tmp/orchestrator/build"
+    mkdir -p "$ORCHESTRATOR_DIR/tmp/orchestrator/build-templates"
 
     echo -e "  ${GREEN}✓${NC} Directories created"
     echo ""
@@ -358,41 +362,16 @@ create_directories() {
 # -----------------------------------------------------------------------------
 # Download artifacts
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Download artifacts
+# Note: When using create-build with -storage flag, kernel and firecracker
+# are downloaded automatically to $storage/kernels and $storage/fc-versions.
+# This function is kept for backwards compatibility but can be skipped.
+# -----------------------------------------------------------------------------
 download_artifacts() {
     echo "Downloading artifacts..."
-
-    # Download kernel
-    KERNEL_PATH="$KERNELS_DIR/$KERNEL_VERSION/vmlinux.bin"
-    if [[ -f "$KERNEL_PATH" ]]; then
-        echo -e "  ${GREEN}✓${NC} Kernel $KERNEL_VERSION already exists"
-    else
-        echo "  Downloading kernel $KERNEL_VERSION..."
-        if curl -fsSL "$KERNEL_URL" -o "$KERNEL_PATH"; then
-            chmod 644 "$KERNEL_PATH"
-            echo -e "  ${GREEN}✓${NC} Kernel downloaded"
-        else
-            echo -e "${RED}Error: Failed to download kernel${NC}"
-            echo "  URL: $KERNEL_URL"
-            exit 1
-        fi
-    fi
-
-    # Download Firecracker
-    FC_PATH="$FC_VERSIONS_DIR/$FC_VERSION/firecracker"
-    if [[ -f "$FC_PATH" ]]; then
-        echo -e "  ${GREEN}✓${NC} Firecracker $FC_VERSION already exists"
-    else
-        echo "  Downloading Firecracker $FC_VERSION..."
-        if curl -fsSL "$FC_URL" -o "$FC_PATH"; then
-            chmod +x "$FC_PATH"
-            echo -e "  ${GREEN}✓${NC} Firecracker downloaded"
-        else
-            echo -e "${RED}Error: Failed to download Firecracker${NC}"
-            echo "  URL: $FC_URL"
-            exit 1
-        fi
-    fi
-
+    echo "  Note: create-build tool will download kernel and firecracker automatically"
+    echo "  to the storage directory when building templates."
     echo ""
 }
 
@@ -741,15 +720,12 @@ build_base_template() {
     fi
 
     # Set environment for template building
-    export STORAGE_PROVIDER=Local
-    export ARTIFACTS_REGISTRY_PROVIDER=Local
-    export LOCAL_TEMPLATE_STORAGE_BASE_PATH="$TEMPLATE_STORAGE"
+    # The create-build tool with -storage flag handles most setup automatically.
+    # We only need to set paths for envd and the template storage location (to match orchestrator runtime)
+    # and let it download/setup kernel and firecracker to its expected paths.
     export HOST_ENVD_PATH="$ENVD_DIR/bin/envd"
-    export HOST_KERNELS_DIR="$KERNELS_DIR"
-    export FIRECRACKER_VERSIONS_DIR="$FC_VERSIONS_DIR"
-    export ORCHESTRATOR_BASE_PATH="$ORCHESTRATOR_DIR/tmp"
-    export SANDBOX_DIR="$ORCHESTRATOR_DIR/tmp/sandbox"
-    export POSTGRES_CONNECTION_STRING="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+    # Override template storage to match what orchestrator runtime expects
+    export LOCAL_TEMPLATE_STORAGE_BASE_PATH="$TEMPLATE_STORAGE"
 
     # Generate IDs
     TEMPLATE_ID=$(generate_template_id)
@@ -767,7 +743,8 @@ build_base_template() {
         -firecracker "$FC_VERSION" \
         -vcpu 2 \
         -memory 512 \
-        -disk 1024 > /tmp/template-build.log 2>&1; then
+        -disk 1024 \
+        -v > /tmp/template-build.log 2>&1; then
         echo -e "  ${GREEN}✓${NC} Template built successfully"
 
         # Register template in database
@@ -858,19 +835,20 @@ NODE_ID=$(hostname) \
 LOKI_URL="localhost:3100" \
 ARTIFACTS_REGISTRY_PROVIDER=Local \
 ENVIRONMENT=local \
-FIRECRACKER_VERSIONS_DIR=../fc-versions/builds \
+FIRECRACKER_VERSIONS_DIR=./tmp/fc-versions \
 HOST_ENVD_PATH=../envd/bin/envd \
-HOST_KERNELS_DIR=../fc-kernels \
+HOST_KERNELS_DIR=./tmp/kernels \
 LOCAL_TEMPLATE_STORAGE_BASE_PATH=./tmp/local-template-storage \
 LOGS_COLLECTOR_ADDRESS=http://localhost:30006 \
-ORCHESTRATOR_BASE_PATH=./tmp/ \
+ORCHESTRATOR_BASE_PATH=./tmp/orchestrator \
 ORCHESTRATOR_LOCK_PATH=./tmp/.lock \
 ORCHESTRATOR_SERVICES=orchestrator,template-manager \
 OTEL_COLLECTOR_GRPC_ENDPOINT=localhost:4317 \
 REDIS_URL=localhost:6379 \
-SANDBOX_CACHE_DIR=./tmp/sandbox-cache-dir \
+SANDBOX_CACHE_DIR=./tmp/orchestrator/sandbox \
 SANDBOX_DIR="${ORCH_DIR}/tmp/sandbox" \
 SNAPSHOT_CACHE_DIR=./tmp/snapshot-cache \
+TEMPLATE_CACHE_DIR=./tmp/orchestrator/template \
 STORAGE_PROVIDER=Local \
 ./bin/orchestrator
 SCRIPT
