@@ -1,11 +1,6 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-openapi_api := ../../spec/openapi.yml
-openapi_envd := ../../packages/envd/spec/envd.yaml
-codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
-
-
 .PHONY: generate
 generate:
 	go generate ./...
