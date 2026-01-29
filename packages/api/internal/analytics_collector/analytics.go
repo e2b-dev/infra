@@ -98,6 +98,10 @@ func (p *PosthogClient) CreateAnalyticsUserEvent(ctx context.Context, userID str
 }
 
 func (p *PosthogClient) GetPackageToPosthogProperties(header *http.Header) posthog.Properties {
+	if header == nil {
+		return posthog.NewProperties()
+	}
+
 	properties := posthog.NewProperties().
 		Set("browser", header.Get("browser")).
 		Set("lang", header.Get("lang")).

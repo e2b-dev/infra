@@ -75,6 +75,13 @@ components:
       required: true
       schema:
         type: string
+    snapshotID:
+      name: snapshotID
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Identifier of the snapshot (template ID)
     tag:
       name: tag
       in: path
@@ -212,6 +219,38 @@ components:
       enum:
         - running
         - paused
+
+    NewSnapshot:
+      type: object
+      properties:
+        metadata:
+          $ref: "#/components/schemas/SandboxMetadata"
+
+    SnapshotInfo:
+      type: object
+      required:
+        - snapshotID
+        - createdAt
+      properties:
+        snapshotID:
+          type: string
+          description: Unique identifier for the snapshot (can be used as templateID in Sandbox.create)
+        sandboxID:
+          type: string
+          description: Identifier of the source sandbox
+        templateID:
+          type: string
+          description: Identifier of the original template
+        createdAt:
+          type: string
+          format: date-time
+          description: Time when the snapshot was created
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
+        diskSizeMB:
+          $ref: "#/components/schemas/DiskSizeMB"
 
     EnvVars:
       additionalProperties:
@@ -2145,6 +2184,119 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+
+  /sandboxes/{sandboxID}/snapshots:
+    post:
+      description: Create a persistent snapshot from the sandbox's current state. Snapshots can be used to create new sandboxes and persist beyond the original sandbox's lifetime.
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewSnapshot"
+      responses:
+        "201":
+          description: Snapshot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotInfo"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /snapshots:
+    get:
+      description: List all snapshots for the team
+      tags: [snapshots]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - name: sandboxID
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Filter snapshots by source sandbox ID
+        - $ref: "#/components/parameters/paginationLimit"
+        - $ref: "#/components/parameters/paginationNextToken"
+      responses:
+        "200":
+          description: Successfully returned snapshots
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - snapshots
+                properties:
+                  snapshots:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SnapshotInfo"
+                  nextToken:
+                    type: string
+                    description: Token for the next page of results
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /snapshots/{snapshotID}:
+    get:
+      description: Get snapshot details
+      tags: [snapshots]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/snapshotID"
+      responses:
+        "200":
+          description: Successfully returned snapshot details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotInfo"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+    delete:
+      description: Delete a snapshot
+      tags: [snapshots]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/snapshotID"
+      responses:
+        "204":
+          description: Snapshot deleted successfully
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
 
   /v3/templates:
     post:

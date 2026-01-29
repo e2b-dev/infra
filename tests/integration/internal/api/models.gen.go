@@ -403,6 +403,11 @@ type NewSandbox struct {
 	Timeout *int32 `json:"timeout,omitempty"`
 }
 
+// NewSnapshot defines model for NewSnapshot.
+type NewSnapshot struct {
+	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+}
+
 // NewTeamAPIKey defines model for NewTeamAPIKey.
 type NewTeamAPIKey struct {
 	// Name Name of the API key
@@ -693,6 +698,30 @@ type SandboxState string
 // SandboxesWithMetrics defines model for SandboxesWithMetrics.
 type SandboxesWithMetrics struct {
 	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
+}
+
+// SnapshotInfo defines model for SnapshotInfo.
+type SnapshotInfo struct {
+	// CpuCount CPU cores for the sandbox
+	CpuCount *CPUCount `json:"cpuCount,omitempty"`
+
+	// CreatedAt Time when the snapshot was created
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB *DiskSizeMB `json:"diskSizeMB,omitempty"`
+
+	// MemoryMB Memory for the sandbox in MiB
+	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
+
+	// SandboxID Identifier of the source sandbox
+	SandboxID *string `json:"sandboxID,omitempty"`
+
+	// SnapshotID Unique identifier for the snapshot (can be used as templateID in Sandbox.create)
+	SnapshotID string `json:"snapshotID"`
+
+	// TemplateID Identifier of the original template
+	TemplateID *string `json:"templateID,omitempty"`
 }
 
 // Team defines model for Team.
@@ -1107,6 +1136,9 @@ type PaginationNextToken = string
 // SandboxID defines model for sandboxID.
 type SandboxID = string
 
+// SnapshotID Identifier of the snapshot (template ID)
+type SnapshotID = string
+
 // TeamID defines model for teamID.
 type TeamID = string
 
@@ -1175,6 +1207,17 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
+}
+
+// GetSnapshotsParams defines parameters for GetSnapshots.
+type GetSnapshotsParams struct {
+	SandboxID *string `form:"sandboxID,omitempty" json:"sandboxID,omitempty"`
+
+	// Limit Maximum number of items to return per page
+	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// NextToken Cursor to start the list from
+	NextToken *PaginationNextToken `form:"nextToken,omitempty" json:"nextToken,omitempty"`
 }
 
 // GetTeamsTeamIDMetricsParams defines parameters for GetTeamsTeamIDMetrics.
@@ -1273,6 +1316,9 @@ type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefres
 
 // PostSandboxesSandboxIDResumeJSONRequestBody defines body for PostSandboxesSandboxIDResume for application/json ContentType.
 type PostSandboxesSandboxIDResumeJSONRequestBody = ResumedSandbox
+
+// PostSandboxesSandboxIDSnapshotsJSONRequestBody defines body for PostSandboxesSandboxIDSnapshots for application/json ContentType.
+type PostSandboxesSandboxIDSnapshotsJSONRequestBody = NewSnapshot
 
 // PostSandboxesSandboxIDTimeoutJSONRequestBody defines body for PostSandboxesSandboxIDTimeout for application/json ContentType.
 type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJSONBody
