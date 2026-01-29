@@ -100,6 +100,38 @@ PermitEmptyPasswords yes
 PasswordAuthentication yes
 EOF
 
+# Configure FUSE to allow non-root users to access the fuse device
+echo "Configuring FUSE to allow non-root users to access the fuse device"
+if [ -f /etc/fuse.conf ]; then
+    # Uncomment user_allow_other if it's commented
+    sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf
+    # If the line doesn't exist at all, add it
+    if ! grep -q "^user_allow_other" /etc/fuse.conf; then
+        echo "user_allow_other" >> /etc/fuse.conf
+    fi
+else
+    # Create the file if it doesn't exist
+    cat <<EOF >/etc/fuse.conf
+# Allow non-root users to specify the allow_other or allow_root mount options.
+user_allow_other
+EOF
+fi
+
+# Create /dev/fuse if it doesn't exist (needed for build context)
+if [ ! -e /dev/fuse ]; then
+    mknod /dev/fuse c 10 229 2>/dev/null || true
+fi
+# Set permissions if the device exists
+if [ -e /dev/fuse ]; then
+    chmod 666 /dev/fuse
+fi
+# Create udev rule to ensure permissions are set when device is created at runtime
+mkdir -p /etc/udev/rules.d
+cat <<EOF >/etc/udev/rules.d/99-fuse-permissions.rules
+# Set permissions for FUSE device to allow non-root users
+KERNEL=="fuse", MODE="0666"
+EOF
+
 echo "Increasing inotify watch limit"
 echo 'fs.inotify.max_user_watches=65536' | tee -a /etc/sysctl.conf
 
