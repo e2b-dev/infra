@@ -164,18 +164,12 @@ variable "client_proxy_update_max_parallel" {
   type = number
 }
 
-variable "client_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
+variable "client_proxy_session_port" {
+  type = number
 }
 
 variable "client_proxy_health_port" {
-  type = object({
-    name = string
-    port = number
-  })
+  type = number
 }
 
 variable "domain_name" {

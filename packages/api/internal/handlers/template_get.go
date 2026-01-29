@@ -97,6 +97,7 @@ func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 		TemplateID:    template.ID,
 		Public:        template.Public,
 		Aliases:       template.Aliases,
+		Names:         template.Names,
 		CreatedAt:     template.CreatedAt,
 		UpdatedAt:     template.UpdatedAt,
 		LastSpawnedAt: template.LastSpawnedAt,

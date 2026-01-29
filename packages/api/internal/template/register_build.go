@@ -47,12 +47,14 @@ type RegisterBuildResponse struct {
 	TemplateID string
 	BuildID    string
 	Aliases    []string
+	Names      []string
 	Tags       []string
 }
 
 func RegisterBuild(
 	ctx context.Context,
 	templateBuildsCache *templatecache.TemplatesBuildCache,
+	templateCache *templatecache.TemplateCache,
 	db *sqlcdb.Client,
 	data RegisterBuildData,
 ) (*RegisterBuildResponse, *api.APIError) {
@@ -218,10 +220,13 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "inserted new build")
 
 	// Check if the alias is available and claim it
-	var aliases []string
+	var aliases, names []string
 	if data.Alias != nil {
-		alias := *data.Alias
+		// Extract just the alias portion (without namespace) for storage
+		// The identifier may be "namespace/alias" or just "alias"
+		alias := id.ExtractAlias(*data.Alias)
 		aliases = append(aliases, alias)
+		names = append(names, id.WithNamespace(data.Team.Slug, alias))
 
 		exists, err := client.CheckAliasConflictsWithTemplateID(ctx, alias)
 		if err != nil {
@@ -246,7 +251,10 @@ func RegisterBuild(
 			}
 		}
 
-		aliasDB, err := client.CheckAliasExists(ctx, alias)
+		aliasDB, err := client.CheckAliasExistsInNamespace(ctx, queries.CheckAliasExistsInNamespaceParams{
+			Alias:     alias,
+			Namespace: &data.Team.Slug,
+		})
 		if err != nil {
 			if !dberrors.IsNotFoundError(err) {
 				telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
@@ -278,6 +286,7 @@ func RegisterBuild(
 				CreateTemplateAlias(ctx, queries.CreateTemplateAliasParams{
 					Alias:      alias,
 					TemplateID: data.TemplateID,
+					Namespace:  &data.Team.Slug,
 				})
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when inserting alias", err, attribute.String("alias", alias))
@@ -288,6 +297,10 @@ func RegisterBuild(
 					Code:      http.StatusInternalServerError,
 				}
 			}
+
+			// Invalidate any cached tombstone for this alias
+			templateCache.InvalidateAlias(&data.Team.Slug, alias)
+
 			telemetry.ReportEvent(ctx, "created new alias", attribute.String("env.alias", alias))
 		} else if aliasDB.EnvID != data.TemplateID {
 			err := fmt.Errorf("alias '%s' already used", alias)
@@ -363,6 +376,7 @@ func RegisterBuild(
 		TemplateID: data.TemplateID,
 		BuildID:    buildID.String(),
 		Aliases:    aliases,
+		Names:      names,
 		Tags:       tags,
 	}, nil
 }

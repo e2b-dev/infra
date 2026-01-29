@@ -29,18 +29,18 @@ job "client-proxy" {
     }
 
     network {
-      port "${proxy_port_name}" {
+      port "proxy" {
         static = "${proxy_port}"
       }
 
-      port "${health_port_name}" {
+      port "health" {
         static = "${health_port}"
       }
     }
 
     service {
-      name = "proxy"
-      port = "${proxy_port_name}"
+      name = "client-proxy"
+      port = "proxy"
 
       check {
         type     = "http"
@@ -48,7 +48,7 @@ job "client-proxy" {
         path     = "/health"
         interval = "3s"
         timeout  = "3s"
-        port     = "${health_port_name}"
+        port     = "health"
       }
     }
 
@@ -109,7 +109,7 @@ job "client-proxy" {
       config {
         network_mode = "host"
         image        = "${image_name}"
-        ports        = ["${proxy_port_name}", "${health_port_name}"]
+        ports        = ["proxy", "health"]
       }
     }
   }

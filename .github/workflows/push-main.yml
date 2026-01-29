@@ -12,6 +12,7 @@ on:
 jobs:
   generated-code-check:
     uses: ./.github/workflows/pr-no-generated-changes.yml
+
   unit-tests:
     uses: ./.github/workflows/pr-tests.yml
   integration-tests:

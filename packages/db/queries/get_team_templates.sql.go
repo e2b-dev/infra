@@ -21,11 +21,14 @@ SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count,
        COALESCE(eb.firecracker_version, 'N/A') as build_firecracker_version,
        COALESCE(latest_build.status, 'waiting') as build_status,
        u.id as creator_id, u.email as creator_email,
-       COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases
+       COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
+       COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
 FROM public.envs AS e
 LEFT JOIN auth.users AS u ON u.id = e.created_by
 LEFT JOIN LATERAL (
-    SELECT ARRAY_AGG(alias ORDER BY alias) AS aliases
+    SELECT 
+        ARRAY_AGG(alias ORDER BY alias) AS aliases,
+        ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names
     FROM public.env_aliases
     WHERE env_id = e.id
 ) ea ON TRUE
@@ -67,6 +70,7 @@ type GetTeamTemplatesRow struct {
 	CreatorID               *uuid.UUID
 	CreatorEmail            *string
 	Aliases                 []string
+	Names                   []string
 }
 
 func (q *Queries) GetTeamTemplates(ctx context.Context, teamID uuid.UUID) ([]GetTeamTemplatesRow, error) {
@@ -99,6 +103,7 @@ func (q *Queries) GetTeamTemplates(ctx context.Context, teamID uuid.UUID) ([]Get
 			&i.CreatorID,
 			&i.CreatorEmail,
 			&i.Aliases,
+			&i.Names,
 		); err != nil {
 			return nil, err
 		}
