@@ -7,9 +7,6 @@ AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 init:
 	brew install protobuf
 
-openapi := ../../spec/openapi-hyperloop.yml
-codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
-
 .PHONY: generate
 generate:
 	@echo "Generating..."

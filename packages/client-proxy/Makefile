@@ -47,8 +47,7 @@ run-local:
 
 .PHONY: generate
 generate:
-	$(codegen) -old-config-style -generate types --package api $(openapi) > ../shared/pkg/http/edge/types.gen.go
-	$(codegen) -old-config-style -generate client --package api $(openapi) > ../shared/pkg/http/edge/client.gen.go
+	go generate ./...
 
 .PHONY: test
 test:

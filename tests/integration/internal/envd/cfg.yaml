@@ -1,8 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/deepmap/oapi-codegen/HEAD/configuration-schema.json
 
-package: hyperloop
+package: envd
 output: generated.go
 generate:
-  gin-server: true
-  embedded-spec: true
+  client: true
   models: true

@@ -1,8 +1,6 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-openapi := ../../spec/openapi.yml
-codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
 ifeq ($(PROVIDER),aws)
