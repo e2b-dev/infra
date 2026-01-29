@@ -1,7 +1,7 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-goose := GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_migrations" -dir "migrations"
+goose := GOOSE_DRIVER=postgres GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_migrations" -dir "migrations"
 goose-local := GOOSE_DBSTRING=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable go tool goose -table "_migrations" -dir "migrations" postgres
 
 ifeq ($(PROVIDER),aws)
@@ -37,7 +37,7 @@ ifeq ($(origin NAME), undefined)
 	@echo "The expected syntax is: make create-migration NAME=your-migration-name"
 	@exit 1
 endif
-	$(goose) create $(NAME) sql
+	@$(goose) create $(NAME) sql
 
 .PHONE: status
 status:
