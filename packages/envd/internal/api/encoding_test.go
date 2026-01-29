@@ -30,6 +30,52 @@ func TestIsSupportedEncoding(t *testing.T) {
 	})
 }
 
+func TestParseEncodingWithQuality(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns encoding with default quality 1.0", func(t *testing.T) {
+		t.Parallel()
+		eq := parseEncodingWithQuality("gzip")
+		assert.Equal(t, "gzip", eq.encoding)
+		assert.Equal(t, 1.0, eq.quality)
+	})
+
+	t.Run("parses quality value", func(t *testing.T) {
+		t.Parallel()
+		eq := parseEncodingWithQuality("gzip;q=0.5")
+		assert.Equal(t, "gzip", eq.encoding)
+		assert.Equal(t, 0.5, eq.quality)
+	})
+
+	t.Run("parses quality value with whitespace", func(t *testing.T) {
+		t.Parallel()
+		eq := parseEncodingWithQuality("gzip ; q=0.8")
+		assert.Equal(t, "gzip", eq.encoding)
+		assert.Equal(t, 0.8, eq.quality)
+	})
+
+	t.Run("handles q=0", func(t *testing.T) {
+		t.Parallel()
+		eq := parseEncodingWithQuality("gzip;q=0")
+		assert.Equal(t, "gzip", eq.encoding)
+		assert.Equal(t, 0.0, eq.quality)
+	})
+
+	t.Run("handles invalid quality value", func(t *testing.T) {
+		t.Parallel()
+		eq := parseEncodingWithQuality("gzip;q=invalid")
+		assert.Equal(t, "gzip", eq.encoding)
+		assert.Equal(t, 1.0, eq.quality) // defaults to 1.0 on parse error
+	})
+
+	t.Run("trims whitespace from encoding", func(t *testing.T) {
+		t.Parallel()
+		eq := parseEncodingWithQuality("  gzip  ")
+		assert.Equal(t, "gzip", eq.encoding)
+		assert.Equal(t, 1.0, eq.quality)
+	})
+}
+
 func TestParseEncoding(t *testing.T) {
 	t.Parallel()
 
@@ -185,6 +231,56 @@ func TestParseAcceptEncoding(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "deflate, br")
+
+		_, err := parseAcceptEncoding(req)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported Accept-Encoding")
+	})
+
+	t.Run("selects gzip when it has highest quality", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "br;q=0.5, gzip;q=1.0, deflate;q=0.8")
+
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Equal(t, "gzip", encoding)
+	})
+
+	t.Run("selects gzip even with lower quality when others unsupported", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "br;q=1.0, gzip;q=0.5")
+
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Equal(t, "gzip", encoding)
+	})
+
+	t.Run("returns identity when it has higher quality than gzip", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "gzip;q=0.5, identity;q=1.0")
+
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Equal(t, "", encoding) // identity means no compression
+	})
+
+	t.Run("skips encoding with q=0", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "gzip;q=0, identity")
+
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Equal(t, "", encoding) // gzip rejected, identity accepted
+	})
+
+	t.Run("returns error when gzip explicitly rejected and no other supported", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "gzip;q=0, br")
 
 		_, err := parseAcceptEncoding(req)
 		require.Error(t, err)

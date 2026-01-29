@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -12,6 +14,12 @@ import (
 // The order matters - encodings are checked in order of preference.
 var SupportedEncodings = []string{
 	"gzip",
+}
+
+// encodingWithQuality holds an encoding name and its quality value.
+type encodingWithQuality struct {
+	encoding string
+	quality  float64
 }
 
 // isSupportedEncoding checks if the given encoding is in the supported list.
@@ -24,15 +32,33 @@ func isSupportedEncoding(encoding string) bool {
 	return false
 }
 
-// parseEncoding extracts and validates the encoding from a header value.
-// Returns the encoding name stripped of any quality value.
-func parseEncoding(value string) string {
-	encoding := strings.TrimSpace(value)
-	// Strip quality value if present (e.g., "gzip;q=1.0" -> "gzip")
-	if idx := strings.Index(encoding, ";"); idx != -1 {
-		encoding = strings.TrimSpace(encoding[:idx])
+// parseEncodingWithQuality parses an encoding value and extracts the quality.
+// Returns the encoding name and quality value (default 1.0 if not specified).
+func parseEncodingWithQuality(value string) encodingWithQuality {
+	value = strings.TrimSpace(value)
+	quality := 1.0
+
+	if idx := strings.Index(value, ";"); idx != -1 {
+		params := value[idx+1:]
+		value = strings.TrimSpace(value[:idx])
+
+		// Parse q=X.X parameter
+		for _, param := range strings.Split(params, ";") {
+			param = strings.TrimSpace(param)
+			if strings.HasPrefix(param, "q=") {
+				if q, err := strconv.ParseFloat(param[2:], 64); err == nil {
+					quality = q
+				}
+			}
+		}
 	}
-	return encoding
+
+	return encodingWithQuality{encoding: value, quality: quality}
+}
+
+// parseEncoding extracts the encoding name from a header value, stripping quality.
+func parseEncoding(value string) string {
+	return parseEncodingWithQuality(value).encoding
 }
 
 // parseContentEncoding parses the Content-Encoding header and returns the encoding.
@@ -59,24 +85,40 @@ func parseContentEncoding(r *http.Request) (string, error) {
 }
 
 // parseAcceptEncoding parses the Accept-Encoding header and returns the requested
-// encoding. Returns an error if only unsupported encodings are requested.
-// If no Accept-Encoding header is present, returns empty string (no compression).
+// encoding based on quality values. Returns an error if only unsupported encodings
+// are requested. If no Accept-Encoding header is present, returns empty string.
 func parseAcceptEncoding(r *http.Request) (string, error) {
 	header := r.Header.Get("Accept-Encoding")
 	if header == "" {
 		return "", nil
 	}
 
+	// Parse all encodings with their quality values
+	var encodings []encodingWithQuality
 	for _, value := range strings.Split(header, ",") {
-		encoding := parseEncoding(value)
+		eq := parseEncodingWithQuality(value)
+		encodings = append(encodings, eq)
+	}
+
+	// Sort by quality value (highest first)
+	sort.Slice(encodings, func(i, j int) bool {
+		return encodings[i].quality > encodings[j].quality
+	})
+
+	// Find the best supported encoding
+	for _, eq := range encodings {
+		// Skip encodings with q=0 (explicitly rejected)
+		if eq.quality == 0 {
+			continue
+		}
 
 		// "identity" means no encoding, "*" means any encoding is acceptable
-		if encoding == "identity" || encoding == "*" {
+		if eq.encoding == "identity" || eq.encoding == "*" {
 			return "", nil
 		}
 
-		if isSupportedEncoding(encoding) {
-			return encoding, nil
+		if isSupportedEncoding(eq.encoding) {
+			return eq.encoding, nil
 		}
 	}
 
