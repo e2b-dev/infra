@@ -302,12 +302,6 @@ func doBuild(
 
 	force := true
 
-	// Build the effective start command
-	effectiveStartCmd := startCmd
-	if effectiveStartCmd == "" {
-		effectiveStartCmd = "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'"
-	}
-
 	// Build steps list for setup commands
 	var steps []*templatemanager.TemplateStep
 	if setupCmd != "" {
@@ -327,7 +321,7 @@ func doBuild(
 		MemoryMB:           int64(memory),
 		DiskSizeMB:         int64(disk),
 		HugePages:          hugePages,
-		StartCmd:           effectiveStartCmd,
+		StartCmd:           startCmd,
 		ReadyCmd:           readyCmd,
 		KernelVersion:      kernel,
 		FirecrackerVersion: fc,
