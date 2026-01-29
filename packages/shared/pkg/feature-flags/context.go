@@ -81,11 +81,21 @@ func mergeSameKind(first ldcontext.Context, second ldcontext.Context) ldcontext.
 	return builder.Build()
 }
 
-func removeUndefined(contexts []ldcontext.Context) []ldcontext.Context {
+func shouldInclude(item ldcontext.Context, fns []func(ldcontext.Context) bool) bool {
+	for _, fn := range fns {
+		if !fn(item) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func filterContexts(contexts []ldcontext.Context, fns ...func(ldcontext.Context) bool) []ldcontext.Context {
 	var result []ldcontext.Context
 
 	for _, item := range contexts {
-		if !item.IsDefined() {
+		if !shouldInclude(item, fns) {
 			continue
 		}
 
@@ -103,7 +113,10 @@ func mergeContexts(ctx context.Context, contexts []ldcontext.Context) ldcontext.
 
 	contexts = flattenContexts(contexts)
 
-	contexts = removeUndefined(contexts)
+	contexts = filterContexts(contexts,
+		func(l ldcontext.Context) bool { return l.IsDefined() },
+		func(l ldcontext.Context) bool { return l.Err() == nil },
+	)
 
 	if len(contexts) == 0 {
 		return ldcontext.NewWithKind("none", "none")
@@ -158,4 +171,8 @@ func ServiceContext(serviceName string) ldcontext.Context {
 
 func TemplateContext(templateID string) ldcontext.Context {
 	return ldcontext.NewWithKind(TemplateKind, templateID)
+}
+
+func VolumeContext(volumeName string) ldcontext.Context {
+	return ldcontext.NewWithKind(VolumeKind, volumeName)
 }

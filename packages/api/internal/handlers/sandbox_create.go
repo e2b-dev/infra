@@ -114,20 +114,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		attribute.String("env.firecracker.version", build.FirecrackerVersion),
 	)
 
-	var metadata map[string]string
-	if body.Metadata != nil {
-		metadata = *body.Metadata
-	}
-
-	var envVars map[string]string
-	if body.EnvVars != nil {
-		envVars = *body.EnvVars
-	}
-
-	var mcp api.Mcp
-	if body.Mcp != nil {
-		mcp = *body.Mcp
-	}
+	autoPause := safeGet(body.AutoPause, sandbox.AutoPauseDefault)
+	envVars := safeGet(body.EnvVars, nil)
+	mcp := safeGet(body.Mcp, nil)
+	metadata := safeGet(body.Metadata, nil)
+	volumeMounts := safeGet(body.VolumeMounts, nil)
 
 	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
@@ -140,9 +131,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	autoPause := sandbox.AutoPauseDefault
-	if body.AutoPause != nil {
-		autoPause = *body.AutoPause
+	if len(volumeMounts) != 0 {
+		if !a.featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "use of volumes is not enabled")
+
+			return
+		}
 	}
 
 	var envdAccessToken *string = nil
@@ -207,6 +201,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		allowInternetAccess,
 		network,
 		mcp,
+		volumeMounts,
 	)
 	if createErr != nil {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
@@ -215,6 +210,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, &sbx)
+}
+
+func safeGet[T any](maybeValue *T, defaultValue T) T {
+	if maybeValue != nil {
+		return *maybeValue
+	}
+
+	return defaultValue
 }
 
 func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (string, *api.APIError) {

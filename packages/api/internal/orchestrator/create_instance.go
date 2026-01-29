@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -100,6 +101,7 @@ func (o *Orchestrator) CreateSandbox(
 	envdAuthToken *string,
 	allowInternetAccess *bool,
 	network *types.SandboxNetworkConfig,
+	volumeMounts []api.SandboxVolumeMount,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -208,6 +210,15 @@ func (o *Orchestrator) CreateSandbox(
 		trafficAccessToken = &accessToken
 	}
 
+	sbxVolumeMounts, err := o.convertVolumeMounts(ctx, team.ID, volumeMounts)
+	if err != nil {
+		return sandbox.Sandbox{}, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Failed to convert volumes",
+			Err:       fmt.Errorf("failed to convert volumes: %w", err),
+		}
+	}
+
 	sbxNetwork := buildNetworkConfig(network, allowInternetAccess, trafficAccessToken)
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
@@ -233,6 +244,7 @@ func (o *Orchestrator) CreateSandbox(
 			AllowInternetAccess: allowInternetAccess,
 			Network:             sbxNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
+			VolumeMounts:        sbxVolumeMounts,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
@@ -332,4 +344,42 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	return sbx, nil
+}
+
+func (o *Orchestrator) convertVolumeMounts(ctx context.Context, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) ([]*orchestrator.SandboxVolumeMount, error) {
+	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumeMounts))
+
+	volumeNames := make([]string, 0, len(volumeMounts))
+	for _, v := range volumeMounts {
+		volumeNames = append(volumeNames, v.Name)
+	}
+
+	dbVolumes, err := o.sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
+		TeamID:      teamID,
+		VolumeNames: volumeNames,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get volumes: %w", err)
+	}
+
+	dbVolumesMap := make(map[string]queries.Volume, len(dbVolumes))
+
+	for _, v := range dbVolumes {
+		dbVolumesMap[v.Name] = v
+	}
+
+	for _, v := range volumeMounts {
+		actualVolume, ok := dbVolumesMap[v.Name]
+		if !ok {
+			return nil, fmt.Errorf("volume '%s' not found", v.Name)
+		}
+
+		results = append(results, &orchestrator.SandboxVolumeMount{
+			Name: v.Name,
+			Path: v.Path,
+			Type: actualVolume.VolumeType,
+		})
+	}
+
+	return results, nil
 }

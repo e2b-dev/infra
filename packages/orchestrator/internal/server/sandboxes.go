@@ -155,6 +155,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 				KernelVersion:      req.GetSandbox().GetKernelVersion(),
 				FirecrackerVersion: req.GetSandbox().GetFirecrackerVersion(),
 			},
+
+			VolumeMounts: convertVolumeMounts(req.GetSandbox().GetVolumeMounts()),
 		},
 		sandbox.RuntimeMetadata{
 			TemplateID:  req.GetSandbox().GetTemplateId(),
@@ -237,6 +239,18 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	return &orchestrator.SandboxCreateResponse{
 		ClientId: s.info.ClientId,
 	}, nil
+}
+
+func convertVolumeMounts(volumeMounts []*orchestrator.SandboxVolumeMount) []sandbox.VolumeMountConfig {
+	results := make([]sandbox.VolumeMountConfig, 0, len(volumeMounts))
+	for _, v := range volumeMounts {
+		results = append(results, sandbox.VolumeMountConfig{
+			Name: v.GetName(),
+			Path: v.GetPath(),
+		})
+	}
+
+	return results
 }
 
 func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
