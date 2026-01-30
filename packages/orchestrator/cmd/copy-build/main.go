@@ -45,7 +45,8 @@ func NewDestinationFromObject(ctx context.Context, o *googleStorage.ObjectHandle
 }
 
 func NewDestinationFromPath(prefix, file string) (*Destination, error) {
-	p := path.Join(prefix, file)
+	// Local storage uses templates subdirectory
+	p := path.Join(prefix, "templates", file)
 
 	if _, err := os.Stat(p); err == nil {
 		f, err := os.Open(p)
@@ -110,7 +111,8 @@ func (o *osFileBlob) Put(_ context.Context, _ []byte) error {
 }
 
 func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.Header, error) {
-	f, err := os.Open(path.Join(from, headerPath))
+	// Local storage uses templates subdirectory
+	f, err := os.Open(path.Join(from, "templates", headerPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}

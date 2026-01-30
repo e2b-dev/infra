@@ -12,22 +12,27 @@ import (
 
 	apispec "github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/testutils"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
 func TestQueryNotExistingTemplateAlias(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
 
 	store := &APIStore{
-		sqlcDB: testDB,
+		sqlcDB:        testDB.SqlcClient,
+		authDB:        testDB.AuthDb,
+		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient),
 	}
 
 	alias := "non-existing-template-alias"
 	teamID := testutils.CreateTestTeam(t, testDB)
+	teamSlug := testutils.GetTeamSlug(t, ctx, testDB, teamID)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -35,8 +40,9 @@ func TestQueryNotExistingTemplateAlias(t *testing.T) {
 	c.Set(
 		auth.TeamContextKey,
 		&types.Team{
-			Team: &queries.Team{
-				ID: teamID,
+			Team: &authqueries.Team{
+				ID:   teamID,
+				Slug: teamSlug,
 			},
 		},
 	)
@@ -52,12 +58,19 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, testDB)
-	templateID, alias := testutils.CreateTestTemplateWithAlias(t, testDB, teamID)
+	teamSlug := testutils.GetTeamSlug(t, ctx, testDB, teamID)
+	templateID := testutils.CreateTestTemplate(t, testDB, teamID)
+
+	// Create alias with team's namespace
+	alias := testutils.CreateTestTemplateAliasWithNamespace(t, testDB, templateID, &teamSlug)
 
 	store := &APIStore{
-		sqlcDB: testDB,
+		sqlcDB:        testDB.SqlcClient,
+		authDB:        testDB.AuthDb,
+		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient),
 	}
 
 	w := httptest.NewRecorder()
@@ -66,8 +79,9 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 	c.Set(
 		auth.TeamContextKey,
 		&types.Team{
-			Team: &queries.Team{
-				ID: teamID,
+			Team: &authqueries.Team{
+				ID:   teamID,
+				Slug: teamSlug,
 			},
 		},
 	)
@@ -89,13 +103,21 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
 
 	ownerTeamID := testutils.CreateTestTeam(t, testDB)
+	ownerTeamSlug := testutils.GetTeamSlug(t, ctx, testDB, ownerTeamID)
 	foreignTeamID := testutils.CreateTestTeam(t, testDB)
-	_, alias := testutils.CreateTestTemplateWithAlias(t, testDB, ownerTeamID)
+	foreignTeamSlug := testutils.GetTeamSlug(t, ctx, testDB, foreignTeamID)
+
+	templateID := testutils.CreateTestTemplate(t, testDB, ownerTeamID)
+	// Create alias with owner's namespace
+	alias := testutils.CreateTestTemplateAliasWithNamespace(t, testDB, templateID, &ownerTeamSlug)
 
 	store := &APIStore{
-		sqlcDB: testDB,
+		sqlcDB:        testDB.SqlcClient,
+		authDB:        testDB.AuthDb,
+		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient),
 	}
 
 	w := httptest.NewRecorder()
@@ -104,8 +126,9 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 	c.Set(
 		auth.TeamContextKey,
 		&types.Team{
-			Team: &queries.Team{
-				ID: foreignTeamID,
+			Team: &authqueries.Team{
+				ID:   foreignTeamID,
+				Slug: foreignTeamSlug,
 			},
 		},
 	)
@@ -114,5 +137,7 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 
 	res, err := apispec.ParseGetTemplatesAliasesAliasResponse(w.Result())
 	require.NoError(t, err)
-	require.Equal(t, http.StatusForbidden, res.StatusCode())
+	// Foreign team uses their own namespace for lookup, which won't match the owner's namespace
+	// This results in 404 (not found) instead of 403 (forbidden) with the new exact match behavior
+	require.Equal(t, http.StatusNotFound, res.StatusCode())
 }

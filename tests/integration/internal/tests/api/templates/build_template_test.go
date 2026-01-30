@@ -886,6 +886,7 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 		"curl",
 		"ca-certificates",
 		"fuse3",
+		"git",
 		"mount-s3",
 	}
 

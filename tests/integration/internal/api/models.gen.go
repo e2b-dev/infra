@@ -755,6 +755,7 @@ type TeamUser struct {
 // Template defines model for Template.
 type Template struct {
 	// Aliases Aliases of the template
+	// Deprecated:
 	Aliases []string `json:"aliases"`
 
 	// BuildCount Number of times the template was built
@@ -784,6 +785,9 @@ type Template struct {
 
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB `json:"memoryMB"`
+
+	// Names Names of the template (namespace/alias format when namespaced)
+	Names []string `json:"names"`
 
 	// Public Whether the template is public or only accessible by the team
 	Public bool `json:"public"`
@@ -1045,9 +1049,16 @@ type TemplateUpdateRequest struct {
 	Public *bool `json:"public,omitempty"`
 }
 
+// TemplateUpdateResponse defines model for TemplateUpdateResponse.
+type TemplateUpdateResponse struct {
+	// Names Names of the template (namespace/alias format when namespaced)
+	Names []string `json:"names"`
+}
+
 // TemplateWithBuilds defines model for TemplateWithBuilds.
 type TemplateWithBuilds struct {
 	// Aliases Aliases of the template
+	// Deprecated:
 	Aliases []string `json:"aliases"`
 
 	// Builds List of builds for the template
@@ -1058,6 +1069,9 @@ type TemplateWithBuilds struct {
 
 	// LastSpawnedAt Time when the template was last used
 	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
+
+	// Names Names of the template (namespace/alias format when namespaced)
+	Names []string `json:"names"`
 
 	// Public Whether the template is public or only accessible by the team
 	Public bool `json:"public"`
@@ -1286,6 +1300,9 @@ type PostTemplatesTemplateIDJSONRequestBody = TemplateBuildRequest
 
 // PostV2TemplatesJSONRequestBody defines body for PostV2Templates for application/json ContentType.
 type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2
+
+// PatchV2TemplatesTemplateIDJSONRequestBody defines body for PatchV2TemplatesTemplateID for application/json ContentType.
+type PatchV2TemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
 
 // PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody defines body for PostV2TemplatesTemplateIDBuildsBuildID for application/json ContentType.
 type PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody = TemplateBuildStartV2

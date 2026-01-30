@@ -140,6 +140,10 @@ variable "postgres_connection_string_secret_name" {
   type = string
 }
 
+variable "postgres_read_replica_connection_string_secret_version" {
+  type = any
+}
+
 variable "supabase_jwt_secrets_secret_name" {
   type = string
 }
@@ -160,18 +164,12 @@ variable "client_proxy_update_max_parallel" {
   type = number
 }
 
-variable "client_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
+variable "client_proxy_session_port" {
+  type = number
 }
 
 variable "client_proxy_health_port" {
-  type = object({
-    name = string
-    port = number
-  })
+  type = number
 }
 
 variable "domain_name" {
@@ -379,6 +377,26 @@ variable "filestore_cache_cleanup_deletions_per_loop" {
 
 variable "filestore_cache_cleanup_files_per_loop" {
   type = number
+}
+
+variable "filestore_cache_cleanup_max_concurrent_stat" {
+  type        = number
+  description = "Number of concurrent stat goroutines"
+}
+
+variable "filestore_cache_cleanup_max_concurrent_scan" {
+  type        = number
+  description = "Number of concurrent scanner goroutines"
+}
+
+variable "filestore_cache_cleanup_max_concurrent_delete" {
+  type        = number
+  description = "Number of concurrent deleter goroutines"
+}
+
+variable "filestore_cache_cleanup_max_retries" {
+  type        = number
+  description = "Maximum number of continuous error or miss retries before giving up"
 }
 
 variable "dockerhub_remote_repository_url" {

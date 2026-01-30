@@ -1,17 +1,17 @@
 package types
 
 import (
-	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
 type Team struct {
-	*queries.Team
+	*authqueries.Team
 
 	Limits *TeamLimits
 }
 
 func newTeamLimits(
-	teamLimits *queries.TeamLimit,
+	teamLimits *authqueries.TeamLimit,
 ) *TeamLimits {
 	return &TeamLimits{
 		SandboxConcurrency: int64(teamLimits.ConcurrentSandboxes),
@@ -24,8 +24,8 @@ func newTeamLimits(
 }
 
 func NewTeam(
-	team *queries.Team,
-	teamLimits *queries.TeamLimit,
+	team *authqueries.Team,
+	teamLimits *authqueries.TeamLimit,
 ) *Team {
 	return &Team{
 		Team:   team,

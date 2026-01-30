@@ -9,10 +9,12 @@ WHERE t.id = $1
   );
 
 -- name: GetTemplateByIDWithAliases :one
-SELECT e.*, al.aliases
+SELECT e.*, al.aliases, al.names
 FROM "public"."envs" e
 CROSS JOIN LATERAL (
-    SELECT array_agg(alias)::text[] AS aliases
+    SELECT 
+        COALESCE(array_agg(alias), '{}')::text[] AS aliases,
+        COALESCE(array_agg(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END), '{}')::text[] AS names
     FROM public.env_aliases
     WHERE env_id = e.id
 ) AS al
