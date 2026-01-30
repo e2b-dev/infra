@@ -124,9 +124,29 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 	return "", fmt.Errorf("unsupported Accept-Encoding: %s, supported: %v", header, SupportedEncodings)
 }
 
+// multiCloser wraps a reader and closes multiple underlying closers.
+type multiCloser struct {
+	io.Reader
+
+	closers []io.Closer
+}
+
+func (m *multiCloser) Close() error {
+	var firstErr error
+	for _, c := range m.closers {
+		if err := c.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	return firstErr
+}
+
 // getDecompressedBody returns a reader that decompresses the request body based on
 // Content-Encoding header. Returns the original body if no encoding is specified.
 // Returns an error if an unsupported encoding is specified.
+// The caller is responsible for closing the returned ReadCloser, which will also
+// close the underlying request body.
 func getDecompressedBody(r *http.Request) (io.ReadCloser, error) {
 	encoding, err := parseContentEncoding(r)
 	if err != nil {
@@ -144,7 +164,10 @@ func getDecompressedBody(r *http.Request) (io.ReadCloser, error) {
 			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
 
-		return gzReader, nil
+		return &multiCloser{
+			Reader:  gzReader,
+			closers: []io.Closer{gzReader, r.Body},
+		}, nil
 	default:
 		// This shouldn't happen if isSupportedEncoding is correct
 		return nil, fmt.Errorf("encoding %s is supported but not implemented", encoding)
