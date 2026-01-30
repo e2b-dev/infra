@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -80,9 +81,70 @@ func (s *Storage) Remove(ctx context.Context, sandboxID string) error {
 }
 
 // Items returns sandboxes matching the given filters
-func (s *Storage) Items(_ *uuid.UUID, _ []sandbox.State, _ ...sandbox.ItemsOption) []sandbox.Sandbox {
-	// TODO: Implement later (ENG-3312)
-	return nil
+func (s *Storage) Items(teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) []sandbox.Sandbox {
+	return s.items(context.Background(), teamID, states, options...)
+}
+
+func (s *Storage) items(ctx context.Context, teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) []sandbox.Sandbox {
+	filter := sandbox.NewItemsFilter()
+	for _, opt := range options {
+		opt(filter)
+	}
+
+	pattern := fmt.Sprintf("%s*", sandboxKeyPrefix)
+	cursor := uint64(0)
+	result := make([]sandbox.Sandbox, 0)
+
+	for {
+		keys, nextCursor, err := s.redisClient.Scan(ctx, cursor, pattern, 200).Result()
+		if err != nil {
+			logger.L().Error(ctx, "failed to scan sandboxes from redis", zap.Error(err))
+
+			break
+		}
+
+		for _, key := range keys {
+			data, err := s.redisClient.Get(ctx, key).Bytes()
+			if errors.Is(err, redis.Nil) {
+				continue
+			}
+			if err != nil {
+				logger.L().Error(ctx, "failed to get sandbox from redis", zap.Error(err), zap.String("sandbox_key", key))
+
+				continue
+			}
+
+			var sbx sandbox.Sandbox
+			err = json.Unmarshal(data, &sbx)
+			if err != nil {
+				logger.L().Error(ctx, "failed to unmarshal sandbox from redis", zap.Error(err), zap.String("sandbox_key", key))
+
+				continue
+			}
+
+			if teamID != nil && *teamID != sbx.TeamID {
+				continue
+			}
+
+			if states != nil && !slices.Contains(states, sbx.State) {
+				continue
+			}
+
+			if filter.OnlyExpired && !sbx.IsExpired() {
+				continue
+			}
+
+			result = append(result, sbx)
+		}
+
+		if nextCursor == 0 {
+			break
+		}
+
+		cursor = nextCursor
+	}
+
+	return result
 }
 
 // Update modifies a sandbox atomically using a Lua script
