@@ -182,7 +182,7 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 	}
 
 	// Execute transaction
-	err = s.redisClient.Set(ctx, key, newData, redis.KeepTTL).Err()
+	err = s.redisClient.Set(ctx, key, newData, 0).Err()
 	if err != nil {
 		return sandbox.Sandbox{}, fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
