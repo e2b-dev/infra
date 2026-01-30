@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IFS=',' read -r -a EXTRA_PORTS <<< "$${OPEN_PORTS:-}"
+IFS=',' read -r -a EXTRA_PORTS <<< "${OPEN_PORTS}"
 
 # 定义核心服务端口
 # SSH: 22
