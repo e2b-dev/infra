@@ -192,15 +192,6 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	}
 
 	a.uploadsLock.Lock()
-	if len(a.uploads) >= maxUploadSessions {
-		a.uploadsLock.Unlock()
-		destFile.Close()
-		os.Remove(filePath)
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("maxSessions", maxUploadSessions).Msg("too many concurrent upload sessions")
-		jsonError(w, http.StatusTooManyRequests, fmt.Errorf("too many concurrent upload sessions (max %d)", maxUploadSessions))
-
-		return
-	}
 	a.uploads[uploadID] = session
 	a.uploadsLock.Unlock()
 
