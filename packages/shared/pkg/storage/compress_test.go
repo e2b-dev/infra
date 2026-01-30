@@ -506,6 +506,9 @@ func TestGetFrame_FullFrameDecompression(t *testing.T) {
 // TestStoreFile_Compressed_FS tests compression using the local filesystem backend
 func TestStoreFile_Compressed_FS(t *testing.T) {
 	t.Parallel()
+	if !EnableGCSCompression {
+		t.Skip("skipping compression test when EnableGCSCompression is false")
+	}
 
 	tempDir := t.TempDir()
 	storage := &Storage{Backend: NewFS(tempDir)}
@@ -558,6 +561,9 @@ func TestStoreFile_Compressed_FS(t *testing.T) {
 // TestStoreFile_Compressed_FS_RoundTrip tests full round-trip: store compressed, then read back
 func TestStoreFile_Compressed_FS_RoundTrip(t *testing.T) {
 	t.Parallel()
+	if !EnableGCSCompression {
+		t.Skip("skipping compression test when EnableGCSCompression is false")
+	}
 
 	tempDir := t.TempDir()
 	storage := &Storage{Backend: NewFS(tempDir)}
@@ -683,6 +689,9 @@ func TestFrameTable_GetFetchRange_CompressedVsUncompressed(t *testing.T) {
 // TestStoreFile_DataIntegrity_FS tests data integrity with various data patterns using FS
 func TestStoreFile_DataIntegrity_FS(t *testing.T) {
 	t.Parallel()
+	if !EnableGCSCompression {
+		t.Skip("skipping compression test when EnableGCSCompression is false")
+	}
 
 	testCases := []struct {
 		name string

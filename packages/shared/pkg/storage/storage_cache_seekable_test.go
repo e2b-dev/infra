@@ -942,6 +942,9 @@ func TestCache_StoreFile_Uncompressed_WriteThrough(t *testing.T) {
 
 func TestCache_StoreFile_Compressed_WritesFramesToCache(t *testing.T) {
 	t.Parallel()
+	if !EnableGCSCompression {
+		t.Skip("skipping compression test when EnableGCSCompression is false")
+	}
 
 	const dataSize = 32 * 1024
 	origData := makeRepetitiveData(dataSize)
@@ -1368,6 +1371,9 @@ func TestCache_GetFrame_CorruptedCacheFile_FallsBackToInner(t *testing.T) {
 
 func TestCache_FullWorkflow_StoreAndRetrieve(t *testing.T) {
 	t.Parallel()
+	if !EnableGCSCompression {
+		t.Skip("skipping compression test when EnableGCSCompression is false")
+	}
 
 	const dataSize = 64 * 1024
 	origData := makeTestData(dataSize, 123)
