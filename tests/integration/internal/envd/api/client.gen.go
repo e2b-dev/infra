@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
@@ -98,6 +99,17 @@ type ClientInterface interface {
 	// PostFilesWithBody request with any body
 	PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostFilesDownloadInitWithBody request with any body
+	PostFilesDownloadInitWithBody(ctx context.Context, params *PostFilesDownloadInitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostFilesDownloadInit(ctx context.Context, params *PostFilesDownloadInitParams, body PostFilesDownloadInitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteFilesDownloadDownloadId request
+	DeleteFilesDownloadDownloadId(ctx context.Context, downloadId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetFilesDownloadDownloadId request
+	GetFilesDownloadDownloadId(ctx context.Context, downloadId openapi_types.UUID, params *GetFilesDownloadDownloadIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -136,6 +148,54 @@ func (c *Client) GetFiles(ctx context.Context, params *GetFilesParams, reqEditor
 
 func (c *Client) PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostFilesRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFilesDownloadInitWithBody(ctx context.Context, params *PostFilesDownloadInitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesDownloadInitRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFilesDownloadInit(ctx context.Context, params *PostFilesDownloadInitParams, body PostFilesDownloadInitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesDownloadInitRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteFilesDownloadDownloadId(ctx context.Context, downloadId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteFilesDownloadDownloadIdRequest(c.Server, downloadId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetFilesDownloadDownloadId(ctx context.Context, downloadId openapi_types.UUID, params *GetFilesDownloadDownloadIdParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetFilesDownloadDownloadIdRequest(c.Server, downloadId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -417,6 +477,186 @@ func NewPostFilesRequestWithBody(server string, params *PostFilesParams, content
 	return req, nil
 }
 
+// NewPostFilesDownloadInitRequest calls the generic PostFilesDownloadInit builder with application/json body
+func NewPostFilesDownloadInitRequest(server string, params *PostFilesDownloadInitParams, body PostFilesDownloadInitJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostFilesDownloadInitRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewPostFilesDownloadInitRequestWithBody generates requests for PostFilesDownloadInit with any type of body
+func NewPostFilesDownloadInitRequestWithBody(server string, params *PostFilesDownloadInitParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/files/download/init")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Username != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "username", runtime.ParamLocationQuery, *params.Username); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Signature != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signature", runtime.ParamLocationQuery, *params.Signature); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SignatureExpiration != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signature_expiration", runtime.ParamLocationQuery, *params.SignatureExpiration); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteFilesDownloadDownloadIdRequest generates requests for DeleteFilesDownloadDownloadId
+func NewDeleteFilesDownloadDownloadIdRequest(server string, downloadId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "downloadId", runtime.ParamLocationPath, downloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/files/download/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetFilesDownloadDownloadIdRequest generates requests for GetFilesDownloadDownloadId
+func NewGetFilesDownloadDownloadIdRequest(server string, downloadId openapi_types.UUID, params *GetFilesDownloadDownloadIdParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "downloadId", runtime.ParamLocationPath, downloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/files/download/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "part", runtime.ParamLocationQuery, params.Part); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetHealthRequest generates requests for GetHealth
 func NewGetHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -563,6 +803,17 @@ type ClientWithResponsesInterface interface {
 	// PostFilesWithBodyWithResponse request with any body
 	PostFilesWithBodyWithResponse(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesResponse, error)
 
+	// PostFilesDownloadInitWithBodyWithResponse request with any body
+	PostFilesDownloadInitWithBodyWithResponse(ctx context.Context, params *PostFilesDownloadInitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesDownloadInitResponse, error)
+
+	PostFilesDownloadInitWithResponse(ctx context.Context, params *PostFilesDownloadInitParams, body PostFilesDownloadInitJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesDownloadInitResponse, error)
+
+	// DeleteFilesDownloadDownloadIdWithResponse request
+	DeleteFilesDownloadDownloadIdWithResponse(ctx context.Context, downloadId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteFilesDownloadDownloadIdResponse, error)
+
+	// GetFilesDownloadDownloadIdWithResponse request
+	GetFilesDownloadDownloadIdWithResponse(ctx context.Context, downloadId openapi_types.UUID, params *GetFilesDownloadDownloadIdParams, reqEditors ...RequestEditorFn) (*GetFilesDownloadDownloadIdResponse, error)
+
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 
@@ -642,6 +893,82 @@ func (r PostFilesResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PostFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostFilesDownloadInitResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MultipartDownloadInit
+	JSON400      *InvalidPath
+	JSON401      *InvalidUser
+	JSON404      *FileNotFound
+	JSON429      *Error
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r PostFilesDownloadInitResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostFilesDownloadInitResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteFilesDownloadDownloadIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON404      *FileNotFound
+	JSON409      *Error
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteFilesDownloadDownloadIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteFilesDownloadDownloadIdResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetFilesDownloadDownloadIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *InvalidPath
+	JSON404      *FileNotFound
+	JSON409      *Error
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetFilesDownloadDownloadIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetFilesDownloadDownloadIdResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -737,6 +1064,41 @@ func (c *ClientWithResponses) PostFilesWithBodyWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParsePostFilesResponse(rsp)
+}
+
+// PostFilesDownloadInitWithBodyWithResponse request with arbitrary body returning *PostFilesDownloadInitResponse
+func (c *ClientWithResponses) PostFilesDownloadInitWithBodyWithResponse(ctx context.Context, params *PostFilesDownloadInitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesDownloadInitResponse, error) {
+	rsp, err := c.PostFilesDownloadInitWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFilesDownloadInitResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostFilesDownloadInitWithResponse(ctx context.Context, params *PostFilesDownloadInitParams, body PostFilesDownloadInitJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesDownloadInitResponse, error) {
+	rsp, err := c.PostFilesDownloadInit(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFilesDownloadInitResponse(rsp)
+}
+
+// DeleteFilesDownloadDownloadIdWithResponse request returning *DeleteFilesDownloadDownloadIdResponse
+func (c *ClientWithResponses) DeleteFilesDownloadDownloadIdWithResponse(ctx context.Context, downloadId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteFilesDownloadDownloadIdResponse, error) {
+	rsp, err := c.DeleteFilesDownloadDownloadId(ctx, downloadId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteFilesDownloadDownloadIdResponse(rsp)
+}
+
+// GetFilesDownloadDownloadIdWithResponse request returning *GetFilesDownloadDownloadIdResponse
+func (c *ClientWithResponses) GetFilesDownloadDownloadIdWithResponse(ctx context.Context, downloadId openapi_types.UUID, params *GetFilesDownloadDownloadIdParams, reqEditors ...RequestEditorFn) (*GetFilesDownloadDownloadIdResponse, error) {
+	rsp, err := c.GetFilesDownloadDownloadId(ctx, downloadId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetFilesDownloadDownloadIdResponse(rsp)
 }
 
 // GetHealthWithResponse request returning *GetHealthResponse
@@ -895,6 +1257,154 @@ func ParsePostFilesResponse(rsp *http.Response) (*PostFilesResponse, error) {
 			return nil, err
 		}
 		response.JSON507 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostFilesDownloadInitResponse parses an HTTP response from a PostFilesDownloadInitWithResponse call
+func ParsePostFilesDownloadInitResponse(rsp *http.Response) (*PostFilesDownloadInitResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostFilesDownloadInitResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MultipartDownloadInit
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest InvalidPath
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest InvalidUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest FileNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteFilesDownloadDownloadIdResponse parses an HTTP response from a DeleteFilesDownloadDownloadIdWithResponse call
+func ParseDeleteFilesDownloadDownloadIdResponse(rsp *http.Response) (*DeleteFilesDownloadDownloadIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteFilesDownloadDownloadIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest FileNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetFilesDownloadDownloadIdResponse parses an HTTP response from a GetFilesDownloadDownloadIdWithResponse call
+func ParseGetFilesDownloadDownloadIdResponse(rsp *http.Response) (*GetFilesDownloadDownloadIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetFilesDownloadDownloadIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest InvalidPath
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest FileNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 
