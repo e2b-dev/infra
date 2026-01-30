@@ -78,6 +78,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			EnvdAccessToken: sbx.EnvdAccessToken,
 			Domain:          sbxDomain,
 		}
+		autoPause := sbx.AutoPause
+		sandbox.AutoPause = &autoPause
 
 		if sbx.Metadata != nil {
 			meta := api.SandboxMetadata(sbx.Metadata)
@@ -151,6 +153,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		EnvdAccessToken: sbxAccessToken,
 		Domain:          nil,
 	}
+	autoPause := lastSnapshot.Snapshot.AutoPause
+	sandbox.AutoPause = &autoPause
 
 	if lastSnapshot.Snapshot.Metadata != nil {
 		metadata := api.SandboxMetadata(lastSnapshot.Snapshot.Metadata)

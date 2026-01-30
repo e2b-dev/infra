@@ -542,6 +542,9 @@ type Sandbox struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
 
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool `json:"autoPause,omitempty"`
+
 	// ClientID Identifier of the client
 	// Deprecated:
 	ClientID string `json:"clientID"`
@@ -569,6 +572,9 @@ type Sandbox struct {
 type SandboxDetail struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
+
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool `json:"autoPause,omitempty"`
 
 	// ClientID Identifier of the client
 	// Deprecated:
