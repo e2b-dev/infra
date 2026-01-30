@@ -216,6 +216,13 @@ components:
         type: string
         description: Metadata of the sandbox
 
+    UpdateSandboxMetadata:
+      type: object
+      required: [metadata]
+      properties:
+        metadata:
+          $ref: "#/components/schemas/SandboxMetadata"
+
     SandboxState:
       type: string
       description: State of the sandbox
@@ -1952,6 +1959,34 @@ paths:
           description: The sandbox was killed successfully
         "404":
           $ref: "#/components/responses/404"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/metadata:
+    patch:
+      description: Update metadata for a running sandbox
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSandboxMetadata"
+      responses:
+        "204":
+          description: Sandbox metadata updated
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
         "401":
           $ref: "#/components/responses/401"
         "500":
