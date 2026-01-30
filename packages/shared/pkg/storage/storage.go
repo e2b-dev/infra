@@ -160,6 +160,11 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	return getStorageForEnvironment(ctx, limiter, "LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache", "BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
 }
 
+// NewLocalStorage creates a Storage backed by local filesystem at basePath.
+func NewLocalStorage(basePath string) *Storage {
+	return &Storage{Backend: NewFS(basePath)}
+}
+
 func getStorageForEnvironment(ctx context.Context, limiter *limit.Limiter, localBaseEnv, defaultLocalBase, bucketEnv, bucketUsage string) (*Storage, error) {
 	var provider *Backend
 	var err error

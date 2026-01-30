@@ -1,0 +1,82 @@
+package block
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+)
+
+// TestChunker_Interface verifies all chunker implementations satisfy the Chunker interface
+// and work correctly through that interface.
+func TestChunker_Interface_CompressLRU(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	// Create test data
+	dataSize := 4 * 1024 * 1024 // 4MB
+	uncompressedData := make([]byte, dataSize)
+	for i := range uncompressedData {
+		uncompressedData[i] = byte(i % 256)
+	}
+	compressedData := compressData(t, uncompressedData)
+
+	frameTable := &storage.FrameTable{
+		CompressionType: storage.CompressionZstd,
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
+		Frames: []storage.FrameSize{
+			{U: int32(dataSize), C: int32(len(compressedData))},
+		},
+	}
+
+	mockStorage := setupMockStorage(t, map[int64][]byte{0: compressedData})
+
+	// Create chunker and use through interface
+	var chunker Chunker
+	var err error
+	chunker, err = NewCompressLRUChunker(
+		int64(dataSize),
+		mockStorage,
+		"test/path",
+		frameTable,
+		10,
+		testMetrics(t),
+	)
+	require.NoError(t, err)
+	defer chunker.Close()
+
+	// Test ReadAt
+	buf := make([]byte, 1024)
+	n, err := chunker.ReadAt(ctx, buf, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 1024, n)
+	assert.Equal(t, uncompressedData[:1024], buf)
+
+	// Test ReadAt at different offset
+	buf = make([]byte, 500)
+	n, err = chunker.ReadAt(ctx, buf, 1000)
+	require.NoError(t, err)
+	assert.Equal(t, 500, n)
+	assert.Equal(t, uncompressedData[1000:1500], buf)
+
+	// Test Slice
+	slice, err := chunker.Slice(ctx, 0, 1024)
+	require.NoError(t, err)
+	assert.Len(t, slice, 1024)
+	assert.Equal(t, uncompressedData[:1024], slice)
+
+	// Test Slice at different offset
+	slice, err = chunker.Slice(ctx, 2048, 512)
+	require.NoError(t, err)
+	assert.Len(t, slice, 512)
+	assert.Equal(t, uncompressedData[2048:2560], slice)
+
+	// Test FileSize
+	size, err := chunker.FileSize()
+	require.NoError(t, err)
+	assert.Equal(t, int64(dataSize), size)
+}

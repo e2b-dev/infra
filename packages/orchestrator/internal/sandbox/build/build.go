@@ -117,11 +117,10 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 func (b *File) getBuild(ctx context.Context, mappedToBuild *header.BuildMap) (Diff, error) {
 	var opts []StorageDiffOption
 
-	// Use compressed chunker when the data is compressed (determined by the FrameTable).
-	// The compressed chunker uses an LRU cache for decompressed chunks and stores
-	// compressed frames in a directory-based file cache.
+	// Use decompress chunker when the data is compressed (determined by the FrameTable).
+	// Decompresses into mmap cache - decompress once, serve from mmap.
 	if mappedToBuild.FrameTable.IsCompressed() {
-		opts = append(opts, WithChunkerType(ChunkerTypeCompressed))
+		opts = append(opts, WithChunkerType(ChunkerTypeDecompress))
 	}
 
 	storageDiff, err := newStorageDiff(

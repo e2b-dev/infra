@@ -1,70 +1,19 @@
 package block
 
 import (
-	"bytes"
 	"context"
 	"sync"
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
-
-// mockFrameGetter implements storage.FrameGetter for testing
-type mockFrameGetter struct {
-	frames     map[int64][]byte // offsetU -> compressed data
-	frameTable *storage.FrameTable
-	callCount  int
-	mu         sync.Mutex
-}
-
-func newMockFrameGetter(frames map[int64][]byte, ft *storage.FrameTable) *mockFrameGetter {
-	return &mockFrameGetter{
-		frames:     frames,
-		frameTable: ft,
-	}
-}
-
-func (m *mockFrameGetter) GetFrame(_ context.Context, _ string, offsetU int64, _ *storage.FrameTable, decompress bool, buf []byte) (storage.Range, error) {
-	m.mu.Lock()
-	m.callCount++
-	m.mu.Unlock()
-
-	data, ok := m.frames[offsetU]
-	if !ok {
-		return storage.Range{}, nil
-	}
-
-	if decompress {
-		// Decompress for the caller
-		dec, err := zstd.NewReader(bytes.NewReader(data))
-		if err != nil {
-			return storage.Range{}, err
-		}
-		defer dec.Close()
-
-		n, err := dec.Read(buf)
-
-		return storage.Range{Start: offsetU, Length: n}, err
-	}
-
-	// Return compressed data
-	n := copy(buf, data)
-
-	return storage.Range{Start: offsetU, Length: n}, nil
-}
-
-func (m *mockFrameGetter) getCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return m.callCount
-}
 
 // compressData compresses data using zstd
 func compressData(t *testing.T, data []byte) []byte {
@@ -82,6 +31,42 @@ func testMetrics(t *testing.T) metrics.Metrics {
 	require.NoError(t, err)
 
 	return m
+}
+
+// setupMockStorage creates a MockStorageProvider that returns compressed frames from a map
+func setupMockStorage(t *testing.T, frames map[int64][]byte) *storage.MockStorageProvider {
+	t.Helper()
+	mockStorage := storage.NewMockStorageProvider(t)
+
+	mockStorage.EXPECT().
+		GetFrame(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, _ string, offsetU int64, _ *storage.FrameTable, decompress bool, buf []byte) (storage.Range, error) {
+			data, ok := frames[offsetU]
+			if !ok {
+				return storage.Range{}, nil
+			}
+
+			if decompress {
+				dec, err := zstd.NewReader(nil)
+				if err != nil {
+					return storage.Range{}, err
+				}
+				defer dec.Close()
+
+				decompressed, err := dec.DecodeAll(data, nil)
+				if err != nil {
+					return storage.Range{}, err
+				}
+
+				n := copy(buf, decompressed)
+				return storage.Range{Start: offsetU, Length: n}, nil
+			}
+
+			n := copy(buf, data)
+			return storage.Range{Start: offsetU, Length: n}, nil
+		}).Maybe()
+
+	return mockStorage
 }
 
 func TestCompressedChunker_BasicReadAt(t *testing.T) {
@@ -105,12 +90,9 @@ func TestCompressedChunker_BasicReadAt(t *testing.T) {
 		},
 	}
 
-	mockGetter := newMockFrameGetter(
-		map[int64][]byte{0: compressedData},
-		frameTable,
-	)
+	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
 
-	chunker, err := NewCompressedChunker(
+	chunker, err := NewCompressLRUChunker(
 		frameSizeU,
 		mockGetter,
 		"test/path",
@@ -129,13 +111,13 @@ func TestCompressedChunker_BasicReadAt(t *testing.T) {
 	assert.Equal(t, uncompressedData[:1024], buf)
 
 	// Should have called the getter once
-	assert.Equal(t, 1, mockGetter.getCallCount())
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 
 	// Read again from LRU - should not call getter again
 	n, err = chunker.ReadAt(ctx, buf, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1024, n)
-	assert.Equal(t, 1, mockGetter.getCallCount())
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 }
 
 func TestCompressedChunker_LRUPopulation(t *testing.T) {
@@ -159,12 +141,9 @@ func TestCompressedChunker_LRUPopulation(t *testing.T) {
 		},
 	}
 
-	mockGetter := newMockFrameGetter(
-		map[int64][]byte{0: compressedData},
-		frameTable,
-	)
+	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
 
-	chunker, err := NewCompressedChunker(
+	chunker, err := NewCompressLRUChunker(
 		frameSizeU,
 		mockGetter,
 		"test/path",
@@ -187,7 +166,7 @@ func TestCompressedChunker_LRUPopulation(t *testing.T) {
 	// Reading from another part of the same frame should not trigger another fetch
 	_, err = chunker.ReadAt(ctx, buf, storage.MemoryChunkSize)
 	require.NoError(t, err)
-	assert.Equal(t, 1, mockGetter.getCallCount())
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 }
 
 func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
@@ -210,12 +189,9 @@ func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
 		},
 	}
 
-	mockGetter := newMockFrameGetter(
-		map[int64][]byte{0: compressedData},
-		frameTable,
-	)
+	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
 
-	chunker, err := NewCompressedChunker(
+	chunker, err := NewCompressLRUChunker(
 		frameSizeU,
 		mockGetter,
 		"test/path",
@@ -230,7 +206,7 @@ func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
 	buf := make([]byte, 100)
 	_, err = chunker.ReadAt(ctx, buf, 0)
 	require.NoError(t, err)
-	assert.Equal(t, 1, mockGetter.getCallCount())
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 
 	// LRU should have the frame
 	lruCount, _ := chunker.LRUStats()
@@ -242,7 +218,7 @@ func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
 	// Read again - must re-fetch from storage (NFS cache would handle file caching in production)
 	_, err = chunker.ReadAt(ctx, buf, 0)
 	require.NoError(t, err)
-	assert.Equal(t, 2, mockGetter.getCallCount()) // Re-fetched after LRU eviction
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 2) // Re-fetched after LRU eviction
 }
 
 func TestCompressedChunker_SliceAcrossChunks(t *testing.T) {
@@ -266,12 +242,9 @@ func TestCompressedChunker_SliceAcrossChunks(t *testing.T) {
 		},
 	}
 
-	mockGetter := newMockFrameGetter(
-		map[int64][]byte{0: compressedData},
-		frameTable,
-	)
+	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
 
-	chunker, err := NewCompressedChunker(
+	chunker, err := NewCompressLRUChunker(
 		frameSizeU,
 		mockGetter,
 		"test/path",
@@ -320,15 +293,12 @@ func TestCompressedChunker_MultipleFrames(t *testing.T) {
 		},
 	}
 
-	mockGetter := newMockFrameGetter(
-		map[int64][]byte{
-			0:          compressed1,
-			frameSizeU: compressed2,
-		},
-		frameTable,
-	)
+	mockGetter := setupMockStorage(t, map[int64][]byte{
+		0:          compressed1,
+		frameSizeU: compressed2,
+	})
 
-	chunker, err := NewCompressedChunker(
+	chunker, err := NewCompressLRUChunker(
 		totalSize,
 		mockGetter,
 		"test/path",
@@ -351,7 +321,7 @@ func TestCompressedChunker_MultipleFrames(t *testing.T) {
 	assert.Equal(t, data2[:100], buf)
 
 	// Both frames should have been fetched
-	assert.Equal(t, 2, mockGetter.getCallCount())
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 2)
 }
 
 func TestCompressedChunker_SliceAcrossFrames(t *testing.T) {
@@ -392,16 +362,13 @@ func TestCompressedChunker_SliceAcrossFrames(t *testing.T) {
 		},
 	}
 
-	mockGetter := newMockFrameGetter(
-		map[int64][]byte{
-			0:              compressed1,
-			frameSizeU:     compressed2,
-			frameSizeU * 2: compressed3,
-		},
-		frameTable,
-	)
+	mockGetter := setupMockStorage(t, map[int64][]byte{
+		0:              compressed1,
+		frameSizeU:     compressed2,
+		frameSizeU * 2: compressed3,
+	})
 
-	chunker, err := NewCompressedChunker(
+	chunker, err := NewCompressLRUChunker(
 		totalSize,
 		mockGetter,
 		"test/path",
@@ -427,7 +394,7 @@ func TestCompressedChunker_SliceAcrossFrames(t *testing.T) {
 	assert.Equal(t, allData[offset:offset+length], slice)
 
 	// All 3 frames should have been fetched
-	assert.Equal(t, 3, mockGetter.getCallCount())
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 3)
 }
 
 func TestCompressedChunker_ConcurrentReads(t *testing.T) {
@@ -450,12 +417,9 @@ func TestCompressedChunker_ConcurrentReads(t *testing.T) {
 		},
 	}
 
-	mockGetter := newMockFrameGetter(
-		map[int64][]byte{0: compressedData},
-		frameTable,
-	)
+	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
 
-	chunker, err := NewCompressedChunker(
+	chunker, err := NewCompressLRUChunker(
 		frameSizeU,
 		mockGetter,
 		"test/path",
@@ -483,7 +447,7 @@ func TestCompressedChunker_ConcurrentReads(t *testing.T) {
 	wg.Wait()
 
 	// Should only fetch once despite concurrent readers (WaitMap deduplication)
-	assert.Equal(t, 1, mockGetter.getCallCount())
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 }
 
 func TestCompressedChunker_EmptySlice(t *testing.T) {
@@ -503,12 +467,9 @@ func TestCompressedChunker_EmptySlice(t *testing.T) {
 		},
 	}
 
-	mockGetter := newMockFrameGetter(
-		map[int64][]byte{0: compressedData},
-		frameTable,
-	)
+	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
 
-	chunker, err := NewCompressedChunker(
+	chunker, err := NewCompressLRUChunker(
 		frameSizeU,
 		mockGetter,
 		"test/path",
@@ -539,12 +500,9 @@ func TestCompressedChunker_Close(t *testing.T) {
 		},
 	}
 
-	mockGetter := newMockFrameGetter(
-		map[int64][]byte{0: compressedData},
-		frameTable,
-	)
+	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
 
-	chunker, err := NewCompressedChunker(
+	chunker, err := NewCompressLRUChunker(
 		frameSizeU,
 		mockGetter,
 		"test/path",

@@ -18,15 +18,16 @@ func storagePath(buildId string, diffType DiffType) string {
 type ChunkerType int
 
 const (
-	// ChunkerTypeMmap uses the traditional mmap-based chunker that stores uncompressed data.
+	// ChunkerTypeMmap uses the traditional mmap-based chunker for uncompressed data.
 	ChunkerTypeMmap ChunkerType = iota
-	// ChunkerTypeCompressed uses an LRU cache for decompressed chunks and an append-only
-	// file cache for compressed frames, reducing disk I/O for compressed data.
+	// ChunkerTypeDecompress decompresses into mmap cache (decompress once, serve from mmap).
+	ChunkerTypeDecompress
+	// ChunkerTypeCompressed uses LRU cache, decompresses on each read.
 	ChunkerTypeCompressed
 )
 
 type StorageDiff struct {
-	dataSource  *utils.SetOnce[block.DataSource]
+	chunker     *utils.SetOnce[block.Chunker]
 	cachePath   string
 	cacheKey    DiffStoreKey
 	chunkerType ChunkerType
@@ -103,7 +104,7 @@ func newStorageDiff(
 	sd := &StorageDiff{
 		objectPath:  storagePath,
 		cachePath:   cachePath,
-		dataSource:  utils.NewSetOnce[block.DataSource](),
+		chunker:     utils.NewSetOnce[block.Chunker](),
 		blockSize:   blockSize,
 		metrics:     metrics,
 		persistence: persistence,
@@ -148,40 +149,35 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		size, err = b.persistence.Size(ctx, b.objectPath)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to get object size: %w", err)
-			b.dataSource.SetError(errMsg)
+			b.chunker.SetError(errMsg)
 
 			return errMsg
 		}
 	}
 
-	var dataSource block.DataSource
+	var chunker block.Chunker
 
 	switch b.chunkerType {
+	case ChunkerTypeDecompress:
+		chunker, err = block.NewDecompressMMapChunker(size, b.blockSize, b.persistence, b.objectPath, b.frameTable, b.cachePath, b.metrics)
 	case ChunkerTypeCompressed:
-		dataSource, err = block.NewCompressedChunker(
-			size,
-			b.persistence,
-			b.objectPath,
-			b.frameTable,
-			b.lruSize,
-			b.metrics,
-		)
+		chunker, err = block.NewCompressLRUChunker(size, b.persistence, b.objectPath, b.frameTable, b.lruSize, b.metrics)
 	default: // ChunkerTypeMmap
-		dataSource, err = block.NewChunker(size, b.blockSize, b.persistence, b.objectPath, b.frameTable, b.cachePath, b.metrics)
+		chunker, err = block.NewUncompressedMMapChunker(size, b.blockSize, b.persistence, b.objectPath, b.frameTable, b.cachePath, b.metrics)
 	}
 
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
-		b.dataSource.SetError(errMsg)
+		b.chunker.SetError(errMsg)
 
 		return errMsg
 	}
 
-	return b.dataSource.SetValue(dataSource)
+	return b.chunker.SetValue(chunker)
 }
 
 func (b *StorageDiff) Close() error {
-	ds, err := b.dataSource.Wait()
+	ds, err := b.chunker.Wait()
 	if err != nil {
 		return err
 	}
@@ -190,7 +186,7 @@ func (b *StorageDiff) Close() error {
 }
 
 func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
-	ds, err := b.dataSource.Wait()
+	ds, err := b.chunker.Wait()
 	if err != nil {
 		return 0, err
 	}
@@ -199,7 +195,7 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, err
 }
 
 func (b *StorageDiff) Slice(ctx context.Context, off, length int64) ([]byte, error) {
-	ds, err := b.dataSource.Wait()
+	ds, err := b.chunker.Wait()
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +209,7 @@ func (b *StorageDiff) CachePath() (string, error) {
 }
 
 func (b *StorageDiff) FileSize() (int64, error) {
-	ds, err := b.dataSource.Wait()
+	ds, err := b.chunker.Wait()
 	if err != nil {
 		return 0, err
 	}

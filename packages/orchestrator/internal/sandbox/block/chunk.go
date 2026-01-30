@@ -16,53 +16,71 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// DataSource is an interface for reading block data from either local cache or remote storage.
-// Both Chunker (mmap-based) and CompressedChunker (LRU + compressed cache) implement this interface.
-type DataSource interface {
+// Chunker is an interface for reading block data from either local cache or remote storage.
+//
+// Implementations:
+//   - UncompressedMMapChunker: legacy mmap-based, uncompressed data only
+//   - DecompressMMapChunker: decompresses into mmap cache
+//   - CompressLRUChunker: LRU cache, decompresses on each read
+//
+// Contract:
+//   - Slice() returns a reference to internal data. Callers MUST NOT modify the returned bytes.
+//   - The returned slice is valid until Close() is called or (for LRU-based chunkers) the
+//     underlying frame is evicted. UFFD handlers should copy to the faulting page immediately.
+type Chunker interface {
 	ReadAt(ctx context.Context, b []byte, off int64) (int, error)
+	// Slice returns a view into the data at [off, off+length).
+	// The returned slice references internal storage and MUST NOT be modified by the caller.
+	// For UFFD: use the slice immediately to copy into the faulting page.
 	Slice(ctx context.Context, off, length int64) ([]byte, error)
 	Close() error
 	FileSize() (int64, error)
 }
 
-// Verify that both chunker types implement DataSource.
+// Verify that chunker types implement Chunker.
 var (
-	_ DataSource = (*Chunker)(nil)
-	_ DataSource = (*CompressedChunker)(nil)
+	_ Chunker = (*UncompressedMMapChunker)(nil)
+	_ Chunker = (*DecompressMMapChunker)(nil)
+	_ Chunker = (*CompressLRUChunker)(nil)
 )
 
-type Chunker struct {
+// UncompressedMMapChunker is the legacy mmap-based chunker for uncompressed data only.
+// For compressed data, use DecompressMMapChunker or CompressLRUChunker.
+type UncompressedMMapChunker struct {
 	storage    storage.FrameGetter
 	objectPath string
-	frameTable *storage.FrameTable
 
 	cache   *Cache
 	metrics metrics.Metrics
 
 	size int64
 
-	// TODO: Optimize this so we don't need to keep the fetchers in memory.
 	fetchers *utils.WaitMap
 }
 
-func NewChunker(
+// NewUncompressedMMapChunker creates a legacy mmap-based chunker for uncompressed data.
+// Returns an error if frameTable indicates compressed data.
+func NewUncompressedMMapChunker(
 	size, blockSize int64,
 	s storage.FrameGetter,
 	objectPath string,
 	frameTable *storage.FrameTable,
 	cachePath string,
 	metrics metrics.Metrics,
-) (*Chunker, error) {
+) (*UncompressedMMapChunker, error) {
+	if frameTable != nil && frameTable.IsCompressed() {
+		return nil, fmt.Errorf("UncompressedMMapChunker does not support compressed data")
+	}
+
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
 
-	chunker := &Chunker{
+	chunker := &UncompressedMMapChunker{
 		size:       size,
 		storage:    s,
 		objectPath: objectPath,
-		frameTable: frameTable,
 		cache:      cache,
 		fetchers:   utils.NewWaitMap(),
 		metrics:    metrics,
@@ -71,7 +89,7 @@ func NewChunker(
 	return chunker, nil
 }
 
-func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
+func (c *UncompressedMMapChunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
 	slice, err := c.Slice(ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
@@ -80,7 +98,7 @@ func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) 
 	return copy(b, slice), nil
 }
 
-func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	b, err := c.cache.Slice(off, length)
@@ -123,61 +141,40 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 	return b, nil
 }
 
-// fetchToCache ensures that the data at the given offset and length is
-// available in the cache. If the original data was frame-compressed, it fetches
-// and decompresses entire frames, so it may populate more into the cache than
-// just the requested range.
-func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
+// fetchToCache fetches uncompressed data from storage into the mmap cache.
+// Always fetches full MemoryChunkSize (4MB) chunks for deduplication consistency.
+func (c *UncompressedMMapChunker) fetchToCache(ctx context.Context, off, length int64) error {
 	var eg errgroup.Group
 
-	var framesToFetch *storage.FrameTable
-	fetchRange := storage.Range{Start: off, Length: int(length)}
+	// Calculate chunk-aligned fetch range
+	startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
+	startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
 
-	if c.frameTable.IsCompressed() {
-		var err error
-		framesToFetch, err = c.frameTable.Subset(fetchRange)
-		if err != nil {
-			return fmt.Errorf("failed to get frame subset for range %s: %w", fetchRange, err)
-		}
-		if framesToFetch == nil || len(framesToFetch.Frames) == 0 {
-			return fmt.Errorf("no frames to fetch for range %s", fetchRange)
-		}
-	} else {
-		// If no compression, pretend each chunk is a frame.
-		// Always fetch full MemoryChunkSize (4MB) chunks to ensure consistent fetch sizes
-		// for the deduplication logic in c.fetchers.Wait. Cap at file size for small files.
-		startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
-		startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
+	endOffset := off + length
+	endChunk := header.BlockIdx(endOffset+storage.MemoryChunkSize-1, storage.MemoryChunkSize)
+	nChunks := endChunk - startingChunk
 
-		// Calculate how many full chunks we need to cover [off, off+length)
-		endOffset := off + length
-		endChunk := header.BlockIdx(endOffset+storage.MemoryChunkSize-1, storage.MemoryChunkSize)
-		nChunks := endChunk - startingChunk
+	// Build a synthetic frame table for uncompressed reads
+	framesToFetch := &storage.FrameTable{
+		CompressionType: storage.CompressionNone,
+		StartAt: storage.FrameOffset{
+			U: startingChunkOffset,
+			C: startingChunkOffset,
+		},
+	}
 
-		framesToFetch = &storage.FrameTable{
-			CompressionType: storage.CompressionNone,
-			StartAt: storage.FrameOffset{
-				U: startingChunkOffset,
-				C: startingChunkOffset,
-			},
-		}
-
-		// Create frames - each is MemoryChunkSize or remaining file size (for small files)
-		currentOffset := startingChunkOffset
-		for i := int64(0); i < nChunks && currentOffset < c.size; i++ {
-			// Frame size is min of: MemoryChunkSize, remaining file size
-			frameSize := min(int64(storage.MemoryChunkSize), c.size-currentOffset)
-			framesToFetch.Frames = append(framesToFetch.Frames, storage.FrameSize{
-				U: int32(frameSize),
-				C: int32(frameSize),
-			})
-			currentOffset += frameSize
-		}
+	currentOffset := startingChunkOffset
+	for i := int64(0); i < nChunks && currentOffset < c.size; i++ {
+		frameSize := min(int64(storage.MemoryChunkSize), c.size-currentOffset)
+		framesToFetch.Frames = append(framesToFetch.Frames, storage.FrameSize{
+			U: int32(frameSize),
+			C: int32(frameSize),
+		})
+		currentOffset += frameSize
 	}
 
 	currentOff := framesToFetch.StartAt.U
 	for _, f := range framesToFetch.Frames {
-		// Ensure the closure captures the correct block offset.
 		fetchOff := currentOff
 		currentOff += int64(f.U)
 
@@ -195,9 +192,6 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				default:
 				}
 
-				// Get the space in the mmapped cache to read the frame into.
-				// The size of the slice is adjusted if the last chunk is not a
-				// multiple of the block size.
 				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, int64(f.U))
 				if err != nil {
 					return err
@@ -206,19 +200,16 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
-				// For uncompressed data, GetFrame will read the exact data we need.
 				_, err = c.storage.GetFrame(ctx,
-					c.objectPath, fetchOff, framesToFetch, true, b)
+					c.objectPath, fetchOff, framesToFetch, false, b)
 				if err != nil {
 					fetchSW.Failure(ctx, int64(len(b)),
 						attribute.String(failureReason, failureTypeRemoteRead),
 					)
 
-					return fmt.Errorf("failed to read frame from base %d: %w", fetchOff, err)
+					return fmt.Errorf("failed to read from storage at %d: %w", fetchOff, err)
 				}
 
-				// Mark the uncompressed range as cached (not the compressed range
-				// returned by GetFrame).
 				c.cache.setIsCached(fetchOff, int64(f.U))
 
 				fetchSW.Success(ctx, int64(len(b)))
@@ -232,17 +223,17 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 
 	err := eg.Wait()
 	if err != nil {
-		return fmt.Errorf("failed to ensure data at %s: %w", fetchRange, err)
+		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 	}
 
 	return nil
 }
 
-func (c *Chunker) Close() error {
+func (c *UncompressedMMapChunker) Close() error {
 	return c.cache.Close()
 }
 
-func (c *Chunker) FileSize() (int64, error) {
+func (c *UncompressedMMapChunker) FileSize() (int64, error) {
 	return c.cache.FileSize()
 }
 

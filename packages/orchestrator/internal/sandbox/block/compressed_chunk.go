@@ -14,14 +14,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-// CompressedChunker implements a block chunker for compressed data.
+// CompressLRUChunker implements a block chunker for compressed data.
 // It uses an in-memory LRU cache for decompressed frames to avoid
 // re-decompression when adjacent pages are faulted in.
 //
 // The storage provider (which may be wrapped with NFS cache) handles
 // the file-based caching of compressed frames. This chunker only adds
 // the in-memory decompressed frame cache on top.
-type CompressedChunker struct {
+type CompressLRUChunker struct {
 	storage    storage.FrameGetter
 	objectPath string
 	frameTable *storage.FrameTable
@@ -31,7 +31,7 @@ type CompressedChunker struct {
 	metrics    metrics.Metrics
 }
 
-// NewCompressedChunker creates a new CompressedChunker.
+// NewCompressLRUChunker creates a new CompressLRUChunker.
 //
 // Parameters:
 //   - size: total uncompressed size of the data
@@ -40,14 +40,14 @@ type CompressedChunker struct {
 //   - frameTable: frame table describing the compressed frames
 //   - lruSize: number of decompressed frames to keep in memory (0 for default)
 //   - m: metrics collector
-func NewCompressedChunker(
+func NewCompressLRUChunker(
 	size int64,
 	s storage.FrameGetter,
 	objectPath string,
 	frameTable *storage.FrameTable,
 	lruSize int,
 	m metrics.Metrics,
-) (*CompressedChunker, error) {
+) (*CompressLRUChunker, error) {
 	if lruSize <= 0 {
 		lruSize = DefaultLRUFrameCount
 	}
@@ -57,7 +57,7 @@ func NewCompressedChunker(
 		return nil, fmt.Errorf("failed to create frame LRU: %w", err)
 	}
 
-	return &CompressedChunker{
+	return &CompressLRUChunker{
 		storage:    s,
 		objectPath: objectPath,
 		frameTable: frameTable,
@@ -68,7 +68,7 @@ func NewCompressedChunker(
 }
 
 // ReadAt reads len(b) bytes from the chunker starting at offset off.
-func (c *CompressedChunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
+func (c *CompressLRUChunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
 	slice, err := c.Slice(ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice at %d-%d: %w", off, off+int64(len(b)), err)
@@ -78,7 +78,8 @@ func (c *CompressedChunker) ReadAt(ctx context.Context, b []byte, off int64) (in
 }
 
 // Slice returns a slice of the data at the given offset and length.
-func (c *CompressedChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+// The returned slice references internal LRU data and MUST NOT be modified.
+func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	// Clamp length to available data
@@ -89,7 +90,34 @@ func (c *CompressedChunker) Slice(ctx context.Context, off, length int64) ([]byt
 		return []byte{}, nil
 	}
 
-	// Fetch frames concurrently, writing directly to result buffer
+	// Find the frame containing the start offset
+	frameStarts, frameSize, err := c.frameTable.FrameFor(storage.Range{Start: off, Length: 1})
+	if err != nil {
+		timer.Failure(ctx, length,
+			attribute.String(pullType, pullTypeLocal),
+			attribute.String(failureReason, "frame_lookup_failed"))
+		return nil, fmt.Errorf("failed to get frame for offset %d: %w", off, err)
+	}
+
+	startInFrame := off - frameStarts.U
+	endInFrame := startInFrame + length
+
+	// Fast path: entire read fits in one frame (common case for 4KB page faults in 4MB frames)
+	if endInFrame <= int64(frameSize.U) {
+		data, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize)
+		if err != nil {
+			timer.Failure(ctx, length,
+				attribute.String(pullType, pullTypeRemote),
+				attribute.String(failureReason, failureTypeCacheFetch))
+			return nil, err
+		}
+
+		timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
+		// Return direct slice - no copy needed
+		return data[startInFrame:endInFrame], nil
+	}
+
+	// Slow path: read spans multiple frames - must assemble result
 	result := make([]byte, length)
 	var eg errgroup.Group
 
@@ -102,7 +130,6 @@ func (c *CompressedChunker) Slice(ctx context.Context, off, length int64) ([]byt
 			timer.Failure(ctx, length,
 				attribute.String(pullType, pullTypeLocal),
 				attribute.String(failureReason, "frame_lookup_failed"))
-
 			return nil, fmt.Errorf("failed to get frame for offset %d: %w", currentOff, err)
 		}
 
@@ -114,29 +141,11 @@ func (c *CompressedChunker) Slice(ctx context.Context, off, length int64) ([]byt
 		copied += toCopy
 
 		eg.Go(func() error {
-			// Check LRU cache first
-			if frame, ok := c.frameLRU.get(frameStarts.U); ok {
-				copy(result[resultOff:], frame.data[startInFrame:startInFrame+int64(toCopy)])
-
-				return nil
-			}
-
-			// Fetch with deduplication - concurrent requests for same frame share one fetch
-			key := strconv.FormatInt(frameStarts.U, 10)
-			dataI, err, _ := c.fetchGroup.Do(key, func() (any, error) {
-				// Double-check LRU after acquiring the fetch slot
-				if frame, ok := c.frameLRU.get(frameStarts.U); ok {
-					return frame.data, nil
-				}
-
-				return c.fetchAndDecompress(ctx, frameStarts.U, frameSize)
-			})
+			data, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize)
 			if err != nil {
 				return err
 			}
-			data := dataI.([]byte)
 			copy(result[resultOff:], data[startInFrame:startInFrame+int64(toCopy)])
-
 			return nil
 		})
 	}
@@ -145,17 +154,37 @@ func (c *CompressedChunker) Slice(ctx context.Context, off, length int64) ([]byt
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeRemote),
 			attribute.String(failureReason, failureTypeCacheFetch))
-
 		return nil, err
 	}
 
 	timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
-
 	return result, nil
 }
 
+// getOrFetchFrame returns frame data from LRU or fetches it from storage.
+func (c *CompressLRUChunker) getOrFetchFrame(ctx context.Context, frameOffU int64, frameSize storage.FrameSize) ([]byte, error) {
+	// Check LRU cache first
+	if frame, ok := c.frameLRU.get(frameOffU); ok {
+		return frame.data, nil
+	}
+
+	// Fetch with deduplication - concurrent requests for same frame share one fetch
+	key := strconv.FormatInt(frameOffU, 10)
+	dataI, err, _ := c.fetchGroup.Do(key, func() (any, error) {
+		// Double-check LRU after acquiring the fetch slot
+		if frame, ok := c.frameLRU.get(frameOffU); ok {
+			return frame.data, nil
+		}
+		return c.fetchAndDecompress(ctx, frameOffU, frameSize)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return dataI.([]byte), nil
+}
+
 // fetchAndDecompress fetches a compressed frame from storage, decompresses it, and stores in LRU.
-func (c *CompressedChunker) fetchAndDecompress(ctx context.Context, frameOffU int64, frameSize storage.FrameSize) ([]byte, error) {
+func (c *CompressLRUChunker) fetchAndDecompress(ctx context.Context, frameOffU int64, frameSize storage.FrameSize) ([]byte, error) {
 	fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
 	compressedBuf := make([]byte, frameSize.C)
@@ -189,7 +218,7 @@ func (c *CompressedChunker) fetchAndDecompress(ctx context.Context, frameOffU in
 }
 
 // Close releases all resources used by the chunker.
-func (c *CompressedChunker) Close() error {
+func (c *CompressLRUChunker) Close() error {
 	if c.frameLRU != nil {
 		c.frameLRU.Purge()
 	}
@@ -198,16 +227,16 @@ func (c *CompressedChunker) Close() error {
 }
 
 // FileSize returns 0 (no local file - NFS cache handles file storage).
-func (c *CompressedChunker) FileSize() (int64, error) {
-	return 0, nil
+func (c *CompressLRUChunker) FileSize() (int64, error) {
+	return c.size, nil
 }
 
 // Size returns the total uncompressed size of the data.
-func (c *CompressedChunker) Size() int64 {
+func (c *CompressLRUChunker) Size() int64 {
 	return c.size
 }
 
 // LRUStats returns statistics about the frame LRU cache.
-func (c *CompressedChunker) LRUStats() (count int, maxCount int) {
+func (c *CompressLRUChunker) LRUStats() (count int, maxCount int) {
 	return c.frameLRU.Len(), DefaultLRUFrameCount
 }
