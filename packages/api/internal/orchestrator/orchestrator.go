@@ -47,6 +47,7 @@ type Orchestrator struct {
 	analytics               *analyticscollector.Analytics
 	posthogClient           *analyticscollector.PosthogClient
 	routingCatalog          e2bcatalog.SandboxesCatalog
+	pausedCatalog           e2bcatalog.PausedSandboxesCatalog
 	sqlcDB                  *sqlcdb.Client
 	tel                     *telemetry.Client
 	clusters                *clusters.Pool
@@ -82,10 +83,13 @@ func New(
 	}
 
 	var routingCatalog e2bcatalog.SandboxesCatalog
+	var pausedCatalog e2bcatalog.PausedSandboxesCatalog
 	if redisClient != nil {
 		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
+		pausedCatalog = e2bcatalog.NewRedisPausedSandboxesCatalog(redisClient)
 	} else {
 		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
+		pausedCatalog = e2bcatalog.NewMemoryPausedSandboxesCatalog()
 	}
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
@@ -121,6 +125,7 @@ func New(
 		featureFlagsClient:   featureFlags,
 		accessTokenGenerator: accessTokenGenerator,
 		routingCatalog:       routingCatalog,
+		pausedCatalog:        pausedCatalog,
 		sqlcDB:               sqlcDB,
 		tel:                  tel,
 		clusters:             clusters,
@@ -247,6 +252,12 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 
 	if err := o.routingCatalog.Close(ctx); err != nil {
 		errs = append(errs, err)
+	}
+
+	if o.pausedCatalog != nil {
+		if err := o.pausedCatalog.Close(ctx); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	return errors.Join(errs...)

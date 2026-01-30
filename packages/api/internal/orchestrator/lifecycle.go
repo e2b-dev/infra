@@ -39,4 +39,10 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 	if err != nil {
 		logger.L().Error(ctx, "error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
 	}
+
+	if o.pausedCatalog != nil {
+		if err := o.pausedCatalog.DeletePaused(ctx, sandbox.SandboxID); err != nil {
+			logger.L().Error(ctx, "error removing paused sandbox record", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
+		}
+	}
 }
