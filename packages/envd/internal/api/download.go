@@ -113,6 +113,9 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		return
 	}
 
+	// Tell caches to store separate variants for different Accept-Encoding values
+	w.Header().Set("Vary", "Accept-Encoding")
+
 	file, err := os.Open(resolvedPath)
 	if err != nil {
 		errMsg = fmt.Errorf("error opening file '%s': %w", resolvedPath, err)
