@@ -33,8 +33,9 @@ var ErrNodeNotFound = errors.New("node not found")
 var resumeWaitInterval = 200 * time.Millisecond
 var resumeWaitTimeout = 30 * time.Second
 var resumeTimeoutSeconds int32 = 600
+var trafficAccessTokenHeader = "e2b-traffic-access-token"
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasTrafficToken bool) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
@@ -45,7 +46,7 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 				} else if info.Paused {
 					logSleeping(ctx, sandboxId)
 
-					canAutoResume := info.CanAutoResume && autoResumeEnabled
+					canAutoResume := shouldAutoResume(info.AutoResumePolicy, autoResumeEnabled, requestHasTrafficToken)
 					if canAutoResume {
 						logger.L().Info(ctx, "auto-resuming sandbox", logger.WithSandboxID(sandboxId))
 						if err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds); err != nil {
@@ -92,6 +93,23 @@ func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCa
 	return "", fmt.Errorf("timeout waiting for sandbox to resume")
 }
 
+func shouldAutoResume(policy string, autoResumeEnabled bool, requestHasTrafficToken bool) bool {
+	if !autoResumeEnabled {
+		return false
+	}
+
+	switch policy {
+	case "any":
+		return true
+	case "authed":
+		return requestHasTrafficToken
+	case "null":
+		return false
+	default:
+		return false
+	}
+}
+
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
 	return NewClientProxyWithPausedChecker(meterProvider, serviceName, port, catalog, nil, true)
 }
@@ -122,7 +140,8 @@ func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, service
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog, pausedChecker, autoResumeEnabled)
+			requestHasTrafficToken := r.Header.Get(trafficAccessTokenHeader) != ""
+			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog, pausedChecker, autoResumeEnabled, requestHasTrafficToken)
 			if err != nil {
 				if errors.Is(err, ErrNodeNotFound) {
 					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)

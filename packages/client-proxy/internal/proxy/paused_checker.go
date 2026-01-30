@@ -28,8 +28,8 @@ type apiPausedSandboxChecker struct {
 }
 
 type PausedInfo struct {
-	Paused        bool
-	CanAutoResume bool
+	Paused           bool
+	AutoResumePolicy string
 }
 
 func NewApiPausedSandboxChecker(baseURL, adminToken, apiKey string, autoResumeEnabled bool) (PausedSandboxChecker, error) {
@@ -54,7 +54,8 @@ func NewApiPausedSandboxChecker(baseURL, adminToken, apiKey string, autoResumeEn
 }
 
 type sandboxStateResponse struct {
-	State string `json:"state"`
+	State    string            `json:"state"`
+	Metadata map[string]string `json:"metadata"`
 }
 
 func (c *apiPausedSandboxChecker) PausedInfo(ctx context.Context, sandboxId string) (PausedInfo, error) {
@@ -85,11 +86,11 @@ func (c *apiPausedSandboxChecker) PausedInfo(ctx context.Context, sandboxId stri
 		}
 		paused := strings.EqualFold(payload.State, "paused")
 		return PausedInfo{
-			Paused:        paused,
-			CanAutoResume: c.autoResumeEnabled,
+			Paused:           paused,
+			AutoResumePolicy: getAutoResumePolicy(payload.Metadata),
 		}, nil
 	case http.StatusNotFound:
-		return PausedInfo{Paused: false, CanAutoResume: c.autoResumeEnabled}, nil
+		return PausedInfo{Paused: false, AutoResumePolicy: ""}, nil
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return PausedInfo{}, errors.New("api auth failed for paused lookup")
 	default:
@@ -142,4 +143,17 @@ func (c *apiPausedSandboxChecker) Resume(ctx context.Context, sandboxId string, 
 
 func logSleeping(ctx context.Context, sandboxId string) {
 	logger.L().Info(ctx, "im sleeping", logger.WithSandboxID(sandboxId))
+}
+
+func getAutoResumePolicy(metadata map[string]string) string {
+	if metadata == nil {
+		return "null"
+	}
+
+	value := strings.TrimSpace(strings.ToLower(metadata["auto_resume"]))
+	if value == "" {
+		return "null"
+	}
+
+	return value
 }

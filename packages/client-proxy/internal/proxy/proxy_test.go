@@ -55,9 +55,9 @@ func (f *fakePausedChecker) Resume(_ context.Context, _ string, _ int32) error {
 func TestCatalogResolutionPaused_NoAutoResume(t *testing.T) {
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 1}
-	paused := &fakePausedChecker{info: PausedInfo{Paused: true, CanAutoResume: true}}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "any"}}
 
-	_, err := catalogResolution(ctx, "sbx-1", c, paused, false)
+	_, err := catalogResolution(ctx, "sbx-1", c, paused, false, false)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -75,7 +75,7 @@ func TestCatalogResolutionPaused_AutoResumeSuccess(t *testing.T) {
 	ctx := context.Background()
 	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.1"}
 	c := &fakeCatalog{info: info, failCount: 1}
-	paused := &fakePausedChecker{info: PausedInfo{Paused: true, CanAutoResume: true}}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "any"}}
 
 	origInterval := resumeWaitInterval
 	origTimeout := resumeWaitTimeout
@@ -86,7 +86,7 @@ func TestCatalogResolutionPaused_AutoResumeSuccess(t *testing.T) {
 		resumeWaitTimeout = origTimeout
 	}()
 
-	ip, err := catalogResolution(ctx, "sbx-2", c, paused, true)
+	ip, err := catalogResolution(ctx, "sbx-2", c, paused, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -102,11 +102,11 @@ func TestCatalogResolutionPaused_AutoResumeFails(t *testing.T) {
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 10}
 	paused := &fakePausedChecker{
-		info:      PausedInfo{Paused: true, CanAutoResume: true},
+		info:      PausedInfo{Paused: true, AutoResumePolicy: "any"},
 		resumeErr: errors.New("nope"),
 	}
 
-	_, err := catalogResolution(ctx, "sbx-3", c, paused, true)
+	_, err := catalogResolution(ctx, "sbx-3", c, paused, true, false)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -117,5 +117,120 @@ func TestCatalogResolutionPaused_AutoResumeFails(t *testing.T) {
 	}
 	if !pausedErr.CanAutoResume {
 		t.Fatalf("expected canAutoResume=true")
+	}
+}
+
+func TestShouldAutoResumePolicy(t *testing.T) {
+	if !shouldAutoResume("any", true, false) {
+		t.Fatalf("expected any=true")
+	}
+	if shouldAutoResume("null", true, true) {
+		t.Fatalf("expected null=false")
+	}
+	if shouldAutoResume("authed", true, false) {
+		t.Fatalf("expected authed=false without token")
+	}
+	if !shouldAutoResume("authed", true, true) {
+		t.Fatalf("expected authed=true with token")
+	}
+	if shouldAutoResume("unknown", true, false) {
+		t.Fatalf("expected default=false for unknown policy")
+	}
+}
+
+func TestAutoResumePolicies(t *testing.T) {
+	cases := []struct {
+		name                 string
+		policy               string
+		requestHasTrafficTok bool
+		expectAutoResume     bool
+	}{
+		{name: "any-authed", policy: "any", requestHasTrafficTok: true, expectAutoResume: true},
+		{name: "any-unauthed", policy: "any", requestHasTrafficTok: false, expectAutoResume: true},
+		{name: "authed-authed", policy: "authed", requestHasTrafficTok: true, expectAutoResume: true},
+		{name: "authed-unauthed", policy: "authed", requestHasTrafficTok: false, expectAutoResume: false},
+		{name: "null-authed", policy: "null", requestHasTrafficTok: true, expectAutoResume: false},
+		{name: "null-unauthed", policy: "null", requestHasTrafficTok: false, expectAutoResume: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := shouldAutoResume(tc.policy, true, tc.requestHasTrafficTok)
+			if got != tc.expectAutoResume {
+				t.Fatalf("expected autoResume=%v, got %v", tc.expectAutoResume, got)
+			}
+		})
+	}
+}
+
+func TestCatalogResolutionPaused_AutoResumePolicyAny(t *testing.T) {
+	ctx := context.Background()
+	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.2"}
+	c := &fakeCatalog{info: info, failCount: 1}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "any"}}
+
+	origInterval := resumeWaitInterval
+	origTimeout := resumeWaitTimeout
+	resumeWaitInterval = 1 * time.Millisecond
+	resumeWaitTimeout = 20 * time.Millisecond
+	defer func() {
+		resumeWaitInterval = origInterval
+		resumeWaitTimeout = origTimeout
+	}()
+
+	ip, err := catalogResolution(ctx, "sbx-any", c, paused, true, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ip != "10.0.0.2" {
+		t.Fatalf("expected ip 10.0.0.2, got %s", ip)
+	}
+}
+
+func TestCatalogResolutionPaused_AutoResumePolicyAuthed(t *testing.T) {
+	ctx := context.Background()
+	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.3"}
+	c := &fakeCatalog{info: info, failCount: 1}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "authed"}}
+
+	origInterval := resumeWaitInterval
+	origTimeout := resumeWaitTimeout
+	resumeWaitInterval = 1 * time.Millisecond
+	resumeWaitTimeout = 20 * time.Millisecond
+	defer func() {
+		resumeWaitInterval = origInterval
+		resumeWaitTimeout = origTimeout
+	}()
+
+	_, err := catalogResolution(ctx, "sbx-authed-no-token", c, paused, true, false)
+	if err == nil {
+		t.Fatalf("expected error without traffic token")
+	}
+
+	ip, err := catalogResolution(ctx, "sbx-authed-with-token", c, paused, true, true)
+	if err != nil {
+		t.Fatalf("unexpected error with token: %v", err)
+	}
+	if ip != "10.0.0.3" {
+		t.Fatalf("expected ip 10.0.0.3, got %s", ip)
+	}
+}
+
+func TestCatalogResolutionPaused_AutoResumePolicyNull(t *testing.T) {
+	ctx := context.Background()
+	c := &fakeCatalog{info: nil, failCount: 1}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "null"}}
+
+	_, err := catalogResolution(ctx, "sbx-null", c, paused, true, true)
+	if err == nil {
+		t.Fatalf("expected error for null policy")
+	}
+
+	var pausedErr *sharedproxy.SandboxPausedError
+	if !errors.As(err, &pausedErr) {
+		t.Fatalf("expected SandboxPausedError, got %T", err)
+	}
+	if pausedErr.CanAutoResume {
+		t.Fatalf("expected canAutoResume=false")
 	}
 }
