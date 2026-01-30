@@ -100,6 +100,10 @@ variable "db_migrator_image" {
   type    = string
   default = ""
 }
+variable "clickhouse_migrator_image" {
+  type    = string
+  default = ""
+}
 variable "client_proxy_image" {
   type    = string
   default = ""
@@ -132,6 +136,10 @@ variable "docker_no_proxy" {
 variable "clickhouse_database" {
   type    = string
   default = ""
+}
+variable "clickhouse_server_count" {
+  type    = number
+  default = 0
 }
 variable "clickhouse_server_port" {
   type = object({

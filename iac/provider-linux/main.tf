@@ -101,18 +101,19 @@ module "nomad" {
 
   api_image                      = var.api_image
   db_migrator_image              = var.db_migrator_image
+  clickhouse_migrator_image      = var.clickhouse_migrator_image
   client_proxy_image             = var.client_proxy_image
   docker_reverse_proxy_image     = var.docker_reverse_proxy_image
   sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
 
   clickhouse_username                  = "e2b"
   clickhouse_database                  = var.clickhouse_database
-  clickhouse_server_count              = 0
+  clickhouse_server_count              = var.clickhouse_server_count
   clickhouse_server_port               = var.clickhouse_server_port
   clickhouse_resources_memory_mb       = var.clickhouse_resources_memory_mb
   clickhouse_resources_cpu_count       = var.clickhouse_resources_cpu_count
   clickhouse_metrics_port              = var.clickhouse_metrics_port
-  clickhouse_version                   = "24.3.3"
+  clickhouse_version                   = "25.4.5.24"
   api_secret                           = var.api_secret
   otel_collector_resources_memory_mb   = var.otel_collector_resources_memory_mb
   otel_collector_resources_cpu_count   = var.otel_collector_resources_cpu_count

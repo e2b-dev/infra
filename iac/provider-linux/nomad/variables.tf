@@ -96,6 +96,7 @@ variable "otel_tracing_print" {
 
 variable "api_image" { type = string }
 variable "db_migrator_image" { type = string }
+variable "clickhouse_migrator_image" { type = string }
 variable "client_proxy_image" { type = string }
 variable "docker_reverse_proxy_image" { type = string }
 

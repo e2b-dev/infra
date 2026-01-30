@@ -309,7 +309,22 @@ resource "nomad_job" "clickhouse" {
     memory_mb               = var.clickhouse_resources_memory_mb
     clickhouse_server_port  = var.clickhouse_server_port.port
     clickhouse_metrics_port = var.clickhouse_metrics_port
-    clickhouse_version      = "24.3.3"
+    clickhouse_version      = var.clickhouse_version
     docker_image_prefix     = var.docker_image_prefix
   })
+}
+
+resource "nomad_job" "clickhouse_migrator" {
+  count = var.enable_nomad_jobs && (var.clickhouse_server_count > 0) ? 1 : 0
+  jobspec = templatefile("${path.module}/jobs/clickhouse-migrator.hcl", {
+    server_count                 = var.clickhouse_server_count
+    node_pool                    = var.api_node_pool
+    clickhouse_connection_string = local.clickhouse_connection_string
+    clickhouse_migrator_image    = var.clickhouse_migrator_image
+    docker_image_prefix          = var.docker_image_prefix
+  })
+
+  depends_on = [
+    nomad_job.clickhouse,
+  ]
 }

@@ -27,6 +27,13 @@ build:
 build-and-upload:build
 	@docker push "$(CLICKHOUSE_MIGRATOR_IMAGE)"
 
+.PHONY: build-and-upload-linux
+build-and-upload-linux:
+	$(eval DOCKER_TAG ?= latest)
+	@if [ -z "$(DOCKER_IMAGE_PREFIX)" ]; then echo "DOCKER_IMAGE_PREFIX is required"; exit 1; fi
+	@docker build --platform linux/amd64 --tag "$(DOCKER_IMAGE_PREFIX)/clickhouse/clickhouse-migrator:$(DOCKER_TAG)" .
+	@docker push "$(DOCKER_IMAGE_PREFIX)/clickhouse/clickhouse-migrator:$(DOCKER_TAG)"
+
 .PHONY: connect-clickhouse
 connect-clickhouse:
 	CLICKHOUSE_IG=$$(gcloud compute instance-groups list \
