@@ -36,8 +36,8 @@ func TestGetTemplateWithBuildByTag_AssignmentOrderDifferentFromBuildOrder(t *tes
 
 	// GetTemplateWithBuildByTag should return build1 (latest assignment)
 	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
-		AliasOrEnvID: templateID,
-		Tag:          nil, // defaults to 'default'
+		TemplateID: templateID,
+		Tag:        nil, // defaults to 'default'
 	})
 	require.NoError(t, err)
 
@@ -67,8 +67,9 @@ func TestGetTemplateWithBuildByTag_AssignmentOrderSameAsBuildOrder(t *testing.T)
 
 	// GetTemplateWithBuildByTag should return build2 (latest assignment)
 	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
-		AliasOrEnvID: templateID,
-		Tag:          nil,
+		TemplateID: templateID,
+
+		Tag: nil,
 	})
 	require.NoError(t, err)
 
@@ -98,8 +99,9 @@ func TestGetTemplateWithBuildByTag_OnlyReturnsUploadedBuilds(t *testing.T) {
 
 	// GetTemplateWithBuildByTag should return the uploaded build, not waiting
 	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
-		AliasOrEnvID: templateID,
-		Tag:          nil,
+		TemplateID: templateID,
+
+		Tag: nil,
 	})
 	require.NoError(t, err)
 
@@ -129,8 +131,9 @@ func TestGetTemplateWithBuildByTag_SpecificTag(t *testing.T) {
 	// Query for 'v1' tag
 	v1Tag := "v1"
 	result, err := db.SqlcClient.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
-		AliasOrEnvID: templateID,
-		Tag:          &v1Tag,
+		TemplateID: templateID,
+
+		Tag: &v1Tag,
 	})
 	require.NoError(t, err)
 

@@ -59,10 +59,12 @@ func setupMockStorage(t *testing.T, frames map[int64][]byte) *storage.MockStorag
 				}
 
 				n := copy(buf, decompressed)
+
 				return storage.Range{Start: offsetU, Length: n}, nil
 			}
 
 			n := copy(buf, data)
+
 			return storage.Range{Start: offsetU, Length: n}, nil
 		}).Maybe()
 

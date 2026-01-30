@@ -96,6 +96,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, "frame_lookup_failed"))
+
 		return nil, fmt.Errorf("failed to get frame for offset %d: %w", off, err)
 	}
 
@@ -109,6 +110,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 			timer.Failure(ctx, length,
 				attribute.String(pullType, pullTypeRemote),
 				attribute.String(failureReason, failureTypeCacheFetch))
+
 			return nil, err
 		}
 
@@ -130,6 +132,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 			timer.Failure(ctx, length,
 				attribute.String(pullType, pullTypeLocal),
 				attribute.String(failureReason, "frame_lookup_failed"))
+
 			return nil, fmt.Errorf("failed to get frame for offset %d: %w", currentOff, err)
 		}
 
@@ -146,6 +149,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 				return err
 			}
 			copy(result[resultOff:], data[startInFrame:startInFrame+int64(toCopy)])
+
 			return nil
 		})
 	}
@@ -154,10 +158,12 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeRemote),
 			attribute.String(failureReason, failureTypeCacheFetch))
+
 		return nil, err
 	}
 
 	timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
+
 	return result, nil
 }
 
@@ -175,11 +181,13 @@ func (c *CompressLRUChunker) getOrFetchFrame(ctx context.Context, frameOffU int6
 		if frame, ok := c.frameLRU.get(frameOffU); ok {
 			return frame.data, nil
 		}
+
 		return c.fetchAndDecompress(ctx, frameOffU, frameSize)
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return dataI.([]byte), nil
 }
 

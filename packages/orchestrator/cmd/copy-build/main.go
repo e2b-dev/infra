@@ -45,7 +45,8 @@ func NewDestinationFromObject(ctx context.Context, o *googleStorage.ObjectHandle
 }
 
 func NewDestinationFromPath(prefix, file string) (*Destination, error) {
-	p := path.Join(prefix, file)
+	// Local storage uses templates subdirectory
+	p := path.Join(prefix, "templates", file)
 
 	if _, err := os.Stat(p); err == nil {
 		f, err := os.Open(p)
@@ -85,7 +86,7 @@ func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath stri
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
 
-	h, err := header.Deserialize(ctx, data)
+	h, err := header.Deserialize(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}
@@ -93,13 +94,13 @@ func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath stri
 	return h, nil
 }
 
-func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.Header, error) {
+func NewHeaderFromPath(from, headerPath string) (*header.Header, error) {
 	data, err := os.ReadFile(path.Join(from, headerPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 
-	h, err := header.Deserialize(ctx, data)
+	h, err := header.Deserialize(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}
@@ -207,7 +208,7 @@ func main() {
 
 		memfileHeader = h
 	} else {
-		h, err := NewHeaderFromPath(ctx, *from, buildMemfileHeaderPath)
+		h, err := NewHeaderFromPath(*from, buildMemfileHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from path: %s", err)
 		}
@@ -236,7 +237,7 @@ func main() {
 
 		rootfsHeader = h
 	} else {
-		h, err := NewHeaderFromPath(ctx, *from, buildRootfsHeaderPath)
+		h, err := NewHeaderFromPath(*from, buildRootfsHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from path: %s", err)
 		}

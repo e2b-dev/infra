@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd/testutils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -20,18 +21,32 @@ import (
 )
 
 func main() {
-	buildId := flag.String("build", "", "build id (only used when empty flag is false)")
-	mountPath := flag.String("mount", "", "mount path (only used when empty flag is false)")
-	verify := flag.Bool("verify", false, "verify rootfs integrity (only used when empty flag is false)")
-	logging := flag.Bool("log", false, "enable logging (it is pretty spammy)")
-	empty := flag.Bool("empty", false, "create an empty rootfs")
-	size := flag.Int64("size", 1024*1024*1024, "size of the rootfs (only used when empty flag is true)")
-	blockSize := flag.Int64("block-size", 4096, "block size of the rootfs (only used when empty flag is true)")
+	build := flag.String("build", "", "build ID (required unless -empty)")
+	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
+	mountPath := flag.String("mount", "", "mount path")
+	verify := flag.Bool("verify", false, "verify rootfs integrity")
+	logging := flag.Bool("log", false, "enable logging")
+	empty := flag.Bool("empty", false, "create an empty rootfs instead of loading a build")
+	size := flag.Int64("size", 1024*1024*1024, "size of the rootfs (only used with -empty)")
+	blockSize := flag.Int64("block-size", 4096, "block size of the rootfs (only used with -empty)")
 
 	flag.Parse()
 
+	if !*empty && *build == "" {
+		log.Fatal("-build required (or use -empty for empty rootfs)")
+	}
 	if *verify && *mountPath == "" {
-		log.Fatalf("verify flag is only supported when mount path is provided")
+		log.Fatal("-verify requires -mount")
+	}
+
+	// Set up storage env vars based on -storage flag
+	if err := cmdutil.SetupStorage(*storagePath); err != nil {
+		log.Fatal(err)
+	}
+
+	// Suppress noisy output unless logging enabled
+	if !*logging {
+		cmdutil.SuppressNoisyLogsKeepStdLog()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -69,7 +84,7 @@ func main() {
 			panic(fmt.Errorf("failed to create empty rootfs: %w", err))
 		}
 	} else {
-		err := run(ctx, nbdContext, featureFlags, *buildId, *mountPath, *verify)
+		err := run(ctx, nbdContext, featureFlags, *build, *mountPath, *verify)
 		if err != nil {
 			panic(fmt.Errorf("failed to mount rootfs: %w", err))
 		}

@@ -41,10 +41,12 @@ func setupMockStorageDecompress(t *testing.T, frames map[int64][]byte) *storage.
 				}
 
 				n := copy(buf, decompressed)
+
 				return storage.Range{Start: offsetU, Length: n}, nil
 			}
 
 			n := copy(buf, data)
+
 			return storage.Range{Start: offsetU, Length: n}, nil
 		}).Maybe()
 
@@ -302,5 +304,5 @@ func TestDecompressMMapChunker_FileSize(t *testing.T) {
 	// After fetching, FileSize should be non-zero (but may vary by filesystem)
 	size, err = chunker.FileSize()
 	require.NoError(t, err)
-	assert.Greater(t, size, int64(0), "on-disk size should be non-zero after fetching data")
+	assert.Positive(t, size, "on-disk size should be non-zero after fetching data")
 }

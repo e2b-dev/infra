@@ -35,7 +35,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 		return nil, &cleaner, fmt.Errorf("failed to get header data: %w", err)
 	}
 
-	h, err := header.Deserialize(ctx, headerData)
+	h, err := header.Deserialize(headerData)
 	if err != nil {
 		id, err := uuid.Parse(buildID)
 		if err != nil {

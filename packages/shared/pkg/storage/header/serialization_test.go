@@ -44,7 +44,7 @@ func TestSerializeDeserialize_V3_DropsFrames(t *testing.T) {
 	data, err := Serialize(metadata, mappings)
 	require.NoError(t, err)
 
-	got, err := Deserialize(t.Context(), data)
+	got, err := Deserialize(data)
 	require.NoError(t, err)
 
 	require.Equal(t, metadata.Version, got.Metadata.Version)
@@ -98,7 +98,7 @@ func TestSerializeDeserialize_V4_RoundTripFrames(t *testing.T) {
 	data, err := Serialize(metadata, mappings)
 	require.NoError(t, err)
 
-	got, err := Deserialize(t.Context(), data)
+	got, err := Deserialize(data)
 	require.NoError(t, err)
 
 	require.Len(t, got.Mapping, 1)
@@ -116,7 +116,7 @@ func TestSerializeDeserialize_V4_RoundTripFrames(t *testing.T) {
 func TestDeserialize_TruncatedMetadata(t *testing.T) {
 	t.Parallel()
 
-	_, err := Deserialize(t.Context(), []byte{0x01, 0x02, 0x03})
+	_, err := Deserialize([]byte{0x01, 0x02, 0x03})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read metadata")
 }
@@ -152,7 +152,7 @@ func TestDeserialize_V4_TruncatedFrames(t *testing.T) {
 	require.Greater(t, len(data), 8)
 
 	truncated := data[:len(data)-8]
-	_, err = Deserialize(t.Context(), truncated)
+	_, err = Deserialize(truncated)
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "compression frame") || strings.Contains(err.Error(), "compression frames starting offset"))
 }
@@ -172,7 +172,7 @@ func TestSerializeDeserialize_EmptyMappings_Defaults(t *testing.T) {
 	data, err := Serialize(metadata, nil)
 	require.NoError(t, err)
 
-	got, err := Deserialize(t.Context(), data)
+	got, err := Deserialize(data)
 	require.NoError(t, err)
 
 	require.Len(t, got.Mapping, 1)
@@ -196,7 +196,7 @@ func TestDeserialize_BlockSizeZero(t *testing.T) {
 	data, err := Serialize(metadata, nil)
 	require.NoError(t, err)
 
-	_, err = Deserialize(t.Context(), data)
+	_, err = Deserialize(data)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "block size cannot be zero")
 }

@@ -54,10 +54,11 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
+	teamID := teamInfo.Team.ID
 	sandboxID = utils.ShortID(sandboxID)
-	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
+	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
-		if sandboxData.TeamID != teamInfo.Team.ID {
+		if sandboxData.TeamID != teamID {
 			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
 
 			return
@@ -66,7 +67,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		switch sandboxData.State {
 		case sandbox.StatePausing:
 			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
-			err = a.orchestrator.WaitForStateChange(ctx, sandboxID)
+			err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
 			if err != nil {
 				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
 
@@ -110,8 +111,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	if lastSnapshot.Snapshot.TeamID != teamInfo.Team.ID {
-		telemetry.ReportCriticalError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxID, teamInfo.Team.ID.String()), nil)
+	if lastSnapshot.Snapshot.TeamID != teamID {
+		telemetry.ReportCriticalError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxID, teamID.String()), nil)
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
 
 		return
@@ -134,7 +135,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: build.EnvID,
-		TeamID:     teamInfo.Team.ID.String(),
+		TeamID:     teamID.String(),
 	}).Debug(ctx, "Started resuming sandbox")
 
 	var envdAccessToken *string = nil

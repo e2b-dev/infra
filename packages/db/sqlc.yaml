@@ -2,7 +2,9 @@ version: "2"
 sql:
   - engine: "postgresql"
     queries: "queries/**"
-    schema: "migrations"
+    schema:
+      - "migrations"
+      - "schema"
     gen:
       go:
         emit_pointers_for_null_types: true
@@ -49,7 +51,9 @@ sql:
             nullable: true
   - engine: "postgresql"
     queries: "pkg/auth/sql_queries/**"
-    schema: "migrations"
+    schema:
+      - "migrations"
+      - "schema"
     gen:
       go:
         emit_pointers_for_null_types: true

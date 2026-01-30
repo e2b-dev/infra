@@ -27,20 +27,21 @@ func NewItemsFilter() *ItemsFilter {
 }
 
 type ReservationStorage interface {
-	Reserve(ctx context.Context, teamID, sandboxID string, limit int) (finishStart func(Sandbox, error), waitForStart func(ctx context.Context) (Sandbox, error), err error)
-	Release(ctx context.Context, teamID, sandboxID string) error
+	Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(Sandbox, error), waitForStart func(ctx context.Context) (Sandbox, error), err error)
+	Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 }
 
 type Storage interface {
 	Add(ctx context.Context, sandbox Sandbox) error
-	Get(ctx context.Context, sandboxID string) (Sandbox, error)
-	Remove(ctx context.Context, sandboxID string) error
+	Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error)
+	Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 
-	Items(teamID *uuid.UUID, states []State, options ...ItemsOption) []Sandbox
+	TeamItems(ctx context.Context, teamID uuid.UUID, states []State) ([]Sandbox, error)
+	AllItems(ctx context.Context, states []State, options ...ItemsOption) ([]Sandbox, error)
 
-	Update(ctx context.Context, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
-	StartRemoving(ctx context.Context, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(context.Context, error), err error)
-	WaitForStateChange(ctx context.Context, sandboxID string) error
+	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
+	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(context.Context, error), err error)
+	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 	Sync(sandboxes []Sandbox, nodeID string) []Sandbox
 }
 
@@ -107,7 +108,7 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 	}
 
 	// Ensure the team reservation is set - no limit
-	finishStart, _, err := s.reservations.Reserve(ctx, sandbox.TeamID.String(), sandbox.SandboxID, -1)
+	finishStart, _, err := s.reservations.Reserve(ctx, sandbox.TeamID, sandbox.SandboxID, -1)
 	if err != nil {
 		logger.L().Error(ctx, "Failed to reserve sandbox", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
 	}
@@ -123,12 +124,12 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 	return nil
 }
 
-func (s *Store) Get(ctx context.Context, sandboxID string) (Sandbox, error) {
-	return s.storage.Get(ctx, sandboxID)
+func (s *Store) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error) {
+	return s.storage.Get(ctx, teamID, sandboxID)
 }
 
-func (s *Store) Remove(ctx context.Context, teamID, sandboxID string) {
-	err := s.storage.Remove(ctx, sandboxID)
+func (s *Store) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) {
+	err := s.storage.Remove(ctx, teamID, sandboxID)
 	if err != nil {
 		logger.L().Error(ctx, "Failed to remove sandbox from storage", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
@@ -139,20 +140,24 @@ func (s *Store) Remove(ctx context.Context, teamID, sandboxID string) {
 	}
 }
 
-func (s *Store) Items(teamID *uuid.UUID, states []State, options ...ItemsOption) []Sandbox {
-	return s.storage.Items(teamID, states, options...)
+func (s *Store) TeamItems(ctx context.Context, teamID uuid.UUID, states []State) ([]Sandbox, error) {
+	return s.storage.TeamItems(ctx, teamID, states)
 }
 
-func (s *Store) Update(ctx context.Context, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error) {
-	return s.storage.Update(ctx, sandboxID, updateFunc)
+func (s *Store) AllItems(ctx context.Context, states []State, options ...ItemsOption) ([]Sandbox, error) {
+	return s.storage.AllItems(ctx, states, options...)
 }
 
-func (s *Store) StartRemoving(ctx context.Context, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
-	return s.storage.StartRemoving(ctx, sandboxID, stateAction)
+func (s *Store) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error) {
+	return s.storage.Update(ctx, teamID, sandboxID, updateFunc)
 }
 
-func (s *Store) WaitForStateChange(ctx context.Context, sandboxID string) error {
-	return s.storage.WaitForStateChange(ctx, sandboxID)
+func (s *Store) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
+	return s.storage.StartRemoving(ctx, teamID, sandboxID, stateAction)
+}
+
+func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
+	return s.storage.WaitForStateChange(ctx, teamID, sandboxID)
 }
 
 func (s *Store) Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) {
@@ -165,10 +170,10 @@ func (s *Store) Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) {
 	}
 }
 
-func (s *Store) Reserve(ctx context.Context, teamID, sandboxID string, limit int) (finishStart func(Sandbox, error), waitForStart func(ctx context.Context) (Sandbox, error), err error) {
+func (s *Store) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(Sandbox, error), waitForStart func(ctx context.Context) (Sandbox, error), err error) {
 	return s.reservations.Reserve(ctx, teamID, sandboxID, limit)
 }
 
-func (s *Store) Release(ctx context.Context, teamID, sandboxID string) error {
+func (s *Store) Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
 	return s.reservations.Release(ctx, teamID, sandboxID)
 }
