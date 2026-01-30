@@ -33,6 +33,22 @@ func (e SandboxNotFoundError) Error() string {
 	return "sandbox not found"
 }
 
+type SandboxPausedError struct {
+	SandboxId     string
+	CanAutoResume bool
+}
+
+func NewErrSandboxPaused(sandboxId string, canAutoResume bool) *SandboxPausedError {
+	return &SandboxPausedError{
+		SandboxId:     sandboxId,
+		CanAutoResume: canAutoResume,
+	}
+}
+
+func (e SandboxPausedError) Error() string {
+	return "sandbox paused"
+}
+
 type MissingTrafficAccessTokenError struct {
 	SandboxId string
 	Header    string

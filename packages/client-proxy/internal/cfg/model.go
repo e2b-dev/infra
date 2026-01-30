@@ -10,9 +10,10 @@ type Config struct {
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 
-	ApiBaseURL string `env:"API_BASE_URL"`
-	AdminToken string `env:"API_ADMIN_TOKEN"`
-	ApiKey     string `env:"API_KEY"`
+	ApiBaseURL        string `env:"API_BASE_URL"`
+	AdminToken        string `env:"API_ADMIN_TOKEN"`
+	ApiKey            string `env:"API_KEY"`
+	AutoResumeEnabled bool   `env:"AUTO_RESUME_ENABLED" envDefault:"true"`
 }
 
 func Parse() (Config, error) {

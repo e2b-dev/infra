@@ -59,6 +59,25 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		var pausedErr *SandboxPausedError
+		if errors.As(err, &pausedErr) {
+			logger.L().Info(ctx, "sandbox paused",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(pausedErr.SandboxId))
+
+			err := template.
+				NewSandboxPausedError(pausedErr.SandboxId, r.Host, pausedErr.CanAutoResume).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle sandbox paused error", zap.Error(err), logger.WithSandboxID(pausedErr.SandboxId))
+				http.Error(w, "Failed to handle sandbox paused error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
 		var trafficMissingTokenErr *MissingTrafficAccessTokenError
 		if errors.As(err, &trafficMissingTokenErr) {
 			logger.L().Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))

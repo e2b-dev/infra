@@ -30,16 +30,36 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker) (string, error) {
+var resumeWaitInterval = 200 * time.Millisecond
+var resumeWaitTimeout = 30 * time.Second
+var resumeTimeoutSeconds int32 = 600
+
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
 			if pausedChecker != nil {
-				isPaused, pausedErr := pausedChecker.IsPaused(ctx, sandboxId)
+				info, pausedErr := pausedChecker.PausedInfo(ctx, sandboxId)
 				if pausedErr != nil {
 					logger.L().Warn(ctx, "paused lookup failed", zap.Error(pausedErr), logger.WithSandboxID(sandboxId))
-				} else if isPaused {
+				} else if info.Paused {
 					logSleeping(ctx, sandboxId)
+
+					canAutoResume := info.CanAutoResume && autoResumeEnabled
+					if canAutoResume {
+						logger.L().Info(ctx, "auto-resuming sandbox", logger.WithSandboxID(sandboxId))
+						if err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds); err != nil {
+							logger.L().Warn(ctx, "auto-resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
+						} else {
+							nodeIP, waitErr := waitForCatalog(ctx, sandboxId, c)
+							if waitErr == nil {
+								return nodeIP, nil
+							}
+							logger.L().Warn(ctx, "auto-resume wait failed", zap.Error(waitErr), logger.WithSandboxID(sandboxId))
+						}
+					}
+
+					return "", reverseproxy.NewErrSandboxPaused(sandboxId, canAutoResume)
 				}
 			}
 
@@ -54,11 +74,29 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 	return s.OrchestratorIP, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
-	return NewClientProxyWithPausedChecker(meterProvider, serviceName, port, catalog, nil)
+func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
+	deadline := time.Now().Add(resumeWaitTimeout)
+	for time.Now().Before(deadline) {
+		s, err := c.GetSandbox(ctx, sandboxId)
+		if err == nil {
+			return s.OrchestratorIP, nil
+		}
+
+		if !errors.Is(err, catalog.ErrSandboxNotFound) {
+			return "", fmt.Errorf("failed to get sandbox from catalog during resume: %w", err)
+		}
+
+		time.Sleep(resumeWaitInterval)
+	}
+
+	return "", fmt.Errorf("timeout waiting for sandbox to resume")
 }
 
-func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
+	return NewClientProxyWithPausedChecker(meterProvider, serviceName, port, catalog, nil, true)
+}
+
+func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 
 	proxy := reverseproxy.New(
@@ -84,13 +122,17 @@ func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, service
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog, pausedChecker)
+			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog, pausedChecker, autoResumeEnabled)
 			if err != nil {
+				if errors.Is(err, ErrNodeNotFound) {
+					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+				}
+
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
 				}
 
-				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+				return nil, err
 			}
 
 			url := &url.URL{

@@ -134,7 +134,7 @@ func run() int {
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
 
-	pausedChecker, err := e2bproxy.NewApiPausedSandboxChecker(config.ApiBaseURL, config.AdminToken, config.ApiKey)
+	pausedChecker, err := e2bproxy.NewApiPausedSandboxChecker(config.ApiBaseURL, config.AdminToken, config.ApiKey, config.AutoResumeEnabled)
 	if err != nil {
 		l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 
@@ -148,6 +148,7 @@ func run() int {
 		config.ProxyPort,
 		catalog,
 		pausedChecker,
+		config.AutoResumeEnabled,
 	)
 	if err != nil {
 		l.Error(ctx, "Failed to create client proxy", zap.Error(err))

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,17 +15,24 @@ import (
 )
 
 type PausedSandboxChecker interface {
-	IsPaused(ctx context.Context, sandboxId string) (bool, error)
+	PausedInfo(ctx context.Context, sandboxId string) (PausedInfo, error)
+	Resume(ctx context.Context, sandboxId string, timeoutSeconds int32) error
 }
 
 type apiPausedSandboxChecker struct {
-	baseURL    string
-	adminToken string
-	apiKey     string
-	client     *http.Client
+	baseURL           string
+	adminToken        string
+	apiKey            string
+	autoResumeEnabled bool
+	client            *http.Client
 }
 
-func NewApiPausedSandboxChecker(baseURL, adminToken, apiKey string) (PausedSandboxChecker, error) {
+type PausedInfo struct {
+	Paused        bool
+	CanAutoResume bool
+}
+
+func NewApiPausedSandboxChecker(baseURL, adminToken, apiKey string, autoResumeEnabled bool) (PausedSandboxChecker, error) {
 	if strings.TrimSpace(baseURL) == "" || (strings.TrimSpace(adminToken) == "" && strings.TrimSpace(apiKey) == "") {
 		return nil, nil
 	}
@@ -35,9 +43,10 @@ func NewApiPausedSandboxChecker(baseURL, adminToken, apiKey string) (PausedSandb
 	}
 
 	return &apiPausedSandboxChecker{
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		adminToken: adminToken,
-		apiKey:     apiKey,
+		baseURL:           strings.TrimRight(baseURL, "/"),
+		adminToken:        adminToken,
+		apiKey:            apiKey,
+		autoResumeEnabled: autoResumeEnabled,
 		client: &http.Client{
 			Timeout: 2 * time.Second,
 		},
@@ -48,10 +57,10 @@ type sandboxStateResponse struct {
 	State string `json:"state"`
 }
 
-func (c *apiPausedSandboxChecker) IsPaused(ctx context.Context, sandboxId string) (bool, error) {
+func (c *apiPausedSandboxChecker) PausedInfo(ctx context.Context, sandboxId string) (PausedInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/sandboxes/"+sandboxId, nil)
 	if err != nil {
-		return false, fmt.Errorf("create request: %w", err)
+		return PausedInfo{}, fmt.Errorf("create request: %w", err)
 	}
 
 	if strings.TrimSpace(c.apiKey) != "" {
@@ -62,7 +71,7 @@ func (c *apiPausedSandboxChecker) IsPaused(ctx context.Context, sandboxId string
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("request failed: %w", err)
+		return PausedInfo{}, fmt.Errorf("request failed: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -72,15 +81,62 @@ func (c *apiPausedSandboxChecker) IsPaused(ctx context.Context, sandboxId string
 	case http.StatusOK:
 		var payload sandboxStateResponse
 		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-			return false, fmt.Errorf("decode response: %w", err)
+			return PausedInfo{}, fmt.Errorf("decode response: %w", err)
 		}
-		return strings.EqualFold(payload.State, "paused"), nil
+		paused := strings.EqualFold(payload.State, "paused")
+		return PausedInfo{
+			Paused:        paused,
+			CanAutoResume: c.autoResumeEnabled,
+		}, nil
 	case http.StatusNotFound:
-		return false, nil
+		return PausedInfo{Paused: false, CanAutoResume: c.autoResumeEnabled}, nil
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return false, errors.New("api auth failed for paused lookup")
+		return PausedInfo{}, errors.New("api auth failed for paused lookup")
 	default:
-		return false, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+		return PausedInfo{}, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+}
+
+type resumeRequest struct {
+	Timeout int32 `json:"timeout,omitempty"`
+}
+
+func (c *apiPausedSandboxChecker) Resume(ctx context.Context, sandboxId string, timeoutSeconds int32) error {
+	reqBody := resumeRequest{Timeout: timeoutSeconds}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("marshal resume body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/sandboxes/"+sandboxId+"/resume", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create resume request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(c.apiKey) != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	} else {
+		req.Header.Set("X-Admin-Token", c.adminToken)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("resume request failed: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	switch resp.StatusCode {
+	case http.StatusCreated, http.StatusOK, http.StatusConflict:
+		return nil
+	case http.StatusNotFound:
+		return fmt.Errorf("resume failed: sandbox not found")
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("resume failed: api auth error")
+	default:
+		return fmt.Errorf("resume failed: unexpected status %d", resp.StatusCode)
 	}
 }
 
