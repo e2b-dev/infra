@@ -257,8 +257,16 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
+	// Reject part uploads for empty files (no parts needed)
+	if session.NumParts == 0 {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Msg("cannot upload parts to empty file")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("cannot upload parts to empty file (totalSize is 0)"))
+
+		return
+	}
+
 	// Check part number is within range
-	if session.NumParts > 0 && partNumber >= session.NumParts {
+	if partNumber >= session.NumParts {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNumber).Int("numParts", session.NumParts).Msg("part number out of range")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number %d out of range (expected 0-%d)", partNumber, session.NumParts-1))
 
@@ -285,10 +293,10 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 	size := int64(len(data))
 
-	// Check if part exceeded expected size
-	if size > expectedSize {
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int64("size", size).Int64("expectedSize", expectedSize).Msg("part size exceeds expected size")
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("part size %d exceeds expected size %d", size, expectedSize))
+	// Enforce exact size match to prevent silent corruption from truncated uploads
+	if size != expectedSize {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int64("size", size).Int64("expectedSize", expectedSize).Msg("part size mismatch")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("part size %d does not match expected size %d", size, expectedSize))
 
 		return
 	}
