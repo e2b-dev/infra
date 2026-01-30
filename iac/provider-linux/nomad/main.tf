@@ -82,6 +82,15 @@ resource "nomad_job" "api" {
   lifecycle {
     replace_triggered_by = [null_resource.postgres_change_trigger]
   }
+
+  depends_on = [
+    nomad_job.redis,
+    nomad_job.logs_collector,
+    nomad_job.otel_collector,
+    nomad_job.client_proxy,
+    nomad_job.template_manager,
+    nomad_job.clickhouse,
+  ]
 }
 
 resource "nomad_job" "client_proxy" {
@@ -123,6 +132,13 @@ resource "nomad_job" "client_proxy" {
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
       launch_darkly_api_key        = trimspace(var.launch_darkly_api_key)
   })
+
+  depends_on = [
+    nomad_job.redis,
+    nomad_job.loki,
+    nomad_job.logs_collector,
+    nomad_job.otel_collector,
+  ]
 }
 
 resource "nomad_job" "redis" {
@@ -178,6 +194,10 @@ resource "nomad_job" "otel_collector" {
     })
     docker_image_prefix = var.docker_image_prefix
   })
+
+  depends_on = [
+    nomad_job.loki,
+  ]
 }
 
 resource "nomad_job" "logs_collector" {
@@ -189,6 +209,10 @@ resource "nomad_job" "logs_collector" {
     loki_service_port_number = var.loki_service_port.port
     docker_image_prefix      = var.docker_image_prefix
   })
+
+  depends_on = [
+    nomad_job.loki,
+  ]
 }
 
 resource "nomad_job" "loki" {
@@ -216,6 +240,10 @@ resource "nomad_job" "grafana" {
     loki_service_port_number    = var.loki_service_port.port
     docker_image_prefix         = var.docker_image_prefix
   })
+
+  depends_on = [
+    nomad_job.loki,
+  ]
 }
 
 resource "nomad_job" "template_manager" {
@@ -253,6 +281,12 @@ resource "nomad_job" "template_manager" {
       nfs_server_ip         = var.nfs_server_ip
     })
   })
+
+  depends_on = [
+    nomad_job.logs_collector,
+    nomad_job.otel_collector,
+    nomad_job.clickhouse,
+  ]
 }
 
 resource "nomad_job" "canary" {
@@ -297,6 +331,13 @@ resource "nomad_job" "orchestrator" {
       nfs_server_ip         = var.nfs_server_ip
     })
   })
+
+  depends_on = [
+    nomad_job.redis,
+    nomad_job.logs_collector,
+    nomad_job.otel_collector,
+    nomad_job.clickhouse,
+  ]
 }
 
 resource "nomad_job" "clickhouse" {
