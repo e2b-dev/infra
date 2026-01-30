@@ -1,7 +1,6 @@
 #!/bin/sh
 set -eu
 
-ARCH=$(uname -m)
 BUSYBOX="{{ .BusyBox }}"
 RESULT_PATH="{{ .ResultPath }}"
 
