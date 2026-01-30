@@ -149,8 +149,6 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 }
 
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
-	defer r.Body.Close()
-
 	var errorCode int
 	var errMsg error
 
@@ -192,6 +190,18 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 
 		l.Msg("File write")
 	}()
+
+	// Handle gzip-encoded request body
+	body, err := getDecompressedBody(r)
+	if err != nil {
+		errMsg = fmt.Errorf("error decompressing request body: %w", err)
+		errorCode = http.StatusBadRequest
+		jsonError(w, errorCode, errMsg)
+
+		return
+	}
+	defer body.Close()
+	r.Body = body
 
 	f, err := r.MultipartReader()
 	if err != nil {

@@ -1,12 +1,15 @@
 package api
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"os"
 	"os/user"
-	"time"
+	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -101,6 +104,29 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		return
 	}
 
+	// Validate Accept-Encoding header
+	encoding, err := parseAcceptEncoding(r)
+	if err != nil {
+		errMsg = err
+		errorCode = http.StatusBadRequest
+		jsonError(w, errorCode, errMsg)
+
+		return
+	}
+
+	// Tell caches to store separate variants for different Accept-Encoding values
+	w.Header().Set("Vary", "Accept-Encoding")
+
+	// Disable gzip for Range or conditional requests to preserve http.ServeContent behavior
+	// (206 Partial Content, 304 Not Modified)
+	hasRangeOrConditional := r.Header.Get("Range") != "" ||
+		r.Header.Get("If-Modified-Since") != "" ||
+		r.Header.Get("If-None-Match") != "" ||
+		r.Header.Get("If-Range") != ""
+	if hasRangeOrConditional {
+		encoding = ""
+	}
+
 	file, err := os.Open(resolvedPath)
 	if err != nil {
 		errMsg = fmt.Errorf("error opening file '%s': %w", resolvedPath, err)
@@ -111,5 +137,31 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	}
 	defer file.Close()
 
-	http.ServeContent(w, r, path, time.Now(), file)
+	// Serve with gzip encoding if requested and no Range/conditional headers.
+	// Note: If io.Copy fails after headers are sent, the client receives a truncated
+	// gzip stream with HTTP 200. Buffering the entire response would fix this but
+	// has memory implications for large files. Clients should validate gzip integrity.
+	if encoding == "gzip" {
+		w.Header().Set("Content-Encoding", "gzip")
+
+		// Set Content-Type based on file extension, preserving the original type
+		contentType := mime.TypeByExtension(filepath.Ext(path))
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", contentType)
+
+		gw := gzip.NewWriter(w)
+		defer gw.Close()
+
+		_, err = io.Copy(gw, file)
+		if err != nil {
+			// Headers already sent, can only log the error. Client will receive truncated response.
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing gzip response")
+		}
+
+		return
+	}
+
+	http.ServeContent(w, r, path, stat.ModTime(), file)
 }
