@@ -125,6 +125,144 @@ paths:
         "507":
           $ref: "#/components/responses/NotEnoughDiskSpace"
 
+  /files/upload/init:
+    post:
+      summary: Initialize a multipart file upload session
+      tags: [files]
+      security:
+        - AccessTokenAuth: []
+        - {}
+      parameters:
+        - $ref: "#/components/parameters/User"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/SignatureExpiration"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+                - totalSize
+                - partSize
+              properties:
+                path:
+                  type: string
+                  description: Path to the file to upload
+                totalSize:
+                  type: integer
+                  format: int64
+                  description: Total size of the file in bytes
+                partSize:
+                  type: integer
+                  format: int64
+                  description: Size of each part in bytes (last part may be smaller)
+      responses:
+        "200":
+          description: Upload session initialized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MultipartUploadInit"
+        "400":
+          $ref: "#/components/responses/InvalidPath"
+        "401":
+          $ref: "#/components/responses/InvalidUser"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /files/upload/{uploadId}:
+    put:
+      summary: Upload a part of a multipart file upload
+      tags: [files]
+      security:
+        - AccessTokenAuth: []
+        - {}
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          description: The upload session ID
+          schema:
+            type: string
+        - name: part
+          in: query
+          required: true
+          description: The part number (0-indexed)
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Part uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MultipartUploadPart"
+        "400":
+          $ref: "#/components/responses/InvalidPath"
+        "404":
+          $ref: "#/components/responses/UploadNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "507":
+          $ref: "#/components/responses/NotEnoughDiskSpace"
+    delete:
+      summary: Abort a multipart file upload and clean up temporary files
+      tags: [files]
+      security:
+        - AccessTokenAuth: []
+        - {}
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          description: The upload session ID
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Upload aborted and cleaned up successfully
+        "404":
+          $ref: "#/components/responses/UploadNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /files/upload/{uploadId}/complete:
+    post:
+      summary: Complete a multipart file upload and assemble the final file
+      tags: [files]
+      security:
+        - AccessTokenAuth: []
+        - {}
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          description: The upload session ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Upload completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MultipartUploadComplete"
+        "404":
+          $ref: "#/components/responses/UploadNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "507":
+          $ref: "#/components/responses/NotEnoughDiskSpace"
+
 components:
   securitySchemes:
     AccessTokenAuth:
@@ -222,6 +360,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    UploadNotFound:
+      description: Upload session not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
   schemas:
     Error:
@@ -284,3 +428,37 @@ components:
         disk_total:
           type: integer
           description: Total disk space in bytes
+    MultipartUploadInit:
+      type: object
+      required:
+        - uploadId
+      properties:
+        uploadId:
+          type: string
+          description: Unique identifier for the upload session
+    MultipartUploadPart:
+      type: object
+      required:
+        - partNumber
+        - size
+      properties:
+        partNumber:
+          type: integer
+          description: The part number that was uploaded
+        size:
+          type: integer
+          format: int64
+          description: Size of the uploaded part in bytes
+    MultipartUploadComplete:
+      type: object
+      required:
+        - path
+        - size
+      properties:
+        path:
+          type: string
+          description: Path to the final assembled file
+        size:
+          type: integer
+          format: int64
+          description: Total size of the assembled file in bytes

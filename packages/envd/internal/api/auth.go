@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
@@ -18,22 +19,45 @@ const (
 	accessTokenHeader = "X-Access-Token"
 )
 
-// paths that are always allowed without general authentication
-var allowedPaths = []string{
+// allowedExactPaths are paths that bypass general authentication using exact matching
+// (e.g., health check, endpoints supporting signing)
+var allowedExactPaths = []string{
 	"GET/health",
 	"GET/files",
 	"POST/files",
+}
+
+// allowedPathPrefixes are paths that bypass general authentication using prefix matching
+// These are for paths with dynamic segments (e.g., upload ID)
+var allowedPathPrefixes = []string{
+	"PUT/files/upload/",
+	"DELETE/files/upload/",
+	"POST/files/upload/",
+}
+
+func isAllowedPath(methodPath string) bool {
+	// Check exact matches first
+	if slices.Contains(allowedExactPaths, methodPath) {
+		return true
+	}
+
+	// Check prefix matches for paths with dynamic segments
+	for _, prefix := range allowedPathPrefixes {
+		if strings.HasPrefix(methodPath, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if a.accessToken != nil {
 			authHeader := req.Header.Get(accessTokenHeader)
+			methodPath := req.Method + req.URL.Path
 
-			// check if this path is allowed without authentication (e.g., health check, endpoints supporting signing)
-			allowedPath := slices.Contains(allowedPaths, req.Method+req.URL.Path)
-
-			if authHeader != *a.accessToken && !allowedPath {
+			if authHeader != *a.accessToken && !isAllowedPath(methodPath) {
 				a.logger.Error().Msg("Trying to access secured envd without correct access token")
 
 				err := fmt.Errorf("unauthorized access, please provide a valid access token or method signing if supported")
