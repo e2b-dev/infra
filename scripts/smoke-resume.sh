@@ -17,15 +17,24 @@ API_URL="https://api.${DOMAIN}"
 
 create_sandbox() {
   local auto_resume_policy="${1:-}"
-  local metadata=""
+  local body
   if [ -n "${auto_resume_policy}" ]; then
-    metadata="\\\"metadata\\\":{\\\"auto_resume\\\":\\\"${auto_resume_policy}\\\"},"
+    body=$(jq -n \
+      --arg policy "${auto_resume_policy}" \
+      --arg template "base" \
+      --argjson timeout "${TIMEOUT_SECONDS}" \
+      '{metadata:{auto_resume:$policy}, templateID:$template, timeout:$timeout, autoPause:false}')
+  else
+    body=$(jq -n \
+      --arg template "base" \
+      --argjson timeout "${TIMEOUT_SECONDS}" \
+      '{templateID:$template, timeout:$timeout, autoPause:false}')
   fi
 
   curl -sS -X POST "${API_URL}/sandboxes" \
     -H "X-API-Key: ${API_KEY}" \
     -H "Content-Type: application/json" \
-    -d "{${metadata}\\\"templateID\\\":\\\"base\\\",\\\"timeout\\\":${TIMEOUT_SECONDS},\\\"autoPause\\\":false}"
+    -d "${body}"
 }
 
 pause_sandbox() {
@@ -77,6 +86,11 @@ run_policy_case() {
 
   json=$(create_sandbox "$policy")
   id=$(printf "%s" "$json" | jq -r '.sandboxID')
+  if [ -z "$id" ] || [ "$id" = "null" ]; then
+    echo "failed to create sandbox (policy=${policy:-missing})" >&2
+    echo "$json" >&2
+    return 1
+  fi
   echo "created $id (policy=${policy:-missing})"
   pause_sandbox "$id"
   echo "paused  $id"
