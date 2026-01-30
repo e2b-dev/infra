@@ -27,14 +27,8 @@ func (a *APIStore) PatchSandboxesSandboxIDLifecycle(c *gin.Context, id api.Sandb
 		return
 	}
 
-	if body.AutoPause == nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "autoPause is required")
-
-		return
-	}
-
 	sandboxID := utils.ShortID(id)
-	apiErr := a.orchestrator.UpdateSandboxLifecycle(ctx, team.ID, sandboxID, *body.AutoPause)
+	apiErr := a.orchestrator.UpdateSandboxLifecycle(ctx, team.ID, sandboxID, body.AutoPause)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportError(ctx, "error updating sandbox lifecycle", apiErr.Err)
