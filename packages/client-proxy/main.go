@@ -134,12 +134,20 @@ func run() int {
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
 
+	pausedChecker, err := e2bproxy.NewApiPausedSandboxChecker(config.ApiBaseURL, config.AdminToken, config.ApiKey)
+	if err != nil {
+		l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
+
+		return 1
+	}
+
 	// Proxy sandbox http traffic to orchestrator nodes
-	trafficProxy, err := e2bproxy.NewClientProxy(
+	trafficProxy, err := e2bproxy.NewClientProxyWithPausedChecker(
 		tel.MeterProvider,
 		serviceName,
 		config.ProxyPort,
 		catalog,
+		pausedChecker,
 	)
 	if err != nil {
 		l.Error(ctx, "Failed to create client proxy", zap.Error(err))

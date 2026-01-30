@@ -30,10 +30,19 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
+			if pausedChecker != nil {
+				isPaused, pausedErr := pausedChecker.IsPaused(ctx, sandboxId)
+				if pausedErr != nil {
+					logger.L().Warn(ctx, "paused lookup failed", zap.Error(pausedErr), logger.WithSandboxID(sandboxId))
+				} else if isPaused {
+					logSleeping(ctx, sandboxId)
+				}
+			}
+
 			return "", ErrNodeNotFound
 		}
 
@@ -46,6 +55,10 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
+	return NewClientProxyWithPausedChecker(meterProvider, serviceName, port, catalog, nil)
+}
+
+func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 
 	proxy := reverseproxy.New(
@@ -71,7 +84,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog)
+			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog, pausedChecker)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
