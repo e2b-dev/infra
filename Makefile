@@ -7,6 +7,9 @@ ENV_FILE := $(PWD)/.env.${ENV}
 PROVIDER ?= gcp
 PROVIDER_DIR := iac/provider-$(PROVIDER)
 
+# Docker tag for image pushes (defaults to latest)
+DOCKER_TAG ?= latest
+
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
 .PHONY: login
@@ -135,13 +138,18 @@ build-and-upload/%:
 build-and-upload-linux:
 	@if [ "$(PROVIDER)" != "linux" ]; then echo "build-and-upload-linux is only applicable for provider=linux"; exit 0; fi
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C packages/api build-and-upload-linux
-	$(MAKE) -C packages/client-proxy build-and-upload-linux
-	$(MAKE) -C packages/docker-reverse-proxy build-and-upload-linux
-	$(MAKE) -C packages/db build-and-upload-linux
-	$(MAKE) -C packages/orchestrator build-and-upload/orchestrator
-	$(MAKE) -C packages/orchestrator build-and-upload/template-manager
-	$(MAKE) -C packages/envd build-and-upload
+	DOCKER_TAG=$(DOCKER_TAG) $(MAKE) -C packages/api build-and-upload-linux
+	DOCKER_TAG=$(DOCKER_TAG) $(MAKE) -C packages/client-proxy build-and-upload-linux
+	DOCKER_TAG=$(DOCKER_TAG) $(MAKE) -C packages/docker-reverse-proxy build-and-upload-linux
+	DOCKER_TAG=$(DOCKER_TAG) $(MAKE) -C packages/db build-and-upload-linux
+	DOCKER_TAG=$(DOCKER_TAG) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
+	DOCKER_TAG=$(DOCKER_TAG) $(MAKE) -C packages/orchestrator build-and-upload/template-manager
+	DOCKER_TAG=$(DOCKER_TAG) $(MAKE) -C packages/clickhouse build-and-upload-linux
+	DOCKER_TAG=$(DOCKER_TAG) $(MAKE) -C packages/envd build-and-upload
+build-and-upload-linux/%:
+	@if [ "$(PROVIDER)" != "linux" ]; then echo "build-and-upload-linux is only applicable for provider=linux"; exit 0; fi
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	DOCKER_TAG=$(DOCKER_TAG) $(MAKE) -C packages/$(notdir $@) build-and-upload-linux
 
 .PHONY: copy-public-builds
 copy-public-builds:

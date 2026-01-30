@@ -51,6 +51,7 @@ build-and-upload:
 
 .PHONY: build-and-upload-linux
 build-and-upload-linux:
+	$(eval DOCKER_TAG ?= latest)
 	@if [ -z "$(DOCKER_IMAGE_PREFIX)" ]; then echo "DOCKER_IMAGE_PREFIX is required"; exit 1; fi
-	@docker build --platform linux/amd64 --tag "$(DOCKER_IMAGE_PREFIX)/db-migrator:latest" -f ./Dockerfile ..
-	@docker push "$(DOCKER_IMAGE_PREFIX)/db-migrator:latest"
+	@docker build --platform linux/amd64 --tag "$(DOCKER_IMAGE_PREFIX)/db-migrator:$(DOCKER_TAG)" -f ./Dockerfile ..
+	@docker push "$(DOCKER_IMAGE_PREFIX)/db-migrator:$(DOCKER_TAG)"

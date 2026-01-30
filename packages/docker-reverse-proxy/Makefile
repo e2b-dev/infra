@@ -22,9 +22,10 @@ build-and-upload:
 .PHONY: build-and-upload-linux
 build-and-upload-linux:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
+	$(eval DOCKER_TAG ?= latest)
 	@if [ -z "$(DOCKER_IMAGE_PREFIX)" ]; then echo "DOCKER_IMAGE_PREFIX is required"; exit 1; fi
-	@docker build --platform linux/amd64 --tag "$(DOCKER_IMAGE_PREFIX)/docker-reverse-proxy:latest" --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
-	@docker push "$(DOCKER_IMAGE_PREFIX)/docker-reverse-proxy:latest"
+	@docker build --platform linux/amd64 --tag "$(DOCKER_IMAGE_PREFIX)/docker-reverse-proxy:$(DOCKER_TAG)" --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker push "$(DOCKER_IMAGE_PREFIX)/docker-reverse-proxy:$(DOCKER_TAG)"
 
 .PHONY: test
 test:
