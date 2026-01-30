@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"os/user"
+	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -141,7 +143,13 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	// has memory implications for large files. Clients should validate gzip integrity.
 	if encoding == "gzip" {
 		w.Header().Set("Content-Encoding", "gzip")
-		w.Header().Set("Content-Type", "application/octet-stream")
+
+		// Set Content-Type based on file extension, preserving the original type
+		contentType := mime.TypeByExtension(filepath.Ext(path))
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", contentType)
 
 		gw := gzip.NewWriter(w)
 		defer gw.Close()
