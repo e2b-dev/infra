@@ -106,6 +106,7 @@ func run() int {
 	}
 
 	var catalog e2bcatalog.SandboxesCatalog
+	var pausedCatalog e2bcatalog.PausedSandboxesCatalog
 
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
 		RedisURL:         config.RedisURL,
@@ -120,6 +121,7 @@ func run() int {
 			}
 		}()
 		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
+		pausedCatalog = e2bcatalog.NewRedisPausedSandboxesCatalog(redisClient)
 	} else {
 		if !errors.Is(err, factories.ErrRedisDisabled) {
 			l.Error(ctx, "Failed to create redis client", zap.Error(err))
@@ -129,6 +131,7 @@ func run() int {
 
 		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
 		catalog = e2bcatalog.NewMemorySandboxesCatalog()
+		pausedCatalog = e2bcatalog.NewMemoryPausedSandboxesCatalog()
 	}
 
 	info := &internal.ServiceInfo{}
@@ -147,6 +150,7 @@ func run() int {
 		serviceName,
 		config.ProxyPort,
 		catalog,
+		pausedCatalog,
 		pausedChecker,
 		config.AutoResumeEnabled,
 	)
@@ -176,7 +180,7 @@ func run() int {
 	}
 
 	var closers []Closeable
-	closers = append(closers, featureFlagsClient, catalog)
+	closers = append(closers, featureFlagsClient, catalog, pausedCatalog)
 
 	wg.Go(func() {
 		// make sure to cancel the parent context before this

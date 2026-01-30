@@ -38,12 +38,14 @@ func (f *fakeCatalog) Close(_ context.Context) error {
 }
 
 type fakePausedChecker struct {
-	info        PausedInfo
-	resumeErr   error
-	resumeCalls int
+	info            PausedInfo
+	resumeErr       error
+	resumeCalls     int
+	pausedInfoCalls int
 }
 
 func (f *fakePausedChecker) PausedInfo(_ context.Context, _ string) (PausedInfo, error) {
+	f.pausedInfoCalls++
 	return f.info, nil
 }
 
@@ -52,12 +54,42 @@ func (f *fakePausedChecker) Resume(_ context.Context, _ string, _ int32) error {
 	return f.resumeErr
 }
 
+type fakePausedCatalog struct {
+	info  *catalog.PausedSandboxInfo
+	err   error
+	calls int
+}
+
+func (f *fakePausedCatalog) GetPaused(_ context.Context, _ string) (*catalog.PausedSandboxInfo, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.info == nil {
+		return nil, catalog.ErrPausedSandboxNotFound
+	}
+
+	return f.info, nil
+}
+
+func (f *fakePausedCatalog) StorePaused(_ context.Context, _ string, _ *catalog.PausedSandboxInfo, _ time.Duration) error {
+	return nil
+}
+
+func (f *fakePausedCatalog) DeletePaused(_ context.Context, _ string) error {
+	return nil
+}
+
+func (f *fakePausedCatalog) Close(_ context.Context) error {
+	return nil
+}
+
 func TestCatalogResolutionPaused_NoAutoResume(t *testing.T) {
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 1}
 	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "any"}}
 
-	_, err := catalogResolution(ctx, "sbx-1", c, paused, false, false)
+	_, err := catalogResolution(ctx, "sbx-1", c, nil, paused, false, false)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -86,7 +118,7 @@ func TestCatalogResolutionPaused_AutoResumeSuccess(t *testing.T) {
 		resumeWaitTimeout = origTimeout
 	}()
 
-	ip, err := catalogResolution(ctx, "sbx-2", c, paused, true, false)
+	ip, err := catalogResolution(ctx, "sbx-2", c, nil, paused, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,7 +138,7 @@ func TestCatalogResolutionPaused_AutoResumeFails(t *testing.T) {
 		resumeErr: errors.New("nope"),
 	}
 
-	_, err := catalogResolution(ctx, "sbx-3", c, paused, true, false)
+	_, err := catalogResolution(ctx, "sbx-3", c, nil, paused, true, false)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -178,7 +210,7 @@ func TestCatalogResolutionPaused_AutoResumePolicyAny(t *testing.T) {
 		resumeWaitTimeout = origTimeout
 	}()
 
-	ip, err := catalogResolution(ctx, "sbx-any", c, paused, true, false)
+	ip, err := catalogResolution(ctx, "sbx-any", c, nil, paused, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -202,12 +234,12 @@ func TestCatalogResolutionPaused_AutoResumePolicyAuthed(t *testing.T) {
 		resumeWaitTimeout = origTimeout
 	}()
 
-	_, err := catalogResolution(ctx, "sbx-authed-no-token", c, paused, true, false)
+	_, err := catalogResolution(ctx, "sbx-authed-no-token", c, nil, paused, true, false)
 	if err == nil {
 		t.Fatalf("expected error without traffic token")
 	}
 
-	ip, err := catalogResolution(ctx, "sbx-authed-with-token", c, paused, true, true)
+	ip, err := catalogResolution(ctx, "sbx-authed-with-token", c, nil, paused, true, true)
 	if err != nil {
 		t.Fatalf("unexpected error with token: %v", err)
 	}
@@ -221,7 +253,7 @@ func TestCatalogResolutionPaused_AutoResumePolicyNull(t *testing.T) {
 	c := &fakeCatalog{info: nil, failCount: 1}
 	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "null"}}
 
-	_, err := catalogResolution(ctx, "sbx-null", c, paused, true, true)
+	_, err := catalogResolution(ctx, "sbx-null", c, nil, paused, true, true)
 	if err == nil {
 		t.Fatalf("expected error for null policy")
 	}
@@ -232,5 +264,44 @@ func TestCatalogResolutionPaused_AutoResumePolicyNull(t *testing.T) {
 	}
 	if pausedErr.CanAutoResume {
 		t.Fatalf("expected canAutoResume=false")
+	}
+}
+
+func TestCatalogResolutionPaused_UsesPausedCatalogPolicy(t *testing.T) {
+	ctx := context.Background()
+	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.4"}
+	c := &fakeCatalog{info: info, failCount: 1}
+	pausedCatalog := &fakePausedCatalog{
+		info: &catalog.PausedSandboxInfo{
+			AutoResumePolicy: "any",
+			PausedAt:         time.Now(),
+		},
+	}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: false}}
+
+	origInterval := resumeWaitInterval
+	origTimeout := resumeWaitTimeout
+	resumeWaitInterval = 1 * time.Millisecond
+	resumeWaitTimeout = 20 * time.Millisecond
+	defer func() {
+		resumeWaitInterval = origInterval
+		resumeWaitTimeout = origTimeout
+	}()
+
+	ip, err := catalogResolution(ctx, "sbx-paused-catalog", c, pausedCatalog, paused, true, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ip != "10.0.0.4" {
+		t.Fatalf("expected ip 10.0.0.4, got %s", ip)
+	}
+	if pausedCatalog.calls != 1 {
+		t.Fatalf("expected paused catalog to be called once, got %d", pausedCatalog.calls)
+	}
+	if paused.pausedInfoCalls != 0 {
+		t.Fatalf("expected paused checker lookup to be skipped, got %d", paused.pausedInfoCalls)
+	}
+	if paused.resumeCalls != 1 {
+		t.Fatalf("expected resume to be called once, got %d", paused.resumeCalls)
 	}
 }

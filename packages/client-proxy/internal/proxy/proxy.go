@@ -35,33 +35,56 @@ var resumeWaitTimeout = 30 * time.Second
 var resumeTimeoutSeconds int32 = 600
 var trafficAccessTokenHeader = "e2b-traffic-access-token"
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasTrafficToken bool) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedCatalog catalog.PausedSandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasTrafficToken bool) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			if pausedChecker != nil {
+			var pausedInfo PausedInfo
+			var pausedFound bool
+
+			if pausedCatalog != nil {
+				info, pausedErr := pausedCatalog.GetPaused(ctx, sandboxId)
+				if pausedErr != nil {
+					if !errors.Is(pausedErr, catalog.ErrPausedSandboxNotFound) {
+						logger.L().Warn(ctx, "paused catalog lookup failed", zap.Error(pausedErr), logger.WithSandboxID(sandboxId))
+					}
+				} else {
+					pausedInfo = PausedInfo{
+						Paused:           true,
+						AutoResumePolicy: info.AutoResumePolicy,
+					}
+					pausedFound = true
+				}
+			}
+
+			if pausedChecker != nil && !pausedFound {
 				info, pausedErr := pausedChecker.PausedInfo(ctx, sandboxId)
 				if pausedErr != nil {
 					logger.L().Warn(ctx, "paused lookup failed", zap.Error(pausedErr), logger.WithSandboxID(sandboxId))
 				} else if info.Paused {
-					logSleeping(ctx, sandboxId)
-
-					canAutoResume := shouldAutoResume(info.AutoResumePolicy, autoResumeEnabled, requestHasTrafficToken)
-					if canAutoResume {
-						logger.L().Info(ctx, "auto-resuming sandbox", logger.WithSandboxID(sandboxId))
-						if err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds); err != nil {
-							logger.L().Warn(ctx, "auto-resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
-						} else {
-							nodeIP, waitErr := waitForCatalog(ctx, sandboxId, c)
-							if waitErr == nil {
-								return nodeIP, nil
-							}
-							logger.L().Warn(ctx, "auto-resume wait failed", zap.Error(waitErr), logger.WithSandboxID(sandboxId))
-						}
-					}
-
-					return "", reverseproxy.NewErrSandboxPaused(sandboxId, canAutoResume)
+					pausedInfo = info
+					pausedFound = true
 				}
+			}
+
+			if pausedFound {
+				logSleeping(ctx, sandboxId)
+
+				canAutoResume := shouldAutoResume(pausedInfo.AutoResumePolicy, autoResumeEnabled, requestHasTrafficToken) && pausedChecker != nil
+				if canAutoResume {
+					logger.L().Info(ctx, "auto-resuming sandbox", logger.WithSandboxID(sandboxId))
+					if err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds); err != nil {
+						logger.L().Warn(ctx, "auto-resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
+					} else {
+						nodeIP, waitErr := waitForCatalog(ctx, sandboxId, c)
+						if waitErr == nil {
+							return nodeIP, nil
+						}
+						logger.L().Warn(ctx, "auto-resume wait failed", zap.Error(waitErr), logger.WithSandboxID(sandboxId))
+					}
+				}
+
+				return "", reverseproxy.NewErrSandboxPaused(sandboxId, canAutoResume)
 			}
 
 			return "", ErrNodeNotFound
@@ -111,10 +134,10 @@ func shouldAutoResume(policy string, autoResumeEnabled bool, requestHasTrafficTo
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
-	return NewClientProxyWithPausedChecker(meterProvider, serviceName, port, catalog, nil, true)
+	return NewClientProxyWithPausedChecker(meterProvider, serviceName, port, catalog, nil, nil, true)
 }
 
-func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool) (*reverseproxy.Proxy, error) {
+func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedCatalog catalog.PausedSandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 
 	proxy := reverseproxy.New(
@@ -141,7 +164,7 @@ func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, service
 			)
 
 			requestHasTrafficToken := r.Header.Get(trafficAccessTokenHeader) != ""
-			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog, pausedChecker, autoResumeEnabled, requestHasTrafficToken)
+			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog, pausedCatalog, pausedChecker, autoResumeEnabled, requestHasTrafficToken)
 			if err != nil {
 				if errors.Is(err, ErrNodeNotFound) {
 					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
