@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/user"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -143,7 +142,6 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	if encoding == "gzip" {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.WriteHeader(http.StatusOK)
 
 		gw := gzip.NewWriter(w)
 		defer gw.Close()
@@ -157,5 +155,5 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		return
 	}
 
-	http.ServeContent(w, r, path, time.Now(), file)
+	http.ServeContent(w, r, path, stat.ModTime(), file)
 }
