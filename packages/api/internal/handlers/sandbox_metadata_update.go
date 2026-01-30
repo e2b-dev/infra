@@ -34,7 +34,7 @@ func (a *APIStore) PatchSandboxesSandboxIDMetadata(c *gin.Context, id api.Sandbo
 	}
 
 	sandboxID := utils.ShortID(id)
-	apiErr := a.orchestrator.UpdateSandboxMetadata(ctx, team.ID, sandboxID, *body.Metadata)
+	apiErr := a.orchestrator.UpdateSandboxMetadata(ctx, team.ID, sandboxID, body.Metadata)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportError(ctx, "error updating sandbox metadata", apiErr.Err)
