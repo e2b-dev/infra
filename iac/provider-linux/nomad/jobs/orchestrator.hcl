@@ -7,7 +7,6 @@ job "orchestrator" {
     service {
       name = "orchestrator"
       port = "${port}"
-      provider = "nomad"
       address_mode = "host"
       check {
         type     = "http"
@@ -21,7 +20,6 @@ job "orchestrator" {
     service {
       name = "orchestrator-proxy"
       port = "${proxy_port}"
-      provider = "nomad"
       address_mode = "host"
       check {
         type     = "tcp"

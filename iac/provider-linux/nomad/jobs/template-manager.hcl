@@ -27,7 +27,6 @@ job "template-manager-system" {
     service {
       name     = "template-manager"
       port     = "${port}"
-      provider = "nomad"
       address_mode = "host"
       check {
         type     = "http"
