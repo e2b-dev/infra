@@ -51,6 +51,10 @@ type featureFlagsClient interface {
 }
 
 func (c Cache) GetFrame(ctx context.Context, path string, offU int64, frameTable *FrameTable, decompress bool, buf []byte) (rng Range, err error) {
+	// DEBUG: Log when Cache.GetFrame is called
+	fmt.Printf("[DEBUG Cache.GetFrame] called: path=%s, offU=%d, decompress=%v, bufLen=%d, chunkSize=%d\n",
+		path, offU, decompress, len(buf), c.chunkSize)
+
 	if err := c.validateGetFrameParams(offU, len(buf), frameTable, decompress); err != nil {
 		return Range{}, err
 	}
@@ -539,6 +543,9 @@ func (c Cache) validateGetFrameParams(off int64, length int, frameTable *FrameTa
 	}
 	if decompress {
 		if off%c.chunkSize != 0 {
+			// DEBUG: Log alignment failure details
+			fmt.Printf("[DEBUG Cache.validateGetFrameParams] alignment failure: off=%d (0x%x), chunkSize=%d (0x%x), off%%chunkSize=%d\n",
+				off, off, c.chunkSize, c.chunkSize, off%c.chunkSize)
 			return fmt.Errorf("offset %#x is not aligned to chunk size %#x, %w", off, c.chunkSize, ErrOffsetUnaligned)
 		}
 		if !frameTable.IsCompressed() {

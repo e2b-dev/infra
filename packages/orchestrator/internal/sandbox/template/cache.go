@@ -149,6 +149,8 @@ func (c *Cache) GetTemplate(
 		persistence = storage.WrapInNFSCache(ctx, path, persistence, c.flags)
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else {
+		// DEBUG: Log that NFS cache is disabled
+		fmt.Printf("[DEBUG template/cache.go] NFS cache disabled, using raw persistence: %T\n", persistence)
 		span.SetAttributes(attribute.Bool("use_cache", false))
 	}
 

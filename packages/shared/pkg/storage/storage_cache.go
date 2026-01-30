@@ -37,6 +37,10 @@ func WrapInNFSCache(
 	inner StorageProvider,
 	flags featureFlagsClient,
 ) *Cache {
+	// DEBUG: Log when NFS cache wrapper is created
+	fmt.Printf("[DEBUG WrapInNFSCache] creating NFS cache wrapper: rootPath=%s, inner=%T, chunkSize=%d\n",
+		rootPath, inner, MemoryChunkSize)
+
 	cacheTracer := tracer
 
 	createCacheSpans := flags.BoolFlag(ctx, featureflags.CreateStorageCacheSpansFlag)

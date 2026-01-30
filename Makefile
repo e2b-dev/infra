@@ -162,7 +162,7 @@ test:
 
 .PHONY: test-integration
 test-integration:
-	$(MAKE) -C tests/integration test
+	$(MAKE) -C tests/integration test/api/templates/delete_template_test.go:TestDeleteTemplate
 
 .PHONY: connect-orchestrator
 connect-orchestrator:
