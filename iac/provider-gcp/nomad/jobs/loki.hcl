@@ -47,12 +47,7 @@ job "loki" {
 
       config {
         network_mode = "host"
-        image = "grafana/loki:2.9.8"
-
-        args = [
-          "-config.file",
-          "local/loki-config.yml",
-        ]
+        image = "grafana/loki:3.6.4"
       }
 
       resources {
@@ -86,7 +81,6 @@ storage_config:
     active_index_directory: /loki/tsdb-shipper-active
     cache_location: /loki/tsdb-shipper-cache
     cache_ttl: 1h
-    shared_store: gcs
 
 chunk_store_config:
   chunk_cache_config:
@@ -130,6 +124,13 @@ schema_config:
       index:
         prefix: loki_index_
         period: 24h
+    - from: 2026-01-29
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
 
 compactor:
   working_directory: /loki/compactor
@@ -137,7 +138,7 @@ compactor:
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
-  shared_store: gcs
+  delete_request_store: gcs
 
 # The bucket lifecycle policy should be set to delete objects after MORE than the specified retention period
 limits_config:
@@ -153,7 +154,7 @@ limits_config:
   reject_old_samples_max_age: 168h
 EOF
 
-        destination = "local/loki-config.yml"
+        destination = "/local-config.yaml"
       }
     }
   }

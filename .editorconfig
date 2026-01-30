@@ -1,3 +1,7 @@
 [*.yaml]
 indent_size = 2
 indent_style = space
+
+[*.hcl]
+indent_size = 2
+indent_style = space
