@@ -23,7 +23,7 @@ const (
 	// other chunk sizes to align in frames.
 	defaultChunkSizeU             = 2 * megabyte // uncompressed chunk size
 	defaultTargetFrameSizeC       = 4 * megabyte // target compressed frame size
-	defaultZstdCompressionLevel   = zstd.SpeedBestCompression
+	defaultZstdCompressionLevel   = zstd.SpeedFastest
 	defaultCompressionConcurrency = 0 // use default compression concurrency settings
 	defaultUploadPartSize         = 50 * megabyte
 )
