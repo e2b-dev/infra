@@ -47,7 +47,7 @@ job "loki" {
 
       config {
         network_mode = "host"
-        image = "grafana/loki:2.9.17"
+        image = "grafana/loki:3.6.4"
 
         args = [
           "-config.file",
@@ -86,7 +86,6 @@ storage_config:
     active_index_directory: /loki/tsdb-shipper-active
     cache_location: /loki/tsdb-shipper-cache
     cache_ttl: 1h
-    shared_store: gcs
 
 chunk_store_config:
   chunk_cache_config:
@@ -122,7 +121,7 @@ ingester:
     flush_on_shutdown: true
 
 schema_config:
- configs:
+  configs:
     - from: 2024-03-05
       store: tsdb
       object_store: gcs
@@ -130,6 +129,15 @@ schema_config:
       index:
         prefix: loki_index_
         period: 24h
+%{if loki_use_v13_schema_from != ""}
+    - from: ${ loki_use_v13_schema_from }
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
+%{ endif }
 
 compactor:
   working_directory: /loki/compactor
@@ -137,7 +145,7 @@ compactor:
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
-  shared_store: gcs
+  delete_request_store: gcs
 
 # The bucket lifecycle policy should be set to delete objects after MORE than the specified retention period
 limits_config:
@@ -151,6 +159,8 @@ limits_config:
   max_global_streams_per_user: 0
   unordered_writes: true
   reject_old_samples_max_age: 168h
+
+  allow_structured_metadata: false  # enable after enabling schema v13
 EOF
 
         destination = "local/loki-config.yml"

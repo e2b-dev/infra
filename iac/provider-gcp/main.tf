@@ -77,7 +77,6 @@ module "cluster" {
   server_cluster_size     = var.server_cluster_size
   loki_cluster_size       = var.loki_cluster_size
 
-
   server_machine_type     = var.server_machine_type
   api_machine_type        = var.api_machine_type
   clickhouse_machine_type = var.clickhouse_machine_type
@@ -200,9 +199,9 @@ module "nomad" {
   loki_machine_count       = var.loki_cluster_size
   loki_resources_memory_mb = var.loki_resources_memory_mb
   loki_resources_cpu_count = var.loki_resources_cpu_count
-
-  loki_bucket_name  = module.init.loki_bucket_name
-  loki_service_port = var.loki_service_port
+  loki_use_v13_schema_from = var.loki_use_v13_schema_from
+  loki_bucket_name         = module.init.loki_bucket_name
+  loki_service_port        = var.loki_service_port
 
   # Otel Colelctor
   otel_collector_resources_memory_mb = var.otel_collector_resources_memory_mb
