@@ -48,6 +48,11 @@ job "loki" {
       config {
         network_mode = "host"
         image = "grafana/loki:3.6.4"
+
+        args = [
+          "-config.file",
+          "local/loki-config.yml",
+        ]
       }
 
       resources {
@@ -154,7 +159,7 @@ limits_config:
   reject_old_samples_max_age: 168h
 EOF
 
-        destination = "/etc/loki/local-config.yaml"
+        destination = "local/loki-config.yml"
       }
     }
   }
