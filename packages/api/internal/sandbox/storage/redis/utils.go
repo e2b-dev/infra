@@ -6,10 +6,11 @@ import (
 )
 
 const (
-	separator        = ":"
-	sandboxKeyPrefix = "sandbox:storage"
-	sandboxesKey     = "sandboxes"
-	indexKey         = "index"
+	separator           = ":"
+	sandboxKeyPrefix    = "sandbox:storage"
+	transitionKeyPrefix = "transition:"
+	sandboxesKey        = "sandboxes"
+	indexKey            = "index"
 )
 
 func createKey(keyParts ...string) string {
@@ -32,4 +33,8 @@ func getSandboxKey(teamID, sandboxID string) string {
 
 func getTeamIndexKey(teamID string) string {
 	return createKey(getTeamPrefix(teamID), indexKey)
+}
+
+func getTransitionKey(teamID, sandboxID string) string {
+	return createKey(getTeamPrefix(teamID), transitionKeyPrefix, sandboxID)
 }

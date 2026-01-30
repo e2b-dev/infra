@@ -10,9 +10,17 @@ import (
 )
 
 const (
-	lockTimeout   = time.Minute
-	retryInterval = 20 * time.Millisecond
+	lockTimeout      = time.Minute
+	transitionKeyTTL = 70 * time.Second // Should be longer than the longest expected state transition time
+	errorKeyTTL      = 5 * time.Second
+	retryInterval    = 20 * time.Millisecond
 )
+
+// transitionValue represents the JSON structure for transition key values.
+type transitionValue struct {
+	State string `json:"state"`
+	Error string `json:"error,omitempty"`
+}
 
 var _ sandbox.Storage = (*Storage)(nil)
 
