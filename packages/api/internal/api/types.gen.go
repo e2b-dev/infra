@@ -1086,6 +1086,12 @@ type TemplateWithBuilds struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// UpdateSandboxLifecycle defines model for UpdateSandboxLifecycle.
+type UpdateSandboxLifecycle struct {
+	// AutoPause Automatically pause the sandbox after the timeout
+	AutoPause bool `json:"autoPause"`
+}
+
 // UpdateSandboxMetadata defines model for UpdateSandboxMetadata.
 type UpdateSandboxMetadata struct {
 	Metadata SandboxMetadata `json:"metadata"`
@@ -1278,6 +1284,9 @@ type PostSandboxesJSONRequestBody = NewSandbox
 
 // PostSandboxesSandboxIDConnectJSONRequestBody defines body for PostSandboxesSandboxIDConnect for application/json ContentType.
 type PostSandboxesSandboxIDConnectJSONRequestBody = ConnectSandbox
+
+// PatchSandboxesSandboxIDLifecycleJSONRequestBody defines body for PatchSandboxesSandboxIDLifecycle for application/json ContentType.
+type PatchSandboxesSandboxIDLifecycleJSONRequestBody = UpdateSandboxLifecycle
 
 // PatchSandboxesSandboxIDMetadataJSONRequestBody defines body for PatchSandboxesSandboxIDMetadata for application/json ContentType.
 type PatchSandboxesSandboxIDMetadataJSONRequestBody = UpdateSandboxMetadata

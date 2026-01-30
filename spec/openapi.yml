@@ -223,6 +223,14 @@ components:
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
 
+    UpdateSandboxLifecycle:
+      type: object
+      required: [autoPause]
+      properties:
+        autoPause:
+          type: boolean
+          description: Automatically pause the sandbox after the timeout
+
     SandboxState:
       type: string
       description: State of the sandbox
@@ -1983,6 +1991,34 @@ paths:
       responses:
         "204":
           description: Sandbox metadata updated
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/lifecycle:
+    patch:
+      description: Update lifecycle settings for a running sandbox
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSandboxLifecycle"
+      responses:
+        "204":
+          description: Sandbox lifecycle updated
         "404":
           $ref: "#/components/responses/404"
         "409":

@@ -66,6 +66,9 @@ type ServerInterface interface {
 	// (POST /sandboxes/{sandboxID}/connect)
 	PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID SandboxID)
 
+	// (PATCH /sandboxes/{sandboxID}/lifecycle)
+	PatchSandboxesSandboxIDLifecycle(c *gin.Context, sandboxID SandboxID)
+
 	// (GET /sandboxes/{sandboxID}/logs)
 	GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID SandboxID, params GetSandboxesSandboxIDLogsParams)
 
@@ -586,6 +589,36 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDConnect(c *gin.Context)
 	}
 
 	siw.Handler.PostSandboxesSandboxIDConnect(c, sandboxID)
+}
+
+// PatchSandboxesSandboxIDLifecycle operation middleware
+func (siw *ServerInterfaceWrapper) PatchSandboxesSandboxIDLifecycle(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID SandboxID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PatchSandboxesSandboxIDLifecycle(c, sandboxID)
 }
 
 // GetSandboxesSandboxIDLogs operation middleware
@@ -1671,6 +1704,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/sandboxes/:sandboxID", wrapper.DeleteSandboxesSandboxID)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID", wrapper.GetSandboxesSandboxID)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/connect", wrapper.PostSandboxesSandboxIDConnect)
+	router.PATCH(options.BaseURL+"/sandboxes/:sandboxID/lifecycle", wrapper.PatchSandboxesSandboxIDLifecycle)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID/logs", wrapper.GetSandboxesSandboxIDLogs)
 	router.PATCH(options.BaseURL+"/sandboxes/:sandboxID/metadata", wrapper.PatchSandboxesSandboxIDMetadata)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID/metrics", wrapper.GetSandboxesSandboxIDMetrics)
