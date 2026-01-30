@@ -63,6 +63,17 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
+	// Check session limit early before doing any file operations
+	a.uploadsLock.RLock()
+	sessionCount := len(a.uploads)
+	a.uploadsLock.RUnlock()
+	if sessionCount >= maxUploadSessions {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("maxSessions", maxUploadSessions).Msg("too many concurrent upload sessions")
+		jsonError(w, http.StatusTooManyRequests, fmt.Errorf("too many concurrent upload sessions (max %d)", maxUploadSessions))
+
+		return
+	}
+
 	// Validate signing if needed
 	err := a.validateSigning(r, params.Signature, params.SignatureExpiration, params.Username, body.Path, SigningWriteOperation)
 	if err != nil {
