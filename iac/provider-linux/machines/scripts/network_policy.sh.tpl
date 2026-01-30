@@ -18,37 +18,72 @@ CORE_PORTS=(
 PORTS=("$${CORE_PORTS[@]}" "$${EXTRA_PORTS[@]}")
 
 # -----------------------------------------------------------------------------
-# 策略：优先检测正在运行的高级防火墙管理工具（Firewalld/UFW）。
-# 如果发现它们处于活动状态，则直接使用它们并退出，避免冲突。
-# 如果都没有，则回退到使用 iptables 直接管理。
+# 策略：优先使用 UFW (Ubuntu/Debian)，回退到 Firewalld (RHEL/CentOS)，
+# 最后使用 iptables (通用)。
+# UFW 会在配置时自动启用并持久化规则，无需额外保存操作。
 # -----------------------------------------------------------------------------
 
-# 1. 尝试 Firewalld (常见于 CentOS/RHEL/Fedora)
+# 1. 尝试 UFW (常见于 Ubuntu/Debian) - 优先方案
+if command -v ufw >/dev/null 2>&1; then
+  echo "Using UFW to apply firewall rules."
+  
+  # 清除所有 UFW 规则
+  echo "Resetting UFW to clean state..."
+  ufw --force reset
+  
+  # 清除所有 iptables/ip6tables 规则（UFW reset 后可能残留的手动规则）
+  echo "Flushing any remaining iptables rules..."
+  if command -v iptables >/dev/null 2>&1; then
+    iptables -F 2>/dev/null || true
+    iptables -X 2>/dev/null || true
+    iptables -t nat -F 2>/dev/null || true
+    iptables -t nat -X 2>/dev/null || true
+    iptables -t mangle -F 2>/dev/null || true
+    iptables -t mangle -X 2>/dev/null || true
+  fi
+  
+  if command -v ip6tables >/dev/null 2>&1; then
+    ip6tables -F 2>/dev/null || true
+    ip6tables -X 2>/dev/null || true
+    ip6tables -t nat -F 2>/dev/null || true
+    ip6tables -t nat -X 2>/dev/null || true
+    ip6tables -t mangle -F 2>/dev/null || true
+    ip6tables -t mangle -X 2>/dev/null || true
+  fi
+  
+  # 设置 UFW 默认策略（先拒绝入站，允许出站）
+  ufw default deny incoming
+  ufw default allow outgoing
+  
+  # 应用端口规则
+  for p in "$${PORTS[@]}"; do
+    [ -z "$p" ] && continue
+    echo "Allowing port $p"
+    ufw allow "$p"
+  done
+  
+  # 启用 UFW（应用所有规则）
+  echo "Enabling UFW..."
+  ufw --force enable
+  
+  echo "UFW rules applied and will persist across reboots."
+  exit 0
+fi
+
+# 2. 尝试 Firewalld (常见于 CentOS/RHEL/Fedora)
 if systemctl is-active --quiet firewalld; then
   echo "Detected Firewalld is active. Using firewall-cmd to apply rules."
   for p in "$${PORTS[@]}"; do
     [ -z "$p" ] && continue
-    firewall-cmd --permanent --add-port="$p" || true
+    firewall-cmd --permanent --add-port="$p"
   done
-  firewall-cmd --reload || true
+  firewall-cmd --reload
   echo "Firewalld rules applied."
   exit 0
 fi
 
-# 2. 尝试 UFW (常见于 Ubuntu/Debian)
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
-  echo "Detected UFW is active. Using ufw to apply rules."
-  for p in "$${PORTS[@]}"; do
-    [ -z "$p" ] && continue
-    ufw allow "$p" || true
-  done
-  echo "UFW rules applied."
-  exit 0
-fi
-
 # 3. 兜底方案：iptables (通用)
-# 如果系统没有运行上述管理工具，我们假设可以直接操作 iptables
-echo "No high-level firewall manager active. Falling back to iptables."
+echo "Warning: Neither UFW nor Firewalld available. Falling back to iptables."
 
 if ! command -v iptables >/dev/null 2>&1; then
   echo "Error: iptables not found."
@@ -59,7 +94,7 @@ fi
 add_rule() {
   local args=("$@")
   if ! iptables -C "$${args[@]}" 2>/dev/null; then
-    iptables -I "$${args[@]}" || echo "Failed to add rule: $${args[*]}"
+    iptables -I "$${args[@]}"
   fi
 }
 
@@ -87,9 +122,9 @@ done
 
 # 尝试保存规则
 if command -v netfilter-persistent >/dev/null 2>&1; then
-  netfilter-persistent save || true
-elif [ -d /etc/iptables ]; then
-  iptables-save > /etc/iptables/rules.v4 || true
+  netfilter-persistent save
+elif [ -d /etc/iptables ] || mkdir -p /etc/iptables; then
+  iptables-save > /etc/iptables/rules.v4
 fi
 
-echo "Iptables rules applied successfully."
+echo "Iptables rules applied (persistence not guaranteed)."
