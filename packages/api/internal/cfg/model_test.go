@@ -1,6 +1,7 @@
 package cfg
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -32,6 +33,27 @@ func TestParse(t *testing.T) {
 		result, err := Parse()
 		require.NoError(t, err)
 		assert.Equal(t, []string{"aaa", "bbb"}, result.SupabaseJWTSecrets)
+	})
+
+	t.Run("default persistent volume type must be in types", func(t *testing.T) {
+		dir1 := t.TempDir()
+		dir2 := t.TempDir()
+		t.Setenv("PERSISTENT_VOLUME_TYPES", fmt.Sprintf("valid:%s,other:%s", dir1, dir2))
+
+		config, err := Parse()
+		require.NoError(t, err, "no default is acceptable")
+		assert.Empty(t, config.DefaultPersistentVolumeType)
+		assert.Equal(t, map[string]string{"valid": dir1, "other": dir2}, config.PersistentVolumeTypes)
+
+		t.Setenv("DEFAULT_PERSISTENT_VOLUME_TYPE", "invalid")
+		_, err = Parse()
+		require.Error(t, err, "invalid default is not acceptable")
+
+		t.Setenv("DEFAULT_PERSISTENT_VOLUME_TYPE", "valid")
+		config, err = Parse()
+		require.NoError(t, err, "valid default is acceptable")
+		assert.Equal(t, "valid", config.DefaultPersistentVolumeType)
+		assert.Equal(t, map[string]string{"valid": dir1, "other": dir2}, config.PersistentVolumeTypes)
 	})
 }
 
