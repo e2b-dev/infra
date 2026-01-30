@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
-	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
+	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	testutils "github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -552,7 +552,7 @@ func TestAssignmentOrderingLatestWins(t *testing.T) {
 	envdClient := setup.GetEnvdClient(t, ctx)
 	fileResp, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{Path: &versionFilePath, Username: utils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &versionFilePath, Username: utils.ToPtr("user")},
 		setup.WithSandbox(sbx.SandboxID),
 	)
 	require.NoError(t, err)
@@ -621,7 +621,7 @@ func TestAssignmentOrderingAfterTagReassignment(t *testing.T) {
 	envdClient := setup.GetEnvdClient(t, ctx)
 	fileResp, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{Path: &versionFilePath, Username: utils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &versionFilePath, Username: utils.ToPtr("user")},
 		setup.WithSandbox(sbx.SandboxID),
 	)
 	require.NoError(t, err)
