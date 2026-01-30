@@ -393,7 +393,9 @@ resource "null_resource" "nodes_firewall" {
   triggers = {
     firewall_version       = var.firewall_tools_version
     network_policy_enabled = var.enable_network_policy
-    network_open_ports     = var.enable_network_policy ? join(",", var.network_open_ports) : ""
+    rendered_script_sha256 = var.enable_network_policy ? sha256(templatefile("${path.module}/scripts/network_policy.sh.tpl", {
+      OPEN_PORTS = join(",", var.network_open_ports)
+    })) : ""
   }
 
   connection {
