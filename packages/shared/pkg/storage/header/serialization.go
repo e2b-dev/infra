@@ -71,9 +71,13 @@ func Deserialize(ctx context.Context, in storage.Blob) (*Header, error) {
 		return nil, fmt.Errorf("failed to write to buffer: %w", err)
 	}
 
+	return DeserializeBytes(data)
+}
+
+func DeserializeBytes(data []byte) (*Header, error) {
 	reader := bytes.NewReader(data)
 	var metadata Metadata
-	err = binary.Read(reader, binary.LittleEndian, &metadata)
+	err := binary.Read(reader, binary.LittleEndian, &metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}

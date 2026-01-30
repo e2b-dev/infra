@@ -12,13 +12,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -50,20 +51,31 @@ const (
 
 func main() {
 	templateID := flag.String("template", "local-template", "template id")
-	buildID := flag.String("build", "", "build id (UUID)")
-	fromBuild := flag.String("from-build", "", "base build ID to rebuild from")
+	fromBuild := flag.String("from-build", "", "base build ID to build from (incremental build)")
+	toBuild := flag.String("to-build", "", "output build ID (UUID, required)")
 	storagePath := flag.String("storage", "", "storage: local path or gs://bucket (default: gs://$TEMPLATE_BUCKET_NAME or .local-build)")
 	kernel := flag.String("kernel", defaultKernel, "kernel version")
 	fc := flag.String("firecracker", defaultFC, "firecracker version")
 	vcpu := flag.Int("vcpu", 2, "vCPUs")
 	memory := flag.Int("memory", 1024, "memory MB")
 	disk := flag.Int("disk", 1024, "disk MB")
+	hugePages := flag.Bool("hugepages", true, "use 2MB huge pages for memory (false = 4KB pages)")
 	startCmd := flag.String("start-cmd", "", "start command")
+	setupCmd := flag.String("setup-cmd", "", "setup command to run during build (e.g., install deps)")
 	readyCmd := flag.String("ready-cmd", "", "ready check command")
+	verbose := flag.Bool("v", false, "verbose output")
 	flag.Parse()
 
-	if *buildID == "" {
-		log.Fatal("-build required")
+	if *toBuild == "" {
+		log.Fatal("-to-build required")
+	}
+
+	// Always suppress OTEL tracing logs
+	cmdutil.SuppressOTELLogs()
+
+	// Suppress other noisy output unless verbose, but keep std log for fatal errors
+	if !*verbose {
+		cmdutil.SuppressNoisyLogsKeepStdLog()
 	}
 
 	ctx := context.Background()
@@ -87,7 +99,7 @@ func main() {
 		log.Fatalf("network config: %v", err)
 	}
 
-	err = doBuild(ctx, *templateID, *buildID, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *startCmd, *readyCmd, localMode, builderConfig, networkConfig)
+	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, localMode, *verbose, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -167,8 +179,9 @@ func doBuild(
 	parentCtx context.Context,
 	templateID, buildID, fromBuild, kernel, fc string,
 	vcpu, memory, disk int,
-	startCmd, readyCmd string,
-	localMode bool,
+	hugePages bool,
+	startCmd, setupCmd, readyCmd string,
+	localMode, verbose bool,
 	builderConfig cfg.BuilderConfig,
 	networkConfig network.Config,
 ) error {
@@ -176,7 +189,8 @@ func doBuild(
 	defer cancel()
 
 	var cores []zapcore.Core
-	if localMode {
+	if localMode && !verbose {
+		// Only log errors when in local mode without verbose
 		cores = append(cores, zapcore.NewCore(
 			zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
 			zapcore.AddSync(os.Stderr),
@@ -187,8 +201,8 @@ func doBuild(
 	l, err := logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   "build-template",
 		IsInternal:    true,
-		IsDebug:       !localMode,
-		EnableConsole: !localMode,
+		IsDebug:       verbose,
+		EnableConsole: verbose,
 		Cores:         cores,
 	})
 	if err != nil {
@@ -196,7 +210,11 @@ func doBuild(
 	}
 	logger.ReplaceGlobals(ctx, l)
 	sbxlogger.SetSandboxLoggerExternal(l)
-	sbxlogger.SetSandboxLoggerInternal(l)
+	if verbose {
+		sbxlogger.SetSandboxLoggerInternal(l)
+	} else {
+		sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
+	}
 
 	l.Info(ctx, "building template", logger.WithTemplateID(templateID), logger.WithBuildID(buildID))
 
@@ -253,7 +271,11 @@ func doBuild(
 	defer dockerhubRepo.Close()
 
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	featureFlags, _ := featureflags.NewClient()
+	logLevel := ldlog.Error
+	if verbose {
+		logLevel = ldlog.Info
+	}
+	featureFlags, _ := featureflags.NewClientWithLogLevel(logLevel)
 
 	c, err := cfg.Parse()
 	if err != nil {
@@ -279,8 +301,16 @@ func doBuild(
 	l = l.With(zap.String("envID", templateID)).With(zap.String("buildID", buildID))
 
 	force := true
-	if startCmd == "" {
-		startCmd = "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'"
+
+	// Build steps list for setup commands
+	var steps []*templatemanager.TemplateStep
+	if setupCmd != "" {
+		fmt.Printf("Setup command (as root): %s\n", setupCmd)
+		// Add a RUN step that executes as root
+		steps = append(steps, &templatemanager.TemplateStep{
+			Type: "RUN",
+			Args: []string{setupCmd, "root"}, // command, user
+		})
 	}
 
 	tmpl := config.TemplateConfig{
@@ -290,12 +320,19 @@ func doBuild(
 		VCpuCount:          int64(vcpu),
 		MemoryMB:           int64(memory),
 		DiskSizeMB:         int64(disk),
-		HugePages:          true,
+		HugePages:          hugePages,
 		StartCmd:           startCmd,
 		ReadyCmd:           readyCmd,
 		KernelVersion:      kernel,
 		FirecrackerVersion: fc,
+		Steps:              steps,
 	}
+
+	pageSizeStr := "2MB (hugepages)"
+	if !hugePages {
+		pageSizeStr = "4KB (standard)"
+	}
+	fmt.Printf("Building with page size: %s\n", pageSizeStr)
 
 	if fromBuild != "" {
 		tmpl.FromTemplate = &templatemanager.FromTemplateConfig{BuildID: fromBuild}
@@ -317,12 +354,11 @@ func doBuild(
 	return nil
 }
 
-func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, result *build.Result) {
+func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, _ *build.Result) {
 	files := storage.TemplateFiles{BuildID: buildID}
 	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
 
 	fmt.Printf("\n📦 Artifacts:\n")
-	fmt.Printf("   Rootfs (logical): %d MB\n", result.RootfsSizeMB)
 
 	// For local storage, get actual file sizes on disk
 	if basePath != "" {
@@ -340,60 +376,32 @@ func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider
 func printLocalFileSizes(basePath, buildID string) {
 	dir := filepath.Join(basePath, buildID)
 
-	// Main artifacts with logical sizes (for sparse file comparison)
-	mainArtifacts := []struct {
-		name string
-		file string
-	}{
-		{"Rootfs", storage.RootfsName},
-		{"Memfile", storage.MemfileName},
-	}
-
-	for _, a := range mainArtifacts {
-		path := filepath.Join(dir, a.file)
-		logical, actual, err := getFileSizes(path)
+	for _, a := range cmdutil.MainArtifacts() {
+		path := filepath.Join(dir, a.File)
+		_, actual, err := cmdutil.GetFileSizes(path)
 		if err != nil {
 			continue
 		}
-		pct := float64(actual) / float64(logical) * 100
-		fmt.Printf("   %s: %d MB on disk / %d MB logical (%.1f%%)\n", a.name, actual>>20, logical>>20, pct)
+
+		headerPath := filepath.Join(dir, a.HeaderFile)
+		totalSize, blockSize := cmdutil.GetHeaderInfo(headerPath)
+		if totalSize == 0 {
+			fmt.Printf("   %s: %d MB (this layer)\n", a.Name, actual>>20)
+
+			continue
+		}
+
+		pct := float64(actual) / float64(totalSize) * 100
+		fmt.Printf("   %s: %d MB diff / %d MB total (%.1f%%), block size: %d KB\n",
+			a.Name, actual>>20, totalSize>>20, pct, blockSize>>10)
 	}
 
-	// Small files (headers, snapfile, metadata)
-	smallArtifacts := []struct {
-		name string
-		file string
-	}{
-		{"Rootfs header", storage.RootfsName + storage.HeaderSuffix},
-		{"Memfile header", storage.MemfileName + storage.HeaderSuffix},
-		{"Snapfile", storage.SnapfileName},
-		{"Metadata", storage.MetadataName},
-	}
-
-	for _, a := range smallArtifacts {
-		path := filepath.Join(dir, a.file)
-		if actual, err := getActualFileSize(path); err == nil {
-			fmt.Printf("   %s: %d KB\n", a.name, actual>>10)
+	for _, a := range cmdutil.SmallArtifacts() {
+		path := filepath.Join(dir, a.File)
+		if actual, err := cmdutil.GetActualFileSize(path); err == nil {
+			fmt.Printf("   %s: %d KB\n", a.Name, actual>>10)
 		}
 	}
-}
-
-func getFileSizes(path string) (logical, actual int64, err error) {
-	var stat syscall.Stat_t
-	if err := syscall.Stat(path, &stat); err != nil {
-		return 0, 0, err
-	}
-
-	return stat.Size, stat.Blocks * 512, nil
-}
-
-func getActualFileSize(path string) (int64, error) {
-	var stat syscall.Stat_t
-	if err := syscall.Stat(path, &stat); err != nil {
-		return 0, err
-	}
-
-	return stat.Blocks * 512, nil
 }
 
 func setupKernel(ctx context.Context, dir, version string) error {
