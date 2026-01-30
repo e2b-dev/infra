@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,6 +30,8 @@ import (
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -444,6 +447,39 @@ func run(config cfg.Config) (success bool) {
 			return nil
 		},
 	})
+
+	// nfs proxy server
+	if len(config.PersistentVolumeMounts) > 0 {
+		// portmapper server
+		var pmConfig net.ListenConfig
+		pmLis, err := pmConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.PortmapperPort))
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to listen on portmapper port", zap.Error(err))
+		}
+		pm := portmap.NewPortMap(ctx)
+		pm.RegisterPort(ctx, 2049)
+		startService("portmapper server", func() error {
+			return pm.Serve(ctx, pmLis)
+		})
+		closers = append(closers, closer{"portmapper server", func(_ context.Context) error { return pmLis.Close() }})
+
+		// nfs server
+		var nfsConfig net.ListenConfig
+		lis, err := nfsConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.NFSProxyPort))
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to listen on nfs port", zap.Error(err))
+		}
+
+		nfsServer := nfs.NewProxy(ctx, sandboxes, config)
+		startService("nfs proxy", func() error {
+			return nfsServer.Serve(lis)
+		})
+		closers = append(closers, closer{
+			"nfs proxy server", func(_ context.Context) error {
+				return lis.Close()
+			},
+		})
+	}
 
 	// hyperloop server
 	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes)
