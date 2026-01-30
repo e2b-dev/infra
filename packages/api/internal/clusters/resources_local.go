@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
