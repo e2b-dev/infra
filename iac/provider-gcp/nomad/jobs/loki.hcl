@@ -157,6 +157,8 @@ limits_config:
   max_global_streams_per_user: 0
   unordered_writes: true
   reject_old_samples_max_age: 168h
+
+  allow_structured_metadata: false  # enable after enabling schema v13
 EOF
 
         destination = "local/loki-config.yml"
