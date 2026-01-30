@@ -215,17 +215,17 @@ func TestStorageDiff_MmapChunker_Init(t *testing.T) {
 	for i := range testData {
 		testData[i] = byte(i % 256)
 	}
-	compressedData := compressTestBytes(t, testData)
 
+	// Mmap chunker requires uncompressed data
 	frameTable := &storage.FrameTable{
-		CompressionType: storage.CompressionZstd,
+		CompressionType: storage.CompressionNone,
 		StartAt:         storage.FrameOffset{U: 0, C: 0},
 		Frames: []storage.FrameSize{
-			{U: int32(frameSizeU), C: int32(len(compressedData))},
+			{U: int32(frameSizeU), C: int32(frameSizeU)},
 		},
 	}
 
-	provider := setupMockProvider(t, map[int64][]byte{0: compressedData}, frameTable)
+	provider := setupMockProvider(t, map[int64][]byte{0: testData}, frameTable)
 
 	// Default chunker type (no option) should be Mmap
 	sd, err := newStorageDiff(
@@ -266,20 +266,32 @@ func TestStorageDiff_FileSize(t *testing.T) {
 	}
 	compressedData := compressTestBytes(t, testData)
 
-	frameTable := &storage.FrameTable{
-		CompressionType: storage.CompressionZstd,
-		StartAt:         storage.FrameOffset{U: 0, C: 0},
-		Frames: []storage.FrameSize{
-			{U: int32(frameSizeU), C: int32(len(compressedData))},
-		},
-	}
-
 	tests := []struct {
 		name        string
 		chunkerType ChunkerType
+		frameTable  *storage.FrameTable
+		mockData    []byte
 	}{
-		{"Mmap", ChunkerTypeMmap},
-		{"Compressed", ChunkerTypeCompressed},
+		{
+			name:        "Mmap",
+			chunkerType: ChunkerTypeMmap,
+			frameTable: &storage.FrameTable{
+				CompressionType: storage.CompressionNone,
+				StartAt:         storage.FrameOffset{U: 0, C: 0},
+				Frames:          []storage.FrameSize{{U: int32(frameSizeU), C: int32(frameSizeU)}},
+			},
+			mockData: testData,
+		},
+		{
+			name:        "Compressed",
+			chunkerType: ChunkerTypeCompressed,
+			frameTable: &storage.FrameTable{
+				CompressionType: storage.CompressionZstd,
+				StartAt:         storage.FrameOffset{U: 0, C: 0},
+				Frames:          []storage.FrameSize{{U: int32(frameSizeU), C: int32(len(compressedData))}},
+			},
+			mockData: compressedData,
+		},
 	}
 
 	for _, tc := range tests {
@@ -290,7 +302,7 @@ func TestStorageDiff_FileSize(t *testing.T) {
 			err := os.MkdirAll(testDir, 0o755)
 			require.NoError(t, err)
 
-			provider := setupMockProvider(t, map[int64][]byte{0: compressedData}, frameTable)
+			provider := setupMockProvider(t, map[int64][]byte{0: tc.mockData}, tc.frameTable)
 
 			sd, err := newStorageDiff(
 				testDir,
@@ -299,7 +311,7 @@ func TestStorageDiff_FileSize(t *testing.T) {
 				int64(storage.MemoryChunkSize),
 				testBlockMetrics(t),
 				provider,
-				frameTable,
+				tc.frameTable,
 				WithChunkerType(tc.chunkerType),
 			)
 			require.NoError(t, err)
@@ -333,20 +345,32 @@ func TestStorageDiff_Close(t *testing.T) {
 	testData := make([]byte, frameSizeU)
 	compressedData := compressTestBytes(t, testData)
 
-	frameTable := &storage.FrameTable{
-		CompressionType: storage.CompressionZstd,
-		StartAt:         storage.FrameOffset{U: 0, C: 0},
-		Frames: []storage.FrameSize{
-			{U: int32(frameSizeU), C: int32(len(compressedData))},
-		},
-	}
-
 	tests := []struct {
 		name        string
 		chunkerType ChunkerType
+		frameTable  *storage.FrameTable
+		mockData    []byte
 	}{
-		{"Mmap", ChunkerTypeMmap},
-		{"Compressed", ChunkerTypeCompressed},
+		{
+			name:        "Mmap",
+			chunkerType: ChunkerTypeMmap,
+			frameTable: &storage.FrameTable{
+				CompressionType: storage.CompressionNone,
+				StartAt:         storage.FrameOffset{U: 0, C: 0},
+				Frames:          []storage.FrameSize{{U: int32(frameSizeU), C: int32(frameSizeU)}},
+			},
+			mockData: testData,
+		},
+		{
+			name:        "Compressed",
+			chunkerType: ChunkerTypeCompressed,
+			frameTable: &storage.FrameTable{
+				CompressionType: storage.CompressionZstd,
+				StartAt:         storage.FrameOffset{U: 0, C: 0},
+				Frames:          []storage.FrameSize{{U: int32(frameSizeU), C: int32(len(compressedData))}},
+			},
+			mockData: compressedData,
+		},
 	}
 
 	for _, tc := range tests {
@@ -357,7 +381,7 @@ func TestStorageDiff_Close(t *testing.T) {
 			err := os.MkdirAll(testDir, 0o755)
 			require.NoError(t, err)
 
-			provider := setupMockProvider(t, map[int64][]byte{0: compressedData}, frameTable)
+			provider := setupMockProvider(t, map[int64][]byte{0: tc.mockData}, tc.frameTable)
 
 			sd, err := newStorageDiff(
 				testDir,
@@ -366,7 +390,7 @@ func TestStorageDiff_Close(t *testing.T) {
 				int64(storage.MemoryChunkSize),
 				testBlockMetrics(t),
 				provider,
-				frameTable,
+				tc.frameTable,
 				WithChunkerType(tc.chunkerType),
 			)
 			require.NoError(t, err)
