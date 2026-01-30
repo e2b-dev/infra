@@ -121,7 +121,7 @@ ingester:
     flush_on_shutdown: true
 
 schema_config:
- configs:
+  configs:
     - from: 2024-03-05
       store: tsdb
       object_store: gcs
@@ -129,13 +129,15 @@ schema_config:
       index:
         prefix: loki_index_
         period: 24h
-    - from: ${ loki_v3_upgrade_date }
+%{if loki_use_v13_schema_from != ""}
+    - from: ${ loki_use_v13_schema_from }
       store: tsdb
       object_store: gcs
       schema: v13
       index:
         prefix: loki_index_
         period: 24h
+%{ endif }
 
 compactor:
   working_directory: /loki/compactor

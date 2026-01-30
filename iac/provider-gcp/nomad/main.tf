@@ -555,6 +555,8 @@ resource "nomad_job" "loki" {
     cpu_count                = var.loki_resources_cpu_count
     loki_service_port_number = var.loki_service_port.port
     loki_service_port_name   = var.loki_service_port.name
+    loki_use_v13_schema_from = var.loki_use_v13_schema_from
+
   })
 }
 
