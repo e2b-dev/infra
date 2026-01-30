@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/populate_redis"
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis_primary"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -134,7 +135,13 @@ func New(
 
 	if redisClient != nil {
 		redisStorage := redisbackend.NewStorage(redisClient)
-		sandboxStorage = populate_redis.NewStorage(memoryStorage, redisStorage)
+		if config.RedisPrimarySandboxBackend || featureFlags.BoolFlag(ctx, featureflags.UseRedisPrimarySandboxStorage) {
+			logger.L().Info(ctx, "Using RedisPrimary as a sandbox storage")
+			sandboxStorage = redis_primary.NewStorage(redisStorage, memoryStorage)
+		} else {
+			logger.L().Info(ctx, "Using PopulateRedis as a sandbox storage")
+			sandboxStorage = populate_redis.NewStorage(memoryStorage, redisStorage)
+		}
 	} else {
 		sandboxStorage = memoryStorage
 	}
