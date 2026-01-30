@@ -99,7 +99,9 @@ func (ft *FrameTable) Subset(r Range) (*FrameTable, error) {
 
 func (ft *FrameTable) FrameFor(r Range) (starts FrameOffset, size FrameSize, err error) {
 	if ft == nil {
-		return FrameOffset{}, FrameSize{}, fmt.Errorf("frame table is nil")
+		// For nil frameTable (raw uncompressed data), return the requested range as-is.
+		// U == C since there's no compression.
+		return FrameOffset{U: r.Start, C: r.Start}, FrameSize{U: int32(r.Length), C: int32(r.Length)}, nil
 	}
 	subset, err := ft.Subset(r)
 	if err != nil {

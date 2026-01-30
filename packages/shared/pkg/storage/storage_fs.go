@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -94,7 +95,7 @@ func (s *FileSystem) RangeGet(_ context.Context, path string, offset int64, leng
 	return io.NopCloser(bytes.NewReader(buf[:n])), nil
 }
 
-func (s *FileSystem) Size(_ context.Context, path string) (int64, error) {
+func (s *FileSystem) RawSize(_ context.Context, path string) (int64, error) {
 	handle, err := s.mustExist(path)
 	if err != nil {
 		return 0, err
@@ -136,11 +137,12 @@ func (s *FileSystem) create(path string) (*os.File, error) {
 	return os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0o644)
 }
 
-func (s *FileSystem) MakeMultipartUpload(_ context.Context, objectPath string, _ RetryConfig) (MultipartUploader, func(), int, error) {
+func (s *FileSystem) MakeMultipartUpload(_ context.Context, objectPath string, _ RetryConfig, metadata map[string]string) (MultipartUploader, func(), int, error) {
 	return &fsMultipartUploader{
 		fs:         s,
 		objectPath: objectPath,
 		parts:      map[int][]byte{},
+		metadata:   metadata,
 	}, func() {}, 1, nil
 }
 
@@ -150,6 +152,7 @@ type fsMultipartUploader struct {
 	parts      map[int][]byte
 	started    bool
 	mu         sync.Mutex
+	metadata   map[string]string
 }
 
 func (u *fsMultipartUploader) Start(_ context.Context) error {
@@ -236,6 +239,61 @@ func (u *fsMultipartUploader) Complete(_ context.Context) error {
 
 	reader := bytes.NewReader(bytes.Join(dataParts, nil))
 	_, err = io.Copy(handle, reader)
+	if err != nil {
+		return err
+	}
 
-	return err
+	// Write metadata sidecar file if metadata is provided.
+	if len(u.metadata) > 0 {
+		metaPath := u.fs.metaPath(u.objectPath)
+		if err := os.MkdirAll(filepath.Dir(metaPath), 0o755); err != nil {
+			return fmt.Errorf("failed to create metadata directory: %w", err)
+		}
+
+		data, err := json.Marshal(u.metadata)
+		if err != nil {
+			return fmt.Errorf("failed to marshal metadata: %w", err)
+		}
+
+		if err := os.WriteFile(metaPath, data, 0o644); err != nil {
+			return fmt.Errorf("failed to write metadata file: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *FileSystem) metaPath(path string) string {
+	return s.getPath(path) + ".meta"
+}
+
+func (s *FileSystem) Size(ctx context.Context, path string) (int64, error) {
+	metaPath := s.metaPath(path)
+
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No metadata file means no compression, return raw size.
+			return s.RawSize(ctx, path)
+		}
+
+		return 0, fmt.Errorf("failed to read metadata file: %w", err)
+	}
+
+	var metadata map[string]string
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return 0, fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
+
+	if uncompressedStr, ok := metadata[MetadataKeyUncompressedSize]; ok {
+		var uncompressedSize int64
+		if _, err := fmt.Sscanf(uncompressedStr, "%d", &uncompressedSize); err == nil {
+			return uncompressedSize, nil
+		}
+	}
+
+	// No metadata means uncompressed file - raw size IS the virtual size.
+	// Note: compressed files MUST have metadata set; missing metadata on a
+	// compressed file would return the wrong (compressed) size here.
+	return s.RawSize(ctx, path)
 }

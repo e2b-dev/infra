@@ -355,15 +355,17 @@ func TestDecompressStream_UnsupportedCompression(t *testing.T) {
 // Size Caching Tests
 // =============================================================================
 
-func TestCache_Size_CacheMiss(t *testing.T) {
+func TestCache_RawSize_CacheMiss(t *testing.T) {
 	t.Parallel()
 
 	inner := NewMockStorageProvider(t)
+	// fetchAndCacheSizes calls both Size and RawSize
 	inner.EXPECT().Size(mock.Anything, "obj").Return(int64(12345), nil).Once()
+	inner.EXPECT().RawSize(mock.Anything, "obj").Return(int64(12345), nil).Once()
 
 	c := newTestCache(t, inner, 1024)
 
-	size, err := c.Size(t.Context(), "obj")
+	size, err := c.RawSize(t.Context(), "obj")
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(12345), size)
@@ -373,45 +375,48 @@ func TestCache_Size_CacheMiss(t *testing.T) {
 
 	// Second call should hit cache (mock not called again)
 	c.inner = nil // would panic if called
-	size, err = c.Size(t.Context(), "obj")
+	size, err = c.RawSize(t.Context(), "obj")
 	require.NoError(t, err)
 	assert.Equal(t, int64(12345), size)
 }
 
-func TestCache_Size_CacheHit(t *testing.T) {
+func TestCache_RawSize_CacheHit(t *testing.T) {
 	t.Parallel()
 
 	c := newTestCache(t, nil, 1024) // nil inner - should not be called
 
-	// Pre-populate cache
+	// Pre-populate cache with "size rawSize" format
 	sizeFile := c.sizeFilename("obj")
-	writeToCache(t, sizeFile, []byte("9876"))
+	writeToCache(t, sizeFile, []byte("9876 9876"))
 
-	size, err := c.Size(t.Context(), "obj")
+	size, err := c.RawSize(t.Context(), "obj")
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(9876), size)
 }
 
-func TestCache_Size_InnerError(t *testing.T) {
+func TestCache_RawSize_InnerError(t *testing.T) {
 	t.Parallel()
 
 	expectedErr := errors.New("storage unavailable")
 	inner := NewMockStorageProvider(t)
+	// Size is called first in fetchAndCacheSizes
 	inner.EXPECT().Size(mock.Anything, "obj").Return(int64(0), expectedErr)
 
 	c := newTestCache(t, inner, 1024)
 
-	_, err := c.Size(t.Context(), "obj")
+	_, err := c.RawSize(t.Context(), "obj")
 
 	require.ErrorIs(t, err, expectedErr)
 }
 
-func TestCache_Size_CorruptedCache(t *testing.T) {
+func TestCache_RawSize_CorruptedCache(t *testing.T) {
 	t.Parallel()
 
 	inner := NewMockStorageProvider(t)
+	// fetchAndCacheSizes calls both Size and RawSize
 	inner.EXPECT().Size(mock.Anything, "obj").Return(int64(5555), nil).Once()
+	inner.EXPECT().RawSize(mock.Anything, "obj").Return(int64(5555), nil).Once()
 
 	c := newTestCache(t, inner, 1024)
 
@@ -420,7 +425,7 @@ func TestCache_Size_CorruptedCache(t *testing.T) {
 	writeToCache(t, sizeFile, []byte("not-a-number"))
 
 	// Should fall back to inner and re-cache
-	size, err := c.Size(t.Context(), "obj")
+	size, err := c.RawSize(t.Context(), "obj")
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(5555), size)
@@ -450,6 +455,7 @@ func waitForAsyncCacheOps(t *testing.T, dir string) {
 				return false
 			}
 		}
+
 		return true
 	}, time.Second, time.Millisecond, "async cache operations should complete in %s", dir)
 }

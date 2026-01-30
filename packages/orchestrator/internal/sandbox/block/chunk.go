@@ -72,7 +72,6 @@ func NewChunker(
 }
 
 func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
-	fmt.Printf("<>/<> Chunker/ReadAt path=%s off=%#x len=%#x\n", c.objectPath, off, len(b))
 	slice, err := c.Slice(ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
@@ -82,12 +81,10 @@ func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) 
 }
 
 func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
-	fmt.Printf("<>/<> Chunker/Slice path=%s off=%#x len=%#x\n", c.objectPath, off, length)
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		fmt.Printf("<>/<> Chunker/Slice path=%s off=%#x len=%#x -> cache hit\n", c.objectPath, off, length)
 		timer.Success(ctx, length,
 			attribute.String(pullType, pullTypeLocal))
 
@@ -102,7 +99,6 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	fmt.Printf("<>/<> Chunker/Slice path=%s off=%#x len=%#x -> cache miss, fetching\n", c.objectPath, off, length)
 	chunkErr := c.fetchToCache(ctx, off, length)
 	if chunkErr != nil {
 		timer.Failure(ctx, length,
@@ -121,7 +117,6 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	fmt.Printf("<>/<> Chunker/Slice path=%s off=%#x len=%#x -> fetched OK\n", c.objectPath, off, length)
 	timer.Success(ctx, length,
 		attribute.String(pullType, pullTypeRemote))
 
@@ -149,9 +144,15 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 		}
 	} else {
 		// If no compression, pretend each chunk is a frame.
+		// Always fetch full MemoryChunkSize (4MB) chunks to ensure consistent fetch sizes
+		// for the deduplication logic in c.fetchers.Wait. Cap at file size for small files.
 		startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
 		startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
-		nChunks := header.BlockIdx(length+storage.MemoryChunkSize-1, storage.MemoryChunkSize)
+
+		// Calculate how many full chunks we need to cover [off, off+length)
+		endOffset := off + length
+		endChunk := header.BlockIdx(endOffset+storage.MemoryChunkSize-1, storage.MemoryChunkSize)
+		nChunks := endChunk - startingChunk
 
 		framesToFetch = &storage.FrameTable{
 			CompressionType: storage.CompressionNone,
@@ -160,11 +161,17 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				C: startingChunkOffset,
 			},
 		}
-		for range nChunks {
+
+		// Create frames - each is MemoryChunkSize or remaining file size (for small files)
+		currentOffset := startingChunkOffset
+		for i := int64(0); i < nChunks && currentOffset < c.size; i++ {
+			// Frame size is min of: MemoryChunkSize, remaining file size
+			frameSize := min(int64(storage.MemoryChunkSize), c.size-currentOffset)
 			framesToFetch.Frames = append(framesToFetch.Frames, storage.FrameSize{
-				U: storage.MemoryChunkSize,
-				C: storage.MemoryChunkSize,
+				U: int32(frameSize),
+				C: int32(frameSize),
 			})
+			currentOffset += frameSize
 		}
 	}
 

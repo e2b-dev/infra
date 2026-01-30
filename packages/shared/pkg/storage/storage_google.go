@@ -152,7 +152,7 @@ func (g *GCP) handle(path string) *storage.ObjectHandle {
 	)
 }
 
-func (g *GCP) Size(ctx context.Context, path string) (n int64, err error) {
+func (g *GCP) RawSize(ctx context.Context, path string) (n int64, err error) {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -160,7 +160,6 @@ func (g *GCP) Size(ctx context.Context, path string) (n int64, err error) {
 	attrs, err := h.Attrs(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			// use ours instead of theirs
 			return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", path, ErrObjectNotExist)
 		}
 
@@ -256,4 +255,34 @@ func (g *GCP) RangeGet(ctx context.Context, path string, offset int64, length in
 	}
 
 	return withCancelCloser{ReadCloser: rc, cancelFunc: cancel}, nil
+}
+
+func (g *GCP) Size(ctx context.Context, path string) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
+	defer cancel()
+
+	h := g.handle(path)
+	attrs, err := h.Attrs(ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", path, ErrObjectNotExist)
+		}
+
+		return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", path, err)
+	}
+
+	// Check for uncompressed size in metadata (set during compressed upload).
+	if attrs.Metadata != nil {
+		if uncompressedStr, ok := attrs.Metadata[MetadataKeyUncompressedSize]; ok {
+			var uncompressedSize int64
+			if _, err := fmt.Sscanf(uncompressedStr, "%d", &uncompressedSize); err == nil {
+				return uncompressedSize, nil
+			}
+		}
+	}
+
+	// No metadata means uncompressed file - raw size IS the virtual size.
+	// Note: compressed files MUST have metadata set; missing metadata on a
+	// compressed file would return the wrong (compressed) size here.
+	return attrs.Size, nil
 }

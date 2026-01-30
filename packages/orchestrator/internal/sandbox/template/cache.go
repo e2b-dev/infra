@@ -210,30 +210,32 @@ func (c *Cache) AddSnapshot(
 	return nil
 }
 
-func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot bool) (string, bool) {
-	if isBuilding {
-		// caching this layer doesn't speed up the next sandbox launch,
-		// as the previous template isn't used to load the one that's being built.
-		return "", false
-	}
+func (c *Cache) useNFSCache(_ context.Context, _ bool, _ bool) (string, bool) {
+	return "", false
 
-	var flagName featureflags.BoolFlag
-	if isSnapshot {
-		flagName = featureflags.SnapshotFeatureFlag
-	} else {
-		flagName = featureflags.TemplateFeatureFlag
-	}
+	// if isBuilding {
+	// 	// caching this layer doesn't speed up the next sandbox launch,
+	// 	// as the previous template isn't used to load the one that's being built.
+	// 	return "", false
+	// }
 
-	useNFSCache := c.flags.BoolFlag(ctx, flagName)
-	if useNFSCache {
-		if c.rootCachePath == "" {
-			logger.L().Warn(ctx, "NFSCache feature flag is enabled but cache path is not set")
+	// var flagName featureflags.BoolFlag
+	// if isSnapshot {
+	// 	flagName = featureflags.SnapshotFeatureFlag
+	// } else {
+	// 	flagName = featureflags.TemplateFeatureFlag
+	// }
 
-			return "", false
-		}
-	}
+	// useNFSCache := c.flags.BoolFlag(ctx, flagName)
+	// if useNFSCache {
+	// 	if c.rootCachePath == "" {
+	// 		logger.L().Warn(ctx, "NFSCache feature flag is enabled but cache path is not set")
 
-	return c.rootCachePath, useNFSCache
+	// 		return "", false
+	// 	}
+	// }
+
+	// return c.rootCachePath, useNFSCache
 }
 
 func cleanDir(path string) error {

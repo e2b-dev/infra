@@ -13,7 +13,7 @@ packages:
         config:
           dir: packages/shared/pkg/storage
           inpackage: true
-          filename: mock_featureflagsclient.go
+          filename: mock_feature_flags_client.go
           structname: MockFeatureFlagsClient
       StorageProvider:
         config:

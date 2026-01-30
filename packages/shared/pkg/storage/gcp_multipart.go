@@ -40,9 +40,10 @@ type gcpMultipartUploader struct {
 	retryConfig RetryConfig
 	etags       *sync.Map
 	uploadID    string
+	metadata    map[string]string
 }
 
-func (g *GCP) MakeMultipartUpload(ctx context.Context, objectName string, retryConfig RetryConfig) (MultipartUploader, func(), int, error) {
+func (g *GCP) MakeMultipartUpload(ctx context.Context, objectName string, retryConfig RetryConfig, metadata map[string]string) (MultipartUploader, func(), int, error) {
 	cleanup := func() {}
 	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
@@ -74,6 +75,7 @@ func (g *GCP) MakeMultipartUpload(ctx context.Context, objectName string, retryC
 		token:       token.AccessToken,
 		client:      createRetryableClient(ctx, retryConfig),
 		retryConfig: retryConfig,
+		metadata:    metadata,
 	}, cleanup, uploadConcurrency, nil
 }
 
@@ -88,6 +90,11 @@ func (u *gcpMultipartUploader) Start(ctx context.Context) error {
 	req.Header.Set("Authorization", "Bearer "+u.token)
 	req.Header.Set("Content-Length", "0")
 	req.Header.Set("Content-Type", "application/octet-stream")
+
+	// Set custom metadata headers
+	for k, v := range u.metadata {
+		req.Header.Set("x-goog-meta-"+k, v)
+	}
 
 	resp, err := u.client.Do(req)
 	if err != nil {

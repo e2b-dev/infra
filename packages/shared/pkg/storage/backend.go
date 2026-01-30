@@ -74,14 +74,22 @@ type PublicUploader interface {
 }
 
 type MultipartUploaderFactory interface {
-	MakeMultipartUpload(ctx context.Context, objectPath string, retryConfig RetryConfig) (MultipartUploader, func(), int, error)
+	MakeMultipartUpload(ctx context.Context, objectPath string, retryConfig RetryConfig, metadata map[string]string) (MultipartUploader, func(), int, error)
 }
 
 type Manager interface {
+	// Size returns the virtual/uncompressed size.
+	// For compressed files, returns the uncompressed size from metadata.
+	// For uncompressed files, returns the raw file size.
 	Size(ctx context.Context, objectPath string) (int64, error)
+	// RawSize returns the actual file size on storage (compressed size for compressed files).
+	RawSize(ctx context.Context, objectPath string) (int64, error)
 	DeleteWithPrefix(ctx context.Context, prefix string) error
 	fmt.Stringer
 }
+
+// MetadataKeyUncompressedSize is the metadata key for storing uncompressed size on objects.
+const MetadataKeyUncompressedSize = "e2b-uncompressed-size"
 
 type MultipartUploader interface {
 	Start(ctx context.Context) error

@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 
 	"github.com/google/uuid"
@@ -239,34 +238,68 @@ func (c Cache) Size(ctx context.Context, objectPath string) (n int64, e error) {
 		span.End()
 	}()
 
-	size, err := c.readLocalSize(ctx, objectPath)
+	size, _, err := c.readLocalSizes(ctx, objectPath)
 	if err == nil {
-		recordCacheRead(ctx, true, 8, cacheTypeSeekable, cacheOpSize)
+		recordCacheRead(ctx, true, 16, cacheTypeSeekable, cacheOpSize)
 
 		return size, nil
 	}
 
 	recordCacheReadError(ctx, cacheTypeSeekable, cacheOpSize, err)
 
-	size, err = c.inner.Size(ctx, objectPath)
+	return c.fetchAndCacheSizes(ctx, objectPath, true)
+}
+
+func (c Cache) RawSize(ctx context.Context, objectPath string) (n int64, e error) {
+	ctx, span := c.tracer.Start(ctx, "get raw size of object")
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
+
+	_, rawSize, err := c.readLocalSizes(ctx, objectPath)
+	if err == nil {
+		recordCacheRead(ctx, true, 16, cacheTypeSeekable, cacheOpSize)
+
+		return rawSize, nil
+	}
+
+	recordCacheReadError(ctx, cacheTypeSeekable, cacheOpSize, err)
+
+	return c.fetchAndCacheSizes(ctx, objectPath, false)
+}
+
+// fetchAndCacheSizes fetches both sizes from inner storage, caches them, and
+// returns the requested one (size if wantSize is true, rawSize otherwise).
+func (c Cache) fetchAndCacheSizes(ctx context.Context, objectPath string, wantSize bool) (int64, error) {
+	size, err := c.inner.Size(ctx, objectPath)
 	if err != nil {
-		return size, err
+		return 0, err
+	}
+
+	rawSize, err := c.inner.RawSize(ctx, objectPath)
+	if err != nil {
+		return 0, err
 	}
 
 	wg := &sync.WaitGroup{}
 	goCtx(ctx, wg, func(ctx context.Context) {
-		ctx, span := c.tracer.Start(ctx, "write size of object to cache")
+		ctx, span := c.tracer.Start(ctx, "write sizes to cache")
 		defer span.End()
 
-		if err := c.writeLocalSize(ctx, objectPath, size); err != nil {
+		if err := c.writeLocalSizes(ctx, objectPath, size, rawSize); err != nil {
 			recordError(span, err)
 			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpSize, err)
 		}
 	})
 
-	recordCacheRead(ctx, false, 8, cacheTypeSeekable, cacheOpSize)
+	recordCacheRead(ctx, false, 16, cacheTypeSeekable, cacheOpSize)
 
-	return size, nil
+	if wantSize {
+		return size, nil
+	}
+
+	return rawSize, nil
 }
 
 func (c Cache) storeCompressed(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, wg *sync.WaitGroup, err error) {
@@ -297,9 +330,38 @@ func (c Cache) storeCompressed(ctx context.Context, inFilePath, objectPath strin
 
 func (c Cache) StoreFile(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, err error) {
 	if opts != nil && opts.CompressionType != CompressionNone {
-		ft, _, err := c.storeCompressed(ctx, inFilePath, objectPath, opts)
+		ft, wg, err := c.storeCompressed(ctx, inFilePath, objectPath, opts)
+		if err != nil {
+			return nil, err
+		}
 
-		return ft, err
+		// Cache the sizes from the FrameTable. If ft is nil (compression was requested
+		// but EnableGCSCompression=false), fall back to the input file size for both.
+		goCtx(ctx, wg, func(ctx context.Context) {
+			var size, rawSize int64
+			if ft != nil {
+				size = ft.TotalUncompressedSize()
+				rawSize = ft.TotalCompressedSize()
+			} else {
+				// No compression occurred - both sizes are the raw file size.
+				stat, err := os.Stat(inFilePath)
+				if err != nil {
+					logger.L().Warn(ctx, "failed to stat input file for size caching", zap.Error(err))
+
+					return
+				}
+				size = stat.Size()
+				rawSize = size
+			}
+			if err := c.writeLocalSizes(ctx, objectPath, size, rawSize); err != nil {
+				logger.L().Warn(ctx, "failed to write local sizes after compressed upload",
+					zap.Int64("size", size),
+					zap.Int64("rawSize", rawSize),
+					zap.Error(err))
+			}
+		})
+
+		return ft, nil
 	}
 
 	ctx, span := c.tracer.Start(ctx, "write object from file system",
@@ -330,9 +392,10 @@ func (c Cache) StoreFile(ctx context.Context, inFilePath, objectPath string, opt
 
 			recordCacheWrite(ctx, size, cacheTypeSeekable, cacheOpWriteFromFileSystem)
 
-			if err := c.writeLocalSize(ctx, objectPath, size); err != nil {
+			// For uncompressed files, virtual size == raw size.
+			if err := c.writeLocalSizes(ctx, objectPath, size, size); err != nil {
 				recordError(span, err)
-				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to write local file size: %w", err))
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to write local file sizes: %w", err))
 			}
 		})
 	}
@@ -453,19 +516,21 @@ func (c Cache) sizeFilename(path string) string {
 	return filepath.Join(c.cachePath(path), "size.txt")
 }
 
-func (c Cache) readLocalSize(_ context.Context, path string) (int64, error) {
+// readLocalSizes reads both virtual size and raw size from the cache file.
+// Format: "virtualSize rawSize" (space-separated integers).
+func (c Cache) readLocalSizes(_ context.Context, path string) (size, rawSize int64, err error) {
 	filename := c.sizeFilename(path)
 	content, err := os.ReadFile(filename)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read cached size: %w", err)
+		return 0, 0, fmt.Errorf("failed to read cached sizes: %w", err)
 	}
 
-	size, err := strconv.ParseInt(string(content), 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse cached size: %w", err)
+	n, err := fmt.Sscanf(string(content), "%d %d", &size, &rawSize)
+	if err != nil || n != 2 {
+		return 0, 0, fmt.Errorf("failed to parse cached sizes: %w", err)
 	}
 
-	return size, nil
+	return size, rawSize, nil
 }
 
 func (c Cache) validateGetFrameParams(off int64, length int, frameTable *FrameTable, decompress bool) error {
@@ -557,7 +622,9 @@ func (c Cache) writeChunkToCache(ctx context.Context, path string, offset int64,
 	return nil
 }
 
-func (c Cache) writeLocalSize(ctx context.Context, objectPath string, size int64) error {
+// writeLocalSizes writes both virtual size and raw size to the cache file.
+// Format: "virtualSize rawSize" (space-separated integers).
+func (c Cache) writeLocalSizes(ctx context.Context, objectPath string, size, rawSize int64) error {
 	finalFilename := c.sizeFilename(objectPath)
 	if err := os.MkdirAll(filepath.Dir(finalFilename), cacheDirPermissions); err != nil {
 		return fmt.Errorf("failed to create cache directory %s: %w", filepath.Dir(finalFilename), err)
@@ -566,15 +633,16 @@ func (c Cache) writeLocalSize(ctx context.Context, objectPath string, size int64
 	// Try to acquire lock for this chunk write to NFS cache
 	lockFile, err := lock.TryAcquireLock(ctx, finalFilename)
 	if err != nil {
-		return fmt.Errorf("failed to acquire lock for local size: %w", err)
+		return fmt.Errorf("failed to acquire lock for local sizes: %w", err)
 	}
 
 	// Release lock after write completes
 	defer func() {
 		err := lock.ReleaseLock(ctx, lockFile)
 		if err != nil {
-			logger.L().Warn(ctx, "failed to release lock after writing chunk to cache",
+			logger.L().Warn(ctx, "failed to release lock after writing sizes to cache",
 				zap.Int64("size", size),
+				zap.Int64("rawSize", rawSize),
 				zap.String("path", finalFilename),
 				zap.Error(err))
 		}
@@ -582,14 +650,14 @@ func (c Cache) writeLocalSize(ctx context.Context, objectPath string, size int64
 
 	tempFilename := filepath.Join(filepath.Dir(finalFilename), fmt.Sprintf(".size.bin.%s", uuid.NewString()))
 
-	if err := os.WriteFile(tempFilename, fmt.Appendf(nil, "%d", size), cacheFilePermissions); err != nil {
+	if err := os.WriteFile(tempFilename, fmt.Appendf(nil, "%d %d", size, rawSize), cacheFilePermissions); err != nil {
 		go safelyRemoveFile(ctx, tempFilename)
 
-		return fmt.Errorf("failed to write temp local size file: %w", err)
+		return fmt.Errorf("failed to write temp local sizes file: %w", err)
 	}
 
 	if err := utils.RenameOrDeleteFile(ctx, tempFilename, finalFilename); err != nil {
-		return fmt.Errorf("failed to rename local size temp file: %w", err)
+		return fmt.Errorf("failed to rename local sizes temp file: %w", err)
 	}
 
 	return nil

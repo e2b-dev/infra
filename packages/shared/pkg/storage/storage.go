@@ -234,7 +234,15 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrStore))
 
-	partUploader, cleanup, maxConcurrency, err := s.Backend.MakeMultipartUpload(ctx, objectPath, DefaultRetryConfig())
+	// For compressed uploads, include the uncompressed size as metadata.
+	var metadata map[string]string
+	if !noCompression {
+		metadata = map[string]string{
+			MetadataKeyUncompressedSize: fmt.Sprintf("%d", sizeU),
+		}
+	}
+
+	partUploader, cleanup, maxConcurrency, err := s.Backend.MakeMultipartUpload(ctx, objectPath, DefaultRetryConfig(), metadata)
 	defer cleanup()
 	if err != nil {
 		timer.Failure(ctx, 0)
@@ -256,7 +264,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 
 	timer.Success(ctx, sizeU)
 
-	return ft, err
+	return ft, nil
 }
 
 // GetFrame reads a single frame from storage into buf. The caller MUST provide

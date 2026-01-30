@@ -69,7 +69,6 @@ func NewCompressedChunker(
 
 // ReadAt reads len(b) bytes from the chunker starting at offset off.
 func (c *CompressedChunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
-	fmt.Printf("<>/<> CompressedChunker/ReadAt path=%s off=%#x len=%#x\n", c.objectPath, off, len(b))
 	slice, err := c.Slice(ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice at %d-%d: %w", off, off+int64(len(b)), err)
@@ -106,7 +105,6 @@ func (c *CompressedChunker) Slice(ctx context.Context, off, length int64) ([]byt
 
 			return nil, fmt.Errorf("failed to get frame for offset %d: %w", currentOff, err)
 		}
-		fmt.Printf("<>/<> CompressedChunker/Slice path=%s requested offset=%#x length=%#x => frame U offset=%#x, length=%#x\n", c.objectPath, off, length, frameStarts.U, frameSize.U)
 
 		startInFrame := currentOff - frameStarts.U
 		remaining := int(length) - copied
@@ -118,23 +116,18 @@ func (c *CompressedChunker) Slice(ctx context.Context, off, length int64) ([]byt
 		eg.Go(func() error {
 			// Check LRU cache first
 			if frame, ok := c.frameLRU.get(frameStarts.U); ok {
-				fmt.Printf("<>/<> CompressedChunker/Slice path=%s frame=%#x -> LRU hit\n", c.objectPath, frameStarts.U)
 				copy(result[resultOff:], frame.data[startInFrame:startInFrame+int64(toCopy)])
 
 				return nil
 			}
 
-			fmt.Printf("<>/<> CompressedChunker/Slice path=%s frame=%#x -> LRU miss, fetching\n", c.objectPath, frameStarts.U)
 			// Fetch with deduplication - concurrent requests for same frame share one fetch
 			key := strconv.FormatInt(frameStarts.U, 10)
-			dataI, err, shared := c.fetchGroup.Do(key, func() (any, error) {
+			dataI, err, _ := c.fetchGroup.Do(key, func() (any, error) {
 				// Double-check LRU after acquiring the fetch slot
 				if frame, ok := c.frameLRU.get(frameStarts.U); ok {
-					fmt.Printf("<>/<> CompressedChunker/Slice path=%s frame=%#x -> LRU hit after singleflight\n", c.objectPath, frameStarts.U)
-
 					return frame.data, nil
 				}
-				fmt.Printf("<>/<> CompressedChunker/Slice path=%s frame=%#x -> fetching from storage\n", c.objectPath, frameStarts.U)
 
 				return c.fetchAndDecompress(ctx, frameStarts.U, frameSize)
 			})
@@ -142,8 +135,7 @@ func (c *CompressedChunker) Slice(ctx context.Context, off, length int64) ([]byt
 				return err
 			}
 			data := dataI.([]byte)
-			n := copy(result[resultOff:], data[startInFrame:startInFrame+int64(toCopy)])
-			fmt.Printf("<>/<> CompressedChunker/Slice path=%s offset %#x requested, copied %#x from frame %#x (shared=%v)\n", c.objectPath, currentOff, n, frameStarts.U, shared)
+			copy(result[resultOff:], data[startInFrame:startInFrame+int64(toCopy)])
 
 			return nil
 		})
