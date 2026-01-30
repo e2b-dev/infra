@@ -129,7 +129,7 @@ schema_config:
       index:
         prefix: loki_index_
         period: 24h
-    - from: 2026-01-29
+    - from: 2026-02-15
       store: tsdb
       object_store: gcs
       schema: v13
