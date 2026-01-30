@@ -116,7 +116,7 @@ func (o *Orchestrator) storePausedSandbox(ctx context.Context, sbx sandbox.Sandb
 	err := o.pausedCatalog.StorePaused(ctx, sbx.SandboxID, &e2bcatalog.PausedSandboxInfo{
 		AutoResumePolicy: policy,
 		PausedAt:         time.Now(),
-	}, time.Hour)
+	}, 7*24*time.Hour)
 	if err != nil {
 		logger.L().Error(ctx, "error storing paused sandbox record", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 	}
