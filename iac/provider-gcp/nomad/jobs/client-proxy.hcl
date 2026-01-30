@@ -104,6 +104,7 @@ job "client-proxy" {
         API_BASE_URL    = "https://api.${domain_name}"
         API_ADMIN_TOKEN = "${api_admin_token}"
         API_KEY         = "${api_key}"
+        AUTO_RESUME_ENABLED = "${auto_resume_enabled}"
 
         %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"

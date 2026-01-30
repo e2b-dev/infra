@@ -190,6 +190,7 @@ module "nomad" {
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
   client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
   client_proxy_api_key             = var.client_proxy_api_key
+  client_proxy_auto_resume_enabled = var.client_proxy_auto_resume_enabled
 
   client_proxy_session_port = var.client_proxy_port.port
   client_proxy_health_port  = var.client_proxy_health_port.port

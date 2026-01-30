@@ -147,6 +147,11 @@ variable "client_proxy_api_key" {
   default = ""
 }
 
+variable "client_proxy_auto_resume_enabled" {
+  type    = bool
+  default = true
+}
+
 variable "client_proxy_health_port" {
   type = object({
     name = string
