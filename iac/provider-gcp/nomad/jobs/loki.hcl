@@ -154,7 +154,7 @@ limits_config:
   reject_old_samples_max_age: 168h
 EOF
 
-        destination = "/local-config.yaml"
+        destination = "/etc/loki/local-config.yaml"
       }
     }
   }
