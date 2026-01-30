@@ -23,7 +23,7 @@ const (
 	// other chunk sizes to align in frames.
 	defaultChunkSizeU             = 2 * megabyte // uncompressed chunk size
 	defaultTargetFrameSizeC       = 4 * megabyte // target compressed frame size
-	defaultZstdCompressionLevel   = zstd.SpeedDefault
+	defaultZstdCompressionLevel   = zstd.SpeedBestCompression
 	defaultCompressionConcurrency = 0 // use default compression concurrency settings
 	defaultUploadPartSize         = 50 * megabyte
 )
@@ -32,7 +32,7 @@ const (
 var (
 	// EnableGCSCompression controls whether files are compressed when uploading to GCS.
 	// When false, files are uploaded uncompressed even if compression options are provided.
-	EnableGCSCompression = false
+	EnableGCSCompression = true
 
 	// EnableNFSCompressedCache controls whether the NFS cache stores compressed frames.
 	// When true (default): Cache stores compressed frames, decompresses on read.
