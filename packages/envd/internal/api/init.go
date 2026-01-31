@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"crypto/sha512"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -30,13 +29,6 @@ const (
 	maxTimeInPast   = 50 * time.Millisecond
 	maxTimeInFuture = 5 * time.Second
 )
-
-// hashAccessToken computes the SHA-512 hash of an access token.
-func hashAccessToken(token string) string {
-	h := sha512.Sum512([]byte(token))
-
-	return hex.EncodeToString(h[:])
-}
 
 // validateInitAccessToken validates the access token for /init requests.
 // Token is valid if it matches the existing token OR the MMDS hash.
@@ -64,6 +56,11 @@ func (a *API) validateInitAccessToken(ctx context.Context, logger zerolog.Logger
 
 // checkMMDSHash checks if the request token matches the MMDS hash.
 // Returns (matches, mmdsExists).
+//
+// The MMDS hash is set by the orchestrator during Resume:
+//   - hash(token): requires this specific token
+//   - hash(""): explicitly allows nil token (token reset authorized)
+//   - "": MMDS not properly configured, no authorization granted
 func (a *API) checkMMDSHash(ctx context.Context, requestToken *string) (bool, bool) {
 	if a.isNotFC {
 		return false, false
@@ -74,20 +71,15 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *string) (bool, bo
 		return false, false
 	}
 
-	// Empty MMDS hash with nil request token allows resetting to no token
-	if mmdsHash == "" && requestToken == nil {
-		return true, true
-	}
-
 	if mmdsHash == "" {
 		return false, false
 	}
 
 	if requestToken == nil {
-		return false, true
+		return mmdsHash == keys.HashAccessToken(""), true
 	}
 
-	return hashAccessToken(*requestToken) == mmdsHash, true
+	return keys.HashAccessToken(*requestToken) == mmdsHash, true
 }
 
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {

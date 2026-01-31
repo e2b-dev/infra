@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -451,7 +452,9 @@ func (p *Process) Resume(
 	}
 
 	if accessToken != nil && *accessToken != "" {
-		meta.AccessTokenHash = HashAccessToken(*accessToken)
+		meta.AccessTokenHash = keys.HashAccessToken(*accessToken)
+	} else {
+		meta.AccessTokenHash = keys.HashAccessToken("")
 	}
 
 	err = p.client.setMmds(ctx, meta)
