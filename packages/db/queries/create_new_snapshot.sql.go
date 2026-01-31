@@ -15,8 +15,8 @@ import (
 
 const upsertSnapshot = `-- name: UpsertSnapshot :one
 WITH new_template AS (
-    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
-    SELECT $1, FALSE, NULL, $2, now()
+    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source)
+    SELECT $1, FALSE, NULL, $2, now(), 'sandbox'
     WHERE NOT EXISTS (
         SELECT id
         FROM "public"."snapshots" s

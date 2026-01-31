@@ -67,6 +67,7 @@ type Env struct {
 	TeamID        uuid.UUID
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
+	Source        string
 }
 
 type EnvAlias struct {
@@ -127,6 +128,12 @@ type Snapshot struct {
 	AutoPause           bool
 	TeamID              uuid.UUID
 	Config              types.JSONBStringMap
+}
+
+type SnapshotTemplate struct {
+	EnvID     string
+	SandboxID string
+	CreatedAt pgtype.Timestamptz
 }
 
 type Team struct {

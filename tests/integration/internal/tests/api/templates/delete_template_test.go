@@ -37,7 +37,7 @@ func TestDeleteTemplate(t *testing.T) {
 		setup.WithAPIKey(),
 	)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, deleteRes.StatusCode())
+	assert.Equal(t, http.StatusNoContent, deleteRes.StatusCode())
 }
 
 func TestDeleteTemplateWithAccessToken(t *testing.T) {
@@ -54,7 +54,7 @@ func TestDeleteTemplateWithAccessToken(t *testing.T) {
 		setup.WithAccessToken(),
 	)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, deleteRes.StatusCode())
+	assert.Equal(t, http.StatusNoContent, deleteRes.StatusCode())
 }
 
 func TestDeleteTemplateFromAnotherTeamAccessToken(t *testing.T) {

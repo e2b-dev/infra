@@ -106,13 +106,15 @@ func TestChangeAccessAuthorizedToken(t *testing.T) {
 	envdAuthTokenA := sbx.JSON201.EnvdAccessToken
 	envdAuthTokenB := "second-token"
 
+	// Changing access token via /init is NOT allowed - token must match existing or MMDS hash
+	// Only the orchestrator can change tokens by first updating MMDS with the new hash
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
 		authToken:             envdAuthTokenA, // this is the old token used currently by envd
 		body:                  envdapi.PostInitJSONRequestBody{AccessToken: &envdAuthTokenB},
 		expectedResErr:        nil,
-		expectedResHttpStatus: http.StatusConflict,
+		expectedResHttpStatus: http.StatusUnauthorized,
 	})
 }
 

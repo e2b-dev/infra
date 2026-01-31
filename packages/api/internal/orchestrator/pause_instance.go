@@ -8,7 +8,6 @@ import (
 
 	"github.com/gogo/status"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -16,9 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type PauseQueueExhaustedError struct{}
@@ -27,44 +24,11 @@ func (PauseQueueExhaustedError) Error() string {
 	return "The pause queue is exhausted"
 }
 
-func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox) (err error) {
+func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox) error {
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
-	machineInfo := node.MachineInfo()
-	snapshotConfig := queries.UpsertSnapshotParams{
-		// Used if there's no snapshot for this sandbox yet
-		TemplateID:     id.Generate(),
-		TeamID:         sbx.TeamID,
-		BaseTemplateID: sbx.BaseTemplateID,
-		SandboxID:      sbx.SandboxID,
-		StartedAt:      pgtype.Timestamptz{Time: sbx.StartTime, Valid: true},
-		Vcpu:           sbx.VCpu,
-		RamMb:          sbx.RamMB,
-		// We don't know this information
-		FreeDiskSizeMb:      0,
-		TotalDiskSizeMb:     &sbx.TotalDiskSizeMB,
-		Metadata:            sbx.Metadata,
-		KernelVersion:       sbx.KernelVersion,
-		FirecrackerVersion:  sbx.FirecrackerVersion,
-		EnvdVersion:         &sbx.EnvdVersion,
-		Secure:              sbx.EnvdAccessToken != nil,
-		AllowInternetAccess: sbx.AllowInternetAccess,
-		AutoPause:           sbx.AutoPause,
-		Config: &types.PausedSandboxConfig{
-			Version: types.PausedSandboxConfigVersion,
-			Network: sbx.Network,
-		},
-		OriginNodeID:    node.ID,
-		Status:          string(types.BuildStatusSnapshotting),
-		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
-		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
-		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
-		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
-		CpuFlags:        machineInfo.CPUFlags,
-	}
-
-	result, err := o.sqlcDB.UpsertSnapshot(ctx, snapshotConfig)
+	result, err := o.sqlcDB.UpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node))
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error inserting snapshot for env", err)
 

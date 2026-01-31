@@ -695,6 +695,12 @@ type SandboxesWithMetrics struct {
 	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
 }
 
+// SnapshotInfo defines model for SnapshotInfo.
+type SnapshotInfo struct {
+	// SnapshotID Unique identifier for the snapshot, can be used as template name
+	SnapshotID string `json:"snapshotID"`
+}
+
 // Team defines model for Team.
 type Team struct {
 	// ApiKey API key for the team
@@ -1181,6 +1187,17 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
+}
+
+// GetSnapshotsParams defines parameters for GetSnapshots.
+type GetSnapshotsParams struct {
+	SandboxID *string `form:"sandboxID,omitempty" json:"sandboxID,omitempty"`
+
+	// Limit Maximum number of items to return per page
+	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// NextToken Cursor to start the list from
+	NextToken *PaginationNextToken `form:"nextToken,omitempty" json:"nextToken,omitempty"`
 }
 
 // GetTeamsTeamIDMetricsParams defines parameters for GetTeamsTeamIDMetrics.

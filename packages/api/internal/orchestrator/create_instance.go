@@ -95,6 +95,7 @@ func (o *Orchestrator) CreateSandbox(
 	timeout time.Duration,
 	isResume bool,
 	nodeID *string,
+	templateID string,
 	baseTemplateID string,
 	autoPause bool,
 	envdAuthToken *string,
@@ -283,7 +284,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	sbx = sandbox.NewSandbox(
 		sandboxID,
-		build.EnvID,
+		templateID,
 		consts.ClientID,
 		&alias,
 		executionID,

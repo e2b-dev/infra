@@ -1,7 +1,7 @@
 -- name: UpsertSnapshot :one
 WITH new_template AS (
-    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
-    SELECT @template_id, FALSE, NULL, @team_id, now()
+    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source)
+    SELECT @template_id, FALSE, NULL, @team_id, now(), 'sandbox'
     WHERE NOT EXISTS (
         SELECT id
         FROM "public"."snapshots" s

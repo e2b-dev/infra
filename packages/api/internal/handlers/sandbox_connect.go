@@ -169,6 +169,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		&c.Request.Header,
 		true,
 		nodeID,
+		snap.EnvID,
 		snap.BaseEnvID,
 		autoPause,
 		envdAccessToken,

@@ -2,9 +2,7 @@ package optimize
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -233,32 +231,7 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 		attribute.Int64("block_size", allPrefetchData[0].BlockSize),
 	)
 
-	// Sort by average order
-	slices.SortFunc(commonEntries, func(a, b block.PrefetchBlockEntry) int {
-		if a.Order < b.Order {
-			return -1
-		}
-		if a.Order > b.Order {
-			return 1
-		}
-
-		return 0
-	})
-
-	// Build ordered indices and access types
-	orderedIndices := make([]uint64, len(commonEntries))
-	accessTypes := make([]metadata.AccessType, len(commonEntries))
-	for i, entry := range commonEntries {
-		orderedIndices[i] = entry.Index
-		accessTypes[i] = metadata.AccessTypeFromBlock(entry.AccessType)
-	}
-
-	// Create prefetch mapping with ordered indices and access types
-	return &metadata.MemoryPrefetchMapping{
-		Indices:     orderedIndices,
-		AccessTypes: accessTypes,
-		BlockSize:   allPrefetchData[0].BlockSize,
-	}, nil
+	return metadata.PrefetchEntriesToMapping(commonEntries, allPrefetchData[0].BlockSize), nil
 }
 
 // runSandboxAndCollectPrefetch runs a sandbox and collects the prefetch data.
@@ -283,28 +256,9 @@ func (pb *OptimizeBuilder) runSandboxAndCollectPrefetch(
 
 // updateMetadata updates the template metadata in storages.
 func (pb *OptimizeBuilder) updateMetadata(ctx context.Context, t metadata.Template) error {
-	ctx, span := tracer.Start(ctx, "upload-metadata")
-	defer span.End()
-
-	templateFiles := storage.TemplateFiles{BuildID: t.Template.BuildID}
-	metadataPath := templateFiles.StorageMetadataPath()
-
-	// Open the object for writing
-	object, err := pb.templateStorage.OpenBlob(ctx, metadataPath, storage.MetadataObjectType)
+	err := metadata.UploadMetadata(ctx, pb.templateStorage, t)
 	if err != nil {
-		return fmt.Errorf("failed to open metadata object: %w", err)
-	}
-
-	// Serialize metadata
-	metaBytes, err := json.Marshal(t)
-	if err != nil {
-		return fmt.Errorf("failed to serialize metadata: %w", err)
-	}
-
-	// Write to storage
-	err = object.Put(ctx, metaBytes)
-	if err != nil {
-		return fmt.Errorf("failed to write metadata: %w", err)
+		return err
 	}
 
 	// Invalidate local cache to force refetch with updated metadata

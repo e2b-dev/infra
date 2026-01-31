@@ -116,5 +116,5 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 
 	logger.L().Info(ctx, "Deleted template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
 
-	c.JSON(http.StatusOK, nil)
+	c.Status(http.StatusNoContent)
 }

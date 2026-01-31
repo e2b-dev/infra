@@ -168,6 +168,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		&c.Request.Header,
 		true,
 		nodeID,
+		snap.EnvID,
 		snap.BaseEnvID,
 		autoPause,
 		envdAccessToken,

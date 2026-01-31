@@ -19,10 +19,12 @@ const (
 )
 
 // paths that are always allowed without general authentication
+// POST/init is secured via MMDS hash validation instead
 var allowedPaths = []string{
 	"GET/health",
 	"GET/files",
 	"POST/files",
+	"POST/init",
 }
 
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
