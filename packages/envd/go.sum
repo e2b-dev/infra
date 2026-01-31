@@ -170,8 +170,8 @@ github.com/tklauser/go-sysconf v0.3.15 h1:VE89k0criAymJ/Os65CSn1IXaol+1wrsFHEB8O
 github.com/tklauser/go-sysconf v0.3.15/go.mod h1:Dmjwr6tYFIseJw7a3dRLJfsHAMXZ3nEnL/aZY+0IuI4=
 github.com/tklauser/numcpus v0.10.0 h1:18njr6LDBk1zuna922MgdjQuJFjrdppsZG60sHGfjso=
 github.com/tklauser/numcpus v0.10.0/go.mod h1:BiTKazU708GQTYF4mB+cmlpT2Is1gLk7XVuEeem8LsQ=
-github.com/txn2/txeh v1.5.5 h1:UN4e/lCK5HGw/gGAi2GCVrNKg0GTCUWs7gs5riaZlz4=
-github.com/txn2/txeh v1.5.5/go.mod h1:qYzGG9kCzeVEI12geK4IlanHWY8X4uy/I3NcW7mk8g4=
+github.com/txn2/txeh v1.7.0 h1:cbemPDQllpklE4HfPgrMxJ0l3ehADKefRZb6UnXnmas=
+github.com/txn2/txeh v1.7.0/go.mod h1:tkILV6LCwpZDRMfdAHOpcG8ZkCFbtlSJ76RLn25eGd8=
 github.com/ugorji/go/codec v1.2.12 h1:9LC83zGrHhuUA9l16C9AHXAqEV/2wBQ4nkvumAE65EE=
 github.com/ugorji/go/codec v1.2.12/go.mod h1:UNopzCgEMSXjBc6AOMqYvWC1ktqTAfzJZUZgYf6w6lg=
 github.com/vmware-labs/yaml-jsonpath v0.3.2 h1:/5QKeCBGdsInyDCyVNLbXyilb61MXGi9NP674f9Hobk=
