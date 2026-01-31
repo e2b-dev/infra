@@ -69,7 +69,7 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *string) (bool, bo
 		return false, false
 	}
 
-	mmdsHash, err := host.GetAccessTokenHashFromMMDS(ctx)
+	mmdsHash, err := a.mmdsClient.GetAccessTokenHash(ctx)
 	if err != nil || mmdsHash == "" {
 		return false, false
 	}
