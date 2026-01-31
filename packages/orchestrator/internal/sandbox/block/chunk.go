@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -15,6 +17,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// ChunkerStats tracks timing statistics for chunker operations.
+type ChunkerStats struct {
+	sliceCalls     atomic.Int64
+	sliceCacheHits atomic.Int64
+	sliceTotalNs   atomic.Int64
+	fetchCalls     atomic.Int64
+	fetchTotalNs   atomic.Int64
+	bytesRead      atomic.Int64
+}
 
 // Chunker is an interface for reading block data from either local cache or remote storage.
 //
@@ -56,6 +68,7 @@ type UncompressedMMapChunker struct {
 	size int64
 
 	fetchers *utils.WaitMap
+	stats    ChunkerStats
 }
 
 // NewUncompressedMMapChunker creates a legacy mmap-based chunker for uncompressed data.
@@ -99,10 +112,16 @@ func (c *UncompressedMMapChunker) ReadAt(ctx context.Context, b []byte, off int6
 }
 
 func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	start := time.Now()
 	timer := c.metrics.SlicesTimerFactory.Begin()
+
+	c.stats.sliceCalls.Add(1)
+	c.stats.bytesRead.Add(length)
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
+		c.stats.sliceCacheHits.Add(1)
+		c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
 		timer.Success(ctx, length,
 			attribute.String(pullType, pullTypeLocal))
 
@@ -117,7 +136,11 @@ func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64) 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
+	fetchStart := time.Now()
 	chunkErr := c.fetchToCache(ctx, off, length)
+	c.stats.fetchCalls.Add(1)
+	c.stats.fetchTotalNs.Add(time.Since(fetchStart).Nanoseconds())
+
 	if chunkErr != nil {
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeRemote),
@@ -135,6 +158,7 @@ func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64) 
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
+	c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
 	timer.Success(ctx, length,
 		attribute.String(pullType, pullTypeRemote))
 
@@ -230,7 +254,26 @@ func (c *UncompressedMMapChunker) fetchToCache(ctx context.Context, off, length 
 }
 
 func (c *UncompressedMMapChunker) Close() error {
+	c.logStats("UncompressedMMapChunker")
+
 	return c.cache.Close()
+}
+
+func (c *UncompressedMMapChunker) logStats(name string) {
+	calls := c.stats.sliceCalls.Load()
+	if calls == 0 {
+		return
+	}
+	hits := c.stats.sliceCacheHits.Load()
+	hitRate := float64(hits) / float64(calls) * 100
+	avgSlice := time.Duration(c.stats.sliceTotalNs.Load() / calls)
+	fetchCalls := c.stats.fetchCalls.Load()
+	var avgFetch time.Duration
+	if fetchCalls > 0 {
+		avgFetch = time.Duration(c.stats.fetchTotalNs.Load() / fetchCalls)
+	}
+	fmt.Printf("[CHUNKER %s %s] slices=%d cacheHit=%.1f%% avgSlice=%v fetches=%d avgFetch=%v bytesRead=%dMB\n",
+		name, c.objectPath, calls, hitRate, avgSlice, fetchCalls, avgFetch, c.stats.bytesRead.Load()/(1024*1024))
 }
 
 func (c *UncompressedMMapChunker) FileSize() (int64, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"go.opentelemetry.io/otel/attribute"
@@ -29,6 +30,7 @@ type CompressLRUChunker struct {
 	fetchGroup singleflight.Group
 	size       int64
 	metrics    metrics.Metrics
+	stats      ChunkerStats
 }
 
 // NewCompressLRUChunker creates a new CompressLRUChunker.
@@ -80,7 +82,11 @@ func (c *CompressLRUChunker) ReadAt(ctx context.Context, b []byte, off int64) (i
 // Slice returns a slice of the data at the given offset and length.
 // The returned slice references internal LRU data and MUST NOT be modified.
 func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	start := time.Now()
 	timer := c.metrics.SlicesTimerFactory.Begin()
+
+	c.stats.sliceCalls.Add(1)
+	c.stats.bytesRead.Add(length)
 
 	// Clamp length to available data
 	if off+length > c.size {
@@ -105,7 +111,8 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 
 	// Fast path: entire read fits in one frame (common case for 4KB page faults in 4MB frames)
 	if endInFrame <= int64(frameSize.U) {
-		data, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize)
+		fetchStart := time.Now()
+		data, cacheHit, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize)
 		if err != nil {
 			timer.Failure(ctx, length,
 				attribute.String(pullType, pullTypeRemote),
@@ -114,6 +121,14 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 			return nil, err
 		}
 
+		if cacheHit {
+			c.stats.sliceCacheHits.Add(1)
+		} else {
+			c.stats.fetchCalls.Add(1)
+			c.stats.fetchTotalNs.Add(time.Since(fetchStart).Nanoseconds())
+		}
+
+		c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
 		timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
 		// Return direct slice - no copy needed
 		return data[startInFrame:endInFrame], nil
@@ -144,9 +159,16 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 		copied += toCopy
 
 		eg.Go(func() error {
-			data, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize)
+			fetchStart := time.Now()
+			data, cacheHit, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize)
 			if err != nil {
 				return err
+			}
+			if cacheHit {
+				c.stats.sliceCacheHits.Add(1)
+			} else {
+				c.stats.fetchCalls.Add(1)
+				c.stats.fetchTotalNs.Add(time.Since(fetchStart).Nanoseconds())
 			}
 			copy(result[resultOff:], data[startInFrame:startInFrame+int64(toCopy)])
 
@@ -162,16 +184,18 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 		return nil, err
 	}
 
+	c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
 	timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
 
 	return result, nil
 }
 
 // getOrFetchFrame returns frame data from LRU or fetches it from storage.
-func (c *CompressLRUChunker) getOrFetchFrame(ctx context.Context, frameOffU int64, frameSize storage.FrameSize) ([]byte, error) {
+// Returns the data, whether it was a cache hit, and any error.
+func (c *CompressLRUChunker) getOrFetchFrame(ctx context.Context, frameOffU int64, frameSize storage.FrameSize) ([]byte, bool, error) {
 	// Check LRU cache first
 	if frame, ok := c.frameLRU.get(frameOffU); ok {
-		return frame.data, nil
+		return frame.data, true, nil
 	}
 
 	// Fetch with deduplication - concurrent requests for same frame share one fetch
@@ -185,10 +209,10 @@ func (c *CompressLRUChunker) getOrFetchFrame(ctx context.Context, frameOffU int6
 		return c.fetchAndDecompress(ctx, frameOffU, frameSize)
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	return dataI.([]byte), nil
+	return dataI.([]byte), false, nil
 }
 
 // fetchAndDecompress fetches a compressed frame from storage, decompresses it, and stores in LRU.
@@ -227,11 +251,29 @@ func (c *CompressLRUChunker) fetchAndDecompress(ctx context.Context, frameOffU i
 
 // Close releases all resources used by the chunker.
 func (c *CompressLRUChunker) Close() error {
+	c.logStats()
 	if c.frameLRU != nil {
 		c.frameLRU.Purge()
 	}
 
 	return nil
+}
+
+func (c *CompressLRUChunker) logStats() {
+	calls := c.stats.sliceCalls.Load()
+	if calls == 0 {
+		return
+	}
+	hits := c.stats.sliceCacheHits.Load()
+	hitRate := float64(hits) / float64(calls) * 100
+	avgSlice := time.Duration(c.stats.sliceTotalNs.Load() / calls)
+	fetchCalls := c.stats.fetchCalls.Load()
+	var avgFetch time.Duration
+	if fetchCalls > 0 {
+		avgFetch = time.Duration(c.stats.fetchTotalNs.Load() / fetchCalls)
+	}
+	fmt.Printf("[CHUNKER CompressLRU %s] slices=%d cacheHit=%.1f%% avgSlice=%v fetches=%d avgFetch=%v bytesRead=%dMB\n",
+		c.objectPath, calls, hitRate, avgSlice, fetchCalls, avgFetch, c.stats.bytesRead.Load()/(1024*1024))
 }
 
 // FileSize returns 0 (no local file - NFS cache handles file storage).

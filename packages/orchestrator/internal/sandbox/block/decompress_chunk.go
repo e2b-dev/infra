@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -32,6 +33,7 @@ type DecompressMMapChunker struct {
 	size int64
 
 	fetchers *utils.WaitMap
+	stats    ChunkerStats
 }
 
 // Verify DecompressMMapChunker implements Chunker.
@@ -80,10 +82,16 @@ func (c *DecompressMMapChunker) ReadAt(ctx context.Context, b []byte, off int64)
 }
 
 func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	start := time.Now()
 	timer := c.metrics.SlicesTimerFactory.Begin()
+
+	c.stats.sliceCalls.Add(1)
+	c.stats.bytesRead.Add(length)
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
+		c.stats.sliceCacheHits.Add(1)
+		c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
 		timer.Success(ctx, length,
 			attribute.String(pullType, pullTypeLocal))
 
@@ -98,7 +106,11 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64) ([
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
+	fetchStart := time.Now()
 	chunkErr := c.fetchToCache(ctx, off, length)
+	c.stats.fetchCalls.Add(1)
+	c.stats.fetchTotalNs.Add(time.Since(fetchStart).Nanoseconds())
+
 	if chunkErr != nil {
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeRemote),
@@ -116,6 +128,7 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64) ([
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
+	c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
 	timer.Success(ctx, length,
 		attribute.String(pullType, pullTypeRemote))
 
@@ -197,7 +210,26 @@ func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length in
 }
 
 func (c *DecompressMMapChunker) Close() error {
+	c.logStats()
+
 	return c.cache.Close()
+}
+
+func (c *DecompressMMapChunker) logStats() {
+	calls := c.stats.sliceCalls.Load()
+	if calls == 0 {
+		return
+	}
+	hits := c.stats.sliceCacheHits.Load()
+	hitRate := float64(hits) / float64(calls) * 100
+	avgSlice := time.Duration(c.stats.sliceTotalNs.Load() / calls)
+	fetchCalls := c.stats.fetchCalls.Load()
+	var avgFetch time.Duration
+	if fetchCalls > 0 {
+		avgFetch = time.Duration(c.stats.fetchTotalNs.Load() / fetchCalls)
+	}
+	fmt.Printf("[CHUNKER DecompressMMap %s] slices=%d cacheHit=%.1f%% avgSlice=%v fetches=%d avgFetch=%v bytesRead=%dMB\n",
+		c.objectPath, calls, hitRate, avgSlice, fetchCalls, avgFetch, c.stats.bytesRead.Load()/(1024*1024))
 }
 
 func (c *DecompressMMapChunker) FileSize() (int64, error) {
