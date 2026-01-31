@@ -6,6 +6,8 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 // Start, Length and SourceStart are in bytes of the data file
@@ -13,10 +15,11 @@ import (
 // The list of block mappings will be in order of increasing Start, covering the entire file
 type BuildMap struct {
 	// Offset defines which block of the current layer this mapping starts at
-	Offset             uint64
+	Offset             uint64 // in the memory space
 	Length             uint64
 	BuildId            uuid.UUID
 	BuildStorageOffset uint64
+	FrameTable         *storage.FrameTable
 }
 
 func (mapping *BuildMap) Copy() *BuildMap {
@@ -26,6 +29,36 @@ func (mapping *BuildMap) Copy() *BuildMap {
 		BuildId:            mapping.BuildId,
 		BuildStorageOffset: mapping.BuildStorageOffset,
 	}
+}
+
+// AddFrames associates compression frame information with this mapping.
+//
+// When a file is uploaded with compression, the compressor produces a FrameTable
+// that describes how the compressed data is organized into frames. This method
+// computes which compressed frames cover this mapping's data within the build's
+// storage file based on BuildStorageOffset and Length.
+//
+// Returns nil if frameTable is nil. Returns an error if the mapping's range
+// cannot be found in the frame table.
+func (mapping *BuildMap) AddFrames(frameTable *storage.FrameTable) error {
+	if frameTable == nil {
+		return nil
+	}
+
+	mappedRange := storage.Range{
+		Start:  int64(mapping.BuildStorageOffset),
+		Length: int(mapping.Length),
+	}
+
+	subset, err := frameTable.Subset(mappedRange)
+	if err != nil {
+		return fmt.Errorf("mapping at virtual offset %#x (storage offset %#x, length %#x): %w",
+			mapping.Offset, mapping.BuildStorageOffset, mapping.Length, err)
+	}
+
+	mapping.FrameTable = subset
+
+	return nil
 }
 
 func CreateMapping(
@@ -160,6 +193,12 @@ func MergeMappings(
 					// the build storage offset is the same as the base mapping
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
+				var err error
+				leftBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.BuildStorageOffset), Length: int(leftBase.Length)})
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "UNREACHABLE: requested range %#x %#x could not be fulfilled by the frameTable %+v %+v: %v\n",
+						leftBase.BuildStorageOffset, leftBase.Length, base, diff, err)
+				}
 
 				mappings = append(mappings, leftBase)
 			}
@@ -177,6 +216,12 @@ func MergeMappings(
 					Length:             uint64(rightBaseLength),
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
+				}
+				var err error
+				rightBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.BuildStorageOffset), Length: int(rightBase.Length)})
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "UNREACHABLE: requested range %#x %#x could not be fulfilled by the frameTable %+v %+v: %v\n",
+						rightBase.BuildStorageOffset, rightBase.Length, base, diff, err)
 				}
 
 				baseMapping[baseIdx] = rightBase
@@ -205,6 +250,12 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
+				var err error
+				rightBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.BuildStorageOffset), Length: int(rightBase.Length)})
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "UNREACHABLE: requested range %#x %#x could not be fulfilled by the frameTable %+v %+v: %v\n",
+						rightBase.BuildStorageOffset, rightBase.Length, base, diff, err)
+				}
 
 				baseMapping[baseIdx] = rightBase
 			} else {
@@ -225,6 +276,12 @@ func MergeMappings(
 					Length:             uint64(leftBaseLength),
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
+				}
+				var err error
+				leftBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.BuildStorageOffset), Length: int(leftBase.Length)})
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "UNREACHABLE: requested range %#x %#x could not be fulfilled by the frameTable %+v %+v: %v\n",
+						leftBase.BuildStorageOffset, leftBase.Length, base, diff, err)
 				}
 
 				mappings = append(mappings, leftBase)

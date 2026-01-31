@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/bits-and-blooms/bitset"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const NormalizeFixVersion = 3
@@ -55,35 +55,89 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
 	}, nil
 }
 
+func (t *Header) String() string {
+	if t == nil {
+		return "[nil Header]"
+	}
+
+	return fmt.Sprintf("[Header: version=%d, size=%d, blockSize=%d, generation=%d, buildId=%s, mappings=%d]",
+		t.Metadata.Version,
+		t.Metadata.Size,
+		t.Metadata.BlockSize,
+		t.Metadata.Generation,
+		t.Metadata.BuildId.String(),
+		len(t.Mapping),
+	)
+}
+
+func (t *Header) Mappings(all bool) string {
+	if t == nil {
+		return "[nil Header, no mappings]"
+	}
+	n := 0
+	for _, m := range t.Mapping {
+		if all || m.BuildId == t.Metadata.BuildId {
+			n++
+		}
+	}
+	result := fmt.Sprintf("All mappings: %d\n", n)
+	if !all {
+		result = fmt.Sprintf("Mappings for build %s: %d\n", t.Metadata.BuildId.String(), n)
+	}
+	for _, m := range t.Mapping {
+		if !all && m.BuildId != t.Metadata.BuildId {
+			continue
+		}
+		frames := 0
+		if m.FrameTable != nil {
+			frames = len(m.FrameTable.Frames)
+		}
+		result += fmt.Sprintf("  - Offset: %#x, Length: %#x, BuildId: %s, BuildStorageOffset: %#x, numFrames: %d\n",
+			m.Offset,
+			m.Length,
+			m.BuildId.String(),
+			m.BuildStorageOffset,
+			frames,
+		)
+	}
+
+	return result
+}
+
 // IsNormalizeFixApplied is a helper method to soft fail for older versions of the header where fix for normalization was not applied.
 // This should be removed in the future.
 func (t *Header) IsNormalizeFixApplied() bool {
 	return t.Metadata.Version >= NormalizeFixVersion
 }
 
-func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (mappedOffset int64, mappedLength int64, buildID *uuid.UUID, err error) {
+func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (mappedToBuild *BuildMap, err error) {
 	mapping, shift, err := t.getMapping(ctx, offset)
 	if err != nil {
-		return 0, 0, nil, err
+		return nil, err
+	}
+	lengthInBuild := int64(mapping.Length) - shift
+
+	b := &BuildMap{
+		Offset:     mapping.BuildStorageOffset + uint64(shift),
+		Length:     uint64(lengthInBuild),
+		BuildId:    mapping.BuildId,
+		FrameTable: mapping.FrameTable,
 	}
 
-	mappedOffset = int64(mapping.BuildStorageOffset) + shift
-	mappedLength = int64(mapping.Length) - shift
-	buildID = &mapping.BuildId
-
-	if mappedLength < 0 {
+	if lengthInBuild < 0 {
 		if t.IsNormalizeFixApplied() {
-			return 0, 0, nil, fmt.Errorf("mapped length for offset %d is negative: %d", offset, mappedLength)
+			return nil, fmt.Errorf("mapped length for offset %d is negative: %d", offset, lengthInBuild)
 		}
 
+		b.Length = 0
 		logger.L().Warn(ctx, "mapped length is negative, but normalize fix is not applied",
 			zap.Int64("offset", offset),
-			zap.Int64("mappedLength", mappedLength),
+			zap.Int64("mappedLength", lengthInBuild),
 			logger.WithBuildID(mapping.BuildId.String()),
 		)
 	}
 
-	return mappedOffset, mappedLength, buildID, nil
+	return b, nil
 }
 
 // TODO: Maybe we can optimize mapping by automatically assuming the mapping is uuid.Nil if we don't find it + stopping storing the nil mapping.
@@ -142,4 +196,23 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 	}
 
 	return mapping, shift, nil
+}
+
+// AddFrames associates compression frame information with this header's mappings.
+//
+// Only mappings matching this header's BuildId will be updated. Returns nil if frameTable is nil.
+func (t *Header) AddFrames(frameTable *storage.FrameTable) error {
+	if frameTable == nil {
+		return nil
+	}
+
+	for _, mapping := range t.Mapping {
+		if mapping.BuildId == t.Metadata.BuildId {
+			if err := mapping.AddFrames(frameTable); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

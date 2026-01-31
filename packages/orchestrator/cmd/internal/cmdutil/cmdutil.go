@@ -55,7 +55,7 @@ func GetHeaderInfo(headerPath string) (totalSize, blockSize uint64) {
 	if err != nil {
 		return 0, 0
 	}
-	h, err := header.DeserializeBytes(data)
+	h, err := header.Deserialize(data)
 	if err != nil {
 		return 0, 0
 	}

@@ -53,7 +53,7 @@ func main() {
 		log.Fatalf("failed to read header: %s", err)
 	}
 
-	h, err := header.DeserializeBytes(headerData)
+	h, err := header.Deserialize(headerData)
 	if err != nil {
 		log.Fatalf("failed to deserialize header: %s", err)
 	}

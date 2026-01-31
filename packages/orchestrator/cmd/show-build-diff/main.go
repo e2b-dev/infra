@@ -39,44 +39,33 @@ func main() {
 		log.Fatal("specify either -memfile or -rootfs, not both")
 	}
 
-	baseTemplate := storage.TemplateFiles{
-		BuildID: *fromBuild,
-	}
-
-	diffTemplate := storage.TemplateFiles{
-		BuildID: *toBuild,
-	}
-
-	var baseHeaderFile string
-	var diffHeaderFile string
-
+	var artifactName string
 	if *memfile {
-		baseHeaderFile = baseTemplate.StorageMemfileHeaderPath()
-		diffHeaderFile = diffTemplate.StorageMemfileHeaderPath()
+		artifactName = storage.MemfileName
 	} else {
-		baseHeaderFile = baseTemplate.StorageRootfsHeaderPath()
-		diffHeaderFile = diffTemplate.StorageRootfsHeaderPath()
+		artifactName = storage.RootfsName
 	}
+	headerFile := artifactName + storage.HeaderSuffix
 
 	ctx := context.Background()
 
-	// Read headers directly
-	baseData, baseSource, err := cmdutil.ReadHeader(ctx, *storagePath, baseHeaderFile)
+	// Read headers
+	baseData, baseSource, err := cmdutil.ReadFile(ctx, *storagePath, *fromBuild, headerFile)
 	if err != nil {
 		log.Fatalf("failed to read base header: %s", err)
 	}
 
-	diffData, diffSource, err := cmdutil.ReadHeader(ctx, *storagePath, diffHeaderFile)
+	diffData, diffSource, err := cmdutil.ReadFile(ctx, *storagePath, *toBuild, headerFile)
 	if err != nil {
 		log.Fatalf("failed to read diff header: %s", err)
 	}
 
-	baseHeader, err := header.DeserializeBytes(baseData)
+	baseHeader, err := header.Deserialize(baseData)
 	if err != nil {
 		log.Fatalf("failed to deserialize base header: %s", err)
 	}
 
-	diffHeader, err := header.DeserializeBytes(diffData)
+	diffHeader, err := header.Deserialize(diffData)
 	if err != nil {
 		log.Fatalf("failed to deserialize diff header: %s", err)
 	}

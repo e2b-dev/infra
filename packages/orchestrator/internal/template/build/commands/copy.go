@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,21 +78,6 @@ func (c *Copy) Execute(
 		return metadata.Context{}, fmt.Errorf("%s requires files hash to be set", cmdType)
 	}
 
-	// 1) Download the layer tar file from the storage to the local filesystem
-	obj, err := c.FilesStorage.OpenBlob(ctx, paths.GetLayerFilesCachePath(c.CacheScope, step.GetFilesHash()), storage.BuildLayerFileObjectType)
-	if err != nil {
-		return metadata.Context{}, fmt.Errorf("failed to open files object from storage: %w", err)
-	}
-
-	pr, pw := io.Pipe()
-	// Start writing tar data to the pipe writer in a goroutine
-	go func() {
-		defer pw.Close()
-		if _, err := obj.WriteTo(ctx, pw); err != nil {
-			pw.CloseWithError(err)
-		}
-	}()
-
 	tmpFile, err := os.CreateTemp("", "layer-file-*.tar")
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to create temporary file for layer tar: %w", err)
@@ -101,9 +85,9 @@ func (c *Copy) Execute(
 	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
 
-	_, err = io.Copy(tmpFile, pr)
+	_, err = c.FilesStorage.CopyBlob(ctx, paths.GetLayerFilesCachePath(c.CacheScope, step.GetFilesHash()), tmpFile)
 	if err != nil {
-		return metadata.Context{}, fmt.Errorf("failed to copy layer tar data to temporary file: %w", err)
+		return metadata.Context{}, fmt.Errorf("failed to open files object from storage: %w", err)
 	}
 
 	// The file is automatically cleaned up by the sandbox restart in the last step.

@@ -1,28 +1,86 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"os"
+	"sync"
 
+	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+// PendingFrameTables collects frame tables from data uploads, keyed by
+// object name (e.g., "buildId/rootfs.ext4"). These are held temporarily
+// until headers can be finalized after all data uploads complete.
+type PendingFrameTables struct {
+	tables sync.Map // key: objectName (string), value: *storage.FrameTable
+}
+
+func NewPendingFrameTables() *PendingFrameTables {
+	return &PendingFrameTables{}
+}
+
+// Add stores a frame table for a specific object name.
+func (p *PendingFrameTables) Add(objectName string, ft *storage.FrameTable) {
+	if ft == nil {
+		return
+	}
+	p.tables.Store(objectName, ft)
+}
+
+// Get retrieves a frame table for a specific object name.
+func (p *PendingFrameTables) Get(objectName string) *storage.FrameTable {
+	v, ok := p.tables.Load(objectName)
+	if !ok {
+		return nil
+	}
+
+	return v.(*storage.FrameTable)
+}
+
+// ApplyToHeader applies frame tables to all mappings in a header based on each mapping's BuildId.
+// This should be called after all data uploads are complete so all frame tables are available.
+func (p *PendingFrameTables) ApplyToHeader(h *header.Header, fileType string) error {
+	if h == nil {
+		return nil
+	}
+
+	for _, mapping := range h.Mapping {
+		if mapping.BuildId == uuid.Nil {
+			// Skip hole mappings
+			continue
+		}
+
+		objectName := mapping.BuildId.String() + "/" + fileType
+		ft := p.Get(objectName)
+		if ft == nil {
+			// No frame table for this build - data might be uncompressed or already has FT
+			continue
+		}
+
+		if err := mapping.AddFrames(ft); err != nil {
+			return fmt.Errorf("failed to add frames to mapping for build %s: %w", mapping.BuildId, err)
+		}
+	}
+
+	return nil
+}
 
 type TemplateBuild struct {
 	files       storage.TemplateFiles
 	persistence storage.StorageProvider
 
-	memfileHeader *headers.Header
-	rootfsHeader  *headers.Header
+	memfileHeader *header.Header
+	rootfsHeader  *header.Header
 }
 
-func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence storage.StorageProvider, files storage.TemplateFiles) *TemplateBuild {
+func NewTemplateBuild(memfileHeader *header.Header, rootfsHeader *header.Header, s storage.StorageProvider, files storage.TemplateFiles) *TemplateBuild {
 	return &TemplateBuild{
-		persistence: persistence,
+		persistence: s,
 		files:       files,
 
 		memfileHeader: memfileHeader,
@@ -31,7 +89,7 @@ func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Heade
 }
 
 func (t *TemplateBuild) Remove(ctx context.Context) error {
-	err := t.persistence.DeleteObjectsWithPrefix(ctx, t.files.StorageDir())
+	err := t.persistence.DeleteWithPrefix(ctx, t.files.StorageDir())
 	if err != nil {
 		return fmt.Errorf("error when removing template build '%s': %w", t.files.StorageDir(), err)
 	}
@@ -39,121 +97,82 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 	return nil
 }
 
-func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageMemfileHeaderPath(), storage.MemfileHeaderObjectType)
-	if err != nil {
-		return err
-	}
-
-	serialized, err := headers.Serialize(h.Metadata, h.Mapping)
-	if err != nil {
-		return fmt.Errorf("error when serializing memfile header: %w", err)
-	}
-
-	err = object.Put(ctx, serialized)
-	if err != nil {
-		return fmt.Errorf("error when uploading memfile header: %w", err)
-	}
-
-	return nil
+// DataUploadResult contains the frame tables generated from uploading data files.
+type DataUploadResult struct {
+	MemfileFrameTable *storage.FrameTable
+	RootfsFrameTable  *storage.FrameTable
 }
 
-func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
-	object, err := t.persistence.OpenSeekable(ctx, t.files.StorageMemfilePath(), storage.MemfileObjectType)
-	if err != nil {
-		return err
+// UploadData uploads all data files (rootfs, memfile, snapfile, metadata) in parallel.
+// It returns the frame tables generated from compression, which should be added
+// to PendingFrameTables for later use when finalizing headers.
+func (t *TemplateBuild) UploadData(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) (*DataUploadResult, error) {
+	eg, ctx := errgroup.WithContext(ctx)
+
+	result := &DataUploadResult{}
+	var rootfsFTMu, memfileFTMu sync.Mutex
+
+	eg.Go(func() error {
+		// RootFS data
+		if rootfsPath != nil {
+			ft, err := t.persistence.StoreFile(ctx, *rootfsPath, t.files.StorageRootfsPath(), storage.DefaultCompressionOptions)
+			if err != nil {
+				return fmt.Errorf("error when uploading rootfs data: %w", err)
+			}
+			rootfsFTMu.Lock()
+			result.RootfsFrameTable = ft
+			rootfsFTMu.Unlock()
+		}
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		// Memfile data
+		if memfilePath != nil {
+			ft, err := t.persistence.StoreFile(ctx, *memfilePath, t.files.StorageMemfilePath(), storage.DefaultCompressionOptions)
+			if err != nil {
+				return fmt.Errorf("error when uploading memfile data: %w", err)
+			}
+			memfileFTMu.Lock()
+			result.MemfileFrameTable = ft
+			memfileFTMu.Unlock()
+		}
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		// Snap file
+		err := storage.StoreBlobFromFile(ctx, t.persistence, fcSnapfilePath, t.files.StorageSnapfilePath())
+		if err != nil {
+			return fmt.Errorf("error when uploading snapfile: %w", err)
+		}
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		// Metadata
+		err := storage.StoreBlobFromFile(ctx, t.persistence, metadataPath, t.files.StorageMetadataPath())
+		if err != nil {
+			return fmt.Errorf("error when uploading metadata: %w", err)
+		}
+
+		return nil
+	})
+
+	if err := eg.Wait(); err != nil {
+		return nil, err
 	}
 
-	err = object.StoreFile(ctx, memfilePath)
-	if err != nil {
-		return fmt.Errorf("error when uploading memfile: %w", err)
-	}
-
-	return nil
+	return result, nil
 }
 
-func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
-	if err != nil {
-		return err
-	}
-
-	serialized, err := headers.Serialize(h.Metadata, h.Mapping)
-	if err != nil {
-		return fmt.Errorf("error when serializing memfile header: %w", err)
-	}
-
-	err = object.Put(ctx, serialized)
-	if err != nil {
-		return fmt.Errorf("error when uploading memfile header: %w", err)
-	}
-
-	return nil
-}
-
-func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
-	object, err := t.persistence.OpenSeekable(ctx, t.files.StorageRootfsPath(), storage.RootFSObjectType)
-	if err != nil {
-		return err
-	}
-
-	err = object.StoreFile(ctx, rootfsPath)
-	if err != nil {
-		return fmt.Errorf("error when uploading rootfs: %w", err)
-	}
-
-	return nil
-}
-
-// Snap-file is small enough so we don't use composite upload.
-func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageSnapfilePath(), storage.SnapfileObjectType)
-	if err != nil {
-		return err
-	}
-
-	if err = uploadFileAsBlob(ctx, object, path); err != nil {
-		return fmt.Errorf("error when uploading snapfile: %w", err)
-	}
-
-	return nil
-}
-
-// Metadata is small enough so we don't use composite upload.
-func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageMetadataPath(), storage.MetadataObjectType)
-	if err != nil {
-		return err
-	}
-
-	if err := uploadFileAsBlob(ctx, object, path); err != nil {
-		return fmt.Errorf("error when uploading metadata: %w", err)
-	}
-
-	return nil
-}
-
-func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", path, err)
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", path, err)
-	}
-
-	err = b.Put(ctx, data)
-	if err != nil {
-		return fmt.Errorf("failed to write data to object: %w", err)
-	}
-
-	return nil
-}
-
-func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) chan error {
+// FinalizeHeaders applies pending frame tables to headers, serializes them,
+// and uploads them to storage. This should be called after all data uploads are complete
+// so pending contains frame tables from all builds referenced by the headers.
+func (t *TemplateBuild) FinalizeHeaders(ctx context.Context, pending *PendingFrameTables) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
@@ -161,22 +180,18 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		err := t.uploadRootfsHeader(ctx, t.rootfsHeader)
-		if err != nil {
-			return err
+		if err := pending.ApplyToHeader(t.rootfsHeader, "rootfs.ext4"); err != nil {
+			return fmt.Errorf("failed to apply frame tables to rootfs header: %w", err)
 		}
 
-		return nil
-	})
-
-	eg.Go(func() error {
-		if rootfsPath == nil {
-			return nil
+		serialized, err := header.Serialize(t.rootfsHeader.Metadata, t.rootfsHeader.Mapping)
+		if err != nil {
+			return fmt.Errorf("error when serializing rootfs header: %w", err)
 		}
 
-		err := t.uploadRootfs(ctx, *rootfsPath)
+		err = t.persistence.StoreBlob(ctx, t.files.StorageRootfsHeaderPath(), bytes.NewReader(serialized))
 		if err != nil {
-			return err
+			return fmt.Errorf("error when uploading rootfs header: %w", err)
 		}
 
 		return nil
@@ -187,43 +202,59 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		err := t.uploadMemfileHeader(ctx, t.memfileHeader)
+		if err := pending.ApplyToHeader(t.memfileHeader, "memfile"); err != nil {
+			return fmt.Errorf("failed to apply frame tables to memfile header: %w", err)
+		}
+
+		serialized, err := header.Serialize(t.memfileHeader.Metadata, t.memfileHeader.Mapping)
 		if err != nil {
-			return err
+			return fmt.Errorf("error when serializing memfile header: %w", err)
 		}
 
-		return nil
-	})
-
-	eg.Go(func() error {
-		if memfilePath == nil {
-			return nil
-		}
-
-		err := t.uploadMemfile(ctx, *memfilePath)
+		err = t.persistence.StoreBlob(ctx, t.files.StorageMemfileHeaderPath(), bytes.NewReader(serialized))
 		if err != nil {
-			return err
+			return fmt.Errorf("error when uploading memfile header: %w", err)
 		}
 
 		return nil
 	})
 
-	eg.Go(func() error {
-		if err := t.uploadSnapfile(ctx, fcSnapfilePath); err != nil {
-			return fmt.Errorf("error when uploading snapfile: %w", err)
-		}
+	return eg.Wait()
+}
 
-		return nil
-	})
-
-	eg.Go(func() error {
-		return t.uploadMetadata(ctx, metadataPath)
-	})
-
+// Upload uploads data files and headers for a single build.
+// This is appropriate for single-layer uploads (e.g., pausing a sandbox) where
+// parent frame tables are already embedded in the header from previous builds.
+// For parallel multi-layer builds, use UploadData + FinalizeHeaders with a shared
+// PendingFrameTables to coordinate frame tables across concurrent uploads.
+func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) chan error {
 	done := make(chan error)
 
 	go func() {
-		done <- eg.Wait()
+		// Create pending frame tables just for this build
+		pending := NewPendingFrameTables()
+
+		// Upload data files
+		result, err := t.UploadData(ctx, metadataPath, fcSnapfilePath, memfilePath, rootfsPath)
+		if err != nil {
+			done <- err
+
+			return
+		}
+
+		// Add this build's frame tables to pending
+		buildId := t.files.BuildID
+		if result.RootfsFrameTable != nil {
+			pending.Add(buildId+"/rootfs.ext4", result.RootfsFrameTable)
+		}
+		if result.MemfileFrameTable != nil {
+			pending.Add(buildId+"/memfile", result.MemfileFrameTable)
+		}
+
+		// Finalize headers (only has this build's frame tables, not parents')
+		// This is why this method is deprecated - use the two-phase approach instead
+		err = t.FinalizeHeaders(ctx, pending)
+		done <- err
 	}()
 
 	return done

@@ -26,7 +26,7 @@ const (
 
 type Diff interface {
 	io.Closer
-	storage.SeekableReader
+	storage.ReaderAt
 	block.Slicer
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
@@ -66,7 +66,7 @@ func (n *NoDiff) CacheKey() DiffStoreKey {
 	return ""
 }
 
-func (n *NoDiff) Init(context.Context) error {
+func (n *NoDiff) Init(_ context.Context) error {
 	return NoDiffError{}
 }
 

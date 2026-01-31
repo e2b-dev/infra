@@ -11,28 +11,24 @@ packages:
     interfaces:
       featureFlagsClient:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockfeatureflagsclient.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          inpackage: true
+          filename: mock_feature_flags_client.go
           structname: MockFeatureFlagsClient
-      Blob:
+      StorageProvider:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockobjectprovider.go
-          pkgname: storagemocks
-      Seekable:
-        config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockseekableobjectprovider.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          inpackage: true
+          filename: mock_storage_provider.go
 
   io:
     interfaces:
       Reader:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockioreader.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          filename: mock_io_reader.go
+          inpackage: true
+          pkgname: storage
 
   github.com/e2b-dev/infra/packages/shared/pkg/utils:
     interfaces:

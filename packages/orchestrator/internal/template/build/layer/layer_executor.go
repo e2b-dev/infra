@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -277,52 +278,96 @@ func (lb *LayerExecutor) PauseAndUpload(
 		return fmt.Errorf("error adding snapshot to template cache: %w", err)
 	}
 
-	// Upload snapshot async, it's added to the template cache immediately
+	// Upload snapshot async - it's already in the template cache for immediate use
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
-	// Register this upload and get functions to signal completion and wait for previous uploads
+	lb.startUpload(ctx, snapshot, hash, meta.Template.BuildID, userLogger)
+
+	return nil
+}
+
+// startUpload runs the two-phase upload in a goroutine, coordinating with other
+// layers to cross-inject frame tables into headers.
+func (lb *LayerExecutor) startUpload(
+	ctx context.Context,
+	snapshot *sandbox.Snapshot,
+	hash string,
+	buildID string,
+	userLogger logger.Logger,
+) {
+	completeDataFileUpload, waitForAllDataFileUploads := lb.uploadTracker.StartDataFileUpload()
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
+	pending := lb.uploadTracker.Pending()
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)
 		ctx, span := tracer.Start(ctx, "upload snapshot")
 		defer span.End()
-
-		// Always signal completion to unblock waiting goroutines, even on error.
-		// This prevents deadlocks when an earlier layer fails - later layers can
-		// still unblock and the errgroup can properly collect all errors.
 		defer completeUpload()
 
-		err := snapshot.Upload(
-			ctx,
-			lb.templateStorage,
-			storage.TemplateFiles{BuildID: meta.Template.BuildID},
-		)
+		uploadStart := time.Now()
+
+		// Phase 1: Upload data files
+		dataUploadStart := time.Now()
+		result, err := snapshot.UploadDataFiles(ctx, lb.templateStorage, storage.TemplateFiles{BuildID: buildID})
+		dataUploadDuration := time.Since(dataUploadStart)
+		fmt.Printf("[LAYER UPLOAD %s] Phase1 data upload took %v\n", buildID, dataUploadDuration)
+
 		if err != nil {
-			return fmt.Errorf("error uploading snapshot: %w", err)
+			completeDataFileUpload()
+
+			return fmt.Errorf("error uploading data files: %w", err)
 		}
 
-		// Wait for all previous layer uploads to complete before saving the cache entry.
-		// This prevents race conditions where another build hits this cache entry
-		// before its dependencies (previous layers) are available in storage.
-		err = waitForPreviousUploads(ctx)
-		if err != nil {
+		// Add frame tables for other layers to reference
+		if result.RootfsFrameTable != nil {
+			pending.Add(buildID+"/rootfs.ext4", result.RootfsFrameTable)
+		}
+		if result.MemfileFrameTable != nil {
+			pending.Add(buildID+"/memfile", result.MemfileFrameTable)
+		}
+		completeDataFileUpload()
+
+		// Phase 2: Wait for all layers, then finalize headers
+		waitAllStart := time.Now()
+		if err := waitForAllDataFileUploads(ctx); err != nil {
+			return fmt.Errorf("error waiting for data uploads: %w", err)
+		}
+		waitAllDuration := time.Since(waitAllStart)
+		fmt.Printf("[LAYER UPLOAD %s] Phase2 wait for all data uploads took %v\n", buildID, waitAllDuration)
+
+		headerStart := time.Now()
+		if err := result.TemplateBuild.FinalizeHeaders(ctx, pending); err != nil {
+			return fmt.Errorf("error finalizing headers: %w", err)
+		}
+		headerDuration := time.Since(headerStart)
+		fmt.Printf("[LAYER UPLOAD %s] Phase2 finalize headers took %v\n", buildID, headerDuration)
+
+		// Wait for previous uploads before saving cache entry
+		waitPrevStart := time.Now()
+		if err := waitForPreviousUploads(ctx); err != nil {
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}
+		waitPrevDuration := time.Since(waitPrevStart)
+		fmt.Printf("[LAYER UPLOAD %s] Phase3 wait for previous uploads took %v\n", buildID, waitPrevDuration)
 
+		saveMetaStart := time.Now()
 		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
-			Template: cache.Template{
-				BuildID: meta.Template.BuildID,
-			},
+			Template: cache.Template{BuildID: buildID},
 		})
+		saveMetaDuration := time.Since(saveMetaStart)
+		fmt.Printf("[LAYER UPLOAD %s] Phase3 save layer meta took %v\n", buildID, saveMetaDuration)
+
 		if err != nil {
-			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
+			return fmt.Errorf("error saving layer meta: %w", err)
 		}
 
-		userLogger.Debug(ctx, fmt.Sprintf("Saved: %s", meta.Template.BuildID))
+		totalDuration := time.Since(uploadStart)
+		fmt.Printf("[LAYER UPLOAD %s] TOTAL took %v (data=%v waitAll=%v headers=%v waitPrev=%v saveMeta=%v)\n",
+			buildID, totalDuration, dataUploadDuration, waitAllDuration, headerDuration, waitPrevDuration, saveMetaDuration)
+
+		userLogger.Debug(ctx, fmt.Sprintf("Saved: %s", buildID))
 
 		return nil
 	})
-
-	return nil
 }
