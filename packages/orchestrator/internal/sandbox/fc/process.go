@@ -215,11 +215,12 @@ func (p *Process) configure(
 
 func (p *Process) Create(
 	ctx context.Context,
-	sbxMetadata sbxlogger.LoggerMetadata,
+	sbxMetadata sbxlogger.SandboxMetadata,
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
 	options ProcessOptions,
+	accessToken *string,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
@@ -350,6 +351,24 @@ func (p *Process) Create(
 	}
 
 	telemetry.ReportEvent(ctx, "started fc")
+
+	// Set MMDS metadata to enable secure token validation
+	meta := &MmdsMetadata{
+		SandboxID:            sbxMetadata.SandboxID,
+		TemplateID:           sbxMetadata.TemplateID,
+		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", p.slot.HyperloopIPString()),
+	}
+
+	if accessToken != nil && *accessToken != "" {
+		meta.AccessTokenHash = HashAccessToken(*accessToken)
+	}
+
+	err = p.client.setMmds(ctx, meta)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
+	}
 
 	return nil
 }

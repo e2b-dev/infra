@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
 func TestSimpleCases(t *testing.T) {
@@ -169,7 +170,7 @@ func TestValidateInitAccessToken(t *testing.T) {
 			name:         "MMDS match: token hash matches MMDS hash",
 			accessToken:  ptr("old-token"),
 			requestToken: ptr("new-token"),
-			mmdsHash:     hashAccessToken("new-token"),
+			mmdsHash:     keys.HashAccessToken("new-token"),
 			mmdsErr:      nil,
 			wantErr:      nil,
 		},
@@ -209,7 +210,7 @@ func TestValidateInitAccessToken(t *testing.T) {
 			name:         "mismatch: existing token differs from request, MMDS hash mismatch",
 			accessToken:  ptr("existing-token"),
 			requestToken: ptr("wrong-token"),
-			mmdsHash:     hashAccessToken("different-token"),
+			mmdsHash:     keys.HashAccessToken("different-token"),
 			mmdsErr:      nil,
 			wantErr:      ErrAccessTokenMismatch,
 		},
@@ -217,7 +218,7 @@ func TestValidateInitAccessToken(t *testing.T) {
 			name:         "mismatch: existing token, nil request, MMDS exists",
 			accessToken:  ptr("existing-token"),
 			requestToken: nil,
-			mmdsHash:     hashAccessToken("some-token"),
+			mmdsHash:     keys.HashAccessToken("some-token"),
 			mmdsErr:      nil,
 			wantErr:      ErrAccessTokenMismatch,
 		},
@@ -256,7 +257,7 @@ func TestCheckMMDSHash(t *testing.T) {
 	t.Run("returns match when token hash equals MMDS hash", func(t *testing.T) {
 		t.Parallel()
 		token := "my-secret-token"
-		mmdsClient := &mockMMDSClient{hash: hashAccessToken(token), err: nil}
+		mmdsClient := &mockMMDSClient{hash: keys.HashAccessToken(token), err: nil}
 		api := newTestAPI(nil, mmdsClient)
 
 		matches, exists := api.checkMMDSHash(ctx, ptr(token))
@@ -267,7 +268,7 @@ func TestCheckMMDSHash(t *testing.T) {
 
 	t.Run("returns no match when token hash differs from MMDS hash", func(t *testing.T) {
 		t.Parallel()
-		mmdsClient := &mockMMDSClient{hash: hashAccessToken("different-token"), err: nil}
+		mmdsClient := &mockMMDSClient{hash: keys.HashAccessToken("different-token"), err: nil}
 		api := newTestAPI(nil, mmdsClient)
 
 		matches, exists := api.checkMMDSHash(ctx, ptr("my-token"))
@@ -278,7 +279,7 @@ func TestCheckMMDSHash(t *testing.T) {
 
 	t.Run("returns exists but no match when request token is nil", func(t *testing.T) {
 		t.Parallel()
-		mmdsClient := &mockMMDSClient{hash: hashAccessToken("some-token"), err: nil}
+		mmdsClient := &mockMMDSClient{hash: keys.HashAccessToken("some-token"), err: nil}
 		api := newTestAPI(nil, mmdsClient)
 
 		matches, exists := api.checkMMDSHash(ctx, nil)
@@ -365,24 +366,24 @@ func TestSetData(t *testing.T) {
 				wantErr:        nil,
 				wantFinalToken: ptr("same-token"),
 			},
-			{
-				name:           "resume with MMDS: updates token when hash matches",
-				existingToken:  ptr("old-token"),
-				requestToken:   ptr("new-token"),
-				mmdsHash:       hashAccessToken("new-token"),
-				mmdsErr:        nil,
-				wantErr:        nil,
-				wantFinalToken: ptr("new-token"),
-			},
-			{
-				name:           "resume with MMDS: fails when hash doesn't match",
-				existingToken:  ptr("old-token"),
-				requestToken:   ptr("new-token"),
-				mmdsHash:       hashAccessToken("different-token"),
-				mmdsErr:        nil,
-				wantErr:        ErrAccessTokenMismatch,
-				wantFinalToken: ptr("old-token"),
-			},
+		{
+			name:           "resume with MMDS: updates token when hash matches",
+			existingToken:  ptr("old-token"),
+			requestToken:   ptr("new-token"),
+			mmdsHash:       keys.HashAccessToken("new-token"),
+			mmdsErr:        nil,
+			wantErr:        nil,
+			wantFinalToken: ptr("new-token"),
+		},
+		{
+			name:           "resume with MMDS: fails when hash doesn't match",
+			existingToken:  ptr("old-token"),
+			requestToken:   ptr("new-token"),
+			mmdsHash:       keys.HashAccessToken("different-token"),
+			mmdsErr:        nil,
+			wantErr:        ErrAccessTokenMismatch,
+			wantFinalToken: ptr("old-token"),
+		},
 			{
 				name:           "fails when existing token and request token mismatch without MMDS",
 				existingToken:  ptr("existing-token"),
@@ -401,15 +402,15 @@ func TestSetData(t *testing.T) {
 				wantErr:        ErrAccessTokenMismatch,
 				wantFinalToken: ptr("existing-token"),
 			},
-			{
-				name:           "fails when existing token but nil request with MMDS present",
-				existingToken:  ptr("existing-token"),
-				requestToken:   nil,
-				mmdsHash:       hashAccessToken("some-token"),
-				mmdsErr:        nil,
-				wantErr:        ErrAccessTokenMismatch,
-				wantFinalToken: ptr("existing-token"),
-			},
+		{
+			name:           "fails when existing token but nil request with MMDS present",
+			existingToken:  ptr("existing-token"),
+			requestToken:   nil,
+			mmdsHash:       keys.HashAccessToken("some-token"),
+			mmdsErr:        nil,
+			wantErr:        ErrAccessTokenMismatch,
+			wantFinalToken: ptr("existing-token"),
+		},
 			{
 				name:           "resets token when MMDS returns empty hash and request is nil",
 				existingToken:  ptr("existing-token"),

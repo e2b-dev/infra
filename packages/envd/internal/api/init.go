@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"crypto/sha512"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -30,13 +29,6 @@ const (
 	maxTimeInPast   = 50 * time.Millisecond
 	maxTimeInFuture = 5 * time.Second
 )
-
-// hashAccessToken computes the SHA-512 hash of an access token.
-func hashAccessToken(token string) string {
-	h := sha512.Sum512([]byte(token))
-
-	return hex.EncodeToString(h[:])
-}
 
 // validateInitAccessToken validates the access token for /init requests.
 // Token is valid if it matches the existing token OR the MMDS hash.
@@ -87,7 +79,7 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *string) (bool, bo
 		return false, true
 	}
 
-	return hashAccessToken(*requestToken) == mmdsHash, true
+	return keys.HashAccessToken(*requestToken) == mmdsHash, true
 }
 
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {

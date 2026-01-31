@@ -275,6 +275,7 @@ func (f *Factory) CreateSandbox(
 		config.RamMB,
 		config.HugePages,
 		processOptions,
+		config.Envd.AccessToken,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", err)
