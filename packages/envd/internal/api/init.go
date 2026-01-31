@@ -70,7 +70,16 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *string) (bool, bo
 	}
 
 	mmdsHash, err := a.mmdsClient.GetAccessTokenHash(ctx)
-	if err != nil || mmdsHash == "" {
+	if err != nil {
+		return false, false
+	}
+
+	// Empty MMDS hash with nil request token allows resetting to no token
+	if mmdsHash == "" && requestToken == nil {
+		return true, true
+	}
+
+	if mmdsHash == "" {
 		return false, false
 	}
 
@@ -167,8 +176,10 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 
 	if data.AccessToken != nil {
 		logger.Debug().Msg("Setting access token")
-		a.accessToken = data.AccessToken
+	} else {
+		logger.Debug().Msg("Clearing access token")
 	}
+	a.accessToken = data.AccessToken
 
 	if data.HyperloopIP != nil {
 		go a.SetupHyperloop(*data.HyperloopIP)

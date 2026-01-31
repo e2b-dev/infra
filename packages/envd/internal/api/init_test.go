@@ -298,7 +298,7 @@ func TestCheckMMDSHash(t *testing.T) {
 		assert.False(t, exists)
 	})
 
-	t.Run("returns false, false when MMDS returns empty hash", func(t *testing.T) {
+	t.Run("returns false, false when MMDS returns empty hash with non-nil request", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: "", err: nil}
 		api := newTestAPI(nil, mmdsClient)
@@ -307,6 +307,17 @@ func TestCheckMMDSHash(t *testing.T) {
 
 		assert.False(t, matches)
 		assert.False(t, exists)
+	})
+
+	t.Run("returns true, true when MMDS returns empty hash with nil request (reset scenario)", func(t *testing.T) {
+		t.Parallel()
+		mmdsClient := &mockMMDSClient{hash: "", err: nil}
+		api := newTestAPI(nil, mmdsClient)
+
+		matches, exists := api.checkMMDSHash(ctx, nil)
+
+		assert.True(t, matches)
+		assert.True(t, exists)
 	})
 }
 
@@ -398,6 +409,15 @@ func TestSetData(t *testing.T) {
 				mmdsErr:        nil,
 				wantErr:        ErrAccessTokenMismatch,
 				wantFinalToken: ptr("existing-token"),
+			},
+			{
+				name:           "resets token when MMDS returns empty hash and request is nil",
+				existingToken:  ptr("existing-token"),
+				requestToken:   nil,
+				mmdsHash:       "",
+				mmdsErr:        nil,
+				wantErr:        nil,
+				wantFinalToken: nil,
 			},
 		}
 
