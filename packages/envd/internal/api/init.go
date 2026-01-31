@@ -23,7 +23,10 @@ import (
 
 const hostsFilePermissions = 0o644
 
-var ErrAccessTokenMismatch = errors.New("access token validation failed")
+var (
+	ErrAccessTokenMismatch = errors.New("access token validation failed")
+	ErrAccessTokenConflict = errors.New("access token change not authorized")
+)
 
 const (
 	maxTimeInPast   = 50 * time.Millisecond
@@ -33,6 +36,10 @@ const (
 // validateInitAccessToken validates the access token for /init requests.
 // Token is valid if it matches the existing token OR the MMDS hash.
 // If neither exists, first-time setup is allowed.
+//
+// Returns:
+//   - ErrAccessTokenMismatch (401): invalid token provided
+//   - ErrAccessTokenConflict (409): trying to reset token without authorization
 func (a *API) validateInitAccessToken(ctx context.Context, logger zerolog.Logger, requestToken *string) error {
 	// Fast path: token matches existing
 	if a.accessToken != nil && requestToken != nil && *requestToken == *a.accessToken {
@@ -47,6 +54,10 @@ func (a *API) validateInitAccessToken(ctx context.Context, logger zerolog.Logger
 		return nil
 	case a.accessToken == nil && !mmdsExists:
 		return nil // first-time setup
+	case requestToken == nil:
+		logger.Error().Msg("Access token change not authorized")
+
+		return ErrAccessTokenConflict
 	default:
 		logger.Error().Msg("Access token validation failed")
 
@@ -111,6 +122,8 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case errors.Is(err, ErrAccessTokenMismatch):
 					w.WriteHeader(http.StatusUnauthorized)
+				case errors.Is(err, ErrAccessTokenConflict):
+					w.WriteHeader(http.StatusConflict)
 				default:
 					logger.Error().Msgf("Failed to set data: %v", err)
 					w.WriteHeader(http.StatusBadRequest)

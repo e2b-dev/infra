@@ -73,7 +73,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	assert.Equal(t, "unauthenticated: 401 Unauthorized", err.Error())
 }
 
-func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
+func TestInitWithNilTokenOnSecuredSandboxReturnsConflict(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -84,10 +84,34 @@ func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
+	// Calling /init with no token on a secured sandbox returns 409 Conflict
+	// because it's trying to reset the token without authorization
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
 		body:                  envdapi.PostInitJSONRequestBody{},
+		expectedResErr:        nil,
+		expectedResHttpStatus: http.StatusConflict,
+	})
+}
+
+func TestInitWithWrongTokenOnSecuredSandboxReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	sbx := createSandbox(t, true, setup.WithAPIKey())
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	wrongToken := "wrong-token"
+	// Calling /init with wrong token returns 401 Unauthorized
+	sandboxEnvdInitCall(t, ctx, envdInitCall{
+		sbx:                   sbx,
+		client:                envdClient,
+		body:                  envdapi.PostInitJSONRequestBody{AccessToken: &wrongToken},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusUnauthorized,
 	})
