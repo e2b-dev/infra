@@ -139,7 +139,9 @@ func newTestAPI(accessToken *string, mmdsClient MMDSClient) *API {
 		EnvVars: utils.NewMap[string, string](),
 	}
 	api := New(&logger, defaults, nil, false)
-	api.accessToken = accessToken
+	if accessToken != nil {
+		_ = api.accessToken.Set(*accessToken)
+	}
 	api.mmdsClient = mmdsClient
 
 	return api
@@ -461,10 +463,10 @@ func TestSetData(t *testing.T) {
 				}
 
 				if tt.wantFinalToken == nil {
-					assert.Nil(t, api.accessToken)
+					assert.False(t, api.accessToken.IsSet(), "expected token to not be set")
 				} else {
-					require.NotNil(t, api.accessToken)
-					assert.Equal(t, *tt.wantFinalToken, *api.accessToken)
+					require.True(t, api.accessToken.IsSet(), "expected token to be set")
+					assert.True(t, api.accessToken.Equals(*tt.wantFinalToken), "expected token to match")
 				}
 			})
 		}
@@ -572,7 +574,7 @@ func TestSetData(t *testing.T) {
 		err := api.SetData(ctx, logger, data)
 
 		require.NoError(t, err)
-		assert.Equal(t, "token", *api.accessToken)
+		assert.True(t, api.accessToken.Equals("token"), "expected token to match")
 		assert.Equal(t, "user", api.defaults.User)
 		assert.Equal(t, "/workdir", *api.defaults.Workdir)
 		val, ok := api.defaults.EnvVars.Load("KEY")

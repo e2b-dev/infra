@@ -29,13 +29,13 @@ var allowedPaths = []string{
 
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if a.accessToken != nil {
+		if a.accessToken.IsSet() {
 			authHeader := req.Header.Get(accessTokenHeader)
 
 			// check if this path is allowed without authentication (e.g., health check, endpoints supporting signing)
 			allowedPath := slices.Contains(allowedPaths, req.Method+req.URL.Path)
 
-			if authHeader != *a.accessToken && !allowedPath {
+			if !a.accessToken.Equals(authHeader) && !allowedPath {
 				a.logger.Error().Msg("Trying to access secured envd without correct access token")
 
 				err := fmt.Errorf("unauthorized access, please provide a valid access token or method signing if supported")
@@ -50,17 +50,24 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 }
 
 func (a *API) generateSignature(path string, username string, operation string, signatureExpiration *int64) (string, error) {
-	if a.accessToken == nil {
-		return "", fmt.Errorf("access token is not set")
+	tokenBytes, err := a.accessToken.Bytes()
+	if err != nil {
+		return "", fmt.Errorf("access token is not set: %w", err)
 	}
+	defer func() {
+		// Zero out the copy after use
+		for i := range tokenBytes {
+			tokenBytes[i] = 0
+		}
+	}()
 
 	var signature string
 	hasher := keys.NewSHA256Hashing()
 
 	if signatureExpiration == nil {
-		signature = fmt.Sprintf("%s:%s:%s:%s", path, operation, username, *a.accessToken)
+		signature = fmt.Sprintf("%s:%s:%s:%s", path, operation, username, string(tokenBytes))
 	} else {
-		signature = fmt.Sprintf("%s:%s:%s:%s:%s", path, operation, username, *a.accessToken, strconv.FormatInt(*signatureExpiration, 10))
+		signature = fmt.Sprintf("%s:%s:%s:%s:%s", path, operation, username, string(tokenBytes), strconv.FormatInt(*signatureExpiration, 10))
 	}
 
 	return fmt.Sprintf("v1_%s", hasher.HashWithoutPrefix([]byte(signature))), nil
@@ -70,14 +77,14 @@ func (a *API) validateSigning(r *http.Request, signature *string, signatureExpir
 	var expectedSignature string
 
 	// no need to validate signing key if access token is not set
-	if a.accessToken == nil {
+	if !a.accessToken.IsSet() {
 		return nil
 	}
 
 	// check if access token is sent in the header
 	tokenFromHeader := r.Header.Get(accessTokenHeader)
 	if tokenFromHeader != "" {
-		if tokenFromHeader != *a.accessToken {
+		if !a.accessToken.Equals(tokenFromHeader) {
 			return fmt.Errorf("access token present in header but does not match")
 		}
 
