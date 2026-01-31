@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha512"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,15 +24,67 @@ import (
 
 const hostsFilePermissions = 0o644
 
-var ErrAccessTokenAlreadySet = errors.New("access token is already set")
+var ErrAccessTokenMismatch = errors.New("access token validation failed")
 
 const (
 	maxTimeInPast   = 50 * time.Millisecond
 	maxTimeInFuture = 5 * time.Second
 )
 
+// hashAccessToken computes the SHA-512 hash of an access token.
+func hashAccessToken(token string) string {
+	h := sha512.Sum512([]byte(token))
+
+	return hex.EncodeToString(h[:])
+}
+
+// validateInitAccessToken validates the access token for /init requests.
+// Token is valid if it matches the existing token OR the MMDS hash.
+// If neither exists, first-time setup is allowed.
+func (a *API) validateInitAccessToken(ctx context.Context, logger zerolog.Logger, requestToken *string) error {
+	// Fast path: token matches existing
+	if a.accessToken != nil && requestToken != nil && *requestToken == *a.accessToken {
+		return nil
+	}
+
+	// Check MMDS only if token didn't match existing
+	matchesMMDS, mmdsExists := a.checkMMDSHash(ctx, requestToken)
+
+	switch {
+	case matchesMMDS:
+		return nil
+	case a.accessToken == nil && !mmdsExists:
+		return nil // first-time setup
+	default:
+		logger.Error().Msg("Access token validation failed")
+
+		return ErrAccessTokenMismatch
+	}
+}
+
+// checkMMDSHash checks if the request token matches the MMDS hash.
+// Returns (matches, mmdsExists).
+func (a *API) checkMMDSHash(ctx context.Context, requestToken *string) (bool, bool) {
+	if a.isNotFC {
+		return false, false
+	}
+
+	mmdsHash, err := host.GetAccessTokenHashFromMMDS(ctx)
+	if err != nil || mmdsHash == "" {
+		return false, false
+	}
+
+	if requestToken == nil {
+		return false, true
+	}
+
+	return hashAccessToken(*requestToken) == mmdsHash, true
+}
+
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+
+	ctx := r.Context()
 
 	operationID := logs.AssignOperationID()
 	logger := a.logger.With().Str(string(logs.OperationIDKey), operationID).Logger()
@@ -51,11 +105,11 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
-			err = a.SetData(logger, initRequest)
+			err = a.SetData(ctx, logger, initRequest)
 			if err != nil {
 				switch {
-				case errors.Is(err, ErrAccessTokenAlreadySet):
-					w.WriteHeader(http.StatusConflict)
+				case errors.Is(err, ErrAccessTokenMismatch):
+					w.WriteHeader(http.StatusUnauthorized)
 				default:
 					logger.Error().Msgf("Failed to set data: %v", err)
 					w.WriteHeader(http.StatusBadRequest)
@@ -79,7 +133,15 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
+func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJSONBody) error {
+	// Validate access token before proceeding with any action
+	// The request must provide a token that is either:
+	// 1. Matches the existing access token (if set), OR
+	// 2. Matches the MMDS hash (for token change during resume)
+	if err := a.validateInitAccessToken(ctx, logger, data.AccessToken); err != nil {
+		return err
+	}
+
 	if data.Timestamp != nil {
 		// Check if current time differs significantly from the received timestamp
 		if shouldSetSystemTime(time.Now(), *data.Timestamp) {
@@ -104,12 +166,6 @@ func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 	}
 
 	if data.AccessToken != nil {
-		if a.accessToken != nil && *data.AccessToken != *a.accessToken {
-			logger.Error().Msg("Access token is already set and cannot be changed")
-
-			return ErrAccessTokenAlreadySet
-		}
-
 		logger.Debug().Msg("Setting access token")
 		a.accessToken = data.AccessToken
 	}
