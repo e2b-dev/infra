@@ -6,4 +6,5 @@ type MmdsMetadata struct {
 	TemplateID string `json:"envID"`
 
 	LogsCollectorAddress string `json:"address"`
+	AccessTokenHash      string `json:"accessTokenHash,omitempty"`
 }
