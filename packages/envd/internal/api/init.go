@@ -42,7 +42,7 @@ const (
 //   - ErrAccessTokenConflict (409): trying to reset token without authorization
 func (a *API) validateInitAccessToken(ctx context.Context, logger zerolog.Logger, requestToken *string) error {
 	// Fast path: token matches existing
-	if a.accessToken != nil && requestToken != nil && *requestToken == *a.accessToken {
+	if a.accessToken.IsSet() && requestToken != nil && a.accessToken.Equals(*requestToken) {
 		return nil
 	}
 
@@ -52,7 +52,7 @@ func (a *API) validateInitAccessToken(ctx context.Context, logger zerolog.Logger
 	switch {
 	case matchesMMDS:
 		return nil
-	case a.accessToken == nil && !mmdsExists:
+	case !a.accessToken.IsSet() && !mmdsExists:
 		return nil // first-time setup
 	case requestToken == nil:
 		logger.Error().Msg("Access token change not authorized")
@@ -181,10 +181,15 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 
 	if data.AccessToken != nil {
 		logger.Debug().Msg("Setting access token")
-	} else {
+		if err := a.accessToken.Set(*data.AccessToken); err != nil {
+			logger.Error().Err(err).Msg("CRITICAL: Failed to set access token securely")
+
+			return fmt.Errorf("failed to set access token: %w", err)
+		}
+	} else if a.accessToken.IsSet() {
 		logger.Debug().Msg("Clearing access token")
+		a.accessToken.Destroy()
 	}
-	a.accessToken = data.AccessToken
 
 	if data.HyperloopIP != nil {
 		go a.SetupHyperloop(*data.HyperloopIP)
