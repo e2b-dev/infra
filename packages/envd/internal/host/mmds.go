@@ -23,6 +23,13 @@ const (
 	mmdsAccessTokenTimeout = 10 * time.Second
 )
 
+var mmdsAccessTokenClient = &http.Client{
+	Timeout: mmdsAccessTokenTimeout,
+	Transport: &http.Transport{
+		DisableKeepAlives: true,
+	},
+}
+
 type MMDSOpts struct {
 	SandboxID            string `json:"instanceID"`
 	TemplateID           string `json:"envID"`
@@ -114,15 +121,12 @@ func getMMDSOpts(ctx context.Context, client *http.Client, token string) (*MMDSO
 // GetAccessTokenHashFromMMDS reads the access token hash from MMDS.
 // This is used to validate that /init requests come from the orchestrator.
 func GetAccessTokenHashFromMMDS(ctx context.Context) (string, error) {
-	client := &http.Client{Timeout: mmdsAccessTokenTimeout}
-	defer client.CloseIdleConnections()
-
-	token, err := getMMDSToken(ctx, client)
+	token, err := getMMDSToken(ctx, mmdsAccessTokenClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to get MMDS token: %w", err)
 	}
 
-	opts, err := getMMDSOpts(ctx, client, token)
+	opts, err := getMMDSOpts(ctx, mmdsAccessTokenClient, token)
 	if err != nil {
 		return "", fmt.Errorf("failed to get MMDS opts: %w", err)
 	}
