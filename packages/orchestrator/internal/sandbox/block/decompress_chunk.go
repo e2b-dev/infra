@@ -51,8 +51,8 @@ func NewDecompressMMapChunker(
 		return nil, fmt.Errorf("DecompressMMapChunker requires compressed frame table")
 	}
 
-	// DEBUG: Log storage type for debugging integration test failures
-	fmt.Printf("[DEBUG DecompressMMapChunker] storage type: %T, objectPath: %s, frameTable.StartAt: %+v\n", s, objectPath, frameTable.StartAt)
+	globalDecompressMMapCnt.Add(1)
+	fmt.Printf("[CHUNKER_NEW] DecompressMMap %s size=%d frames=%d\n", objectPath, size, len(frameTable.Frames))
 
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {

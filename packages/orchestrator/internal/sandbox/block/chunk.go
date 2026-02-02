@@ -28,6 +28,21 @@ type ChunkerStats struct {
 	bytesRead      atomic.Int64
 }
 
+// Global chunker instrumentation counters
+var (
+	globalUncompressedMMapCnt atomic.Int64
+	globalDecompressMMapCnt   atomic.Int64
+	globalCompressLRUCnt      atomic.Int64
+)
+
+// PrintGlobalChunkerStats prints the global chunker creation counts.
+func PrintGlobalChunkerStats() {
+	fmt.Printf("[GLOBAL_CHUNKER_STATS] Created: UncompressedMMap=%d, DecompressMMap=%d, CompressLRU=%d\n",
+		globalUncompressedMMapCnt.Load(),
+		globalDecompressMMapCnt.Load(),
+		globalCompressLRUCnt.Load())
+}
+
 // Chunker is an interface for reading block data from either local cache or remote storage.
 //
 // Implementations:
@@ -98,6 +113,9 @@ func NewUncompressedMMapChunker(
 		fetchers:   utils.NewWaitMap(),
 		metrics:    metrics,
 	}
+
+	globalUncompressedMMapCnt.Add(1)
+	fmt.Printf("[CHUNKER_NEW] UncompressedMMap %s size=%d\n", objectPath, size)
 
 	return chunker, nil
 }

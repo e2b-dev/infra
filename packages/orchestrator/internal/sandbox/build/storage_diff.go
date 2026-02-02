@@ -4,11 +4,33 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+// Instrumentation counters for debugging/benchmarking
+var (
+	storageDiffCount       atomic.Int64
+	chunkerUncompressedCnt atomic.Int64
+	chunkerCompressLRUCnt  atomic.Int64
+	sliceUncompressedCnt   atomic.Int64
+	sliceCompressLRUCnt    atomic.Int64
+	readAtUncompressedCnt  atomic.Int64
+	readAtCompressLRUCnt   atomic.Int64
+)
+
+// PrintStorageDiffStats prints instrumentation counters.
+func PrintStorageDiffStats() {
+	fmt.Printf("[STORAGE_DIFF_STATS] StorageDiffs=%d Chunkers(Uncompressed=%d, CompressLRU=%d) "+
+		"Slices(Uncompressed=%d, CompressLRU=%d) ReadAts(Uncompressed=%d, CompressLRU=%d)\n",
+		storageDiffCount.Load(),
+		chunkerUncompressedCnt.Load(), chunkerCompressLRUCnt.Load(),
+		sliceUncompressedCnt.Load(), sliceCompressLRUCnt.Load(),
+		readAtUncompressedCnt.Load(), readAtCompressLRUCnt.Load())
+}
 
 func storagePath(buildId string, diffType DiffType) string {
 	return fmt.Sprintf("%s/%s", buildId, diffType)
@@ -18,9 +40,10 @@ func storagePath(buildId string, diffType DiffType) string {
 // The chunker is lazily initialized on first read using the frame table from the mapping.
 type StorageDiff struct {
 	// chunker is lazily initialized via chunkerOnce on first ReadAt/Slice call.
-	chunker     block.Chunker
-	chunkerOnce sync.Once
-	chunkerErr  error
+	chunker      block.Chunker
+	chunkerOnce  sync.Once
+	chunkerErr   error
+	isCompressed bool // set during chunker creation for stats tracking
 
 	cachePath string
 	cacheKey  DiffStoreKey
@@ -59,6 +82,8 @@ func newStorageDiff(
 	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 	cacheKey := GetDiffStoreKey(buildId, diffType)
 
+	storageDiffCount.Add(1)
+
 	return &StorageDiff{
 		objectPath:  objectPath,
 		cachePath:   cachePath,
@@ -95,6 +120,9 @@ func (b *StorageDiff) getChunker(ctx context.Context, ft *storage.FrameTable) (b
 	return b.chunker, b.chunkerErr
 }
 
+// LRUCacheSize is the number of 4MB chunks to keep in the LRU cache for CompressLRUChunker.
+const LRUCacheSize = 32
+
 // createChunker creates the appropriate chunker based on the frame table.
 func (b *StorageDiff) createChunker(ctx context.Context, ft *storage.FrameTable) (block.Chunker, error) {
 	// Determine if data is compressed and calculate size
@@ -103,8 +131,11 @@ func (b *StorageDiff) createChunker(ctx context.Context, ft *storage.FrameTable)
 	if ft != nil && ft.IsCompressed() {
 		// For compressed data, calculate uncompressed size from frame table
 		size = ft.StartAt.U + ft.TotalUncompressedSize()
-		// Use decompress chunker for compressed data
-		return block.NewDecompressMMapChunker(size, b.blockSize, b.persistence, b.objectPath, ft, b.cachePath, b.metrics)
+		b.isCompressed = true
+		chunkerCompressLRUCnt.Add(1)
+		fmt.Printf("[CHUNKER_CREATE] CompressLRU for %s (size=%d, frames=%d)\n", b.objectPath, size, len(ft.Frames))
+		// Use CompressLRU chunker for compressed data
+		return block.NewCompressLRUChunker(size, b.persistence, b.objectPath, ft, LRUCacheSize, b.metrics)
 	}
 
 	// For uncompressed data, get the size from storage
@@ -113,6 +144,9 @@ func (b *StorageDiff) createChunker(ctx context.Context, ft *storage.FrameTable)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object size for %s: %w", b.objectPath, err)
 	}
+
+	chunkerUncompressedCnt.Add(1)
+	fmt.Printf("[CHUNKER_CREATE] Uncompressed for %s (size=%d)\n", b.objectPath, size)
 
 	return block.NewUncompressedMMapChunker(size, b.blockSize, b.persistence, b.objectPath, ft, b.cachePath, b.metrics)
 }
@@ -132,6 +166,12 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, ft *stora
 		return 0, err
 	}
 
+	if b.isCompressed {
+		readAtCompressLRUCnt.Add(1)
+	} else {
+		readAtUncompressedCnt.Add(1)
+	}
+
 	return chunker.ReadAt(ctx, p, off)
 }
 
@@ -139,6 +179,12 @@ func (b *StorageDiff) Slice(ctx context.Context, off, length int64, ft *storage.
 	chunker, err := b.getChunker(ctx, ft)
 	if err != nil {
 		return nil, err
+	}
+
+	if b.isCompressed {
+		sliceCompressLRUCnt.Add(1)
+	} else {
+		sliceUncompressedCnt.Add(1)
 	}
 
 	return chunker.Slice(ctx, off, length)

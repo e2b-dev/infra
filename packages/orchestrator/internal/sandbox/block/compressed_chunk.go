@@ -59,6 +59,9 @@ func NewCompressLRUChunker(
 		return nil, fmt.Errorf("failed to create frame LRU: %w", err)
 	}
 
+	globalCompressLRUCnt.Add(1)
+	fmt.Printf("[CHUNKER_NEW] CompressLRU %s size=%d frames=%d lruSize=%d\n", objectPath, size, len(frameTable.Frames), lruSize)
+
 	return &CompressLRUChunker{
 		storage:    s,
 		objectPath: objectPath,
