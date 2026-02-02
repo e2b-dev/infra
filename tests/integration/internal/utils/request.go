@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,9 +22,23 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 	if url.Hostname() == "localhost" {
 		host = fmt.Sprintf("%d-%s-%s.%s", port, sbx.SandboxID, sbx.ClientID, "localhost")
 	} else {
-		// Extract top level domain from EnvdProxy
-		eTLD, _ := publicsuffix.EffectiveTLDPlusOne(url.Hostname())
-		host = fmt.Sprintf("%d-%s-%s.%s:%s", port, sbx.SandboxID, sbx.ClientID, eTLD, url.Port())
+		baseDomain := url.Hostname()
+		switch {
+		case strings.HasPrefix(baseDomain, "client."):
+			baseDomain = strings.TrimPrefix(baseDomain, "client.")
+		case strings.HasPrefix(baseDomain, "session."):
+			baseDomain = strings.TrimPrefix(baseDomain, "session.")
+		default:
+			// Extract top level domain from EnvdProxy
+			if eTLD, err := publicsuffix.EffectiveTLDPlusOne(baseDomain); err == nil {
+				baseDomain = eTLD
+			}
+		}
+
+		host = fmt.Sprintf("%d-%s-%s.%s", port, sbx.SandboxID, sbx.ClientID, baseDomain)
+		if proxyPort := url.Port(); proxyPort != "" {
+			host = fmt.Sprintf("%s:%s", host, proxyPort)
+		}
 	}
 
 	header := http.Header{

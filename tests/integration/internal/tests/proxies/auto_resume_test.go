@@ -1,0 +1,148 @@
+package api
+
+import (
+	"fmt"
+	"net/http"
+	"net/url"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
+	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
+)
+
+func TestProxyAutoResumePolicies(t *testing.T) {
+	c := setup.GetAPIClient()
+	db := setup.GetTestDBClient(t)
+
+	foreignUserID := utils.CreateUser(t, db)
+	foreignTeamID := utils.CreateTeamWithUser(t, db, "proxy-auto-resume-foreign", foreignUserID.String())
+	foreignAPIKey := utils.CreateAPIKeyInDB(t, db, foreignUserID, foreignTeamID)
+	foreignAccessToken := utils.CreateAccessToken(t, db, foreignUserID)
+
+	proxyURL, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+
+	authCases := []struct {
+		name    string
+		headers http.Header
+		valid   bool
+	}{
+		{name: "unauthed"},
+		{name: "api-key-valid", headers: http.Header{"X-API-Key": []string{setup.APIKey}}, valid: true},
+		{name: "api-key-foreign", headers: http.Header{"X-API-Key": []string{foreignAPIKey}}},
+		{name: "access-token-valid", headers: http.Header{"Authorization": []string{fmt.Sprintf("Bearer %s", setup.AccessToken)}}, valid: true},
+		{name: "access-token-foreign", headers: http.Header{"Authorization": []string{fmt.Sprintf("Bearer %s", foreignAccessToken)}}},
+	}
+
+	policies := []struct {
+		name   string
+		policy string
+	}{
+		{name: "any", policy: "any"},
+		{name: "authed", policy: "authed"},
+		{name: "null", policy: "null"},
+	}
+
+	for _, policy := range policies {
+		policy := policy
+		t.Run(policy.name, func(t *testing.T) {
+			sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{
+				"auto_resume": policy.policy,
+			}))
+
+			for _, authCase := range authCases {
+				authCase := authCase
+				t.Run(authCase.name, func(t *testing.T) {
+					ensureSandboxPaused(t, c, sbx.SandboxID)
+
+					resp := proxyRequest(t, client, sbx, proxyURL, authCase.headers)
+					require.NoError(t, resp.Body.Close())
+
+					expectResume := shouldExpectResume(policy.policy, authCase.valid)
+					if expectResume {
+						waitForSandboxState(t, c, sbx.SandboxID, api.Running)
+						return
+					}
+
+					require.Equal(t, http.StatusConflict, resp.StatusCode)
+					waitForSandboxState(t, c, sbx.SandboxID, api.Paused)
+				})
+			}
+		})
+	}
+}
+
+func shouldExpectResume(policy string, authValid bool) bool {
+	switch policy {
+	case "any":
+		return true
+	case "authed":
+		return authValid
+	default:
+		return false
+	}
+}
+
+func proxyRequest(t *testing.T, client *http.Client, sbx *api.Sandbox, proxyURL *url.URL, headers http.Header) *http.Response {
+	t.Helper()
+
+	var extraHeaders *http.Header
+	if len(headers) > 0 {
+		extraHeaders = &headers
+	}
+
+	req := utils.NewRequest(sbx, proxyURL, 8080, extraHeaders)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	return resp
+}
+
+func ensureSandboxPaused(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
+	t.Helper()
+
+	state := getSandboxState(t, c, sandboxID)
+	if state == api.Paused {
+		return
+	}
+
+	resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Contains(t, []int{http.StatusNoContent, http.StatusConflict}, resp.StatusCode())
+
+	waitForSandboxState(t, c, sandboxID, api.Paused)
+}
+
+func waitForSandboxState(t *testing.T, c *api.ClientWithResponses, sandboxID string, expected api.SandboxState) {
+	t.Helper()
+
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		state := getSandboxState(t, c, sandboxID)
+		if state == expected {
+			return
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
+	require.Failf(t, "sandbox state mismatch", "sandbox %s did not reach %s", sandboxID, expected)
+}
+
+func getSandboxState(t *testing.T, c *api.ClientWithResponses, sandboxID string) api.SandboxState {
+	t.Helper()
+
+	resp, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode())
+	require.NotNil(t, resp.JSON200)
+
+	return resp.JSON200.State
+}

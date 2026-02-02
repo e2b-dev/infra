@@ -3,8 +3,11 @@ package proxy
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc/metadata"
 
 	sharedproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
@@ -174,20 +177,20 @@ func TestAutoResumePolicies(t *testing.T) {
 	cases := []struct {
 		name                 string
 		policy               string
-		requestHasTrafficTok bool
+		requestHasAuth       bool
 		expectAutoResume     bool
 	}{
-		{name: "any-authed", policy: "any", requestHasTrafficTok: true, expectAutoResume: true},
-		{name: "any-unauthed", policy: "any", requestHasTrafficTok: false, expectAutoResume: true},
-		{name: "authed-authed", policy: "authed", requestHasTrafficTok: true, expectAutoResume: true},
-		{name: "authed-unauthed", policy: "authed", requestHasTrafficTok: false, expectAutoResume: false},
-		{name: "null-authed", policy: "null", requestHasTrafficTok: true, expectAutoResume: false},
-		{name: "null-unauthed", policy: "null", requestHasTrafficTok: false, expectAutoResume: false},
+		{name: "any-authed", policy: "any", requestHasAuth: true, expectAutoResume: true},
+		{name: "any-unauthed", policy: "any", requestHasAuth: false, expectAutoResume: true},
+		{name: "authed-authed", policy: "authed", requestHasAuth: true, expectAutoResume: true},
+		{name: "authed-unauthed", policy: "authed", requestHasAuth: false, expectAutoResume: false},
+		{name: "null-authed", policy: "null", requestHasAuth: true, expectAutoResume: false},
+		{name: "null-unauthed", policy: "null", requestHasAuth: false, expectAutoResume: false},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := shouldAutoResume(tc.policy, true, tc.requestHasTrafficTok)
+			got := shouldAutoResume(tc.policy, true, tc.requestHasAuth)
 			if got != tc.expectAutoResume {
 				t.Fatalf("expected autoResume=%v, got %v", tc.expectAutoResume, got)
 			}
@@ -234,17 +237,55 @@ func TestCatalogResolutionPaused_AutoResumePolicyAuthed(t *testing.T) {
 		resumeWaitTimeout = origTimeout
 	}()
 
-	_, err := catalogResolution(ctx, "sbx-authed-no-token", c, nil, paused, true, false)
+	_, err := catalogResolution(ctx, "sbx-authed-no-auth", c, nil, paused, true, false)
 	if err == nil {
-		t.Fatalf("expected error without traffic token")
+		t.Fatalf("expected error without auth")
 	}
 
-	ip, err := catalogResolution(ctx, "sbx-authed-with-token", c, nil, paused, true, true)
+	ip, err := catalogResolution(ctx, "sbx-authed-with-auth", c, nil, paused, true, true)
 	if err != nil {
-		t.Fatalf("unexpected error with token: %v", err)
+		t.Fatalf("unexpected error with auth: %v", err)
 	}
 	if ip != "10.0.0.3" {
 		t.Fatalf("expected ip 10.0.0.3, got %s", ip)
+	}
+}
+
+func TestHasProxyAuth(t *testing.T) {
+	if hasProxyAuth(http.Header{}) {
+		t.Fatalf("expected no auth headers")
+	}
+
+	header := http.Header{}
+	header.Set("Authorization", "Bearer sk_e2b_test")
+	if !hasProxyAuth(header) {
+		t.Fatalf("expected auth header to be detected")
+	}
+
+	header = http.Header{}
+	header.Set("X-API-Key", "e2b_test")
+	if !hasProxyAuth(header) {
+		t.Fatalf("expected api key header to be detected")
+	}
+}
+
+func TestWithProxyAuthMetadata(t *testing.T) {
+	ctx := context.Background()
+	header := http.Header{}
+	header.Set("Authorization", "Bearer sk_e2b_test")
+	header.Set("X-API-Key", "e2b_test")
+
+	ctx = withProxyAuthMetadata(ctx, header)
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		t.Fatalf("expected outgoing metadata")
+	}
+
+	if got := md.Get("authorization"); len(got) != 1 || got[0] != "Bearer sk_e2b_test" {
+		t.Fatalf("unexpected authorization metadata: %v", got)
+	}
+	if got := md.Get("x-api-key"); len(got) != 1 || got[0] != "e2b_test" {
+		t.Fatalf("unexpected api key metadata: %v", got)
 	}
 }
 
