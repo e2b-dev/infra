@@ -66,6 +66,10 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 
 					expectResume := shouldExpectResume(policy.policy, authCase.valid)
 					if expectResume {
+						require.NotEqual(t, http.StatusConflict, resp.StatusCode)
+						if resp.StatusCode >= http.StatusInternalServerError {
+							require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+						}
 						waitForSandboxState(t, c, sbx.SandboxID, api.Running)
 						return
 					}
