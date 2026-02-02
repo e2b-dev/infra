@@ -26,3 +26,16 @@ func GetTeamsByUser(ctx context.Context, db *authdb.Client, userID uuid.UUID) ([
 
 	return teamsWithLimits, nil
 }
+
+func GetTeamByID(ctx context.Context, db *authdb.Client, teamID uuid.UUID) (*types.Team, error) {
+	team, limits, err := db.GetTeamWithLimitsByID(ctx, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("error when getting team by id: %w", err)
+	}
+
+	if err := validateTeamUsage(team); err != nil {
+		return nil, err
+	}
+
+	return types.NewTeam(&team, &limits), nil
+}
