@@ -131,10 +131,25 @@ func TestSecureTokenEmptyToken(t *testing.T) {
 
 	st := &SecureToken{}
 
-	// Setting empty token - memguard's NewBufferFromBytes returns nil for empty slices
-	// so this is expected behavior (empty token = no token set)
+	// Setting empty token should return an error
 	err := st.Set("")
+	require.ErrorIs(t, err, ErrTokenEmpty)
+	assert.False(t, st.IsSet(), "token should not be set after empty token error")
+}
+
+func TestSecureTokenEmptyTokenDoesNotClearExisting(t *testing.T) {
+	t.Parallel()
+
+	st := &SecureToken{}
+
+	// Set a valid token first
+	err := st.Set("valid-token")
 	require.NoError(t, err)
-	// Empty token results in nil buffer, so IsSet returns false
-	assert.False(t, st.IsSet(), "empty token should not be considered as set")
+	assert.True(t, st.IsSet())
+
+	// Attempting to set empty token should fail and preserve existing token
+	err = st.Set("")
+	require.ErrorIs(t, err, ErrTokenEmpty)
+	assert.True(t, st.IsSet(), "existing token should be preserved after empty token error")
+	assert.True(t, st.Equals("valid-token"), "existing token value should be unchanged")
 }

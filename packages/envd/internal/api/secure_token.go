@@ -7,7 +7,10 @@ import (
 	"github.com/awnumar/memguard"
 )
 
-var ErrTokenNotSet = errors.New("access token not set")
+var (
+	ErrTokenNotSet = errors.New("access token not set")
+	ErrTokenEmpty  = errors.New("empty token not allowed")
+)
 
 // SecureToken wraps memguard for secure token storage.
 // It uses LockedBuffer which provides memory locking, guard pages,
@@ -19,7 +22,12 @@ type SecureToken struct {
 
 // Set securely replaces the token, destroying the old one first.
 // The old token memory is zeroed before the new token is stored.
+// Returns ErrTokenEmpty if token is empty - use Destroy() to clear the token instead.
 func (s *SecureToken) Set(token string) error {
+	if token == "" {
+		return ErrTokenEmpty
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
