@@ -137,7 +137,7 @@ func run() int {
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
 
-	pausedChecker, err := e2bproxy.NewApiPausedSandboxChecker(config.ApiBaseURL, config.AdminToken, config.ApiKey, config.AutoResumeEnabled)
+	pausedChecker, err := e2bproxy.NewGrpcPausedSandboxChecker(config.ApiGrpcAddress)
 	if err != nil {
 		l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 
@@ -181,6 +181,9 @@ func run() int {
 
 	var closers []Closeable
 	closers = append(closers, featureFlagsClient, catalog, pausedCatalog)
+	if closeable, ok := pausedChecker.(Closeable); ok {
+		closers = append(closers, closeable)
+	}
 
 	wg.Go(func() {
 		// make sure to cancel the parent context before this

@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -33,9 +35,8 @@ var ErrNodeNotFound = errors.New("node not found")
 var resumeWaitInterval = 200 * time.Millisecond
 var resumeWaitTimeout = 30 * time.Second
 var resumeTimeoutSeconds int32 = 600
-var trafficAccessTokenHeader = "e2b-traffic-access-token"
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedCatalog catalog.PausedSandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasTrafficToken bool) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedCatalog catalog.PausedSandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasAuth bool) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
@@ -70,7 +71,7 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 			if pausedFound {
 				logSleeping(ctx, sandboxId)
 
-				canAutoResume := shouldAutoResume(pausedInfo.AutoResumePolicy, autoResumeEnabled, requestHasTrafficToken) && pausedChecker != nil
+				canAutoResume := shouldAutoResume(pausedInfo.AutoResumePolicy, autoResumeEnabled, requestHasAuth) && pausedChecker != nil
 				if canAutoResume {
 					logger.L().Info(ctx, "auto-resuming sandbox", logger.WithSandboxID(sandboxId))
 					if err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds); err != nil {
@@ -116,7 +117,7 @@ func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCa
 	return "", fmt.Errorf("timeout waiting for sandbox to resume")
 }
 
-func shouldAutoResume(policy string, autoResumeEnabled bool, requestHasTrafficToken bool) bool {
+func shouldAutoResume(policy string, autoResumeEnabled bool, requestHasAuth bool) bool {
 	if !autoResumeEnabled {
 		return false
 	}
@@ -125,7 +126,7 @@ func shouldAutoResume(policy string, autoResumeEnabled bool, requestHasTrafficTo
 	case "any":
 		return true
 	case "authed":
-		return requestHasTrafficToken
+		return requestHasAuth
 	case "null":
 		return false
 	default:
@@ -163,8 +164,9 @@ func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, service
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			requestHasTrafficToken := r.Header.Get(trafficAccessTokenHeader) != ""
-			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog, pausedCatalog, pausedChecker, autoResumeEnabled, requestHasTrafficToken)
+			requestHasAuth := hasProxyAuth(r.Header)
+			ctx = withProxyAuthMetadata(ctx, r.Header)
+			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedCatalog, pausedChecker, autoResumeEnabled, requestHasAuth)
 			if err != nil {
 				if errors.Is(err, ErrNodeNotFound) {
 					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
@@ -233,4 +235,31 @@ func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, service
 	}
 
 	return proxy, nil
+}
+
+func hasProxyAuth(header http.Header) bool {
+	if strings.TrimSpace(header.Get("Authorization")) != "" {
+		return true
+	}
+	if strings.TrimSpace(header.Get("X-API-Key")) != "" {
+		return true
+	}
+
+	return false
+}
+
+func withProxyAuthMetadata(ctx context.Context, header http.Header) context.Context {
+	md := metadata.New(nil)
+	if value := strings.TrimSpace(header.Get("Authorization")); value != "" {
+		md.Set("authorization", value)
+	}
+	if value := strings.TrimSpace(header.Get("X-API-Key")); value != "" {
+		md.Set("x-api-key", value)
+	}
+
+	if len(md) == 0 {
+		return ctx
+	}
+
+	return metadata.NewOutgoingContext(ctx, md)
 }
