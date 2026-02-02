@@ -25,53 +25,6 @@ resource "google_compute_health_check" "server_nomad_check" {
   }
 }
 
-// TODO - 2026-01-21: To be removed after migration period (at least 2 weeks) - 2026-02-04
-resource "google_compute_instance_group_manager" "server_pool" {
-  name               = "${local.server_pool_name}-ig"
-  base_instance_name = local.server_pool_name
-
-  version {
-    instance_template = google_compute_instance_template.server.id
-  }
-
-  named_port {
-    name = "nomad"
-    port = var.nomad_port
-  }
-
-  named_port {
-    name = "consul"
-    port = 8500
-  }
-
-  # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
-  # a rolling update.
-  update_policy {
-    type                    = "PROACTIVE"
-    minimal_action          = "REPLACE"
-    max_surge_fixed         = null
-    max_surge_percent       = null
-    max_unavailable_fixed   = 1
-    max_unavailable_percent = null
-  }
-
-  target_pools = []
-  target_size  = 0
-
-  depends_on = [
-    google_compute_instance_template.server,
-  ]
-
-  auto_healing_policies {
-    health_check      = google_compute_health_check.server_nomad_check.id
-    initial_delay_sec = 120
-  }
-
-  lifecycle {
-    create_before_destroy = false
-  }
-}
-
 data "google_compute_zones" "region_zones" {
   region = var.gcp_region
 }
