@@ -7,6 +7,11 @@ resource "random_password" "clickhouse_password" {
   special = false
 }
 
+resource "random_password" "clickhouse_server_secret" {
+  length  = 32
+  special = false
+}
+
 resource "null_resource" "postgres_change_trigger" {
   triggers = {
     hash = sha1(var.postgres_connection_string)
@@ -343,15 +348,38 @@ resource "nomad_job" "orchestrator" {
 resource "nomad_job" "clickhouse" {
   count = var.enable_nomad_jobs && (var.clickhouse_server_count > 0) ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/clickhouse.hcl", {
-    server_count            = var.clickhouse_server_count
-    node_pool               = var.api_node_pool
-    username                = var.clickhouse_username
-    cpu_count               = var.clickhouse_resources_cpu_count
-    memory_mb               = var.clickhouse_resources_memory_mb
-    clickhouse_server_port  = var.clickhouse_server_port.port
-    clickhouse_metrics_port = var.clickhouse_metrics_port
-    clickhouse_version      = var.clickhouse_version
-    docker_image_prefix     = var.docker_image_prefix
+    server_count                    = var.clickhouse_server_count
+    node_pool                       = var.api_node_pool
+    username                        = var.clickhouse_username
+    cpu_count                       = var.clickhouse_resources_cpu_count
+    memory_mb                       = var.clickhouse_resources_memory_mb
+    clickhouse_server_port          = var.clickhouse_server_port.port
+    clickhouse_metrics_port         = var.clickhouse_metrics_port
+    clickhouse_version              = var.clickhouse_version
+    docker_image_prefix             = var.docker_image_prefix
+    dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
+    clickhouse_database             = var.clickhouse_database
+    password                        = random_password.clickhouse_password.result
+
+    clickhouse_config = templatefile("${path.module}/configs/clickhouse/config.xml", {
+      clickhouse_server_port  = var.clickhouse_server_port.port
+      clickhouse_metrics_port = var.clickhouse_metrics_port
+
+      server_secret = random_password.clickhouse_server_secret.result
+      server_count  = var.clickhouse_server_count
+
+      username = var.clickhouse_username
+      password = random_password.clickhouse_password.result
+    })
+
+    clickhouse_users_config = templatefile("${path.module}/configs/clickhouse/users.xml", {
+      username = var.clickhouse_username
+      password = random_password.clickhouse_password.result
+    })
+
+    clickhouse_client_config = templatefile("${path.module}/configs/clickhouse/client-config.xml", {
+      clickhouse_server_port = var.clickhouse_server_port.port
+    })
   })
 }
 

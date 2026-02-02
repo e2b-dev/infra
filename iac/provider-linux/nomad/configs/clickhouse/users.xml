@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <users>
+        <${username}>
+            <password><![CDATA[${password}]]></password>
+            <networks>
+                <!-- Allow all access since we use host networking and rely on infrastructure firewalls/security groups -->
+                <ip>::/0</ip>
+                <ip>0.0.0.0/0</ip>
+            </networks>
+            <profile>default</profile>
+
+            <!-- https://clickhouse.com/docs/optimize/asynchronous-inserts -->
+            <async_insert>1</async_insert>
+            <wait_for_async_insert>1</wait_for_async_insert>
+
+            <quota>default</quota>
+            <access_management>1</access_management>
+        </${username}>
+    </users>
+</clickhouse>

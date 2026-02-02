@@ -1,0 +1,3 @@
+<config>
+    <port>${clickhouse_server_port}</port>
+</config>
