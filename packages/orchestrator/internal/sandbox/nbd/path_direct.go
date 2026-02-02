@@ -288,10 +288,14 @@ func disconnectNBDWithTimeout(ctx context.Context, deviceIndex uint32, timeout t
 func closeSocketPairs(socksClient []*os.File, socksServer []io.Closer) error {
 	var errs []error
 	for _, sock := range socksClient {
-		errs = append(errs, sock.Close())
+		if sock != nil {
+			errs = append(errs, sock.Close())
+		}
 	}
 	for _, sock := range socksServer {
-		errs = append(errs, sock.Close())
+		if sock != nil {
+			errs = append(errs, sock.Close())
+		}
 	}
 
 	return errors.Join(errs...)
