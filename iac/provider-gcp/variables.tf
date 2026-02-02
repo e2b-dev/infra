@@ -142,11 +142,6 @@ variable "client_proxy_update_max_parallel" {
   default     = 1
 }
 
-variable "client_proxy_api_key" {
-  type    = string
-  default = ""
-}
-
 variable "client_proxy_auto_resume_enabled" {
   type    = bool
   default = true

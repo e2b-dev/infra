@@ -177,10 +177,6 @@ variable "client_proxy_health_port" {
   type = number
 }
 
-variable "client_proxy_api_key" {
-  type = string
-}
-
 variable "client_proxy_auto_resume_enabled" {
   type = bool
 }
