@@ -8,8 +8,18 @@ TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-600}
 PAUSE_TIMEOUT=${PAUSE_TIMEOUT:-10}
 RESUME_WAIT=${RESUME_WAIT:-30}
 
+CONFIG_PATH="${HOME}/.e2b/config.json"
+if [ -z "${DOMAIN}" ] && [ -f "${CONFIG_PATH}" ]; then
+  DOMAIN=$(jq -r '.domain // .E2B_DOMAIN // empty' "${CONFIG_PATH}")
+fi
+
+if [ -z "${API_KEY}" ] && [ -f "${CONFIG_PATH}" ]; then
+  API_KEY=$(jq -r '.teamApiKey // empty' "${CONFIG_PATH}")
+fi
+
 if [ -z "${DOMAIN}" ] || [ -z "${API_KEY}" ]; then
   echo "Usage: DOMAIN=... API_KEY=... [COUNT=5] [RESUME_WAIT=30] ./scripts/smoke-resume.sh" >&2
+  echo "Or ensure ${CONFIG_PATH} has domain/E2B_DOMAIN and teamApiKey." >&2
   exit 1
 fi
 
