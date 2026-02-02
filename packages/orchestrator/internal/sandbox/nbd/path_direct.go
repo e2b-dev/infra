@@ -149,6 +149,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
+		connectErr := err
 		err = closeSocketPairs(d.socksClient, d.socksServer)
 		if err != nil {
 			logger.L().Error(ctx, "error closing socket pairs on error opening NBD", zap.Error(err))
@@ -160,13 +161,13 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			logger.L().Error(ctx, "error opening NBD, error releasing device", zap.Error(releaseErr), zap.Uint32("device_index", deviceIndex))
 		}
 
-		if strings.Contains(err.Error(), "invalid argument") {
-			return math.MaxUint32, err
+		if strings.Contains(connectErr.Error(), "invalid argument") {
+			return math.MaxUint32, connectErr
 		}
 
 		select {
 		case <-ctx.Done():
-			return math.MaxUint32, errors.Join(err, ctx.Err())
+			return math.MaxUint32, errors.Join(connectErr, ctx.Err())
 		case <-time.After(25 * time.Millisecond):
 		}
 	}
