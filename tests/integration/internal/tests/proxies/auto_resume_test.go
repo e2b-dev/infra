@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -80,6 +81,48 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProxyAutoResumeConcurrent(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	proxyURL, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{
+		"auto_resume": "authed",
+	}))
+
+	ensureSandboxPaused(t, c, sbx.SandboxID)
+
+	headers := http.Header{"X-API-Key": []string{setup.APIKey}}
+	group := errgroup.Group{}
+	for range 5 {
+		group.Go(func() error {
+			req := utils.NewRequest(sbx, proxyURL, 8080, &headers)
+			resp, err := client.Do(req)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				_ = resp.Body.Close()
+			}()
+
+			if resp.StatusCode == http.StatusConflict {
+				return fmt.Errorf("unexpected conflict for auto-resume request")
+			}
+			if resp.StatusCode >= http.StatusInternalServerError && resp.StatusCode != http.StatusBadGateway {
+				return fmt.Errorf("unexpected 5xx status for auto-resume request: %d", resp.StatusCode)
+			}
+
+			return nil
+		})
+	}
+
+	require.NoError(t, group.Wait())
+	waitForSandboxState(t, c, sbx.SandboxID, api.Running)
 }
 
 func shouldExpectResume(policy string, authValid bool) bool {
