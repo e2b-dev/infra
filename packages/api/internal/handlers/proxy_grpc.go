@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsm/redislock"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -23,6 +24,11 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+)
+
+const (
+	proxyResumeLockTTL     = 2 * time.Minute
+	proxyResumeWaitTimeout = 30 * time.Second
 )
 
 type ProxySandboxService struct {
@@ -100,6 +106,24 @@ func (s *ProxySandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.
 		return nil, status.Error(codes.InvalidArgument, "timeout exceeds team limit")
 	}
 
+	lock, lockAcquired, lockErr := s.tryAcquireResumeLock(ctx, sandboxID)
+	if lockErr != nil {
+		logger.L().Warn(ctx, "Failed to acquire proxy resume lock, proceeding without lock", zap.Error(lockErr), logger.WithSandboxID(sandboxID))
+	} else if !lockAcquired {
+		if waitErr := s.api.orchestrator.WaitForSandboxInRoutingCatalog(ctx, sandboxID, proxyResumeWaitTimeout); waitErr != nil {
+			logger.L().Warn(ctx, "Timed out waiting for sandbox to resume", zap.Error(waitErr), logger.WithSandboxID(sandboxID))
+		}
+
+		return &emptypb.Empty{}, nil
+	}
+	if lock != nil {
+		defer func() {
+			if releaseErr := lock.Release(context.WithoutCancel(ctx)); releaseErr != nil {
+				logger.L().Warn(ctx, "Failed to release proxy resume lock", zap.Error(releaseErr), logger.WithSandboxID(sandboxID))
+			}
+		}()
+	}
+
 	running, runErr := s.api.orchestrator.GetSandbox(ctx, team.Team.ID, sandboxID)
 	if runErr == nil {
 		switch running.State {
@@ -168,6 +192,25 @@ func (s *ProxySandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+func (s *ProxySandboxService) tryAcquireResumeLock(ctx context.Context, sandboxID string) (*redislock.Lock, bool, error) {
+	if s.api.redisClient == nil {
+		return nil, true, nil
+	}
+
+	lockService := redislock.New(s.api.redisClient)
+	lock, err := lockService.Obtain(ctx, "proxy-resume:"+sandboxID, proxyResumeLockTTL, &redislock.Options{
+		RetryStrategy: redislock.NoRetry(),
+	})
+	if err == nil {
+		return lock, true, nil
+	}
+	if errors.Is(err, redislock.ErrNotObtained) {
+		return nil, false, nil
+	}
+
+	return nil, false, err
 }
 
 func (s *ProxySandboxService) resolveAuthTeam(ctx context.Context, snapshotTeamID uuid.UUID) (*teamtypes.Team, bool, error) {
