@@ -112,9 +112,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			err = a.SetData(ctx, logger, initRequest)
 			if err != nil {
 				switch {
-				case errors.Is(err, ErrAccessTokenMismatch):
-					w.WriteHeader(http.StatusUnauthorized)
-				case errors.Is(err, ErrAccessTokenResetNotAuthorized):
+				case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
 					w.WriteHeader(http.StatusUnauthorized)
 				default:
 					logger.Error().Msgf("Failed to set data: %v", err)
