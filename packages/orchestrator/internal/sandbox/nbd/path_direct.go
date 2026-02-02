@@ -98,14 +98,17 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			// Create the socket pairs
 			sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 			if err != nil {
-				return math.MaxUint32, err
+				return math.MaxUint32, errors.Join(err, closeSocketPairs(d.socksClient, d.socksServer))
 			}
 
 			client := os.NewFile(uintptr(sockPair[0]), "client")
 			server := os.NewFile(uintptr(sockPair[1]), "server")
 			serverc, err := net.FileConn(server)
 			if err != nil {
-				return math.MaxUint32, err
+				client.Close()
+				server.Close()
+
+				return math.MaxUint32, errors.Join(err, closeSocketPairs(d.socksClient, d.socksServer))
 			}
 			server.Close()
 
@@ -146,12 +149,11 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
-		for _, sock := range d.socksClient {
-			sock.Close()
+		err = closeSocketPairs(d.socksClient, d.socksServer)
+		if err != nil {
+			logger.L().Error(ctx, "error closing socket pairs on error opening NBD", zap.Error(err))
 		}
-		for _, sock := range d.socksServer {
-			sock.Close()
-		}
+
 		// Release the device back to the pool
 		releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
 		if releaseErr != nil {
@@ -281,4 +283,16 @@ func disconnectNBDWithTimeout(ctx context.Context, deviceIndex uint32, timeout t
 	}
 
 	return nil
+}
+
+func closeSocketPairs(socksClient []*os.File, socksServer []io.Closer) error {
+	var errs []error
+	for _, sock := range socksClient {
+		errs = append(errs, sock.Close())
+	}
+	for _, sock := range socksServer {
+		errs = append(errs, sock.Close())
+	}
+
+	return errors.Join(errs...)
 }
