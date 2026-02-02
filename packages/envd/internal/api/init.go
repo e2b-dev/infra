@@ -169,12 +169,13 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		}
 	}
 
-	if data.AccessToken != nil {
+	if data.AccessToken != nil && *data.AccessToken != "" {
 		logger.Debug().Msg("Setting access token")
+		a.accessToken = data.AccessToken
 	} else {
 		logger.Debug().Msg("Clearing access token")
+		a.accessToken = nil
 	}
-	a.accessToken = data.AccessToken
 
 	if data.HyperloopIP != nil {
 		go a.SetupHyperloop(*data.HyperloopIP)
