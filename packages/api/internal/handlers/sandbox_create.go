@@ -188,6 +188,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	sbxVolumeMounts, err := a.convertVolumeMounts(ctx, cluster, teamInfo.ID, volumeMounts)
 	if err != nil {
+		if errors.Is(err, ErrVolumeMountsDisabled) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Volume mounts are not enabled.")
+
+			return
+		}
+
 		var vne VolumesNotFoundError
 		if errors.As(err, &vne) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume(s) not found: %s", strings.Join(vne.VolumeNames, ", ")))
@@ -256,13 +262,15 @@ func getUniqueSlice(items []api.SandboxVolumeMount, fn func(api.SandboxVolumeMou
 	return results
 }
 
+var ErrVolumeMountsDisabled = errors.New("volume mounts are not enabled")
+
 func (a *APIStore) convertVolumeMounts(ctx context.Context, cluster *clusters.Cluster, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) ([]*orchestrator.SandboxVolumeMount, error) {
 	if len(volumeMounts) == 0 {
 		return []*orchestrator.SandboxVolumeMount{}, nil // only b/c you should never return (nil, nil)
 	}
 
 	if !a.featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
-		return nil, fmt.Errorf("persistent volumes are not enabled")
+		return nil, ErrVolumeMountsDisabled
 	}
 
 	// get volume types from the cluster
