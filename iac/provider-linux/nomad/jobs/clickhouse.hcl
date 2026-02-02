@@ -50,18 +50,49 @@ job "clickhouse" {
       driver = "docker"
 
       env {
-        CLICKHOUSE_USER = "${username}"
+        CLICKHOUSE_USER            = "${username}"
+        CLICKHOUSE_PASSWORD        = "${password}"
+        CLICKHOUSE_DB              = "${clickhouse_database}"
+        CLICKHOUSE_PORT            = "${clickhouse_server_port}"
+        CLICKHOUSE_HOST            = "127.0.0.1"
+        CLICKHOUSE_SKIP_USER_SETUP = "1"
       }
 
       config {
-%{ if docker_image_prefix != "" }
-        image  = "${docker_image_prefix}/clickhouse/clickhouse-server:${clickhouse_version}"
+%{ if dockerhub_remote_repository_url != "" }
+        image  = "${dockerhub_remote_repository_url}/clickhouse/clickhouse-server:${clickhouse_version}"
 %{ else }
         image  = "clickhouse/clickhouse-server:${clickhouse_version}"
 %{ endif }
-        ports  = ["clickhouse-server", "clickhouse-http"]
+        network_mode = "host"
         ulimit { nofile = "262144:262144" }
-        volumes = ["/clickhouse/data:/var/lib/clickhouse"]
+        
+        volumes = [
+          "local/config.xml:/etc/clickhouse-server/config.d/config.xml:ro",
+          "local/users.xml:/etc/clickhouse-server/users.d/users.xml:ro",
+          "local/client-config.xml:/etc/clickhouse-client/config.d/client-config.xml:ro"
+        ]
+      }
+
+      template {
+        destination = "local/client-config.xml"
+        data        = <<EOF
+${clickhouse_client_config}
+EOF
+      }
+
+      template {
+        destination = "local/config.xml"
+        data        = <<EOF
+${clickhouse_config}
+EOF
+      }
+
+      template {
+        destination = "local/users.xml"
+        data        = <<EOF
+${clickhouse_users_config}
+EOF
       }
 
       resources {
