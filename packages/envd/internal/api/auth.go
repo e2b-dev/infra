@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
@@ -18,11 +19,18 @@ const (
 	accessTokenHeader = "X-Access-Token"
 )
 
-// paths that are always allowed without general authentication
-var allowedPaths = []string{
+// paths that are always allowed without general authentication (exact match)
+var allowedExactPaths = []string{
 	"GET/health",
 	"GET/files",
 	"POST/files",
+	"POST/files/download/init",
+}
+
+// path prefixes that are always allowed without general authentication
+var allowedPathPrefixes = []string{
+	"GET/files/download/",
+	"DELETE/files/download/",
 }
 
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
@@ -31,7 +39,8 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 			authHeader := req.Header.Get(accessTokenHeader)
 
 			// check if this path is allowed without authentication (e.g., health check, endpoints supporting signing)
-			allowedPath := slices.Contains(allowedPaths, req.Method+req.URL.Path)
+			methodPath := req.Method + req.URL.Path
+			allowedPath := slices.Contains(allowedExactPaths, methodPath) || hasAllowedPathPrefix(methodPath)
 
 			if authHeader != *a.accessToken && !allowedPath {
 				a.logger.Error().Msg("Trying to access secured envd without correct access token")
@@ -45,6 +54,16 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 
 		handler.ServeHTTP(w, req)
 	})
+}
+
+// hasAllowedPathPrefix checks if the given path starts with any allowed prefix
+func hasAllowedPathPrefix(methodPath string) bool {
+	for _, prefix := range allowedPathPrefixes {
+		if strings.HasPrefix(methodPath, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *API) generateSignature(path string, username string, operation string, signatureExpiration *int64) (string, error) {
