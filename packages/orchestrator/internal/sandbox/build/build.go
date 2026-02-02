@@ -75,7 +75,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			continue
 		}
 
-		mappedBuild, err := b.getBuild(ctx, mappedToBuild)
+		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
@@ -83,6 +83,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		buildN, err := mappedBuild.ReadAt(ctx,
 			p[n:int64(n)+readLength],
 			int64(mappedToBuild.Offset),
+			mappedToBuild.FrameTable,
 		)
 		if err != nil {
 			return 0, fmt.Errorf("failed to read from source: %w", err)
@@ -106,32 +107,25 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 		return header.EmptyHugePage, nil
 	}
 
-	build, err := b.getBuild(ctx, mappedBuild)
+	build, err := b.getBuild(ctx, mappedBuild.BuildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
 
-	return build.Slice(ctx, int64(mappedBuild.Offset), int64(b.header.Metadata.BlockSize))
+	return build.Slice(ctx, int64(mappedBuild.Offset), int64(b.header.Metadata.BlockSize), mappedBuild.FrameTable)
 }
 
-func (b *File) getBuild(ctx context.Context, mappedToBuild *header.BuildMap) (Diff, error) {
-	var opts []StorageDiffOption
-
-	// Use decompress chunker when the data is compressed (determined by the FrameTable).
-	// Decompresses into mmap cache - decompress once, serve from mmap.
-	if mappedToBuild.FrameTable.IsCompressed() {
-		opts = append(opts, WithChunkerType(ChunkerTypeDecompress))
-	}
-
+func (b *File) getBuild(ctx context.Context, buildId uuid.UUID) (Diff, error) {
+	// Create or retrieve StorageDiff for the target build from the cache.
+	// The chunker is lazily initialized on first ReadAt/Slice using the frame table
+	// from the mapping (passed to ReadAt/Slice by the caller).
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
-		mappedToBuild.BuildId.String(),
+		buildId.String(),
 		b.fileType,
 		int64(b.header.Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
-		mappedToBuild.FrameTable,
-		opts...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage diff: %w", err)

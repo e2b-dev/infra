@@ -31,7 +31,10 @@ const (
 
 	storageProviderEnv = "STORAGE_PROVIDER"
 
-	// MemoryChunkSize must always be bigger or equal to the block size.
+	// MemoryChunkSize is the unit of caching and prefetching for storage operations.
+	// It must be >= all block sizes (HugepageSize=2MB, RootfsBlockSize=4KB).
+	// Compression frame sizes (uncompressed) must be a multiple of this value
+	// to ensure aligned chunk requests do not cross frame boundaries.
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
 )
 

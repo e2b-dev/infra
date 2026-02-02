@@ -17,11 +17,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// Each compressed frames contains 1+ chunks.
+// Each compressed frame contains 1+ chunks.
 const (
-	// TODO LEV: what should be the chunk size? Must be a multiple of all
-	// other chunk sizes to align in frames.
-	defaultChunkSizeU             = 2 * megabyte // uncompressed chunk size
+	// defaultChunkSizeU is the uncompressed chunk size for compression.
+	// Must be a multiple of MemoryChunkSize to ensure aligned block/prefetch
+	// requests do not cross compression frame boundaries.
+	defaultChunkSizeU             = MemoryChunkSize
 	defaultTargetFrameSizeC       = 4 * megabyte // target compressed frame size
 	defaultZstdCompressionLevel   = zstd.SpeedBestCompression
 	defaultCompressionConcurrency = 0 // use default compression concurrency settings
@@ -102,6 +103,23 @@ var DefaultCompressionOptions = &FramedUploadOptions{
 	Level:                  int(defaultZstdCompressionLevel),
 	CompressionConcurrency: defaultCompressionConcurrency,
 	TargetPartSize:         defaultUploadPartSize,
+}
+
+// ValidateCompressionOptions checks that compression options are valid.
+// ChunkSize must be a multiple of MemoryChunkSize to ensure alignment.
+func ValidateCompressionOptions(opts *FramedUploadOptions) error {
+	if opts == nil || opts.CompressionType == CompressionNone {
+		return nil
+	}
+	chunkSize := opts.ChunkSize
+	if chunkSize == 0 {
+		chunkSize = defaultChunkSizeU
+	}
+	if chunkSize%MemoryChunkSize != 0 {
+		return fmt.Errorf("compression ChunkSize (%d) must be a multiple of MemoryChunkSize (%d)", chunkSize, MemoryChunkSize)
+	}
+
+	return nil
 }
 
 type ReaderAt interface {
@@ -209,6 +227,10 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 		recordError(span, e)
 		span.End()
 	}()
+
+	if err := ValidateCompressionOptions(opts); err != nil {
+		return nil, err
+	}
 
 	noCompression := !EnableGCSCompression || opts == nil || opts.CompressionType == CompressionNone
 	partSize := defaultUploadPartSize

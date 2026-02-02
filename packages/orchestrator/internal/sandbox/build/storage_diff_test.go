@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -16,6 +17,7 @@ import (
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 // compressTestBytes compresses data using zstd
@@ -36,10 +38,47 @@ func testBlockMetrics(t *testing.T) blockmetrics.Metrics {
 	return m
 }
 
-// setupMockProvider creates a mock storage provider that returns compressed frames
-func setupMockProvider(t *testing.T, frames map[int64][]byte, frameTable *storage.FrameTable) *storage.MockStorageProvider {
+// setupMockProvider creates a mock storage provider that returns compressed frames and headers
+func setupMockProvider(t *testing.T, buildId string, diffType DiffType, frames map[int64][]byte, frameTable *storage.FrameTable, dataSize int64) *storage.MockStorageProvider {
 	t.Helper()
 	provider := storage.NewMockStorageProvider(t)
+
+	// Create and serialize a test header
+	// Use a deterministic UUID based on buildId for test reproducibility
+	bid, err := uuid.Parse(buildId)
+	if err != nil {
+		// buildId is not a valid UUID, generate one from it
+		bid = uuid.NewSHA1(uuid.NameSpaceOID, []byte(buildId))
+	}
+
+	metadata := &header.Metadata{
+		Version:     4, // Version 4 required for frame table serialization
+		BuildId:     bid,
+		BaseBuildId: bid,
+		Size:        uint64(dataSize),
+		BlockSize:   uint64(storage.MemoryChunkSize),
+		Generation:  1,
+	}
+
+	h, err := header.NewHeader(metadata, nil)
+	require.NoError(t, err)
+
+	// Add frame table to header if provided
+	if frameTable != nil {
+		err = h.AddFrames(frameTable)
+		require.NoError(t, err)
+	}
+
+	headerData, err := header.Serialize(h.Metadata, h.Mapping)
+	require.NoError(t, err)
+
+	// Mock GetBlob for header fetch (not used with lazy init, but kept for compatibility)
+	headerPath := buildId + "/" + string(diffType) + storage.HeaderSuffix
+	provider.EXPECT().GetBlob(
+		mock.Anything,
+		headerPath,
+		mock.Anything,
+	).Return(headerData, nil).Maybe()
 
 	// Setup GetFrame to return compressed data and decompress when requested
 	provider.EXPECT().GetFrame(
@@ -78,15 +117,13 @@ func setupMockProvider(t *testing.T, frames map[int64][]byte, frameTable *storag
 	}).Maybe()
 
 	// Size is used for uncompressed data
-	provider.EXPECT().Size(mock.Anything, mock.Anything).Return(
-		frameTable.StartAt.U+frameTable.TotalUncompressedSize(), nil,
-	).Maybe()
+	provider.EXPECT().Size(mock.Anything, mock.Anything).Return(dataSize, nil).Maybe()
 
 	return provider
 }
 
 // TestStorageDiff_CompressedChunker_ReadVerify verifies that the compressed chunker
-// reads data correctly
+// reads data correctly with lazy initialization
 func TestStorageDiff_CompressedChunker_ReadVerify(t *testing.T) {
 	t.Parallel()
 
@@ -109,7 +146,7 @@ func TestStorageDiff_CompressedChunker_ReadVerify(t *testing.T) {
 		},
 	}
 
-	provider := setupMockProvider(t, map[int64][]byte{0: compressedData}, frameTable)
+	provider := setupMockProvider(t, "test-build", Rootfs, map[int64][]byte{0: compressedData}, frameTable, frameSizeU)
 
 	sd, err := newStorageDiff(
 		tmpDir,
@@ -118,43 +155,38 @@ func TestStorageDiff_CompressedChunker_ReadVerify(t *testing.T) {
 		int64(storage.MemoryChunkSize),
 		testBlockMetrics(t),
 		provider,
-		frameTable,
-		WithChunkerType(ChunkerTypeCompressed),
 	)
-	require.NoError(t, err)
-
-	err = sd.Init(ctx)
 	require.NoError(t, err)
 	defer sd.Close()
 
-	// Read from start
+	// Read from start - chunker lazily initialized on first read
 	buf := make([]byte, 1024)
-	n, err := sd.ReadAt(ctx, buf, 0)
+	n, err := sd.ReadAt(ctx, buf, 0, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 1024, n)
 	assert.Equal(t, testData[:1024], buf, "Start data doesn't match")
 
 	// Read from middle
-	n, err = sd.ReadAt(ctx, buf, frameSizeU/2)
+	n, err = sd.ReadAt(ctx, buf, frameSizeU/2, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 1024, n)
 	assert.Equal(t, testData[frameSizeU/2:frameSizeU/2+1024], buf, "Middle data doesn't match")
 
 	// Read near end
-	n, err = sd.ReadAt(ctx, buf, frameSizeU-1024)
+	n, err = sd.ReadAt(ctx, buf, frameSizeU-1024, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 1024, n)
 	assert.Equal(t, testData[frameSizeU-1024:], buf, "End data doesn't match")
 
 	// Slice
-	slice, err := sd.Slice(ctx, 100, 500)
+	slice, err := sd.Slice(ctx, 100, 500, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, testData[100:600], slice, "Slice data doesn't match")
 }
 
-// TestStorageDiff_CompressedChunker_Init verifies that the compressed chunker
-// initializes correctly via StorageDiff
-func TestStorageDiff_CompressedChunker_Init(t *testing.T) {
+// TestStorageDiff_CompressedChunker_LazyInit verifies that the compressed chunker
+// initializes lazily on first read via StorageDiff
+func TestStorageDiff_CompressedChunker_LazyInit(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -175,7 +207,7 @@ func TestStorageDiff_CompressedChunker_Init(t *testing.T) {
 		},
 	}
 
-	provider := setupMockProvider(t, map[int64][]byte{0: compressedData}, frameTable)
+	provider := setupMockProvider(t, "test-build-compressed", Memfile, map[int64][]byte{0: compressedData}, frameTable, frameSizeU)
 
 	sd, err := newStorageDiff(
 		tmpDir,
@@ -184,27 +216,21 @@ func TestStorageDiff_CompressedChunker_Init(t *testing.T) {
 		int64(storage.MemoryChunkSize),
 		testBlockMetrics(t),
 		provider,
-		frameTable,
-		WithChunkerType(ChunkerTypeCompressed),
-		WithLRUSize(128),
 	)
-	require.NoError(t, err)
-
-	err = sd.Init(ctx)
 	require.NoError(t, err)
 	defer sd.Close()
 
-	// Verify we can read data
+	// Verify compressed data is detected and read correctly - chunker created lazily
 	buf := make([]byte, 100)
-	n, err := sd.ReadAt(ctx, buf, 0)
+	n, err := sd.ReadAt(ctx, buf, 0, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 100, n)
 	assert.Equal(t, testData[:100], buf)
 }
 
-// TestStorageDiff_MmapChunker_Init verifies that the mmap chunker
-// initializes correctly via StorageDiff (default behavior)
-func TestStorageDiff_MmapChunker_Init(t *testing.T) {
+// TestStorageDiff_MmapChunker_LazyInit verifies that the mmap chunker
+// initializes lazily on first read via StorageDiff (uncompressed data)
+func TestStorageDiff_MmapChunker_LazyInit(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -216,7 +242,7 @@ func TestStorageDiff_MmapChunker_Init(t *testing.T) {
 		testData[i] = byte(i % 256)
 	}
 
-	// Mmap chunker requires uncompressed data
+	// Mmap chunker requires uncompressed data (nil or CompressionNone frame table)
 	frameTable := &storage.FrameTable{
 		CompressionType: storage.CompressionNone,
 		StartAt:         storage.FrameOffset{U: 0, C: 0},
@@ -225,9 +251,9 @@ func TestStorageDiff_MmapChunker_Init(t *testing.T) {
 		},
 	}
 
-	provider := setupMockProvider(t, map[int64][]byte{0: testData}, frameTable)
+	provider := setupMockProvider(t, "test-build-mmap", Memfile, map[int64][]byte{0: testData}, frameTable, frameSizeU)
 
-	// Default chunker type (no option) should be Mmap
+	// Uncompressed data should use Mmap chunker
 	sd, err := newStorageDiff(
 		tmpDir,
 		"test-build-mmap",
@@ -235,18 +261,13 @@ func TestStorageDiff_MmapChunker_Init(t *testing.T) {
 		int64(storage.MemoryChunkSize),
 		testBlockMetrics(t),
 		provider,
-		frameTable,
 	)
-	require.NoError(t, err)
-	assert.Equal(t, ChunkerTypeMmap, sd.chunkerType)
-
-	err = sd.Init(ctx)
 	require.NoError(t, err)
 	defer sd.Close()
 
-	// Verify we can read data
+	// Verify we can read data - chunker created lazily based on frame table
 	buf := make([]byte, 100)
-	n, err := sd.ReadAt(ctx, buf, 0)
+	n, err := sd.ReadAt(ctx, buf, 0, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 100, n)
 	assert.Equal(t, testData[:100], buf)
@@ -267,14 +288,12 @@ func TestStorageDiff_FileSize(t *testing.T) {
 	compressedData := compressTestBytes(t, testData)
 
 	tests := []struct {
-		name        string
-		chunkerType ChunkerType
-		frameTable  *storage.FrameTable
-		mockData    []byte
+		name       string
+		frameTable *storage.FrameTable
+		mockData   []byte
 	}{
 		{
-			name:        "Mmap",
-			chunkerType: ChunkerTypeMmap,
+			name: "Mmap",
 			frameTable: &storage.FrameTable{
 				CompressionType: storage.CompressionNone,
 				StartAt:         storage.FrameOffset{U: 0, C: 0},
@@ -283,8 +302,7 @@ func TestStorageDiff_FileSize(t *testing.T) {
 			mockData: testData,
 		},
 		{
-			name:        "Compressed",
-			chunkerType: ChunkerTypeCompressed,
+			name: "Compressed",
 			frameTable: &storage.FrameTable{
 				CompressionType: storage.CompressionZstd,
 				StartAt:         storage.FrameOffset{U: 0, C: 0},
@@ -302,30 +320,26 @@ func TestStorageDiff_FileSize(t *testing.T) {
 			err := os.MkdirAll(testDir, 0o755)
 			require.NoError(t, err)
 
-			provider := setupMockProvider(t, map[int64][]byte{0: tc.mockData}, tc.frameTable)
+			buildId := "test-build-filesize-" + tc.name
+			provider := setupMockProvider(t, buildId, Rootfs, map[int64][]byte{0: tc.mockData}, tc.frameTable, frameSizeU)
 
 			sd, err := newStorageDiff(
 				testDir,
-				"test-build-filesize",
+				buildId,
 				Rootfs,
 				int64(storage.MemoryChunkSize),
 				testBlockMetrics(t),
 				provider,
-				tc.frameTable,
-				WithChunkerType(tc.chunkerType),
 			)
-			require.NoError(t, err)
-
-			err = sd.Init(ctx)
 			require.NoError(t, err)
 			defer sd.Close()
 
-			// Read some data to populate cache
+			// Read some data to populate cache and initialize chunker
 			buf := make([]byte, 100)
-			_, err = sd.ReadAt(ctx, buf, 0)
+			_, err = sd.ReadAt(ctx, buf, 0, tc.frameTable)
 			require.NoError(t, err)
 
-			// FileSize should return something reasonable
+			// FileSize should return something reasonable after chunker is initialized
 			size, err := sd.FileSize()
 			require.NoError(t, err)
 			// Both should be >= 0
@@ -346,14 +360,12 @@ func TestStorageDiff_Close(t *testing.T) {
 	compressedData := compressTestBytes(t, testData)
 
 	tests := []struct {
-		name        string
-		chunkerType ChunkerType
-		frameTable  *storage.FrameTable
-		mockData    []byte
+		name       string
+		frameTable *storage.FrameTable
+		mockData   []byte
 	}{
 		{
-			name:        "Mmap",
-			chunkerType: ChunkerTypeMmap,
+			name: "Mmap",
 			frameTable: &storage.FrameTable{
 				CompressionType: storage.CompressionNone,
 				StartAt:         storage.FrameOffset{U: 0, C: 0},
@@ -362,8 +374,7 @@ func TestStorageDiff_Close(t *testing.T) {
 			mockData: testData,
 		},
 		{
-			name:        "Compressed",
-			chunkerType: ChunkerTypeCompressed,
+			name: "Compressed",
 			frameTable: &storage.FrameTable{
 				CompressionType: storage.CompressionZstd,
 				StartAt:         storage.FrameOffset{U: 0, C: 0},
@@ -381,21 +392,22 @@ func TestStorageDiff_Close(t *testing.T) {
 			err := os.MkdirAll(testDir, 0o755)
 			require.NoError(t, err)
 
-			provider := setupMockProvider(t, map[int64][]byte{0: tc.mockData}, tc.frameTable)
+			buildId := "test-build-close-" + tc.name
+			provider := setupMockProvider(t, buildId, Rootfs, map[int64][]byte{0: tc.mockData}, tc.frameTable, frameSizeU)
 
 			sd, err := newStorageDiff(
 				testDir,
-				"test-build-close",
+				buildId,
 				Rootfs,
 				int64(storage.MemoryChunkSize),
 				testBlockMetrics(t),
 				provider,
-				tc.frameTable,
-				WithChunkerType(tc.chunkerType),
 			)
 			require.NoError(t, err)
 
-			err = sd.Init(ctx)
+			// Initialize chunker by reading
+			buf := make([]byte, 100)
+			_, err = sd.ReadAt(ctx, buf, 0, tc.frameTable)
 			require.NoError(t, err)
 
 			// Close should not error
@@ -403,6 +415,38 @@ func TestStorageDiff_Close(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// TestStorageDiff_CloseWithoutInit verifies Close works even if chunker was never initialized
+func TestStorageDiff_CloseWithoutInit(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+
+	frameSizeU := int64(4 * 1024 * 1024)
+	testData := make([]byte, frameSizeU)
+
+	frameTable := &storage.FrameTable{
+		CompressionType: storage.CompressionNone,
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
+		Frames:          []storage.FrameSize{{U: int32(frameSizeU), C: int32(frameSizeU)}},
+	}
+
+	provider := setupMockProvider(t, "test-build-close-noinit", Rootfs, map[int64][]byte{0: testData}, frameTable, frameSizeU)
+
+	sd, err := newStorageDiff(
+		tmpDir,
+		"test-build-close-noinit",
+		Rootfs,
+		int64(storage.MemoryChunkSize),
+		testBlockMetrics(t),
+		provider,
+	)
+	require.NoError(t, err)
+
+	// Close without ever reading (chunker never initialized)
+	err = sd.Close()
+	require.NoError(t, err)
 }
 
 // TestStorageDiff_CompressedChunker_ConcurrentReads verifies concurrent reads work
@@ -428,7 +472,7 @@ func TestStorageDiff_CompressedChunker_ConcurrentReads(t *testing.T) {
 		},
 	}
 
-	provider := setupMockProvider(t, map[int64][]byte{0: compressedData}, frameTable)
+	provider := setupMockProvider(t, "test-build-concurrent", Rootfs, map[int64][]byte{0: compressedData}, frameTable, frameSizeU)
 
 	sd, err := newStorageDiff(
 		tmpDir,
@@ -437,16 +481,11 @@ func TestStorageDiff_CompressedChunker_ConcurrentReads(t *testing.T) {
 		int64(storage.MemoryChunkSize),
 		testBlockMetrics(t),
 		provider,
-		frameTable,
-		WithChunkerType(ChunkerTypeCompressed),
 	)
-	require.NoError(t, err)
-
-	err = sd.Init(ctx)
 	require.NoError(t, err)
 	defer sd.Close()
 
-	// Run concurrent reads
+	// Run concurrent reads - chunker will be lazily initialized on first read
 	const numReaders = 10
 	var wg sync.WaitGroup
 	errors := make(chan error, numReaders)
@@ -456,7 +495,7 @@ func TestStorageDiff_CompressedChunker_ConcurrentReads(t *testing.T) {
 		go func(offset int64) {
 			defer wg.Done()
 			buf := make([]byte, 100)
-			n, err := sd.ReadAt(ctx, buf, offset)
+			n, err := sd.ReadAt(ctx, buf, offset, frameTable)
 			if err != nil {
 				errors <- err
 
@@ -515,10 +554,10 @@ func TestStorageDiff_CompressedChunker_MultipleFrames(t *testing.T) {
 		},
 	}
 
-	provider := setupMockProvider(t, map[int64][]byte{
+	provider := setupMockProvider(t, "test-build-multiframe", Rootfs, map[int64][]byte{
 		0:          compressed1,
 		frameSizeU: compressed2,
-	}, frameTable)
+	}, frameTable, frameSizeU*2)
 
 	sd, err := newStorageDiff(
 		tmpDir,
@@ -527,24 +566,19 @@ func TestStorageDiff_CompressedChunker_MultipleFrames(t *testing.T) {
 		int64(storage.MemoryChunkSize),
 		testBlockMetrics(t),
 		provider,
-		frameTable,
-		WithChunkerType(ChunkerTypeCompressed),
 	)
-	require.NoError(t, err)
-
-	err = sd.Init(ctx)
 	require.NoError(t, err)
 	defer sd.Close()
 
-	// Read from first frame
+	// Read from first frame - chunker lazily initialized
 	buf := make([]byte, 100)
-	n, err := sd.ReadAt(ctx, buf, 0)
+	n, err := sd.ReadAt(ctx, buf, 0, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 100, n)
 	assert.Equal(t, fullData[:100], buf)
 
 	// Read from second frame
-	n, err = sd.ReadAt(ctx, buf, frameSizeU+1000)
+	n, err = sd.ReadAt(ctx, buf, frameSizeU+1000, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 100, n)
 	assert.Equal(t, fullData[frameSizeU+1000:frameSizeU+1100], buf)
@@ -552,13 +586,13 @@ func TestStorageDiff_CompressedChunker_MultipleFrames(t *testing.T) {
 	// Read across frame boundary
 	boundaryOffset := frameSizeU - 50
 	buf = make([]byte, 100)
-	n, err = sd.ReadAt(ctx, buf, boundaryOffset)
+	n, err = sd.ReadAt(ctx, buf, boundaryOffset, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 100, n)
 	assert.Equal(t, fullData[boundaryOffset:boundaryOffset+100], buf)
 
-	// Verify Size
-	size, err := sd.Size(ctx)
+	// Verify FileSize after chunker is initialized
+	size, err := sd.FileSize()
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, size, int64(0))
 }
