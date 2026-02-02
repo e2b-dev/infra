@@ -596,7 +596,7 @@ variable "loki_use_v13_schema_from" {
   default     = ""
 
   validation {
-    condition     = can(regex("\\d{4}-\\d{2}-\\d{2}", var.loki_use_v13_schema_from))
+    condition     = var.loki_use_v13_schema_from == "" || can(regex("\\d{4}-\\d{2}-\\d{2}", var.loki_use_v13_schema_from))
     error_message = "must be YYYY-MM-DD"
   }
 }
