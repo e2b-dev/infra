@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -40,7 +41,7 @@ type Cluster struct {
 
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[discovery.Item, *Instance]
-	resources       ClusterResource
+	Resources       ClusterResource
 }
 
 var (
@@ -54,6 +55,7 @@ func newLocalCluster(
 	nomad *nomadapi.Client,
 	clickhouse clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
+	config cfg.Config,
 ) (*Cluster, error) {
 	clusterID := consts.LocalClusterID
 
@@ -71,7 +73,7 @@ func newLocalCluster(
 		SandboxDomain: nil,
 
 		instances:       instances,
-		resources:       newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances),
+		Resources:       newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances, config),
 		synchronization: synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 	}
 
@@ -132,7 +134,7 @@ func newRemoteCluster(
 		SandboxDomain: sandboxDomain,
 
 		instances:       instances,
-		resources:       newRemoteClusterResourceProvider(instances, httpClient),
+		Resources:       newRemoteClusterResourceProvider(instances, httpClient),
 		synchronization: synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 	}
 
@@ -232,5 +234,5 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 }
 
 func (c *Cluster) GetResources() ClusterResource {
-	return c.resources
+	return c.Resources
 }

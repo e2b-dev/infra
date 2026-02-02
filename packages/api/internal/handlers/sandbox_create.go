@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/net/idna"
@@ -18,12 +19,15 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -131,12 +135,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	if len(volumeMounts) != 0 {
-		if !a.featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, "use of volumes is not enabled")
+	cluster, ok := a.clusters.GetClusterById(clusterID)
+	if !ok {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Cluster with ID %s not found", clusterID))
 
-			return
-		}
+		return
 	}
 
 	var envdAccessToken *string = nil
@@ -183,6 +186,27 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
+	sbxVolumeMounts, err := a.convertVolumeMounts(ctx, cluster, teamInfo.ID, volumeMounts)
+	if err != nil {
+		var vne VolumesNotFoundError
+		if errors.As(err, &vne) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume(s) not found: %s", strings.Join(vne.VolumeNames, ", ")))
+
+			return
+		}
+
+		var fns InvalidVolumeTypesError
+		if errors.As(err, &fns) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume(s) not supported by cluster: %s", strings.Join(fns.VolumeNames, ", ")))
+
+			return
+		}
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Errorf("failed to convert volume mounts: %w", err).Error())
+
+		return
+	}
+
 	sbx, createErr := a.startSandbox(
 		ctx,
 		sandboxID,
@@ -201,7 +225,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		allowInternetAccess,
 		network,
 		mcp,
-		volumeMounts,
+		sbxVolumeMounts,
 	)
 	if createErr != nil {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
@@ -210,6 +234,127 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, &sbx)
+}
+
+func toSet[TItem any, TKey comparable](items []TItem, fn func(TItem) TKey) map[TKey]struct{} {
+	result := make(map[TKey]struct{}, len(items))
+	for _, item := range items {
+		result[fn(item)] = struct{}{}
+	}
+
+	return result
+}
+
+func getUniqueSlice(items []api.SandboxVolumeMount, fn func(api.SandboxVolumeMount) string) []string {
+	itemsSet := toSet(items, fn)
+
+	results := make([]string, 0, len(itemsSet))
+	for name := range itemsSet {
+		results = append(results, name)
+	}
+
+	return results
+}
+
+func (a *APIStore) convertVolumeMounts(ctx context.Context, cluster *clusters.Cluster, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) ([]*orchestrator.SandboxVolumeMount, error) {
+	if len(volumeMounts) == 0 {
+		return []*orchestrator.SandboxVolumeMount{}, nil // only b/c you should never return (nil, nil)
+	}
+
+	if !a.featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
+		return nil, fmt.Errorf("persistent volumes are not enabled")
+	}
+
+	// get volume types from the cluster
+	volumeTypesSet, err := getSupportedVolumeTypes(ctx, cluster)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get supported volume types: %w", err)
+	}
+
+	// get volumes from the database
+	dbVolumesMap, err := a.getDBVolumesMap(ctx, teamID, volumeMounts, volumeTypesSet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get db volumes map: %w", err)
+	}
+
+	var missingVolumeNames []string
+	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumeMounts))
+
+	for _, v := range volumeMounts {
+		actualVolume, ok := dbVolumesMap[v.Name]
+		if !ok {
+			missingVolumeNames = append(missingVolumeNames, v.Name)
+
+			continue
+		}
+
+		results = append(results, &orchestrator.SandboxVolumeMount{
+			Name: v.Name,
+			Path: v.Path,
+			Type: actualVolume.VolumeType,
+		})
+	}
+
+	if len(missingVolumeNames) > 0 {
+		return nil, VolumesNotFoundError{VolumeNames: missingVolumeNames}
+	}
+
+	return results, nil
+}
+
+func getSupportedVolumeTypes(ctx context.Context, cluster *clusters.Cluster) (map[string]struct{}, error) {
+	volumeTypesSlice, err := cluster.GetResources().GetVolumeTypes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get volume types from cluster: %w", err)
+	}
+
+	volumeTypesSet := toSet(volumeTypesSlice, func(vt string) string { return vt })
+
+	return volumeTypesSet, nil
+}
+
+type VolumesNotFoundError struct {
+	VolumeNames []string
+}
+
+func (e VolumesNotFoundError) Error() string {
+	return fmt.Sprintf("volumes not found: %s", strings.Join(e.VolumeNames, ", "))
+}
+
+type InvalidVolumeTypesError struct {
+	VolumeNames []string
+}
+
+func (e InvalidVolumeTypesError) Error() string {
+	return fmt.Sprintf("volumes are unsupported by cluster: %s", strings.Join(e.VolumeNames, ", "))
+}
+
+func (a *APIStore) getDBVolumesMap(ctx context.Context, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, volumeTypesSet map[string]struct{}) (map[string]queries.Volume, error) {
+	dbVolumes, err := a.sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
+		TeamID:      teamID,
+		VolumeNames: getUniqueSlice(volumeMounts, func(svm api.SandboxVolumeMount) string { return svm.Name }),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get volumes from db: %w", err)
+	}
+
+	dbVolumesMap := make(map[string]queries.Volume, len(dbVolumes))
+	var invalidVolumeNames []string
+	for _, v := range dbVolumes {
+		if _, ok := volumeTypesSet[v.VolumeType]; !ok {
+			invalidVolumeNames = append(invalidVolumeNames, v.Name)
+
+			continue
+		}
+
+		dbVolumesMap[v.Name] = v
+	}
+
+	if len(invalidVolumeNames) > 0 {
+		return nil, InvalidVolumeTypesError{VolumeNames: invalidVolumeNames}
+	}
+
+	return dbVolumesMap, nil
 }
 
 func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (string, *api.APIError) {

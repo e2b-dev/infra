@@ -4,7 +4,17 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	clustersmocks "github.com/e2b-dev/infra/packages/api/internal/clusters/mocks"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
@@ -221,4 +231,96 @@ func TestValidateNetworkConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOrchestrator_convertVolumeMounts(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+
+	testCases := map[string]struct {
+		input       []api.SandboxVolumeMount
+		database    []queries.CreateVolumeParams
+		volumeTypes []string
+		expected    []*orchestrator.SandboxVolumeMount
+		err         error
+	}{
+		"missing volume reports correct error": {
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1"},
+			},
+			volumeTypes: []string{},
+			err:         VolumesNotFoundError{[]string{"vol1"}},
+		},
+		"existing volumes are returned": {
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			expected: []*orchestrator.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1", Type: "local"},
+			},
+		},
+		"partial success returns error": {
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+				{Name: "vol2", Path: "/vol2"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         VolumesNotFoundError{[]string{"vol2"}},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			teamID := testutils.CreateTestTeam(t, db)
+
+			for _, v := range tc.database {
+				_, err := db.SqlcClient.CreateVolume(t.Context(),
+					queries.CreateVolumeParams{
+						Name:       v.Name,
+						TeamID:     teamID,
+						VolumeType: v.VolumeType,
+					},
+				)
+				require.NoError(t, err)
+			}
+
+			ffClient, err := featureflags.NewClient()
+			require.NoError(t, err)
+
+			resources := newMockResources(t, tc.volumeTypes)
+			a := APIStore{
+				sqlcDB:       db.SqlcClient,
+				featureFlags: ffClient,
+			}
+
+			actual, err := a.convertVolumeMounts(t.Context(), &clusters.Cluster{Resources: resources}, teamID, tc.input)
+			assert.Equal(t, tc.err, err)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func newMockResources(t *testing.T, volumeTypes []string) clusters.ClusterResource {
+	t.Helper()
+
+	mcr := clustersmocks.NewMockClusterResource(t)
+
+	if volumeTypes != nil {
+		mcr.EXPECT().
+			GetVolumeTypes(mock.Anything).
+			Return(volumeTypes, nil).
+			Once()
+	}
+
+	return mcr
 }
