@@ -51,6 +51,20 @@ job "api" {
       }
     }
 
+    service {
+      name = "api-grpc"
+      port = "grpc"
+      task = "start"
+
+      check {
+        type     = "tcp"
+        name     = "grpc"
+        interval = "3s"
+        timeout  = "3s"
+        port     = "grpc"
+      }
+    }
+
 %{ if update_stanza }
     # An update stanza to enable rolling updates of the service
     update {

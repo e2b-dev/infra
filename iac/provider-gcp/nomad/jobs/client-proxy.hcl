@@ -101,7 +101,7 @@ job "client-proxy" {
         REDIS_CLUSTER_URL   = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64 = "${redis_tls_ca_base64}"
 
-        API_GRPC_ADDRESS = "api.${domain_name}:${api_grpc_port}"
+        API_GRPC_ADDRESS = "api-grpc.service.consul:${api_grpc_port}"
         AUTO_RESUME_ENABLED = "${auto_resume_enabled}"
 
         %{ if launch_darkly_api_key != "" }
