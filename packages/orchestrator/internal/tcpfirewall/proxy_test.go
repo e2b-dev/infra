@@ -253,8 +253,10 @@ func TestIsTransientAcceptError(t *testing.T) {
 		{"EMFILE", syscall.EMFILE, true},
 		{"ENFILE", syscall.ENFILE, true},
 		{"EAGAIN", syscall.EAGAIN, true},
+		{"ECONNABORTED", syscall.ECONNABORTED, true},
 		{"wrapped EMFILE", &net.OpError{Op: "accept", Err: syscall.EMFILE}, true},
 		{"wrapped ENFILE", &net.OpError{Op: "accept", Err: syscall.ENFILE}, true},
+		{"wrapped ECONNABORTED", &net.OpError{Op: "accept", Err: syscall.ECONNABORTED}, true},
 		{"ECONNRESET", syscall.ECONNRESET, false},
 		{"generic error", errors.New("some error"), false},
 	}

@@ -52,5 +52,6 @@ func isTransientAcceptError(err error) bool {
 
 	return errors.Is(err, syscall.EMFILE) || // too many open files (per-process)
 		errors.Is(err, syscall.ENFILE) || // too many open files (system-wide)
-		errors.Is(err, syscall.EAGAIN) // resource temporarily unavailable
+		errors.Is(err, syscall.EAGAIN) || // resource temporarily unavailable
+		errors.Is(err, syscall.ECONNABORTED) // client closed before accept
 }
