@@ -136,8 +136,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn
 
-		idx, err := nbdnl.Connect(deviceIndex, d.socksClient, uint64(size), 0, serverFlags, opts...)
-		if err == nil {
+		idx, connectErr := nbdnl.Connect(deviceIndex, d.socksClient, uint64(size), 0, serverFlags, opts...)
+		if connectErr == nil {
 			// The idx should be the same as deviceIndex, because we are connecting to it,
 			// but we will use the one returned by nbdnl
 			deviceIndex = idx
@@ -145,13 +145,13 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			break
 		}
 
-		logger.L().Error(ctx, "error opening NBD, retrying", zap.Error(err), zap.Uint32("device_index", deviceIndex))
+		logger.L().Error(ctx, "error opening NBD, retrying", zap.Error(connectErr), zap.Uint32("device_index", deviceIndex))
 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
-		err = closeSocketPairs(d.socksClient, d.socksServer)
-		if err != nil {
-			logger.L().Error(ctx, "error closing socket pairs on error opening NBD", zap.Error(err))
+		closeErr := closeSocketPairs(d.socksClient, d.socksServer)
+		if closeErr != nil {
+			logger.L().Error(ctx, "error closing socket pairs on error opening NBD", zap.Error(closeErr))
 		}
 
 		// Release the device back to the pool
@@ -160,13 +160,13 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			logger.L().Error(ctx, "error opening NBD, error releasing device", zap.Error(releaseErr), zap.Uint32("device_index", deviceIndex))
 		}
 
-		if strings.Contains(err.Error(), "invalid argument") {
-			return math.MaxUint32, err
+		if strings.Contains(connectErr.Error(), "invalid argument") {
+			return math.MaxUint32, connectErr
 		}
 
 		select {
 		case <-ctx.Done():
-			return math.MaxUint32, errors.Join(err, ctx.Err())
+			return math.MaxUint32, errors.Join(connectErr, ctx.Err())
 		case <-time.After(25 * time.Millisecond):
 		}
 	}
