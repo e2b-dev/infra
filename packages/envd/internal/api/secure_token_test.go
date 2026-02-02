@@ -131,10 +131,8 @@ func TestSecureTokenEmptyToken(t *testing.T) {
 
 	st := &SecureToken{}
 
-	// Setting empty token - memguard's NewBufferFromBytes returns nil for empty slices
-	// so this is expected behavior (empty token = no token set)
+	// Setting empty token should return an error to prevent silently disabling authentication
 	err := st.Set("")
-	require.NoError(t, err)
-	// Empty token results in nil buffer, so IsSet returns false
-	assert.False(t, st.IsSet(), "empty token should not be considered as set")
+	require.ErrorIs(t, err, ErrEmptyToken, "empty token should return ErrEmptyToken")
+	assert.False(t, st.IsSet(), "token should not be set after failed Set with empty token")
 }
