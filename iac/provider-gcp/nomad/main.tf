@@ -89,6 +89,7 @@ resource "nomad_job" "api" {
     gcp_zone                                = var.gcp_zone
     port_name                               = var.api_port.name
     port_number                             = var.api_port.port
+    api_grpc_port                           = var.api_grpc_port
     api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
     postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
     postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
@@ -163,9 +164,8 @@ resource "nomad_job" "client_proxy" {
       redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
       image_name          = data.google_artifact_registry_docker_image.client_proxy_image.self_link
-      api_admin_token     = var.api_admin_token
       domain_name         = var.domain_name
-      api_key             = var.client_proxy_api_key
+      api_grpc_port       = var.api_grpc_port
       auto_resume_enabled = var.client_proxy_auto_resume_enabled
 
       otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
