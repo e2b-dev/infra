@@ -9,6 +9,8 @@ replace (
 	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 )
 
+replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.3.1
+
 // https://github.com/grafana/loki/issues/2826
 replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
 
