@@ -31,6 +31,12 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
+	if !a.featureFlags.BoolFlag(ctx, feature_flags.PersistentVolumesFlag) {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "use of volumes is not enabled")
+
+		return
+	}
+
 	// parse body
 	body, err := utils.ParseBody[api.PostVolumesJSONRequestBody](ctx, c)
 	if err != nil {
@@ -55,14 +61,14 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	volumeType := a.getVolumeType(ctx)
 	if volumeType == "" {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Default persistent volume type is not configured")
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "No persistent volume type is configured")
 		telemetry.ReportCriticalError(ctx, "default persistent volume type is not configured", nil)
 
 		return
 	}
 
 	if _, ok := a.config.PersistentVolumeTypes[volumeType]; !ok {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Volume type '%s' is not supported", volumeType))
+		a.sendAPIStoreError(c, http.StatusBadRequest, "use of volumes is not enabled")
 		telemetry.ReportCriticalError(ctx, "volume type is not supported", nil)
 
 		return

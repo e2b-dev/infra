@@ -69,6 +69,61 @@ func TestIsValidVolumeName(t *testing.T) {
 			volume:   "my-volume.",
 			expected: false,
 		},
+		{
+			name:     "invalid name with slash",
+			volume:   "my/volume",
+			expected: false,
+		},
+		{
+			name:     "invalid name with backslash",
+			volume:   "my\\volume",
+			expected: false,
+		},
+		{
+			name:     "invalid name with colon",
+			volume:   "my:volume",
+			expected: false,
+		},
+		{
+			name:     "invalid name with asterisk",
+			volume:   "my*volume",
+			expected: false,
+		},
+		{
+			name:     "invalid name with question mark",
+			volume:   "my?volume",
+			expected: false,
+		},
+		{
+			name:     "invalid name with double quote",
+			volume:   "my\"volume",
+			expected: false,
+		},
+		{
+			name:     "invalid name with less than",
+			volume:   "my<volume",
+			expected: false,
+		},
+		{
+			name:     "invalid name with greater than",
+			volume:   "my>volume",
+			expected: false,
+		},
+		{
+			name:     "invalid name with pipe",
+			volume:   "my|volume",
+			expected: false,
+		},
+		{
+			name:     "invalid name with semicolon",
+			volume:   "my;volume",
+			expected: false,
+		},
+		{
+			name:     "invalid name with comma",
+			volume:   "my,volume",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
