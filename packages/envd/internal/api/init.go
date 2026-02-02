@@ -24,8 +24,8 @@ import (
 const hostsFilePermissions = 0o644
 
 var (
-	ErrAccessTokenMismatch = errors.New("access token validation failed")
-	ErrAccessTokenConflict = errors.New("access token change not authorized")
+	ErrAccessTokenMismatch           = errors.New("access token validation failed")
+	ErrAccessTokenResetNotAuthorized = errors.New("access token reset not authorized")
 )
 
 const (
@@ -36,11 +36,7 @@ const (
 // validateInitAccessToken validates the access token for /init requests.
 // Token is valid if it matches the existing token OR the MMDS hash.
 // If neither exists, first-time setup is allowed.
-//
-// Returns:
-//   - ErrAccessTokenMismatch (401): invalid token provided
-//   - ErrAccessTokenConflict (409): trying to reset token without authorization
-func (a *API) validateInitAccessToken(ctx context.Context, logger zerolog.Logger, requestToken *string) error {
+func (a *API) validateInitAccessToken(ctx context.Context, requestToken *string) error {
 	// Fast path: token matches existing
 	if a.accessToken != nil && requestToken != nil && *requestToken == *a.accessToken {
 		return nil
@@ -55,12 +51,8 @@ func (a *API) validateInitAccessToken(ctx context.Context, logger zerolog.Logger
 	case a.accessToken == nil && !mmdsExists:
 		return nil // first-time setup
 	case requestToken == nil:
-		logger.Error().Msg("Access token change not authorized")
-
-		return ErrAccessTokenConflict
+		return ErrAccessTokenResetNotAuthorized
 	default:
-		logger.Error().Msg("Access token validation failed")
-
 		return ErrAccessTokenMismatch
 	}
 }
@@ -122,8 +114,8 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case errors.Is(err, ErrAccessTokenMismatch):
 					w.WriteHeader(http.StatusUnauthorized)
-				case errors.Is(err, ErrAccessTokenConflict):
-					w.WriteHeader(http.StatusConflict)
+				case errors.Is(err, ErrAccessTokenResetNotAuthorized):
+					w.WriteHeader(http.StatusUnauthorized)
 				default:
 					logger.Error().Msgf("Failed to set data: %v", err)
 					w.WriteHeader(http.StatusBadRequest)
@@ -152,7 +144,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	// The request must provide a token that is either:
 	// 1. Matches the existing access token (if set), OR
 	// 2. Matches the MMDS hash (for token change during resume)
-	if err := a.validateInitAccessToken(ctx, logger, data.AccessToken); err != nil {
+	if err := a.validateInitAccessToken(ctx, data.AccessToken); err != nil {
 		return err
 	}
 

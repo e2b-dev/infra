@@ -73,7 +73,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	assert.Equal(t, "unauthenticated: 401 Unauthorized", err.Error())
 }
 
-func TestInitWithNilTokenOnSecuredSandboxReturnsConflict(t *testing.T) {
+func TestInitWithNilTokenOnSecuredSandboxReturnsUnauthorized(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -84,14 +84,14 @@ func TestInitWithNilTokenOnSecuredSandboxReturnsConflict(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	// Calling /init with no token on a secured sandbox returns 409 Conflict
+	// Calling /init with no token on a secured sandbox returns 401 Unauthorized
 	// because it's trying to reset the token without authorization
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
 		body:                  envdapi.PostInitJSONRequestBody{},
 		expectedResErr:        nil,
-		expectedResHttpStatus: http.StatusConflict,
+		expectedResHttpStatus: http.StatusUnauthorized,
 	})
 }
 

@@ -20,11 +20,11 @@ const (
 	mmdsDefaultAddress  = "169.254.169.254"
 	mmdsTokenExpiration = 60 * time.Second
 
-	mmdsAccessTokenTimeout = 10 * time.Second
+	mmdsAccessTokenRequestClientTimeout = 10 * time.Second
 )
 
 var mmdsAccessTokenClient = &http.Client{
-	Timeout: mmdsAccessTokenTimeout,
+	Timeout: mmdsAccessTokenRequestClientTimeout,
 	Transport: &http.Transport{
 		DisableKeepAlives: true,
 	},

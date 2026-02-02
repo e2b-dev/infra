@@ -148,7 +148,6 @@ func newTestAPI(accessToken *string, mmdsClient MMDSClient) *API {
 func TestValidateInitAccessToken(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	logger := zerolog.Nop()
 
 	tests := []struct {
 		name         string
@@ -220,7 +219,7 @@ func TestValidateInitAccessToken(t *testing.T) {
 			requestToken: nil,
 			mmdsHash:     keys.HashAccessToken("some-token"),
 			mmdsErr:      nil,
-			wantErr:      ErrAccessTokenConflict,
+			wantErr:      ErrAccessTokenResetNotAuthorized,
 		},
 		{
 			name:         "conflict: existing token, nil request, no MMDS",
@@ -228,7 +227,7 @@ func TestValidateInitAccessToken(t *testing.T) {
 			requestToken: nil,
 			mmdsHash:     "",
 			mmdsErr:      assert.AnError,
-			wantErr:      ErrAccessTokenConflict,
+			wantErr:      ErrAccessTokenResetNotAuthorized,
 		},
 	}
 
@@ -238,7 +237,7 @@ func TestValidateInitAccessToken(t *testing.T) {
 			mmdsClient := &mockMMDSClient{hash: tt.mmdsHash, err: tt.mmdsErr}
 			api := newTestAPI(tt.accessToken, mmdsClient)
 
-			err := api.validateInitAccessToken(ctx, logger, tt.requestToken)
+			err := api.validateInitAccessToken(ctx, tt.requestToken)
 
 			if tt.wantErr != nil {
 				require.Error(t, err)
@@ -410,7 +409,7 @@ func TestSetData(t *testing.T) {
 				requestToken:   nil,
 				mmdsHash:       "",
 				mmdsErr:        assert.AnError,
-				wantErr:        ErrAccessTokenConflict,
+				wantErr:        ErrAccessTokenResetNotAuthorized,
 				wantFinalToken: ptr("existing-token"),
 			},
 			{
@@ -419,7 +418,7 @@ func TestSetData(t *testing.T) {
 				requestToken:   nil,
 				mmdsHash:       keys.HashAccessToken("some-token"),
 				mmdsErr:        nil,
-				wantErr:        ErrAccessTokenConflict,
+				wantErr:        ErrAccessTokenResetNotAuthorized,
 				wantFinalToken: ptr("existing-token"),
 			},
 			{
@@ -428,7 +427,7 @@ func TestSetData(t *testing.T) {
 				requestToken:   nil,
 				mmdsHash:       "",
 				mmdsErr:        nil,
-				wantErr:        ErrAccessTokenConflict,
+				wantErr:        ErrAccessTokenResetNotAuthorized,
 				wantFinalToken: ptr("existing-token"),
 			},
 			{
