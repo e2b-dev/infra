@@ -98,7 +98,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			// Create the socket pairs
 			sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 			if err != nil {
-				return math.MaxUint32, errors.Join(err, closeSocketPairs(d.socksClient, d.socksServer))
+				releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
+				return math.MaxUint32, errors.Join(err, closeSocketPairs(d.socksClient, d.socksServer), releaseErr)
 			}
 
 			client := os.NewFile(uintptr(sockPair[0]), "client")
@@ -108,7 +109,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 				client.Close()
 				server.Close()
 
-				return math.MaxUint32, errors.Join(err, closeSocketPairs(d.socksClient, d.socksServer))
+				releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
+				return math.MaxUint32, errors.Join(err, closeSocketPairs(d.socksClient, d.socksServer), releaseErr)
 			}
 			server.Close()
 
