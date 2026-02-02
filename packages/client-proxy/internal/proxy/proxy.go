@@ -32,9 +32,11 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-var resumeWaitInterval = 200 * time.Millisecond
-var resumeWaitTimeout = 30 * time.Second
-var resumeTimeoutSeconds int32 = 600
+var (
+	resumeWaitInterval         = 200 * time.Millisecond
+	resumeWaitTimeout          = 30 * time.Second
+	resumeTimeoutSeconds int32 = 600
+)
 
 func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedCatalog catalog.PausedSandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasAuth bool) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)

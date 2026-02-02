@@ -175,10 +175,10 @@ func TestShouldAutoResumePolicy(t *testing.T) {
 
 func TestAutoResumePolicies(t *testing.T) {
 	cases := []struct {
-		name                 string
-		policy               string
-		requestHasAuth       bool
-		expectAutoResume     bool
+		name             string
+		policy           string
+		requestHasAuth   bool
+		expectAutoResume bool
 	}{
 		{name: "any-authed", policy: "any", requestHasAuth: true, expectAutoResume: true},
 		{name: "any-unauthed", policy: "any", requestHasAuth: false, expectAutoResume: true},
