@@ -24,7 +24,8 @@ type apiPausedSandboxChecker struct {
 	adminToken        string
 	apiKey            string
 	autoResumeEnabled bool
-	client            *http.Client
+	pausedClient      *http.Client
+	resumeClient      *http.Client
 }
 
 type PausedInfo struct {
@@ -47,8 +48,11 @@ func NewApiPausedSandboxChecker(baseURL, adminToken, apiKey string, autoResumeEn
 		adminToken:        adminToken,
 		apiKey:            apiKey,
 		autoResumeEnabled: autoResumeEnabled,
-		client: &http.Client{
-			Timeout: 2 * time.Second,
+		pausedClient: &http.Client{
+			Timeout: 5 * time.Second,
+		},
+		resumeClient: &http.Client{
+			Timeout: 35 * time.Second,
 		},
 	}, nil
 }
@@ -70,7 +74,7 @@ func (c *apiPausedSandboxChecker) PausedInfo(ctx context.Context, sandboxId stri
 		req.Header.Set("X-Admin-Token", c.adminToken)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.pausedClient.Do(req)
 	if err != nil {
 		return PausedInfo{}, fmt.Errorf("request failed: %w", err)
 	}
@@ -121,7 +125,7 @@ func (c *apiPausedSandboxChecker) Resume(ctx context.Context, sandboxId string, 
 		req.Header.Set("X-Admin-Token", c.adminToken)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.resumeClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("resume request failed: %w", err)
 	}
