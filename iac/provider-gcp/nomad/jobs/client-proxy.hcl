@@ -56,6 +56,7 @@ job "client-proxy" {
     # An update stanza to enable rolling updates of the service
     update {
       # The number of instances that can be updated at the same time
+      # Use double the max parallel to allow for surge
       max_parallel     = ${2 * update_max_parallel}
       # Number of extra instances that can be spawn before killing the old one
       canary           = ${update_max_parallel}
