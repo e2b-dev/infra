@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 
@@ -67,9 +68,23 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	if _, ok := a.config.PersistentVolumeTypes[volumeType]; !ok {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "use of volumes is not enabled")
-		telemetry.ReportCriticalError(ctx, "volume type is not supported", nil)
+	clusterID := utils.WithClusterFallback(team.ClusterID)
+	cluster, ok := a.clusters.GetClusterById(clusterID)
+	if !ok {
+		telemetry.ReportCriticalError(ctx, fmt.Sprintf("cluster with ID '%s' not found", team.ClusterID), nil)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", team.ClusterID))
+
+		return
+	}
+
+	if volumeTypes, err := cluster.GetResources().GetVolumeTypes(ctx); err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to get volume types for cluster")
+		telemetry.ReportCriticalError(ctx, "failed to get volume types for cluster", nil)
+
+		return
+	} else if !slices.Contains(volumeTypes, volumeType) {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "volume type is not supported by cluster")
+		telemetry.ReportCriticalError(ctx, "volume type is not supported by cluster", nil)
 
 		return
 	}
