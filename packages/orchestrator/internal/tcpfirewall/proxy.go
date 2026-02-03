@@ -43,6 +43,20 @@ func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.
 func (p *Proxy) Start(ctx context.Context) error {
 	p.proxy = &tcpproxy.Proxy{}
 
+	p.proxy.ListenFunc = func(network, laddr string) (net.Listener, error) {
+		lc := net.ListenConfig{}
+		ln, err := lc.Listen(ctx, network, laddr)
+		if err != nil {
+			return nil, err
+		}
+
+		return &resilientListener{
+			Listener: ln,
+			ctx:      ctx,
+			logger:   p.logger,
+		}, nil
+	}
+
 	// Three separate addresses for different traffic types.
 	// iptables redirects traffic based on original destination port:
 	// - dport 80 → httpAddr (HTTP Host header inspection)

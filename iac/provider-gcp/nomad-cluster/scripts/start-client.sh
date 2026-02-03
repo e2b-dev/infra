@@ -71,7 +71,7 @@ mkdir -p /orchestrator/build
 
 # Add swapfile
 SWAPFILE="/swapfile"
-fallocate -l 100G $SWAPFILE
+fallocate -l 8G $SWAPFILE
 chmod 600 $SWAPFILE
 mkswap $SWAPFILE
 swapon $SWAPFILE
