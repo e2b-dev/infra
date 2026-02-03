@@ -26,7 +26,7 @@ func TestRequireRowLevelSecurity(t *testing.T) {
 		}
 
 		checked++
-		assert.Truef(t, item.RowLevelSecurity, "row level security not enabled for %s.%s", item.NamespaceName, item.TableName)
+		assert.Truef(t, item.RowLevelSecurity, "row level security not enabled for %s.%s [%s]", item.NamespaceName, item.TableName, item.TableType)
 	}
 	assert.NotEmpty(t, checked)
 }
