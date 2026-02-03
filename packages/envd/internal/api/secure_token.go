@@ -53,6 +53,7 @@ func (s *SecureToken) Set(token []byte) error {
 func (s *SecureToken) UnmarshalJSON(data []byte) error {
 	// JSON strings are quoted, so minimum valid is `""` (2 bytes).
 	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		memguard.WipeBytes(data)
 		return errors.New("invalid secure token JSON string")
 	}
 
