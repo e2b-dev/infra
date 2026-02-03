@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/db/pkg/pool"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils/queries"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -27,8 +29,9 @@ const (
 
 // Database encapsulates the test database container and clients
 type Database struct {
-	SqlcClient *db.Client
-	AuthDb     *authdb.Client
+	SqlcClient  *db.Client
+	AuthDb      *authdb.Client
+	TestQueries *queries.Queries
 }
 
 // SetupDatabase creates a fresh PostgreSQL container with migrations applied
@@ -47,6 +50,12 @@ func SetupDatabase(t *testing.T) *Database {
 	// Setup environment and run migrations
 	runDatabaseMigrations(t, connStr)
 
+	dbClient, connPool, err := pool.New(t.Context(), connStr)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		connPool.Close()
+	})
+
 	// Create database client
 	sqlcClient, err := db.NewClient(t.Context(), connStr)
 	require.NoError(t, err, "Failed to create sqlc client")
@@ -61,8 +70,9 @@ func SetupDatabase(t *testing.T) *Database {
 	})
 
 	return &Database{
-		SqlcClient: sqlcClient,
-		AuthDb:     authDb,
+		SqlcClient:  sqlcClient,
+		AuthDb:      authDb,
+		TestQueries: queries.New(dbClient),
 	}
 }
 
