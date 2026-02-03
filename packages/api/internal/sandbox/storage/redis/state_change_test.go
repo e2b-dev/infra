@@ -529,7 +529,13 @@ func TestStartRemoving_CallbackSetsErrorOnFailure(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), exists, "Transition key should be deleted after callback")
 
-	ttl, err := client.TTL(ctx, transitionKey).Result()
+	// Result key should contain error message with TTL
+	resultKey := getTransitionResultKey(sbx.TeamID.String(), sbx.SandboxID, transitionID)
+	value, err := client.Get(ctx, resultKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, "test error", value, "Result should contain error message")
+
+	ttl, err := client.TTL(ctx, resultKey).Result()
 	require.NoError(t, err)
 	assert.Greater(t, ttl, time.Duration(0))
 	assert.LessOrEqual(t, ttl, transitionResultKeyTTL)
