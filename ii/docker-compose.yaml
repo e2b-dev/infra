@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+ cloud-sql-proxy:
+   image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+   command:
+     - "--credentials-file=/secrets/service_account.json"
+     - "--structured-logs"
+     - "--address=0.0.0.0"
+     - "--port=5432"
+     # 换成你的实例连接名：<PROJECT>:<REGION>:<INSTANCE>
+     - "ii-e2b-dev:us-central1:ii-e2b-dev"
+   volumes:
+     - ./keys/ii-e2b-dev-2e40c7ba0770.json:/secrets/service_account.json:ro
+   ports:
+    - 16543:5432
+   restart: unless-stopped
