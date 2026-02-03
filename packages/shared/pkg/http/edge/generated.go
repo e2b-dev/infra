@@ -4,7 +4,6 @@
 package edge
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -28,15 +27,10 @@ const (
 	Unhealthy ClusterNodeStatus = "unhealthy"
 )
 
-// Defines values for ClusterNodeType.
-const (
-	ClusterNodeTypeOrchestrator ClusterNodeType = "orchestrator"
-)
-
 // Defines values for ClusterOrchestratorRole.
 const (
-	ClusterOrchestratorRoleOrchestrator    ClusterOrchestratorRole = "orchestrator"
-	ClusterOrchestratorRoleTemplateBuilder ClusterOrchestratorRole = "template-builder"
+	Orchestrator    ClusterOrchestratorRole = "orchestrator"
+	TemplateBuilder ClusterOrchestratorRole = "template-builder"
 )
 
 // Defines values for LogLevel.
@@ -67,33 +61,6 @@ type BuildLogEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// ClusterNode defines model for ClusterNode.
-type ClusterNode struct {
-	// NodeID Node ID
-	NodeID string `json:"nodeID"`
-
-	// ServiceHost Node private host address and service port
-	ServiceHost string `json:"serviceHost"`
-
-	// ServiceInstanceID Service instance ID
-	ServiceInstanceID string `json:"serviceInstanceID"`
-
-	// ServiceStartedAt Time when the node was registered
-	ServiceStartedAt time.Time `json:"serviceStartedAt"`
-
-	// ServiceStatus State of the cluster node
-	ServiceStatus ClusterNodeStatus `json:"serviceStatus"`
-
-	// ServiceType Cluster node type
-	ServiceType ClusterNodeType `json:"serviceType"`
-
-	// ServiceVersion Version of the service
-	ServiceVersion string `json:"serviceVersion"`
-
-	// ServiceVersionCommit Source code version of the service
-	ServiceVersionCommit string `json:"serviceVersionCommit"`
-}
-
 // ClusterNodeInfo defines model for ClusterNodeInfo.
 type ClusterNodeInfo struct {
 	// NodeID Node ID
@@ -118,8 +85,10 @@ type ClusterNodeInfo struct {
 // ClusterNodeStatus State of the cluster node
 type ClusterNodeStatus string
 
-// ClusterNodeType Cluster node type
-type ClusterNodeType string
+// ClusterOrchestratorDiscovery defines model for ClusterOrchestratorDiscovery.
+type ClusterOrchestratorDiscovery struct {
+	Orchestrators []ClusterOrchestratorNode `json:"orchestrators"`
+}
 
 // ClusterOrchestratorNode defines model for ClusterOrchestratorNode.
 type ClusterOrchestratorNode struct {
@@ -226,15 +195,6 @@ type SandboxesWithMetrics struct {
 	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
 }
 
-// ServiceDiscoveryNodeStatusRequest defines model for ServiceDiscoveryNodeStatusRequest.
-type ServiceDiscoveryNodeStatusRequest struct {
-	// ServiceInstanceID Service instance ID that should be handled by the request
-	ServiceInstanceID string `json:"serviceInstanceID"`
-
-	// ServiceType Cluster node type
-	ServiceType ClusterNodeType `json:"serviceType"`
-}
-
 // TemplateBuildLogsResponse defines model for TemplateBuildLogsResponse.
 type TemplateBuildLogsResponse struct {
 	// LogEntries Build logs structured
@@ -246,9 +206,6 @@ type N400 = Error
 
 // N401 defines model for 401.
 type N401 = Error
-
-// N404 defines model for 404.
-type N404 = Error
 
 // N500 defines model for 500.
 type N500 = Error
@@ -307,12 +264,6 @@ type V1TemplateBuildLogsParams struct {
 
 // V1TemplateBuildLogsParamsDirection defines parameters for V1TemplateBuildLogs.
 type V1TemplateBuildLogsParamsDirection string
-
-// V1ServiceDiscoveryNodeDrainJSONRequestBody defines body for V1ServiceDiscoveryNodeDrain for application/json ContentType.
-type V1ServiceDiscoveryNodeDrainJSONRequestBody = ServiceDiscoveryNodeStatusRequest
-
-// V1ServiceDiscoveryNodeKillJSONRequestBody defines body for V1ServiceDiscoveryNodeKill for application/json ContentType.
-type V1ServiceDiscoveryNodeKillJSONRequestBody = ServiceDiscoveryNodeStatusRequest
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -393,9 +344,6 @@ type ClientInterface interface {
 	// HealthCheckMachine request
 	HealthCheckMachine(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// HealthCheckTraffic request
-	HealthCheckTraffic(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// V1Info request
 	V1Info(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -408,24 +356,14 @@ type ClientInterface interface {
 	// V1SandboxMetrics request
 	V1SandboxMetrics(ctx context.Context, sandboxID string, params *V1SandboxMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// V1ServiceDiscoveryNodes request
-	V1ServiceDiscoveryNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// V1ServiceDiscoveryNodeDrainWithBody request with any body
-	V1ServiceDiscoveryNodeDrainWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	V1ServiceDiscoveryNodeDrain(ctx context.Context, body V1ServiceDiscoveryNodeDrainJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// V1ServiceDiscoveryNodeKillWithBody request with any body
-	V1ServiceDiscoveryNodeKillWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	V1ServiceDiscoveryNodeKill(ctx context.Context, body V1ServiceDiscoveryNodeKillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// V1ServiceDiscoveryGetOrchestrators request
 	V1ServiceDiscoveryGetOrchestrators(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// V1TemplateBuildLogs request
 	V1TemplateBuildLogs(ctx context.Context, buildID string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// V2ServiceDiscoveryGetOrchestrators request
+	V2ServiceDiscoveryGetOrchestrators(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -442,18 +380,6 @@ func (c *Client) HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn)
 
 func (c *Client) HealthCheckMachine(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewHealthCheckMachineRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) HealthCheckTraffic(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewHealthCheckTrafficRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -512,66 +438,6 @@ func (c *Client) V1SandboxMetrics(ctx context.Context, sandboxID string, params 
 	return c.Client.Do(req)
 }
 
-func (c *Client) V1ServiceDiscoveryNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1ServiceDiscoveryNodesRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) V1ServiceDiscoveryNodeDrainWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1ServiceDiscoveryNodeDrainRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) V1ServiceDiscoveryNodeDrain(ctx context.Context, body V1ServiceDiscoveryNodeDrainJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1ServiceDiscoveryNodeDrainRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) V1ServiceDiscoveryNodeKillWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1ServiceDiscoveryNodeKillRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) V1ServiceDiscoveryNodeKill(ctx context.Context, body V1ServiceDiscoveryNodeKillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1ServiceDiscoveryNodeKillRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 func (c *Client) V1ServiceDiscoveryGetOrchestrators(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewV1ServiceDiscoveryGetOrchestratorsRequest(c.Server)
 	if err != nil {
@@ -586,6 +452,18 @@ func (c *Client) V1ServiceDiscoveryGetOrchestrators(ctx context.Context, reqEdit
 
 func (c *Client) V1TemplateBuildLogs(ctx context.Context, buildID string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewV1TemplateBuildLogsRequest(c.Server, buildID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) V2ServiceDiscoveryGetOrchestrators(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV2ServiceDiscoveryGetOrchestratorsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -633,33 +511,6 @@ func NewHealthCheckMachineRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/health/machine")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewHealthCheckTrafficRequest generates requests for HealthCheckTraffic
-func NewHealthCheckTrafficRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/health/traffic")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -929,113 +780,6 @@ func NewV1SandboxMetricsRequest(server string, sandboxID string, params *V1Sandb
 	return req, nil
 }
 
-// NewV1ServiceDiscoveryNodesRequest generates requests for V1ServiceDiscoveryNodes
-func NewV1ServiceDiscoveryNodesRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/service-discovery/nodes")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewV1ServiceDiscoveryNodeDrainRequest calls the generic V1ServiceDiscoveryNodeDrain builder with application/json body
-func NewV1ServiceDiscoveryNodeDrainRequest(server string, body V1ServiceDiscoveryNodeDrainJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewV1ServiceDiscoveryNodeDrainRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewV1ServiceDiscoveryNodeDrainRequestWithBody generates requests for V1ServiceDiscoveryNodeDrain with any type of body
-func NewV1ServiceDiscoveryNodeDrainRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/service-discovery/nodes/drain")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewV1ServiceDiscoveryNodeKillRequest calls the generic V1ServiceDiscoveryNodeKill builder with application/json body
-func NewV1ServiceDiscoveryNodeKillRequest(server string, body V1ServiceDiscoveryNodeKillJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewV1ServiceDiscoveryNodeKillRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewV1ServiceDiscoveryNodeKillRequestWithBody generates requests for V1ServiceDiscoveryNodeKill with any type of body
-func NewV1ServiceDiscoveryNodeKillRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/service-discovery/nodes/kill")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 // NewV1ServiceDiscoveryGetOrchestratorsRequest generates requests for V1ServiceDiscoveryGetOrchestrators
 func NewV1ServiceDiscoveryGetOrchestratorsRequest(server string) (*http.Request, error) {
 	var err error
@@ -1227,6 +971,33 @@ func NewV1TemplateBuildLogsRequest(server string, buildID string, params *V1Temp
 	return req, nil
 }
 
+// NewV2ServiceDiscoveryGetOrchestratorsRequest generates requests for V2ServiceDiscoveryGetOrchestrators
+func NewV2ServiceDiscoveryGetOrchestratorsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v2/service-discovery/nodes/orchestrators")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -1276,9 +1047,6 @@ type ClientWithResponsesInterface interface {
 	// HealthCheckMachineWithResponse request
 	HealthCheckMachineWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckMachineResponse, error)
 
-	// HealthCheckTrafficWithResponse request
-	HealthCheckTrafficWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckTrafficResponse, error)
-
 	// V1InfoWithResponse request
 	V1InfoWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1InfoResponse, error)
 
@@ -1291,24 +1059,14 @@ type ClientWithResponsesInterface interface {
 	// V1SandboxMetricsWithResponse request
 	V1SandboxMetricsWithResponse(ctx context.Context, sandboxID string, params *V1SandboxMetricsParams, reqEditors ...RequestEditorFn) (*V1SandboxMetricsResponse, error)
 
-	// V1ServiceDiscoveryNodesWithResponse request
-	V1ServiceDiscoveryNodesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodesResponse, error)
-
-	// V1ServiceDiscoveryNodeDrainWithBodyWithResponse request with any body
-	V1ServiceDiscoveryNodeDrainWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error)
-
-	V1ServiceDiscoveryNodeDrainWithResponse(ctx context.Context, body V1ServiceDiscoveryNodeDrainJSONRequestBody, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error)
-
-	// V1ServiceDiscoveryNodeKillWithBodyWithResponse request with any body
-	V1ServiceDiscoveryNodeKillWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error)
-
-	V1ServiceDiscoveryNodeKillWithResponse(ctx context.Context, body V1ServiceDiscoveryNodeKillJSONRequestBody, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error)
-
 	// V1ServiceDiscoveryGetOrchestratorsWithResponse request
 	V1ServiceDiscoveryGetOrchestratorsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryGetOrchestratorsResponse, error)
 
 	// V1TemplateBuildLogsWithResponse request
 	V1TemplateBuildLogsWithResponse(ctx context.Context, buildID string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildLogsResponse, error)
+
+	// V2ServiceDiscoveryGetOrchestratorsWithResponse request
+	V2ServiceDiscoveryGetOrchestratorsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V2ServiceDiscoveryGetOrchestratorsResponse, error)
 }
 
 type HealthCheckResponse struct {
@@ -1347,27 +1105,6 @@ func (r HealthCheckMachineResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r HealthCheckMachineResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type HealthCheckTrafficResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-}
-
-// Status returns HTTPResponse.Status
-func (r HealthCheckTrafficResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r HealthCheckTrafficResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1473,80 +1210,6 @@ func (r V1SandboxMetricsResponse) StatusCode() int {
 	return 0
 }
 
-type V1ServiceDiscoveryNodesResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *[]ClusterNode
-	JSON401      *N401
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r V1ServiceDiscoveryNodesResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r V1ServiceDiscoveryNodesResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type V1ServiceDiscoveryNodeDrainResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON400      *N400
-	JSON401      *N401
-	JSON404      *N404
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r V1ServiceDiscoveryNodeDrainResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r V1ServiceDiscoveryNodeDrainResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type V1ServiceDiscoveryNodeKillResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON400      *N400
-	JSON401      *N401
-	JSON404      *N404
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r V1ServiceDiscoveryNodeKillResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r V1ServiceDiscoveryNodeKillResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
 type V1ServiceDiscoveryGetOrchestratorsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1596,6 +1259,30 @@ func (r V1TemplateBuildLogsResponse) StatusCode() int {
 	return 0
 }
 
+type V2ServiceDiscoveryGetOrchestratorsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ClusterOrchestratorDiscovery
+	JSON401      *N401
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r V2ServiceDiscoveryGetOrchestratorsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r V2ServiceDiscoveryGetOrchestratorsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // HealthCheckWithResponse request returning *HealthCheckResponse
 func (c *ClientWithResponses) HealthCheckWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckResponse, error) {
 	rsp, err := c.HealthCheck(ctx, reqEditors...)
@@ -1612,15 +1299,6 @@ func (c *ClientWithResponses) HealthCheckMachineWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseHealthCheckMachineResponse(rsp)
-}
-
-// HealthCheckTrafficWithResponse request returning *HealthCheckTrafficResponse
-func (c *ClientWithResponses) HealthCheckTrafficWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckTrafficResponse, error) {
-	rsp, err := c.HealthCheckTraffic(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseHealthCheckTrafficResponse(rsp)
 }
 
 // V1InfoWithResponse request returning *V1InfoResponse
@@ -1659,49 +1337,6 @@ func (c *ClientWithResponses) V1SandboxMetricsWithResponse(ctx context.Context, 
 	return ParseV1SandboxMetricsResponse(rsp)
 }
 
-// V1ServiceDiscoveryNodesWithResponse request returning *V1ServiceDiscoveryNodesResponse
-func (c *ClientWithResponses) V1ServiceDiscoveryNodesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodesResponse, error) {
-	rsp, err := c.V1ServiceDiscoveryNodes(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseV1ServiceDiscoveryNodesResponse(rsp)
-}
-
-// V1ServiceDiscoveryNodeDrainWithBodyWithResponse request with arbitrary body returning *V1ServiceDiscoveryNodeDrainResponse
-func (c *ClientWithResponses) V1ServiceDiscoveryNodeDrainWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error) {
-	rsp, err := c.V1ServiceDiscoveryNodeDrainWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseV1ServiceDiscoveryNodeDrainResponse(rsp)
-}
-
-func (c *ClientWithResponses) V1ServiceDiscoveryNodeDrainWithResponse(ctx context.Context, body V1ServiceDiscoveryNodeDrainJSONRequestBody, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error) {
-	rsp, err := c.V1ServiceDiscoveryNodeDrain(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseV1ServiceDiscoveryNodeDrainResponse(rsp)
-}
-
-// V1ServiceDiscoveryNodeKillWithBodyWithResponse request with arbitrary body returning *V1ServiceDiscoveryNodeKillResponse
-func (c *ClientWithResponses) V1ServiceDiscoveryNodeKillWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error) {
-	rsp, err := c.V1ServiceDiscoveryNodeKillWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseV1ServiceDiscoveryNodeKillResponse(rsp)
-}
-
-func (c *ClientWithResponses) V1ServiceDiscoveryNodeKillWithResponse(ctx context.Context, body V1ServiceDiscoveryNodeKillJSONRequestBody, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error) {
-	rsp, err := c.V1ServiceDiscoveryNodeKill(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseV1ServiceDiscoveryNodeKillResponse(rsp)
-}
-
 // V1ServiceDiscoveryGetOrchestratorsWithResponse request returning *V1ServiceDiscoveryGetOrchestratorsResponse
 func (c *ClientWithResponses) V1ServiceDiscoveryGetOrchestratorsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryGetOrchestratorsResponse, error) {
 	rsp, err := c.V1ServiceDiscoveryGetOrchestrators(ctx, reqEditors...)
@@ -1718,6 +1353,15 @@ func (c *ClientWithResponses) V1TemplateBuildLogsWithResponse(ctx context.Contex
 		return nil, err
 	}
 	return ParseV1TemplateBuildLogsResponse(rsp)
+}
+
+// V2ServiceDiscoveryGetOrchestratorsWithResponse request returning *V2ServiceDiscoveryGetOrchestratorsResponse
+func (c *ClientWithResponses) V2ServiceDiscoveryGetOrchestratorsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V2ServiceDiscoveryGetOrchestratorsResponse, error) {
+	rsp, err := c.V2ServiceDiscoveryGetOrchestrators(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseV2ServiceDiscoveryGetOrchestratorsResponse(rsp)
 }
 
 // ParseHealthCheckResponse parses an HTTP response from a HealthCheckWithResponse call
@@ -1745,22 +1389,6 @@ func ParseHealthCheckMachineResponse(rsp *http.Response) (*HealthCheckMachineRes
 	}
 
 	response := &HealthCheckMachineResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseHealthCheckTrafficResponse parses an HTTP response from a HealthCheckTrafficWithResponse call
-func ParseHealthCheckTrafficResponse(rsp *http.Response) (*HealthCheckTrafficResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &HealthCheckTrafficResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -1949,140 +1577,6 @@ func ParseV1SandboxMetricsResponse(rsp *http.Response) (*V1SandboxMetricsRespons
 	return response, nil
 }
 
-// ParseV1ServiceDiscoveryNodesResponse parses an HTTP response from a V1ServiceDiscoveryNodesWithResponse call
-func ParseV1ServiceDiscoveryNodesResponse(rsp *http.Response) (*V1ServiceDiscoveryNodesResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &V1ServiceDiscoveryNodesResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []ClusterNode
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseV1ServiceDiscoveryNodeDrainResponse parses an HTTP response from a V1ServiceDiscoveryNodeDrainWithResponse call
-func ParseV1ServiceDiscoveryNodeDrainResponse(rsp *http.Response) (*V1ServiceDiscoveryNodeDrainResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &V1ServiceDiscoveryNodeDrainResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest N400
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest N404
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseV1ServiceDiscoveryNodeKillResponse parses an HTTP response from a V1ServiceDiscoveryNodeKillWithResponse call
-func ParseV1ServiceDiscoveryNodeKillResponse(rsp *http.Response) (*V1ServiceDiscoveryNodeKillResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &V1ServiceDiscoveryNodeKillResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest N400
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest N404
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseV1ServiceDiscoveryGetOrchestratorsResponse parses an HTTP response from a V1ServiceDiscoveryGetOrchestratorsWithResponse call
 func ParseV1ServiceDiscoveryGetOrchestratorsResponse(rsp *http.Response) (*V1ServiceDiscoveryGetOrchestratorsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -2150,6 +1644,46 @@ func ParseV1TemplateBuildLogsResponse(rsp *http.Response) (*V1TemplateBuildLogsR
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseV2ServiceDiscoveryGetOrchestratorsResponse parses an HTTP response from a V2ServiceDiscoveryGetOrchestratorsWithResponse call
+func ParseV2ServiceDiscoveryGetOrchestratorsResponse(rsp *http.Response) (*V2ServiceDiscoveryGetOrchestratorsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &V2ServiceDiscoveryGetOrchestratorsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ClusterOrchestratorDiscovery
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
