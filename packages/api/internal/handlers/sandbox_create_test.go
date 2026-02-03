@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -354,7 +355,11 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 				resources = newMockResources(t, tc.volumeTypes)
 			}
 
-			actual, err := convertVolumeMounts(t.Context(), db.SqlcClient, ffClient, &clusters.Cluster{Resources: resources}, teamID, tc.input)
+			actual, err := convertVolumeMounts(
+				t.Context(), db.SqlcClient, ffClient,
+				clusters.NewCluster(uuid.UUID{}, nil, nil, nil, resources),
+				teamID, tc.input,
+			)
 			assert.Equal(t, tc.err, err)
 			assert.Equal(t, tc.expected, actual)
 		})

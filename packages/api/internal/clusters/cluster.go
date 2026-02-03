@@ -41,13 +41,29 @@ type Cluster struct {
 
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[discovery.Item, *Instance]
-	Resources       ClusterResource
+	resources       ClusterResource
 }
 
 var (
 	ErrTemplateBuilderNotFound          = errors.New("template builder not found")
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
+
+func NewCluster(
+	clusterID uuid.UUID,
+	domain *string,
+	sandboxes *smap.Map[*Instance],
+	synchronization *synchronization.Synchronize[discovery.Item, *Instance],
+	resources ClusterResource,
+) *Cluster {
+	return &Cluster{
+		ID:              clusterID,
+		SandboxDomain:   domain,
+		instances:       sandboxes,
+		synchronization: synchronization,
+		resources:       resources,
+	}
+}
 
 func newLocalCluster(
 	ctx context.Context,
@@ -68,14 +84,13 @@ func newLocalCluster(
 	storeDiscovery := discovery.NewLocalDiscovery(clusterID, nomad)
 	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation}
 
-	c := &Cluster{
-		ID:            clusterID,
-		SandboxDomain: nil,
-
-		instances:       instances,
-		Resources:       newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances, config),
-		synchronization: synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
-	}
+	c := NewCluster(
+		clusterID,
+		nil,
+		instances,
+		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
+		newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances, config),
+	)
 
 	// Periodically sync cluster instances
 	go c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
@@ -129,14 +144,13 @@ func newRemoteCluster(
 	storeDiscovery := discovery.NewRemoteServiceDiscovery(clusterID, httpClient)
 	store := instancesSyncStore{clusterID: clusterID, instances: instances, instanceCreation: instanceCreation, discovery: storeDiscovery}
 
-	c := &Cluster{
-		ID:            clusterID,
-		SandboxDomain: sandboxDomain,
-
-		instances:       instances,
-		Resources:       newRemoteClusterResourceProvider(instances, httpClient),
-		synchronization: synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
-	}
+	c := NewCluster(
+		clusterID,
+		sandboxDomain,
+		instances,
+		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
+		newRemoteClusterResourceProvider(instances, httpClient),
+	)
 
 	// Periodically sync cluster instances
 	go c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
@@ -234,5 +248,5 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 }
 
 func (c *Cluster) GetResources() ClusterResource {
-	return c.Resources
+	return c.resources
 }
