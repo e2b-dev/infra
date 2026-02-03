@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"maps"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -24,12 +25,8 @@ func (o *Orchestrator) UpdateSandboxMetadata(ctx context.Context, teamID uuid.UU
 		}
 
 		merged := make(map[string]string, len(sbx.Metadata)+len(updates))
-		for key, value := range sbx.Metadata {
-			merged[key] = value
-		}
-		for key, value := range updates {
-			merged[key] = value
-		}
+		maps.Copy(merged, sbx.Metadata)
+		maps.Copy(merged, updates)
 
 		sbx.Metadata = merged
 

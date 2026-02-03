@@ -33,6 +33,7 @@ const (
 
 type ProxySandboxService struct {
 	proxygrpc.UnimplementedProxySandboxServiceServer
+
 	api *APIStore
 }
 
@@ -88,7 +89,7 @@ func (s *ProxySandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.
 		return nil, status.Error(codes.FailedPrecondition, "auto-resume disabled")
 	}
 
-	var team *teamtypes.Team = nil
+	var team *teamtypes.Team
 	if authTeam != nil {
 		team = authTeam
 	} else {
@@ -140,6 +141,7 @@ func (s *ProxySandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.
 			return nil, status.Error(codes.AlreadyExists, "sandbox already running")
 		default:
 			logger.L().Error(ctx, "Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(running.State)))
+
 			return nil, status.Error(codes.Internal, "sandbox is in an unknown state")
 		}
 	}
@@ -309,6 +311,7 @@ func grpcCodeFromHTTPStatus(statusCode int) codes.Code {
 		if statusCode >= http.StatusBadRequest {
 			return codes.InvalidArgument
 		}
+
 		return codes.Internal
 	}
 }

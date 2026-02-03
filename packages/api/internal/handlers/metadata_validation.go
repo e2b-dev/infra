@@ -19,6 +19,7 @@ func validateAutoResumeMetadata(metadata map[string]string) error {
 	switch normalized {
 	case "any", "authed", "null":
 		metadata["auto_resume"] = normalized
+
 		return nil
 	case "":
 		return fmt.Errorf("auto_resume must be one of any, authed, null")

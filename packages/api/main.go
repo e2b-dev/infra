@@ -366,7 +366,7 @@ func run() int {
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIGrpcPort)
-	grpcListener, err := net.Listen("tcp", grpcAddr)
+	grpcListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", grpcAddr)
 	if err != nil {
 		l.Fatal(ctx, "failed to create proxy grpc listener", zap.Error(err))
 	}
