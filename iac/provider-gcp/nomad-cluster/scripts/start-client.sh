@@ -71,7 +71,7 @@ mkdir -p /orchestrator/build
 
 # Add swapfile
 SWAPFILE="/swapfile"
-fallocate -l 8G $SWAPFILE
+fallocate -l 100G $SWAPFILE
 chmod 600 $SWAPFILE
 mkswap $SWAPFILE
 swapon $SWAPFILE
@@ -198,7 +198,6 @@ cat <<EOF >/etc/systemd/resolved.conf.d/consul.conf
 [Resolve]
 DNS=127.0.0.1:8600
 DNSSEC=false
-Domains=~consul
 EOF
 sync  # Ensure file is written to disk
 
