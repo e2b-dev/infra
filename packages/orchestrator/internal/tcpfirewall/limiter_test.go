@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestConnectionLimiter_TryAcquire(t *testing.T) {
@@ -32,53 +31,48 @@ func TestConnectionLimiter_TryAcquire(t *testing.T) {
 		t.Parallel()
 		limiter := NewConnectionLimiter()
 
-		for range 3 {
-			_, ok := limiter.TryAcquire("sandbox1", 3)
-			require.True(t, ok)
+		for range 5 {
+			limiter.TryAcquire("sandbox1", 5)
 		}
 
-		count, ok := limiter.TryAcquire("sandbox1", 3)
+		count, ok := limiter.TryAcquire("sandbox1", 5)
 		assert.False(t, ok)
-		assert.Equal(t, int64(3), count)
+		assert.Equal(t, int64(5), count)
 	})
 
 	t.Run("zero limit means no limit", func(t *testing.T) {
 		t.Parallel()
 		limiter := NewConnectionLimiter()
 
-		for i := 1; i <= 100; i++ {
-			count, ok := limiter.TryAcquire("sandbox1", 0)
+		for range 100 {
+			_, ok := limiter.TryAcquire("sandbox1", 0)
 			assert.True(t, ok)
-			assert.Equal(t, int64(i), count)
 		}
+		assert.Equal(t, int64(100), limiter.Count("sandbox1"))
 	})
 
 	t.Run("negative limit means no limit", func(t *testing.T) {
 		t.Parallel()
 		limiter := NewConnectionLimiter()
 
-		for i := 1; i <= 10; i++ {
-			count, ok := limiter.TryAcquire("sandbox1", -1)
+		for range 100 {
+			_, ok := limiter.TryAcquire("sandbox1", -1)
 			assert.True(t, ok)
-			assert.Equal(t, int64(i), count)
 		}
+		assert.Equal(t, int64(100), limiter.Count("sandbox1"))
 	})
 
 	t.Run("separate sandboxes have separate limits", func(t *testing.T) {
 		t.Parallel()
 		limiter := NewConnectionLimiter()
 
-		_, ok := limiter.TryAcquire("sandbox1", 1)
+		for range 3 {
+			limiter.TryAcquire("sandbox1", 3)
+		}
+
+		count, ok := limiter.TryAcquire("sandbox2", 3)
 		assert.True(t, ok)
-
-		_, ok = limiter.TryAcquire("sandbox1", 1)
-		assert.False(t, ok)
-
-		_, ok = limiter.TryAcquire("sandbox2", 1)
-		assert.True(t, ok)
-
-		_, ok = limiter.TryAcquire("sandbox2", 1)
-		assert.False(t, ok)
+		assert.Equal(t, int64(1), count)
 	})
 }
 
@@ -89,32 +83,78 @@ func TestConnectionLimiter_Release(t *testing.T) {
 		t.Parallel()
 		limiter := NewConnectionLimiter()
 
-		_, ok := limiter.TryAcquire("sandbox1", 1)
-		require.True(t, ok)
+		for range 3 {
+			limiter.TryAcquire("sandbox1", 3)
+		}
 
-		_, ok = limiter.TryAcquire("sandbox1", 1)
+		_, ok := limiter.TryAcquire("sandbox1", 3)
 		assert.False(t, ok)
 
 		limiter.Release("sandbox1")
 
-		_, ok = limiter.TryAcquire("sandbox1", 1)
+		_, ok = limiter.TryAcquire("sandbox1", 3)
 		assert.True(t, ok)
 	})
 
-	t.Run("cleanup when count reaches zero", func(t *testing.T) {
+	t.Run("release on unknown sandbox is safe", func(t *testing.T) {
+		t.Parallel()
+		limiter := NewConnectionLimiter()
+		limiter.Release("unknown")
+	})
+
+	t.Run("double release does not go negative", func(t *testing.T) {
 		t.Parallel()
 		limiter := NewConnectionLimiter()
 
-		_, ok := limiter.TryAcquire("sandbox1", 10)
-		require.True(t, ok)
-
-		_, exists := limiter.connections.Load("sandbox1")
-		assert.True(t, exists)
+		limiter.TryAcquire("sandbox1", 10)
+		assert.Equal(t, int64(1), limiter.Count("sandbox1"))
 
 		limiter.Release("sandbox1")
+		assert.Equal(t, int64(0), limiter.Count("sandbox1"))
 
-		_, exists = limiter.connections.Load("sandbox1")
-		assert.False(t, exists, "entry should be cleaned up when count reaches 0")
+		limiter.Release("sandbox1")
+		assert.Equal(t, int64(0), limiter.Count("sandbox1"))
+
+		limiter.Release("sandbox1")
+		assert.Equal(t, int64(0), limiter.Count("sandbox1"))
+	})
+}
+
+func TestConnectionLimiter_Remove(t *testing.T) {
+	t.Parallel()
+
+	t.Run("remove clears sandbox entry", func(t *testing.T) {
+		t.Parallel()
+		limiter := NewConnectionLimiter()
+
+		limiter.TryAcquire("sandbox1", 10)
+		limiter.TryAcquire("sandbox1", 10)
+		assert.Equal(t, int64(2), limiter.Count("sandbox1"))
+
+		limiter.Remove("sandbox1")
+		assert.Equal(t, int64(0), limiter.Count("sandbox1"))
+	})
+
+	t.Run("remove on unknown sandbox is safe", func(t *testing.T) {
+		t.Parallel()
+		limiter := NewConnectionLimiter()
+		limiter.Remove("unknown")
+	})
+
+	t.Run("acquire after remove starts fresh", func(t *testing.T) {
+		t.Parallel()
+		limiter := NewConnectionLimiter()
+
+		for range 5 {
+			limiter.TryAcquire("sandbox1", 5)
+		}
+		assert.Equal(t, int64(5), limiter.Count("sandbox1"))
+
+		limiter.Remove("sandbox1")
+
+		count, ok := limiter.TryAcquire("sandbox1", 5)
+		assert.True(t, ok)
+		assert.Equal(t, int64(1), count)
 	})
 }
 
@@ -122,7 +162,6 @@ func TestConnectionLimiter_Count(t *testing.T) {
 	t.Parallel()
 
 	limiter := NewConnectionLimiter()
-
 	assert.Equal(t, int64(0), limiter.Count("sandbox1"))
 
 	limiter.TryAcquire("sandbox1", 10)
@@ -138,30 +177,52 @@ func TestConnectionLimiter_Count(t *testing.T) {
 func TestConnectionLimiter_Concurrent(t *testing.T) {
 	t.Parallel()
 
-	limiter := NewConnectionLimiter()
-	const limit = 50
-	const goroutines = 100
+	t.Run("concurrent acquires respect limit", func(t *testing.T) {
+		t.Parallel()
+		limiter := NewConnectionLimiter()
+		const limit = 50
+		const goroutines = 100
 
-	var wg sync.WaitGroup
-	acquired := make(chan bool, goroutines)
+		var wg sync.WaitGroup
+		acquired := make(chan bool, goroutines)
 
-	for range goroutines {
-		wg.Go(func() {
-			_, ok := limiter.TryAcquire("sandbox1", limit)
-			acquired <- ok
-		})
-	}
-
-	wg.Wait()
-	close(acquired)
-
-	successCount := 0
-	for ok := range acquired {
-		if ok {
-			successCount++
+		for range goroutines {
+			wg.Go(func() {
+				_, ok := limiter.TryAcquire("sandbox1", limit)
+				acquired <- ok
+			})
 		}
-	}
 
-	assert.Equal(t, limit, successCount, "exactly %d goroutines should succeed", limit)
-	assert.Equal(t, int64(limit), limiter.Count("sandbox1"))
+		wg.Wait()
+		close(acquired)
+
+		successCount := 0
+		for ok := range acquired {
+			if ok {
+				successCount++
+			}
+		}
+
+		assert.Equal(t, limit, successCount)
+		assert.Equal(t, int64(limit), limiter.Count("sandbox1"))
+	})
+
+	t.Run("concurrent acquire and release", func(t *testing.T) {
+		t.Parallel()
+		limiter := NewConnectionLimiter()
+		const limit = 10
+		const iterations = 1000
+
+		var wg sync.WaitGroup
+
+		for range iterations {
+			wg.Go(func() {
+				if _, ok := limiter.TryAcquire("sandbox1", limit); ok {
+					limiter.Release("sandbox1")
+				}
+			})
+		}
+
+		wg.Wait()
+	})
 }

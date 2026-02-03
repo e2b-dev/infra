@@ -16,6 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+var _ sandbox.MapSubscriber = (*Proxy)(nil)
+
 type Proxy struct {
 	logger       logger.Logger
 	sandboxes    *sandbox.Map
@@ -33,7 +35,7 @@ type Proxy struct {
 }
 
 func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider, featureFlags *featureflags.Client) *Proxy {
-	return &Proxy{
+	p := &Proxy{
 		httpPort:     networkConfig.SandboxTCPFirewallHTTPPort,
 		tlsPort:      networkConfig.SandboxTCPFirewallTLSPort,
 		otherPort:    networkConfig.SandboxTCPFirewallOtherPort,
@@ -43,6 +45,16 @@ func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.
 		limiter:      NewConnectionLimiter(),
 		featureFlags: featureFlags,
 	}
+
+	sandboxes.Subscribe(p)
+
+	return p
+}
+
+func (p *Proxy) OnInsert(_ *sandbox.Sandbox) {}
+
+func (p *Proxy) OnRemove(sandboxID string) {
+	p.limiter.Remove(sandboxID)
 }
 
 func (p *Proxy) Start(ctx context.Context) error {
