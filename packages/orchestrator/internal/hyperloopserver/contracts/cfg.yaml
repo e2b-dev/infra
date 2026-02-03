@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/deepmap/oapi-codegen/HEAD/configuration-schema.json
+
+package: contracts
+output: generated.go
+generate:
+  gin-server: true
+  embedded-spec: true
+  models: true

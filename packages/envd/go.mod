@@ -2,6 +2,8 @@ module github.com/e2b-dev/infra/packages/envd
 
 go 1.25.4
 
+replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.3.1
+
 replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen

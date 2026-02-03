@@ -2,12 +2,14 @@ module github.com/e2b-dev/infra/packages/orchestrator
 
 go 1.25.4
 
+tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+
+replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.3.1
+
 replace (
 	github.com/e2b-dev/infra/packages/clickhouse v0.0.0 => ../clickhouse
 	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 )
-
-tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 // Fix non existent garyburd/redigo from Microsoft/hcsshim/test v0.0.0
 replace github.com/garyburd/redigo => github.com/gomodule/redigo v1.9.2
@@ -31,6 +33,7 @@ require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
+	github.com/getkin/kin-openapi v0.133.0
 	github.com/gin-contrib/size v1.0.2
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-openapi/strfmt v0.23.0
@@ -45,6 +48,7 @@ require (
 	github.com/launchdarkly/go-server-sdk/v7 v7.13.0
 	github.com/ngrok/firewall_toolkit v0.0.18
 	github.com/oapi-codegen/gin-middleware v1.0.2
+	github.com/oapi-codegen/runtime v1.1.1
 	github.com/pkg/errors v0.9.1
 	github.com/shirou/gopsutil/v4 v4.25.6
 	github.com/soheilhy/cmux v0.1.5
@@ -142,7 +146,6 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gaissmai/extnetip v0.3.3 // indirect
-	github.com/getkin/kin-openapi v0.133.0 // indirect
 	github.com/gin-contrib/sse v1.0.0 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect

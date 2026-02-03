@@ -2,6 +2,8 @@ module github.com/e2b-dev/infra/tests/integration
 
 go 1.25.4
 
+replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.3.1
+
 replace github.com/e2b-dev/infra/packages/shared => ../../packages/shared
 
 replace github.com/e2b-dev/infra/packages/db => ../../packages/db
