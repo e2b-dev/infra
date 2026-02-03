@@ -29,6 +29,8 @@ run:
 	make build-debug
 	NODE_ID=integration-tests \
 	NODE_IP=127.0.0.1 \
+	API_GRPC_ADDRESS=$(API_GRPC_ADDRESS) \
+	AUTO_RESUME_FORCE=$(AUTO_RESUME_FORCE) \
 	./bin/client-proxy
 
 define setup_local_env
