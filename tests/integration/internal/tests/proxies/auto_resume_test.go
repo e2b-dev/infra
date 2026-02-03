@@ -53,12 +53,10 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 	}
 
 	for _, policy := range policies {
-		policy := policy
 		t.Run(policy.name, func(t *testing.T) {
 			t.Parallel()
 
 			for _, authCase := range authCases {
-				authCase := authCase
 				t.Run(authCase.name, func(t *testing.T) {
 					t.Parallel()
 
