@@ -945,11 +945,7 @@ setup_npm_dependencies() {
                 stop_spinner_warn "Failed to install npm packages"
             fi
         else
-            if [[ "$VERBOSE" == "true" ]]; then
-                print_ok "npm dependencies ready"
-            else
-                print_ok "npm dependencies ready"
-            fi
+            print_ok "npm dependencies ready"
         fi
     fi
 }
