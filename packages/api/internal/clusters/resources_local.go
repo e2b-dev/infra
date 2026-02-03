@@ -22,12 +22,6 @@ type LocalClusterResourceProvider struct {
 	instances                   *smap.Map[*Instance]
 }
 
-const (
-	sandboxLogsOldestLimit = 168 * time.Hour // 7 days
-	defaultLogsLimit       = 1000
-	defaultDirection       = logproto.FORWARD
-)
-
 func newLocalClusterResourceProvider(
 	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider,
 	queryLogsProvider *loki.LokiQueryProvider,
@@ -115,22 +109,39 @@ func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, 
 	return metrics, nil
 }
 
-func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, qStart *int64, qLimit *int32) (api.SandboxLogs, *api.APIError) {
-	end := time.Now()
-	var start time.Time
+func (l *LocalClusterResourceProvider) GetSandboxLogs(
+	ctx context.Context,
+	teamID string,
+	sandboxID string,
+	start *int64,
+	end *int64,
+	limit *int32,
+	direction *api.LogsDirection,
+) (api.SandboxLogs, *api.APIError) {
+	endTime := time.Now()
+	var startTime time.Time
 
-	if qStart != nil {
-		start = time.UnixMilli(*qStart)
+	if start != nil {
+		startTime = time.UnixMilli(*start)
 	} else {
-		start = end.Add(-sandboxLogsOldestLimit)
+		startTime = endTime.Add(-MaxTimeRangeDuration)
 	}
 
-	limit := defaultLogsLimit
-	if qLimit != nil {
-		limit = int(*qLimit)
+	if end != nil {
+		endTime = time.UnixMilli(*end)
 	}
 
-	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit)
+	lokiLimit := loki.DefaultLogsLimit
+	if limit != nil {
+		lokiLimit = int(*limit)
+	}
+
+	lokiDirection := loki.DefaultDirection
+	if direction != nil && *direction == api.LogsDirectionBackward {
+		lokiDirection = logproto.BACKWARD
+	}
+
+	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, startTime, endTime, lokiLimit, lokiDirection)
 	if err != nil {
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),
@@ -172,7 +183,7 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 	// Use shared implementation with Loki as the persistent log backend
 	start, end := logQueryWindow(cursor, direction)
 
-	lokiDirection := defaultDirection
+	lokiDirection := loki.DefaultDirection
 	if direction == api.LogsDirectionBackward {
 		lokiDirection = logproto.BACKWARD
 	}

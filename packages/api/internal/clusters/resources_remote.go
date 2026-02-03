@@ -25,7 +25,13 @@ func newRemoteClusterResourceProvider(instances *smap.Map[*Instance], client *ed
 	}
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, *api.APIError) {
+func (r *ClusterResourceProviderImpl) GetSandboxMetrics(
+	ctx context.Context,
+	teamID string,
+	sandboxID string,
+	qStart *int64,
+	qEnd *int64,
+) ([]api.SandboxMetric, *api.APIError) {
 	req := &edgeapi.V1SandboxMetricsParams{
 		TeamID: teamID,
 		Start:  qStart,
@@ -63,7 +69,11 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, *api.APIError) {
+func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(
+	ctx context.Context,
+	teamID string,
+	sandboxIDs []string,
+) (map[string]api.SandboxMetric, *api.APIError) {
 	res, err := r.client.V1SandboxesMetricsWithResponse(ctx, &edgeapi.V1SandboxesMetricsParams{TeamID: teamID, SandboxIds: sandboxIDs})
 	if err != nil {
 		return nil, &api.APIError{
@@ -95,8 +105,27 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, *api.APIError) {
-	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, Limit: limit})
+func (r *ClusterResourceProviderImpl) GetSandboxLogs(
+	ctx context.Context,
+	teamID string,
+	sandboxID string,
+	start *int64,
+	end *int64,
+	limit *int32,
+	direction *api.LogsDirection,
+) (api.SandboxLogs, *api.APIError) {
+	edgeDirection := edgeapi.V1SandboxLogsParamsDirectionForward
+	if direction != nil && *direction == api.LogsDirectionBackward {
+		edgeDirection = edgeapi.V1SandboxLogsParamsDirectionBackward
+	}
+
+	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, &edgeapi.V1SandboxLogsParams{
+		TeamID:    teamID,
+		Start:     start,
+		End:       end,
+		Limit:     limit,
+		Direction: utils.ToPtr(edgeDirection),
+	})
 	if err != nil {
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       err,
