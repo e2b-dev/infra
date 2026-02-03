@@ -135,6 +135,8 @@ func TestProxyAutoResumeConcurrent(t *testing.T) {
 }
 
 func TestProxyAutoResumeSmoke(t *testing.T) {
+	t.Parallel()
+
 	c := setup.GetAPIClient()
 
 	proxyURL, err := url.Parse(setup.ClientProxy)
@@ -155,6 +157,8 @@ func TestProxyAutoResumeSmoke(t *testing.T) {
 }
 
 func TestProxyAutoResumeChain(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 
