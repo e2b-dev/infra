@@ -53,16 +53,18 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 	}
 
 	for _, policy := range policies {
+		policy := policy
 		t.Run(policy.name, func(t *testing.T) {
 			t.Parallel()
 
-			sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{
-				"auto_resume": policy.policy,
-			}))
-
 			for _, authCase := range authCases {
+				authCase := authCase
 				t.Run(authCase.name, func(t *testing.T) {
 					t.Parallel()
+
+					sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{
+						"auto_resume": policy.policy,
+					}))
 
 					ensureSandboxPaused(t, c, sbx.SandboxID)
 
