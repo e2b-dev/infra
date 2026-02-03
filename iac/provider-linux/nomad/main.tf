@@ -360,6 +360,7 @@ resource "nomad_job" "clickhouse" {
     dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
     clickhouse_database             = var.clickhouse_database
     password                        = random_password.clickhouse_password.result
+    server_secret                   = random_password.clickhouse_server_secret.result
 
     clickhouse_config = templatefile("${path.module}/configs/clickhouse/config.xml", {
       clickhouse_server_port  = var.clickhouse_server_port.port
@@ -391,6 +392,10 @@ resource "nomad_job" "clickhouse_migrator" {
     clickhouse_connection_string = local.clickhouse_connection_string
     clickhouse_migrator_image    = var.clickhouse_migrator_image
     docker_image_prefix          = var.docker_image_prefix
+    clickhouse_server_port       = var.clickhouse_server_port.port
+    username                     = var.clickhouse_username
+    password                     = random_password.clickhouse_password.result
+    clickhouse_database          = var.clickhouse_database
   })
 
   depends_on = [

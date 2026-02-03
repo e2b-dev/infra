@@ -52,9 +52,6 @@ job "clickhouse" {
       env {
         CLICKHOUSE_USER            = "${username}"
         CLICKHOUSE_PASSWORD        = "${password}"
-        CLICKHOUSE_DB              = "${clickhouse_database}"
-        CLICKHOUSE_PORT            = "${clickhouse_server_port}"
-        CLICKHOUSE_HOST            = "127.0.0.1"
         CLICKHOUSE_SKIP_USER_SETUP = "1"
       }
 
@@ -66,10 +63,16 @@ job "clickhouse" {
 %{ endif }
         network_mode = "host"
         ulimit { nofile = "262144:262144" }
-        
+
+        ports = ["clickhouse-server", "clickhouse-http"]
+
+        extra_hosts = [
+          "server-${i + 1}.clickhouse.service.consul:127.0.0.1",
+        ]
+
         volumes = [
           "local/config.xml:/etc/clickhouse-server/config.d/config.xml:ro",
-          "local/users.xml:/etc/clickhouse-server/users.d/users.xml:ro",
+          "local/users.xml:/etc/clickhouse-server/users.xml:ro",
           "local/client-config.xml:/etc/clickhouse-client/config.d/client-config.xml:ro"
         ]
       }

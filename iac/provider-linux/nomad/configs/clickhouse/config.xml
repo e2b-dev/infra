@@ -8,6 +8,9 @@
     <!-- Use up 80% of available RAM to be on the safer side, default is 90% -->
     <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
 
+    <!-- Set timezone explicitly to avoid reading from /usr/share/zoneinfo which may not be accessible in restricted containers -->
+    <timezone>UTC</timezone>
+
     <logger>
         <formatting>
             <type>json</type>
