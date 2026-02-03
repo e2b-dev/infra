@@ -16,6 +16,8 @@ import (
 )
 
 func TestProxyAutoResumePolicies(t *testing.T) {
+	t.Parallel()
+
 	c := setup.GetAPIClient()
 	db := setup.GetTestDBClient(t)
 
@@ -51,15 +53,17 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 	}
 
 	for _, policy := range policies {
-		policy := policy
 		t.Run(policy.name, func(t *testing.T) {
+			t.Parallel()
+
 			sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{
 				"auto_resume": policy.policy,
 			}))
 
 			for _, authCase := range authCases {
-				authCase := authCase
 				t.Run(authCase.name, func(t *testing.T) {
+					t.Parallel()
+
 					ensureSandboxPaused(t, c, sbx.SandboxID)
 
 					resp := proxyRequest(t, client, sbx, proxyURL, authCase.headers)
@@ -72,6 +76,7 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 							require.Equal(t, http.StatusBadGateway, resp.StatusCode)
 						}
 						waitForSandboxState(t, c, sbx.SandboxID, api.Running)
+
 						return
 					}
 
@@ -84,6 +89,8 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 }
 
 func TestProxyAutoResumeConcurrent(t *testing.T) {
+	t.Parallel()
+
 	c := setup.GetAPIClient()
 
 	proxyURL, err := url.Parse(setup.EnvdProxy)
