@@ -169,12 +169,12 @@ func shouldAutoResume(policy proxygrpc.AutoResumePolicy, autoResumeEnabled bool,
 		return false
 	}
 
-	switch policy {
+	switch proxygrpc.NormalizeAutoResumePolicy(policy) {
 	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY:
 		return true
 	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED:
 		return requestHasAuth
-	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL, proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_UNSPECIFIED:
+	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL:
 		return false
 	default:
 		return false

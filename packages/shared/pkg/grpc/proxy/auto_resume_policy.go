@@ -13,7 +13,7 @@ func AutoResumePolicyFromString(value string) AutoResumePolicy {
 	case "null", "":
 		return AutoResumePolicy_AUTO_RESUME_POLICY_NULL
 	default:
-		return AutoResumePolicy_AUTO_RESUME_POLICY_UNSPECIFIED
+		return AutoResumePolicy_AUTO_RESUME_POLICY_NULL
 	}
 }
 
@@ -29,6 +29,15 @@ func AutoResumePolicyToString(policy AutoResumePolicy) string {
 	default:
 		return "null"
 	}
+}
+
+// NormalizeAutoResumePolicy folds unspecified policies into null.
+func NormalizeAutoResumePolicy(policy AutoResumePolicy) AutoResumePolicy {
+	if policy == AutoResumePolicy_AUTO_RESUME_POLICY_UNSPECIFIED {
+		return AutoResumePolicy_AUTO_RESUME_POLICY_NULL
+	}
+
+	return policy
 }
 
 // AutoResumePolicyFromMetadata extracts and normalizes the auto_resume value.
