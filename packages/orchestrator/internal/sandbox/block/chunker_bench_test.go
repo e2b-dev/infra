@@ -29,10 +29,10 @@ const (
 	benchLRUBytes   = benchTotalDataSize * benchLRUPercent / 100
 )
 
-// GCS/S3 simulation parameters
+// GCS/S3 simulation parameters (based on real measurements from integration tests)
 const (
-	gcsLatency   = 20 * time.Millisecond
-	gcsBandwidth = 200.0 // MB/s
+	gcsLatency   = 50 * time.Millisecond // measured: 37-134ms, typical 50-90ms
+	gcsBandwidth = 100.0                 // MB/s - measured: 30-115MB/s, typical 45-70MB/s
 )
 
 func generateSemiRandomData(size int, seed int64) []byte {
@@ -54,7 +54,7 @@ func generateSemiRandomData(size int, seed int64) []byte {
 	return data
 }
 
-func setupCompressedStorage(b *testing.B, baseDir string) (*storage.Storage, string, *storage.FrameTable) {
+func setupCompressedStorage(b *testing.B, baseDir string) (*storage.Storage, string, *storage.FrameTable, int64) {
 	b.Helper()
 	st := storage.NewLocalStorage(baseDir)
 	origData := generateSemiRandomData(benchTotalDataSize, 42)
@@ -68,7 +68,7 @@ func setupCompressedStorage(b *testing.B, baseDir string) (*storage.Storage, str
 	ratio := float64(benchTotalDataSize) / float64(compressedSize)
 	b.Logf("Compressed: %dMB -> %dMB (%.2fx), %d frames", benchTotalDataSize>>20, compressedSize>>20, ratio, len(frameTable.Frames))
 
-	return st, objectPath, frameTable
+	return st, objectPath, frameTable, compressedSize
 }
 
 func setupUncompressedStorage(b *testing.B, baseDir string) (*storage.Storage, string) {
@@ -95,7 +95,7 @@ func lruFrameCount(frameTable *storage.FrameTable, targetBytes int64) int {
 
 func BenchmarkSlice_LocalHit(b *testing.B) {
 	compDir, uncompDir, cacheDir := b.TempDir(), b.TempDir(), b.TempDir()
-	cSt, cPath, cFT := setupCompressedStorage(b, compDir)
+	cSt, cPath, cFT, cRawSize := setupCompressedStorage(b, compDir)
 	uSt, uPath := setupUncompressedStorage(b, uncompDir)
 	ctx := context.Background()
 
@@ -108,12 +108,12 @@ func BenchmarkSlice_LocalHit(b *testing.B) {
 	b.Run("Uncompressed_MMap", func(b *testing.B) {
 		chunker, _ := NewUncompressedMMapChunker(benchTotalDataSize, storage.MemoryChunkSize, uSt, uPath, nil, filepath.Join(cacheDir, "u"), benchMetrics(b))
 		defer chunker.Close()
-		chunker.Slice(ctx, 0, benchReadSize) // warm
+		chunker.Slice(ctx, 0, benchReadSize, nil) // warm
 
 		b.SetBytes(benchReadSize)
 		b.ResetTimer()
 		for i := range b.N {
-			chunker.Slice(ctx, offsets[i%len(offsets)], benchReadSize)
+			chunker.Slice(ctx, offsets[i%len(offsets)], benchReadSize, nil)
 		}
 	})
 
@@ -121,24 +121,37 @@ func BenchmarkSlice_LocalHit(b *testing.B) {
 		lruSize := lruFrameCount(cFT, benchLRUBytes)
 		chunker, _ := NewCompressLRUChunker(benchTotalDataSize, cSt, cPath, cFT, lruSize, benchMetrics(b))
 		defer chunker.Close()
-		chunker.Slice(ctx, 0, benchReadSize) // warm
+		chunker.Slice(ctx, 0, benchReadSize, cFT) // warm
 
 		b.SetBytes(benchReadSize)
 		b.ResetTimer()
 		for i := range b.N {
-			chunker.Slice(ctx, offsets[i%len(offsets)], benchReadSize)
+			chunker.Slice(ctx, offsets[i%len(offsets)], benchReadSize, cFT)
 		}
 	})
 
 	b.Run("Compressed_MMap", func(b *testing.B) {
-		chunker, _ := NewDecompressMMapChunker(benchTotalDataSize, storage.MemoryChunkSize, cSt, cPath, cFT, filepath.Join(cacheDir, "c"), benchMetrics(b))
+		chunker, _ := NewDecompressMMapChunker(benchTotalDataSize, cRawSize, storage.MemoryChunkSize, cSt, cPath, cFT, filepath.Join(cacheDir, "c"), benchMetrics(b))
 		defer chunker.Close()
-		chunker.Slice(ctx, 0, benchReadSize) // warm
+		chunker.Slice(ctx, 0, benchReadSize, cFT) // warm
 
 		b.SetBytes(benchReadSize)
 		b.ResetTimer()
 		for i := range b.N {
-			chunker.Slice(ctx, offsets[i%len(offsets)], benchReadSize)
+			chunker.Slice(ctx, offsets[i%len(offsets)], benchReadSize, cFT)
+		}
+	})
+
+	b.Run("Compressed_MMapLRU", func(b *testing.B) {
+		lruSize := lruFrameCount(cFT, benchLRUBytes)
+		chunker, _ := NewCompressMMapLRUChunker(benchTotalDataSize, cRawSize, cSt, cPath, cFT, lruSize, filepath.Join(cacheDir, "mlru"), benchMetrics(b))
+		defer chunker.Close()
+		chunker.Slice(ctx, 0, benchReadSize, cFT) // warm
+
+		b.SetBytes(benchReadSize)
+		b.ResetTimer()
+		for i := range b.N {
+			chunker.Slice(ctx, offsets[i%len(offsets)], benchReadSize, cFT)
 		}
 	})
 }
@@ -150,7 +163,7 @@ func BenchmarkSlice_LocalHit(b *testing.B) {
 
 func BenchmarkSlice_LRUMiss(b *testing.B) {
 	compDir := b.TempDir()
-	cSt, cPath, cFT := setupCompressedStorage(b, compDir)
+	cSt, cPath, cFT, cRawSize := setupCompressedStorage(b, compDir)
 	ctx := context.Background()
 
 	numFrames := len(cFT.Frames)
@@ -166,7 +179,27 @@ func BenchmarkSlice_LRUMiss(b *testing.B) {
 			// Alternate between first and last frame to force eviction
 			frameIdx := (i % 2) * (numFrames - 1)
 			offset := int64(frameIdx * bytesPerFrame)
-			chunker.Slice(ctx, offset, benchReadSize)
+			chunker.Slice(ctx, offset, benchReadSize, cFT)
+		}
+	})
+
+	b.Run("Compressed_MMapLRU_Eviction", func(b *testing.B) {
+		// LRU=1 forces eviction, but mmap keeps compressed frames locally
+		cacheDir := b.TempDir()
+		chunker, _ := NewCompressMMapLRUChunker(benchTotalDataSize, cRawSize, cSt, cPath, cFT, 1, filepath.Join(cacheDir, "mlru"), benchMetrics(b))
+		defer chunker.Close()
+
+		// Warm up: access both frames to populate mmap cache
+		chunker.Slice(ctx, 0, benchReadSize, cFT)
+		chunker.Slice(ctx, int64((numFrames-1)*bytesPerFrame), benchReadSize, cFT)
+
+		b.ResetTimer()
+		for i := range b.N {
+			// Alternate between first and last frame
+			// LRU evicts, but mmap cache serves compressed data locally
+			frameIdx := (i % 2) * (numFrames - 1)
+			offset := int64(frameIdx * bytesPerFrame)
+			chunker.Slice(ctx, offset, benchReadSize, cFT)
 		}
 	})
 }
@@ -180,7 +213,7 @@ func BenchmarkSlice_LRUMiss(b *testing.B) {
 
 func BenchmarkSlice_ColdFetch_32MB(b *testing.B) {
 	compDir, uncompDir := b.TempDir(), b.TempDir()
-	_, cPath, cFT := setupCompressedStorage(b, compDir)
+	_, cPath, cFT, cRawSize := setupCompressedStorage(b, compDir)
 	_, uPath := setupUncompressedStorage(b, uncompDir)
 	ctx := context.Background()
 
@@ -203,7 +236,7 @@ func BenchmarkSlice_ColdFetch_32MB(b *testing.B) {
 
 			// Access 32MB of data (8 x 4MB blocks)
 			for off := int64(0); off < targetUncompressedBytes; off += storage.MemoryChunkSize {
-				chunker.Slice(ctx, off, benchReadSize)
+				chunker.Slice(ctx, off, benchReadSize, nil)
 			}
 
 			b.StopTimer()
@@ -225,7 +258,7 @@ func BenchmarkSlice_ColdFetch_32MB(b *testing.B) {
 
 			// Access 32MB of data (fits in 1 compressed frame)
 			for off := int64(0); off < targetUncompressedBytes; off += storage.MemoryChunkSize {
-				chunker.Slice(ctx, off, benchReadSize)
+				chunker.Slice(ctx, off, benchReadSize, cFT)
 			}
 
 			b.StopTimer()
@@ -242,12 +275,34 @@ func BenchmarkSlice_ColdFetch_32MB(b *testing.B) {
 		for i := range b.N {
 			b.StopTimer()
 			slowSt, slowFS := newSlowStorage(compDir, gcsLatency, gcsBandwidth)
-			chunker, _ := NewDecompressMMapChunker(benchTotalDataSize, storage.MemoryChunkSize, slowSt, cPath, cFT, filepath.Join(b.TempDir(), "c"), benchMetrics(b))
+			chunker, _ := NewDecompressMMapChunker(benchTotalDataSize, cRawSize, storage.MemoryChunkSize, slowSt, cPath, cFT, filepath.Join(b.TempDir(), "c"), benchMetrics(b))
 			b.StartTimer()
 
 			// Access 32MB of data (fits in 1 compressed frame)
 			for off := int64(0); off < targetUncompressedBytes; off += storage.MemoryChunkSize {
-				chunker.Slice(ctx, off, benchReadSize)
+				chunker.Slice(ctx, off, benchReadSize, cFT)
+			}
+
+			b.StopTimer()
+			bytes, calls := slowFS.stats()
+			if i == 0 {
+				b.ReportMetric(float64(bytes>>20), "network-MB")
+				b.ReportMetric(float64(calls), "requests")
+			}
+			chunker.Close()
+		}
+	})
+
+	b.Run("Compressed_MMapLRU", func(b *testing.B) {
+		for i := range b.N {
+			b.StopTimer()
+			slowSt, slowFS := newSlowStorage(compDir, gcsLatency, gcsBandwidth)
+			chunker, _ := NewCompressMMapLRUChunker(benchTotalDataSize, cRawSize, slowSt, cPath, cFT, numCompFrames, filepath.Join(b.TempDir(), "mlru"), benchMetrics(b))
+			b.StartTimer()
+
+			// Access 32MB of data (fits in 1 compressed frame)
+			for off := int64(0); off < targetUncompressedBytes; off += storage.MemoryChunkSize {
+				chunker.Slice(ctx, off, benchReadSize, cFT)
 			}
 
 			b.StopTimer()
@@ -267,7 +322,7 @@ func BenchmarkSlice_ColdFetch_32MB(b *testing.B) {
 
 func BenchmarkSlice_MixedWorkload(b *testing.B) {
 	compDir, uncompDir, cacheDir := b.TempDir(), b.TempDir(), b.TempDir()
-	cSt, cPath, cFT := setupCompressedStorage(b, compDir)
+	cSt, cPath, cFT, cRawSize := setupCompressedStorage(b, compDir)
 	uSt, uPath := setupUncompressedStorage(b, uncompDir)
 	ctx := context.Background()
 
@@ -291,7 +346,7 @@ func BenchmarkSlice_MixedWorkload(b *testing.B) {
 		b.SetBytes(benchReadSize)
 		b.ResetTimer()
 		for i := range b.N {
-			chunker.Slice(ctx, offsets[i%patternSize], benchReadSize)
+			chunker.Slice(ctx, offsets[i%patternSize], benchReadSize, nil)
 		}
 	})
 
@@ -303,18 +358,30 @@ func BenchmarkSlice_MixedWorkload(b *testing.B) {
 		b.SetBytes(benchReadSize)
 		b.ResetTimer()
 		for i := range b.N {
-			chunker.Slice(ctx, offsets[i%patternSize], benchReadSize)
+			chunker.Slice(ctx, offsets[i%patternSize], benchReadSize, cFT)
 		}
 	})
 
 	b.Run("Compressed_MMap", func(b *testing.B) {
-		chunker, _ := NewDecompressMMapChunker(benchTotalDataSize, storage.MemoryChunkSize, cSt, cPath, cFT, filepath.Join(cacheDir, "c"), benchMetrics(b))
+		chunker, _ := NewDecompressMMapChunker(benchTotalDataSize, cRawSize, storage.MemoryChunkSize, cSt, cPath, cFT, filepath.Join(cacheDir, "c"), benchMetrics(b))
 		defer chunker.Close()
 
 		b.SetBytes(benchReadSize)
 		b.ResetTimer()
 		for i := range b.N {
-			chunker.Slice(ctx, offsets[i%patternSize], benchReadSize)
+			chunker.Slice(ctx, offsets[i%patternSize], benchReadSize, cFT)
+		}
+	})
+
+	b.Run("Compressed_MMapLRU_30pct", func(b *testing.B) {
+		lruSize := lruFrameCount(cFT, benchLRUBytes)
+		chunker, _ := NewCompressMMapLRUChunker(benchTotalDataSize, cRawSize, cSt, cPath, cFT, lruSize, filepath.Join(cacheDir, "mlru"), benchMetrics(b))
+		defer chunker.Close()
+
+		b.SetBytes(benchReadSize)
+		b.ResetTimer()
+		for i := range b.N {
+			chunker.Slice(ctx, offsets[i%patternSize], benchReadSize, cFT)
 		}
 	})
 }
@@ -325,7 +392,7 @@ func BenchmarkSlice_MixedWorkload(b *testing.B) {
 
 func BenchmarkSlice_FullFetch(b *testing.B) {
 	compDir, uncompDir := b.TempDir(), b.TempDir()
-	_, cPath, cFT := setupCompressedStorage(b, compDir)
+	_, cPath, cFT, cRawSize := setupCompressedStorage(b, compDir)
 	_, uPath := setupUncompressedStorage(b, uncompDir)
 	ctx := context.Background()
 
@@ -340,7 +407,7 @@ func BenchmarkSlice_FullFetch(b *testing.B) {
 			b.StartTimer()
 
 			for f := range benchNumFrames {
-				chunker.Slice(ctx, int64(f*benchFrameSize), benchReadSize)
+				chunker.Slice(ctx, int64(f*benchFrameSize), benchReadSize, nil)
 			}
 
 			b.StopTimer()
@@ -360,7 +427,7 @@ func BenchmarkSlice_FullFetch(b *testing.B) {
 			b.StartTimer()
 
 			for f := range numCompFrames {
-				chunker.Slice(ctx, int64(f*bytesPerCompFrame), benchReadSize)
+				chunker.Slice(ctx, int64(f*bytesPerCompFrame), benchReadSize, cFT)
 			}
 
 			b.StopTimer()
@@ -376,11 +443,31 @@ func BenchmarkSlice_FullFetch(b *testing.B) {
 		for i := range b.N {
 			b.StopTimer()
 			slowSt, slowFS := newSlowStorage(compDir, gcsLatency, gcsBandwidth)
-			chunker, _ := NewDecompressMMapChunker(benchTotalDataSize, storage.MemoryChunkSize, slowSt, cPath, cFT, filepath.Join(b.TempDir(), "c"), benchMetrics(b))
+			chunker, _ := NewDecompressMMapChunker(benchTotalDataSize, cRawSize, storage.MemoryChunkSize, slowSt, cPath, cFT, filepath.Join(b.TempDir(), "c"), benchMetrics(b))
 			b.StartTimer()
 
 			for f := range numCompFrames {
-				chunker.Slice(ctx, int64(f*bytesPerCompFrame), benchReadSize)
+				chunker.Slice(ctx, int64(f*bytesPerCompFrame), benchReadSize, cFT)
+			}
+
+			b.StopTimer()
+			bytes, _ := slowFS.stats()
+			if i == 0 {
+				b.ReportMetric(float64(bytes>>20), "total-fetched-MB")
+			}
+			chunker.Close()
+		}
+	})
+
+	b.Run("Compressed_MMapLRU", func(b *testing.B) {
+		for i := range b.N {
+			b.StopTimer()
+			slowSt, slowFS := newSlowStorage(compDir, gcsLatency, gcsBandwidth)
+			chunker, _ := NewCompressMMapLRUChunker(benchTotalDataSize, cRawSize, slowSt, cPath, cFT, numCompFrames, filepath.Join(b.TempDir(), "mlru"), benchMetrics(b))
+			b.StartTimer()
+
+			for f := range numCompFrames {
+				chunker.Slice(ctx, int64(f*bytesPerCompFrame), benchReadSize, cFT)
 			}
 
 			b.StopTimer()
@@ -404,6 +491,54 @@ func benchMetrics(b *testing.B) metrics.Metrics {
 	return m
 }
 
+// SlowFrameGetter wraps a FrameGetter and adds simulated network delays.
+// Use this to test chunker behavior with slow storage.
+type SlowFrameGetter struct {
+	inner         storage.FrameGetter
+	latency       time.Duration
+	bandwidthMBps float64
+	readBytes     atomic.Int64
+	readCalls     atomic.Int64
+}
+
+// Slowdown wraps any FrameGetter with simulated network delays.
+// Works with real storage, mocks, or any FrameGetter implementation.
+//
+// Parameters:
+//   - fg: the underlying FrameGetter to wrap
+//   - latency: base latency added to each request
+//   - bandwidthMBps: bandwidth limit in MB/s (0 = unlimited)
+func Slowdown(fg storage.FrameGetter, latency time.Duration, bandwidthMBps float64) *SlowFrameGetter {
+	return &SlowFrameGetter{
+		inner:         fg,
+		latency:       latency,
+		bandwidthMBps: bandwidthMBps,
+	}
+}
+
+func (s *SlowFrameGetter) simulateDelay(bytes int) {
+	delay := s.latency
+	if s.bandwidthMBps > 0 && bytes > 0 {
+		bandwidth := s.bandwidthMBps * 1024 * 1024
+		delay += time.Duration(float64(bytes) / bandwidth * float64(time.Second))
+	}
+	time.Sleep(delay)
+}
+
+func (s *SlowFrameGetter) GetFrame(ctx context.Context, objectPath string, offsetU int64, frameTable *storage.FrameTable, decompress bool, buf []byte) (storage.Range, error) {
+	s.simulateDelay(len(buf))
+	s.readBytes.Add(int64(len(buf)))
+	s.readCalls.Add(1)
+
+	return s.inner.GetFrame(ctx, objectPath, offsetU, frameTable, decompress, buf)
+}
+
+// Stats returns total bytes read and number of calls.
+func (s *SlowFrameGetter) Stats() (bytesRead, calls int64) {
+	return s.readBytes.Load(), s.readCalls.Load()
+}
+
+// slowFileSystem wraps FileSystem for benchmarks that need full storage.Storage.
 type slowFileSystem struct {
 	*storage.FileSystem
 

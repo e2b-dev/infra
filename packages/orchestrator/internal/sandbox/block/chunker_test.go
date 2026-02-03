@@ -39,7 +39,7 @@ func TestChunker_Interface_CompressLRU(t *testing.T) {
 	var chunker Chunker
 	var err error
 	chunker, err = NewCompressLRUChunker(
-		int64(dataSize),
+		int64(dataSize), // virtSize (uncompressed)
 		mockStorage,
 		"test/path",
 		frameTable,
@@ -51,32 +51,32 @@ func TestChunker_Interface_CompressLRU(t *testing.T) {
 
 	// Test ReadAt
 	buf := make([]byte, 1024)
-	n, err := chunker.ReadAt(ctx, buf, 0)
+	n, err := chunker.ReadAt(ctx, buf, 0, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 1024, n)
 	assert.Equal(t, uncompressedData[:1024], buf)
 
 	// Test ReadAt at different offset
 	buf = make([]byte, 500)
-	n, err = chunker.ReadAt(ctx, buf, 1000)
+	n, err = chunker.ReadAt(ctx, buf, 1000, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 500, n)
 	assert.Equal(t, uncompressedData[1000:1500], buf)
 
 	// Test Slice
-	slice, err := chunker.Slice(ctx, 0, 1024)
+	slice, err := chunker.Slice(ctx, 0, 1024, frameTable)
 	require.NoError(t, err)
 	assert.Len(t, slice, 1024)
 	assert.Equal(t, uncompressedData[:1024], slice)
 
 	// Test Slice at different offset
-	slice, err = chunker.Slice(ctx, 2048, 512)
+	slice, err = chunker.Slice(ctx, 2048, 512, frameTable)
 	require.NoError(t, err)
 	assert.Len(t, slice, 512)
 	assert.Equal(t, uncompressedData[2048:2560], slice)
 
-	// Test FileSize
+	// Test FileSize - CompressLRUChunker returns 0 (no local disk files, pure in-memory LRU)
 	size, err := chunker.FileSize()
 	require.NoError(t, err)
-	assert.Equal(t, int64(dataSize), size)
+	assert.Equal(t, int64(0), size, "CompressLRUChunker has no disk files, FileSize should be 0")
 }

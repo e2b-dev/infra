@@ -359,9 +359,8 @@ func TestCache_RawSize_CacheMiss(t *testing.T) {
 	t.Parallel()
 
 	inner := NewMockStorageProvider(t)
-	// fetchAndCacheSizes calls both Size and RawSize
-	inner.EXPECT().Size(mock.Anything, "obj").Return(int64(12345), nil).Once()
-	inner.EXPECT().RawSize(mock.Anything, "obj").Return(int64(12345), nil).Once()
+	// fetchAndCacheSizesBoth calls Sizes which returns (virtSize, rawSize, err)
+	inner.EXPECT().Sizes(mock.Anything, "obj").Return(int64(12345), int64(12345), nil).Once()
 
 	c := newTestCache(t, inner, 1024)
 
@@ -400,8 +399,8 @@ func TestCache_RawSize_InnerError(t *testing.T) {
 
 	expectedErr := errors.New("storage unavailable")
 	inner := NewMockStorageProvider(t)
-	// Size is called first in fetchAndCacheSizes
-	inner.EXPECT().Size(mock.Anything, "obj").Return(int64(0), expectedErr)
+	// Sizes is called in fetchAndCacheSizesBoth
+	inner.EXPECT().Sizes(mock.Anything, "obj").Return(int64(0), int64(0), expectedErr)
 
 	c := newTestCache(t, inner, 1024)
 
@@ -414,9 +413,8 @@ func TestCache_RawSize_CorruptedCache(t *testing.T) {
 	t.Parallel()
 
 	inner := NewMockStorageProvider(t)
-	// fetchAndCacheSizes calls both Size and RawSize
-	inner.EXPECT().Size(mock.Anything, "obj").Return(int64(5555), nil).Once()
-	inner.EXPECT().RawSize(mock.Anything, "obj").Return(int64(5555), nil).Once()
+	// fetchAndCacheSizesBoth calls Sizes
+	inner.EXPECT().Sizes(mock.Anything, "obj").Return(int64(5555), int64(5555), nil).Once()
 
 	c := newTestCache(t, inner, 1024)
 
@@ -598,7 +596,9 @@ func TestCache_GetFrame_Compressed_CacheHit_Decompress(t *testing.T) {
 	writeToCache(t, framePath, compressed)
 
 	buf := make([]byte, uncompressedSize)
-	rng, err := c.GetFrame(t.Context(), "obj", 0, frameTable, true, buf)
+	// Use internal method with cacheCompressed=true to test cache behavior
+	// (bypasses EnableNFSCompressedCache flag)
+	rng, _, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, true, buf, true)
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), rng.Start) // uncompressed offset
@@ -627,7 +627,9 @@ func TestCache_GetFrame_Compressed_CacheHit_Raw(t *testing.T) {
 	writeToCache(t, framePath, compressed)
 
 	buf := make([]byte, len(compressed))
-	rng, err := c.GetFrame(t.Context(), "obj", 0, frameTable, false, buf)
+	// Use internal method with cacheCompressed=true to test cache behavior
+	// (bypasses EnableNFSCompressedCache flag)
+	rng, _, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, false, buf, true)
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), rng.Start) // compressed offset
@@ -660,12 +662,17 @@ func TestCache_GetFrame_Compressed_CacheMiss_Decompress(t *testing.T) {
 	c := newTestCache(t, inner, uncompressedSize)
 
 	buf := make([]byte, uncompressedSize)
-	rng, err := c.GetFrame(t.Context(), "obj", 0, frameTable, true, buf)
+	// Use internal method with cacheCompressed=true to test cache behavior
+	// (bypasses EnableNFSCompressedCache flag)
+	rng, wg, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, true, buf, true)
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), rng.Start)
 	assert.Equal(t, uncompressedSize, rng.Length)
 	assert.Equal(t, origData, buf)
+
+	// Wait for async cache write
+	wg.Wait()
 
 	// Verify compressed data was cached
 	framePath := c.makeFrameFilename("obj", frameOffset, frameSize)
@@ -701,7 +708,9 @@ func TestCache_GetFrame_Compressed_CacheMiss_Raw(t *testing.T) {
 	c := newTestCache(t, inner, uncompressedSize)
 
 	buf := make([]byte, len(compressed))
-	rng, err := c.GetFrame(t.Context(), "obj", 0, frameTable, false, buf)
+	// Use internal method with cacheCompressed=true to test cache behavior
+	// (bypasses EnableNFSCompressedCache flag)
+	rng, wg, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, false, buf, true)
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), rng.Start)
@@ -709,6 +718,7 @@ func TestCache_GetFrame_Compressed_CacheMiss_Raw(t *testing.T) {
 	assert.Equal(t, compressed, buf[:rng.Length])
 
 	// Wait for async cache write to complete before test cleanup
+	wg.Wait()
 	framePath := c.makeFrameFilename("obj", frameOffset, frameSize)
 	waitForCacheFile(t, framePath)
 }
@@ -736,20 +746,22 @@ func TestCache_GetFrame_Compressed_RoundTrip(t *testing.T) {
 	c := newTestCache(t, inner, dataSize)
 
 	// First read - cache miss
+	// Use internal method with cacheCompressed=true to test cache behavior
 	buf1 := make([]byte, dataSize)
-	rng1, err := c.GetFrame(t.Context(), "obj", 0, frameTable, true, buf1)
+	rng1, wg, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, true, buf1, true)
 	require.NoError(t, err)
 	assert.Equal(t, dataSize, rng1.Length)
 	assert.Equal(t, origData, buf1)
 
 	// Wait for cache write
+	wg.Wait()
 	framePath := c.makeFrameFilename("obj", FrameOffset{U: 0, C: 0},
 		FrameSize{U: int32(dataSize), C: int32(len(compressed))})
 	waitForCacheFile(t, framePath)
 
 	// Second read - cache hit (mock expectation .Once() ensures no second call)
 	buf2 := make([]byte, dataSize)
-	rng2, err := c.GetFrame(t.Context(), "obj", 0, frameTable, true, buf2)
+	rng2, _, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, true, buf2, true)
 	require.NoError(t, err)
 	assert.Equal(t, dataSize, rng2.Length)
 	assert.Equal(t, origData, buf2)
@@ -758,7 +770,7 @@ func TestCache_GetFrame_Compressed_RoundTrip(t *testing.T) {
 func TestCache_GetFrame_Compressed_MultipleFrames(t *testing.T) {
 	t.Parallel()
 
-	const frameSize = 4096
+	const frameSz = 4096
 	const numFrames = 4
 
 	// Create frame data
@@ -767,10 +779,10 @@ func TestCache_GetFrame_Compressed_MultipleFrames(t *testing.T) {
 	frameSizes := make([]FrameSize, numFrames)
 
 	for i := range numFrames {
-		frames[i] = makeTestData(frameSize, byte(i*50))
+		frames[i] = makeTestData(frameSz, byte(i*50))
 		compressedFrames[i] = compressTestData(t, frames[i])
 		frameSizes[i] = FrameSize{
-			U: int32(frameSize),
+			U: int32(frameSz),
 			C: int32(len(compressedFrames[i])),
 		}
 	}
@@ -788,7 +800,7 @@ func TestCache_GetFrame_Compressed_MultipleFrames(t *testing.T) {
 		offsets[i].C = offsets[i-1].C + int64(frameSizes[i-1].C)
 	}
 
-	c := newTestCache(t, nil, frameSize)
+	c := newTestCache(t, nil, frameSz)
 
 	// Pre-populate cache for frames 0 and 2
 	writeToCache(t, c.makeFrameFilename("obj", offsets[0], frameSizes[0]), compressedFrames[0])
@@ -809,13 +821,20 @@ func TestCache_GetFrame_Compressed_MultipleFrames(t *testing.T) {
 
 	c.inner = inner
 
-	// Read all frames
+	// Read all frames using internal method with cacheCompressed=true
+	var wgs []*sync.WaitGroup
 	for i := range numFrames {
-		buf := make([]byte, frameSize)
-		rng, err := c.GetFrame(t.Context(), "obj", offsets[i].U, frameTable, true, buf)
+		buf := make([]byte, frameSz)
+		rng, wg, err := c.getCompressedFrameInternal(t.Context(), "obj", offsets[i].U, frameTable, true, buf, true)
 		require.NoError(t, err, "frame %d", i)
-		assert.Equal(t, frameSize, rng.Length, "frame %d", i)
+		assert.Equal(t, frameSz, rng.Length, "frame %d", i)
 		assert.Equal(t, frames[i], buf, "frame %d data mismatch", i)
+		wgs = append(wgs, wg)
+	}
+
+	// Wait for all async cache writes
+	for _, wg := range wgs {
+		wg.Wait()
 	}
 
 	// Wait for cache writes
@@ -843,7 +862,8 @@ func TestCache_GetFrame_Compressed_InnerError(t *testing.T) {
 	c := newTestCache(t, inner, uncompressedSize)
 
 	buf := make([]byte, uncompressedSize)
-	_, err := c.GetFrame(t.Context(), "obj", 0, frameTable, true, buf)
+	// Use internal method with cacheCompressed=true to test cache behavior
+	_, _, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, true, buf, true)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "uncached read")
@@ -873,7 +893,9 @@ func TestCache_GetFrame_Compressed_NonZeroStartAt(t *testing.T) {
 	writeToCache(t, framePath, compressed)
 
 	buf := make([]byte, uncompressedSize)
-	rng, err := c.GetFrame(t.Context(), "obj", startAt.U, frameTable, true, buf)
+	// Use internal method with cacheCompressed=true to test cache behavior
+	// (bypasses EnableNFSCompressedCache flag)
+	rng, _, err := c.getCompressedFrameInternal(t.Context(), "obj", startAt.U, frameTable, true, buf, true)
 
 	require.NoError(t, err)
 	assert.Equal(t, startAt.U, rng.Start)
@@ -946,7 +968,7 @@ func TestCache_StoreFile_Compressed_WritesFramesToCache(t *testing.T) {
 		t.Skip("skipping compression test when EnableGCSCompression is false")
 	}
 
-	const dataSize = 32 * 1024
+	const dataSize = 5 * 1024 * 1024 // 5MB to ensure we get at least one full frame
 	origData := makeRepetitiveData(dataSize)
 
 	inputFile := filepath.Join(t.TempDir(), "input.bin")
@@ -957,12 +979,12 @@ func TestCache_StoreFile_Compressed_WritesFramesToCache(t *testing.T) {
 
 	opts := &FramedUploadOptions{
 		CompressionType: CompressionZstd,
-		ChunkSize:       4096,
-		TargetFrameSize: 2048,
+		ChunkSize:       MemoryChunkSize, // Must be multiple of MemoryChunkSize
+		TargetFrameSize: MemoryChunkSize,
 		Level:           int(zstd.SpeedBestCompression),
 	}
 
-	c, _ := newTestCacheWithFlags(t, innerStorage, 4096)
+	c, _ := newTestCacheWithFlags(t, innerStorage, MemoryChunkSize)
 
 	// Use storeCompressed directly to get the WaitGroup for async writes
 	ft, wg, err := c.storeCompressed(t.Context(), inputFile, "obj", opts)
@@ -1056,12 +1078,13 @@ func TestCache_GetFrame_DataIntegrity(t *testing.T) {
 			c := newTestCache(t, nil, int64(len(tc.data)))
 
 			frameOffset := FrameOffset{U: 0, C: 0}
-			frameSize := FrameSize{U: int32(len(tc.data)), C: int32(len(compressed))}
-			framePath := c.makeFrameFilename("obj", frameOffset, frameSize)
+			frameSz := FrameSize{U: int32(len(tc.data)), C: int32(len(compressed))}
+			framePath := c.makeFrameFilename("obj", frameOffset, frameSz)
 			writeToCache(t, framePath, compressed)
 
 			buf := make([]byte, len(tc.data))
-			rng, err := c.GetFrame(t.Context(), "obj", 0, frameTable, true, buf)
+			// Use internal method with cacheCompressed=true to test cache behavior
+			rng, _, err := c.getCompressedFrameInternal(t.Context(), "obj", 0, frameTable, true, buf, true)
 
 			require.NoError(t, err)
 			assert.Equal(t, len(tc.data), rng.Length)
@@ -1082,16 +1105,16 @@ func TestCache_GetFrame_ConcurrentReads(t *testing.T) {
 	compressed := compressTestData(t, origData)
 
 	frameOffset := FrameOffset{U: 0, C: 0}
-	frameSize := FrameSize{U: int32(uncompressedSize), C: int32(len(compressed))}
+	frameSz := FrameSize{U: int32(uncompressedSize), C: int32(len(compressed))}
 	frameTable := &FrameTable{
 		CompressionType: CompressionZstd,
 		StartAt:         frameOffset,
-		Frames:          []FrameSize{frameSize},
+		Frames:          []FrameSize{frameSz},
 	}
 
 	c := newTestCache(t, nil, uncompressedSize)
 
-	framePath := c.makeFrameFilename("obj", frameOffset, frameSize)
+	framePath := c.makeFrameFilename("obj", frameOffset, frameSz)
 	writeToCache(t, framePath, compressed)
 
 	const numReaders = 10
@@ -1101,7 +1124,8 @@ func TestCache_GetFrame_ConcurrentReads(t *testing.T) {
 	for range numReaders {
 		wg.Go(func() {
 			buf := make([]byte, uncompressedSize)
-			rng, err := c.GetFrame(context.Background(), "obj", 0, frameTable, true, buf)
+			// Use internal method with cacheCompressed=true to test cache behavior
+			rng, _, err := c.getCompressedFrameInternal(context.Background(), "obj", 0, frameTable, true, buf, true)
 			if err != nil {
 				errs <- err
 
@@ -1136,11 +1160,11 @@ func TestCache_GetFrame_ConcurrentCacheMisses(t *testing.T) {
 	compressed := compressTestData(t, origData)
 
 	frameOffset := FrameOffset{U: 0, C: 0}
-	frameSize := FrameSize{U: int32(uncompressedSize), C: int32(len(compressed))}
+	frameSz := FrameSize{U: int32(uncompressedSize), C: int32(len(compressed))}
 	frameTable := &FrameTable{
 		CompressionType: CompressionZstd,
 		StartAt:         frameOffset,
-		Frames:          []FrameSize{frameSize},
+		Frames:          []FrameSize{frameSz},
 	}
 
 	inner := NewMockStorageProvider(t)
@@ -1160,7 +1184,8 @@ func TestCache_GetFrame_ConcurrentCacheMisses(t *testing.T) {
 	for range numReaders {
 		wg.Go(func() {
 			buf := make([]byte, uncompressedSize)
-			rng, err := c.GetFrame(context.Background(), "obj", 0, frameTable, true, buf)
+			// Use internal method with cacheCompressed=true to test cache behavior
+			rng, _, err := c.getCompressedFrameInternal(context.Background(), "obj", 0, frameTable, true, buf, true)
 			if err != nil {
 				errs <- err
 
@@ -1187,7 +1212,7 @@ func TestCache_GetFrame_ConcurrentCacheMisses(t *testing.T) {
 	}
 
 	// Verify cache was populated
-	framePath := c.makeFrameFilename("obj", frameOffset, frameSize)
+	framePath := c.makeFrameFilename("obj", frameOffset, frameSz)
 	waitForCacheFile(t, framePath)
 }
 
@@ -1375,7 +1400,7 @@ func TestCache_FullWorkflow_StoreAndRetrieve(t *testing.T) {
 		t.Skip("skipping compression test when EnableGCSCompression is false")
 	}
 
-	const dataSize = 64 * 1024
+	const dataSize = 5 * 1024 * 1024 // 5MB to ensure we get at least one full frame
 	origData := makeTestData(dataSize, 123)
 
 	inputFile := filepath.Join(t.TempDir(), "input.bin")
@@ -1386,12 +1411,12 @@ func TestCache_FullWorkflow_StoreAndRetrieve(t *testing.T) {
 
 	opts := &FramedUploadOptions{
 		CompressionType: CompressionZstd,
-		ChunkSize:       8192,
-		TargetFrameSize: 4096,
+		ChunkSize:       MemoryChunkSize, // Must be multiple of MemoryChunkSize
+		TargetFrameSize: MemoryChunkSize,
 		Level:           int(zstd.SpeedDefault),
 	}
 
-	c, flags := newTestCacheWithFlags(t, innerStorage, 8192)
+	c, flags := newTestCacheWithFlags(t, innerStorage, MemoryChunkSize)
 	flags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(false).Maybe()
 
 	// Store

@@ -51,10 +51,6 @@ type featureFlagsClient interface {
 }
 
 func (c Cache) GetFrame(ctx context.Context, path string, offU int64, frameTable *FrameTable, decompress bool, buf []byte) (rng Range, err error) {
-	// DEBUG: Log when Cache.GetFrame is called
-	fmt.Printf("[DEBUG Cache.GetFrame] called: path=%s, offU=%d, decompress=%v, bufLen=%d, chunkSize=%d\n",
-		path, offU, decompress, len(buf), c.chunkSize)
-
 	if err := c.validateGetFrameParams(offU, len(buf), frameTable, decompress); err != nil {
 		return Range{}, err
 	}
@@ -273,17 +269,16 @@ func (c Cache) RawSize(ctx context.Context, objectPath string) (n int64, e error
 	return c.fetchAndCacheSizes(ctx, objectPath, false)
 }
 
-// fetchAndCacheSizes fetches both sizes from inner storage, caches them, and
-// returns the requested one (size if wantSize is true, rawSize otherwise).
-func (c Cache) fetchAndCacheSizes(ctx context.Context, objectPath string, wantSize bool) (int64, error) {
-	size, err := c.inner.Size(ctx, objectPath)
-	if err != nil {
-		return 0, err
-	}
+func (c Cache) Sizes(ctx context.Context, objectPath string) (virtSize, rawSize int64, e error) {
+	// Just delegate to inner - sizes are only needed once at chunker creation, no caching needed.
+	return c.inner.Sizes(ctx, objectPath)
+}
 
-	rawSize, err := c.inner.RawSize(ctx, objectPath)
+// fetchAndCacheSizesBoth fetches both sizes from inner storage, caches them, and returns both.
+func (c Cache) fetchAndCacheSizesBoth(ctx context.Context, objectPath string) (virtSize, rawSize int64, err error) {
+	virtSize, rawSize, err = c.inner.Sizes(ctx, objectPath)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	wg := &sync.WaitGroup{}
@@ -291,7 +286,7 @@ func (c Cache) fetchAndCacheSizes(ctx context.Context, objectPath string, wantSi
 		ctx, span := c.tracer.Start(ctx, "write sizes to cache")
 		defer span.End()
 
-		if err := c.writeLocalSizes(ctx, objectPath, size, rawSize); err != nil {
+		if err := c.writeLocalSizes(ctx, objectPath, virtSize, rawSize); err != nil {
 			recordError(span, err)
 			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpSize, err)
 		}
@@ -299,8 +294,19 @@ func (c Cache) fetchAndCacheSizes(ctx context.Context, objectPath string, wantSi
 
 	recordCacheRead(ctx, false, 16, cacheTypeSeekable, cacheOpSize)
 
+	return virtSize, rawSize, nil
+}
+
+// fetchAndCacheSizes fetches both sizes from inner storage, caches them, and
+// returns the requested one (size if wantSize is true, rawSize otherwise).
+func (c Cache) fetchAndCacheSizes(ctx context.Context, objectPath string, wantSize bool) (int64, error) {
+	virtSize, rawSize, err := c.fetchAndCacheSizesBoth(ctx, objectPath)
+	if err != nil {
+		return 0, err
+	}
+
 	if wantSize {
-		return size, nil
+		return virtSize, nil
 	}
 
 	return rawSize, nil
@@ -543,10 +549,6 @@ func (c Cache) validateGetFrameParams(off int64, length int, frameTable *FrameTa
 	}
 	if decompress {
 		if off%c.chunkSize != 0 {
-			// DEBUG: Log alignment failure details
-			fmt.Printf("[DEBUG Cache.validateGetFrameParams] alignment failure: off=%d (0x%x), chunkSize=%d (0x%x), off%%chunkSize=%d\n",
-				off, off, c.chunkSize, c.chunkSize, off%c.chunkSize)
-
 			return fmt.Errorf("offset %#x is not aligned to chunk size %#x, %w", off, c.chunkSize, ErrOffsetUnaligned)
 		}
 		if !frameTable.IsCompressed() {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -305,14 +304,8 @@ func (lb *LayerExecutor) startUpload(
 		defer span.End()
 		defer completeUpload()
 
-		uploadStart := time.Now()
-
 		// Phase 1: Upload data files
-		dataUploadStart := time.Now()
 		result, err := snapshot.UploadDataFiles(ctx, lb.templateStorage, storage.TemplateFiles{BuildID: buildID})
-		dataUploadDuration := time.Since(dataUploadStart)
-		fmt.Printf("[LAYER UPLOAD %s] Phase1 data upload took %v\n", buildID, dataUploadDuration)
-
 		if err != nil {
 			completeDataFileUpload()
 
@@ -329,42 +322,25 @@ func (lb *LayerExecutor) startUpload(
 		completeDataFileUpload()
 
 		// Phase 2: Wait for all layers, then finalize headers
-		waitAllStart := time.Now()
 		if err := waitForAllDataFileUploads(ctx); err != nil {
 			return fmt.Errorf("error waiting for data uploads: %w", err)
 		}
-		waitAllDuration := time.Since(waitAllStart)
-		fmt.Printf("[LAYER UPLOAD %s] Phase2 wait for all data uploads took %v\n", buildID, waitAllDuration)
 
-		headerStart := time.Now()
 		if err := result.TemplateBuild.FinalizeHeaders(ctx, pending); err != nil {
 			return fmt.Errorf("error finalizing headers: %w", err)
 		}
-		headerDuration := time.Since(headerStart)
-		fmt.Printf("[LAYER UPLOAD %s] Phase2 finalize headers took %v\n", buildID, headerDuration)
 
 		// Wait for previous uploads before saving cache entry
-		waitPrevStart := time.Now()
 		if err := waitForPreviousUploads(ctx); err != nil {
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}
-		waitPrevDuration := time.Since(waitPrevStart)
-		fmt.Printf("[LAYER UPLOAD %s] Phase3 wait for previous uploads took %v\n", buildID, waitPrevDuration)
 
-		saveMetaStart := time.Now()
 		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
 			Template: cache.Template{BuildID: buildID},
 		})
-		saveMetaDuration := time.Since(saveMetaStart)
-		fmt.Printf("[LAYER UPLOAD %s] Phase3 save layer meta took %v\n", buildID, saveMetaDuration)
-
 		if err != nil {
 			return fmt.Errorf("error saving layer meta: %w", err)
 		}
-
-		totalDuration := time.Since(uploadStart)
-		fmt.Printf("[LAYER UPLOAD %s] TOTAL took %v (data=%v waitAll=%v headers=%v waitPrev=%v saveMeta=%v)\n",
-			buildID, totalDuration, dataUploadDuration, waitAllDuration, headerDuration, waitPrevDuration, saveMetaDuration)
 
 		userLogger.Debug(ctx, fmt.Sprintf("Saved: %s", buildID))
 

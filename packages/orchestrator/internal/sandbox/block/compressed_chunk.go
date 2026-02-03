@@ -28,7 +28,7 @@ type CompressLRUChunker struct {
 	frameTable *storage.FrameTable
 	frameLRU   *FrameLRU
 	fetchGroup singleflight.Group
-	size       int64
+	virtSize   int64 // uncompressed size - used to cap requests
 	metrics    metrics.Metrics
 	stats      ChunkerStats
 }
@@ -36,14 +36,14 @@ type CompressLRUChunker struct {
 // NewCompressLRUChunker creates a new CompressLRUChunker.
 //
 // Parameters:
-//   - size: total uncompressed size of the data
+//   - virtSize: total uncompressed size of the data (used to cap requests)
 //   - s: storage provider to fetch frames from (should be wrapped with local cache)
 //   - objectPath: path to the object in storage
 //   - frameTable: frame table describing the compressed frames
 //   - lruSize: number of decompressed frames to keep in memory (0 for default)
 //   - m: metrics collector
 func NewCompressLRUChunker(
-	size int64,
+	virtSize int64,
 	s storage.FrameGetter,
 	objectPath string,
 	frameTable *storage.FrameTable,
@@ -60,21 +60,21 @@ func NewCompressLRUChunker(
 	}
 
 	globalCompressLRUCnt.Add(1)
-	fmt.Printf("[CHUNKER_NEW] CompressLRU %s size=%d frames=%d lruSize=%d\n", objectPath, size, len(frameTable.Frames), lruSize)
 
 	return &CompressLRUChunker{
 		storage:    s,
 		objectPath: objectPath,
 		frameTable: frameTable,
 		frameLRU:   frameLRU,
-		size:       size,
+		virtSize:   virtSize,
 		metrics:    m,
 	}, nil
 }
 
 // ReadAt reads len(b) bytes from the chunker starting at offset off.
-func (c *CompressLRUChunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
-	slice, err := c.Slice(ctx, off, int64(len(b)))
+// ft is the frame table subset for the specific mapping being read.
+func (c *CompressLRUChunker) ReadAt(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error) {
+	slice, err := c.Slice(ctx, off, int64(len(b)), ft)
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice at %d-%d: %w", off, off+int64(len(b)), err)
 	}
@@ -84,7 +84,8 @@ func (c *CompressLRUChunker) ReadAt(ctx context.Context, b []byte, off int64) (i
 
 // Slice returns a slice of the data at the given offset and length.
 // The returned slice references internal LRU data and MUST NOT be modified.
-func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+// ft is the frame table subset for the specific mapping being read.
+func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	start := time.Now()
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
@@ -92,15 +93,15 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 	c.stats.bytesRead.Add(length)
 
 	// Clamp length to available data
-	if off+length > c.size {
-		length = c.size - off
+	if off+length > c.virtSize {
+		length = c.virtSize - off
 	}
 	if length <= 0 {
 		return []byte{}, nil
 	}
 
-	// Find the frame containing the start offset
-	frameStarts, frameSize, err := c.frameTable.FrameFor(storage.Range{Start: off, Length: 1})
+	// Find the frame containing the start offset using the passed frame table subset
+	frameStarts, frameSize, err := ft.FrameFor(storage.Range{Start: off, Length: 1})
 	if err != nil {
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeLocal),
@@ -115,7 +116,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 	// Fast path: entire read fits in one frame (common case for 4KB page faults in 4MB frames)
 	if endInFrame <= int64(frameSize.U) {
 		fetchStart := time.Now()
-		data, cacheHit, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize)
+		data, cacheHit, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize, ft)
 		if err != nil {
 			timer.Failure(ctx, length,
 				attribute.String(pullType, pullTypeRemote),
@@ -145,7 +146,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 	for copied < int(length) {
 		currentOff := off + int64(copied)
 
-		frameStarts, frameSize, err := c.frameTable.FrameFor(storage.Range{Start: currentOff, Length: 1})
+		frameStarts, frameSize, err := ft.FrameFor(storage.Range{Start: currentOff, Length: 1})
 		if err != nil {
 			timer.Failure(ctx, length,
 				attribute.String(pullType, pullTypeLocal),
@@ -163,7 +164,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 
 		eg.Go(func() error {
 			fetchStart := time.Now()
-			data, cacheHit, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize)
+			data, cacheHit, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize, ft)
 			if err != nil {
 				return err
 			}
@@ -195,7 +196,8 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64) ([]by
 
 // getOrFetchFrame returns frame data from LRU or fetches it from storage.
 // Returns the data, whether it was a cache hit, and any error.
-func (c *CompressLRUChunker) getOrFetchFrame(ctx context.Context, frameOffU int64, frameSize storage.FrameSize) ([]byte, bool, error) {
+// ft is the frame table subset for the specific mapping being read.
+func (c *CompressLRUChunker) getOrFetchFrame(ctx context.Context, frameOffU int64, frameSize storage.FrameSize, ft *storage.FrameTable) ([]byte, bool, error) {
 	// Check LRU cache first
 	if frame, ok := c.frameLRU.get(frameOffU); ok {
 		return frame.data, true, nil
@@ -209,7 +211,7 @@ func (c *CompressLRUChunker) getOrFetchFrame(ctx context.Context, frameOffU int6
 			return frame.data, nil
 		}
 
-		return c.fetchAndDecompress(ctx, frameOffU, frameSize)
+		return c.fetchAndDecompress(ctx, frameOffU, frameSize, ft)
 	})
 	if err != nil {
 		return nil, false, err
@@ -219,11 +221,12 @@ func (c *CompressLRUChunker) getOrFetchFrame(ctx context.Context, frameOffU int6
 }
 
 // fetchAndDecompress fetches a compressed frame from storage, decompresses it, and stores in LRU.
-func (c *CompressLRUChunker) fetchAndDecompress(ctx context.Context, frameOffU int64, frameSize storage.FrameSize) ([]byte, error) {
+// ft is the frame table subset for the specific mapping being read.
+func (c *CompressLRUChunker) fetchAndDecompress(ctx context.Context, frameOffU int64, frameSize storage.FrameSize, ft *storage.FrameTable) ([]byte, error) {
 	fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
 	compressedBuf := make([]byte, frameSize.C)
-	_, err := c.storage.GetFrame(ctx, c.objectPath, frameOffU, c.frameTable, false, compressedBuf)
+	_, err := c.storage.GetFrame(ctx, c.objectPath, frameOffU, ft, false, compressedBuf)
 	if err != nil {
 		fetchTimer.Failure(ctx, int64(frameSize.C),
 			attribute.String(failureReason, failureTypeRemoteRead))
@@ -232,8 +235,8 @@ func (c *CompressLRUChunker) fetchAndDecompress(ctx context.Context, frameOffU i
 	}
 	fetchTimer.Success(ctx, int64(frameSize.C))
 
-	if c.frameTable.CompressionType != storage.CompressionZstd {
-		return nil, fmt.Errorf("unsupported compression type: %d", c.frameTable.CompressionType)
+	if ft.CompressionType != storage.CompressionZstd {
+		return nil, fmt.Errorf("unsupported compression type: %d", ft.CompressionType)
 	}
 
 	dec, err := zstd.NewReader(nil)
@@ -254,7 +257,6 @@ func (c *CompressLRUChunker) fetchAndDecompress(ctx context.Context, frameOffU i
 
 // Close releases all resources used by the chunker.
 func (c *CompressLRUChunker) Close() error {
-	c.logStats()
 	if c.frameLRU != nil {
 		c.frameLRU.Purge()
 	}
@@ -262,31 +264,15 @@ func (c *CompressLRUChunker) Close() error {
 	return nil
 }
 
-func (c *CompressLRUChunker) logStats() {
-	calls := c.stats.sliceCalls.Load()
-	if calls == 0 {
-		return
-	}
-	hits := c.stats.sliceCacheHits.Load()
-	hitRate := float64(hits) / float64(calls) * 100
-	avgSlice := time.Duration(c.stats.sliceTotalNs.Load() / calls)
-	fetchCalls := c.stats.fetchCalls.Load()
-	var avgFetch time.Duration
-	if fetchCalls > 0 {
-		avgFetch = time.Duration(c.stats.fetchTotalNs.Load() / fetchCalls)
-	}
-	fmt.Printf("[CHUNKER CompressLRU %s] slices=%d cacheHit=%.1f%% avgSlice=%v fetches=%d avgFetch=%v bytesRead=%dMB\n",
-		c.objectPath, calls, hitRate, avgSlice, fetchCalls, avgFetch, c.stats.bytesRead.Load()/(1024*1024))
-}
-
-// FileSize returns 0 (no local file - NFS cache handles file storage).
+// FileSize returns 0 because this chunker uses only in-memory LRU caching.
+// It has no local disk files - storage fetches go through the NFS cache layer.
 func (c *CompressLRUChunker) FileSize() (int64, error) {
-	return c.size, nil
+	return 0, nil
 }
 
 // Size returns the total uncompressed size of the data.
 func (c *CompressLRUChunker) Size() int64 {
-	return c.size
+	return c.virtSize
 }
 
 // LRUStats returns statistics about the frame LRU cache.

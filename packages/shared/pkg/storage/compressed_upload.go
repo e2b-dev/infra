@@ -189,30 +189,7 @@ func (e *encoder) uploadFramed(ctx context.Context, in io.Reader) (*FrameTable, 
 }
 
 func (e *encoder) logStats() {
-	s := e.stats
-	totalTime := time.Since(s.startTime)
-	fmt.Printf("[UPLOAD STATS] total=%v read=%v compress=%v flush=%v upload=%v uploadWait=%v\n",
-		totalTime,
-		time.Duration(s.totalReadTime.Load()),
-		time.Duration(s.totalCompressTime.Load()),
-		time.Duration(s.totalFlushTime.Load()),
-		time.Duration(s.totalUploadTime.Load()),
-		time.Duration(s.totalUploadWait.Load()))
-	fmt.Printf("[UPLOAD STATS] chunks=%d frames=%d parts=%d bytesRead=%dMB bytesCompressed=%dMB maxPending=%d\n",
-		s.chunksRead.Load(),
-		s.framesCompressed.Load(),
-		s.partsUploaded.Load(),
-		s.bytesRead.Load()/(1024*1024),
-		s.bytesCompressed.Load()/(1024*1024),
-		s.maxPendingUploads.Load())
-
-	// Check for pipelining: if upload wait is close to total time, we're NOT pipelining
-	if totalTime > 0 {
-		uploadWaitPct := float64(s.totalUploadWait.Load()) / float64(totalTime.Nanoseconds()) * 100
-		compressPct := float64(s.totalCompressTime.Load()+s.totalFlushTime.Load()) / float64(totalTime.Nanoseconds()) * 100
-		fmt.Printf("[UPLOAD STATS] uploadWait=%.1f%% compress=%.1f%% (low uploadWait%% = good pipelining)\n",
-			uploadWaitPct, compressPct)
-	}
+	// Stats logging disabled - enable for debugging upload performance
 }
 
 func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *frame, last bool) error {
@@ -248,7 +225,6 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 
 		i := e.partIndex
 		frameData := append([][]byte{}, e.readyFrames...)
-		partSize := e.partLen
 		e.partLen = 0
 		e.readyFrames = e.readyFrames[:0]
 
@@ -271,8 +247,6 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 			if err != nil {
 				return fmt.Errorf("failed to upload part %d: %w", i, err)
 			}
-
-			fmt.Printf("[UPLOAD PART] part=%d size=%dMB took=%v\n", i, partSize/(1024*1024), time.Since(uploadStart))
 
 			return nil
 		})

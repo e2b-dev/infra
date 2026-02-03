@@ -17,11 +17,8 @@ import (
 )
 
 // DecompressMMapChunker reads compressed frames from storage, decompresses them,
-// and caches the decompressed data in a memory-mapped file. Decompress once, serve from mmap.
-//
-// Compare to:
-// - UncompressedMMapChunker: for uncompressed data only (legacy, benchmarking)
-// - CompressLRUChunker: keeps data compressed in LRU, decompresses on each read
+// and caches the decompressed data in a memory-mapped file.
+// Address spaces: U=uncompressed (mmap), C=compressed (GCS storage)
 type DecompressMMapChunker struct {
 	storage    storage.FrameGetter
 	objectPath string
@@ -30,17 +27,19 @@ type DecompressMMapChunker struct {
 	cache   *Cache
 	metrics metrics.Metrics
 
-	size int64
+	virtSize int64 // U space size (uncompressed)
+	rawSize  int64 // C space size (compressed on storage)
 
 	fetchers *utils.WaitMap
 	stats    ChunkerStats
 }
 
-// Verify DecompressMMapChunker implements Chunker.
 var _ Chunker = (*DecompressMMapChunker)(nil)
 
+// NewDecompressMMapChunker creates a chunker for compressed data.
+// virtSize = U space size, rawSize = C space size
 func NewDecompressMMapChunker(
-	size, blockSize int64,
+	virtSize, rawSize, blockSize int64,
 	s storage.FrameGetter,
 	objectPath string,
 	frameTable *storage.FrameTable,
@@ -51,29 +50,28 @@ func NewDecompressMMapChunker(
 		return nil, fmt.Errorf("DecompressMMapChunker requires compressed frame table")
 	}
 
-	globalDecompressMMapCnt.Add(1)
-	fmt.Printf("[CHUNKER_NEW] DecompressMMap %s size=%d frames=%d\n", objectPath, size, len(frameTable.Frames))
-
-	cache, err := NewCache(size, blockSize, cachePath, false)
+	// mmap holds decompressed data, so size it to virtSize (U space)
+	cache, err := NewCache(virtSize, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
 
-	chunker := &DecompressMMapChunker{
-		size:       size,
+	globalDecompressMMapCnt.Add(1)
+
+	return &DecompressMMapChunker{
+		virtSize:   virtSize,
+		rawSize:    rawSize,
 		storage:    s,
 		objectPath: objectPath,
 		frameTable: frameTable,
 		cache:      cache,
 		fetchers:   utils.NewWaitMap(),
 		metrics:    metrics,
-	}
-
-	return chunker, nil
+	}, nil
 }
 
-func (c *DecompressMMapChunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
-	slice, err := c.Slice(ctx, off, int64(len(b)))
+func (c *DecompressMMapChunker) ReadAt(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error) {
+	slice, err := c.Slice(ctx, off, int64(len(b)), ft)
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
 	}
@@ -81,19 +79,27 @@ func (c *DecompressMMapChunker) ReadAt(ctx context.Context, b []byte, off int64)
 	return copy(b, slice), nil
 }
 
-func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+// Slice reads data at U offset. Bounds check uses virtSize (U space).
+func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	start := time.Now()
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	c.stats.sliceCalls.Add(1)
 	c.stats.bytesRead.Add(length)
 
+	// Clamp length to available data (U space)
+	if off+length > c.virtSize {
+		length = c.virtSize - off
+	}
+	if length <= 0 {
+		return []byte{}, nil
+	}
+
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
 		c.stats.sliceCacheHits.Add(1)
 		c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
-		timer.Success(ctx, length,
-			attribute.String(pullType, pullTypeLocal))
+		timer.Success(ctx, length, attribute.String(pullType, pullTypeLocal))
 
 		return b, nil
 	}
@@ -107,7 +113,7 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64) ([
 	}
 
 	fetchStart := time.Now()
-	chunkErr := c.fetchToCache(ctx, off, length)
+	chunkErr := c.fetchToCache(ctx, off, length, ft)
 	c.stats.fetchCalls.Add(1)
 	c.stats.fetchTotalNs.Add(time.Since(fetchStart).Nanoseconds())
 
@@ -129,20 +135,19 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64) ([
 	}
 
 	c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
-	timer.Success(ctx, length,
-		attribute.String(pullType, pullTypeRemote))
+	timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
 
 	return b, nil
 }
 
-// fetchToCache fetches compressed frames from storage, decompresses them,
-// and writes the decompressed data to the mmap cache.
-func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length int64) error {
+// fetchToCache fetches compressed frames and decompresses into mmap.
+// off/length are in U space, frame table maps U->C for fetching.
+func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
 	var eg errgroup.Group
 
 	fetchRange := storage.Range{Start: off, Length: int(length)}
 
-	framesToFetch, err := c.frameTable.Subset(fetchRange)
+	framesToFetch, err := ft.Subset(fetchRange)
 	if err != nil {
 		return fmt.Errorf("failed to get frame subset for range %s: %w", fetchRange, err)
 	}
@@ -169,7 +174,6 @@ func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length in
 				default:
 				}
 
-				// Get the space in the mmapped cache to read the decompressed frame into.
 				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, int64(f.U))
 				if err != nil {
 					return err
@@ -178,20 +182,15 @@ func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length in
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
-				// GetFrame fetches and decompresses the frame directly into our buffer.
-				_, err = c.storage.GetFrame(ctx,
-					c.objectPath, fetchOff, framesToFetch, true, b)
+				_, err = c.storage.GetFrame(ctx, c.objectPath, fetchOff, framesToFetch, true, b)
 				if err != nil {
 					fetchSW.Failure(ctx, int64(len(b)),
-						attribute.String(failureReason, failureTypeRemoteRead),
-					)
+						attribute.String(failureReason, failureTypeRemoteRead))
 
 					return fmt.Errorf("failed to read frame from base %d: %w", fetchOff, err)
 				}
 
-				// Mark the uncompressed range as cached.
 				c.cache.setIsCached(fetchOff, int64(f.U))
-
 				fetchSW.Success(ctx, int64(len(b)))
 
 				return nil
@@ -201,8 +200,7 @@ func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length in
 		})
 	}
 
-	err = eg.Wait()
-	if err != nil {
+	if err = eg.Wait(); err != nil {
 		return fmt.Errorf("failed to ensure data at %s: %w", fetchRange, err)
 	}
 
@@ -210,26 +208,7 @@ func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length in
 }
 
 func (c *DecompressMMapChunker) Close() error {
-	c.logStats()
-
 	return c.cache.Close()
-}
-
-func (c *DecompressMMapChunker) logStats() {
-	calls := c.stats.sliceCalls.Load()
-	if calls == 0 {
-		return
-	}
-	hits := c.stats.sliceCacheHits.Load()
-	hitRate := float64(hits) / float64(calls) * 100
-	avgSlice := time.Duration(c.stats.sliceTotalNs.Load() / calls)
-	fetchCalls := c.stats.fetchCalls.Load()
-	var avgFetch time.Duration
-	if fetchCalls > 0 {
-		avgFetch = time.Duration(c.stats.fetchTotalNs.Load() / fetchCalls)
-	}
-	fmt.Printf("[CHUNKER DecompressMMap %s] slices=%d cacheHit=%.1f%% avgSlice=%v fetches=%d avgFetch=%v bytesRead=%dMB\n",
-		c.objectPath, calls, hitRate, avgSlice, fetchCalls, avgFetch, c.stats.bytesRead.Load()/(1024*1024))
 }
 
 func (c *DecompressMMapChunker) FileSize() (int64, error) {

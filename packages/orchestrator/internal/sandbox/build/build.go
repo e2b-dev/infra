@@ -96,13 +96,14 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 }
 
 // The slice access must be in the predefined blocksize of the build.
+// Address spaces: V=Virtual (guest offset), U=Uncompressed storage offset
 func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 	mappedBuild, err := b.header.GetShiftedMapping(ctx, off)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
 	}
 
-	// Pass empty huge page when the build id is nil.
+	// Pass empty huge page when the build id is nil (sparse/zero regions).
 	if mappedBuild.BuildId == uuid.Nil {
 		return header.EmptyHugePage, nil
 	}
@@ -112,7 +113,12 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
 
-	return build.Slice(ctx, int64(mappedBuild.Offset), int64(b.header.Metadata.BlockSize), mappedBuild.FrameTable)
+	data, err := build.Slice(ctx, int64(mappedBuild.Offset), int64(b.header.Metadata.BlockSize), mappedBuild.FrameTable)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
 
 func (b *File) getBuild(ctx context.Context, buildId uuid.UUID) (Diff, error) {

@@ -185,7 +185,17 @@ MAPPINGS:
 		mappings = append(mappings, &m)
 	}
 
-	return NewHeader(&metadata, mappings)
+	header, err := NewHeader(&metadata, mappings)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate header integrity after deserialization
+	if err := ValidateHeader(header); err != nil {
+		return nil, fmt.Errorf("header validation failed: %w", err)
+	}
+
+	return header, nil
 }
 
 func StoreFileAndHeader(ctx context.Context, s storage.StorageProvider, filepath *string, objectPath string, h *Header, headerObjectPath string) (err error) {

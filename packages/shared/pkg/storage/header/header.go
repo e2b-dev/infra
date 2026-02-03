@@ -47,12 +47,19 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
 		startMap[block] = mapping
 	}
 
-	return &Header{
+	h := &Header{
 		blockStarts: intervals,
 		Metadata:    metadata,
 		Mapping:     mapping,
 		startMap:    startMap,
-	}, nil
+	}
+
+	// Validate header integrity at creation time
+	if err := ValidateHeader(h); err != nil {
+		return nil, fmt.Errorf("header validation failed: %w", err)
+	}
+
+	return h, nil
 }
 
 func (t *Header) String() string {
@@ -196,6 +203,89 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 	}
 
 	return mapping, shift, nil
+}
+
+// ValidateHeader checks header integrity and returns an error if corruption is detected.
+// This verifies:
+// 1. Header and metadata are valid
+// 2. Mappings cover the entire file [0, Size) with no gaps
+// 3. Mappings don't extend beyond file size (with block alignment tolerance)
+func ValidateHeader(h *Header) error {
+	if h == nil {
+		return fmt.Errorf("header is nil")
+	}
+	if h.Metadata == nil {
+		return fmt.Errorf("header metadata is nil")
+	}
+	if h.Metadata.BlockSize == 0 {
+		return fmt.Errorf("header has zero block size")
+	}
+	if h.Metadata.Size == 0 {
+		return fmt.Errorf("header has zero size")
+	}
+	if len(h.Mapping) == 0 {
+		return fmt.Errorf("header has no mappings")
+	}
+
+	// Sort mappings by offset to check for gaps/overlaps
+	sortedMappings := make([]*BuildMap, len(h.Mapping))
+	copy(sortedMappings, h.Mapping)
+	for i := range len(sortedMappings) - 1 {
+		for j := i + 1; j < len(sortedMappings); j++ {
+			if sortedMappings[j].Offset < sortedMappings[i].Offset {
+				sortedMappings[i], sortedMappings[j] = sortedMappings[j], sortedMappings[i]
+			}
+		}
+	}
+
+	// Check that first mapping starts at 0
+	if sortedMappings[0].Offset != 0 {
+		return fmt.Errorf("mappings don't start at 0: first mapping starts at %#x for buildId %s",
+			sortedMappings[0].Offset, h.Metadata.BuildId.String())
+	}
+
+	// Check for gaps and overlaps between consecutive mappings
+	for i := range len(sortedMappings) - 1 {
+		currentEnd := sortedMappings[i].Offset + sortedMappings[i].Length
+		nextStart := sortedMappings[i+1].Offset
+
+		if currentEnd < nextStart {
+			return fmt.Errorf("gap in mappings: mapping[%d] ends at %#x but mapping[%d] starts at %#x (gap=%d bytes) for buildId %s",
+				i, currentEnd, i+1, nextStart, nextStart-currentEnd, h.Metadata.BuildId.String())
+		}
+		if currentEnd > nextStart {
+			return fmt.Errorf("overlap in mappings: mapping[%d] ends at %#x but mapping[%d] starts at %#x (overlap=%d bytes) for buildId %s",
+				i, currentEnd, i+1, nextStart, currentEnd-nextStart, h.Metadata.BuildId.String())
+		}
+	}
+
+	// Check that last mapping covers up to (at least) Size
+	lastMapping := sortedMappings[len(sortedMappings)-1]
+	lastEnd := lastMapping.Offset + lastMapping.Length
+	if lastEnd < h.Metadata.Size {
+		return fmt.Errorf("mappings don't cover entire file: last mapping ends at %#x but file size is %#x (missing %d bytes) for buildId %s",
+			lastEnd, h.Metadata.Size, h.Metadata.Size-lastEnd, h.Metadata.BuildId.String())
+	}
+
+	// Allow last mapping to extend up to one block past size (for alignment)
+	if lastEnd > h.Metadata.Size+h.Metadata.BlockSize {
+		return fmt.Errorf("last mapping extends too far: ends at %#x but file size is %#x (overhang=%d bytes, max allowed=%d) for buildId %s",
+			lastEnd, h.Metadata.Size, lastEnd-h.Metadata.Size, h.Metadata.BlockSize, h.Metadata.BuildId.String())
+	}
+
+	// Validate individual mapping bounds
+	for i, m := range h.Mapping {
+		if m.Offset > h.Metadata.Size {
+			return fmt.Errorf("mapping[%d] has Offset %#x beyond header size %#x for buildId %s",
+				i, m.Offset, h.Metadata.Size, m.BuildId.String())
+		}
+		if m.Length == 0 {
+			return fmt.Errorf("mapping[%d] has zero length at offset %#x for buildId %s",
+				i, m.Offset, m.BuildId.String())
+		}
+	}
+
+	return nil
 }
 
 // AddFrames associates compression frame information with this header's mappings.

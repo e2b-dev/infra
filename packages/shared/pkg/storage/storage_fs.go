@@ -297,3 +297,36 @@ func (s *FileSystem) Size(ctx context.Context, path string) (int64, error) {
 	// compressed file would return the wrong (compressed) size here.
 	return s.RawSize(ctx, path)
 }
+
+func (s *FileSystem) Sizes(ctx context.Context, path string) (virtSize, rawSize int64, err error) {
+	rawSize, err = s.RawSize(ctx, path)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	metaPath := s.metaPath(path)
+
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No metadata file means no compression, virt == raw.
+			return rawSize, rawSize, nil
+		}
+
+		return 0, 0, fmt.Errorf("failed to read metadata file: %w", err)
+	}
+
+	var metadata map[string]string
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return 0, 0, fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
+
+	if uncompressedStr, ok := metadata[MetadataKeyUncompressedSize]; ok {
+		if _, err := fmt.Sscanf(uncompressedStr, "%d", &virtSize); err == nil {
+			return virtSize, rawSize, nil
+		}
+	}
+
+	// No uncompressed size in metadata - virt == raw.
+	return rawSize, rawSize, nil
+}

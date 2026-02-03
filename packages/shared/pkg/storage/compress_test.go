@@ -106,7 +106,7 @@ func TestStoreFile_Compressed(t *testing.T) {
 
 	opts := FramedUploadOptions{
 		CompressionType: CompressionZstd,
-		Level:           int(defaultZstdCompressionLevel),
+		Level:           int(zstd.SpeedBestCompression), // Use fixed level for deterministic test
 		ChunkSize:       chunkSize,
 		TargetFrameSize: frameSize,
 	}

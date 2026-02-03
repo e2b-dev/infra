@@ -81,6 +81,7 @@ func TestDecompressMMapChunker_BasicSlice(t *testing.T) {
 
 	chunker, err := NewDecompressMMapChunker(
 		frameSizeU,
+		int64(len(compressedData)),
 		storage.MemoryChunkSize,
 		mockStorage,
 		"test/path",
@@ -92,13 +93,13 @@ func TestDecompressMMapChunker_BasicSlice(t *testing.T) {
 	defer chunker.Close()
 
 	// Read the first 1024 bytes
-	slice, err := chunker.Slice(ctx, 0, 1024)
+	slice, err := chunker.Slice(ctx, 0, 1024, frameTable)
 	require.NoError(t, err)
 	assert.Len(t, slice, 1024)
 	assert.Equal(t, uncompressedData[:1024], slice)
 
 	// Read from the middle
-	slice, err = chunker.Slice(ctx, 1000, 500)
+	slice, err = chunker.Slice(ctx, 1000, 500, frameTable)
 	require.NoError(t, err)
 	assert.Len(t, slice, 500)
 	assert.Equal(t, uncompressedData[1000:1500], slice)
@@ -131,6 +132,7 @@ func TestDecompressMMapChunker_ReadAt(t *testing.T) {
 
 	chunker, err := NewDecompressMMapChunker(
 		frameSizeU,
+		int64(len(compressedData)),
 		storage.MemoryChunkSize,
 		mockStorage,
 		"test/path",
@@ -142,7 +144,7 @@ func TestDecompressMMapChunker_ReadAt(t *testing.T) {
 	defer chunker.Close()
 
 	buf := make([]byte, 2048)
-	n, err := chunker.ReadAt(ctx, buf, 100)
+	n, err := chunker.ReadAt(ctx, buf, 100, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, 2048, n)
 	assert.Equal(t, uncompressedData[100:2148], buf)
@@ -175,6 +177,7 @@ func TestDecompressMMapChunker_CachePersists(t *testing.T) {
 
 	chunker, err := NewDecompressMMapChunker(
 		frameSizeU,
+		int64(len(compressedData)),
 		storage.MemoryChunkSize,
 		mockStorage,
 		"test/path",
@@ -185,12 +188,12 @@ func TestDecompressMMapChunker_CachePersists(t *testing.T) {
 	require.NoError(t, err)
 
 	// First read - should fetch from storage
-	slice1, err := chunker.Slice(ctx, 0, 1024)
+	slice1, err := chunker.Slice(ctx, 0, 1024, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, uncompressedData[:1024], slice1)
 
 	// Second read of same data - should come from mmap cache, no new fetch
-	slice2, err := chunker.Slice(ctx, 0, 1024)
+	slice2, err := chunker.Slice(ctx, 0, 1024, frameTable)
 	require.NoError(t, err)
 	assert.Equal(t, uncompressedData[:1024], slice2)
 
@@ -226,6 +229,7 @@ func TestDecompressMMapChunker_RejectsUncompressed(t *testing.T) {
 	_, err := NewDecompressMMapChunker(
 		4096,
 		4096,
+		4096,
 		nil,
 		"test/path",
 		frameTable,
@@ -243,6 +247,7 @@ func TestDecompressMMapChunker_RejectsNilFrameTable(t *testing.T) {
 	cachePath := filepath.Join(tmpDir, "cache")
 
 	_, err := NewDecompressMMapChunker(
+		4096,
 		4096,
 		4096,
 		nil,
@@ -282,6 +287,7 @@ func TestDecompressMMapChunker_FileSize(t *testing.T) {
 
 	chunker, err := NewDecompressMMapChunker(
 		frameSizeU,
+		int64(len(compressedData)),
 		storage.MemoryChunkSize,
 		mockStorage,
 		"test/path",
@@ -298,7 +304,7 @@ func TestDecompressMMapChunker_FileSize(t *testing.T) {
 	assert.Equal(t, int64(0), size, "sparse file should have 0 on-disk size before data is fetched")
 
 	// Fetch some data to populate the cache
-	_, err = chunker.Slice(ctx, 0, 4096)
+	_, err = chunker.Slice(ctx, 0, 4096, frameTable)
 	require.NoError(t, err)
 
 	// After fetching, FileSize should be non-zero (but may vary by filesystem)

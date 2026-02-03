@@ -33,15 +33,8 @@ var (
 	globalUncompressedMMapCnt atomic.Int64
 	globalDecompressMMapCnt   atomic.Int64
 	globalCompressLRUCnt      atomic.Int64
+	globalCompressMMapLRUCnt  atomic.Int64
 )
-
-// PrintGlobalChunkerStats prints the global chunker creation counts.
-func PrintGlobalChunkerStats() {
-	fmt.Printf("[GLOBAL_CHUNKER_STATS] Created: UncompressedMMap=%d, DecompressMMap=%d, CompressLRU=%d\n",
-		globalUncompressedMMapCnt.Load(),
-		globalDecompressMMapCnt.Load(),
-		globalCompressLRUCnt.Load())
-}
 
 // Chunker is an interface for reading block data from either local cache or remote storage.
 //
@@ -55,11 +48,12 @@ func PrintGlobalChunkerStats() {
 //   - The returned slice is valid until Close() is called or (for LRU-based chunkers) the
 //     underlying frame is evicted. UFFD handlers should copy to the faulting page immediately.
 type Chunker interface {
-	ReadAt(ctx context.Context, b []byte, off int64) (int, error)
+	ReadAt(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error)
 	// Slice returns a view into the data at [off, off+length).
 	// The returned slice references internal storage and MUST NOT be modified by the caller.
 	// For UFFD: use the slice immediately to copy into the faulting page.
-	Slice(ctx context.Context, off, length int64) ([]byte, error)
+	// ft is the frame table subset for the specific mapping being read (may be nil for uncompressed).
+	Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error)
 	Close() error
 	FileSize() (int64, error)
 }
@@ -69,6 +63,7 @@ var (
 	_ Chunker = (*UncompressedMMapChunker)(nil)
 	_ Chunker = (*DecompressMMapChunker)(nil)
 	_ Chunker = (*CompressLRUChunker)(nil)
+	_ Chunker = (*CompressMMapLRUChunker)(nil)
 )
 
 // UncompressedMMapChunker is the legacy mmap-based chunker for uncompressed data only.
@@ -80,7 +75,7 @@ type UncompressedMMapChunker struct {
 	cache   *Cache
 	metrics metrics.Metrics
 
-	size int64
+	size int64 // uncompressed size - for uncompressed data, virtSize == rawSize
 
 	fetchers *utils.WaitMap
 	stats    ChunkerStats
@@ -88,6 +83,7 @@ type UncompressedMMapChunker struct {
 
 // NewUncompressedMMapChunker creates a legacy mmap-based chunker for uncompressed data.
 // Returns an error if frameTable indicates compressed data.
+// For uncompressed data, virtSize == rawSize, but both are accepted for API consistency.
 func NewUncompressedMMapChunker(
 	size, blockSize int64,
 	s storage.FrameGetter,
@@ -100,6 +96,7 @@ func NewUncompressedMMapChunker(
 		return nil, fmt.Errorf("UncompressedMMapChunker does not support compressed data")
 	}
 
+	// For uncompressed data, virtSize == rawSize, use virtSize for mmap
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
@@ -115,13 +112,12 @@ func NewUncompressedMMapChunker(
 	}
 
 	globalUncompressedMMapCnt.Add(1)
-	fmt.Printf("[CHUNKER_NEW] UncompressedMMap %s size=%d\n", objectPath, size)
 
 	return chunker, nil
 }
 
-func (c *UncompressedMMapChunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
-	slice, err := c.Slice(ctx, off, int64(len(b)))
+func (c *UncompressedMMapChunker) ReadAt(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error) {
+	slice, err := c.Slice(ctx, off, int64(len(b)), ft)
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
 	}
@@ -129,12 +125,20 @@ func (c *UncompressedMMapChunker) ReadAt(ctx context.Context, b []byte, off int6
 	return copy(b, slice), nil
 }
 
-func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
 	start := time.Now()
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	c.stats.sliceCalls.Add(1)
 	c.stats.bytesRead.Add(length)
+
+	// Clamp length to available data
+	if off+length > c.size {
+		length = c.size - off
+	}
+	if length <= 0 {
+		return []byte{}, nil
+	}
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
@@ -272,26 +276,7 @@ func (c *UncompressedMMapChunker) fetchToCache(ctx context.Context, off, length 
 }
 
 func (c *UncompressedMMapChunker) Close() error {
-	c.logStats("UncompressedMMapChunker")
-
 	return c.cache.Close()
-}
-
-func (c *UncompressedMMapChunker) logStats(name string) {
-	calls := c.stats.sliceCalls.Load()
-	if calls == 0 {
-		return
-	}
-	hits := c.stats.sliceCacheHits.Load()
-	hitRate := float64(hits) / float64(calls) * 100
-	avgSlice := time.Duration(c.stats.sliceTotalNs.Load() / calls)
-	fetchCalls := c.stats.fetchCalls.Load()
-	var avgFetch time.Duration
-	if fetchCalls > 0 {
-		avgFetch = time.Duration(c.stats.fetchTotalNs.Load() / fetchCalls)
-	}
-	fmt.Printf("[CHUNKER %s %s] slices=%d cacheHit=%.1f%% avgSlice=%v fetches=%d avgFetch=%v bytesRead=%dMB\n",
-		name, c.objectPath, calls, hitRate, avgSlice, fetchCalls, avgFetch, c.stats.bytesRead.Load()/(1024*1024))
 }
 
 func (c *UncompressedMMapChunker) FileSize() (int64, error) {

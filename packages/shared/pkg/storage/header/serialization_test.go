@@ -19,7 +19,7 @@ func TestSerializeDeserialize_V3_DropsFrames(t *testing.T) {
 	metadata := &Metadata{
 		Version:     3,
 		BlockSize:   4096,
-		Size:        8192,
+		Size:        4096, // Size matches mapping length
 		Generation:  7,
 		BuildId:     buildID,
 		BaseBuildId: baseID,
@@ -70,7 +70,7 @@ func TestSerializeDeserialize_V4_RoundTripFrames(t *testing.T) {
 	metadata := &Metadata{
 		Version:     4,
 		BlockSize:   4096,
-		Size:        16384,
+		Size:        4096, // Size matches mapping length
 		Generation:  2,
 		BuildId:     buildID,
 		BaseBuildId: baseID,
@@ -78,7 +78,7 @@ func TestSerializeDeserialize_V4_RoundTripFrames(t *testing.T) {
 
 	frameTable := &storage.FrameTable{
 		CompressionType: storage.CompressionZstd,
-		StartAt:         storage.FrameOffset{U: 4096, C: 2048},
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
 		Frames: []storage.FrameSize{
 			{U: 1024, C: 512},
 			{U: 2048, C: 1024},

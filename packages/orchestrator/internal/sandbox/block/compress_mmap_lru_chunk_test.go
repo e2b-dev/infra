@@ -2,81 +2,22 @@ package block
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"testing"
 
-	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-// compressData compresses data using zstd
-func compressData(t *testing.T, data []byte) []byte {
-	t.Helper()
-	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
-	require.NoError(t, err)
-	defer enc.Close()
-
-	return enc.EncodeAll(data, nil)
-}
-
-func testMetrics(t *testing.T) metrics.Metrics {
-	t.Helper()
-	m, err := metrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(t, err)
-
-	return m
-}
-
-// setupMockStorage creates a MockStorageProvider that returns compressed frames from a map
-func setupMockStorage(t *testing.T, frames map[int64][]byte) *storage.MockStorageProvider {
-	t.Helper()
-	mockStorage := storage.NewMockStorageProvider(t)
-
-	mockStorage.EXPECT().
-		GetFrame(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ string, offsetU int64, _ *storage.FrameTable, decompress bool, buf []byte) (storage.Range, error) {
-			data, ok := frames[offsetU]
-			if !ok {
-				return storage.Range{}, nil
-			}
-
-			if decompress {
-				dec, err := zstd.NewReader(nil)
-				if err != nil {
-					return storage.Range{}, err
-				}
-				defer dec.Close()
-
-				decompressed, err := dec.DecodeAll(data, nil)
-				if err != nil {
-					return storage.Range{}, err
-				}
-
-				n := copy(buf, decompressed)
-
-				return storage.Range{Start: offsetU, Length: n}, nil
-			}
-
-			n := copy(buf, data)
-
-			return storage.Range{Start: offsetU, Length: n}, nil
-		}).Maybe()
-
-	return mockStorage
-}
-
-func TestCompressedChunker_BasicReadAt(t *testing.T) {
+func TestCompressMMapLRUChunker_BasicReadAt(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 
-	// Create test data - one frame of 8MB uncompressed (2 chunks)
+	// Create test data - one frame of 8MB uncompressed
 	frameSizeU := int64(8 * 1024 * 1024) // 8MB
 	uncompressedData := make([]byte, frameSizeU)
 	for i := range uncompressedData {
@@ -93,13 +34,16 @@ func TestCompressedChunker_BasicReadAt(t *testing.T) {
 	}
 
 	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
+	cachePath := filepath.Join(t.TempDir(), "compressed_cache")
 
-	chunker, err := NewCompressLRUChunker(
-		frameSizeU, // virtSize
+	chunker, err := NewCompressMMapLRUChunker(
+		frameSizeU,
+		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
 		frameTable,
 		10,
+		cachePath,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -122,56 +66,7 @@ func TestCompressedChunker_BasicReadAt(t *testing.T) {
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 }
 
-func TestCompressedChunker_LRUPopulation(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	// Create test data - one frame of 8MB (2 chunks)
-	frameSizeU := int64(8 * 1024 * 1024)
-	uncompressedData := make([]byte, frameSizeU)
-	for i := range uncompressedData {
-		uncompressedData[i] = byte(i % 256)
-	}
-	compressedData := compressData(t, uncompressedData)
-
-	frameTable := &storage.FrameTable{
-		CompressionType: storage.CompressionZstd,
-		StartAt:         storage.FrameOffset{U: 0, C: 0},
-		Frames: []storage.FrameSize{
-			{U: int32(frameSizeU), C: int32(len(compressedData))},
-		},
-	}
-
-	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
-
-	chunker, err := NewCompressLRUChunker(
-		frameSizeU,
-		mockGetter,
-		"test/path",
-		frameTable,
-		10,
-		testMetrics(t),
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// Read from the frame
-	buf := make([]byte, 100)
-	_, err = chunker.ReadAt(ctx, buf, 0, frameTable)
-	require.NoError(t, err)
-
-	// One frame should be in LRU
-	lruCount, _ := chunker.LRUStats()
-	assert.Equal(t, 1, lruCount)
-
-	// Reading from another part of the same frame should not trigger another fetch
-	_, err = chunker.ReadAt(ctx, buf, storage.MemoryChunkSize, frameTable)
-	require.NoError(t, err)
-	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
-}
-
-func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
+func TestCompressMMapLRUChunker_TwoLevelCache(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -192,82 +87,40 @@ func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
 	}
 
 	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
+	cachePath := filepath.Join(t.TempDir(), "compressed_cache")
 
-	chunker, err := NewCompressLRUChunker(
+	chunker, err := NewCompressMMapLRUChunker(
 		frameSizeU,
+		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
 		frameTable,
-		1, // Small LRU
+		1, // Small LRU to force evictions
+		cachePath,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
 
-	// First read - fetches from storage
+	// First read - fetches from storage, stores in mmap, decompresses to LRU
 	buf := make([]byte, 100)
 	_, err = chunker.ReadAt(ctx, buf, 0, frameTable)
 	require.NoError(t, err)
+	assert.Equal(t, uncompressedData[:100], buf)
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
-
-	// LRU should have the frame
-	lruCount, _ := chunker.LRUStats()
-	assert.Equal(t, 1, lruCount)
 
 	// Purge LRU to simulate eviction
 	chunker.frameLRU.Purge()
 
-	// Read again - must re-fetch from storage (NFS cache would handle file caching in production)
+	// Read again - should NOT fetch from storage (should decompress from mmap)
 	_, err = chunker.ReadAt(ctx, buf, 0, frameTable)
 	require.NoError(t, err)
-	mockGetter.AssertNumberOfCalls(t, "GetFrame", 2) // Re-fetched after LRU eviction
+	assert.Equal(t, uncompressedData[:100], buf)
+	// Still only 1 call - compressed data is in mmap cache
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 }
 
-func TestCompressedChunker_SliceAcrossChunks(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	// Create test data spanning multiple chunks
-	frameSizeU := int64(8 * 1024 * 1024) // 8MB = 2 chunks
-	uncompressedData := make([]byte, frameSizeU)
-	for i := range uncompressedData {
-		uncompressedData[i] = byte(i % 256)
-	}
-	compressedData := compressData(t, uncompressedData)
-
-	frameTable := &storage.FrameTable{
-		CompressionType: storage.CompressionZstd,
-		StartAt:         storage.FrameOffset{U: 0, C: 0},
-		Frames: []storage.FrameSize{
-			{U: int32(frameSizeU), C: int32(len(compressedData))},
-		},
-	}
-
-	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
-
-	chunker, err := NewCompressLRUChunker(
-		frameSizeU,
-		mockGetter,
-		"test/path",
-		frameTable,
-		10,
-		testMetrics(t),
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// Read across chunk boundary
-	offset := int64(storage.MemoryChunkSize - 500) // 500 bytes before chunk boundary
-	length := int64(1000)                          // spans into second chunk
-
-	slice, err := chunker.Slice(ctx, offset, length, frameTable)
-	require.NoError(t, err)
-	assert.Len(t, slice, int(length))
-	assert.Equal(t, uncompressedData[offset:offset+length], slice)
-}
-
-func TestCompressedChunker_MultipleFrames(t *testing.T) {
+func TestCompressMMapLRUChunker_MultipleFrames(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -299,13 +152,16 @@ func TestCompressedChunker_MultipleFrames(t *testing.T) {
 		0:          compressed1,
 		frameSizeU: compressed2,
 	})
+	cachePath := filepath.Join(t.TempDir(), "compressed_cache")
 
-	chunker, err := NewCompressLRUChunker(
+	chunker, err := NewCompressMMapLRUChunker(
 		totalSize,
+		int64(len(compressed1)+len(compressed2)),
 		mockGetter,
 		"test/path",
 		frameTable,
 		10,
+		cachePath,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -326,7 +182,7 @@ func TestCompressedChunker_MultipleFrames(t *testing.T) {
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 2)
 }
 
-func TestCompressedChunker_SliceAcrossFrames(t *testing.T) {
+func TestCompressMMapLRUChunker_SliceAcrossFrames(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -369,13 +225,16 @@ func TestCompressedChunker_SliceAcrossFrames(t *testing.T) {
 		frameSizeU:     compressed2,
 		frameSizeU * 2: compressed3,
 	})
+	cachePath := filepath.Join(t.TempDir(), "compressed_cache")
 
-	chunker, err := NewCompressLRUChunker(
+	chunker, err := NewCompressMMapLRUChunker(
 		totalSize,
+		int64(len(compressed1)+len(compressed2)+len(compressed3)),
 		mockGetter,
 		"test/path",
 		frameTable,
 		10,
+		cachePath,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -399,7 +258,7 @@ func TestCompressedChunker_SliceAcrossFrames(t *testing.T) {
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 3)
 }
 
-func TestCompressedChunker_ConcurrentReads(t *testing.T) {
+func TestCompressMMapLRUChunker_ConcurrentReads(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -420,13 +279,16 @@ func TestCompressedChunker_ConcurrentReads(t *testing.T) {
 	}
 
 	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
+	cachePath := filepath.Join(t.TempDir(), "compressed_cache")
 
-	chunker, err := NewCompressLRUChunker(
+	chunker, err := NewCompressMMapLRUChunker(
 		frameSizeU,
+		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
 		frameTable,
 		10,
+		cachePath,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -448,11 +310,97 @@ func TestCompressedChunker_ConcurrentReads(t *testing.T) {
 
 	wg.Wait()
 
-	// Should only fetch once despite concurrent readers (WaitMap deduplication)
+	// Should only fetch once despite concurrent readers (singleflight + WaitMap deduplication)
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 }
 
-func TestCompressedChunker_EmptySlice(t *testing.T) {
+func TestCompressMMapLRUChunker_LRUEvictionUsesLocalMmap(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	frameSizeU := int64(4 * 1024 * 1024) // 4MB per frame
+	totalSize := frameSizeU * 3          // 3 frames
+
+	// Create data for three frames
+	data1 := make([]byte, frameSizeU)
+	data2 := make([]byte, frameSizeU)
+	data3 := make([]byte, frameSizeU)
+	for i := range data1 {
+		data1[i] = byte(i % 256)
+		data2[i] = byte((i + 100) % 256)
+		data3[i] = byte((i + 200) % 256)
+	}
+
+	compressed1 := compressData(t, data1)
+	compressed2 := compressData(t, data2)
+	compressed3 := compressData(t, data3)
+
+	frameTable := &storage.FrameTable{
+		CompressionType: storage.CompressionZstd,
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
+		Frames: []storage.FrameSize{
+			{U: int32(frameSizeU), C: int32(len(compressed1))},
+			{U: int32(frameSizeU), C: int32(len(compressed2))},
+			{U: int32(frameSizeU), C: int32(len(compressed3))},
+		},
+	}
+
+	mockGetter := setupMockStorage(t, map[int64][]byte{
+		0:              compressed1,
+		frameSizeU:     compressed2,
+		frameSizeU * 2: compressed3,
+	})
+	cachePath := filepath.Join(t.TempDir(), "compressed_cache")
+
+	chunker, err := NewCompressMMapLRUChunker(
+		totalSize,
+		int64(len(compressed1)+len(compressed2)+len(compressed3)),
+		mockGetter,
+		"test/path",
+		frameTable,
+		1, // LRU of 1 forces eviction
+		cachePath,
+		testMetrics(t),
+	)
+	require.NoError(t, err)
+	defer chunker.Close()
+
+	buf := make([]byte, 100)
+
+	// Read frame 1 - fetches from storage
+	_, err = chunker.ReadAt(ctx, buf, 0, frameTable)
+	require.NoError(t, err)
+	assert.Equal(t, data1[:100], buf)
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
+
+	// Read frame 2 - evicts frame 1 from LRU
+	_, err = chunker.ReadAt(ctx, buf, frameSizeU, frameTable)
+	require.NoError(t, err)
+	assert.Equal(t, data2[:100], buf)
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 2)
+
+	// Read frame 3 - evicts frame 2 from LRU
+	_, err = chunker.ReadAt(ctx, buf, frameSizeU*2, frameTable)
+	require.NoError(t, err)
+	assert.Equal(t, data3[:100], buf)
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 3)
+
+	// Read frame 1 again - evicted from LRU but still in mmap, no storage fetch
+	_, err = chunker.ReadAt(ctx, buf, 0, frameTable)
+	require.NoError(t, err)
+	assert.Equal(t, data1[:100], buf)
+	// Still only 3 calls - compressed data is in mmap cache
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 3)
+
+	// Read frame 2 again - also from mmap
+	_, err = chunker.ReadAt(ctx, buf, frameSizeU, frameTable)
+	require.NoError(t, err)
+	assert.Equal(t, data2[:100], buf)
+	mockGetter.AssertNumberOfCalls(t, "GetFrame", 3)
+}
+
+func TestCompressMMapLRUChunker_EmptySlice(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -470,13 +418,16 @@ func TestCompressedChunker_EmptySlice(t *testing.T) {
 	}
 
 	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
+	cachePath := filepath.Join(t.TempDir(), "compressed_cache")
 
-	chunker, err := NewCompressLRUChunker(
+	chunker, err := NewCompressMMapLRUChunker(
 		frameSizeU,
+		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
 		frameTable,
 		10,
+		cachePath,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -488,7 +439,7 @@ func TestCompressedChunker_EmptySlice(t *testing.T) {
 	assert.Empty(t, slice)
 }
 
-func TestCompressedChunker_Close(t *testing.T) {
+func TestCompressMMapLRUChunker_Close(t *testing.T) {
 	t.Parallel()
 
 	frameSizeU := int64(4 * 1024 * 1024)
@@ -503,13 +454,16 @@ func TestCompressedChunker_Close(t *testing.T) {
 	}
 
 	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
+	cachePath := filepath.Join(t.TempDir(), "compressed_cache")
 
-	chunker, err := NewCompressLRUChunker(
+	chunker, err := NewCompressMMapLRUChunker(
 		frameSizeU,
+		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
 		frameTable,
 		10,
+		cachePath,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -519,4 +473,55 @@ func TestCompressedChunker_Close(t *testing.T) {
 
 	// LRU should be purged
 	assert.Equal(t, 0, chunker.frameLRU.Len())
+}
+
+func TestCompressMMapLRUChunker_FileSize(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	frameSizeU := int64(4 * 1024 * 1024)
+	uncompressedData := make([]byte, frameSizeU)
+	for i := range uncompressedData {
+		uncompressedData[i] = byte(i % 256)
+	}
+	compressedData := compressData(t, uncompressedData)
+
+	frameTable := &storage.FrameTable{
+		CompressionType: storage.CompressionZstd,
+		StartAt:         storage.FrameOffset{U: 0, C: 0},
+		Frames: []storage.FrameSize{
+			{U: int32(frameSizeU), C: int32(len(compressedData))},
+		},
+	}
+
+	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
+	cachePath := filepath.Join(t.TempDir(), "compressed_cache")
+
+	chunker, err := NewCompressMMapLRUChunker(
+		frameSizeU,
+		int64(len(compressedData)),
+		mockGetter,
+		"test/path",
+		frameTable,
+		10,
+		cachePath,
+		testMetrics(t),
+	)
+	require.NoError(t, err)
+	defer chunker.Close()
+
+	// FileSize returns on-disk sparse file size (0 before fetching data)
+	size, err := chunker.FileSize()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), size, "sparse file should have 0 on-disk size before data is fetched")
+
+	// Fetch some data to populate the compressed cache
+	_, err = chunker.Slice(ctx, 0, 4096, frameTable)
+	require.NoError(t, err)
+
+	// After fetching, FileSize should be non-zero (compressed data cached on disk)
+	size, err = chunker.FileSize()
+	require.NoError(t, err)
+	assert.Positive(t, size, "on-disk size should be non-zero after fetching data")
 }

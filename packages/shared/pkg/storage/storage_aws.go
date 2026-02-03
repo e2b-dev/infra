@@ -264,3 +264,35 @@ func (p *AWS) Size(ctx context.Context, path string) (int64, error) {
 	// compressed file would return the wrong (compressed) size here.
 	return *resp.ContentLength, nil
 }
+
+func (p *AWS) Sizes(ctx context.Context, path string) (virtSize, rawSize int64, err error) {
+	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
+	defer cancel()
+
+	resp, err := p.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(p.bucketName),
+		Key:    aws.String(path),
+	})
+	if err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return 0, 0, ErrObjectNotExist
+		}
+
+		return 0, 0, fmt.Errorf("failed to get S3 object (%q) metadata: %w", path, err)
+	}
+
+	rawSize = *resp.ContentLength
+
+	// Check for uncompressed size in metadata (set during compressed upload).
+	if resp.Metadata != nil {
+		if uncompressedStr, ok := resp.Metadata[MetadataKeyUncompressedSize]; ok {
+			if _, err := fmt.Sscanf(uncompressedStr, "%d", &virtSize); err == nil {
+				return virtSize, rawSize, nil
+			}
+		}
+	}
+
+	// No metadata means uncompressed file - virt size == raw size.
+	return rawSize, rawSize, nil
+}

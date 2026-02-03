@@ -87,6 +87,10 @@ type Manager interface {
 	Size(ctx context.Context, objectPath string) (int64, error)
 	// RawSize returns the actual file size on storage (compressed size for compressed files).
 	RawSize(ctx context.Context, objectPath string) (int64, error)
+	// Sizes returns both virtual (uncompressed) and raw (file) sizes in one call.
+	// For compressed files: virtSize is uncompressed size, rawSize is compressed file size.
+	// For uncompressed files: virtSize == rawSize (actual file size).
+	Sizes(ctx context.Context, objectPath string) (virtSize, rawSize int64, err error)
 	DeleteWithPrefix(ctx context.Context, prefix string) error
 	fmt.Stringer
 }

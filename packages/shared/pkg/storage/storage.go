@@ -23,9 +23,9 @@ const (
 	// Must be a multiple of MemoryChunkSize to ensure aligned block/prefetch
 	// requests do not cross compression frame boundaries.
 	defaultChunkSizeU             = MemoryChunkSize
-	defaultTargetFrameSizeC       = 4 * megabyte // target compressed frame size
-	defaultZstdCompressionLevel   = zstd.SpeedBestCompression
-	defaultCompressionConcurrency = 0 // use default compression concurrency settings
+	defaultTargetFrameSizeC       = 4 * megabyte      // target compressed frame size
+	defaultZstdCompressionLevel   = zstd.SpeedDefault // level 3, balanced speed/compression
+	defaultCompressionConcurrency = 0                 // use default compression concurrency settings
 	defaultUploadPartSize         = 50 * megabyte
 )
 
@@ -38,9 +38,10 @@ var (
 	// EnableNFSCompressedCache controls whether the NFS cache stores compressed frames.
 	// When true (default): Cache stores compressed frames, decompresses on read.
 	// When false: Cache stores uncompressed chunks (inner decompresses, cache stores raw data).
-	EnableNFSCompressedCache = true
+	EnableNFSCompressedCache = false
 
 	// EnableCompressedChunker controls whether to use the compressed chunker implementation.
+	// When true, uses DecompressMMapChunker (decompress once into mmap cache).
 	EnableCompressedChunker = true
 )
 
@@ -300,7 +301,7 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64, frameTable *FrameTable, decompress bool, buf []byte) (Range, error) {
 	rangeU := Range{Start: offset, Length: len(buf)}
 
-	// Get the frame info to know both compressed and uncompressed sizes
+	// Get the frame info: translate U offset -> C offset for fetching
 	frameStart, frameSize, err := frameTable.FrameFor(rangeU)
 	if err != nil {
 		return Range{}, fmt.Errorf("get frame for range %v, object %s: %w", rangeU, objectPath, err)

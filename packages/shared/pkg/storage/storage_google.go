@@ -33,22 +33,13 @@ const (
 	googleMaxAttempts              = 10
 	gcloudDefaultUploadConcurrency = 16
 
-	gcsOperationAttr        = "operation"
-	gcsOperationAttrReadAt  = "ReadAt"
-	gcsOperationAttrWrite   = "Write"
-	gcsOperationAttrStore   = "Store"
-	gcsOperationAttrUpload  = "WriteFromFileSystemOneShot"
-	gcsOperationAttrWriteTo = "WriteTo"
+	gcsOperationAttr       = "operation"
+	gcsOperationAttrReadAt = "ReadAt"
+	gcsOperationAttrWrite  = "Write"
+	gcsOperationAttrStore  = "Store"
+	gcsOperationAttrUpload = "WriteFromFileSystemOneShot"
 )
 
-// googleReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
-//
-//	"orchestrator.storage.gcs.read",
-//	"Duration of GCS reads",
-//	"Total GCS bytes read",
-//	"Total GCS reads",
-//
-// ))
 var googleWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 	"orchestrator.storage.gcs.write",
 	"Duration of GCS writes",
@@ -241,6 +232,7 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	return &sa, nil
 }
 
+// RangeGet fetches bytes from storage at C (compressed) offset.
 func (g *GCP) RangeGet(ctx context.Context, path string, offset int64, length int) (io.ReadCloser, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 
@@ -281,8 +273,34 @@ func (g *GCP) Size(ctx context.Context, path string) (int64, error) {
 		}
 	}
 
-	// No metadata means uncompressed file - raw size IS the virtual size.
-	// Note: compressed files MUST have metadata set; missing metadata on a
-	// compressed file would return the wrong (compressed) size here.
 	return attrs.Size, nil
+}
+
+// Sizes returns both virtual (U) and raw (C) sizes for an object.
+func (g *GCP) Sizes(ctx context.Context, path string) (virtSize, rawSize int64, err error) {
+	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
+	defer cancel()
+
+	h := g.handle(path)
+	attrs, err := h.Attrs(ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return 0, 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", path, ErrObjectNotExist)
+		}
+
+		return 0, 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", path, err)
+	}
+
+	rawSize = attrs.Size
+
+	// Check for uncompressed size in metadata (set during compressed upload).
+	if attrs.Metadata != nil {
+		if uncompressedStr, ok := attrs.Metadata[MetadataKeyUncompressedSize]; ok {
+			if _, err := fmt.Sscanf(uncompressedStr, "%d", &virtSize); err == nil {
+				return virtSize, rawSize, nil
+			}
+		}
+	}
+
+	return rawSize, rawSize, nil
 }
