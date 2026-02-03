@@ -103,7 +103,15 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 
 func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
 	deadline := time.Now().Add(resumeWaitTimeout)
-	for time.Now().Before(deadline) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("timeout waiting for sandbox to resume")
+		}
+
 		s, err := c.GetSandbox(ctx, sandboxId)
 		if err == nil {
 			return s.OrchestratorIP, nil
@@ -113,10 +121,18 @@ func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCa
 			return "", fmt.Errorf("failed to get sandbox from catalog during resume: %w", err)
 		}
 
-		time.Sleep(resumeWaitInterval)
+		wait := time.Until(deadline)
+		if wait > resumeWaitInterval {
+			wait = resumeWaitInterval
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "", ctx.Err()
+		case <-timer.C:
+		}
 	}
-
-	return "", fmt.Errorf("timeout waiting for sandbox to resume")
 }
 
 func shouldAutoResume(policy string, autoResumeEnabled bool, requestHasAuth bool) bool {
