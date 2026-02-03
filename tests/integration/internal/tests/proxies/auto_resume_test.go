@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -73,6 +75,9 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 
 					expectResume := shouldExpectResume(policy.policy, authCase.valid)
 					if expectResume {
+						if resp.StatusCode == http.StatusConflict || resp.StatusCode >= http.StatusInternalServerError {
+							t.Logf("auto-resume response unexpected: status=%d policy=%s auth=%s sandbox=%s", resp.StatusCode, policy.policy, authCase.name, sbx.SandboxID)
+						}
 						require.NotEqual(t, http.StatusConflict, resp.StatusCode)
 						if resp.StatusCode >= http.StatusInternalServerError {
 							require.Equal(t, http.StatusBadGateway, resp.StatusCode)
@@ -82,6 +87,9 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 						return
 					}
 
+					if resp.StatusCode != http.StatusConflict {
+						t.Logf("auto-resume response unexpected: status=%d policy=%s auth=%s sandbox=%s", resp.StatusCode, policy.policy, authCase.name, sbx.SandboxID)
+					}
 					require.Equal(t, http.StatusConflict, resp.StatusCode)
 					waitForSandboxState(t, c, sbx.SandboxID, api.Paused)
 				})
@@ -118,10 +126,10 @@ func TestProxyAutoResumeConcurrent(t *testing.T) {
 			}()
 
 			if resp.StatusCode == http.StatusConflict {
-				return fmt.Errorf("unexpected conflict for auto-resume request")
+				return fmt.Errorf("unexpected conflict for auto-resume request: status=%d sandbox=%s", resp.StatusCode, sbx.SandboxID)
 			}
 			if resp.StatusCode >= http.StatusInternalServerError && resp.StatusCode != http.StatusBadGateway {
-				return fmt.Errorf("unexpected 5xx status for auto-resume request: %d", resp.StatusCode)
+				return fmt.Errorf("unexpected 5xx status for auto-resume request: %d sandbox=%s", resp.StatusCode, sbx.SandboxID)
 			}
 
 			return nil
@@ -130,6 +138,76 @@ func TestProxyAutoResumeConcurrent(t *testing.T) {
 
 	require.NoError(t, group.Wait())
 	waitForSandboxState(t, c, sbx.SandboxID, api.Running)
+}
+
+func TestProxyAutoResumeSmoke(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	proxyURL, err := url.Parse(setup.ClientProxy)
+	require.NoError(t, err)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("authed")))
+	t.Logf("created sandbox: id=%s", sbx.SandboxID)
+
+	ensureSandboxPaused(t, c, sbx.SandboxID)
+	t.Logf("paused sandbox: id=%s", sbx.SandboxID)
+
+	headers := http.Header{"X-API-Key": []string{setup.APIKey}}
+	resp := proxyRequest(t, client, sbx, proxyURL, headers)
+	require.NoError(t, resp.Body.Close())
+	t.Logf("proxy response: status=%d sandbox=%s", resp.StatusCode, sbx.SandboxID)
+
+	require.NotEqual(t, http.StatusConflict, resp.StatusCode)
+	waitForSandboxState(t, c, sbx.SandboxID, api.Running)
+	t.Logf("resumed sandbox: id=%s", sbx.SandboxID)
+}
+
+func TestProxyAutoResumeChain(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+
+	c := setup.GetAPIClient()
+	grpcClient := setup.GetProxyGrpcClient(t, ctx)
+
+	proxyURL, err := url.Parse(setup.ClientProxy)
+	require.NoError(t, err)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("authed")))
+	t.Logf("created sandbox: id=%s", sbx.SandboxID)
+
+	waitForSandboxState(t, c, sbx.SandboxID, api.Running)
+	info, err := grpcClient.GetPausedInfo(ctx, &proxygrpc.SandboxPausedInfoRequest{SandboxId: sbx.SandboxID})
+	require.NoError(t, err)
+	require.False(t, info.GetPaused())
+
+	ensureSandboxPaused(t, c, sbx.SandboxID)
+	t.Logf("paused sandbox: id=%s", sbx.SandboxID)
+	waitForSandboxState(t, c, sbx.SandboxID, api.Paused)
+
+	info, err = grpcClient.GetPausedInfo(ctx, &proxygrpc.SandboxPausedInfoRequest{SandboxId: sbx.SandboxID})
+	require.NoError(t, err)
+	require.True(t, info.GetPaused())
+	require.Equal(t, proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, info.GetAutoResumePolicy())
+
+	headers := http.Header{"X-API-Key": []string{setup.APIKey}}
+	resp := proxyRequest(t, client, sbx, proxyURL, headers)
+	require.NoError(t, resp.Body.Close())
+	t.Logf("proxy response: status=%d sandbox=%s", resp.StatusCode, sbx.SandboxID)
+
+	require.NotEqual(t, http.StatusConflict, resp.StatusCode)
+	if resp.StatusCode >= http.StatusInternalServerError {
+		require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	}
+
+	waitForSandboxState(t, c, sbx.SandboxID, api.Running)
+	info, err = grpcClient.GetPausedInfo(ctx, &proxygrpc.SandboxPausedInfoRequest{SandboxId: sbx.SandboxID})
+	require.NoError(t, err)
+	require.False(t, info.GetPaused())
+	t.Logf("resumed sandbox: id=%s", sbx.SandboxID)
 }
 
 func shouldExpectResume(policy string, authValid bool) bool {
@@ -195,6 +273,9 @@ func getSandboxState(t *testing.T, c *api.ClientWithResponses, sandboxID string)
 
 	resp, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 	require.NoError(t, err)
+	if resp.StatusCode() != http.StatusOK {
+		t.Logf("getSandboxState: sandbox=%s status=%d body=%s", sandboxID, resp.StatusCode(), string(resp.Body))
+	}
 	require.Equal(t, http.StatusOK, resp.StatusCode())
 	require.NotNil(t, resp.JSON200)
 
