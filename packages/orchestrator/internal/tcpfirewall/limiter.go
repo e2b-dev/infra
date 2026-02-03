@@ -1,24 +1,31 @@
 package tcpfirewall
 
 import (
-	"sync"
 	"sync/atomic"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 // ConnectionLimiter tracks and limits per-sandbox TCP connections.
 type ConnectionLimiter struct {
-	connections sync.Map // map[string]*atomic.Int64
+	connections *smap.Map[*atomic.Int64]
 }
 
 // NewConnectionLimiter creates a new ConnectionLimiter.
 func NewConnectionLimiter() *ConnectionLimiter {
-	return &ConnectionLimiter{}
+	return &ConnectionLimiter{
+		connections: smap.New[*atomic.Int64](),
+	}
 }
 
 func (l *ConnectionLimiter) getCounter(sandboxID string) *atomic.Int64 {
-	counter, _ := l.connections.LoadOrStore(sandboxID, &atomic.Int64{})
+	return l.connections.Upsert(sandboxID, &atomic.Int64{}, func(exists bool, valueInMap, newValue *atomic.Int64) *atomic.Int64 {
+		if exists {
+			return valueInMap
+		}
 
-	return counter.(*atomic.Int64)
+		return newValue
+	})
 }
 
 // TryAcquire attempts to acquire a connection slot for a sandbox.
@@ -39,12 +46,11 @@ func (l *ConnectionLimiter) TryAcquire(sandboxID string, maxLimit int) (int64, b
 
 // Release decrements the connection count for a sandbox.
 func (l *ConnectionLimiter) Release(sandboxID string) {
-	val, ok := l.connections.Load(sandboxID)
+	counter, ok := l.connections.Get(sandboxID)
 	if !ok {
 		return
 	}
 
-	counter := val.(*atomic.Int64)
 	for {
 		current := counter.Load()
 		if current <= 0 {
@@ -58,13 +64,13 @@ func (l *ConnectionLimiter) Release(sandboxID string) {
 
 // Remove removes a sandbox entry entirely. Call when sandbox is terminated.
 func (l *ConnectionLimiter) Remove(sandboxID string) {
-	l.connections.Delete(sandboxID)
+	l.connections.Remove(sandboxID)
 }
 
 // Count returns the current connection count for a sandbox.
 func (l *ConnectionLimiter) Count(sandboxID string) int64 {
-	if val, ok := l.connections.Load(sandboxID); ok {
-		return val.(*atomic.Int64).Load()
+	if counter, ok := l.connections.Get(sandboxID); ok {
+		return counter.Load()
 	}
 
 	return 0
