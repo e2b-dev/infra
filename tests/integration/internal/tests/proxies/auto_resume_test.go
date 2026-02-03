@@ -60,9 +60,11 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 				t.Run(authCase.name, func(t *testing.T) {
 					t.Parallel()
 
-					sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{
-						"auto_resume": policy.policy,
-					}))
+					options := []utils.SandboxOption{}
+					if policy.policy != "null" {
+						options = append(options, utils.WithAutoResume(api.NewSandboxAutoResume(policy.policy)))
+					}
+					sbx := utils.SetupSandboxWithCleanup(t, c, options...)
 
 					ensureSandboxPaused(t, c, sbx.SandboxID)
 
@@ -98,9 +100,7 @@ func TestProxyAutoResumeConcurrent(t *testing.T) {
 
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{
-		"auto_resume": "authed",
-	}))
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("authed")))
 
 	ensureSandboxPaused(t, c, sbx.SandboxID)
 

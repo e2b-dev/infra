@@ -120,11 +120,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		metadata = *body.Metadata
 	}
 	var sandboxResumesOn *string
+	if body.AutoResume != nil {
+		value := string(*body.AutoResume)
+		sandboxResumesOn = &value
+	}
 	if metadata != nil {
-		if value, ok := metadata["auto_resume"]; ok {
-			policy := proxygrpc.AutoResumePolicyFromString(value)
-			normalized := proxygrpc.AutoResumePolicyToString(policy)
-			sandboxResumesOn = &normalized
+		if sandboxResumesOn == nil {
+			if value, ok := metadata["auto_resume"]; ok {
+				policy := proxygrpc.AutoResumePolicyFromString(value)
+				normalized := proxygrpc.AutoResumePolicyToString(policy)
+				sandboxResumesOn = &normalized
+			}
+		}
+		if _, ok := metadata["auto_resume"]; ok {
 			delete(metadata, "auto_resume")
 			if len(metadata) == 0 {
 				metadata = nil

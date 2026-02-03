@@ -62,6 +62,12 @@ const (
 	LogsSourceTemporary  LogsSource = "temporary"
 )
 
+// Defines values for NewSandboxAutoResume.
+const (
+	Any    NewSandboxAutoResume = "any"
+	Authed NewSandboxAutoResume = "authed"
+)
+
 // Defines values for NodeStatus.
 const (
 	NodeStatusConnecting NodeStatus = "connecting"
@@ -392,8 +398,11 @@ type NewSandbox struct {
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 
 	// AutoPause Automatically pauses the sandbox after the timeout
-	AutoPause *bool    `json:"autoPause,omitempty"`
-	EnvVars   *EnvVars `json:"envVars,omitempty"`
+	AutoPause *bool `json:"autoPause,omitempty"`
+
+	// AutoResume Auto-resume policy for paused sandboxes. Omit to disable auto-resume.
+	AutoResume *NewSandboxAutoResume `json:"auto_resume,omitempty"`
+	EnvVars    *EnvVars              `json:"envVars,omitempty"`
 
 	// Mcp MCP configuration for the sandbox
 	Mcp      *Mcp                  `json:"mcp"`
@@ -409,6 +418,9 @@ type NewSandbox struct {
 	// Timeout Time to live for the sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
 }
+
+// NewSandboxAutoResume Auto-resume policy for paused sandboxes. Omit to disable auto-resume.
+type NewSandboxAutoResume string
 
 // NewTeamAPIKey defines model for NewTeamAPIKey.
 type NewTeamAPIKey struct {

@@ -17,6 +17,7 @@ import (
 type SandboxConfig struct {
 	templateID          string
 	metadata            api.SandboxMetadata
+	autoResume          *api.NewSandboxAutoResume
 	timeout             int32
 	autoPause           bool
 	network             *api.SandboxNetworkConfig
@@ -29,6 +30,12 @@ type SandboxOption func(config *SandboxConfig)
 func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
 	return func(config *SandboxConfig) {
 		maps.Copy(config.metadata, metadata)
+	}
+}
+
+func WithAutoResume(policy api.NewSandboxAutoResume) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.autoResume = &policy
 	}
 }
 
@@ -102,6 +109,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 			TemplateID:          templateID,
 			Timeout:             &config.timeout,
+			AutoResume:          config.autoResume,
 			Metadata:            &config.metadata,
 			AutoPause:           &config.autoPause,
 			Network:             config.network,
