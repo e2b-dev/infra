@@ -89,6 +89,7 @@ func (c *apiPausedSandboxChecker) PausedInfo(ctx context.Context, sandboxId stri
 			return PausedInfo{}, fmt.Errorf("decode response: %w", err)
 		}
 		paused := strings.EqualFold(payload.State, "paused")
+
 		return PausedInfo{
 			Paused:           paused,
 			AutoResumePolicy: getAutoResumePolicy(payload.Metadata),

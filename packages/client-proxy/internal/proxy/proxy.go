@@ -121,14 +121,12 @@ func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCa
 			return "", fmt.Errorf("failed to get sandbox from catalog during resume: %w", err)
 		}
 
-		wait := time.Until(deadline)
-		if wait > resumeWaitInterval {
-			wait = resumeWaitInterval
-		}
+		wait := min(time.Until(deadline), resumeWaitInterval)
 		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
+
 			return "", ctx.Err()
 		case <-timer.C:
 		}

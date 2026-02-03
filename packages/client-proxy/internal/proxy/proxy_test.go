@@ -49,11 +49,13 @@ type fakePausedChecker struct {
 
 func (f *fakePausedChecker) PausedInfo(_ context.Context, _ string) (PausedInfo, error) {
 	f.pausedInfoCalls++
+
 	return f.info, nil
 }
 
 func (f *fakePausedChecker) Resume(_ context.Context, _ string, _ int32) error {
 	f.resumeCalls++
+
 	return f.resumeErr
 }
 
@@ -88,6 +90,8 @@ func (f *fakePausedCatalog) Close(_ context.Context) error {
 }
 
 func TestCatalogResolutionPaused_NoAutoResume(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 1}
 	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "any"}}
@@ -107,19 +111,12 @@ func TestCatalogResolutionPaused_NoAutoResume(t *testing.T) {
 }
 
 func TestCatalogResolutionPaused_AutoResumeSuccess(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.1"}
 	c := &fakeCatalog{info: info, failCount: 1}
 	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "any"}}
-
-	origInterval := resumeWaitInterval
-	origTimeout := resumeWaitTimeout
-	resumeWaitInterval = 1 * time.Millisecond
-	resumeWaitTimeout = 20 * time.Millisecond
-	defer func() {
-		resumeWaitInterval = origInterval
-		resumeWaitTimeout = origTimeout
-	}()
 
 	ip, err := catalogResolution(ctx, "sbx-2", c, nil, paused, true, false)
 	if err != nil {
@@ -134,6 +131,8 @@ func TestCatalogResolutionPaused_AutoResumeSuccess(t *testing.T) {
 }
 
 func TestCatalogResolutionPaused_AutoResumeFails(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 10}
 	paused := &fakePausedChecker{
@@ -156,6 +155,8 @@ func TestCatalogResolutionPaused_AutoResumeFails(t *testing.T) {
 }
 
 func TestShouldAutoResumePolicy(t *testing.T) {
+	t.Parallel()
+
 	if !shouldAutoResume("any", true, false) {
 		t.Fatalf("expected any=true")
 	}
@@ -174,6 +175,8 @@ func TestShouldAutoResumePolicy(t *testing.T) {
 }
 
 func TestAutoResumePolicies(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name             string
 		policy           string
@@ -190,6 +193,8 @@ func TestAutoResumePolicies(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := shouldAutoResume(tc.policy, true, tc.requestHasAuth)
 			if got != tc.expectAutoResume {
 				t.Fatalf("expected autoResume=%v, got %v", tc.expectAutoResume, got)
@@ -199,19 +204,12 @@ func TestAutoResumePolicies(t *testing.T) {
 }
 
 func TestCatalogResolutionPaused_AutoResumePolicyAny(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.2"}
 	c := &fakeCatalog{info: info, failCount: 1}
 	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "any"}}
-
-	origInterval := resumeWaitInterval
-	origTimeout := resumeWaitTimeout
-	resumeWaitInterval = 1 * time.Millisecond
-	resumeWaitTimeout = 20 * time.Millisecond
-	defer func() {
-		resumeWaitInterval = origInterval
-		resumeWaitTimeout = origTimeout
-	}()
 
 	ip, err := catalogResolution(ctx, "sbx-any", c, nil, paused, true, false)
 	if err != nil {
@@ -223,19 +221,12 @@ func TestCatalogResolutionPaused_AutoResumePolicyAny(t *testing.T) {
 }
 
 func TestCatalogResolutionPaused_AutoResumePolicyAuthed(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.3"}
 	c := &fakeCatalog{info: info, failCount: 1}
 	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "authed"}}
-
-	origInterval := resumeWaitInterval
-	origTimeout := resumeWaitTimeout
-	resumeWaitInterval = 1 * time.Millisecond
-	resumeWaitTimeout = 20 * time.Millisecond
-	defer func() {
-		resumeWaitInterval = origInterval
-		resumeWaitTimeout = origTimeout
-	}()
 
 	_, err := catalogResolution(ctx, "sbx-authed-no-auth", c, nil, paused, true, false)
 	if err == nil {
@@ -252,6 +243,8 @@ func TestCatalogResolutionPaused_AutoResumePolicyAuthed(t *testing.T) {
 }
 
 func TestHasProxyAuth(t *testing.T) {
+	t.Parallel()
+
 	if hasProxyAuth(http.Header{}) {
 		t.Fatalf("expected no auth headers")
 	}
@@ -270,6 +263,8 @@ func TestHasProxyAuth(t *testing.T) {
 }
 
 func TestWithProxyAuthMetadata(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	header := http.Header{}
 	header.Set("Authorization", "Bearer sk_e2b_test")
@@ -290,6 +285,8 @@ func TestWithProxyAuthMetadata(t *testing.T) {
 }
 
 func TestCatalogResolutionPaused_AutoResumePolicyNull(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 1}
 	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "null"}}
@@ -309,6 +306,8 @@ func TestCatalogResolutionPaused_AutoResumePolicyNull(t *testing.T) {
 }
 
 func TestCatalogResolutionPaused_UsesPausedCatalogPolicy(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.4"}
 	c := &fakeCatalog{info: info, failCount: 1}
@@ -319,15 +318,6 @@ func TestCatalogResolutionPaused_UsesPausedCatalogPolicy(t *testing.T) {
 		},
 	}
 	paused := &fakePausedChecker{info: PausedInfo{Paused: false}}
-
-	origInterval := resumeWaitInterval
-	origTimeout := resumeWaitTimeout
-	resumeWaitInterval = 1 * time.Millisecond
-	resumeWaitTimeout = 20 * time.Millisecond
-	defer func() {
-		resumeWaitInterval = origInterval
-		resumeWaitTimeout = origTimeout
-	}()
 
 	ip, err := catalogResolution(ctx, "sbx-paused-catalog", c, pausedCatalog, paused, true, false)
 	if err != nil {
