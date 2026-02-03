@@ -37,10 +37,6 @@ const (
 // validateInitAccessToken validates the access token for /init requests.
 // Token is valid if it matches the existing token OR the MMDS hash.
 // If neither exists, first-time setup is allowed.
-//
-// Returns:
-//   - ErrAccessTokenMismatch (401): invalid token provided
-//   - ErrAccessTokenResetNotAuthorized (409): trying to reset token without authorization
 func (a *API) validateInitAccessToken(ctx context.Context, requestToken *SecureToken) error {
 	requestTokenSet := requestToken != nil && requestToken.IsSet()
 

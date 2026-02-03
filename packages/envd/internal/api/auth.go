@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awnumar/memguard"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
@@ -55,12 +57,7 @@ func (a *API) generateSignature(path string, username string, operation string, 
 	if err != nil {
 		return "", fmt.Errorf("access token is not set: %w", err)
 	}
-	defer func() {
-		// Zero out the copy after use
-		for i := range tokenBytes {
-			tokenBytes[i] = 0
-		}
-	}()
+	defer memguard.WipeBytes(tokenBytes)
 
 	var signature string
 	hasher := keys.NewSHA256Hashing()

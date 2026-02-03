@@ -4,6 +4,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/awnumar/memguard"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -80,9 +81,7 @@ func TestSecureTokenBytes(t *testing.T) {
 	assert.Equal(t, []byte("test-token"), bytes)
 
 	// Zero out the bytes (as caller should do)
-	for i := range bytes {
-		bytes[i] = 0
-	}
+	memguard.WipeBytes(bytes)
 
 	// Original should still be intact
 	assert.True(t, st.Equals("test-token"), "original token should still work after zeroing copy")
