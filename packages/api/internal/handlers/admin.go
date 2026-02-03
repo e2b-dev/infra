@@ -33,7 +33,7 @@ func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.
 	result, err := a.orchestrator.AdminNodeDetail(ctx, clusterID, nodeID)
 	if err != nil {
 		if errors.Is(err, orchestrator.ErrNodeNotFound) {
-			c.Status(http.StatusNotFound)
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Node '%s' not found", nodeID))
 
 			return
 		}
@@ -62,7 +62,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 	clusterID := utils.WithClusterFallback(body.ClusterID)
 	node := a.orchestrator.GetNodeByIDOrNomadShortID(clusterID, nodeId)
 	if node == nil {
-		c.Status(http.StatusNotFound)
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Node '%s' not found", nodeId))
 
 		return
 	}

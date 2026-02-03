@@ -85,7 +85,10 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 			attribute.String("error.message", a.errorMessage),
 		)
 
-		ginCtx.Status(http.StatusUnauthorized)
+		ginCtx.JSON(http.StatusUnauthorized, api.Error{
+			Code:    http.StatusUnauthorized,
+			Message: a.errorMessage,
+		})
 
 		return err
 	}
@@ -103,7 +106,10 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 			attribute.String("http.status_text", http.StatusText(validationError.Code)),
 		)
 
-		ginCtx.Status(validationError.Code)
+		ginCtx.JSON(validationError.Code, api.Error{
+			Code:    int32(validationError.Code),
+			Message: validationError.ClientMsg,
+		})
 
 		var forbiddenError *db.TeamForbiddenError
 		if errors.As(validationError.Err, &forbiddenError) {
