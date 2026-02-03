@@ -12,6 +12,13 @@ const (
 	envdTimeout = 600 * time.Second
 )
 
+func envWithDefault(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
+}
+
 var (
 	APIServerURL      = utils.RequiredEnv("TESTS_API_SERVER_URL", "e.g. https://api.great-innovations.dev")
 	SandboxTemplateID = utils.RequiredEnv("TESTS_SANDBOX_TEMPLATE_ID", "e.g. base")
@@ -26,4 +33,5 @@ var (
 	OrchestratorHost = os.Getenv("TESTS_ORCHESTRATOR_HOST")
 	EnvdProxy        = os.Getenv("TESTS_ENVD_PROXY")
 	ClientProxy      = os.Getenv("TESTS_CLIENT_PROXY")
+	ApiGrpcAddress   = envWithDefault("TESTS_API_GRPC_ADDRESS", "localhost:5009")
 )
