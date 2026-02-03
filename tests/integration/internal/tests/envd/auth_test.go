@@ -73,7 +73,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	assert.Equal(t, "unauthenticated: 401 Unauthorized", err.Error())
 }
 
-func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
+func TestInitWithNilTokenOnSecuredSandboxReturnsUnauthorized(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -84,10 +84,34 @@ func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
+	// Calling /init with no token on a secured sandbox returns 401 Unauthorized
+	// because it's trying to reset the token without authorization
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
 		body:                  envd.PostInitJSONRequestBody{},
+		expectedResErr:        nil,
+		expectedResHttpStatus: http.StatusUnauthorized,
+	})
+}
+
+func TestInitWithWrongTokenOnSecuredSandboxReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	sbx := createSandbox(t, true, setup.WithAPIKey())
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	wrongToken := "wrong-token"
+	// Calling /init with wrong token returns 401 Unauthorized
+	sandboxEnvdInitCall(t, ctx, envdInitCall{
+		sbx:                   sbx,
+		client:                envdClient,
+		body:                  envd.PostInitJSONRequestBody{AccessToken: &wrongToken},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusUnauthorized,
 	})
@@ -106,13 +130,15 @@ func TestChangeAccessAuthorizedToken(t *testing.T) {
 	envdAuthTokenA := sbx.JSON201.EnvdAccessToken
 	envdAuthTokenB := "second-token"
 
+	// Changing access token via /init is NOT allowed - token must match existing or MMDS hash
+	// Only the orchestrator can change tokens by first updating MMDS with the new hash
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
 		authToken:             envdAuthTokenA, // this is the old token used currently by envd
 		body:                  envd.PostInitJSONRequestBody{AccessToken: &envdAuthTokenB},
 		expectedResErr:        nil,
-		expectedResHttpStatus: http.StatusConflict,
+		expectedResHttpStatus: http.StatusUnauthorized,
 	})
 }
 
