@@ -22,14 +22,14 @@ func New(config cfg.Config) *VolumeService {
 	return &VolumeService{config: config}
 }
 
-func (v *VolumeService) Delete(ctx context.Context, request *orchestrator.VolumeDeleteRequest) (*orchestrator.VolumeDeleteResponse, error) {
-	volPath, ok := v.config.PersistentVolumeMounts[request.VolumeType]
+func (v *VolumeService) Delete(_ context.Context, request *orchestrator.VolumeDeleteRequest) (*orchestrator.VolumeDeleteResponse, error) {
+	volPath, ok := v.config.PersistentVolumeMounts[request.GetVolumeType()]
 	if !ok {
-		return nil, status.Errorf(codes.NotFound, "volume type %s not found", request.VolumeType)
+		return nil, status.Errorf(codes.NotFound, "volume type %s not found", request.GetVolumeType())
 	}
 
 	basePath := volPath
-	volumePath := filepath.Join(basePath, request.VolumeName)
+	volumePath := filepath.Join(basePath, request.GetVolumeName())
 
 	if err := os.RemoveAll(volumePath); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete volume: %v", err)
