@@ -3,12 +3,15 @@ package tests
 import (
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
 func TestRequireRowLevelSecurity(t *testing.T) {
+	t.Parallel()
+
 	db := testutils.SetupDatabase(t)
 
 	results, err := db.TestQueries.GetRowLevelSecurity(t.Context())

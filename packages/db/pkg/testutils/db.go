@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/db/pkg/pool"
-	"github.com/e2b-dev/infra/packages/db/pkg/testutils/queries"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -18,6 +16,8 @@ import (
 
 	db "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/pool"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils/queries"
 )
 
 const (
