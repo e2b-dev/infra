@@ -124,6 +124,8 @@ func (s *ProxySandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.
 		}()
 	}
 
+	s.api.deletePausedCatalogEntry(ctx, sandboxID)
+
 	running, runErr := s.api.orchestrator.GetSandbox(ctx, team.Team.ID, sandboxID)
 	if runErr == nil {
 		switch running.State {
@@ -188,7 +190,7 @@ func (s *ProxySandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.
 		nil,
 	)
 	if apiErr != nil {
-		return nil, status.Errorf(codes.Internal, "resume failed: %s", apiErr.ClientMsg)
+		return nil, status.Errorf(grpcCodeFromHTTPStatus(apiErr.Code), "resume failed: %s", apiErr.ClientMsg)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -276,4 +278,37 @@ func firstMetadata(md metadata.MD, key string) string {
 	}
 
 	return values[0]
+}
+
+func grpcCodeFromHTTPStatus(statusCode int) codes.Code {
+	switch statusCode {
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		return codes.InvalidArgument
+	case http.StatusUnauthorized:
+		return codes.Unauthenticated
+	case http.StatusForbidden:
+		return codes.PermissionDenied
+	case http.StatusNotFound:
+		return codes.NotFound
+	case http.StatusConflict:
+		return codes.AlreadyExists
+	case http.StatusTooManyRequests:
+		return codes.ResourceExhausted
+	case http.StatusPreconditionFailed:
+		return codes.FailedPrecondition
+	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+		return codes.DeadlineExceeded
+	case http.StatusNotImplemented:
+		return codes.Unimplemented
+	case http.StatusBadGateway, http.StatusServiceUnavailable:
+		return codes.Unavailable
+	default:
+		if statusCode >= http.StatusInternalServerError {
+			return codes.Internal
+		}
+		if statusCode >= http.StatusBadRequest {
+			return codes.InvalidArgument
+		}
+		return codes.Internal
+	}
 }
