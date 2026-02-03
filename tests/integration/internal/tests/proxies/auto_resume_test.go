@@ -26,7 +26,7 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 	foreignAPIKey := utils.CreateAPIKeyInDB(t, db, foreignUserID, foreignTeamID)
 	foreignAccessToken := utils.CreateAccessToken(t, db, foreignUserID)
 
-	proxyURL, err := url.Parse(setup.EnvdProxy)
+	proxyURL, err := url.Parse(setup.ClientProxy)
 	require.NoError(t, err)
 
 	client := &http.Client{Timeout: 60 * time.Second}
@@ -95,7 +95,7 @@ func TestProxyAutoResumeConcurrent(t *testing.T) {
 
 	c := setup.GetAPIClient()
 
-	proxyURL, err := url.Parse(setup.EnvdProxy)
+	proxyURL, err := url.Parse(setup.ClientProxy)
 	require.NoError(t, err)
 
 	client := &http.Client{Timeout: 60 * time.Second}

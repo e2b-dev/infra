@@ -25,4 +25,5 @@ var (
 
 	OrchestratorHost = os.Getenv("TESTS_ORCHESTRATOR_HOST")
 	EnvdProxy        = os.Getenv("TESTS_ENVD_PROXY")
+	ClientProxy      = os.Getenv("TESTS_CLIENT_PROXY")
 )
