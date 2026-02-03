@@ -118,8 +118,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	a.deletePausedCatalogEntry(ctx, sandboxID)
-
 	autoPause := lastSnapshot.Snapshot.AutoPause
 	if body.AutoPause != nil {
 		autoPause = *body.AutoPause

@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gogo/status"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -19,8 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -101,38 +97,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return fmt.Errorf("error pausing sandbox: %w", err)
 	}
 
-	o.storePausedSandbox(ctx, sbx)
-
 	return nil
-}
-
-func (o *Orchestrator) storePausedSandbox(ctx context.Context, sbx sandbox.Sandbox) {
-	if o.pausedCatalog == nil {
-		return
-	}
-
-	policy := getAutoResumePolicy(sbx.Metadata)
-
-	err := o.pausedCatalog.StorePaused(ctx, sbx.SandboxID, &e2bcatalog.PausedSandboxInfo{
-		AutoResumePolicy: policy,
-		PausedAt:         time.Now(),
-	}, 7*24*time.Hour)
-	if err != nil {
-		logger.L().Error(ctx, "error storing paused sandbox record", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
-	}
-}
-
-func getAutoResumePolicy(metadata map[string]string) string {
-	if metadata == nil {
-		return "null"
-	}
-
-	value := strings.TrimSpace(strings.ToLower(metadata["auto_resume"]))
-	if value == "" {
-		return "null"
-	}
-
-	return value
 }
 
 func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {

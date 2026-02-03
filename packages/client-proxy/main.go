@@ -106,7 +106,6 @@ func run() int {
 	}
 
 	var catalog e2bcatalog.SandboxesCatalog
-	var pausedCatalog e2bcatalog.PausedSandboxesCatalog
 
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
 		RedisURL:         config.RedisURL,
@@ -121,7 +120,6 @@ func run() int {
 			}
 		}()
 		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
-		pausedCatalog = e2bcatalog.NewRedisPausedSandboxesCatalog(redisClient)
 	} else {
 		if !errors.Is(err, factories.ErrRedisDisabled) {
 			l.Error(ctx, "Failed to create redis client", zap.Error(err))
@@ -131,7 +129,6 @@ func run() int {
 
 		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
 		catalog = e2bcatalog.NewMemorySandboxesCatalog()
-		pausedCatalog = e2bcatalog.NewMemoryPausedSandboxesCatalog()
 	}
 
 	info := &internal.ServiceInfo{}
@@ -155,7 +152,6 @@ func run() int {
 		serviceName,
 		config.ProxyPort,
 		catalog,
-		pausedCatalog,
 		pausedChecker,
 		autoResumeEnabled,
 	)
@@ -185,7 +181,7 @@ func run() int {
 	}
 
 	var closers []Closeable
-	closers = append(closers, featureFlagsClient, catalog, pausedCatalog)
+	closers = append(closers, featureFlagsClient, catalog)
 	if closeable, ok := pausedChecker.(Closeable); ok {
 		closers = append(closers, closeable)
 	}

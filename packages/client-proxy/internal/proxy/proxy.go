@@ -39,29 +39,14 @@ var (
 	resumeTimeoutSeconds int32 = 600
 )
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedCatalog catalog.PausedSandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasAuth bool) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasAuth bool) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
 			var pausedInfo PausedInfo
 			var pausedFound bool
 
-			if pausedCatalog != nil {
-				info, pausedErr := pausedCatalog.GetPaused(ctx, sandboxId)
-				if pausedErr != nil {
-					if !errors.Is(pausedErr, catalog.ErrPausedSandboxNotFound) {
-						logger.L().Warn(ctx, "paused catalog lookup failed", zap.Error(pausedErr), logger.WithSandboxID(sandboxId))
-					}
-				} else {
-					pausedInfo = PausedInfo{
-						Paused:           true,
-						AutoResumePolicy: proxygrpc.AutoResumePolicyFromString(info.AutoResumePolicy),
-					}
-					pausedFound = true
-				}
-			}
-
-			if pausedChecker != nil && !pausedFound {
+			if pausedChecker != nil {
 				info, pausedErr := pausedChecker.PausedInfo(ctx, sandboxId)
 				if pausedErr != nil {
 					logger.L().Warn(ctx, "paused lookup failed", zap.Error(pausedErr), logger.WithSandboxID(sandboxId))
@@ -152,10 +137,10 @@ func shouldAutoResume(policy proxygrpc.AutoResumePolicy, autoResumeEnabled bool,
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
-	return NewClientProxyWithPausedChecker(meterProvider, serviceName, port, catalog, nil, nil, true)
+	return NewClientProxyWithPausedChecker(meterProvider, serviceName, port, catalog, nil, true)
 }
 
-func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedCatalog catalog.PausedSandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool) (*reverseproxy.Proxy, error) {
+func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 
 	proxy := reverseproxy.New(
@@ -183,7 +168,7 @@ func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, service
 
 			requestHasAuth := hasProxyAuth(r.Header)
 			ctx = withProxyAuthMetadata(ctx, r.Header)
-			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedCatalog, pausedChecker, autoResumeEnabled, requestHasAuth)
+			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedChecker, autoResumeEnabled, requestHasAuth)
 			if err != nil {
 				if errors.Is(err, ErrNodeNotFound) {
 					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)

@@ -128,8 +128,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}()
 	}
 
-	s.api.deletePausedCatalogEntry(ctx, sandboxID)
-
 	running, runErr := s.api.orchestrator.GetSandbox(ctx, team.Team.ID, sandboxID)
 	if runErr == nil {
 		switch running.State {
