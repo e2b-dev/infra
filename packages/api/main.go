@@ -377,7 +377,7 @@ func run() int {
 			otelgrpc.WithMeterProvider(tel.MeterProvider),
 		))),
 	)
-	proxygrpc.RegisterProxySandboxServiceServer(grpcServer, handlers.NewProxySandboxService(apiStore))
+	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore))
 	cleanupFns = append(cleanupFns, func(context.Context) error {
 		grpcServer.GracefulStop()
 

@@ -28,10 +28,10 @@ message SandboxResumeRequest {
   int32 timeout_seconds = 2;
 }
 
-// ProxySandboxService is used by the client-proxy to check paused state
+// SandboxService is used by the client-proxy to check paused state
 // and resume sandboxes. Authorization/X-API-Key headers are forwarded
 // via gRPC metadata for authed resumes.
-service ProxySandboxService {
+service SandboxService {
   rpc GetPausedInfo(SandboxPausedInfoRequest) returns (SandboxPausedInfoResponse);
   rpc ResumeSandbox(SandboxResumeRequest) returns (google.protobuf.Empty);
 }

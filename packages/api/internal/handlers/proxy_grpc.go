@@ -31,17 +31,17 @@ const (
 	proxyResumeWaitTimeout = 30 * time.Second
 )
 
-type ProxySandboxService struct {
-	proxygrpc.UnimplementedProxySandboxServiceServer
+type SandboxService struct {
+	proxygrpc.UnimplementedSandboxServiceServer
 
 	api *APIStore
 }
 
-func NewProxySandboxService(api *APIStore) *ProxySandboxService {
-	return &ProxySandboxService{api: api}
+func NewSandboxService(api *APIStore) *SandboxService {
+	return &SandboxService{api: api}
 }
 
-func (s *ProxySandboxService) GetPausedInfo(ctx context.Context, req *proxygrpc.SandboxPausedInfoRequest) (*proxygrpc.SandboxPausedInfoResponse, error) {
+func (s *SandboxService) GetPausedInfo(ctx context.Context, req *proxygrpc.SandboxPausedInfoRequest) (*proxygrpc.SandboxPausedInfoResponse, error) {
 	sandboxID := utils.ShortID(req.GetSandboxId())
 
 	snap, err := s.api.sqlcDB.GetLastSnapshot(ctx, sandboxID)
@@ -61,7 +61,7 @@ func (s *ProxySandboxService) GetPausedInfo(ctx context.Context, req *proxygrpc.
 	}, nil
 }
 
-func (s *ProxySandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*emptypb.Empty, error) {
+func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*emptypb.Empty, error) {
 	sandboxID := utils.ShortID(req.GetSandboxId())
 
 	snap, err := s.api.sqlcDB.GetLastSnapshot(ctx, sandboxID)
@@ -198,7 +198,7 @@ func (s *ProxySandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.
 	return &emptypb.Empty{}, nil
 }
 
-func (s *ProxySandboxService) tryAcquireResumeLock(ctx context.Context, sandboxID string) (*redislock.Lock, bool, error) {
+func (s *SandboxService) tryAcquireResumeLock(ctx context.Context, sandboxID string) (*redislock.Lock, bool, error) {
 	if s.api.redisClient == nil {
 		return nil, true, nil
 	}
@@ -217,7 +217,7 @@ func (s *ProxySandboxService) tryAcquireResumeLock(ctx context.Context, sandboxI
 	return nil, false, err
 }
 
-func (s *ProxySandboxService) resolveAuthTeam(ctx context.Context, snapshotTeamID uuid.UUID) (*teamtypes.Team, bool, error) {
+func (s *SandboxService) resolveAuthTeam(ctx context.Context, snapshotTeamID uuid.UUID) (*teamtypes.Team, bool, error) {
 	md, _ := metadata.FromIncomingContext(ctx)
 
 	if apiKey := firstMetadata(md, "x-api-key"); apiKey != "" {

@@ -19,122 +19,122 @@ import (
 // Requires gRPC-Go v1.32.0 or later.
 const _ = grpc.SupportPackageIsVersion7
 
-// ProxySandboxServiceClient is the client API for ProxySandboxService service.
+// SandboxServiceClient is the client API for SandboxService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type ProxySandboxServiceClient interface {
+type SandboxServiceClient interface {
 	GetPausedInfo(ctx context.Context, in *SandboxPausedInfoRequest, opts ...grpc.CallOption) (*SandboxPausedInfoResponse, error)
 	ResumeSandbox(ctx context.Context, in *SandboxResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
-type proxySandboxServiceClient struct {
+type sandboxServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewProxySandboxServiceClient(cc grpc.ClientConnInterface) ProxySandboxServiceClient {
-	return &proxySandboxServiceClient{cc}
+func NewSandboxServiceClient(cc grpc.ClientConnInterface) SandboxServiceClient {
+	return &sandboxServiceClient{cc}
 }
 
-func (c *proxySandboxServiceClient) GetPausedInfo(ctx context.Context, in *SandboxPausedInfoRequest, opts ...grpc.CallOption) (*SandboxPausedInfoResponse, error) {
+func (c *sandboxServiceClient) GetPausedInfo(ctx context.Context, in *SandboxPausedInfoRequest, opts ...grpc.CallOption) (*SandboxPausedInfoResponse, error) {
 	out := new(SandboxPausedInfoResponse)
-	err := c.cc.Invoke(ctx, "/proxy.ProxySandboxService/GetPausedInfo", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/proxy.SandboxService/GetPausedInfo", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *proxySandboxServiceClient) ResumeSandbox(ctx context.Context, in *SandboxResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *sandboxServiceClient) ResumeSandbox(ctx context.Context, in *SandboxResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/proxy.ProxySandboxService/ResumeSandbox", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/proxy.SandboxService/ResumeSandbox", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// ProxySandboxServiceServer is the server API for ProxySandboxService service.
-// All implementations must embed UnimplementedProxySandboxServiceServer
+// SandboxServiceServer is the server API for SandboxService service.
+// All implementations must embed UnimplementedSandboxServiceServer
 // for forward compatibility
-type ProxySandboxServiceServer interface {
+type SandboxServiceServer interface {
 	GetPausedInfo(context.Context, *SandboxPausedInfoRequest) (*SandboxPausedInfoResponse, error)
 	ResumeSandbox(context.Context, *SandboxResumeRequest) (*emptypb.Empty, error)
-	mustEmbedUnimplementedProxySandboxServiceServer()
+	mustEmbedUnimplementedSandboxServiceServer()
 }
 
-// UnimplementedProxySandboxServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedProxySandboxServiceServer struct {
+// UnimplementedSandboxServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedSandboxServiceServer struct {
 }
 
-func (UnimplementedProxySandboxServiceServer) GetPausedInfo(context.Context, *SandboxPausedInfoRequest) (*SandboxPausedInfoResponse, error) {
+func (UnimplementedSandboxServiceServer) GetPausedInfo(context.Context, *SandboxPausedInfoRequest) (*SandboxPausedInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPausedInfo not implemented")
 }
-func (UnimplementedProxySandboxServiceServer) ResumeSandbox(context.Context, *SandboxResumeRequest) (*emptypb.Empty, error) {
+func (UnimplementedSandboxServiceServer) ResumeSandbox(context.Context, *SandboxResumeRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResumeSandbox not implemented")
 }
-func (UnimplementedProxySandboxServiceServer) mustEmbedUnimplementedProxySandboxServiceServer() {}
+func (UnimplementedSandboxServiceServer) mustEmbedUnimplementedSandboxServiceServer() {}
 
-// UnsafeProxySandboxServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to ProxySandboxServiceServer will
+// UnsafeSandboxServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to SandboxServiceServer will
 // result in compilation errors.
-type UnsafeProxySandboxServiceServer interface {
-	mustEmbedUnimplementedProxySandboxServiceServer()
+type UnsafeSandboxServiceServer interface {
+	mustEmbedUnimplementedSandboxServiceServer()
 }
 
-func RegisterProxySandboxServiceServer(s grpc.ServiceRegistrar, srv ProxySandboxServiceServer) {
-	s.RegisterService(&ProxySandboxService_ServiceDesc, srv)
+func RegisterSandboxServiceServer(s grpc.ServiceRegistrar, srv SandboxServiceServer) {
+	s.RegisterService(&SandboxService_ServiceDesc, srv)
 }
 
-func _ProxySandboxService_GetPausedInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _SandboxService_GetPausedInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxPausedInfoRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ProxySandboxServiceServer).GetPausedInfo(ctx, in)
+		return srv.(SandboxServiceServer).GetPausedInfo(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/proxy.ProxySandboxService/GetPausedInfo",
+		FullMethod: "/proxy.SandboxService/GetPausedInfo",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ProxySandboxServiceServer).GetPausedInfo(ctx, req.(*SandboxPausedInfoRequest))
+		return srv.(SandboxServiceServer).GetPausedInfo(ctx, req.(*SandboxPausedInfoRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ProxySandboxService_ResumeSandbox_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _SandboxService_ResumeSandbox_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxResumeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ProxySandboxServiceServer).ResumeSandbox(ctx, in)
+		return srv.(SandboxServiceServer).ResumeSandbox(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/proxy.ProxySandboxService/ResumeSandbox",
+		FullMethod: "/proxy.SandboxService/ResumeSandbox",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ProxySandboxServiceServer).ResumeSandbox(ctx, req.(*SandboxResumeRequest))
+		return srv.(SandboxServiceServer).ResumeSandbox(ctx, req.(*SandboxResumeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// ProxySandboxService_ServiceDesc is the grpc.ServiceDesc for ProxySandboxService service.
+// SandboxService_ServiceDesc is the grpc.ServiceDesc for SandboxService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var ProxySandboxService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "proxy.ProxySandboxService",
-	HandlerType: (*ProxySandboxServiceServer)(nil),
+var SandboxService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "proxy.SandboxService",
+	HandlerType: (*SandboxServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "GetPausedInfo",
-			Handler:    _ProxySandboxService_GetPausedInfo_Handler,
+			Handler:    _SandboxService_GetPausedInfo_Handler,
 		},
 		{
 			MethodName: "ResumeSandbox",
-			Handler:    _ProxySandboxService_ResumeSandbox_Handler,
+			Handler:    _SandboxService_ResumeSandbox_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

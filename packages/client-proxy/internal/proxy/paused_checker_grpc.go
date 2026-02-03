@@ -13,7 +13,7 @@ import (
 
 type grpcPausedSandboxChecker struct {
 	conn   *grpc.ClientConn
-	client proxygrpc.ProxySandboxServiceClient
+	client proxygrpc.SandboxServiceClient
 }
 
 func NewGrpcPausedSandboxChecker(address string) (PausedSandboxChecker, error) {
@@ -28,7 +28,7 @@ func NewGrpcPausedSandboxChecker(address string) (PausedSandboxChecker, error) {
 
 	return &grpcPausedSandboxChecker{
 		conn:   conn,
-		client: proxygrpc.NewProxySandboxServiceClient(conn),
+		client: proxygrpc.NewSandboxServiceClient(conn),
 	}, nil
 }
 
