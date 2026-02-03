@@ -127,6 +127,7 @@ type Snapshot struct {
 	AutoPause           bool
 	TeamID              uuid.UUID
 	Config              *types.PausedSandboxConfig
+	SandboxResumesOn    *string
 }
 
 type Team struct {
