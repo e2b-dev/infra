@@ -67,7 +67,8 @@ const (
 	WaitForEnvdDurationHistogramName HistogramType = "orchestrator.sandbox.envd.init.duration"
 
 	// TCP Firewall histograms
-	TCPFirewallConnectionDurationHistogramName HistogramType = "orchestrator.tcpfirewall.connection.duration"
+	TCPFirewallConnectionDurationHistogramName    HistogramType = "orchestrator.tcpfirewall.connection.duration"
+	TCPFirewallConnectionsPerSandboxHistogramName HistogramType = "orchestrator.tcpfirewall.connections.per_sandbox"
 )
 
 const (
@@ -265,16 +266,18 @@ var histogramDesc = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:     "Size of the built template rootfs in bytes",
 	WaitForEnvdDurationHistogramName: "Time taken for Envd to initialize successfully",
 
-	TCPFirewallConnectionDurationHistogramName: "Duration of TCP firewall proxied connections",
+	TCPFirewallConnectionDurationHistogramName:    "Duration of TCP firewall proxied connections",
+	TCPFirewallConnectionsPerSandboxHistogramName: "Number of active TCP firewall connections per sandbox",
 }
 
 var histogramUnits = map[HistogramType]string{
-	BuildDurationHistogramName:                 "ms",
-	BuildPhaseDurationHistogramName:            "ms",
-	BuildStepDurationHistogramName:             "ms",
-	BuildRootfsSizeHistogramName:               "{By}",
-	WaitForEnvdDurationHistogramName:           "ms",
-	TCPFirewallConnectionDurationHistogramName: "ms",
+	BuildDurationHistogramName:                    "ms",
+	BuildPhaseDurationHistogramName:               "ms",
+	BuildStepDurationHistogramName:                "ms",
+	BuildRootfsSizeHistogramName:                  "{By}",
+	WaitForEnvdDurationHistogramName:              "ms",
+	TCPFirewallConnectionDurationHistogramName:    "ms",
+	TCPFirewallConnectionsPerSandboxHistogramName: "{connection}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
