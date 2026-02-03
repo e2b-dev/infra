@@ -56,7 +56,7 @@ func (s *SandboxService) GetPausedInfo(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(codes.Internal, "failed to get snapshot: %v", err)
 	}
 
-	policy := autoResumePolicyFromMetadata(snap.Snapshot.Metadata)
+	policy := autoResumePolicyFromSnapshotResumesOn(snap.Snapshot.SandboxResumesOn)
 
 	return &proxygrpc.SandboxPausedInfoResponse{
 		Paused:           true,
@@ -76,7 +76,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(codes.Internal, "failed to get snapshot: %v", err)
 	}
 
-	policy := autoResumePolicyFromMetadata(snap.Snapshot.Metadata)
+	policy := autoResumePolicyFromSnapshotResumesOn(snap.Snapshot.SandboxResumesOn)
 	authTeam, authProvided, authErr := s.resolveAuthTeam(ctx, snap.Snapshot.TeamID)
 
 	switch policy {
@@ -261,8 +261,12 @@ func (s *SandboxService) resolveAuthTeam(ctx context.Context, snapshotTeamID uui
 	return nil, false, nil
 }
 
-func autoResumePolicyFromMetadata(metadata map[string]string) proxygrpc.AutoResumePolicy {
-	return proxygrpc.AutoResumePolicyFromMetadata(metadata)
+func autoResumePolicyFromSnapshotResumesOn(resumesOn *string) proxygrpc.AutoResumePolicy {
+	if resumesOn == nil {
+		return proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL
+	}
+
+	return proxygrpc.AutoResumePolicyFromString(*resumesOn)
 }
 
 func firstMetadata(md metadata.MD, key string) string {

@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -45,6 +46,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		FreeDiskSizeMb:      0,
 		TotalDiskSizeMb:     &sbx.TotalDiskSizeMB,
 		Metadata:            sbx.Metadata,
+		SandboxResumesOn:    sandboxResumesOn(sbx.Metadata),
 		KernelVersion:       sbx.KernelVersion,
 		FirecrackerVersion:  sbx.FirecrackerVersion,
 		EnvdVersion:         &sbx.EnvdVersion,
@@ -98,6 +100,16 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	}
 
 	return nil
+}
+
+func sandboxResumesOn(metadata map[string]string) *string {
+	value, ok := metadata["auto_resume"]
+	if !ok {
+		return nil
+	}
+
+	policy := proxygrpc.AutoResumePolicyFromString(value)
+	return utils.ToPtr(proxygrpc.AutoResumePolicyToString(policy))
 }
 
 func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
