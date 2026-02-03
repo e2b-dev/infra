@@ -32,6 +32,11 @@ func (a *APIStore) PatchSandboxesSandboxIDMetadata(c *gin.Context, id api.Sandbo
 
 		return
 	}
+	if err := validateAutoResumeMetadata(body.Metadata); err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
+		return
+	}
 
 	sandboxID := utils.ShortID(id)
 	apiErr := a.orchestrator.UpdateSandboxMetadata(ctx, team.ID, sandboxID, body.Metadata)

@@ -118,6 +118,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if body.Metadata != nil {
 		metadata = *body.Metadata
 	}
+	if err := validateAutoResumeMetadata(metadata); err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
+		return
+	}
 
 	var envVars map[string]string
 	if body.EnvVars != nil {
