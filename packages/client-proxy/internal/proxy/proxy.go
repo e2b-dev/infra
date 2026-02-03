@@ -11,7 +11,9 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
@@ -97,6 +99,9 @@ func handlePausedSandboxWithInfo(
 		logger.L().Info(ctx, "auto-resuming sandbox", logger.WithSandboxID(sandboxId))
 		if err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds); err != nil {
 			logger.L().Warn(ctx, "auto-resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
+			if isAuthResumeError(err) {
+				canAutoResume = false
+			}
 		} else {
 			nodeIP, waitErr := waitForCatalog(ctx, sandboxId, c)
 			if waitErr == nil {
@@ -107,6 +112,20 @@ func handlePausedSandboxWithInfo(
 	}
 
 	return "", reverseproxy.NewErrSandboxPaused(sandboxId, canAutoResume)
+}
+
+func isAuthResumeError(err error) bool {
+	var grpcStatus interface{ GRPCStatus() *status.Status }
+	if !errors.As(err, &grpcStatus) {
+		return false
+	}
+
+	switch grpcStatus.GRPCStatus().Code() {
+	case codes.Unauthenticated, codes.PermissionDenied, codes.InvalidArgument:
+		return true
+	default:
+		return false
+	}
 }
 
 func getPausedInfo(ctx context.Context, sandboxId string, pausedChecker PausedSandboxChecker) (PausedInfo, bool) {
