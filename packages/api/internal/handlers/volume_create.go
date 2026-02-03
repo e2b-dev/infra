@@ -80,7 +80,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	if volumeTypes, err := cluster.GetResources().GetVolumeTypes(ctx); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to get volume types for cluster")
-		telemetry.ReportCriticalError(ctx, "failed to get volume types for cluster", nil)
+		telemetry.ReportCriticalError(ctx, "failed to get volume types for cluster", err)
 
 		return
 	} else if !slices.Contains(volumeTypes, volumeType) {
