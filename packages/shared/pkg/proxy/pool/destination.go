@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"net/http"
 	"net/url"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -9,6 +10,10 @@ import (
 const MaskRequestHostPortPlaceholder = "${PORT}"
 
 type DestinationContextKey struct{}
+
+// ProxyErrorHandler allows callers to override proxy error handling.
+// Return true when the error has been handled and the default handler should be skipped.
+type ProxyErrorHandler func(w http.ResponseWriter, r *http.Request, err error) bool
 
 // Destination contains information about where to route the request.
 type Destination struct {
@@ -24,4 +29,6 @@ type Destination struct {
 	IncludeSandboxIdInProxyErrorLogger bool
 	// MaskRequestHost is used to mask the request host.
 	MaskRequestHost *string
+	// OnProxyError is called when proxying to the upstream fails.
+	OnProxyError ProxyErrorHandler
 }

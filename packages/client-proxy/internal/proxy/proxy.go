@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -236,6 +237,7 @@ func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, service
 				SandboxPort:   port,
 				ConnectionKey: pool.ClientProxyConnectionKey,
 				Url:           url,
+				OnProxyError:  pausedFallbackHandler(sandboxId, pausedChecker, autoResumeEnabled, requestHasAuth),
 			}, nil
 		},
 		false,
@@ -276,6 +278,46 @@ func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, service
 	}
 
 	return proxy, nil
+}
+
+func pausedFallbackHandler(
+	sandboxId string,
+	pausedChecker PausedSandboxChecker,
+	autoResumeEnabled bool,
+	requestHasAuth bool,
+) pool.ProxyErrorHandler {
+	if pausedChecker == nil {
+		return nil
+	}
+
+	return func(w http.ResponseWriter, r *http.Request, err error) bool {
+		ctx := context.WithoutCancel(r.Context())
+		pausedInfo, pausedFound := getPausedInfo(ctx, sandboxId, pausedChecker)
+		if !pausedFound {
+			return false
+		}
+
+		canAutoResume := shouldAutoResume(pausedInfo.AutoResumePolicy, autoResumeEnabled, requestHasAuth)
+		if canAutoResume {
+			go func() {
+				resumeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+				defer cancel()
+
+				if resumeErr := pausedChecker.Resume(resumeCtx, sandboxId, resumeTimeoutSeconds); resumeErr != nil {
+					logger.L().Warn(resumeCtx, "auto-resume failed after proxy error", zap.Error(resumeErr), logger.WithSandboxID(sandboxId))
+				}
+			}()
+
+			return false
+		}
+
+		if handleErr := template.NewSandboxPausedError(sandboxId, r.Host, false).HandleError(w, r); handleErr != nil {
+			logger.L().Error(ctx, "failed to handle sandbox paused error", zap.Error(handleErr), logger.WithSandboxID(sandboxId))
+			http.Error(w, "Failed to handle sandbox paused error", http.StatusInternalServerError)
+		}
+
+		return true
+	}
 }
 
 func hasProxyAuth(header http.Header) bool {

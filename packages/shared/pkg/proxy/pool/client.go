@@ -138,6 +138,12 @@ func newProxyClient(
 				t.RequestLogger.Error(ctx, "sandbox error handler called", zap.Error(err))
 			}
 
+			if t.OnProxyError != nil {
+				if t.OnProxyError(w, r, err) {
+					return
+				}
+			}
+
 			if t.DefaultToPortError {
 				err = template.
 					NewPortClosedError(t.SandboxId, r.Host, t.SandboxPort).
