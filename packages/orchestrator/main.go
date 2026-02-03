@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
@@ -42,6 +41,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	sharedFactories "github.com/e2b-dev/infra/packages/shared/pkg/factories"
