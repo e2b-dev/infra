@@ -104,7 +104,6 @@ runs:
         SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
         REDIS_URL: "localhost:6379"
         # Client-proxy config
-        AUTO_RESUME_FORCE: "true"
         API_GRPC_ADDRESS: "localhost:5009"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
