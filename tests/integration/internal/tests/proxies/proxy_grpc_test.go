@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"net/http"
 	"testing"
 	"time"
 
@@ -158,46 +157,4 @@ func TestResumeSandboxPolicyAnyWithoutAuth(t *testing.T) {
 	_, err := grpcClient.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{SandboxId: sbx.SandboxID})
 	require.NoError(t, err)
 	waitForSandboxState(t, c, sbx.SandboxID, api.Running)
-}
-
-func ensureSandboxPaused(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
-	t.Helper()
-
-	state := getSandboxState(t, c, sandboxID)
-	if state == api.Paused {
-		return
-	}
-
-	resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
-	require.NoError(t, err)
-	require.Contains(t, []int{http.StatusNoContent, http.StatusConflict}, resp.StatusCode())
-
-	waitForSandboxState(t, c, sandboxID, api.Paused)
-}
-
-func waitForSandboxState(t *testing.T, c *api.ClientWithResponses, sandboxID string, expected api.SandboxState) {
-	t.Helper()
-
-	deadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(deadline) {
-		state := getSandboxState(t, c, sandboxID)
-		if state == expected {
-			return
-		}
-
-		time.Sleep(1 * time.Second)
-	}
-
-	require.Failf(t, "sandbox state mismatch", "sandbox %s did not reach %s", sandboxID, expected)
-}
-
-func getSandboxState(t *testing.T, c *api.ClientWithResponses, sandboxID string) api.SandboxState {
-	t.Helper()
-
-	resp, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode())
-	require.NotNil(t, resp.JSON200)
-
-	return resp.JSON200.State
 }
