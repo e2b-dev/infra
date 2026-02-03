@@ -86,6 +86,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				teamID,
 				buildID,
 				config.GetMetadata(),
+				nil,
 				time.Duration(config.GetMaxSandboxLength())*time.Hour,
 				sbx.GetStartTime().AsTime(),
 				sbx.GetEndTime().AsTime(),

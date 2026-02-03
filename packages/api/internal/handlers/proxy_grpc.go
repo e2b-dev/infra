@@ -179,6 +179,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		timeout,
 		nil,
 		snap.Snapshot.Metadata,
+		snap.Snapshot.SandboxResumesOn,
 		alias,
 		team,
 		snap.EnvBuild,

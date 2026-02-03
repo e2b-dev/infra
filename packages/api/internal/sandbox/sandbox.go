@@ -19,6 +19,7 @@ func NewSandbox(
 	teamID uuid.UUID,
 	buildID uuid.UUID,
 	metadata map[string]string,
+	sandboxResumesOn *string,
 	maxInstanceLength time.Duration,
 	startTime time.Time,
 	endTime time.Time,
@@ -49,6 +50,7 @@ func NewSandbox(
 		TeamID:              teamID,
 		BuildID:             buildID,
 		Metadata:            metadata,
+		SandboxResumesOn:    sandboxResumesOn,
 		MaxInstanceLength:   maxInstanceLength,
 		StartTime:           startTime,
 		EndTime:             endTime,
@@ -82,6 +84,7 @@ type Sandbox struct {
 	BuildID             uuid.UUID                   `json:"buildID"`
 	BaseTemplateID      string                      `json:"baseTemplateID"`
 	Metadata            map[string]string           `json:"metadata"`
+	SandboxResumesOn    *string                     `json:"sandboxResumesOn"`
 	MaxInstanceLength   time.Duration               `json:"maxInstanceLength"`
 	StartTime           time.Time                   `json:"startTime"`
 	EndTime             time.Time                   `json:"endTime"`

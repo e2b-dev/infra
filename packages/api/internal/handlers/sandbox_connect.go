@@ -163,6 +163,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		timeout,
 		nil,
 		snap.Metadata,
+		snap.SandboxResumesOn,
 		alias,
 		teamInfo,
 		build,

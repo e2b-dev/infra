@@ -162,6 +162,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		timeout,
 		nil,
 		snap.Metadata,
+		snap.SandboxResumesOn,
 		alias,
 		teamInfo,
 		build,
