@@ -33,7 +33,7 @@ create_sandbox() {
       --arg policy "${auto_resume_policy}" \
       --arg template "base" \
       --argjson timeout "${TIMEOUT_SECONDS}" \
-      '{metadata:{auto_resume:$policy}, templateID:$template, timeout:$timeout, autoPause:false}')
+      '{auto_resume:$policy, templateID:$template, timeout:$timeout, autoPause:false}')
   else
     body=$(jq -n \
       --arg template "base" \
@@ -67,7 +67,7 @@ hit_proxy() {
   local use_token="$2"
   local url="https://49983-${id}.${DOMAIN}/"
   if [ "${use_token}" = "true" ]; then
-    curl -sS -o /dev/null -w "%{http_code}" -H "e2b-traffic-access-token: smoke-token" "$url" >/dev/null || true
+    curl -sS -o /dev/null -w "%{http_code}" -H "X-API-Key: ${API_KEY}" "$url" >/dev/null || true
   else
     curl -sS -o /dev/null -w "%{http_code}" "$url" >/dev/null || true
   fi
