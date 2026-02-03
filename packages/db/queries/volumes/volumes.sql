@@ -13,9 +13,3 @@ SELECT * FROM volumes WHERE team_id = @team_id AND name IN (
 
 -- name: FindVolumesByTeamID :many
 SELECT * FROM volumes WHERE team_id = @team_id;
-
--- name: UpdateVolume :one
-UPDATE volumes
-SET name = @name
-WHERE id = @volume_id AND team_id = @team_id
-RETURNING *;

@@ -1115,12 +1115,6 @@ type UpdateTeamAPIKey struct {
 	Name string `json:"name"`
 }
 
-// UpdateVolume defines model for UpdateVolume.
-type UpdateVolume struct {
-	// Name Name of the volume
-	Name string `json:"name"`
-}
-
 // Volume defines model for Volume.
 type Volume struct {
 	// Id ID of the volume
@@ -1353,9 +1347,6 @@ type PostV3TemplatesJSONRequestBody = TemplateBuildRequestV3
 
 // PostVolumesJSONRequestBody defines body for PostVolumes for application/json ContentType.
 type PostVolumesJSONRequestBody = NewVolume
-
-// PatchVolumesVolumeIDJSONRequestBody defines body for PatchVolumesVolumeID for application/json ContentType.
-type PatchVolumesVolumeIDJSONRequestBody = UpdateVolume
 
 // AsAWSRegistry returns the union data inside the FromImageRegistry as a AWSRegistry
 func (t FromImageRegistry) AsAWSRegistry() (AWSRegistry, error) {
@@ -1727,11 +1718,6 @@ type ClientInterface interface {
 
 	// GetVolumesVolumeID request
 	GetVolumesVolumeID(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PatchVolumesVolumeIDWithBody request with any body
-	PatchVolumesVolumeIDWithBody(ctx context.Context, volumeID VolumeID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	PatchVolumesVolumeID(ctx context.Context, volumeID VolumeID, body PatchVolumesVolumeIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) PostAccessTokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2516,30 +2502,6 @@ func (c *Client) PostVolumes(ctx context.Context, body PostVolumesJSONRequestBod
 
 func (c *Client) GetVolumesVolumeID(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetVolumesVolumeIDRequest(c.Server, volumeID)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PatchVolumesVolumeIDWithBody(ctx context.Context, volumeID VolumeID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchVolumesVolumeIDRequestWithBody(c.Server, volumeID, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PatchVolumesVolumeID(ctx context.Context, volumeID VolumeID, body PatchVolumesVolumeIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchVolumesVolumeIDRequest(c.Server, volumeID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4800,53 +4762,6 @@ func NewGetVolumesVolumeIDRequest(server string, volumeID VolumeID) (*http.Reque
 	return req, nil
 }
 
-// NewPatchVolumesVolumeIDRequest calls the generic PatchVolumesVolumeID builder with application/json body
-func NewPatchVolumesVolumeIDRequest(server string, volumeID VolumeID, body PatchVolumesVolumeIDJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewPatchVolumesVolumeIDRequestWithBody(server, volumeID, "application/json", bodyReader)
-}
-
-// NewPatchVolumesVolumeIDRequestWithBody generates requests for PatchVolumesVolumeID with any type of body
-func NewPatchVolumesVolumeIDRequestWithBody(server string, volumeID VolumeID, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/volumes/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("PATCH", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -5068,11 +4983,6 @@ type ClientWithResponsesInterface interface {
 
 	// GetVolumesVolumeIDWithResponse request
 	GetVolumesVolumeIDWithResponse(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDResponse, error)
-
-	// PatchVolumesVolumeIDWithBodyWithResponse request with any body
-	PatchVolumesVolumeIDWithBodyWithResponse(ctx context.Context, volumeID VolumeID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchVolumesVolumeIDResponse, error)
-
-	PatchVolumesVolumeIDWithResponse(ctx context.Context, volumeID VolumeID, body PatchVolumesVolumeIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchVolumesVolumeIDResponse, error)
 }
 
 type PostAccessTokensResponse struct {
@@ -6232,31 +6142,6 @@ func (r GetVolumesVolumeIDResponse) StatusCode() int {
 	return 0
 }
 
-type PatchVolumesVolumeIDResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *Volume
-	JSON401      *N401
-	JSON404      *N404
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r PatchVolumesVolumeIDResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PatchVolumesVolumeIDResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
 // PostAccessTokensWithBodyWithResponse request with arbitrary body returning *PostAccessTokensResponse
 func (c *ClientWithResponses) PostAccessTokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error) {
 	rsp, err := c.PostAccessTokensWithBody(ctx, contentType, body, reqEditors...)
@@ -6830,23 +6715,6 @@ func (c *ClientWithResponses) GetVolumesVolumeIDWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseGetVolumesVolumeIDResponse(rsp)
-}
-
-// PatchVolumesVolumeIDWithBodyWithResponse request with arbitrary body returning *PatchVolumesVolumeIDResponse
-func (c *ClientWithResponses) PatchVolumesVolumeIDWithBodyWithResponse(ctx context.Context, volumeID VolumeID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchVolumesVolumeIDResponse, error) {
-	rsp, err := c.PatchVolumesVolumeIDWithBody(ctx, volumeID, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePatchVolumesVolumeIDResponse(rsp)
-}
-
-func (c *ClientWithResponses) PatchVolumesVolumeIDWithResponse(ctx context.Context, volumeID VolumeID, body PatchVolumesVolumeIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchVolumesVolumeIDResponse, error) {
-	rsp, err := c.PatchVolumesVolumeID(ctx, volumeID, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePatchVolumesVolumeIDResponse(rsp)
 }
 
 // ParsePostAccessTokensResponse parses an HTTP response from a PostAccessTokensWithResponse call
@@ -8894,53 +8762,6 @@ func ParseGetVolumesVolumeIDResponse(rsp *http.Response) (*GetVolumesVolumeIDRes
 	}
 
 	response := &GetVolumesVolumeIDResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Volume
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest N404
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParsePatchVolumesVolumeIDResponse parses an HTTP response from a PatchVolumesVolumeIDWithResponse call
-func ParsePatchVolumesVolumeIDResponse(rsp *http.Response) (*PatchVolumesVolumeIDResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PatchVolumesVolumeIDResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

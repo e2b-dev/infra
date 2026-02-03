@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 
 	"github.com/gin-gonic/gin"
@@ -119,4 +120,10 @@ func (a *APIStore) getVolumeType(ctx context.Context) string {
 	}
 
 	return volumeType
+}
+
+var validVolumeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+func isValidVolumeName(name string) bool {
+	return validVolumeNameRegex.MatchString(name)
 }
