@@ -145,6 +145,11 @@ func run() int {
 	}
 
 	// Proxy sandbox http traffic to orchestrator nodes
+	autoResumeEnabled := featureFlagsClient.BoolFlag(ctx, featureflags.SandboxAutoResumeFlag, featureflags.ServiceContext(serviceName))
+	if !config.AutoResumeEnabled {
+		autoResumeEnabled = false
+	}
+
 	trafficProxy, err := e2bproxy.NewClientProxyWithPausedChecker(
 		tel.MeterProvider,
 		serviceName,
@@ -152,7 +157,7 @@ func run() int {
 		catalog,
 		pausedCatalog,
 		pausedChecker,
-		config.AutoResumeEnabled,
+		autoResumeEnabled,
 	)
 	if err != nil {
 		l.Error(ctx, "Failed to create client proxy", zap.Error(err))
