@@ -20,6 +20,7 @@ func GetProxyGrpcClient(tb testing.TB, ctx context.Context) proxygrpc.SandboxSer
 	addr, ok := os.LookupEnv("TESTS_API_GRPC_ADDRESS")
 	if !ok || strings.TrimSpace(addr) == "" {
 		tb.Skip("Skipping gRPC test: TESTS_API_GRPC_ADDRESS is not set")
+
 		return nil
 	}
 
@@ -34,6 +35,7 @@ func GetProxyGrpcClient(tb testing.TB, ctx context.Context) proxygrpc.SandboxSer
 	)
 	if err != nil {
 		tb.Fatal(fmt.Errorf("failed to establish proxy gRPC connection to %s: %w", addr, err))
+
 		return nil
 	}
 

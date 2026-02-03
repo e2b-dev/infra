@@ -16,6 +16,7 @@ func envWithDefault(key, defaultValue string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
+
 	return defaultValue
 }
 
