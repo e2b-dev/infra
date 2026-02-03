@@ -7,7 +7,9 @@
 # infrastructure, and optionally builds the base template.
 #
 # Usage:
-#   ./scripts/e2b-lite-setup.sh              # Full setup (requires sudo)
+#   ./scripts/e2b-lite-setup.sh              # Full setup with clean progress UI
+#   ./scripts/e2b-lite-setup.sh --verbose    # Full setup with detailed output
+#   ./scripts/e2b-lite-setup.sh --check-req  # Only check requirements
 #   ./scripts/e2b-lite-setup.sh --deps-only  # Only install system dependencies
 #   ./scripts/e2b-lite-setup.sh --no-deps    # Skip dependency installation
 #   ./scripts/e2b-lite-setup.sh --no-template # Skip template building
@@ -27,7 +29,13 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+DIM='\033[2m'
+BOLD='\033[1m'
 NC='\033[0m' # No Color
+
+# Spinner characters
+SPINNER_CHARS='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+SPINNER_PID=""
 
 # Configuration
 KERNEL_VERSION="${KERNEL_VERSION:-vmlinux-6.1.158}"
@@ -61,9 +69,19 @@ BUILD_TEMPLATE=true
 DEPS_ONLY=false
 USE_PREBUILT=false
 PREBUILT_VERSION="latest"
+VERBOSE=false
+CHECK_REQ_ONLY=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --verbose|-v)
+            VERBOSE=true
+            shift
+            ;;
+        --check-req)
+            CHECK_REQ_ONLY=true
+            shift
+            ;;
         --no-deps)
             INSTALL_DEPS=false
             shift
@@ -88,6 +106,8 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
+            echo "  --verbose, -v      Show detailed output (apt, build logs, etc.)"
+            echo "  --check-req        Only check if system meets requirements"
             echo "  --no-deps          Skip system dependency installation"
             echo "  --deps-only        Only install dependencies, then exit"
             echo "  --no-template      Skip template building"
@@ -103,10 +123,151 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "========================================"
-echo "  E2B Lite Setup"
-echo "========================================"
-echo ""
+# -----------------------------------------------------------------------------
+# Progress UI Functions
+# -----------------------------------------------------------------------------
+
+# Start spinner with message
+start_spinner() {
+    local msg="$1"
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo -e "${BLUE}$msg${NC}"
+        return
+    fi
+
+    # Save cursor position and print message
+    printf "  %s " "$msg"
+
+    # Start spinner in background
+    (
+        i=0
+        while true; do
+            printf "\r  %s ${SPINNER_CHARS:i++%${#SPINNER_CHARS}:1} " "$msg"
+            sleep 0.1
+        done
+    ) &
+    SPINNER_PID=$!
+    disown $SPINNER_PID 2>/dev/null || true
+}
+
+# Stop spinner with success
+stop_spinner_success() {
+    local msg="${1:-}"
+    if [[ -n "$SPINNER_PID" ]]; then
+        kill $SPINNER_PID 2>/dev/null || true
+        wait $SPINNER_PID 2>/dev/null || true
+        SPINNER_PID=""
+    fi
+    if [[ "$VERBOSE" != "true" ]]; then
+        if [[ -n "$msg" ]]; then
+            printf "\r  ${GREEN}✓${NC} %s\n" "$msg"
+        else
+            printf "\r  ${GREEN}✓${NC}\n"
+        fi
+    fi
+}
+
+# Stop spinner with failure
+stop_spinner_fail() {
+    local msg="${1:-}"
+    if [[ -n "$SPINNER_PID" ]]; then
+        kill $SPINNER_PID 2>/dev/null || true
+        wait $SPINNER_PID 2>/dev/null || true
+        SPINNER_PID=""
+    fi
+    if [[ "$VERBOSE" != "true" ]]; then
+        if [[ -n "$msg" ]]; then
+            printf "\r  ${RED}✗${NC} %s\n" "$msg"
+        else
+            printf "\r  ${RED}✗${NC}\n"
+        fi
+    fi
+}
+
+# Stop spinner with warning
+stop_spinner_warn() {
+    local msg="${1:-}"
+    if [[ -n "$SPINNER_PID" ]]; then
+        kill $SPINNER_PID 2>/dev/null || true
+        wait $SPINNER_PID 2>/dev/null || true
+        SPINNER_PID=""
+    fi
+    if [[ "$VERBOSE" != "true" ]]; then
+        if [[ -n "$msg" ]]; then
+            printf "\r  ${YELLOW}!${NC} %s\n" "$msg"
+        else
+            printf "\r  ${YELLOW}!${NC}\n"
+        fi
+    fi
+}
+
+# Run command with optional output suppression
+run_cmd() {
+    local log_file="/tmp/e2b-setup-$$.log"
+    if [[ "$VERBOSE" == "true" ]]; then
+        "$@"
+    else
+        if "$@" >> "$log_file" 2>&1; then
+            return 0
+        else
+            local exit_code=$?
+            echo ""
+            echo -e "${RED}Command failed. Last 20 lines of output:${NC}"
+            tail -20 "$log_file" 2>/dev/null || true
+            return $exit_code
+        fi
+    fi
+}
+
+# Print step header
+print_step() {
+    local step_num="$1"
+    local total="$2"
+    local msg="$3"
+    echo ""
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo -e "${BLUE}[$step_num/$total] $msg${NC}"
+    else
+        echo -e "${BOLD}[$step_num/$total]${NC} $msg"
+    fi
+}
+
+# Print success line (for check results)
+print_ok() {
+    echo -e "  ${GREEN}✓${NC} $1"
+}
+
+# Print warning line
+print_warn() {
+    echo -e "  ${YELLOW}!${NC} $1"
+}
+
+# Print error line
+print_err() {
+    echo -e "  ${RED}✗${NC} $1"
+}
+
+# Cleanup on exit
+cleanup_spinner() {
+    if [[ -n "$SPINNER_PID" ]]; then
+        kill $SPINNER_PID 2>/dev/null || true
+    fi
+}
+trap cleanup_spinner EXIT
+
+# Print banner
+if [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+    echo ""
+    echo -e "${BOLD}E2B Lite - Requirements Check${NC}"
+    echo ""
+else
+    echo ""
+    echo -e "${BOLD}E2B Lite Setup${NC}"
+    if [[ "$VERBOSE" != "true" ]]; then
+        echo -e "${DIM}Use --verbose for detailed output${NC}"
+    fi
+    echo ""
+fi
 
 # -----------------------------------------------------------------------------
 # Fix git safe directory (needed when repo is rsync'd/copied)
@@ -131,214 +292,263 @@ check_sudo() {
 # Install system dependencies
 # -----------------------------------------------------------------------------
 install_dependencies() {
-    echo -e "${BLUE}Installing system dependencies...${NC}"
-    echo ""
-
     # Detect package manager
-    if command -v apt-get &> /dev/null; then
-        PKG_MANAGER="apt"
-    else
-        echo -e "${RED}Error: Only apt-based systems (Ubuntu/Debian) are currently supported${NC}"
+    if ! command -v apt-get &> /dev/null; then
+        print_err "Only apt-based systems (Ubuntu/Debian) are currently supported"
         exit 1
     fi
 
     # Update package list
-    echo "  Updating package list..."
-    sudo apt-get update -qq
+    start_spinner "Updating package list"
+    if run_cmd sudo apt-get update -qq; then
+        stop_spinner_success "Package list updated"
+    else
+        stop_spinner_fail "Failed to update package list"
+        exit 1
+    fi
 
     # Install Docker if not present
     if ! command -v docker &> /dev/null; then
-        echo "  Installing Docker..."
-        sudo install -m 0755 -d /etc/apt/keyrings
-        sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-        sudo chmod a+r /etc/apt/keyrings/docker.asc
+        start_spinner "Installing Docker"
+        if run_cmd sudo install -m 0755 -d /etc/apt/keyrings && \
+           run_cmd sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
+           run_cmd sudo chmod a+r /etc/apt/keyrings/docker.asc; then
 
-        echo "Types: deb
+            echo "Types: deb
 URIs: https://download.docker.com/linux/ubuntu
 Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
 Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc" | sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null
+Signed-By: /etc/apt/keyrings/docker.asc" | sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null 2>&1
 
-        sudo apt-get update -qq
-        sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-        echo -e "  ${GREEN}✓${NC} Docker installed"
+            if run_cmd sudo apt-get update -qq && \
+               run_cmd sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; then
+                stop_spinner_success "Docker installed"
+            else
+                stop_spinner_fail "Failed to install Docker"
+                exit 1
+            fi
+        else
+            stop_spinner_fail "Failed to setup Docker repository"
+            exit 1
+        fi
     else
-        echo -e "  ${GREEN}✓${NC} Docker already installed"
+        print_ok "Docker already installed"
     fi
 
     # Install Go if not present
     if ! command -v go &> /dev/null; then
-        echo "  Installing Go via snap..."
-        sudo snap install --classic go
-        echo -e "  ${GREEN}✓${NC} Go installed"
+        start_spinner "Installing Go"
+        if run_cmd sudo snap install --classic go; then
+            stop_spinner_success "Go installed"
+        else
+            stop_spinner_fail "Failed to install Go"
+            exit 1
+        fi
     else
-        echo -e "  ${GREEN}✓${NC} Go already installed ($(go version | grep -oP '\d+\.\d+' | head -1))"
+        print_ok "Go already installed ($(go version | grep -oP '\d+\.\d+' | head -1))"
     fi
 
     # Install Node.js if not present (needed for template building)
     if ! command -v node &> /dev/null; then
-        echo "  Installing Node.js..."
-        # Install via NodeSource for recent version
-        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-        sudo apt-get install -y nodejs
-        echo -e "  ${GREEN}✓${NC} Node.js installed"
+        start_spinner "Installing Node.js"
+        if curl -fsSL https://deb.nodesource.com/setup_22.x 2>/dev/null | sudo -E bash - > /dev/null 2>&1 && \
+           run_cmd sudo apt-get install -y nodejs; then
+            stop_spinner_success "Node.js installed"
+        else
+            stop_spinner_fail "Failed to install Node.js"
+            exit 1
+        fi
     else
-        echo -e "  ${GREEN}✓${NC} Node.js already installed ($(node --version))"
+        print_ok "Node.js already installed ($(node --version))"
     fi
 
     # Install build tools and other dependencies
-    echo "  Installing build tools..."
-    sudo apt-get install -y build-essential make ca-certificates curl git net-tools
-    echo -e "  ${GREEN}✓${NC} Build tools installed"
-
-    echo ""
+    start_spinner "Installing build tools"
+    if run_cmd sudo apt-get install -y build-essential make ca-certificates curl git net-tools; then
+        stop_spinner_success "Build tools installed"
+    else
+        stop_spinner_fail "Failed to install build tools"
+        exit 1
+    fi
 }
 
 # -----------------------------------------------------------------------------
 # Check prerequisites
 # -----------------------------------------------------------------------------
 check_prerequisites() {
-    echo "Checking prerequisites..."
+    local has_errors=false
+    local has_warnings=false
 
     # Check OS
     if [[ "$OSTYPE" != "linux-gnu"* ]]; then
-        echo -e "${RED}Error: E2B Lite requires Linux. Detected: $OSTYPE${NC}"
-        exit 1
+        print_err "E2B Lite requires Linux. Detected: $OSTYPE"
+        has_errors=true
+    else
+        print_ok "Linux detected"
     fi
-    echo -e "  ${GREEN}✓${NC} Linux detected"
 
     # Check kernel version
     KERNEL_MAJOR=$(uname -r | cut -d. -f1)
     KERNEL_MINOR=$(uname -r | cut -d. -f2)
     if [ "$KERNEL_MAJOR" -lt 5 ] || ([ "$KERNEL_MAJOR" -eq 5 ] && [ "$KERNEL_MINOR" -lt 10 ]); then
-        echo -e "${RED}Error: Kernel $(uname -r) is too old. Minimum required: 5.10${NC}"
-        exit 1
+        print_err "Kernel $(uname -r) is too old. Minimum required: 5.10"
+        has_errors=true
+    else
+        print_ok "Kernel $(uname -r)"
     fi
-    echo -e "  ${GREEN}✓${NC} Kernel $(uname -r)"
 
     # Check for kernel 6.8+ (needed for building templates)
     if [ "$KERNEL_MAJOR" -lt 6 ] || ([ "$KERNEL_MAJOR" -eq 6 ] && [ "$KERNEL_MINOR" -lt 8 ]); then
-        echo -e "  ${YELLOW}!${NC} Kernel < 6.8: You can run sandboxes but cannot build custom templates"
+        print_warn "Kernel < 6.8: You can run sandboxes but cannot build custom templates"
         BUILD_TEMPLATE=false
+        has_warnings=true
     else
-        echo -e "  ${GREEN}✓${NC} Kernel 6.8+: Full support (running + building templates)"
+        print_ok "Kernel 6.8+: Full support (running + building templates)"
     fi
 
     # Check KVM
     if [[ ! -e /dev/kvm ]]; then
-        echo -e "${RED}Error: /dev/kvm not found. KVM is required.${NC}"
-        echo "  Enable KVM: sudo modprobe kvm_intel (or kvm_amd)"
-        exit 1
+        print_err "/dev/kvm not found. KVM is required"
+        echo "       Enable KVM: sudo modprobe kvm_intel (or kvm_amd)"
+        has_errors=true
+    elif [[ ! -r /dev/kvm ]] || [[ ! -w /dev/kvm ]]; then
+        print_warn "No read/write access to /dev/kvm"
+        echo "       Fix: sudo usermod -aG kvm \$USER && newgrp kvm"
+        has_warnings=true
+    else
+        print_ok "KVM available"
     fi
-    if [[ ! -r /dev/kvm ]] || [[ ! -w /dev/kvm ]]; then
-        echo -e "${YELLOW}Warning: No read/write access to /dev/kvm${NC}"
-        echo "  Fix: sudo usermod -aG kvm \$USER && newgrp kvm"
-        echo "  Or run with sudo"
-    fi
-    echo -e "  ${GREEN}✓${NC} KVM available"
 
     # Check Docker
     if ! command -v docker &> /dev/null; then
-        echo -e "${RED}Error: Docker not found. Run with --deps-only first or install manually.${NC}"
-        exit 1
+        if [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_err "Docker not found"
+        else
+            print_err "Docker not found. Run with --deps-only first or install manually"
+        fi
+        has_errors=true
+    elif ! docker info &> /dev/null 2>&1; then
+        print_err "Docker daemon not running or no permission"
+        echo "       Start Docker: sudo systemctl start docker"
+        echo "       Or add to group: sudo usermod -aG docker \$USER && newgrp docker"
+        has_errors=true
+    else
+        print_ok "Docker available"
     fi
-    if ! docker info &> /dev/null; then
-        echo -e "${RED}Error: Docker daemon not running or no permission${NC}"
-        echo "  Start Docker: sudo systemctl start docker"
-        echo "  Or add to group: sudo usermod -aG docker \$USER && newgrp docker"
-        exit 1
-    fi
-    echo -e "  ${GREEN}✓${NC} Docker available"
 
     # Check Go
     if ! command -v go &> /dev/null; then
-        echo -e "${RED}Error: Go not found. Run with --deps-only first or install manually.${NC}"
-        exit 1
+        if [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_err "Go not found"
+        else
+            print_err "Go not found. Run with --deps-only first or install manually"
+        fi
+        has_errors=true
+    else
+        GO_VERSION=$(go version | grep -oP '\d+\.\d+' | head -1)
+        print_ok "Go $GO_VERSION"
     fi
-    GO_VERSION=$(go version | grep -oP '\d+\.\d+' | head -1)
-    echo -e "  ${GREEN}✓${NC} Go $GO_VERSION"
 
     # Check Node.js (optional, for template building)
     if command -v node &> /dev/null; then
-        echo -e "  ${GREEN}✓${NC} Node.js $(node --version)"
+        print_ok "Node.js $(node --version)"
     else
-        echo -e "  ${YELLOW}!${NC} Node.js not found (needed for template building)"
+        print_warn "Node.js not found (needed for template building)"
+        has_warnings=true
     fi
 
-    echo ""
+    # Return appropriate exit code for check-req mode
+    if [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+        echo ""
+        if [[ "$has_errors" == "true" ]]; then
+            echo -e "${RED}Some requirements are not met.${NC}"
+            echo "Install missing dependencies with: ./scripts/e2b-lite-setup.sh --deps-only"
+            exit 1
+        elif [[ "$has_warnings" == "true" ]]; then
+            echo -e "${YELLOW}System is ready with some limitations.${NC}"
+            exit 0
+        else
+            echo -e "${GREEN}All requirements met. System is ready for E2B Lite.${NC}"
+            exit 0
+        fi
+    fi
+
+    # For non-check-req mode, exit on errors
+    if [[ "$has_errors" == "true" ]]; then
+        exit 1
+    fi
 }
 
 # -----------------------------------------------------------------------------
 # Setup kernel modules
 # -----------------------------------------------------------------------------
 setup_kernel_modules() {
-    echo "Setting up kernel modules..."
-
     # NBD module with sufficient devices
     if ! lsmod | grep -q "^nbd "; then
-        echo "  Loading NBD module..."
-        if ! sudo modprobe nbd nbds_max=128 2>/dev/null; then
-            echo -e "${YELLOW}Warning: Failed to load NBD module. You may need to install it.${NC}"
+        start_spinner "Loading NBD module"
+        if sudo modprobe nbd nbds_max=128 2>/dev/null; then
+            stop_spinner_success "NBD module loaded (nbds_max=128)"
         else
-            echo -e "  ${GREEN}✓${NC} NBD module loaded (nbds_max=128)"
+            stop_spinner_warn "Failed to load NBD module (may need to install)"
         fi
     else
         # Check if we have enough NBD devices
         NBD_COUNT=$(ls -1 /dev/nbd* 2>/dev/null | wc -l)
         if [ "$NBD_COUNT" -lt 64 ]; then
-            echo "  Reloading NBD module with more devices..."
+            start_spinner "Reloading NBD module with more devices"
             sudo rmmod nbd 2>/dev/null || true
             sudo modprobe nbd nbds_max=128
+            stop_spinner_success "NBD module reloaded"
+        else
+            print_ok "NBD module loaded"
         fi
-        echo -e "  ${GREEN}✓${NC} NBD module loaded"
     fi
 
     # TUN module
     if ! lsmod | grep -q "^tun "; then
-        echo "  Loading TUN module..."
-        sudo modprobe tun 2>/dev/null || echo -e "${YELLOW}Warning: Failed to load TUN module${NC}"
+        start_spinner "Loading TUN module"
+        if sudo modprobe tun 2>/dev/null; then
+            stop_spinner_success "TUN module loaded"
+        else
+            stop_spinner_warn "Failed to load TUN module"
+        fi
+    else
+        print_ok "TUN module loaded"
     fi
-    echo -e "  ${GREEN}✓${NC} TUN module"
-
-    echo ""
 }
 
 # -----------------------------------------------------------------------------
 # Setup HugePages
 # -----------------------------------------------------------------------------
 setup_hugepages() {
-    echo "Setting up HugePages..."
-
     HUGEPAGES_TOTAL=$(cat /proc/sys/vm/nr_hugepages 2>/dev/null || echo 0)
     HUGEPAGES_NEEDED=2048  # 2048 * 2MB = 4GB reserved for HugePages
 
     if [ "$HUGEPAGES_TOTAL" -lt "$HUGEPAGES_NEEDED" ]; then
-        echo "  Allocating HugePages ($HUGEPAGES_NEEDED pages = $((HUGEPAGES_NEEDED * 2))MB)..."
+        start_spinner "Allocating HugePages (4GB)"
         if echo "$HUGEPAGES_NEEDED" | sudo tee /proc/sys/vm/nr_hugepages > /dev/null 2>&1; then
             # Make it persistent across reboots
             if ! grep -q "vm.nr_hugepages" /etc/sysctl.conf 2>/dev/null; then
                 echo "vm.nr_hugepages=$HUGEPAGES_NEEDED" | sudo tee -a /etc/sysctl.conf > /dev/null
-                echo -e "  ${GREEN}✓${NC} HugePages configured (persistent)"
+                stop_spinner_success "HugePages configured (persistent)"
             else
                 sudo sed -i "s/vm.nr_hugepages=.*/vm.nr_hugepages=$HUGEPAGES_NEEDED/" /etc/sysctl.conf
-                echo -e "  ${GREEN}✓${NC} HugePages allocated"
+                stop_spinner_success "HugePages allocated"
             fi
         else
-            echo -e "${YELLOW}Warning: Failed to allocate HugePages. Template building may fail.${NC}"
-            echo "  Manual fix: echo $HUGEPAGES_NEEDED | sudo tee /proc/sys/vm/nr_hugepages"
+            stop_spinner_warn "Failed to allocate HugePages"
+            echo "       Manual fix: echo $HUGEPAGES_NEEDED | sudo tee /proc/sys/vm/nr_hugepages"
         fi
     else
-        echo -e "  ${GREEN}✓${NC} HugePages already configured ($HUGEPAGES_TOTAL pages)"
+        print_ok "HugePages already configured ($HUGEPAGES_TOTAL pages)"
     fi
-
-    echo ""
 }
 
 # -----------------------------------------------------------------------------
 # Create directory structure
 # -----------------------------------------------------------------------------
 create_directories() {
-    echo "Creating directory structure..."
+    start_spinner "Creating directory structure"
 
     mkdir -p "$FC_VERSIONS_DIR/$FC_VERSION"
     mkdir -p "$KERNELS_DIR/$KERNEL_VERSION"
@@ -355,13 +565,9 @@ create_directories() {
     mkdir -p "$ORCHESTRATOR_DIR/tmp/orchestrator/build"
     mkdir -p "$ORCHESTRATOR_DIR/tmp/orchestrator/build-templates"
 
-    echo -e "  ${GREEN}✓${NC} Directories created"
-    echo ""
+    stop_spinner_success "Directories created"
 }
 
-# -----------------------------------------------------------------------------
-# Download artifacts
-# -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 # Download artifacts
 # Note: When using create-build with -storage flag, kernel and firecracker
@@ -369,42 +575,41 @@ create_directories() {
 # This function is kept for backwards compatibility but can be skipped.
 # -----------------------------------------------------------------------------
 download_artifacts() {
-    echo "Downloading artifacts..."
-    echo "  Note: create-build tool will download kernel and firecracker automatically"
-    echo "  to the storage directory when building templates."
-    echo ""
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "Note: create-build tool will download kernel and firecracker automatically"
+    fi
 }
 
 # -----------------------------------------------------------------------------
 # Download pre-built binaries
 # -----------------------------------------------------------------------------
 download_prebuilt_binaries() {
-    echo "Downloading pre-built binaries..."
-
     GITHUB_REPO="e2b-dev/infra"
+    BUILD_API=false
+    BUILD_ORCH=false
+    BUILD_PROXY=false
+    BUILD_ENVD=false
 
     # Determine version to download
     if [[ "$PREBUILT_VERSION" == "latest" ]]; then
-        echo "  Fetching latest release..."
+        start_spinner "Fetching latest release info"
         RELEASE_URL="https://api.github.com/repos/$GITHUB_REPO/releases/latest"
         RELEASE_INFO=$(curl -fsSL "$RELEASE_URL" 2>/dev/null)
         if [[ -z "$RELEASE_INFO" ]]; then
-            echo -e "${RED}Error: Failed to fetch latest release info${NC}"
-            echo "  Falling back to building from source..."
+            stop_spinner_warn "Failed to fetch release info, building from source"
             build_binaries
             return
         fi
         VERSION=$(echo "$RELEASE_INFO" | grep -oP '"tag_name":\s*"\K[^"]+' | head -1)
         if [[ -z "$VERSION" ]]; then
-            echo -e "${YELLOW}Warning: No releases found, falling back to building from source${NC}"
+            stop_spinner_warn "No releases found, building from source"
             build_binaries
             return
         fi
+        stop_spinner_success "Found version $VERSION"
     else
         VERSION="$PREBUILT_VERSION"
     fi
-
-    echo "  Version: $VERSION"
 
     # Download URLs
     BASE_URL="https://github.com/$GITHUB_REPO/releases/download/$VERSION"
@@ -418,14 +623,14 @@ download_prebuilt_binaries() {
     # Download API
     API_PATH="$API_DIR/bin/api"
     if [[ -f "$API_PATH" ]]; then
-        echo -e "  ${GREEN}✓${NC} API already exists"
+        print_ok "API already exists"
     else
-        echo "  Downloading API..."
-        if curl -fsSL "$BASE_URL/api-linux-amd64" -o "$API_PATH"; then
+        start_spinner "Downloading API"
+        if curl -fsSL "$BASE_URL/api-linux-amd64" -o "$API_PATH" 2>/dev/null; then
             chmod +x "$API_PATH"
-            echo -e "  ${GREEN}✓${NC} API downloaded"
+            stop_spinner_success "API downloaded"
         else
-            echo -e "${YELLOW}Warning: Failed to download API, will build from source${NC}"
+            stop_spinner_warn "Failed to download API"
             BUILD_API=true
         fi
     fi
@@ -433,14 +638,14 @@ download_prebuilt_binaries() {
     # Download Orchestrator
     ORCH_PATH="$ORCHESTRATOR_DIR/bin/orchestrator"
     if [[ -f "$ORCH_PATH" ]]; then
-        echo -e "  ${GREEN}✓${NC} Orchestrator already exists"
+        print_ok "Orchestrator already exists"
     else
-        echo "  Downloading Orchestrator..."
-        if curl -fsSL "$BASE_URL/orchestrator-linux-amd64" -o "$ORCH_PATH"; then
+        start_spinner "Downloading Orchestrator"
+        if curl -fsSL "$BASE_URL/orchestrator-linux-amd64" -o "$ORCH_PATH" 2>/dev/null; then
             chmod +x "$ORCH_PATH"
-            echo -e "  ${GREEN}✓${NC} Orchestrator downloaded"
+            stop_spinner_success "Orchestrator downloaded"
         else
-            echo -e "${YELLOW}Warning: Failed to download Orchestrator, will build from source${NC}"
+            stop_spinner_warn "Failed to download Orchestrator"
             BUILD_ORCH=true
         fi
     fi
@@ -448,14 +653,14 @@ download_prebuilt_binaries() {
     # Download Client-Proxy
     PROXY_PATH="$CLIENT_PROXY_DIR/bin/client-proxy"
     if [[ -f "$PROXY_PATH" ]]; then
-        echo -e "  ${GREEN}✓${NC} Client-Proxy already exists"
+        print_ok "Client-Proxy already exists"
     else
-        echo "  Downloading Client-Proxy..."
-        if curl -fsSL "$BASE_URL/client-proxy-linux-amd64" -o "$PROXY_PATH"; then
+        start_spinner "Downloading Client-Proxy"
+        if curl -fsSL "$BASE_URL/client-proxy-linux-amd64" -o "$PROXY_PATH" 2>/dev/null; then
             chmod +x "$PROXY_PATH"
-            echo -e "  ${GREEN}✓${NC} Client-Proxy downloaded"
+            stop_spinner_success "Client-Proxy downloaded"
         else
-            echo -e "${YELLOW}Warning: Failed to download Client-Proxy, will build from source${NC}"
+            stop_spinner_warn "Failed to download Client-Proxy"
             BUILD_PROXY=true
         fi
     fi
@@ -463,14 +668,14 @@ download_prebuilt_binaries() {
     # Download Envd
     ENVD_PATH="$ENVD_DIR/bin/envd"
     if [[ -f "$ENVD_PATH" ]]; then
-        echo -e "  ${GREEN}✓${NC} envd already exists"
+        print_ok "envd already exists"
     else
-        echo "  Downloading envd..."
-        if curl -fsSL "$BASE_URL/envd-linux-amd64" -o "$ENVD_PATH"; then
+        start_spinner "Downloading envd"
+        if curl -fsSL "$BASE_URL/envd-linux-amd64" -o "$ENVD_PATH" 2>/dev/null; then
             chmod +x "$ENVD_PATH"
-            echo -e "  ${GREEN}✓${NC} envd downloaded"
+            stop_spinner_success "envd downloaded"
         else
-            echo -e "${YELLOW}Warning: Failed to download envd, will build from source${NC}"
+            stop_spinner_warn "Failed to download envd"
             BUILD_ENVD=true
         fi
     fi
@@ -478,51 +683,61 @@ download_prebuilt_binaries() {
     # Build any that failed to download
     if [[ "$BUILD_API" == "true" ]] || [[ "$BUILD_ORCH" == "true" ]] || \
        [[ "$BUILD_PROXY" == "true" ]] || [[ "$BUILD_ENVD" == "true" ]]; then
-        echo ""
-        echo "Building missing binaries from source..."
 
         if [[ "$BUILD_ENVD" == "true" ]]; then
-            echo "  Building envd..."
-            make -C "$ENVD_DIR" build > /dev/null 2>&1 || echo -e "${RED}Failed to build envd${NC}"
+            start_spinner "Building envd from source"
+            if run_cmd make -C "$ENVD_DIR" build; then
+                stop_spinner_success "envd built"
+            else
+                stop_spinner_fail "Failed to build envd"
+            fi
         fi
 
         if [[ "$BUILD_API" == "true" ]]; then
-            echo "  Building API..."
-            make -C "$API_DIR" build > /dev/null 2>&1 || echo -e "${RED}Failed to build API${NC}"
+            start_spinner "Building API from source"
+            if run_cmd make -C "$API_DIR" build; then
+                stop_spinner_success "API built"
+            else
+                stop_spinner_fail "Failed to build API"
+            fi
         fi
 
         if [[ "$BUILD_ORCH" == "true" ]]; then
-            echo "  Building Orchestrator..."
-            make -C "$ORCHESTRATOR_DIR" build-debug > /dev/null 2>&1 || echo -e "${RED}Failed to build Orchestrator${NC}"
+            start_spinner "Building Orchestrator from source"
+            if run_cmd make -C "$ORCHESTRATOR_DIR" build-debug; then
+                stop_spinner_success "Orchestrator built"
+            else
+                stop_spinner_fail "Failed to build Orchestrator"
+            fi
         fi
 
         if [[ "$BUILD_PROXY" == "true" ]]; then
-            echo "  Building Client-Proxy..."
-            make -C "$CLIENT_PROXY_DIR" build > /dev/null 2>&1 || echo -e "${RED}Failed to build Client-Proxy${NC}"
+            start_spinner "Building Client-Proxy from source"
+            if run_cmd make -C "$CLIENT_PROXY_DIR" build; then
+                stop_spinner_success "Client-Proxy built"
+            else
+                stop_spinner_fail "Failed to build Client-Proxy"
+            fi
         fi
     fi
-
-    echo ""
 }
 
 # -----------------------------------------------------------------------------
 # Build all binaries
 # -----------------------------------------------------------------------------
 build_binaries() {
-    echo "Building binaries..."
-
     # Build envd - MUST use regular build (not build-debug) for static linking
     # The debug build uses CGO_ENABLED=1 which produces a dynamically linked binary
     # that won't work inside the minimal Firecracker VM
     ENVD_PATH="$ENVD_DIR/bin/envd"
     if [[ -f "$ENVD_PATH" ]]; then
-        echo -e "  ${GREEN}✓${NC} envd already built"
+        print_ok "envd already built"
     else
-        echo "  Building envd (statically linked for VM)..."
-        if make -C "$ENVD_DIR" build > /dev/null 2>&1; then
-            echo -e "  ${GREEN}✓${NC} envd built"
+        start_spinner "Building envd"
+        if run_cmd make -C "$ENVD_DIR" build; then
+            stop_spinner_success "envd built"
         else
-            echo -e "${RED}Error: Failed to build envd${NC}"
+            stop_spinner_fail "Failed to build envd"
             exit 1
         fi
     fi
@@ -530,13 +745,13 @@ build_binaries() {
     # Build API
     API_PATH="$API_DIR/bin/api"
     if [[ -f "$API_PATH" ]]; then
-        echo -e "  ${GREEN}✓${NC} API already built"
+        print_ok "API already built"
     else
-        echo "  Building API..."
-        if make -C "$API_DIR" build > /dev/null 2>&1; then
-            echo -e "  ${GREEN}✓${NC} API built"
+        start_spinner "Building API"
+        if run_cmd make -C "$API_DIR" build; then
+            stop_spinner_success "API built"
         else
-            echo -e "${RED}Error: Failed to build API${NC}"
+            stop_spinner_fail "Failed to build API"
             exit 1
         fi
     fi
@@ -544,13 +759,13 @@ build_binaries() {
     # Build Orchestrator
     ORCH_PATH="$ORCHESTRATOR_DIR/bin/orchestrator"
     if [[ -f "$ORCH_PATH" ]]; then
-        echo -e "  ${GREEN}✓${NC} Orchestrator already built"
+        print_ok "Orchestrator already built"
     else
-        echo "  Building Orchestrator..."
-        if make -C "$ORCHESTRATOR_DIR" build-debug > /dev/null 2>&1; then
-            echo -e "  ${GREEN}✓${NC} Orchestrator built"
+        start_spinner "Building Orchestrator"
+        if run_cmd make -C "$ORCHESTRATOR_DIR" build-debug; then
+            stop_spinner_success "Orchestrator built"
         else
-            echo -e "${RED}Error: Failed to build Orchestrator${NC}"
+            stop_spinner_fail "Failed to build Orchestrator"
             exit 1
         fi
     fi
@@ -558,18 +773,16 @@ build_binaries() {
     # Build Client-Proxy
     PROXY_PATH="$CLIENT_PROXY_DIR/bin/client-proxy"
     if [[ -f "$PROXY_PATH" ]]; then
-        echo -e "  ${GREEN}✓${NC} Client-Proxy already built"
+        print_ok "Client-Proxy already built"
     else
-        echo "  Building Client-Proxy..."
-        if make -C "$CLIENT_PROXY_DIR" build > /dev/null 2>&1; then
-            echo -e "  ${GREEN}✓${NC} Client-Proxy built"
+        start_spinner "Building Client-Proxy"
+        if run_cmd make -C "$CLIENT_PROXY_DIR" build; then
+            stop_spinner_success "Client-Proxy built"
         else
-            echo -e "${RED}Error: Failed to build Client-Proxy${NC}"
+            stop_spinner_fail "Failed to build Client-Proxy"
             exit 1
         fi
     fi
-
-    echo ""
 }
 
 # -----------------------------------------------------------------------------
@@ -577,99 +790,90 @@ build_binaries() {
 # -----------------------------------------------------------------------------
 setup_npm_dependencies() {
     if ! command -v npm &> /dev/null; then
-        echo -e "${YELLOW}Skipping npm dependencies (npm not found)${NC}"
+        print_warn "Skipping npm dependencies (npm not found)"
         return
     fi
 
-    echo "Setting up npm dependencies..."
-
     if [[ -d "$SHARED_SCRIPTS_DIR" ]]; then
         if [[ ! -d "$SHARED_SCRIPTS_DIR/node_modules" ]]; then
-            echo "  Installing npm packages in shared/scripts..."
-            (cd "$SHARED_SCRIPTS_DIR" && npm install --silent) || {
-                echo -e "${YELLOW}Warning: Failed to install npm packages${NC}"
-            }
+            start_spinner "Installing npm packages"
+            if (cd "$SHARED_SCRIPTS_DIR" && run_cmd npm install --silent); then
+                stop_spinner_success "npm dependencies installed"
+            else
+                stop_spinner_warn "Failed to install npm packages"
+            fi
+        else
+            print_ok "npm dependencies ready"
         fi
-        echo -e "  ${GREEN}✓${NC} npm dependencies ready"
     fi
-
-    echo ""
 }
 
 # -----------------------------------------------------------------------------
 # Start Docker infrastructure
 # -----------------------------------------------------------------------------
 start_infrastructure() {
-    echo "Starting Docker infrastructure..."
-
     # Use full docker-compose with all services
     COMPOSE_FILE="$LOCAL_DEV_DIR/docker-compose.yaml"
 
     if [[ ! -f "$COMPOSE_FILE" ]]; then
-        echo -e "${RED}Error: docker-compose.yaml not found at $COMPOSE_FILE${NC}"
+        print_err "docker-compose.yaml not found at $COMPOSE_FILE"
         exit 1
     fi
 
     # Check if containers are already running
     if docker ps --format '{{.Names}}' | grep -q "local-dev-postgres"; then
-        echo -e "  ${GREEN}✓${NC} Infrastructure already running"
+        print_ok "Infrastructure already running"
     else
-        echo "  Starting containers..."
-        docker compose -f "$COMPOSE_FILE" up -d
-
-        # Wait for PostgreSQL to be ready
-        echo "  Waiting for PostgreSQL..."
-        for i in {1..30}; do
-            if docker exec local-dev-postgres-1 pg_isready -U postgres > /dev/null 2>&1; then
-                break
-            fi
-            sleep 1
-        done
-        echo -e "  ${GREEN}✓${NC} Infrastructure started"
+        start_spinner "Starting Docker containers"
+        if run_cmd docker compose -f "$COMPOSE_FILE" up -d; then
+            # Wait for PostgreSQL to be ready
+            for i in {1..30}; do
+                if docker exec local-dev-postgres-1 pg_isready -U postgres > /dev/null 2>&1; then
+                    break
+                fi
+                sleep 1
+            done
+            stop_spinner_success "Infrastructure started"
+        else
+            stop_spinner_fail "Failed to start infrastructure"
+            exit 1
+        fi
     fi
-
-    echo ""
 }
 
 # -----------------------------------------------------------------------------
 # Run database migrations
 # -----------------------------------------------------------------------------
 run_migrations() {
-    echo "Running database migrations..."
-
     export POSTGRES_CONNECTION_STRING="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 
-    if make -C "$REPO_ROOT/packages/db" migrate-local > /dev/null 2>&1; then
-        echo -e "  ${GREEN}✓${NC} Migrations applied"
+    start_spinner "Running database migrations"
+    if run_cmd make -C "$REPO_ROOT/packages/db" migrate-local; then
+        stop_spinner_success "Migrations applied"
     else
-        echo -e "${YELLOW}Warning: Migration may have failed or already applied${NC}"
+        stop_spinner_warn "Migrations may have failed or already applied"
     fi
-
-    echo ""
 }
 
 # -----------------------------------------------------------------------------
 # Seed database
 # -----------------------------------------------------------------------------
 seed_database() {
-    echo "Seeding database..."
-
     export POSTGRES_CONNECTION_STRING="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 
     # Check if already seeded by looking for the team
     TEAM_EXISTS=$(docker exec local-dev-postgres-1 psql -U postgres -tAc "SELECT COUNT(*) FROM teams WHERE id='0b8a3ded-4489-4722-afd1-1d82e64ec2d5';" 2>/dev/null || echo "0")
 
     if [[ "$TEAM_EXISTS" == "1" ]]; then
-        echo -e "  ${GREEN}✓${NC} Database already seeded"
+        print_ok "Database already seeded"
     else
-        echo "  Running seed script..."
-        (cd "$LOCAL_DEV_DIR" && go run seed-local-database.go) > /dev/null 2>&1 || {
-            echo -e "${YELLOW}Warning: Seeding may have failed${NC}"
-        }
-        echo -e "  ${GREEN}✓${NC} Database seeded"
+        start_spinner "Seeding database"
+        if (cd "$LOCAL_DEV_DIR" && run_cmd go run seed-local-database.go); then
+            stop_spinner_success "Database seeded"
+        else
+            stop_spinner_warn "Seeding may have failed"
+        fi
     fi
-
-    echo ""
 }
 
 # -----------------------------------------------------------------------------
@@ -685,18 +889,14 @@ generate_template_id() {
 
 build_base_template() {
     if [[ "$BUILD_TEMPLATE" != "true" ]]; then
-        echo -e "${YELLOW}Skipping template build (--no-template or kernel < 6.8)${NC}"
-        echo ""
+        print_warn "Skipping template build (--no-template or kernel < 6.8)"
         return
     fi
-
-    echo "Building base template..."
 
     # Check if template already exists in database
     EXISTING_TEMPLATE=$(docker exec local-dev-postgres-1 psql -U postgres -tAc "SELECT id FROM envs LIMIT 1;" 2>/dev/null | tr -d ' ' || echo "")
     if [[ -n "$EXISTING_TEMPLATE" ]]; then
-        echo -e "  ${GREEN}✓${NC} Template already exists in database: $EXISTING_TEMPLATE"
-        echo ""
+        print_ok "Template already exists: $EXISTING_TEMPLATE"
         return
     fi
 
@@ -705,30 +905,29 @@ build_base_template() {
     EXISTING_BUILD=$(ls -1 "$TEMPLATE_STORAGE" 2>/dev/null | head -1)
 
     if [[ -n "$EXISTING_BUILD" ]]; then
-        echo "  Found existing template files, registering in database..."
+        start_spinner "Registering existing template"
         TEMPLATE_ID=$(generate_template_id)
         BUILD_ID="$EXISTING_BUILD"
         register_template "$TEMPLATE_ID" "$BUILD_ID"
-        echo -e "  ${GREEN}✓${NC} Template registered: $TEMPLATE_ID"
-        echo ""
+        stop_spinner_success "Template registered: $TEMPLATE_ID"
         return
     fi
 
     # Set environment for template building
-    # The create-build tool with -storage flag handles most setup automatically.
-    # We only need to set paths for envd and the template storage location (to match orchestrator runtime)
-    # and let it download/setup kernel and firecracker to its expected paths.
     export HOST_ENVD_PATH="$ENVD_DIR/bin/envd"
-    # Override template storage to match what orchestrator runtime expects
     export LOCAL_TEMPLATE_STORAGE_BASE_PATH="$TEMPLATE_STORAGE"
 
     # Generate IDs
     TEMPLATE_ID=$(generate_template_id)
     BUILD_ID=$(cat /proc/sys/kernel/random/uuid)
 
-    echo "  Template ID: $TEMPLATE_ID"
-    echo "  Build ID: $BUILD_ID"
-    echo "  Building template (this may take a few minutes)..."
+    start_spinner "Building base template (this may take a few minutes)"
+
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo ""
+        echo "  Template ID: $TEMPLATE_ID"
+        echo "  Build ID: $BUILD_ID"
+    fi
 
     if go run "$ORCHESTRATOR_DIR/cmd/create-build/main.go" \
         -template "$TEMPLATE_ID" \
@@ -740,18 +939,17 @@ build_base_template() {
         -memory 512 \
         -disk 1024 \
         -v > /tmp/template-build.log 2>&1; then
-        echo -e "  ${GREEN}✓${NC} Template built successfully"
+        stop_spinner_success "Template built: $TEMPLATE_ID"
 
         # Register template in database
         register_template "$TEMPLATE_ID" "$BUILD_ID"
-        echo -e "  ${GREEN}✓${NC} Template registered in database"
+        print_ok "Template registered in database"
     else
-        echo -e "${YELLOW}Warning: Template build failed. Check /tmp/template-build.log${NC}"
-        echo "  You can build it manually later with:"
-        echo "  make -C packages/shared/scripts local-build-base-template"
+        stop_spinner_warn "Template build failed"
+        echo "       Check /tmp/template-build.log for details"
+        echo "       You can build it manually later with:"
+        echo "       make -C packages/shared/scripts local-build-base-template"
     fi
-
-    echo ""
 }
 
 # Register template in the database
@@ -787,7 +985,7 @@ register_template() {
 # Create service start scripts
 # -----------------------------------------------------------------------------
 create_start_scripts() {
-    echo "Creating service start scripts..."
+    start_spinner "Creating service scripts"
 
     # Create scripts directory
     mkdir -p "$REPO_ROOT/scripts/services"
@@ -946,15 +1144,14 @@ fi
 SCRIPT
     chmod +x "$REPO_ROOT/scripts/services/start-all.sh"
 
-    echo -e "  ${GREEN}✓${NC} Service scripts created"
-    echo ""
+    stop_spinner_success "Service scripts created"
 }
 
 # -----------------------------------------------------------------------------
 # Create test script
 # -----------------------------------------------------------------------------
 create_test_script() {
-    echo "Creating test script..."
+    start_spinner "Creating test script"
 
     cat > "$REPO_ROOT/scripts/test-e2b-lite.py" << 'SCRIPT'
 #!/usr/bin/env python3
@@ -1085,8 +1282,7 @@ except Exception as e:
 SCRIPT
     chmod +x "$REPO_ROOT/scripts/test-e2b-lite.py"
 
-    echo -e "  ${GREEN}✓${NC} Test script created"
-    echo ""
+    stop_spinner_success "Test script created"
 }
 
 # -----------------------------------------------------------------------------
@@ -1096,106 +1292,99 @@ print_summary() {
     # Get template ID from database
     TEMPLATE_ID=$(docker exec local-dev-postgres-1 psql -U postgres -tAc "SELECT id FROM envs LIMIT 1;" 2>/dev/null | tr -d ' ' || echo "")
 
-    echo "========================================"
-    echo -e "  ${GREEN}E2B Lite Setup Complete!${NC}"
-    echo "========================================"
     echo ""
-    echo -e "${BLUE}Credentials:${NC}"
-    echo "  API Key:       $API_KEY"
-    echo "  Access Token:  $ACCESS_TOKEN"
-    if [[ -n "$TEMPLATE_ID" ]]; then
-        echo "  Template ID:   $TEMPLATE_ID"
-    fi
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}  E2B Lite Setup Complete!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo -e "${BLUE}Services:${NC}"
-    echo "  API:           http://localhost:80"
-    echo "  Client-Proxy:  http://localhost:3002 (envd)"
-    echo "  Orchestrator:  localhost:5008 (gRPC)"
-    echo ""
-    echo -e "${BLUE}Quick Start:${NC}"
+    echo -e "${BOLD}Next Steps:${NC}"
     echo ""
     echo "  1. Start all services:"
-    echo "     ./scripts/services/start-all.sh"
+    echo -e "     ${DIM}./scripts/services/start-all.sh${NC}"
     echo ""
-    echo "  2. Or start in background:"
-    echo "     ./scripts/services/start-all.sh --bg"
+    echo "  2. Test with Python SDK:"
+    echo -e "     ${DIM}pip install e2b${NC}"
+    echo -e "     ${DIM}python scripts/test-e2b-lite.py${NC}"
     echo ""
-    echo "  3. Test with Python SDK:"
-    echo "     python3 -m venv e2b_venv"
-    echo "     source e2b_venv/bin/activate"
-    echo "     pip install e2b"
-    echo "     python scripts/test-e2b-lite.py"
+    echo -e "${BOLD}Quick Reference:${NC}"
     echo ""
-    echo -e "${BLUE}Python SDK Usage:${NC}"
+    echo "  API URL:      http://localhost:80"
+    echo "  Sandbox URL:  http://localhost:3002"
+    echo "  API Key:      $API_KEY"
+    if [[ -n "$TEMPLATE_ID" ]]; then
+        echo "  Template ID:  $TEMPLATE_ID"
+    fi
     echo ""
-    echo "  from e2b import Sandbox"
+    echo -e "${DIM}For detailed usage, see E2B-LITE-DESIGN.md${NC}"
     echo ""
-    echo "  sandbox = Sandbox.create("
-    echo "      template=\"${TEMPLATE_ID:-<template_id>}\","
-    echo "      api_url=\"http://localhost:80\","
-    echo "      sandbox_url=\"http://localhost:3002\","
-    echo "      api_key=\"$API_KEY\","
-    echo "  )"
-    echo "  result = sandbox.commands.run(\"echo hello\", user=\"root\")"
-    echo "  print(result.stdout)"
-    echo "  sandbox.kill()"
-    echo ""
-    echo -e "${BLUE}Environment Variables:${NC}"
-    echo ""
-    echo "  # For SDK"
-    echo "  export E2B_API_KEY=\"$API_KEY\""
-    echo ""
-    echo "  # For CLI (npx @e2b/cli)"
-    echo "  export E2B_API_URL=\"http://localhost:80\""
-    echo "  export E2B_SANDBOX_URL=\"http://localhost:3002\""
-    echo "  export E2B_ACCESS_TOKEN=\"$ACCESS_TOKEN\""
-    echo "  export E2B_API_KEY=\"$API_KEY\""
-    echo ""
-    echo -e "${BLUE}CLI Usage:${NC}"
-    echo ""
-    echo "  # Set environment variables first (see above), then:"
-    echo "  npx @e2b/cli template list"
-    echo "  npx @e2b/cli sandbox list"
-    echo ""
-    echo "For more details, see E2B-LITE-DESIGN.md"
 }
 
 # =============================================================================
 # Main execution
 # =============================================================================
 
+# Count total steps for progress display
+TOTAL_STEPS=10
+CURRENT_STEP=0
+
+next_step() {
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+    print_step "$CURRENT_STEP" "$TOTAL_STEPS" "$1"
+}
+
+# Handle --check-req mode
+if [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+    check_prerequisites
+    exit 0
+fi
+
 check_sudo
 
 # Install dependencies if requested
 if [[ "$INSTALL_DEPS" == "true" ]]; then
+    next_step "Installing dependencies"
     install_dependencies
 fi
 
 # Exit if deps-only mode
 if [[ "$DEPS_ONLY" == "true" ]]; then
-    echo "Dependencies installed. Run again without --deps-only for full setup."
+    echo ""
+    echo -e "${GREEN}Dependencies installed.${NC}"
+    echo "Run again without --deps-only for full setup."
     exit 0
 fi
 
 # Run all setup steps
+next_step "Checking prerequisites"
 check_prerequisites
+
+next_step "Setting up system"
 setup_kernel_modules
 setup_hugepages
 create_directories
 download_artifacts
 
-# Build or download binaries
+next_step "Building binaries"
 if [[ "$USE_PREBUILT" == "true" ]]; then
     download_prebuilt_binaries
 else
     build_binaries
 fi
 
+next_step "Setting up npm dependencies"
 setup_npm_dependencies
+
+next_step "Starting infrastructure"
 start_infrastructure
+
+next_step "Configuring database"
 run_migrations
 seed_database
+
+next_step "Building template"
 build_base_template
+
+next_step "Creating scripts"
 create_start_scripts
 create_test_script
 
