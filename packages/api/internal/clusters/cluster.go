@@ -17,7 +17,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -206,11 +208,7 @@ func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*Instance, b
 	return nil, false
 }
 
-func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo machineinfo.MachineInfo) (*Instance, error) {
-	_, span := tracer.Start(ctx, "template-builder-get-available-instance")
-	span.SetAttributes(telemetry.WithClusterID(c.ID))
-	defer span.End()
-
+func (c *Cluster) getRandomInstance(isMatch func(*Instance) bool) (*Instance, bool) {
 	var instances []*Instance
 	for _, instance := range c.instances.Items() {
 		instances = append(instances, instance)
@@ -220,20 +218,37 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo 
 	rand.Shuffle(len(instances), func(i, j int) { instances[i], instances[j] = instances[j], instances[i] })
 
 	for _, instance := range instances {
+		if isMatch(instance) {
+			return instance, true
+		}
+	}
+
+	return nil, false
+}
+
+func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo machineinfo.MachineInfo) (*Instance, error) {
+	_, span := tracer.Start(ctx, "template-builder-get-available-instance")
+	span.SetAttributes(telemetry.WithClusterID(c.ID))
+	defer span.End()
+
+	instance, ok := c.getRandomInstance(func(instance *Instance) bool {
 		// Check availability and builder role
 		if info := instance.GetInfo(); info.Status != infogrpc.ServiceInfoStatus_Healthy || !info.IsBuilder {
-			continue
+			return false
 		}
 
 		// Check machine compatibility
 		if machineInfo := instance.GetMachineInfo(); expectedInfo.CPUModel != "" && !expectedInfo.IsCompatibleWith(machineInfo) {
-			continue
+			return false
 		}
 
-		return instance, nil
+		return true
+	})
+	if !ok {
+		return nil, ErrAvailableTemplateBuilderNotFound
 	}
 
-	return nil, ErrAvailableTemplateBuilderNotFound
+	return instance, nil
 }
 
 func (c *Cluster) GetOrchestrators() []*Instance {
@@ -249,4 +264,26 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 
 func (c *Cluster) GetResources() ClusterResource {
 	return c.resources
+}
+
+var ErrNoOrchestratorFound = errors.New("no orchestrator found")
+
+func (c *Cluster) DeleteVolume(ctx context.Context, volume queries.Volume) error {
+	instance, ok := c.getRandomInstance(func(instance *Instance) bool {
+		return instance.isOrchestrator
+	})
+
+	if !ok {
+		return ErrNoOrchestratorFound
+	}
+
+	if _, err := instance.client.Volumes.Delete(ctx, &orchestrator.VolumeDeleteRequest{
+		VolumeId:   volume.ID.String(),
+		VolumeType: volume.VolumeType,
+		VolumeName: volume.Name,
+	}); err != nil {
+		return fmt.Errorf("failed to delete volume: %w", err)
+	}
+
+	return nil
 }

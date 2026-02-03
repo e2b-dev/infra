@@ -1721,6 +1721,9 @@ type ClientInterface interface {
 
 	PostVolumes(ctx context.Context, body PostVolumesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteVolumesVolumeID request
+	DeleteVolumesVolumeID(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetVolumesVolumeID request
 	GetVolumesVolumeID(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
@@ -2495,6 +2498,18 @@ func (c *Client) PostVolumesWithBody(ctx context.Context, contentType string, bo
 
 func (c *Client) PostVolumes(ctx context.Context, body PostVolumesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostVolumesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteVolumesVolumeID(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteVolumesVolumeIDRequest(c.Server, volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -4733,6 +4748,40 @@ func NewPostVolumesRequestWithBody(server string, contentType string, body io.Re
 	return req, nil
 }
 
+// NewDeleteVolumesVolumeIDRequest generates requests for DeleteVolumesVolumeID
+func NewDeleteVolumesVolumeIDRequest(server string, volumeID VolumeID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/volumes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetVolumesVolumeIDRequest generates requests for GetVolumesVolumeID
 func NewGetVolumesVolumeIDRequest(server string, volumeID VolumeID) (*http.Request, error) {
 	var err error
@@ -4985,6 +5034,9 @@ type ClientWithResponsesInterface interface {
 	PostVolumesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostVolumesResponse, error)
 
 	PostVolumesWithResponse(ctx context.Context, body PostVolumesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostVolumesResponse, error)
+
+	// DeleteVolumesVolumeIDWithResponse request
+	DeleteVolumesVolumeIDWithResponse(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*DeleteVolumesVolumeIDResponse, error)
 
 	// GetVolumesVolumeIDWithResponse request
 	GetVolumesVolumeIDWithResponse(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDResponse, error)
@@ -6122,6 +6174,30 @@ func (r PostVolumesResponse) StatusCode() int {
 	return 0
 }
 
+type DeleteVolumesVolumeIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteVolumesVolumeIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteVolumesVolumeIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetVolumesVolumeIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6711,6 +6787,15 @@ func (c *ClientWithResponses) PostVolumesWithResponse(ctx context.Context, body 
 		return nil, err
 	}
 	return ParsePostVolumesResponse(rsp)
+}
+
+// DeleteVolumesVolumeIDWithResponse request returning *DeleteVolumesVolumeIDResponse
+func (c *ClientWithResponses) DeleteVolumesVolumeIDWithResponse(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*DeleteVolumesVolumeIDResponse, error) {
+	rsp, err := c.DeleteVolumesVolumeID(ctx, volumeID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteVolumesVolumeIDResponse(rsp)
 }
 
 // GetVolumesVolumeIDWithResponse request returning *GetVolumesVolumeIDResponse
@@ -8758,6 +8843,46 @@ func ParsePostVolumesResponse(rsp *http.Response) (*PostVolumesResponse, error) 
 	return response, nil
 }
 
+// ParseDeleteVolumesVolumeIDResponse parses an HTTP response from a DeleteVolumesVolumeIDWithResponse call
+func ParseDeleteVolumesVolumeIDResponse(rsp *http.Response) (*DeleteVolumesVolumeIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteVolumesVolumeIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetVolumesVolumeIDResponse parses an HTTP response from a GetVolumesVolumeIDWithResponse call
 func ParseGetVolumesVolumeIDResponse(rsp *http.Response) (*GetVolumesVolumeIDResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -8945,6 +9070,9 @@ type ServerInterface interface {
 
 	// (POST /volumes)
 	PostVolumes(c *gin.Context)
+
+	// (DELETE /volumes/{volumeID})
+	DeleteVolumesVolumeID(c *gin.Context, volumeID VolumeID)
 
 	// (GET /volumes/{volumeID})
 	GetVolumesVolumeID(c *gin.Context, volumeID VolumeID)
@@ -10422,6 +10550,30 @@ func (siw *ServerInterfaceWrapper) PostVolumes(c *gin.Context) {
 	siw.Handler.PostVolumes(c)
 }
 
+// DeleteVolumesVolumeID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteVolumesVolumeID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "volumeID" -------------
+	var volumeID VolumeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteVolumesVolumeID(c, volumeID)
+}
+
 // GetVolumesVolumeID operation middleware
 func (siw *ServerInterfaceWrapper) GetVolumesVolumeID(c *gin.Context) {
 
@@ -10519,6 +10671,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/v3/templates", wrapper.PostV3Templates)
 	router.GET(options.BaseURL+"/volumes", wrapper.GetVolumes)
 	router.POST(options.BaseURL+"/volumes", wrapper.PostVolumes)
+	router.DELETE(options.BaseURL+"/volumes/:volumeID", wrapper.DeleteVolumesVolumeID)
 	router.GET(options.BaseURL+"/volumes/:volumeID", wrapper.GetVolumesVolumeID)
 }
 
@@ -10660,9 +10813,9 @@ var swaggerSpec = []string{
 	"QpIy9Vuy278myHzOhy3Lg2qM4uajyr4cPEdc2ZeDl25f1ZD40ZJpOoRSuyO7u95CtyvKorvv2xm1lUW0",
 	"G0hevV2boO4er8NYH4OT2J/Py7BlHg8QGcXhX5aTY4vc9F2bOF9TeL97FuH97rmEt16A4X9mIa9yvJ/y",
 	"oMTu0Jp1prXrall82v6zTV2JeOwdIoI7SHM328SjgbuZa0yxuaL8seOAW9DeSk57A+LdBp3as3Yg0qSz",
-	"b8LqpRzfJtqtwzb5qv7RVxvI2lirQ0UTwhc94Gh1waxku4F8A/FqnnOGpiabjdUXYAh0YBVYNVsaaOcs",
-	"0kXB+eFkgjO6Rw5u93CWeRYT/lq+9yufu32t5e6v/ghvE+2/K1Vy7Q+mnJn1G0xr/V3wvZvH/w0AAP//",
-	"g94FSs3/AAA=",
+	"b8LqpRzfJtqtwzb5qv4xqppcCzGoRpocvuhhRysNZj0DYz4ryDDxnriJiBdgu3Odvw4nVrGBVg/WNkG9",
+	"v+uDZN7PfjvYU7KRLQ20cxbpKuz8cDLBGd0jB7d7OMs8S+p9LR9Ylu8Lv9aKJVR/hMeg9t+VssT2B1M/",
+	"zvoNprX+LgTNzeP/BgAA//9juOotPgEBAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

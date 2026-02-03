@@ -13,3 +13,6 @@ SELECT * FROM volumes WHERE team_id = @team_id AND name IN (
 
 -- name: FindVolumesByTeamID :many
 SELECT * FROM volumes WHERE team_id = @team_id;
+
+-- name: DeleteVolume :exec
+DELETE FROM volumes WHERE team_id = @team_id AND id = @volume_id;

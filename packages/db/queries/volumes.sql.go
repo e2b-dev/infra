@@ -36,6 +36,20 @@ func (q *Queries) CreateVolume(ctx context.Context, arg CreateVolumeParams) (Vol
 	return i, err
 }
 
+const deleteVolume = `-- name: DeleteVolume :exec
+DELETE FROM volumes WHERE team_id = $1 AND id = $2
+`
+
+type DeleteVolumeParams struct {
+	TeamID   uuid.UUID
+	VolumeID uuid.UUID
+}
+
+func (q *Queries) DeleteVolume(ctx context.Context, arg DeleteVolumeParams) error {
+	_, err := q.db.Exec(ctx, deleteVolume, arg.TeamID, arg.VolumeID)
+	return err
+}
+
 const findVolumesByTeamID = `-- name: FindVolumesByTeamID :many
 SELECT id, team_id, name, volume_type, created_at FROM volumes WHERE team_id = $1
 `

@@ -3000,3 +3000,18 @@ paths:
           $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
+
+    delete:
+      description: Delete a team volume
+      tags: [volumes]
+      parameters:
+        - $ref: "#/components/parameters/volumeID"
+      responses:
+        "204":
+          description: Successfully deleted a team volume
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
