@@ -24,7 +24,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -123,21 +122,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if body.AutoResume != nil {
 		value := string(*body.AutoResume)
 		sandboxResumesOn = &value
-	}
-	if metadata != nil {
-		if sandboxResumesOn == nil {
-			if value, ok := metadata["auto_resume"]; ok {
-				policy := proxygrpc.AutoResumePolicyFromString(value)
-				normalized := proxygrpc.AutoResumePolicyToString(policy)
-				sandboxResumesOn = &normalized
-			}
-		}
-		if _, ok := metadata["auto_resume"]; ok {
-			delete(metadata, "auto_resume")
-			if len(metadata) == 0 {
-				metadata = nil
-			}
-		}
 	}
 
 	var envVars map[string]string
