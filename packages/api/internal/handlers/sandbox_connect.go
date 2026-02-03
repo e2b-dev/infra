@@ -122,6 +122,8 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		return
 	}
 
+	a.deletePausedCatalogEntry(ctx, sandboxID)
+
 	autoPause := lastSnapshot.Snapshot.AutoPause
 	snap := lastSnapshot.Snapshot
 	build := lastSnapshot.EnvBuild
